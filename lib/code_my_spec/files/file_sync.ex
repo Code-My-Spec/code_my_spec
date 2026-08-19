@@ -220,8 +220,24 @@ defmodule CodeMySpec.Files.FileSync do
           {0, []}
 
         _ ->
+          # Only the rows that would actually change. This used to upsert every
+          # observation on every manifest — 4,157 rows re-written on a rejoin
+          # where nothing on disk had moved, eight chunked `insert_all`s and the
+          # index maintenance behind them. Under a rejoin loop that is what
+          # exhausted the connection pool: `query_canceled ... while inserting
+          # index tuple in relation "files"`, then the upgrade of the next
+          # socket dying in the queue behind it (1aed7edf, 600fbb3a).
+          #
+          # The diff was already being computed here and used only to decide
+          # what to re-embed.
           changed = changed_entries(observations, existing_by_path)
-          {count, _} = Files.upsert_files(scope, observations)
+
+          {count, _} =
+            case changed do
+              [] -> {0, []}
+              _ -> Files.upsert_files(scope, changed)
+            end
+
           {count, changed}
       end
 
@@ -292,7 +308,7 @@ defmodule CodeMySpec.Files.FileSync do
           upserted: non_neg_integer(),
           removed: non_neg_integer(),
           changed: non_neg_integer(),
-          components: non_neg_integer()
+          components: non_neg_integer() | :unchanged
         }
   def reconcile_and_project(%Scope{} = scope, observations) when is_list(observations) do
     started = System.monotonic_time(:millisecond)
@@ -302,13 +318,12 @@ defmodule CodeMySpec.Files.FileSync do
         Repo.transaction(
           fn ->
             summary = reconcile(scope, observations)
-            {:ok, components} = ComponentSync.sync_from_files(scope)
 
             %{
               upserted: summary.upserted,
               removed: summary.removed,
               changed: length(summary.changed_entries),
-              components: length(components.all_components)
+              components: project_components(scope, summary)
             }
           end,
           timeout: @reconcile_timeout_ms
@@ -324,8 +339,33 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  # How long the transaction took, and a warning when it is close to the limit.
+  # The components, projected — unless no file moved, in which case they cannot
+  # have.
   #
+  # This is the expensive half. `925 components synced in 9000-9900ms` is what
+  # the join storm was actually made of; the upsert alongside it is the smaller
+  # cost. Components are derived from File rows and nothing else, so a manifest
+  # that wrote no row and deleted none leaves every one of them exactly as it
+  # was, and re-deriving them is 9 seconds spent to arrive back where we
+  # started — while holding a pooled connection the next socket upgrade is
+  # queued behind.
+  #
+  # Keyed on `removed` as well as `changed_entries`, because a deletion changes
+  # the projection without changing any surviving row.
+  #
+  # Returns `:unchanged` rather than a number. The count feeds one log line, and
+  # both numbers available here would be false: `0` says this project has no
+  # components, and the previous run's figure reports a stale count as a fresh
+  # one. Saying the projection did not run is the only true answer, and it is
+  # also the one that makes the skip visible.
+  defp project_components(_scope, %{changed_entries: [], removed: 0}), do: :unchanged
+
+  defp project_components(scope, _summary) do
+    {:ok, components} = ComponentSync.sync_from_files(scope)
+    length(components.all_components)
+  end
+
+  # How long the transaction took, and a warning when it is close to the limit.
   # Nothing recorded this, and its absence cost a wedged harness. When a
   # reconcile exceeds `@reconcile_timeout_ms` the transaction dies, the task
   # dies with it, and the task's death drops its pooled connection — which the
@@ -426,13 +466,42 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
+  # Entries the stored row does not already say.
+  #
+  # This used to compare the fingerprint alone, which was right for its original
+  # job — deciding what to re-embed — and wrong for the one it has now, deciding
+  # what to write. Ownership is re-resolved here on every manifest against the
+  # server's live read model, so a spex file whose story was created *after* the
+  # harness joined gets a `story_id` with its content untouched and its
+  # fingerprint identical. Judged on fingerprint, that entry is unchanged and
+  # would never be written, and `bdd_specs_exist` would stay dark on a story
+  # whose spec file is right there on disk — the Drill 12 failure, which this
+  # codebase has read as a dead file watcher four times.
+  #
+  # So the comparison is every column an upsert would overwrite, taken from
+  # `Files.replaceable_fields/0` rather than restated here. A field added to the
+  # upsert is compared from the moment it is added.
+  #
+  # A missing key is not "equal to nil": an entry that omits a field it does not
+  # know about must not silently claim the stored value. `Map.fetch/2` says
+  # which, and an absent key counts as a difference — the safe direction, since
+  # the cost is writing a row that did not need it.
   defp changed_entries(entries, existing_by_path) do
+    fields = Files.replaceable_fields()
+
     Enum.filter(entries, fn entry ->
       case Map.get(existing_by_path, entry.path) do
         nil -> true
-        record -> Map.get(entry, :fingerprint) != record.fingerprint
+        record -> Enum.any?(fields, &differs?(entry, record, &1))
       end
     end)
+  end
+
+  defp differs?(entry, record, field) do
+    case Map.fetch(entry, field) do
+      {:ok, value} -> value != Map.get(record, field)
+      :error -> true
+    end
   end
 
   @doc """

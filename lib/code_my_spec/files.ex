@@ -185,7 +185,6 @@ defmodule CodeMySpec.Files do
     |> MapSet.new()
   end
 
-
   # A `component_id` naming a component that no longer exists fails the whole
   # insert, and with it the whole reconcile.
   #
@@ -241,8 +240,11 @@ defmodule CodeMySpec.Files do
 
         Enum.map(entries, fn entry ->
           case Map.get(entry, :component_id) do
-            nil -> entry
-            id -> if MapSet.member?(present, id), do: entry, else: Map.put(entry, :component_id, nil)
+            nil ->
+              entry
+
+            id ->
+              if MapSet.member?(present, id), do: entry, else: Map.put(entry, :component_id, nil)
           end
         end)
     end
@@ -299,6 +301,32 @@ defmodule CodeMySpec.Files do
   # `sync_path/3` and `sync_changed/2` while the full sync was fine.
   @scanner_scratch [:declared_module, :raw_role]
 
+  # Everything an upsert overwrites on a row that already exists, and therefore
+  # everything that can make a manifest entry differ from what is stored.
+  #
+  # One list, two readers: `on_conflict` below and `FileSync.changed_entries/2`
+  # via `replaceable_fields/0`. They have to agree, and a pair that has to agree
+  # with nothing linking them is how most of this system's quiet bugs have
+  # started — `@role_analyzers` against `Fingerprint.@source_roles`, the
+  # generators fixture against `DeployBoilerplate.@files`, `@configurable_sources`
+  # against `Run.@sources`. A field added here is compared from the moment it is
+  # added.
+  #
+  # `:mtime` is included deliberately. A file touched without its content
+  # changing has the same fingerprint and a new mtime, and `sync_changed` reads
+  # stored mtime to decide what to re-examine — so treating it as no change
+  # would leave that stale.
+  @replaceable_fields [
+    :role,
+    :mtime,
+    :size,
+    :fingerprint,
+    :component_id,
+    :story_id,
+    :valid,
+    :validation_errors
+  ]
+
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
   def upsert_files(%Scope{active_project_id: project_id} = scope, file_attrs_list)
       when is_list(file_attrs_list) do
@@ -327,19 +355,7 @@ defmodule CodeMySpec.Files do
       |> Enum.reduce({0, []}, fn chunk, {acc_count, acc_files} ->
         {count, batch} =
           Repo.insert_all(File, chunk,
-            on_conflict:
-              {:replace,
-               [
-                 :role,
-                 :mtime,
-                 :size,
-                 :fingerprint,
-                 :component_id,
-                 :story_id,
-                 :valid,
-                 :validation_errors,
-                 :updated_at
-               ]},
+            on_conflict: {:replace, @replaceable_fields ++ [:updated_at]},
             conflict_target: [:project_id, :harness_id, :path],
             returning: true
           )
@@ -349,6 +365,22 @@ defmodule CodeMySpec.Files do
 
     {total_count, files}
   end
+
+  @doc """
+  The columns an upsert overwrites on an existing row.
+
+  Exported because it is also the definition of "this row needs writing": a
+  manifest entry matching the stored row on every one of these would produce an
+  `insert_all` that changes nothing but `updated_at`. `FileSync` reads this to
+  decide what to send, so the two cannot drift — a field added to the replace
+  list is compared from the moment it is added, rather than becoming a change
+  the diff silently cannot see.
+
+  `:updated_at` is excluded: it is written on every upsert by definition, and
+  comparing it would make every row differ from itself.
+  """
+  @spec replaceable_fields() :: [atom()]
+  def replaceable_fields, do: @replaceable_fields
 
   @doc """
   Upsert a single file record without updating mtime.

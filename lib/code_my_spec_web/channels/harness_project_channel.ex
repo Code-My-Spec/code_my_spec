@@ -643,7 +643,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.info(
       "[HarnessProject] reconciled #{socket.assigns.harness.root || socket.assigns.harness.id}: " <>
         "#{counts.upserted} upserted, #{counts.removed} removed, " <>
-        "#{counts.changed} changed, #{counts.components} components"
+        "#{counts.changed} changed, #{component_count(counts.components)}"
     )
 
     {:noreply, next_manifest(socket)}
@@ -754,6 +754,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         socket
     end
   end
+
+  # `:unchanged` means the component projection did not run, because no file
+  # row was written or deleted and components are derived from those alone.
+  # Said in words rather than as a number: "0 components" would read as a
+  # project that has none, which is the alarming version of the healthy case.
+  defp component_count(:unchanged), do: "components unchanged (projection skipped)"
+  defp component_count(n) when is_integer(n), do: "#{n} components"
 
   defp start_reconcile(scope, entries) do
     Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
