@@ -523,34 +523,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # Asked before anything is built, because the answer is already on disk.
-  #
-  # `Generators.audit/2` reads files in the checkout and needs nothing from the
-  # box, yet its only call site here was inside `require_script_in/3`'s `else`
-  # branch — so it ran only when `bin/deploy` was *missing*, purely to explain
-  # why. A project whose `bin/deploy` existed and whose config the audit could
-  # prove would fail went the whole way instead: a builder box, an image build
-  # and push, a migration against the real database, a container start, and a
-  # 30-second health timeout, ending in "target failed to become healthy" —
-  # which reads as an application fault rather than a config one.
-  #
-  # The `force_ssl` case is the one that cost a QA session. `exclude:
-  # ["/health", …]` excludes a *host* named "/health", matches nothing, and
-  # leaves the proxy's plain-HTTP probe redirected; `explain/1` has had the
-  # sentence for it all along.
-  defp deploy_ready(%Scope{} = scope) do
-    case CodeMySpec.Generators.audit(scope, router_path(scope)) do
-      [] ->
-        :ok
-
-      findings ->
-        {:error,
-         "this project is not deploy-ready: " <>
-           Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1) <>
-           ". Setup will not build and ship an image it can already tell will not come up."}
-    end
-  end
-
   def run(:content, %Scope{} = scope, opts) do
     # `ContentPublishing.run/2` already computes everything story 972 asks
     # about — which objects landed in whose bucket, what the live site returned
@@ -3339,6 +3311,34 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The disposition rides on the resource because "adopted rather than
   # duplicated" is only checkable if the page can tell the two apart — and
   # `created` twice is exactly the failure the criterion is about.
+  # Asked before anything is built, because the answer is already on disk.
+  #
+  # `Generators.audit/2` reads files in the checkout and needs nothing from the
+  # box, yet its only call site here was inside `require_script_in/3`'s `else`
+  # branch — so it ran only when `bin/deploy` was *missing*, purely to explain
+  # why. A project whose `bin/deploy` existed and whose config the audit could
+  # prove would fail went the whole way instead: a builder box, an image build
+  # and push, a migration against the real database, a container start, and a
+  # 30-second health timeout, ending in "target failed to become healthy" —
+  # which reads as an application fault rather than a config one.
+  #
+  # The `force_ssl` case is the one that cost a QA session. `exclude:
+  # ["/health", …]` excludes a *host* named "/health", matches nothing, and
+  # leaves the proxy's plain-HTTP probe redirected; `explain/1` has had the
+  # sentence for it all along.
+  defp deploy_ready(%Scope{} = scope) do
+    case CodeMySpec.Generators.audit(scope, router_path(scope)) do
+      [] ->
+        :ok
+
+      findings ->
+        {:error,
+         "this project is not deploy-ready: " <>
+           Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1) <>
+           ". Setup will not build and ship an image it can already tell will not come up."}
+    end
+  end
+
   # Asked before the firewall, because everything after it costs money.
   #
   # Every environment's box serves the registry the deploy pulls from, and

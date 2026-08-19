@@ -1704,7 +1704,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     project = project(scope)
 
     case DeployArtifacts.generate(scope.environment,
-           app: Repository.default_name(project),
+           app: otp_app_name(project),
            host: project.domain || "example.com",
            owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org"
          ) do
@@ -2289,6 +2289,30 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp resource_owner(_), do: "user"
 
   defp project(scope), do: scope.active_project
+
+  # The OTP application name, which is not the repository name.
+  #
+  # The generate button used to pass `Repository.default_name/1` — the project
+  # name slugified for GitHub, where hyphens are correct and required. An OTP
+  # app name cannot carry one, so the button wrote
+  # `lib/devops-drill_web/router.ex` containing `defmodule Devops-drillWeb.Router`,
+  # which is a syntax error, into a project whose namespace was already
+  # `devops_drill_web`. The Dockerfile it generates has the same problem from
+  # the same value: it copies `_build/prod/rel/<app>`, and a release name has
+  # to be a valid atom.
+  #
+  # The repository name and the app name are different facts about one project
+  # and both are needed; they just are not the same string.
+  #
+  # `module_name` is where the app name already lives (`DevopsDrill`), and
+  # underscoring it is the conversion mix makes in the other direction. The
+  # fallback replaces hyphens rather than passing them through, so a project
+  # with no module name still produces something that compiles.
+  defp otp_app_name(%{module_name: name}) when is_binary(name) and name != "",
+    do: Macro.underscore(name)
+
+  defp otp_app_name(project),
+    do: project |> Repository.default_name() |> String.replace("-", "_")
 
   # The project's environments. Was a module attribute holding ["prod","uat"],
   # which made a `qa` or per-story environment invisible to the page even once
