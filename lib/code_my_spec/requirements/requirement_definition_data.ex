@@ -761,7 +761,23 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description: "QA complete: at least one valid DB-backed pass attempt exists",
         prerequisites: [3],
         execution_type: :sub_agent,
-        subagent_role: :qa
+        subagent_role: :qa,
+        # Manual so the stop hook does not complete the sub-agent's task out
+        # from under it. Same rationale as `three_amigos_complete` above, and
+        # the omission here was a real defect (`7f79b855`): `execution_type:
+        # :sub_agent` says a sub-agent does this work, while the default
+        # `:automatic` says the stop hook finishes it, and `Session.active_task/1`
+        # selects by status alone with no reference to `agent_id`. So the
+        # parent's own stop picked up the QA sub-agent's live task and completed
+        # it — before any attempt existed, discarding the run and leaving no
+        # record that QA had been tried.
+        #
+        # `QaStory.evaluate/2` carries a `subagent_owns?` guard that was added
+        # to compensate, and it cannot: its two available answers are `:valid`,
+        # which completes, and `:invalid`, which files feedback against the
+        # parent. Manual is skipped in `TaskEvaluator` *above* the evaluator, so
+        # the guard stops being reached at all.
+        validation_type: :manual
       }),
       # Issues QA raised against *this* story, resolved before it is released.
       #
