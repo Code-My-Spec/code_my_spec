@@ -25,9 +25,31 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Users.Scope
 
+  # Must agree with `Analysis.Fingerprint`'s `@source_roles`, which decides
+  # which roles make a source *stale*. This map decides which analyzers a
+  # changed role *schedules*. When the two disagree, the disagreement is a
+  # loop rather than a missed run: the stop blocks on a source it will never
+  # re-run.
+  #
+  # `test: [:credo]` was exactly that. Editing a test file changed exunit's
+  # fingerprint — `:test` is in `@toolchain_only`, correctly, since editing a
+  # test changes what the suite reports — so the hook said "blocking on stale
+  # sources: exunit" while `resolve_analyzers/3` returned `[:credo]` and
+  # `ensure_stale_runs/3` was never asked for exunit. Observed as:
+  #
+  #     [Validation] Changed files: test(1)
+  #     [Validation] blocking on stale sources: exunit
+  #     [Pipeline]   Analyzers: [:credo] (role-derived)
+  #     [Analysis]   enqueued: compiler, credo
+  #
+  # repeating every stop. An agent that fixes the failing test is blocked by
+  # the same stale finding afterwards, because fixing it is a `:test` edit and
+  # a `:test` edit does not schedule the suite that would clear it. The only
+  # exits were an unrelated `:implementation` edit or R8's stuck escape.
   @role_analyzers %{
     implementation: [:credo, :exunit_stale, :spex_stale],
-    test: [:credo],
+    test: [:credo, :exunit_stale],
+    test_support: [:credo, :exunit_stale],
     spec: [:validate_spec],
     bdd_spec: [:validate_bdd, :spex_stale],
     qa_brief: [:validate_qa],
