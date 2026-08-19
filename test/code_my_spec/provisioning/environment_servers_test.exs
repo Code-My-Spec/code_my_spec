@@ -20,6 +20,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
@@ -124,6 +125,29 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
            "asked the provider for #{inspect(names)} on a project set to devops: :uat"
 
     assert length(names) == 1, "expected staging only, got #{inspect(names)}"
+  end
+
+  # The case "opted out of prod" above stops short of: a project can opt out
+  # of every environment it has a row for, not just one of two. `uat` here
+  # was never seeded — `EnvironmentRepository.put/3` creates exactly the row
+  # it is given, unlike `list/1`, which seeds both on first read — so this is
+  # a `prod` row with `devops: :uat` filtering it out, leaving nothing.
+  # `ensure_environment_servers/3` used to fan out over that empty list with
+  # `Enum.reduce_while([], {:ok, made}, …)`, which returns `{:ok, made}`
+  # unchanged and reported the step done having built a firewall and an ssh
+  # key and not one box — this is 402f9439, reproduced without touching a
+  # real Hetzner project.
+  test "refuses instead of reporting done when every environment is filtered out", ctx do
+    {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+    {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
+    record_requests(self(), :always_available)
+
+    assert {:error, reason, _partial} = Steps.run(:server, ctx.scope, [])
+    assert reason =~ "no environment is permitted"
+
+    # The point of the guard: no box was asked for. Before this fix the step
+    # asked the provider for nothing and still reported success.
+    assert collect_names([]) == []
   end
 
   # Answers every Hetzner call plausibly and reports what was asked for. The

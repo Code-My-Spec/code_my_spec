@@ -19,7 +19,9 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.Steps
 
   setup do
@@ -315,6 +317,28 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
       assert message =~ "uat.example.com"
       assert message =~ "did not answer over HTTPS with a valid certificate"
       assert message =~ "DNS resolving to the server and the proxy reachable on 80"
+    end
+  end
+
+  describe "a domain that resolves has nothing to certify when every environment is filtered out" do
+    # b45f7ff8: `project.domain` was confirmed set (stably, for hours) and the
+    # step still errored "no domain set on the project". The real gap was
+    # 402f9439's shape — devops-drill has a `prod` row and `devops: :uat`, so
+    # `permitted_environment_rows/1` rejects its only row and
+    # `permitted_hosts/2` comes back empty — but `tls_targets/2` returned `[]`
+    # for that the same as for an unset domain, and `run/3` printed the
+    # domain message regardless of which one actually happened. `put/3` here
+    # creates exactly the `prod` row given, unlike `list/1`, which seeds both
+    # `uat` and `prod` on first read — so this reproduces the gap without a
+    # real Hetzner project.
+    test "names the filtered environment instead of blaming the domain", ctx do
+      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
+
+      assert {:error, message} = Steps.run(:tls, ctx.scope, [])
+
+      assert message =~ "no environment is permitted"
+      refute message =~ "no domain set on the project"
     end
   end
 end

@@ -252,7 +252,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     # alone said satisfied, `run_step/3` skipped `generate_keys`, and the
     # deploy failed two steps later on "uat is missing SECRET_KEY_BASE" — the
     # exact shape this verify already documents for the key itself.
-    case Enum.all?(environments, &secrets_ready?(scope, &1)) do
+    # `Enum.all?/2` on an empty list is `true` — a project whose devops level
+    # filtered out every environment row it has would otherwise read
+    # "satisfied" for a set of zero environments, none of which anything was
+    # ever checked against. `environments != []` closes that off the same way
+    # `verify(:server, …)`'s `found != []` guard does for the same shape of
+    # bug (402f9439): the devops-drill project has a `prod` row and
+    # `devops: :uat`, `permitted_environment_rows/1` filters `prod` out, and
+    # this reported every one of zero environments satisfied.
+    case environments != [] and Enum.all?(environments, &secrets_ready?(scope, &1)) do
       true ->
         {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
 
@@ -457,13 +465,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     # move a live apex*, and proving that should not need a real zone.
     with name when is_binary(name) <- domain(scope),
          {:ok, zone} <- find_dns_zone(scope, name, opts),
-         environments <- permitted_hosts(scope, name),
+         # `[_ | _] =`, not a bare bind: `dns_records_for/4` over an empty
+         # list is `Enum.reduce_while([], {:ok, []}, …)`, which returns
+         # `{:ok, []}` having asked Cloudflare for nothing — done, with no
+         # record published. `permitted_hosts/2` is empty only when every
+         # environment row is filtered out by the project's devops level
+         # (402f9439), never because the server step merely hasn't run yet —
+         # that case is `pointable_environments/1`'s, checked by `verify/3`.
+         [_ | _] = environments <- permitted_hosts(scope, name),
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       record_client_api_url(scope, environments, opts)
       {:ok, resources}
     else
       nil ->
         {:error, "no domain set on the project"}
+
+      [] ->
+        {:error, no_permitted_environments_message(scope)}
 
       # Passed through, not folded into the error branch. A paused step is
       # waiting on a decision and can be resumed; an errored one is broken.
@@ -596,13 +614,21 @@ defmodule CodeMySpec.Provisioning.Steps do
     environments = environments(scope, opts)
     env = env(scope)
 
-    case Sops.available?() do
-      false ->
+    # `Enum.reduce_while([], …)` inside `generate_keys/3` returns `{:ok, %{}}`
+    # without minting anything, and the step reported `{:ok, []}` — done,
+    # having done nothing — for the same reason `verify/3` above needs its own
+    # guard: an empty environment list is not zero work remaining, it is every
+    # environment this project has being filtered out from under it.
+    case {environments, Sops.available?()} do
+      {[], _} ->
+        {:error, no_permitted_environments_message(scope)}
+
+      {_, false} ->
         {:paused,
          "sops and age are not installed on this machine. Install them " <>
            "(brew install sops age), then resume — setup cannot encrypt secrets without them."}
 
-      true ->
+      {_, true} ->
         generate_keys(scope, env, environments)
     end
   end
@@ -615,8 +641,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     probe = Keyword.get(opts, :probe, &Deploy.probe/2)
 
     case tls_targets(scope, opts) do
-      [] -> {:error, "no domain set on the project — nothing to issue a certificate for"}
-      targets -> verify_certificates(scope, targets, probe, opts)
+      :no_domain ->
+        {:error, "no domain set on the project — nothing to issue a certificate for"}
+
+      # `Enum.filter([], …)` on an empty `permitted_hosts/2` reads exactly
+      # like a project with no domain — both are `[]` — and 402f9439's own
+      # shape: devops-drill has a `prod` row and `devops: :uat`, so the
+      # project's *only* environment is filtered out, `permitted_hosts`
+      # returns nothing, and this reported "no domain set" for a project
+      # whose domain was confirmed set (b45f7ff8). Named separately so the
+      # message points at the actual gap instead of sending the reader to
+      # re-check a domain that was never the problem.
+      :no_permitted_environments ->
+        {:error, no_permitted_environments_message(scope)}
+
+      {:ok, targets} ->
+        verify_certificates(scope, targets, probe, opts)
     end
   end
 
@@ -1193,17 +1233,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp tls_targets(scope, opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
-        [%{name: nil, host: host}]
+        {:ok, [%{name: nil, host: host}]}
 
       _ ->
-        case domain(scope) do
-          nil ->
-            []
+        tls_targets_from_domain(scope)
+    end
+  end
 
-          name ->
-            scope
-            |> permitted_hosts(name)
-            |> Enum.filter(&is_binary(&1.host))
+  defp tls_targets_from_domain(scope) do
+    case domain(scope) do
+      nil ->
+        :no_domain
+
+      name ->
+        case scope |> permitted_hosts(name) |> Enum.filter(&is_binary(&1.host)) do
+          [] -> :no_permitted_environments
+          targets -> {:ok, targets}
         end
     end
   end
@@ -3179,6 +3224,15 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `serve_registries/5` does: a production deploy that runs after UAT failed
   # is a production deploy nobody has evidence for. Resources from the
   # environments that did land are kept, so a partial run is still recorded.
+  #
+  # `Enum.reduce_while([], {:ok, []}, …)` never enters the loop and returns
+  # `{:ok, []}` — a deploy that shipped nothing, reported as one that shipped
+  # (402f9439). Empty only ever means the devops level filtered out every
+  # environment this project has; a caller naming one environment explicitly
+  # takes the `deploy_environment/3` path in `run(:deploy, …)` above instead
+  # of this one, so that legitimate single-environment call is untouched.
+  defp deploy_environments(scope, [], _opts), do: {:error, no_permitted_environments_message(scope)}
+
   defp deploy_environments(scope, environments, opts) do
     Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case deploy_environment(scope, environment, opts) do
@@ -3295,6 +3349,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       %{devops: devops} when not is_nil(devops) -> devops
       _ -> :off
     end
+  end
+
+  # Shared by every run/3 clause that fans out over environments and must
+  # refuse rather than report done for a project whose devops level filtered
+  # every environment row out from under it (402f9439: devops-drill has a
+  # `prod` row and `devops: :uat`, so `permitted_environment_rows/1` — and
+  # everything derived from it, `permitted_environments/1` and
+  # `permitted_hosts/2` — comes back empty). `Enum.all?/2` over `[]` is
+  # `true` and `Enum.reduce_while/3` over `[]` never enters the loop, so a
+  # step that trusted either was one call away from reporting success on
+  # zero servers, zero DNS records, zero minted keys. This names what
+  # actually went wrong rather than the generic "no domain set" a caller
+  # would otherwise have to guess at from a step that quietly did nothing.
+  defp no_permitted_environments_message(scope) do
+    "no environment is permitted for this project's devops level (#{devops_level(scope)}) — " <>
+      "every environment row this project has was filtered out. Add the missing environment " <>
+      "before this step can provision anything."
   end
 
   defp server_name(scope, opts) do
@@ -3426,16 +3497,26 @@ defmodule CodeMySpec.Provisioning.Steps do
   # a *different* list can report a gap that is really a disagreement, or miss
   # one that is real. One read cannot disagree with itself.
   defp ensure_environment_servers(scope, opts, made) do
-    environments = permitted_environment_rows(scope)
+    case permitted_environment_rows(scope) do
+      # `Enum.reduce_while([], {:ok, made}, …)` returns `{:ok, made}`
+      # unchanged, and `join_baseline_network/4` treats zero servers to
+      # attach as nothing to do — so the step reported `:done` having built a
+      # firewall and an ssh key and not one box (402f9439). This is the same
+      # shape `verify(:server, …)`'s `found != []` guard already exists to
+      # stop the *verify* side from making, now stopped on the *run* side too.
+      [] ->
+        {:error, no_permitted_environments_message(scope), made}
 
-    Logger.info(
-      "[Provisioning] server step provisioning #{length(environments)} environment(s): " <>
-        Enum.map_join(environments, ", ", & &1.name)
-    )
+      environments ->
+        Logger.info(
+          "[Provisioning] server step provisioning #{length(environments)} environment(s): " <>
+            Enum.map_join(environments, ", ", & &1.name)
+        )
 
-    environments
-    |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
-    |> join_baseline_network(scope, opts, environments)
+        environments
+        |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
+        |> join_baseline_network(scope, opts, environments)
+    end
   end
 
   # The private network the registry answers on, and the app's boxes reach it
