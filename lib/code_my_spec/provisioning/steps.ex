@@ -3326,6 +3326,15 @@ defmodule CodeMySpec.Provisioning.Steps do
   # ["/health", …]` excludes a *host* named "/health", matches nothing, and
   # leaves the proxy's plain-HTTP probe redirected; `explain/1` has had the
   # sentence for it all along.
+  # A scope with no environment has nowhere to read the checkout from, and
+  # `Generators.audit/2` is guarded `when not is_nil(env)` — so asking it here
+  # raised a FunctionClauseError and the deploy step crashed instead of
+  # reporting one errored row. That is the exact failure
+  # `no_environment_message/0` exists to prevent, and the path below already
+  # produces it: `deploy_environment/3` reaches `require_script/2`, which names
+  # the missing environment. Passing through is what lets it.
+  defp deploy_ready(%Scope{environment: nil}), do: :ok
+
   defp deploy_ready(%Scope{} = scope) do
     case CodeMySpec.Generators.audit(scope, router_path(scope)) do
       [] ->
