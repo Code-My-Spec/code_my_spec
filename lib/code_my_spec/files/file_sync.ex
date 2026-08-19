@@ -283,6 +283,11 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @reconcile_timeout_ms 60_000
 
+  # Two thirds of the timeout. Not tuned — chosen so a reconcile that is
+  # heading for the cliff says so while there is still something to see,
+  # rather than only reporting the ones that already fell off.
+  @reconcile_slow_ms 40_000
+
   @spec reconcile_and_project(Scope.t(), [map()]) :: %{
           upserted: non_neg_integer(),
           removed: non_neg_integer(),
@@ -290,23 +295,97 @@ defmodule CodeMySpec.Files.FileSync do
           components: non_neg_integer()
         }
   def reconcile_and_project(%Scope{} = scope, observations) when is_list(observations) do
-    {:ok, result} =
-      Repo.transaction(
-        fn ->
-          summary = reconcile(scope, observations)
-          {:ok, components} = ComponentSync.sync_from_files(scope)
+    started = System.monotonic_time(:millisecond)
 
-          %{
-            upserted: summary.upserted,
-            removed: summary.removed,
-            changed: length(summary.changed_entries),
-            components: length(components.all_components)
-          }
-        end,
-        timeout: @reconcile_timeout_ms
+    try do
+      {:ok, result} =
+        Repo.transaction(
+          fn ->
+            summary = reconcile(scope, observations)
+            {:ok, components} = ComponentSync.sync_from_files(scope)
+
+            %{
+              upserted: summary.upserted,
+              removed: summary.removed,
+              changed: length(summary.changed_entries),
+              components: length(components.all_components)
+            }
+          end,
+          timeout: @reconcile_timeout_ms
+        )
+
+      log_duration(scope, observations, System.monotonic_time(:millisecond) - started)
+
+      result
+    rescue
+      error ->
+        log_failure(scope, observations, System.monotonic_time(:millisecond) - started, error)
+        reraise error, __STACKTRACE__
+    end
+  end
+
+  # How long the transaction took, and a warning when it is close to the limit.
+  #
+  # Nothing recorded this, and its absence cost a wedged harness. When a
+  # reconcile exceeds `@reconcile_timeout_ms` the transaction dies, the task
+  # dies with it, and the task's death drops its pooled connection — which the
+  # server logs as `Postgrex.Protocol … client #PID exited` and the harness sees,
+  # three layers away, as `channel closed: {:error, %{}}`. Nothing along that
+  # path names the reconcile or the timeout, so the only visible symptom is a
+  # harness that rejoins forever. It took a process pinned at 126% CPU for
+  # fifteen minutes and a manual restart to notice (`5be796f2`).
+  #
+  # Two checkouts of one project reconcile the same rows concurrently, and a
+  # rejoin triggers a full rescan — so a slow transaction feeds the load that
+  # made it slow. That loop is a hypothesis, not a finding; this is the
+  # measurement that will confirm or kill it, which is why every reconcile
+  # reports its duration and not just the ones near the limit. A single slow
+  # transaction says nothing on its own; the same one getting slower says
+  # everything, and that needs the ordinary case on the record too.
+  #
+  # At :info, beside the per-scan line above, because nothing runs at :debug —
+  # dev and test both sit at :warning or :info, so a duration logged at :debug
+  # is a duration nobody ever reads.
+  defp log_duration(scope, observations, ms) do
+    count = length(observations)
+    copy = working_copy(scope)
+
+    if ms >= @reconcile_slow_ms do
+      Logger.warning(
+        "[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms — within " <>
+          "#{@reconcile_timeout_ms - ms}ms of the #{@reconcile_timeout_ms}ms transaction " <>
+          "timeout. Past it the transaction dies, its task dies, and the channel closes " <>
+          "with it; the harness then rejoins and rescans everything, which is the same " <>
+          "load again. See 5be796f2."
       )
+    else
+      Logger.info("[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms")
+    end
+  end
 
-    result
+  # Name the reconcile on its way past, then let it crash.
+  #
+  # This rescue swallows nothing — it reraises with the original stacktrace, so
+  # every caller behaves exactly as before. It exists because the one thing this
+  # failure does not do is say what it was. `Repo.transaction/2` raises on
+  # timeout rather than returning an error tuple, so the crash carries the
+  # connection's vocabulary ("tcp recv: timeout") and none of ours: not the file
+  # count, not the working copy, not the word "reconcile". Three frames later it
+  # is a closed channel, and the harness reports that as a server crash.
+  #
+  # A near-miss warning alone would not have covered this. It fires at
+  # @reconcile_slow_ms on the way *up*, which helps only when something survives
+  # to log it — and the case worth catching is precisely the one where nothing
+  # does.
+  defp log_failure(scope, observations, ms, error) do
+    Logger.error(
+      "[FileSync] reconcile of #{length(observations)} observations for " <>
+        "#{working_copy(scope)} FAILED after #{ms}ms (timeout is " <>
+        "#{@reconcile_timeout_ms}ms): #{Exception.message(error)}. If this was the " <>
+        "timeout, the task dies with the transaction and takes its pooled connection " <>
+        "with it, which closes the harness channel; the rejoin rescans everything and " <>
+        "arrives back here. See 5be796f2."
+    )
   end
 
   # Which checkout a line is about. Every row this module writes is keyed on the
