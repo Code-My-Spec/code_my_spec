@@ -145,6 +145,34 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     end
   end
 
+  # a0374e58: `config/runtime.exs` in every generated application falls back
+  # to `wss://codemyspec.com/widget` when CODEMYSPEC_WIDGET_URL is unset, and
+  # nothing used to set it — so an app provisioned by any other CodeMySpec
+  # opened its widget socket against the hosted service and authenticated
+  # with a deploy key that server had never issued.
+  #
+  # `place_deploy_key/3` now writes CODEMYSPEC_WIDGET_URL beside DEPLOY_KEY,
+  # derived from this server's own `:base_url` rather than the hosted
+  # default — this proves that end to end with real sops/age, decrypting
+  # what the step actually wrote rather than trusting `verify/3`'s opinion of
+  # it.
+  describe "the widget socket url" do
+    test "run(:secrets) points it at this server, not the hosted default", ctx do
+      previous = Application.get_env(:code_my_spec, :base_url)
+      Application.put_env(:code_my_spec, :base_url, "https://drill.example.test")
+      on_exit(fn -> Application.put_env(:code_my_spec, :base_url, previous) end)
+
+      {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
+
+      assert {:ok, %{"CODEMYSPEC_WIDGET_URL" => url, "DEPLOY_KEY" => key}} =
+               Sops.decrypt(ctx.scope.environment, "prod", stored(ctx.scope, "prod"))
+
+      assert url == "wss://drill.example.test/widget"
+      refute url == "wss://codemyspec.com/widget"
+      assert is_binary(key) and key != ""
+    end
+  end
+
   describe "running the step again over a working environment" do
     # The step re-runs whenever *any* environment needs attention, so adding a
     # second one puts the first through this path. Minting unconditionally
