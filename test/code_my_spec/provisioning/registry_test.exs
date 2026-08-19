@@ -125,6 +125,23 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     end
   end
 
+  # 6dcb62b8: `retention_days/1` answers with a number under any storage mode
+  # — it is a duration, not a claim about who applies it — and steps.ex and
+  # `ProvisioningLive` both used to render `enforced_by: bucket_lifecycle`
+  # unconditionally, off that number alone. Nothing ever asked whether a
+  # lifecycle rule actually existed, which it does not under `:filesystem`,
+  # the real default (`ensure_storage(:filesystem, ..)` creates no bucket).
+  describe "retention_enforced?/1" do
+    test "filesystem — the real default everywhere today — enforces nothing" do
+      refute Registry.retention_enforced?([])
+      refute Registry.retention_enforced?(storage: :filesystem)
+    end
+
+    test "a lifecycle rule only exists once storage is explicitly :s3" do
+      assert Registry.retention_enforced?(storage: :s3)
+    end
+  end
+
   # Same shape as `Builder.Remote`'s tests: `:run` takes the command and
   # returns `{output, status}`, so what we ask the box to do is assertable and
   # running it is not. Starting a real registry would make this a network test

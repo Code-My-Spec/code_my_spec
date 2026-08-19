@@ -415,6 +415,51 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       refute html =~ ~s(data-owner="platform")
       assert html =~ ~s(data-owner="user")
     end
+
+    # 6dcb62b8: this used to be a hardcoded `data-enforced-by="bucket_lifecycle"`
+    # regardless of what the deploy step actually recorded, so the page
+    # claimed automatic expiry even when nothing enforced it. It now reads the
+    # claim off the resource `retention_resource/1` wrote, the same way
+    # `data-destroyed`/`data-booted-from` already read off `builder`.
+    test "an image's retention is read from what the step recorded, not assumed", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :deploy, %{
+        state: :done,
+        position: Sequence.position(:deploy),
+        resources: [
+          %{kind: "image_retention", location: "30 days", identifier: "enforced_by=bucket_lifecycle"}
+        ]
+      })
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ ~r/data-test="image-retention"[^>]*data-enforced-by="bucket_lifecycle"/
+    end
+
+    # The real default (`:filesystem` storage) never installs a lifecycle
+    # rule, so `retention_resource/1` records no `image_retention` resource at
+    # all — the same absence-over-false-claim shape as `image_resources(:not_built)`.
+    # Nothing here injects that resource, so the page must not claim
+    # `bucket_lifecycle` out of nowhere.
+    test "no retention resource means no enforcement claim", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :deploy, %{
+        state: :done,
+        position: Sequence.position(:deploy),
+        resources: [%{kind: "published_image", location: "localhost:5000/app:abc123", identifier: "built=true"}]
+      })
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      refute html =~ ~s(data-test="image-retention")
+      refute html =~ "bucket_lifecycle"
+    end
   end
 
   describe "affordances" do

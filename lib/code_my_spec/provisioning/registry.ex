@@ -112,6 +112,23 @@ defmodule CodeMySpec.Provisioning.Registry do
   @spec retention_days(keyword()) :: pos_integer()
   def retention_days(opts), do: Keyword.get(opts, :retention_days, @default_retention_days)
 
+  @doc """
+  Whether a bucket lifecycle rule actually exists to enforce retention.
+
+  `retention_days/1` answers with a number regardless of storage mode — it is
+  a duration, not a claim about who applies it. Only `ensure_storage(:s3, ...)`
+  ever calls `Storage.put_lifecycle/4`; `:filesystem` (the real default since
+  the eventual-consistency `unknown blob` failures made S3-backed pushes
+  unreliable against Hetzner) creates no bucket and installs no rule, so
+  nothing expires an image ever.
+
+  A caller that records or renders retention has to ask this, not just read
+  `retention_days/1`, or it claims a window is enforced when nothing is
+  behind it — the 8241 bug this exists to prevent from coming back.
+  """
+  @spec retention_enforced?(keyword()) :: boolean()
+  def retention_enforced?(opts), do: Keyword.get(opts, :storage, :filesystem) == :s3
+
   @doc "The prefix retention applies to."
   @spec blobs_prefix() :: String.t()
   def blobs_prefix, do: @blobs_prefix

@@ -2320,11 +2320,24 @@ defmodule CodeMySpec.Provisioning.Steps do
          # build and never surfaced is one teardown cannot find.
          network: Keyword.get(opts, :network_resource),
          architecture: build.architecture,
-         retention_days: Registry.retention_days(opts),
+         retention_days: enforced_retention_days(opts),
          builder: build.builder,
          builder_image: build.builder_image,
          builder_destroyed: build.builder_destroyed
        }}
+    end
+  end
+
+  # `nil` under `:filesystem` — the real default since 1b4af45c reverted the
+  # registry's blobs to a volume on the box, because Hetzner's eventual
+  # consistency made `docker push` fail with `unknown blob` under `:s3` — rather
+  # than the number `Registry.retention_days/1` would still hand back. A window
+  # nothing enforces is not a retention, and `retention_resource/1` below reads
+  # this as "say nothing" for the same reason `image_resources(:not_built)`
+  # does: a claim with no mechanism behind it is worse than no claim.
+  defp enforced_retention_days(opts) do
+    if Registry.retention_enforced?(opts) do
+      Registry.retention_days(opts)
     end
   end
 
@@ -2557,6 +2570,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # not because anything here runs on a schedule — the same shape as the
   # backups' retention, and recorded so it is visible without reading a
   # bucket policy.
+  #
+  # `retention_days` arrives here already filtered by `enforced_retention_days/1`
+  # to `nil` under `:filesystem` storage, so this only fires when a bucket
+  # lifecycle rule actually exists to make the claim true. `ProvisioningLive`
+  # reads `enforced_by` off this resource rather than asserting the string
+  # itself — this is the one place that decides it.
   defp retention_resource(%{retention_days: days}) when is_integer(days),
     do: [
       %{

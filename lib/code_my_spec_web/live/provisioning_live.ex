@@ -742,13 +742,16 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               built on {b.location}, destroyed after
             </span>
             
-    <!-- Enforced by the registry bucket's own lifecycle rule, so old
-                 images expire whether or not setup ever runs again (8241). -->
+    <!-- Present only when the registry actually has a bucket lifecycle
+                 rule behind it (8241) — `retention_resource/1` omits this
+                 resource entirely under `:filesystem` storage, the real
+                 default since 1b4af45c, so there is nothing here to read
+                 `enforced_by` from and no false claim gets made. -->
             <span
               :for={r <- Enum.filter(step.resources, &(&1.kind == "image_retention"))}
               data-test="image-retention"
               data-days={r.location |> String.replace_suffix(" days", "")}
-              data-enforced-by="bucket_lifecycle"
+              data-enforced-by={identifier_field(r, "enforced_by")}
               class="mt-1 block text-xs font-mono opacity-70"
             >
               images expire after {r.location}
