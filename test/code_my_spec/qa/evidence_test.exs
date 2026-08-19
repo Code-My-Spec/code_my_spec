@@ -134,8 +134,16 @@ defmodule CodeMySpec.Qa.EvidenceTest do
   end
 
   describe "unknown_note/1" do
-    test "says it could not check, rather than implying it did" do
+    test "the harness case reads as expected, not as a retry signal" do
       note = Evidence.unknown_note(:not_supported_on_harness)
+
+      assert note =~ "not independently verified"
+      assert note =~ "expected, not"
+      assert note =~ "qa/<story_id>"
+    end
+
+    test "any other reason says it could not check, rather than implying it did" do
+      note = Evidence.unknown_note(:no_working_copy)
 
       assert note =~ "not verified"
       assert note =~ "no working copy"

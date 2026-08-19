@@ -141,8 +141,28 @@ defmodule CodeMySpec.Qa.Evidence do
   Said out loud rather than passed silently: "could not verify" and "verified
   clean" are the same colour otherwise, which is the defect this module exists
   for one level up.
+
+  `:not_supported_on_harness` gets its own wording. For every other reason,
+  "could not tell" is an anomaly worth investigating. For this one it is not —
+  a harness-connected QA session is the expected way these run (issue
+  `e79458db`), and every single pass on one hits this, because the server
+  never holds the harness's own checkout to look at
+  (`CodeMySpec.Environments.Harness.cmd/4` refuses `cmd` on purpose: it
+  already has a route, `analysis/run`, and a second one would drift from it).
+  Generic "not verified" language read as failure to at least one QA agent,
+  which retried a pass that had already recorded — the wording here says
+  plainly that this is structural, not a retry signal, while still asking the
+  one party that *can* check (the agent, on its own disk) to do so.
   """
   @spec unknown_note(term()) :: String.t()
+  def unknown_note(:not_supported_on_harness) do
+    "\nQA evidence not independently verified — this pass ran on a harness, and " <>
+      "the server has no filesystem access there to check. That's expected, not " <>
+      "an error: the attempt above is recorded regardless. Before you finish, " <>
+      "confirm it yourself: `git -C .code_my_spec status --porcelain -uall -- " <>
+      "qa/<story_id>` should print nothing."
+  end
+
   def unknown_note(reason) do
     "\nQA evidence not verified (#{inspect(reason)}) — this server has no working " <>
       "copy to check. Make sure `.code_my_spec` is committed and pushed where the " <>
