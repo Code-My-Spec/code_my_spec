@@ -55,6 +55,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
   alias CodeMySpec.Environments
+  alias CodeMySpec.Projects
 
   @settings_file ".claude/settings.local.json"
   @harness_config_file ".cms_harness.json"
@@ -204,6 +205,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   defp onboard(env, root, dest, args) do
+    bootstrap_local_dev_env(root)
+
     with {:ok, id} <- identity(env, root),
          :ok <- address_model_turns(env, root, id, hook_base_url(dest)) do
       git = configure_git(env)
@@ -211,6 +214,108 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       outstanding(env, root, id, git, hooks)
     else
       {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  # A brand-new worktree has neither of the dev-only surfaces this repo keeps
+  # outside git: `envs/.env` (other secrets this build reads, and the fixture
+  # data devops spex want) and the sibling `code_my_spec_test_repos` checkout
+  # the devops spex read. Both live once and get symlinked into every
+  # worktree — `.gitignore` says as much ("Symlinked into worktrees alongside
+  # /envs") — but nothing actually did the symlinking for a worktree made
+  # outside `just`, so `MIX_ENV=test` compiles refuse on `GITHUB_CLIENT_ID not
+  # set`, unreadable as "you're missing a symlink".
+  #
+  # Best-effort and silent by design: a generated application has none of
+  # this, and a checkout that is not a linked worktree of a repo carrying
+  # these directories just isn't this case — `main_checkout_root/1` returns
+  # `nil` or `root` itself and everything below no-ops.
+  defp bootstrap_local_dev_env(root) do
+    case main_checkout_root(root) do
+      nil -> :ok
+      ^root -> :ok
+      main_root ->
+        link_if_missing(root, main_root, "envs")
+        link_if_missing(root, Path.dirname(main_root), "code_my_spec_test_repos")
+    end
+
+    :ok
+  end
+
+  defp main_checkout_root(root) do
+    case System.cmd("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> out |> String.trim() |> Path.dirname()
+      _ -> nil
+    end
+  end
+
+  defp link_if_missing(root, source_parent, name) do
+    dest = Path.join(root, name)
+    source = Path.join(source_parent, name)
+
+    if not match?({:ok, _}, File.lstat(dest)) and File.exists?(source) do
+      File.ln_s!(source, dest)
+    end
+  end
+
+  # The deploy key minting exchanges is the project's own — `Projects.Project`
+  # schema, `deploy_key` field — not a copy of it hand-pasted into a file.
+  # This machine's own database already has that row: a local dev server and
+  # this task read the same `code_my_spec_dev`, so there is nothing to keep in
+  # sync. Best-effort and silent — no local database, a project this database
+  # does not know, or a blank key all leave `CmsHarness.Token` to answer
+  # exactly as it did before this existed (a real `CMS_DEPLOY_KEY`/`CMS_TOKEN`
+  # already in the environment still wins, and is never overwritten).
+  defp ensure_local_credential(project_id) do
+    if blank?(System.get_env("CMS_DEPLOY_KEY")) do
+      case local_project_deploy_key(project_id) do
+        key when is_binary(key) and key != "" -> System.put_env("CMS_DEPLOY_KEY", key)
+        _ -> :ok
+      end
+    end
+
+    :ok
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
+  defp local_project_deploy_key(project_id) do
+    with :ok <- start_local_repo(),
+         %{deploy_key: key} <- Projects.get_project_by_id(project_id) do
+      key
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  # Only the two children a `deploy_key` read needs — `Vault` to decrypt the
+  # column, `Repo` to fetch the row — never the full application. This runs
+  # inside a one-shot mix task that a `mix phx.server` may already have bound
+  # to :4000; starting `CodeMySpecWeb.Endpoint` alongside it would crash this
+  # task on `:eaddrinuse` to save one database read.
+  defp start_local_repo do
+    Application.ensure_all_started(:postgrex)
+    Application.ensure_all_started(:ecto_sql)
+    Application.ensure_all_started(:cloak)
+
+    with {:ok, _} <- ensure_started(CodeMySpec.Vault),
+         {:ok, _} <- ensure_started(CodeMySpec.Repo) do
+      :ok
+    end
+  end
+
+  defp ensure_started(mod) do
+    case mod.start_link([]) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      other -> other
     end
   end
 
@@ -461,6 +566,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # be served and would never acquire one.
   defp mint(root) do
     with {:ok, project} <- ProjectIdentity.resolve(root),
+         _ = ensure_local_credential(project.id),
          {:ok, token} <- Token.access_token(),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <- HarnessConfig.write(root, %{harness_id: id, project_id: project.id, root: root}) do
