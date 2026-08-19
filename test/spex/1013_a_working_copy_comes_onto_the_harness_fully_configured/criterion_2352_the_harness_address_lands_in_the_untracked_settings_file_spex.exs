@@ -64,7 +64,19 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
 
       when_ "the engineer runs the onboarding task in it", context do
         Mix.Task.reenable("cms.harness.onboard")
-        report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
+
+        # Opted in explicitly: relaying model turns through the harness is
+        # opt-in and defaults off (0.1.29) — its proxy only forwards
+        # /v1/messages, so turning it on for an interactive session silently
+        # breaks any other Anthropic surface the Claude Code client needs.
+        # This criterion is specifically about that address landing right
+        # when it *is* asked for.
+        report =
+          Mix.Task.run("cms.harness.onboard", [
+            "--project",
+            context.project.id,
+            "--relay-model-turns"
+          ])
 
         {:ok, Map.put(context, :report, report)}
       end

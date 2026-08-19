@@ -57,9 +57,9 @@ defmodule CodeMySpecSpex.Story1013.Criterion2350Spex do
                "onboarding wrote no #{@settings}, so nothing about this working " <>
                  "copy's identity was recorded and every consumer is left to derive it."
 
-        assert settings =~ "ANTHROPIC_BASE_URL",
-               "no Anthropic base URL, so agent messages never relay through the " <>
-                 "harness and no agent work reaches the server. Got: #{settings}"
+        assert settings =~ "CMS_HARNESS_ID",
+               "no harness id, so the MCP mount cannot name this working copy and " <>
+                 "every tool call goes unaddressed. Got: #{settings}"
 
         assert settings =~ "MIX_TEST_PARTITION",
                "no test partition, which is the value two independent mechanisms " <>

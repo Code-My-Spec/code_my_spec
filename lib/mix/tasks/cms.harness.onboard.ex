@@ -84,10 +84,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     root = target_root(args)
     env = environment(root, args)
+    relay_model_turns? = Enum.member?(args, "--relay-model-turns")
 
     case Enum.member?(args, "--check") do
       true -> check(env, root)
-      false -> onboard(env, root)
+      false -> onboard(env, root, relay_model_turns?)
     end
   end
 
@@ -162,7 +163,13 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     %{onboarded: onboarded, missing: missing, remedy: "mix cms.harness.onboard"}
   end
 
-  @required_env ["CMS_HARNESS_ID", "MIX_TEST_PARTITION", "ANTHROPIC_BASE_URL"]
+  # `ANTHROPIC_BASE_URL` is not required: it is opt-in (`--relay-model-turns`)
+  # precisely because most working copies should not carry it — see
+  # `address/4`'s comment — so a copy that never asked for it is not
+  # half-onboarded for lacking it. If it *is* present, `missing_settings/1`
+  # below still checks it is not the dangling-prefix shape a refused mint
+  # leaves; presence with a broken value is still reported.
+  @required_env ["CMS_HARNESS_ID", "MIX_TEST_PARTITION"]
 
   defp missing_settings(env) do
     settings =
@@ -171,7 +178,15 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         _ -> %{}
       end
 
-    Enum.filter(@required_env, &blank_or_invalid?(&1, Map.get(settings, &1)))
+    Enum.filter(@required_env, &blank_or_invalid?(&1, Map.get(settings, &1))) ++
+      invalid_if_present(settings, "ANTHROPIC_BASE_URL")
+  end
+
+  defp invalid_if_present(settings, key) do
+    case Map.get(settings, key) do
+      nil -> []
+      value -> if blank_or_invalid?(key, value), do: [key], else: []
+    end
   end
 
   defp decode_env(contents) do
@@ -213,17 +228,29 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
   end
 
-  defp onboard(env, root) do
+  defp onboard(env, root, relay_model_turns?) do
     bootstrap_local_dev_env(root)
 
     with {:ok, id} <- identity(env, root),
-         :ok <- address_model_turns(env, root, id) do
+         :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
       outstanding(root, id, git, check_relay())
     else
       {:error, message} -> Mix.raise(message)
     end
   end
+
+  # `address_model_turns/4` is opt-in, not the default: its proxy only
+  # understands `/v1/messages`, so routing an interactive session's model
+  # turns through it silently breaks any other Anthropic surface the Claude
+  # Code client needs (`/remote-control` measured, 2026-08-19) with no error
+  # anywhere naming why. `address_mcp/3` covers what every session needs
+  # regardless — `CMS_HARNESS_ID` for MCP, the partition — without that.
+  defp address(env, root, id, true), do: address_model_turns(env, root, id)
+  defp address(env, root, id, false), do: address_mcp(env, root, id)
+
+  @doc false
+  def address_mcp(env, root, id), do: write_address(env, root, id, %{})
 
   # A brand-new worktree has neither of the dev-only surfaces this repo keeps
   # outside git: `envs/.env` (other secrets this build reads, and the fixture
@@ -648,11 +675,19 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     # it in the split.
     url = Onboarding.anthropic_url(base_url || default_hook_base_url(), id)
 
+    write_address(env, root, id, %{"ANTHROPIC_BASE_URL" => url})
+  end
+
+  # Shared by `address_model_turns/4` and `address_mcp/3`: both keep every key
+  # the operator already had (`Map.get("env", %{})` starts from what's there,
+  # `extra` only adds), so a bare re-run never blanks out an address a prior,
+  # opted-in run already wrote — it just isn't asked to write one itself.
+  defp write_address(env, root, id, extra) do
     with {:ok, settings} <- read_settings(env) do
       env_block =
         settings
         |> Map.get("env", %{})
-        |> Map.put("ANTHROPIC_BASE_URL", url)
+        |> Map.merge(extra)
         |> Map.put("CMS_HARNESS_ID", id)
         |> Map.put_new("MIX_TEST_PARTITION", Onboarding.partition_name(root))
 

@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
                  "CodeMySpec's own. A generated application is then left to be " <>
                  "onboarded by hand, which is the state this story exists to end."
 
-        assert settings =~ "ANTHROPIC_BASE_URL" and settings =~ "MIX_TEST_PARTITION",
+        assert settings =~ "CMS_HARNESS_ID" and settings =~ "MIX_TEST_PARTITION",
                "a generated application got a partial configuration. Same command, " <>
                  "same result is the whole claim — a second, lesser onboarding path " <>
                  "for target apps is two mechanisms again. Got: #{settings}"
