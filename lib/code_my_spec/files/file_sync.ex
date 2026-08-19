@@ -492,9 +492,36 @@ defmodule CodeMySpec.Files.FileSync do
     Enum.filter(entries, fn entry ->
       case Map.get(existing_by_path, entry.path) do
         nil -> true
-        record -> Enum.any?(fields, &differs?(entry, record, &1))
+        record -> report_differences(entry, record, fields)
       end
     end)
+  end
+
+  # Which field made this row count as changed.
+  #
+  # At :debug, so it costs nothing in normal operation — but a row that reports
+  # itself changed on every scan while the file on disk never moves is a false
+  # positive that quietly disables the projection skip, and without this the
+  # only way to find the field is to guess. Two files did exactly that on the
+  # first day this shipped, matching on every column an inspection could see.
+  defp report_differences(entry, record, fields) do
+    case Enum.filter(fields, &differs?(entry, record, &1)) do
+      [] ->
+        false
+
+      differing ->
+        Logger.debug(fn ->
+          detail =
+            Enum.map_join(differing, ", ", fn field ->
+              "#{field}: #{inspect(Map.get(entry, field), limit: 3)} != " <>
+                "#{inspect(Map.get(record, field), limit: 3)}"
+            end)
+
+          "[FileSync] #{entry.path} differs on #{detail}"
+        end)
+
+        true
+    end
   end
 
   defp differs?(entry, record, field) do
