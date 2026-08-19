@@ -111,10 +111,15 @@ defmodule CodeMySpec.Validation.AttributionWithoutCwdTest do
       assert Enum.map(theirs, & &1.file_path) == ["lib/theirs.ex"]
     end
 
-    test "an empty set demotes nothing, which is the documented behaviour" do
+    test "an empty set demotes everything attributable, not nothing" do
+      # Inverted deliberately. A session that recorded no edits cannot own a
+      # finding in a file, and this used to block on all of them — which cost a
+      # QA agent every stop it made, since QA writes no project files at all
+      # (76008385). The broken case still blocks: it arrives as `nil`, not as
+      # an empty set.
       blocking = [%Problems.Problem{file_path: "lib/theirs.ex", source: "credo"}]
 
-      assert {^blocking, []} = Validation.split_unattributed(blocking, MapSet.new())
+      assert {[], ^blocking} = Validation.split_unattributed(blocking, MapSet.new())
     end
   end
 end

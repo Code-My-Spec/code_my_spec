@@ -373,15 +373,35 @@ defmodule CodeMySpec.Validation do
   way — a gate that quietly stops blocking is worse than one that blocks too
   much, and it is invisible:
 
-    * An empty or `nil` attribution set. "The session wrote nothing" and
-      "attribution broke" — a restart, a path shape that did not normalize —
-      are indistinguishable from here, and only one makes the demotion true.
+    * A `nil` attribution set, which means attribution is *unusable* — no
+      session id, or recorded paths that join no File row in this project.
+      Nothing can be concluded from a set that means nothing.
     * A finding with no `file_path`. A spex that died in `setup_all` has
       nothing to attribute; unattributable is not the same as somebody else's,
       and collapsing them drops the finding nobody can place.
 
-  The third is **spex**, and it is the only source with a mandate test of its
-  own. `split_by_story_enforcement/3` has already asked the question this
+  An **empty** set is not one of them, and used to be. It was refused on the
+  reasoning that "the session wrote nothing" and "attribution broke" are
+  indistinguishable — true when it was written, and no longer the whole
+  picture: `verify_against_ledger/3` now answers `nil` for the broken case
+  specifically, so the two arrive here as different values. What is left when a
+  session records zero edits is a session that edited nothing, and a session
+  that edited nothing cannot own a finding in a file.
+
+  That case was the expensive one. A QA agent writes no project files at all,
+  so it hit this on every stop and every finding blocked — `76008385` is one
+  following the advice exactly (`git log -1` on each path, confirmed neither
+  was its own, escalated to the owner rather than editing an in-flight file)
+  and being told the same thing again on the next stop, with no action
+  available that would change the answer.
+
+  No special case implements this. `MapSet.member?/2` on an empty set is false
+  for everything, so the ordinary branch already demotes each finding that is
+  attributable at all — the empty-set clause had to be *removed* for the rule
+  to apply, not added.
+
+  The third refusal is **spex**, and it is the only source with a mandate test
+  of its own. `split_by_story_enforcement/3` has already asked the question this
   demotion approximates — is this red the agent's to fix — and answered it from
   the owning story's `specs_ready` latch rather than from which files happened
   to be written this turn. A spex that reaches here is red on a story that was
@@ -407,15 +427,11 @@ defmodule CodeMySpec.Validation do
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
   def split_unattributed(blocking, %MapSet{} = session_paths) do
-    if MapSet.size(session_paths) == 0 do
-      {blocking, []}
-    else
-      Enum.split_with(blocking, fn problem ->
-        problem.source in @attribution_exempt_sources or
-          not is_binary(problem.file_path) or
-          MapSet.member?(session_paths, problem.file_path)
-      end)
-    end
+    Enum.split_with(blocking, fn problem ->
+      problem.source in @attribution_exempt_sources or
+        not is_binary(problem.file_path) or
+        MapSet.member?(session_paths, problem.file_path)
+    end)
   end
 
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
@@ -492,9 +508,34 @@ defmodule CodeMySpec.Validation do
   # Loudly, because this is the gate declining to block. A demotion that is
   # right is uninteresting and a demotion that is wrong is invisible in the
   # response — the log is the only place the difference shows up.
-  defp log_demotions([], _opts), do: :ok
+  #
+  # The empty-set case says so separately, because it is the one that can hide a
+  # broken recorder. "Findings in files it never edited" is a comparison; "this
+  # session recorded no edits at all" is the absence of one, and a PostToolUse
+  # hook that stopped recording produces exactly that shape while looking like
+  # an ordinary read-only session. Nothing here can tell them apart — the
+  # demotion is correct for the ordinary one and wrong for the broken one — so
+  # the log names the condition and lets a reader who sees it on a session that
+  # was plainly writing files draw the conclusion.
+  defp log_demotions([], _session_paths, _opts), do: :ok
 
-  defp log_demotions(unattributed, opts) do
+  defp log_demotions(unattributed, %MapSet{} = session_paths, opts) do
+    if MapSet.size(session_paths) == 0 do
+      Logger.info(
+        "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted all " <>
+          "#{length(unattributed)} blocking finding(s) to advisory: this session recorded " <>
+          "no edits at all, so it can own none of them. If it did write files, the " <>
+          "PostToolUse recorder is not working and the gate is off for this session."
+      )
+    else
+      log_edited_elsewhere(unattributed, opts)
+    end
+  end
+
+  defp log_demotions(unattributed, _session_paths, opts),
+    do: log_edited_elsewhere(unattributed, opts)
+
+  defp log_edited_elsewhere(unattributed, opts) do
     paths = unattributed |> Enum.map(& &1.file_path) |> Enum.uniq() |> Enum.take(5)
 
     Logger.info(
@@ -721,7 +762,7 @@ defmodule CodeMySpec.Validation do
     session_paths = session_paths(scope, opts)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     advisory = advisory ++ unattributed
-    log_demotions(unattributed, opts)
+    log_demotions(unattributed, session_paths, opts)
 
     {blocking, superseded} =
       split_superseded(blocking, stale_sources, Keyword.get(opts, :already_running, []))

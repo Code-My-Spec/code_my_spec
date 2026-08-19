@@ -16,16 +16,22 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   not theirs.
 
   `5dd2fc02` fixed that for a session that edited *something*: findings outside
-  its recorded paths are demoted to advisory. Two states still produce no
-  demotion, deliberately — an empty path set and an unusable one — because "the
-  session wrote nothing" and "attribution broke" are indistinguishable from
-  there, and a gate that quietly stops blocking is invisible where one that
-  blocks too much is not.
+  its recorded paths are demoted to advisory. An empty path set used to be
+  refused alongside an unusable one, because "the session wrote nothing" and
+  "attribution broke" were indistinguishable from there.
 
-  The refusal stays. What changes is that it stops being silent: those are
-  exactly the stops where every finding may be someone else's, and the agent
-  had no marker (`unedited_marker/2` has nothing to compare against) and no
-  reason to suspect it.
+  They are not indistinguishable any more — `verify_against_ledger/3` answers
+  `nil` for the broken case specifically — so an empty set now demotes, and
+  `76008385` is what the old shape cost: a QA agent, which writes no project
+  files by nature, hit it on every stop and had no action available that would
+  change the answer.
+
+  The note stays, with the opposite content. Silence would be wrong in the
+  other direction: an agent whose findings all became advisory should know why
+  they stopped blocking, and that the reason is a claim about this session
+  rather than a judgment that the findings do not matter.
+
+  The unusable case is unchanged and still blocks everything.
   """
 
   use ExUnit.Case, async: true
@@ -46,12 +52,19 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
     ProblemRenderer.render_stop_response([problem()], [], session_paths: session_paths)
   end
 
-  test "a session with no recorded edits is told nothing could be attributed" do
+  test "a session with no recorded edits is told its findings were demoted" do
     text = render(MapSet.new())
 
     assert text =~ "no recorded edits"
-    assert text =~ "arrived with a rebase"
-    assert text =~ "git log -1 -- <path>"
+    assert text =~ "demoted to advisory"
+
+    assert text =~ "git log -1 -- <path>",
+           "the findings are still someone's — the note stops asking the agent to " <>
+             "do the attribution, but still says how to find the owner"
+
+    refute text =~ "nothing was demoted",
+           "the old wording told the agent the opposite of what now happens, which " <>
+             "is worse than saying nothing at all"
   end
 
   test "a session whose attribution is unusable is told that too" do

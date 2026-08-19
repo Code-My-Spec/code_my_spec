@@ -20,6 +20,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpec.FileEdits
+  alias CodeMySpec.Files
   alias CodeMySpec.Harnesses
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -221,6 +223,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert %{stats: %{"error" => error}} =
                RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
+
       assert error =~ "shared dev server was restarted"
       assert error =~ "not by anything in your working copy"
     end
@@ -233,6 +236,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert %{stats: %{"error" => error}} =
                RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
+
       assert error =~ "harness_disconnected"
       refute error =~ "restarted"
     end
@@ -794,6 +798,35 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
         file_path: "lib/demo/broken.ex"
       })
 
+      # And that it is *this sub-agent's*, which used to be true by default and
+      # is not any more.
+      #
+      # A session with no recorded edits now has every attributable finding
+      # demoted to advisory — a session that wrote nothing cannot own one
+      # (`76008385`). This test had no edits, so its compiler error stopped
+      # blocking and the assertion below failed.
+      #
+      # Recording the edit rather than relaxing the assertion, because "block"
+      # is not what this test is about: it is the vehicle for reaching the
+      # `{:error, reason, blocking_key}` clause that `SubagentStop` used to
+      # crash on. Accepting "allow" would leave the test passing while the crash
+      # path it exists to cover went unexercised.
+      #
+      # The File row is needed as well as the edit: `verify_against_ledger/3`
+      # answers `nil` for recorded paths that join no file in the project, and
+      # `nil` blocks everything — which would also make this pass, for the wrong
+      # reason and via the wrong branch.
+      {:ok, _} =
+        Files.upsert_file_metadata(scope, %{
+          path: "lib/demo/broken.ex",
+          role: :implementation,
+          mtime: DateTime.utc_now(),
+          size: 1,
+          fingerprint: "subagent-stop-blocks"
+        })
+
+      :ok = FileEdits.track_edit("s1", "lib/demo/broken.ex", "a1")
+
       ref =
         push(channel, "hook_decision", %{
           "hook" => "subagent-stop",
@@ -803,7 +836,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert_reply ref, :ok, decision, 5_000
 
       assert decision["decision"] == "block",
-             "the sub-agent has an unresolved compiler error and must be told so"
+             "the sub-agent has an unresolved compiler error in a file it edited, and must be told so"
 
       assert decision["reason"] =~ "broken.ex"
 

@@ -870,31 +870,33 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Say when nothing could be attributed, because the two states that produce no
   # demotion look identical from the response and lead opposite ways.
   #
-  # `split_unattributed/2` refuses to demote on an empty or `nil` path set, and
-  # that refusal is right — "the session wrote nothing" and "attribution broke"
-  # are indistinguishable from there, and a gate that quietly stops blocking is
-  # invisible where one that blocks too much is not. But the *agent* is then
-  # handed somebody else's finding in the same voice as its own, with no marker
+  # `split_unattributed/2` used to refuse to demote on an empty path set as well
+  # as a `nil` one, and this sentence was the compensation: the agent was handed
+  # somebody else's finding in the same voice as its own, with no marker
   # (`unedited_marker/2` returns "" on an empty set, having nothing to compare
-  # against) and no reason to suspect it.
+  # against), so the note told it to check `git log -1 -- <path>` itself.
   #
-  # That is what 7a0fadeb ran into: a spex warning that arrived with a rebase,
-  # where the obvious one-line repair silently retargets the wrong endpoint. The
-  # demotion in 5dd2fc02 fixes the case where the session edited *something*;
-  # this covers the case where it edited nothing, which is exactly when every
-  # finding is someone else's and the gate can prove none of it.
+  # An empty set now demotes, so the note reports that instead of asking for the
+  # work. It still says something, because silence would be wrong in the other
+  # direction: an agent whose findings all became advisory should know why they
+  # stopped blocking, and that the reason is a claim about *this session* — no
+  # recorded edits — rather than a judgment that the findings do not matter.
+  # A gate that stops blocking has to say so; that is the same rule the
+  # `unattributed_count` field follows.
   #
-  # A sentence rather than `git log -1 -- <path>` per distinct path, which the
-  # report offered as its fallback: this runs inside a hook the harness calls
-  # with `curl --max-time 30`, and shelling out per path is the kind of cost
-  # that turns a confusing gate into no gate at all.
+  # `76008385` is what the old shape cost: a QA agent, which writes no project
+  # files by nature, followed this note exactly — `git log -1` per path,
+  # confirmed neither was its own, escalated to the owner — and got the same
+  # block again on the next stop, with no action available that would change it.
   defp attribution_note(%MapSet{} = session_paths) do
     if MapSet.size(session_paths) == 0 do
-      "\n\nThis session has no recorded edits, so none of these could be checked " <>
-        "against your work and nothing was demoted. A finding naming a file you " <>
-        "have not touched most likely arrived with a rebase — check " <>
-        "`git log -1 -- <path>` before repairing it, and prefer telling its owner " <>
-        "over editing an in-flight file you do not own."
+      "\n\nThis session has no recorded edits, so every finding that names a file " <>
+        "was demoted to advisory — a session that wrote nothing cannot own one. " <>
+        "They are still real and still someone's: if one names a file you were " <>
+        "about to work in, `git log -1 -- <path>` says whose, and telling its " <>
+        "owner beats editing an in-flight file you do not own. Findings with no " <>
+        "file at all still block, because unattributable is not the same as " <>
+        "somebody else's."
     else
       ""
     end
