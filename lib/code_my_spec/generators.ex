@@ -44,6 +44,7 @@ defmodule CodeMySpec.Generators do
           | {:force_ssl_without_health_exclusion, String.t()}
           | {:no_health_route, String.t()}
           | {:health_route_piped, String.t()}
+          | {:missing_release_module, String.t()}
 
   @doc """
   Whether a project carries everything a deploy needs.
@@ -104,6 +105,10 @@ defmodule CodeMySpec.Generators do
     do:
       "#{path} declares the health route inside a pipeline — session and CSRF plugs can fail the proxy's probe for reasons unrelated to the app"
 
+  def explain({:missing_release_module, path}),
+    do:
+      "missing #{path} — the migrate overlay calls <App>.Release.migrate inside the released binary, and without this module the migration crashes on a real box instead of failing setup here"
+
   defp missing_files(env) do
     env |> DeployBoilerplate.missing() |> Enum.map(&{:missing_file, &1})
   end
@@ -119,12 +124,24 @@ defmodule CodeMySpec.Generators do
   defp config_findings(env, router_path) do
     [
       DeployBoilerplate.force_ssl_excludes_health(env),
-      DeployBoilerplate.health_route_unpiped(env, router_path)
+      DeployBoilerplate.health_route_unpiped(env, router_path),
+      DeployBoilerplate.release_module_exists?(env, release_module_path(router_path))
     ]
     |> Enum.flat_map(fn
       :ok -> []
       {:error, finding} -> [finding]
     end)
+  end
+
+  # `router_path` is always `lib/<app>_web/router.ex`, by the same convention
+  # `DeployArtifacts.router/1` writes it and every caller here builds it — so
+  # the release module's path is derivable rather than a second argument every
+  # caller of `audit/2` would need to thread through.
+  defp release_module_path(router_path) do
+    case String.split(router_path, "_web/router.ex", parts: 2) do
+      [app_dir, ""] -> "#{app_dir}/release.ex"
+      _ -> nil
+    end
   end
 
   @doc """

@@ -101,6 +101,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"envs/prod.enc.env", env_scaffold("prod")},
       {"envs/uat.enc.env", env_scaffold("uat")},
       {"lib/#{app}_web/router.ex", router(app)},
+      {"lib/#{app}/release.ex", release_module(app)},
       {"config/runtime.exs", runtime_config()}
     ]
   end
@@ -377,6 +378,46 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # before traffic moves, so a failed migration leaves the previous version
     # serving rather than half-migrating under a live one.
     #{sops_preamble("./bin/#{app} eval #{Macro.camelize(app)}.Release.migrate")}\
+    """
+  end
+
+  # `migrate_overlay/1` calls `<App>.Release.migrate` inside the released
+  # binary, where Mix does not exist to run `mix ecto.migrate`. Without this
+  # module the call is to a function that was never generated, and the
+  # failure surfaces as a migration crash on a real box (`d903556b`) rather
+  # than as a missing file the readiness audit could have caught first.
+  defp release_module(app) do
+    module = Macro.camelize(app)
+
+    """
+    defmodule #{module}.Release do
+      @moduledoc \"\"\"
+      Used for executing DB release tasks when run in production without Mix
+      installed.
+      \"\"\"
+      @app :#{app}
+
+      def migrate do
+        load_app()
+
+        for repo <- repos() do
+          {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
+        end
+      end
+
+      def rollback(repo, version) do
+        load_app()
+        {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+      end
+
+      defp repos do
+        Application.fetch_env!(@app, :ecto_repos)
+      end
+
+      defp load_app do
+        Application.load(@app)
+      end
+    end
     """
   end
 

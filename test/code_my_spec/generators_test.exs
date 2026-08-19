@@ -64,7 +64,8 @@ defmodule CodeMySpec.GeneratorsTest do
           "bin/deploy",
           "bin/backup",
           "envs/prod.enc.env",
-          "envs/uat.enc.env"
+          "envs/uat.enc.env",
+          "lib/my_app/release.ex"
         ] do
       write(dir, path, "# generated\n")
     end

@@ -183,6 +183,23 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
+  @doc """
+  Checks that the release module the migrate overlay calls actually exists.
+
+  `rel/overlays/bin/migrate` runs `./bin/<app> eval <App>.Release.migrate`
+  inside the released binary, where Mix is not available to run
+  `mix ecto.migrate`. A project missing this module passes every other check,
+  builds, pushes and boots — and only fails once the migration step runs
+  against a real box, several steps past where the cause is visible.
+  """
+  @spec release_module_exists?(Environments.Environment.t(), String.t() | nil) ::
+          :ok | {:error, {:missing_release_module, String.t()}}
+  def release_module_exists?(_env, nil), do: :ok
+
+  def release_module_exists?(env, path) do
+    if present?(env, path), do: :ok, else: {:error, {:missing_release_module, path}}
+  end
+
   defp check_health_route(body, path) do
     scopes = String.split(body, ~r/\n\s*scope /)
 
