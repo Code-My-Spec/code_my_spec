@@ -47,6 +47,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
         # on first read whatever the devops level says.
         only_environments(context.scope, ["uat"])
 
+        # The claim is that a *missing secret* is named, so the missing secret
+        # has to be the only thing wrong. Without the boilerplate the deploy
+        # step refuses earlier and correctly — "this project is not
+        # deploy-ready: missing Dockerfile, …" — and the criterion would be
+        # asserting about a run that never reached the secrets at all.
+        deploy_ready_checkout(context)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

@@ -3504,6 +3504,13 @@ defmodule CodeMySpecSpex.Case do
   pre-flight passes, and step opts carry the host, environment and probe.
   """
   def stage_deploy(%{scope: scope, environment: env} = context, scenario \\ :ok) do
+    # First, so the `bin/deploy` stub below overwrites the generated one rather
+    # than the other way round. The deploy step audits the checkout before it
+    # runs anything, and an empty working directory is refused with "this
+    # project is not deploy-ready" — which reads as the deploy being broken
+    # rather than as the fixture having no boilerplate in it.
+    deploy_ready_checkout(context)
+
     # Secrets the deploy pre-flight requires.
     for {k, v} <- [
           {"SECRET_KEY_BASE", "staged-secret-key-base"},
@@ -3680,6 +3687,14 @@ defmodule CodeMySpecSpex.Case do
   def built_deploy_run(context, opts \\ []) do
     context = stage_build(context, opts)
     scope = context.scope
+
+    # The deploy step audits the checkout before it builds anything, so a
+    # working directory with no boilerplate is refused with "this project is
+    # not deploy-ready" and records no image at all — which reads as the
+    # builder being broken rather than as the fixture being empty. Every
+    # criterion reaching this helper is about what the deploy *does*, so the
+    # premise of story 970 is stated here rather than in each of them.
+    deploy_ready_checkout(context)
 
     scripted_run(context, %{
       deploy: fn -> Fixtures.run_provisioning_step(scope, :deploy) end
