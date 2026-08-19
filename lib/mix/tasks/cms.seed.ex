@@ -26,8 +26,10 @@ defmodule Mix.Tasks.Cms.Seed do
 
   ## What it starts
 
-  `:ecto_sql`, `:postgrex`, the Vault (seeds touch encrypted columns) and the
-  Repo — small pool, quiet logging. No endpoint, no PubSub, no supervision tree.
+  `:ecto_sql`, `:postgrex`, the Vault (seeds touch encrypted columns), the Repo
+  on a small quiet pool, and PubSub — because contexts broadcast on write, and a
+  seed that goes through a context rather than writing rows by hand is the
+  better kind. No endpoint, no web supervision tree.
   A seed that genuinely needs more can start it itself; that is a smaller
   surprise than a seed that cannot run at all.
 
@@ -86,6 +88,17 @@ defmodule Mix.Tasks.Cms.Seed do
     # resolves its key through the Vault process rather than at compile time.
     {:ok, _} = CodeMySpec.Vault.start_link([])
     {:ok, _} = CodeMySpec.Repo.start_link(pool_size: 2, log: false)
+
+    # Contexts broadcast on write — `UserPreferences.update_user_preferences/2`
+    # is one of many — and without the registry that surfaces as
+    #
+    #     ** (ArgumentError) unknown registry: CodeMySpec.PubSub
+    #
+    # from inside a context call, which reads as a broken context rather than a
+    # missing process. A seed that calls contexts rather than writing rows by
+    # hand is the normal case and the better one, so the registry belongs here.
+    {:ok, _} = Application.ensure_all_started(:phoenix_pubsub)
+    {:ok, _} = Phoenix.PubSub.Supervisor.start_link(name: CodeMySpec.PubSub)
 
     Mix.shell().info("→ #{path} (database only, no endpoint)")
 

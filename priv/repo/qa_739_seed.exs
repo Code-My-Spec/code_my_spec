@@ -62,7 +62,13 @@ copies = [
 
 results =
   Enum.map(copies, fn {label, root, file_count} ->
-    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+    # Look the label up first. `Harnesses.issue/3` with a nil id always mints —
+    # "touch the existing one" only happens when you hand it an id — so calling
+    # it straight made this seed create a fresh pair on every run and left the
+    # picker offering four, six, eight options. The header claimed idempotence
+    # while the body did the opposite.
+    existing = Enum.find(Harnesses.list_harnesses(scope), &(&1.label == label))
+    {:ok, harness} = Harnesses.issue(scope, existing && existing.id, label: label)
     {:ok, harness} = Harnesses.report_root(harness, root)
 
     harness_scope = %Scope{scope | active_harness_id: harness.id}
