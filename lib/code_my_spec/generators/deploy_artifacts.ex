@@ -122,7 +122,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"envs/uat.enc.env", env_scaffold("uat")},
       {"lib/#{app}_web/router.ex", router(app)},
       {"lib/#{app}/release.ex", release_module(app)},
-      {"config/runtime.exs", runtime_config()}
+      {"config/runtime.exs", runtime_config(app)}
     ]
   end
 
@@ -669,16 +669,29 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   # plain HTTP from inside the network, and a 301 reads to it as unhealthy —
   # so the deploy never completes and the reason is a redirect nobody sees
   # (criterion 7978).
-  defp runtime_config do
+  # `:app`, `AppWeb.Endpoint`, `App.Repo` — every other function in this module
+  # takes `app` and interpolates it; this one did not, so `config :app,
+  # AppWeb.Endpoint, ...` shipped in every generated project regardless of its
+  # real OTP app name. Config registered under an application that is not
+  # running configures nothing: `Application.get_env(:devops_drill,
+  # DevopsDrillWeb.Endpoint)` never sees a value written under `:app`, so
+  # `url`, `http`, `secret_key_base` and `force_ssl` were silently inert on
+  # every project this generator produced — including the `force_ssl` fix
+  # right below, which could not have mattered under the wrong key even once
+  # its `exclude:` shape was corrected.
+  defp runtime_config(app) do
+    web = Macro.camelize(app) <> "Web.Endpoint"
+    repo = Macro.camelize(app) <> ".Repo"
+
     """
     import Config
 
     if System.get_env("PHX_SERVER") do
-      config :app, AppWeb.Endpoint, server: true
+      config :#{app}, #{web}, server: true
     end
 
     if config_env() == :prod do
-      config :app, AppWeb.Endpoint,
+      config :#{app}, #{web},
         url: [host: System.get_env("PHX_HOST") || "example.com", port: 443, scheme: "https"],
         http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
         secret_key_base: System.fetch_env!("SECRET_KEY_BASE"),
@@ -702,7 +715,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
           exclude: [hosts: ["localhost", "127.0.0.1"], paths: ["/health"]]
         ]
 
-      config :app, App.Repo,
+      config :#{app}, #{repo},
         url: System.fetch_env!("DATABASE_URL"),
         pool_size: String.to_integer(System.get_env("POOL_SIZE") || "2")
     end
