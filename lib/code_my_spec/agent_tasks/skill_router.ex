@@ -142,7 +142,33 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
          """
        }}
     else
-      {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
+      # Asked to sync on a harness, where the server has no tree to walk.
+      #
+      # Not silently "done", the way `StartAgentTask` treats it: that one is a
+      # background catch-up nobody asked for, and this is somebody typing
+      # `/sync` and waiting for an answer. Saying nothing would read as a sync
+      # that ran and found no work, which is the wrong thing to believe about
+      # your own checkout.
+      #
+      # It is also not a failure. The harness syncs this copy by manifest on
+      # every scan, so the rows are current — more current than a server-side
+      # walk could make them.
+      {:error, {:cannot_scan, _reason}} ->
+        {:ok,
+         %{
+           prompt: """
+           Nothing to do — this working copy is synced by its harness, not by the server.
+
+           The harness scans the checkout and sends a manifest on every change, so the
+           file and component records are already current. There is no tree here for the
+           server to walk, which is why this did not run a scan of its own.
+
+           Call `get_next_requirement` to find your next task.
+           """
+         }}
+
+      {:error, reason} ->
+        {:error, "Sync failed: #{inspect(reason)}"}
     end
   end
 
@@ -183,8 +209,12 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
     case RequirementGraph.next_actionable(scope) do
       [] ->
         case RequirementGraph.compute_all(scope) do
-          [] -> {:ok, %{prompt: "No requirements found. Run `/codemyspec:sync` to refresh the graph."}}
-          _ -> {:ok, %{prompt: "✓ All requirements satisfied. Nothing left to do on this project."}}
+          [] ->
+            {:ok,
+             %{prompt: "No requirements found. Run `/codemyspec:sync` to refresh the graph."}}
+
+          _ ->
+            {:ok, %{prompt: "✓ All requirements satisfied. Nothing left to do on this project."}}
         end
 
       [node | _] ->

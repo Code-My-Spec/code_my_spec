@@ -439,7 +439,23 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
         {:ok,
          %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
       else
-        {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
+        # The environment reports a working copy it cannot walk — the light
+        # harness, where the server holds no tree. Nothing to catch up: the
+        # harness *is* the file watcher for its checkout and syncs by manifest,
+        # which also runs the component projection. This fallback exists for
+        # files changed while nothing was watching, and on a harness that is
+        # never the server's question to answer.
+        #
+        # The guard above tests `base_dir`, which a harness has — it reports its
+        # root — so the real condition is whether the environment can scan, not
+        # whether a path exists. Failing here made every skill that starts a task
+        # return "Sync failed: {:cannot_scan, :not_supported_on_harness}", which
+        # is what `/qa` returned once its routing was fixed.
+        {:error, {:cannot_scan, _reason}} ->
+          {:ok, %{components: [], changed: []}}
+
+        {:error, reason} ->
+          {:error, "Sync failed: #{inspect(reason)}"}
       end
     else
       {:ok, %{components: [], changed: []}}
