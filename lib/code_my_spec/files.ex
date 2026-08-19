@@ -8,6 +8,7 @@ defmodule CodeMySpec.Files do
   require Logger
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.Scanner.ReadModel
@@ -31,12 +32,30 @@ defmodule CodeMySpec.Files do
 
     %ReadModel{
       component_by_module: Map.new(components, &{&1.module_name, &1.id}),
+      component_by_path: component_by_path(components),
       component_by_id: Map.new(components, &{&1.id, &1}),
       story_ids: project_story_ids(scope),
       story_ids_by_number: project_story_ids_by_number(scope),
       story_by_spec_path: story_by_spec_path(scope),
       strict?: Configurations.require_specs?(scope)
     }
+  end
+
+  # Every path each component conventionally owns, pointing back at it.
+  #
+  # Built module → path because that direction is exact; the inverse is not, and
+  # a component whose name carries a run of two or more capitals (`Git.CLI`,
+  # `Git.URLParser`) can never be found by deriving a module from a path. See
+  # `Components.ConventionalPaths`.
+  #
+  # Later components win a collision, which is arbitrary and fine: two
+  # components claiming one path is a naming conflict the architecture layer
+  # owns, and picking a side here does not make it better or worse.
+  defp component_by_path(components) do
+    for component <- components,
+        path <- ConventionalPaths.for_component(component),
+        into: %{},
+        do: {path, component.id}
   end
 
   # Which story owns each spex file, according to the criteria themselves.

@@ -19,11 +19,11 @@ defmodule CodeMySpec.Files.ComponentSync do
   import Ecto.Query
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File}
   alias CodeMySpec.Harnesses
-  alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -504,15 +504,13 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp backfill_file_owners(%Scope{active_project_id: project_id}, component_map) do
     Enum.each(component_map, fn {module_name, component} ->
-      module_path = module_name_to_path(module_name)
-      source_path = source_path_for_type(module_path, component.type)
-
-      patterns = [
-        Paths.spec_dir() <> "/#{module_path}.spec.md",
-        Paths.spec_dir() <> "/#{module_path}/design_review.md",
-        "lib/#{source_path}.ex",
-        "test/#{source_path}_test.exs"
-      ]
+      # One source for these, shared with `Files.read_model/1`, which indexes
+      # components by the same paths so ownership is a lookup rather than a
+      # path → module guess. Two copies drifted once already: this claim set
+      # `component_id` and the guess wrote `nil` back over it on every scan
+      # (`d698ab0e`).
+      patterns =
+        ConventionalPaths.for_component(%{module_name: module_name, type: component.type})
 
       File
       |> where(
@@ -540,33 +538,6 @@ defmodule CodeMySpec.Files.ComponentSync do
       )
       |> Repo.update_all(set: [component_id: component.id])
     end)
-  end
-
-  defp module_name_to_path(module_name) do
-    module_name
-    |> Macro.underscore()
-    |> String.replace(".", "/")
-  end
-
-  # Phoenix convention: LiveViews live in `live/`, controllers in `controllers/`
-  defp source_path_for_type(module_path, type)
-       when type in ["liveview", "liveview_component", "live_context"] do
-    inject_dir_segment(module_path, "live")
-  end
-
-  defp source_path_for_type(module_path, type) when type in ["controller", "json"] do
-    inject_dir_segment(module_path, "controllers")
-  end
-
-  defp source_path_for_type(module_path, _type), do: module_path
-
-  # Insert a directory segment after the first path component.
-  # "metric_flow_web/dashboard_live/show" → "metric_flow_web/live/dashboard_live/show"
-  defp inject_dir_segment(path, dir) do
-    case String.split(path, "/", parts: 2) do
-      [first, rest] -> "#{first}/#{dir}/#{rest}"
-      [single] -> "#{single}/#{dir}"
-    end
   end
 
   # -- Spec content extraction (reused from Components.Sync) --

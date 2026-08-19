@@ -52,6 +52,15 @@ defmodule CodeMySpec.Files.Scanner do
     diverged, every spex directory resolved to nothing and the files it held
     were owned by no story, so `bdd_specs_passing` could never be satisfied.
 
+    `component_by_path` is the component-side version of that same move.
+    `component_by_module` requires deriving a module name from a path, and that
+    derivation cannot be made correct: `Macro.underscore/1` destroys
+    capitalization and `Macro.camelize/1` cannot restore it, so
+    `code_my_spec/git/cli` comes back as `Git.Cli` and never matches
+    `Git.CLI`. Projecting the known module names *forward* into paths is exact,
+    so this map is built that way and the path is looked up. See
+    `Components.ConventionalPaths`.
+
     `story_by_spec_path` is the one that does not guess. A criterion records
     which file is its spex, so a spex file's story is a lookup rather than a
     number parsed out of a directory name. That parse survives only as the
@@ -65,6 +74,7 @@ defmodule CodeMySpec.Files.Scanner do
     "OAuth registration logs the user in" holding subagent-dispatch spex.
     """
     defstruct component_by_module: %{},
+              component_by_path: %{},
               component_by_id: %{},
               story_ids: MapSet.new(),
               story_ids_by_number: %{},
@@ -73,6 +83,7 @@ defmodule CodeMySpec.Files.Scanner do
 
     @type t :: %__MODULE__{
             component_by_module: %{String.t() => Ecto.UUID.t()},
+            component_by_path: %{String.t() => Ecto.UUID.t()},
             component_by_id: %{Ecto.UUID.t() => struct()},
             story_ids: MapSet.t(integer()),
             story_ids_by_number: %{integer() => integer()},
@@ -1009,8 +1020,6 @@ defmodule CodeMySpec.Files.Scanner do
 
   @doc "Resolve component_id and story_id owners for file entries."
   def resolve_owners(entries, %ReadModel{} = read_model) do
-    component_by_module = read_model.component_by_module
-
     # Ids parsed out of qa paths are only trusted if the project actually has
     # such a story — a stale directory name must not link a file to it.
     story_by_id =
@@ -1023,7 +1032,7 @@ defmodule CodeMySpec.Files.Scanner do
       {component_id, story_id} =
         case recorded_story(entry, read_model.story_by_spec_path) do
           nil ->
-            owner_for(entry, component_by_module, story_by_id, read_model.story_ids_by_number)
+            owner_for(entry, read_model, story_by_id)
 
           story_id ->
             {nil, story_id}
@@ -1055,11 +1064,32 @@ defmodule CodeMySpec.Files.Scanner do
   # because the server re-resolves ownership on every manifest
   # (`FileSync.reconcile/2`) where it is present, and the path remains the
   # fallback for a spec or test that declares nothing.
-  defp owner_for(entry, component_by_module, _story_by_id, _by_number)
+  # Three sources, in descending order of how much they know.
+  #
+  # 1. The path, against components projected forward into their conventional
+  #    paths. Exact.
+  # 2. The module the file declares, which is what it actually is.
+  # 3. A module name derived from the path — a guess, and one that cannot be
+  #    made correct: `Macro.underscore/1` destroys capitalization and
+  #    `Macro.camelize/1` cannot restore it, so `code_my_spec/git/cli` comes
+  #    back `Git.Cli` and never matches `Git.CLI`.
+  #
+  # (3) alone is what left `Git.CLI` and `Git.URLParser` unresolvable. It stays
+  # as the last resort because it still answers for files that are conventional
+  # but belong to a component this read model has not seen, and being wrong
+  # there costs an unowned file rather than a wrong owner. See
+  # `Components.ConventionalPaths`.
+  defp owner_for(entry, %ReadModel{} = read_model, _story_by_id)
        when is_map_key(entry, :role) and
               entry.role in [:implementation, :test, :spec] do
-    module_name = declared_module(entry) || path_to_module_name(entry.path, entry.role)
-    {Map.get(component_by_module, module_name), nil}
+    by_module = read_model.component_by_module
+
+    component_id =
+      Map.get(read_model.component_by_path, entry.path) ||
+        Map.get(by_module, declared_module(entry)) ||
+        Map.get(by_module, path_to_module_name(entry.path, entry.role))
+
+    {component_id, nil}
   end
 
   # test/spex/{story_number_and_title}/criterion_*_spex.exs → story
@@ -1068,12 +1098,12 @@ defmodule CodeMySpec.Files.Scanner do
   # durable number and every File row keys on the primary key. Handing the
   # number to a map of ids matched whichever story held that id, or nothing —
   # and nothing is what it does now on any project where the two differ.
-  defp owner_for(%{path: path, role: :bdd_spec}, _component_by_module, _story_by_id, by_number) do
+  defp owner_for(%{path: path, role: :bdd_spec}, %ReadModel{} = read_model, _story_by_id) do
     story_number = extract_story_number_from_spex_path(path)
-    {nil, Map.get(by_number, story_number)}
+    {nil, Map.get(read_model.story_ids_by_number, story_number)}
   end
 
-  defp owner_for(%{path: path, role: role}, _component_by_module, story_by_id, _by_number)
+  defp owner_for(%{path: path, role: role}, %ReadModel{}, story_by_id)
        when role in [:qa_brief, :qa_result] do
     # .code_my_spec/qa/{story_id}/brief.md → story. The primary key here, not
     # the number: `QaStory` builds these paths from `story.id`.
@@ -1081,18 +1111,26 @@ defmodule CodeMySpec.Files.Scanner do
     {nil, story_by_id[story_id]}
   end
 
-  defp owner_for(%{path: path, role: :review}, component_by_module, _story_by_id, _by_number) do
-    # .code_my_spec/spec/metric_flow/integrations/design_review.md → MetricFlow.Integrations
+  defp owner_for(%{path: path, role: :review}, %ReadModel{} = read_model, _story_by_id) do
+    # `.code_my_spec/spec/metric_flow/integrations/design_review.md` →
+    # `MetricFlow.Integrations`. The path index answers this exactly — design
+    # reviews are one of the paths `ConventionalPaths.for_component/1` projects
+    # — and the derivation below carries the same capitalization loss as every
+    # other path → module guess, so it is the fallback rather than the rule.
     module_name =
       path
       |> String.replace_prefix(Paths.spec_dir() <> "/", "")
       |> Path.dirname()
       |> path_segments_to_module()
 
-    {Map.get(component_by_module, module_name), nil}
+    component_id =
+      Map.get(read_model.component_by_path, path) ||
+        Map.get(read_model.component_by_module, module_name)
+
+    {component_id, nil}
   end
 
-  defp owner_for(_entry, _component_by_module, _story_by_id, _by_number), do: {nil, nil}
+  defp owner_for(_entry, %ReadModel{}, _story_by_id), do: {nil, nil}
 
   # The `defmodule` the scan read out of the file, when it has been validated.
   # String keys because this arrives from the harness as JSON.
