@@ -73,7 +73,24 @@ fi
 # here: the previous version asked OAuthClient for a token, and a fresh container
 # has no way to obtain one — the browser flow needs to reach a port that binds
 # loopback *inside* the container by design.
-if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
+#
+# Two conditions, not one. "No commits" was standing in for "nothing generated
+# yet", and those come apart the moment a sprite generates a project that never
+# gets committed — `--no-agent`, or any run that dies before its first commit.
+# The volume outlives the container, so the next start found a full working copy
+# with an empty `git log`, generated a second project on top of it, and died:
+#
+#     mv: inter-device move failed: '/tmp/tmp.XXX/app/lib' to '/workspace/app/lib';
+#         unable to remove target: Directory not empty
+#
+# — once per directory, before the harness ever started. A sprite recreated on
+# its own volume could therefore never come back, which is the whole point of
+# putting the workspace on a volume. Found exercising story 727's criterion 743.
+#
+# `mix.exs` is the marker because `cms.new` writes it and nothing else in the
+# clone path does, so its presence means "a project is already here" whatever
+# git thinks.
+if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ] && [ ! -f "${APP_DIR}/mix.exs" ]; then
   log "Repo is empty — generating a new project"
 
   # module_name off the project row, not the repo name. It is what the harness
