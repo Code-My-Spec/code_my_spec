@@ -63,7 +63,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
         {:reply,
          Response.tool()
          |> Response.text("""
-         Asked. The user has been notified.
+         Asked #{recipient(scope)}. They have been notified.
 
          Question id: #{id}
 
@@ -108,6 +108,34 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   end
 
   defp ask(_scope, _message), do: {:error, :no_user}
+
+  # Whose inbox this actually landed in.
+  #
+  # The reply used to say "Asked. The user has been notified", which is true and
+  # tells an agent nothing it could act on. A typed MCP tool is bound to
+  # whichever harness its session serves, with no parameter to redirect it — so
+  # a QA agent exercising the ask→answer round trip from a worktree of the real
+  # repo asks the *real* owner, sees "Asked", and moves on. It happened twice on
+  # one story, and story 896 gave questions no dismiss and no expiry on purpose,
+  # so both are permanent and only that owner can clear them (`08d4d7bd`).
+  #
+  # Naming the recipient does not prevent it — only a way to target another
+  # harness would, and that is the real fix. It makes the mistake visible in the
+  # one response the agent is certain to read, at the moment it is made rather
+  # than when somebody finds the rows later.
+  defp recipient(%{user: user} = scope) do
+    case {user_label(user), scope.active_project} do
+      {nil, _} -> "the user"
+      {label, %{name: project}} when is_binary(project) -> "#{label} (project: #{project})"
+      {label, _} -> label
+    end
+  end
+
+  defp recipient(_scope), do: "the user"
+
+  defp user_label(%{email: email}) when is_binary(email) and email != "", do: email
+  defp user_label(%{id: id}) when not is_nil(id), do: "user #{id}"
+  defp user_label(_), do: nil
 
   # The working copy this agent is in, when there is one. `HarnessScope` puts it
   # on the scope from the id in the MCP URL; a caller reaching this from
