@@ -711,10 +711,47 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         socket
 
       socket.assigns.reconciling == nil ->
-        assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
+        maybe_start_reconcile(socket, entries)
 
       true ->
         assign(socket, :pending_manifest, entries)
+    end
+  end
+
+  # The same question `assigns.reconciling` answers, asked across channels.
+  #
+  # `terminate/2` kills the reconcile when a channel goes away, so in the
+  # ordinary case nothing is in flight here and this is a lookup that finds
+  # nothing. It exists for the case where `terminate/2` did not get to run — a
+  # killed node, a channel that vanished without draining — because that is
+  # exactly when an orphaned reconcile is still holding a connection and a
+  # second one would start the stacking again (`1aed7edf`).
+  #
+  # Skipping rather than queueing: the harness re-sends the whole manifest on
+  # every join, so the running reconcile is landing the same tree this one
+  # carries. Queueing it across processes would mean holding another channel's
+  # work with nothing to deliver it to when that channel is already gone.
+  #
+  # Logged, and not quietly, because a skipped reconcile means this working
+  # copy's rows are older than the manifest that just arrived. That is fine for
+  # the seconds until the running one finishes and wrong to let pass unseen.
+  defp maybe_start_reconcile(socket, entries) do
+    harness_id = socket.assigns.scope.active_harness_id
+
+    case ReconcileRegistry.in_flight(harness_id) do
+      nil ->
+        assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
+
+      %{count: count, started_at: started_at} ->
+        Logger.warning(
+          "[HarnessProject] skipped a reconcile of #{length(entries)} observations for " <>
+            "harness #{harness_id}: one of #{count} started at " <>
+            "#{DateTime.to_iso8601(started_at)} is still running and outlived the channel " <>
+            "that spawned it. Running two at once is what exhausts the pool (1aed7edf). " <>
+            "This copy's rows are behind until that one lands; the next manifest re-syncs."
+        )
+
+        socket
     end
   end
 
@@ -783,6 +820,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the harness that keep running regardless. Their results arrive for runs that
   # are no longer `:running` and are refused. Nothing retries.
   def terminate(reason, socket) do
+    shutdown_reconcile(socket)
+
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
@@ -794,6 +833,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     :ok
   end
+
+  # The reconcile dies with the channel that started it.
+  #
+  # `async_nolink` deliberately does not link the task to this process, so
+  # without this it keeps running under `TaskSupervisor` after the channel is
+  # gone — and the rejoin gets a *fresh channel with empty assigns*, sees no
+  # reconcile in flight, and starts another on top of the orphan. The
+  # `reconciling`/`pending_manifest` pair serialises reconciles within one
+  # channel and cannot see across two.
+  #
+  # That is the join storm in `1aed7edf`: a rejoin every ~1.2s, each starting a
+  # full reconcile that holds a connection for the 9-10s it takes, until the
+  # pool is exhausted and `insert_all` into `files` dies with
+  # `client ... timed out because it queued and checked out the connection for
+  # longer than 60000ms`. The crash closes the channel, the close triggers a
+  # rejoin, and the next attempt is exactly as slow as the last — so it does not
+  # self-clear. Observed for 15+ minutes across two working copies, ending only
+  # when the harness was killed by hand.
+  #
+  # Killing it loses nothing. The harness re-sends the entire manifest on every
+  # join — `holding` is followed by `scanned N files` and `sent N observations`
+  # in harness.log, on every one — and `reconcile_and_project/2` runs in a
+  # transaction, so a killed reconcile rolls back rather than leaving a half
+  # projection. The work is redone by the join that replaces it, which was going
+  # to redo it anyway.
+  defp shutdown_reconcile(%{assigns: %{reconciling: %Task{} = task}}) do
+    Task.shutdown(task, :brutal_kill)
+    :ok
+  end
+
+  defp shutdown_reconcile(_socket), do: :ok
 
   # Say which of the two things happened, because they read identically and
   # only one of them is about the working copy.
