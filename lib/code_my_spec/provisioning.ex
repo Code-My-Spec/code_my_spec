@@ -399,8 +399,16 @@ defmodule CodeMySpec.Provisioning do
     # sequence and name themselves, which is what every returned error already
     # does. Without this, the step's row stays :running forever and anything
     # watching the page waits on a run that is already dead.
+    #
+    # The stacktrace is logged, not returned: `error_attrs/2` stores
+    # `Exception.message/1` for the person reading the paused step, and that
+    # audience has no use for frame addresses. Losing the trace entirely was
+    # the actual gap — a bare message like "no function clause matching in
+    # String.trim/1" names a function shared by a dozen call sites and nothing
+    # else, so diagnosing it meant reproducing blind.
     error ->
       reason = Exception.message(error)
+      Logger.error(Exception.format(:error, error, __STACKTRACE__))
       row = mark(scope, key, :errored, error_attrs(key, reason))
       {:halt, row, reason}
   end
