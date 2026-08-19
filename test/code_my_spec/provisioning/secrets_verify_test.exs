@@ -20,9 +20,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Configurations
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.{Sops, Steps}
+  alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
 
   @moduletag :sops
 
@@ -189,6 +191,63 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       refute stored(ctx.scope, "prod") == before,
              "drift is the case where minting a fresh key is the only way forward"
+    end
+  end
+
+  describe "a project with two environments, only one permitted this run" do
+    # af60405c: `.sops.yaml` is rewritten fresh from whatever this run's
+    # recipients map holds. `devops: :uat` filters `permitted_environments/1`
+    # down to `uat` alone, so a run that never names prod built that map from
+    # `uat` only — and writing the config straight from it dropped prod's
+    # creation rule while `age_private_key_prod` stayed on record in
+    # `project_secrets`, untouched. The result: no recipient left to encrypt
+    # `envs/prod.enc.env` to, and the stored key opened nothing. The step
+    # reported `done` with no sign anything was dropped.
+    setup ctx do
+      {prod_public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => prod_public})
+      put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
+
+      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = EnvironmentRepository.put(ctx.scope, "uat", %{})
+      {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
+
+      %{prod_public: prod_public}
+    end
+
+    test "the secrets step keeps prod's creation rule after a uat-only run", ctx do
+      # No `:environments` override — devops: :uat is what narrows this to
+      # uat, the same as the real run the report reproduced against.
+      {:ok, _} = Steps.run(:secrets, ctx.scope, [])
+
+      {:ok, config} = Environments.read_file(ctx.scope.environment, ".sops.yaml")
+
+      assert config =~ "path_regex: envs/prod\\.enc\\.env$", config
+      assert config =~ ctx.prod_public, config
+      assert config =~ "path_regex: envs/uat\\.enc\\.env$", config
+    end
+
+    test "prod's file can still be (re)encrypted after a uat-only run", ctx do
+      {:ok, _} = Steps.run(:secrets, ctx.scope, [])
+
+      # Exactly what `ensure_file/2` does the first time `put_secret/4` writes
+      # to an environment whose file does not exist yet — a fresh checkout,
+      # or the aftermath of `discard_unreadable_env/2` repairing genuine key
+      # drift. With no creation rule, `sops encrypt` has nothing to name as
+      # prod's recipient: "sops has no recipient to encrypt envs/prod.enc.env
+      # to" from the report, made concrete.
+      File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
+
+      assert :ok =
+               Sops.put_secret(
+                 ctx.scope.environment,
+                 "prod",
+                 "OTHER",
+                 "v",
+                 stored(ctx.scope, "prod")
+               ),
+             "prod's dropped creation rule leaves sops with no recipient to " <>
+               "encrypt a freshly (re)created file to"
     end
   end
 

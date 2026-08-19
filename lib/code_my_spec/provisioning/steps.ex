@@ -4486,7 +4486,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       end)
 
     with {:ok, recipients} <- keys,
-         :ok <- Sops.write_config(env, recipients),
+         :ok <- Sops.write_config(env, with_other_environment_recipients(scope, recipients)),
          {:ok, seeded} <- seed_secret_key_base(scope, env, recipients),
          {:ok, issued} <- seed_deploy_key(scope, recipients) do
       {:ok,
@@ -4496,6 +4496,35 @@ defmodule CodeMySpec.Provisioning.Steps do
     else
       {:error, reason} -> {:error, format(reason)}
     end
+  end
+
+  # `.sops.yaml` names every environment the project has a stored key for,
+  # not only the ones a caller just touched. `environments` here is
+  # `permitted_environments/1`'s output — filtered by devops level, so a
+  # project set to `devops: :uat` only mints/repairs uat this run — but that
+  # scoping is about what gets *provisioned*, not about what the config file
+  # describes. `age_private_key_prod` outlives a uat-only run untouched, and
+  # a `.sops.yaml` rewritten from `recipients` alone dropped prod's rule
+  # while the key stayed on record: nothing left to encrypt `envs/prod.enc.env`
+  # to, and the stored key opened nothing (af60405c).
+  #
+  # Derived from `ProjectSecrets`, not read back from each environment's
+  # `.enc.env` file — a key that exists but has no file yet (minted, nothing
+  # written through it) would otherwise vanish from the config the same way,
+  # and the derivation works whether or not the file exists.
+  defp with_other_environment_recipients(scope, recipients) do
+    names = EnvironmentRepository.names(scope) -- Map.keys(recipients)
+
+    Enum.reduce(names, recipients, fn environment, acc ->
+      with {:ok, private} <- fetch_age_key(scope, environment),
+           {:ok, public} <- Sops.public_key(private) do
+        Map.put(acc, environment, public)
+      else
+        # No stored key, or one sops itself cannot derive from — nothing to
+        # carry forward for this environment, same as before it existed.
+        _ -> acc
+      end
+    end)
   end
 
   # The key the deployed app authenticates back with, minted here and written
@@ -4763,15 +4792,15 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   # The config names every environment's recipient, so writing one
-  # environment's key must not drop another's.
+  # environment's key must not drop another's. Shares
+  # `with_other_environment_recipients/2` with `generate_keys/3` rather than
+  # the `["prod", "uat"]` literal this used to carry — the same magic list
+  # `EnvironmentRepository`'s moduledoc already names as the seven-file bug
+  # this module exists to avoid, and it would have gone stale the moment a
+  # project gained a third environment.
   defp write_recipients(scope, env, environment, public) do
-    others =
-      for %{environment: e, fingerprints: [fp | _]} <- recipients(scope, ["prod", "uat"]),
-          e != environment,
-          into: %{},
-          do: {e, fp}
-
-    Sops.write_config(env, Map.put(others, environment, public))
+    recipients = with_other_environment_recipients(scope, %{environment => public})
+    Sops.write_config(env, recipients)
   end
 
   @doc "The age recipients each environment's encrypted file names."
