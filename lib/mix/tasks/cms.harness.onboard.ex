@@ -404,8 +404,32 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # branch does not have this task, and asking somebody to merge a branch
   # before they can be onboarded is a worse first experience than a positional
   # argument.
-  defp target_root([path | _]) when is_binary(path), do: Path.expand(path)
-  defp target_root(_), do: File.cwd!()
+  #
+  # Flags are skipped rather than treated as the path. `--check` alone used to
+  # become the root: `target_root(["--check"])` expanded it against the cwd, and
+  # the task then reported
+  #
+  #     not onboarded: /…/phx-new-generator/--check
+  #       missing: CMS_HARNESS_ID, MIX_TEST_PARTITION, ANTHROPIC_BASE_URL
+  #
+  # for a directory that does not exist, while all three values were present the
+  # whole time. That is the worst way for a check to fail — not an error, but a
+  # confident report that the thing you asked about is broken. Anyone acting on
+  # it re-onboards a working copy that was already fine.
+  #
+  # `--project <id>` has to lose its *value* too, not just the flag: the id is a
+  # bare word, so dropping only tokens starting with `-` would leave the id
+  # standing where the path goes and expand it against the cwd. Same bug, one
+  # argument along.
+  defp target_root(args), do: args |> drop_flags() |> first_path()
+
+  defp drop_flags(["--project", _id | rest]), do: drop_flags(rest)
+  defp drop_flags(["--" <> _ | rest]), do: drop_flags(rest)
+  defp drop_flags([arg | rest]), do: [arg | drop_flags(rest)]
+  defp drop_flags([]), do: []
+
+  defp first_path([path | _]) when is_binary(path), do: Path.expand(path)
+  defp first_path(_), do: File.cwd!()
 
   # Read through the environment, so a working copy that already has an id is a
   # file the spec wrote through the same surface — not a fixture reaching past it.
