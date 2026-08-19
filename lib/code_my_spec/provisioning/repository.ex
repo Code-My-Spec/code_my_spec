@@ -59,6 +59,14 @@ defmodule CodeMySpec.Provisioning.Repository do
   alias CodeMySpec.GitHub
   alias CodeMySpec.Users.Scope
 
+  # `cms_new`'s CI template writes this literally, next to an EEx tag that
+  # does render (`templates/deploy/build.yml.eex`): the owner cannot be known
+  # at generation time, because no repository exists yet to have one. `ensure/3`
+  # is the first point that does, so the substitution happens here rather than
+  # at generation.
+  @ci_workflow_path ".github/workflows/build.yml"
+  @github_owner_placeholder "<GITHUB_OWNER>"
+
   @type disposition :: :created | :adopted
 
   @type result :: %{
@@ -198,7 +206,9 @@ defmodule CodeMySpec.Provisioning.Repository do
     run = fn args -> Environments.cmd(env, git, args, stderr_to_stdout: true) end
 
     with :ok <- ensure_repo(run, branch),
+         :ok <- patch_ci_owner(env, opts),
          :ok <- ensure_commit(run),
+         :ok <- commit_owner_patch(run),
          :ok <- set_remote(run, remote_url),
          :ok <- push_remote(run, branch, opts),
          {sha, 0} <- run.(["rev-parse", "HEAD"]) do
@@ -206,6 +216,68 @@ defmodule CodeMySpec.Provisioning.Repository do
     else
       {:error, reason} -> {:error, reason}
       {output, status} -> {:error, "git exited #{status}: #{String.trim(to_string(output))}"}
+    end
+  end
+
+  # Written before `ensure_commit` so a fresh repository's `git add -A` picks
+  # up the substitution as part of its one initial commit, rather than
+  # producing two. An adopted repository that already pushed the placeholder
+  # gets it written to the working tree here too — `commit_owner_patch/1`,
+  # after `ensure_commit`, is what notices and commits it on that path.
+  #
+  # No-ops without an `:owner` (nothing to substitute) or without the file
+  # (not every project generated one — `DeployArtifacts.ci_workflow/1`
+  # interpolates the owner directly rather than templating a placeholder).
+  defp patch_ci_owner(env, opts) do
+    case Keyword.get(opts, :owner) do
+      owner when is_binary(owner) and owner != "" -> substitute_owner(env, owner)
+      _ -> :ok
+    end
+  end
+
+  defp substitute_owner(env, owner) do
+    case Environments.read_file(env, @ci_workflow_path) do
+      {:ok, content} ->
+        if String.contains?(content, @github_owner_placeholder) do
+          write_owner(env, String.replace(content, @github_owner_placeholder, owner))
+        else
+          :ok
+        end
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  defp write_owner(env, content) do
+    case Environments.write_file(env, @ci_workflow_path, content) do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      other -> {:error, "could not patch #{@ci_workflow_path}: #{inspect(other)}"}
+    end
+  end
+
+  # `ensure_commit/1` only commits when there is no HEAD at all, so a
+  # repository this project already pushed to leaves the substitution above
+  # sitting uncommitted in the working tree. Scoped to the one path rather
+  # than `git add -A`: this step's job is landing the owner fix, not
+  # committing whatever else happens to be dirty.
+  defp commit_owner_patch(run) do
+    case run.(["status", "--porcelain", "--", @ci_workflow_path]) do
+      {"", 0} ->
+        :ok
+
+      {_dirty, 0} ->
+        with {_, 0} <- run.(["add", "--", @ci_workflow_path]),
+             {_, 0} <- run.(["commit", "-m", "Set GHCR image owner in CI workflow"]) do
+          :ok
+        else
+          {output, status} ->
+            {:error, "could not commit the CI workflow owner fix (#{status}): #{String.trim(output)}"}
+        end
+
+      {output, status} ->
+        {:error, "could not check #{@ci_workflow_path} status (#{status}): #{String.trim(output)}"}
     end
   end
 
@@ -364,6 +436,12 @@ defmodule CodeMySpec.Provisioning.Repository do
   end
 
   defp prove(repo, disposition, env, push_fun, now, opts) do
+    # `repo["owner"]["login"]` rather than re-deriving `authenticated_owner/1`:
+    # `ensure/3` creates under `opts[:org]` when given one, and the org — not
+    # the authenticated user — is the real owner of the repository GitHub just
+    # handed back. Re-deriving would substitute the wrong login for that case.
+    opts = Keyword.put(opts, :owner, repo_owner_login(repo))
+
     case push_fun.(env, repo["clone_url"] || repo["ssh_url"], opts) do
       {:ok, commit} ->
         %{
@@ -402,4 +480,10 @@ defmodule CodeMySpec.Provisioning.Repository do
       reason: reason
     }
   end
+
+  defp repo_owner_login(%{"owner" => %{"login" => login}})
+       when is_binary(login) and login != "",
+       do: login
+
+  defp repo_owner_login(_repo), do: nil
 end

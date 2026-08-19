@@ -218,4 +218,93 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
       assert result.pushed_at == nil
     end
   end
+
+  # `cms_new`'s template writes `<GITHUB_OWNER>` next to an EEx tag that does
+  # render, because no repository exists yet at generation time to have an
+  # owner (issue 1152b511). These exercise the real `push/3` (no `push:`
+  # override) so the substitution actually runs; `push_remote: false` keeps
+  # the network `git push` out of the test.
+  describe "run/4 — the CI workflow's owner placeholder" do
+    @repo_with_owner Map.put(@repo, "owner", %{"login" => "sam"})
+
+    @placeholder_workflow """
+    name: Build & Push image
+
+    env:
+      IMAGE: ghcr.io/<GITHUB_OWNER>/devops-drill
+    """
+
+    test "substitutes the real owner before the initial commit, in one commit",
+         %{env: env} = ctx do
+      write_workflow(env, @placeholder_workflow)
+
+      stub_github(fn
+        %{method: "GET"} = conn -> json(conn, 404, %{})
+        %{method: "POST"} = conn -> json(conn, 201, @repo_with_owner)
+      end)
+
+      result = Repository.run(ctx.scope, env, @project, owner: "sam", push_remote: false)
+
+      assert result.state == :pushed
+      content = read_workflow(env)
+      refute content =~ "<GITHUB_OWNER>"
+      assert content =~ "ghcr.io/sam/devops-drill"
+      assert commit_count(env) == 1
+    end
+
+    test "commits the fix on a repository that already pushed the placeholder",
+         %{env: env} = ctx do
+      write_workflow(env, @placeholder_workflow)
+      init_and_commit(env)
+
+      stub_github(fn conn -> json(conn, 200, @repo_with_owner) end)
+
+      result =
+        Repository.run(ctx.scope, env, @project, owner: "sam", adopt: true, push_remote: false)
+
+      assert result.state == :pushed
+      content = read_workflow(env)
+      refute content =~ "<GITHUB_OWNER>"
+      assert content =~ "ghcr.io/sam/devops-drill"
+      assert commit_count(env) == 2
+      assert last_commit_message(env) =~ "GHCR image owner"
+    end
+
+    test "does nothing when there is no placeholder to fix", %{env: env} = ctx do
+      write_workflow(env, "name: build\nenv:\n  IMAGE: ghcr.io/sam/devops-drill\n")
+      init_and_commit(env)
+
+      stub_github(fn conn -> json(conn, 200, @repo_with_owner) end)
+
+      result =
+        Repository.run(ctx.scope, env, @project, owner: "sam", adopt: true, push_remote: false)
+
+      assert result.state == :pushed
+      assert commit_count(env) == 1
+    end
+
+    defp write_workflow(env, content) do
+      path = Path.join(env.cwd, ".github/workflows/build.yml")
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+    end
+
+    defp read_workflow(env), do: File.read!(Path.join(env.cwd, ".github/workflows/build.yml"))
+
+    defp init_and_commit(env) do
+      {_, 0} = System.cmd("git", ["init", "-b", "main"], cd: env.cwd)
+      {_, 0} = System.cmd("git", ["add", "-A"], cd: env.cwd)
+      {_, 0} = System.cmd("git", ["commit", "-m", "Initial commit"], cd: env.cwd)
+    end
+
+    defp commit_count(env) do
+      {log, 0} = System.cmd("git", ["log", "--oneline"], cd: env.cwd)
+      log |> String.split("\n", trim: true) |> length()
+    end
+
+    defp last_commit_message(env) do
+      {message, 0} = System.cmd("git", ["log", "-1", "--format=%s"], cd: env.cwd)
+      String.trim(message)
+    end
+  end
 end
