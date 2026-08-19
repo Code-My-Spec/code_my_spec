@@ -59,6 +59,7 @@ defmodule CodeMySpec.GeneratorsTest do
           "config/deploy.yml",
           "config/deploy.uat.yml",
           ".sops.yaml",
+          "rel/overlays/bin/boot",
           "rel/overlays/bin/migrate",
           "bin/deploy",
           "bin/backup",
@@ -205,8 +206,9 @@ defmodule CodeMySpec.GeneratorsTest do
     test "no generated file carries an unrendered template tag", %{dir: dir} do
       offenders =
         Path.wildcard(Path.join(dir, "**/*"))
-        |> Enum.filter(&File.regular?/1)
-        |> Enum.filter(fn path -> path |> File.read!() |> String.contains?("<%=") end)
+        |> Enum.filter(fn path ->
+          File.regular?(path) and path |> File.read!() |> String.contains?("<%=")
+        end)
         |> Enum.map(&Path.relative_to(&1, dir))
 
       assert offenders == [],
