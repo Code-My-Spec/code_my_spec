@@ -46,6 +46,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # the same stale finding afterwards, because fixing it is a `:test` edit and
   # a `:test` edit does not schedule the suite that would clear it. The only
   # exits were an unrelated `:implementation` edit or R8's stuck escape.
+  @qa_journey_result_path CodeMySpec.Paths.qa_journey_result()
+
   @role_analyzers %{
     implementation: [:credo, :exunit_stale, :spex_stale],
     test: [:credo, :exunit_stale],
@@ -471,7 +473,28 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   defp spec_document_type(_file, content), do: document_type_from_content(content)
 
   defp qa_document_type(%{role: :qa_brief}, _content), do: "qa_story_brief"
-  defp qa_document_type(%{role: :qa_result}, _content), do: "qa_result"
+
+  # Two different documents share the `:qa_result` role — a story's
+  # `result_complete.md` and the cross-story `journey_result.md` — because both
+  # have to satisfy the same role-based requirement gates. Dispatching on role
+  # alone therefore validated the journey result against the story schema and
+  # demanded sections it does not have:
+  #
+  #     Missing required sections: status, scenarios
+  #
+  # which is the failure `Scanner.validate_qa_plan/2` already documents for the
+  # `qa_plan` / `qa_journey_plan` pair one line at a time: "the other schema
+  # marked a perfectly good file invalid, which is worse than not validating it:
+  # an agent is told to fix something that is already right."
+  #
+  # Same pair, same fix — branch on the path, since the path is what actually
+  # distinguishes them.
+  defp qa_document_type(%{role: :qa_result} = file, _content) do
+    case Map.get(file, :path) do
+      path when path == @qa_journey_result_path -> "qa_journey_result"
+      _ -> "qa_result"
+    end
+  end
 
   # Mirrors FileSync.document_type_from_content/1 (kept private there).
   # CRLF → LF first so a Windows-written `## Type\r` still matches; otherwise
