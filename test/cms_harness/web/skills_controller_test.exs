@@ -34,20 +34,42 @@ defmodule CmsHarness.Web.SkillsControllerTest do
   end
 
   describe "with no project to serve" do
-    test "a copy this harness does not serve is refused by id", %{conn: conn} do
-      body = conn |> post_skill_as(Ecto.UUID.generate(), %{"skill" => "qa"}) |> json_response(200)
+    test "a copy this harness does not serve is refused by id, in a sentence", %{conn: conn} do
+      id = Ecto.UUID.generate()
+      body = conn |> post_skill_as(id, %{"skill" => "qa"}) |> json_response(200)
 
-      assert body["error"] in ["unknown_harness", "server_unreachable"]
+      # Was `body["error"] in ["unknown_harness", "server_unreachable"]`. A bare
+      # code is not an answer: a skill.md pipes this straight into the agent's
+      # context, so it is the whole error experience and there is nowhere else
+      # to look. `6c93a317` is a session lost to exactly that.
+      assert body["error"] =~ "could not start this skill"
+
+      assert body["error"] =~ id,
+             "naming the id is what separates 'your config points somewhere wrong' " <>
+               "from 'the server is down', which need opposite responses"
     end
 
-    test "a skill start with no harness id at all is refused, not 404", %{conn: conn} do
+    # Renamed. This posts the literal `unonboarded`, which is not "no harness id
+    # at all" — it is the fallback in `${HID:-unonboarded}` that every skill.md
+    # uses when `.cms_harness.json` is missing or has no `harness_id`. The old
+    # name described a case this request does not make, and the assertion passed
+    # for either.
+    test "a copy that was never onboarded is told to onboard", %{conn: conn} do
       body =
         conn
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post("/api/harnesses/unonboarded/skills/start", %{"skill" => "qa"})
         |> json_response(200)
 
-      assert body["error"]
+      assert body["error"] =~ "has not been onboarded"
+      assert body["error"] =~ "mix cms.harness.onboard"
+
+      refute body["error"] =~ "not serving",
+             "the unknown-harness wording sends the reader to check an id against " <>
+               "the server, and there is no id here — nothing was ever written"
+
+      assert body["error"] =~ "MCP tools",
+             "the workaround several agents found on their own belongs in the message"
     end
   end
 
