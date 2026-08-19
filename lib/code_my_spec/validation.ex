@@ -697,9 +697,25 @@ defmodule CodeMySpec.Validation do
 
     # One pass over the file ledger for every source, rather than one per
     # source. See `Analysis.fresh_sources/2` — the answer is identical.
+    #
+    # Restricted to `Run.sources/0` first. "Stale" means a completed ledger
+    # run whose fingerprint no longer matches the tree — a condition
+    # `ensure_stale_runs/3` can act on by enqueuing a fresh one.
+    # `spec_validation` and `qa_validation` are not in that ledger:
+    # `Run.changeset/2` rejects any source outside `@sources`, so a row for
+    # either can never exist, and `fresh_sources/2`'s lookup always misses.
+    # They are in-process document validators instead
+    # (`StaticAnalysis.Pipeline.run_validator/3`) — synchronous, and re-run
+    # in this same request whenever their governing file is among this
+    # turn's changed files, so their persisted Problems are exactly as
+    # current as that file. Feeding them through the ledger check reported
+    # them "stale" on every stop, forever, with a rerun `ensure_stale_runs/3`
+    # never actually requests for either source (it only ever asks for
+    # `compiler`, `credo`, `exunit`, `spex`) — a wait that could not end.
     sources_with_problems = Map.keys(problems_by_source)
-    fresh = Analysis.fresh_sources(scope, sources_with_problems)
-    stale_sources = Enum.reject(sources_with_problems, &MapSet.member?(fresh, &1))
+    ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
+    fresh = Analysis.fresh_sources(scope, ledger_sources)
+    stale_sources = Enum.reject(ledger_sources, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
     session_paths = session_paths(scope, opts)
