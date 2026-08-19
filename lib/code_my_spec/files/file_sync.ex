@@ -489,39 +489,62 @@ defmodule CodeMySpec.Files.FileSync do
   defp changed_entries(entries, existing_by_path) do
     fields = Files.replaceable_fields()
 
-    Enum.filter(entries, fn entry ->
-      case Map.get(existing_by_path, entry.path) do
-        nil -> true
-        record -> report_differences(entry, record, fields)
-      end
-    end)
+    changed =
+      Enum.filter(entries, fn entry ->
+        case Map.get(existing_by_path, entry.path) do
+          nil -> true
+          record -> Enum.any?(fields, &differs?(entry, record, &1))
+        end
+      end)
+
+    explain_changes(changed, existing_by_path, fields)
+    changed
   end
 
-  # Which field made this row count as changed.
+  # Below this many, say which files changed and on which field. Above it, the
+  # count is the story and per-file lines would be thousands of them.
+  @explain_changes_below 10
+
+  # Why these rows are being written.
   #
-  # At :debug, so it costs nothing in normal operation — but a row that reports
-  # itself changed on every scan while the file on disk never moves is a false
-  # positive that quietly disables the projection skip, and without this the
-  # only way to find the field is to guess. Two files did exactly that on the
-  # first day this shipped, matching on every column an inspection could see.
-  defp report_differences(entry, record, fields) do
-    case Enum.filter(fields, &differs?(entry, record, &1)) do
-      [] ->
-        false
+  # A row that reports itself changed on every scan while the file never moves
+  # is a false positive, and it is invisible by construction: the write happens,
+  # the answer stays correct, and the only symptom is work that did not need
+  # doing plus a component projection that never gets to skip. Two files did
+  # exactly that on the day the diff shipped, matching on every column an
+  # inspection could see — and finding the field by guessing failed twice.
+  #
+  # At :info rather than :debug because the `web.log` handler is pinned at
+  # :info, so a debug line here reaches nobody. The threshold is what makes that
+  # affordable: a steady state changes a handful of files, and a bulk sync says
+  # nothing per-file at all.
+  defp explain_changes([], _existing_by_path, _fields), do: :ok
 
-      differing ->
-        Logger.debug(fn ->
-          detail =
-            Enum.map_join(differing, ", ", fn field ->
-              "#{field}: #{inspect(Map.get(entry, field), limit: 3)} != " <>
-                "#{inspect(Map.get(record, field), limit: 3)}"
-            end)
+  defp explain_changes(changed, _existing_by_path, _fields)
+       when length(changed) >= @explain_changes_below,
+       do: :ok
 
-          "[FileSync] #{entry.path} differs on #{detail}"
-        end)
+  defp explain_changes(changed, existing_by_path, fields) do
+    detail =
+      Enum.map_join(changed, "; ", fn entry ->
+        case Map.get(existing_by_path, entry.path) do
+          nil ->
+            "#{entry.path}: new"
 
-        true
-    end
+          record ->
+            reasons =
+              fields
+              |> Enum.filter(&differs?(entry, record, &1))
+              |> Enum.map_join(", ", fn field ->
+                "#{field} #{inspect(Map.get(entry, field), limit: 2)} != " <>
+                  "#{inspect(Map.get(record, field), limit: 2)}"
+              end)
+
+            "#{entry.path}: #{reasons}"
+        end
+      end)
+
+    Logger.info("[FileSync] writing #{length(changed)} row(s) — #{detail}")
   end
 
   defp differs?(entry, record, field) do
