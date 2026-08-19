@@ -3,7 +3,11 @@
 # Creates the minimum fixture needed to QA the hosted endpoint (`:4000`):
 # user + personal account + membership + project linked via local_path.
 #
-# Usage: mix run priv/repo/qa_seeds.exs
+# Usage: mix cms.seed priv/repo/qa_seeds.exs
+#
+# Not `mix run`: that boots the endpoint and dies `:eaddrinuse` whenever the dev
+# server already holds :4000 — which is whenever you would want to seed it. The
+# task starts the database and nothing else.
 #
 # Idempotent — safe to re-run. Prints credentials at the end so the QA agent
 # can reuse them without spelunking the source.

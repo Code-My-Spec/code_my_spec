@@ -23,22 +23,14 @@
 # Idempotent: `Harnesses.issue/3` touches an existing row rather than minting a
 # second, and files upsert on [project_id, harness_id, path].
 #
-# Run with `--no-start`, and start the Repo by hand below. Plain `mix run` boots
-# the whole endpoint, which collides with the dev server already on :4000 and
-# dies `:eaddrinuse` — a failure that says nothing about seeds.
+# Run through `mix cms.seed`, which starts the database and nothing else. Plain
+# `mix run` boots the endpoint and dies `:eaddrinuse` against the dev server on
+# :4000 — a failure that mentions neither seeds nor ports.
 #
-#   mix run priv/repo/qa_seeds.exs                    # user, account, project
-#   mix run --no-start priv/repo/qa_739_seed.exs      # this
-#
-# `qa_seeds.exs` boots normally today, so run it while :4000 is down or accept
-# that it has the same problem.
+#   mix cms.seed priv/repo/qa_seeds.exs        # user, account, project
+#   mix cms.seed priv/repo/qa_739_seed.exs     # this
 
 import Ecto.Query
-
-{:ok, _} = Application.ensure_all_started(:ecto_sql)
-{:ok, _} = Application.ensure_all_started(:postgrex)
-{:ok, _} = CodeMySpec.Vault.start_link([])
-{:ok, _} = CodeMySpec.Repo.start_link(pool_size: 2, log: false)
 
 alias CodeMySpec.Files
 alias CodeMySpec.Harnesses
@@ -54,7 +46,7 @@ if is_nil(project) do
   raise """
   QA Fixture Project #{project_id} does not exist.
 
-  Run `mix run priv/repo/qa_seeds.exs` first — it creates the user, the account
+  Run `mix cms.seed priv/repo/qa_seeds.exs` first — it creates the user, the account
   membership and the project this seed hangs harnesses off.
   """
 end
