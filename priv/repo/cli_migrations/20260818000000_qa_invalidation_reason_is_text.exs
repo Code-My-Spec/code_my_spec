@@ -23,22 +23,21 @@ defmodule CodeMySpec.Repo.Migrations.QaInvalidationReasonIsText do
   happens again.
 
   Nothing to backfill. Existing rows are valid text.
+
+  ## Why this is a no-op here and not in the Postgres migration it mirrors
+
+  `varchar(255)` is the thing being widened, and SQLite has no such limit to
+  widen: every `TEXT`-affinity column already stores a string of any length
+  regardless of the type name in its `CREATE TABLE`, and `null: false` was
+  already set when this column was created (`20260517152000`). `modify/3`
+  changing a column's type is also not something `ecto_sqlite3` can do at
+  all — it raises `ArgumentError, "ALTER COLUMN not supported by SQLite3"`,
+  which crashed every CLI migration behind it. The Postgres fix is real; on
+  SQLite there was nothing to fix.
   """
   use Ecto.Migration
 
-  def up do
-    alter table(:qa_invalidations) do
-      modify :reason, :text, null: false
-    end
-  end
+  def up, do: :ok
 
-  def down do
-    # Truncating on the way back rather than failing: a reason that no longer
-    # fits is still better recorded short than blocking a rollback.
-    execute("UPDATE qa_invalidations SET reason = left(reason, 255)")
-
-    alter table(:qa_invalidations) do
-      modify :reason, :string, null: false
-    end
-  end
+  def down, do: :ok
 end

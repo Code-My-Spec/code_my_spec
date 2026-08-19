@@ -205,9 +205,24 @@ defmodule CodeMySpecLocalWeb.Application do
          {:ok, project} <- CodeMySpec.Projects.resolve_local_project(working_dir),
          {:ok, scope} <- Scope.for_local_project(project, working_dir) do
       IO.puts("Migrating #{project.name} to cloud project #{cloud_project_id}…")
-      Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
+
+      Migration.Client.migrate(
+        scope,
+        Keyword.reject([cloud_project_id: cloud_project_id, token: token_override()], fn
+          {:token, nil} -> true
+          _ -> false
+        end)
+      )
     end
   end
+
+  # `CMS_TOKEN`, the same override `CmsHarness.Config.user_token/0` already
+  # answers to. Without it, `Migration.Client.migrate/2` falls back to
+  # `OAuthClient.get_token()` — the token stored locally from whichever
+  # server this CLI last logged into, which does not validate against a
+  # *different* server (a dev instance has its own signing key and user
+  # table; a token minted by one is simply not a token the other issued).
+  defp token_override, do: System.get_env("CMS_TOKEN")
 
   # `--project <id>` names the cloud project to fill. It is deliberately not
   # inferred: the local project's id means nothing on the server, and guessing

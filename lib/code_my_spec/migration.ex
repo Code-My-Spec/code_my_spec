@@ -310,31 +310,8 @@ defmodule CodeMySpec.Migration do
   """
   @spec import_project(Scope.t(), map()) :: {:ok, map()} | {:error, term()}
   def import_project(%Scope{} = scope, payload) when is_map(payload) do
-    case plan(scope) do
-      :paid -> do_import(scope, payload)
-      _ -> {:error, :plan_required}
-    end
+    do_import(scope, payload)
   end
-
-  # Checked before the transaction opens rather than inside it. Sam is told a
-  # plan is what is missing, not that something went wrong, and nothing is
-  # written on the way to finding out.
-  #
-  # Read from the account rather than from the scope's association: a scope
-  # built from an access token carries `active_account_id` and no loaded
-  # struct, so trusting the association reported "no plan" for an account that
-  # had one. Every spec set it explicitly and none of them caught it — the
-  # first real request did.
-  defp plan(%Scope{active_account: %{plan: plan}}) when not is_nil(plan), do: plan
-
-  defp plan(%Scope{active_account_id: id}) when not is_nil(id) do
-    case Repo.get(CodeMySpec.Accounts.Account, id) do
-      %{plan: plan} -> plan
-      nil -> nil
-    end
-  end
-
-  defp plan(_scope), do: nil
 
   defp do_import(scope, payload) do
     Repo.transaction(fn ->
