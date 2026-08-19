@@ -133,10 +133,37 @@ defmodule CmsHarness.ManifestReplyShapesTest do
 
   describe "a reply that does not claim success" do
     test "is still reported as a refusal, loudly" do
-      log = reply_with({:error, %{"reason" => "unmatched topic"}})
+      log = reply_with({:error, %{"reason" => "project not served here"}})
 
       assert log =~ "REJECTED the manifest"
       assert log =~ "out of step with the disk"
+    end
+
+    # This used to be the example above, and it was the wrong one to pick.
+    #
+    # `unmatched topic` is what a push gets when the channel has already left
+    # its topic, which is ordinary shutdown: `stop`, `just refresh` and
+    # `refresh-harness` all leave a scan in flight whose manifest lands after
+    # the leave. It fires on every restart, on the *outgoing* instance, seconds
+    # before anything else has tried to join.
+    #
+    # Reported as a loud refusal carrying "usually version skew", it cost a QA
+    # agent a session: it compared shas across two checkouts, checked whether a
+    # bare restart cleared the symptom, and concluded "genuine code drift" —
+    # careful reasoning from a premise the log asserted and did not hold
+    # (`2d26df7c`).
+    #
+    # Quiet is honest here because nothing is lost. A rejoin re-scans and
+    # re-sends the whole manifest — `holding` is followed by `scanned N files`
+    # and `sent N observations` on every join, verified in harness.log — so the
+    # dropped push is replaced rather than missed.
+    test "a push that lands after the channel left its topic is not a refusal" do
+      log = reply_with({:error, %{"reason" => "unmatched topic"}})
+
+      refute log =~ "REJECTED the manifest",
+             "restart noise reported as a refusal sends people hunting version skew"
+
+      assert log =~ "shutting down or reconnecting"
     end
 
     test "an unrecognised reply with no success claim is a refusal" do

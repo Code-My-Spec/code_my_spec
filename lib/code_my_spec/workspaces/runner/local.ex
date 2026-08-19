@@ -167,11 +167,29 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   end
 
   defp get(port) do
-    Req.get("http://127.0.0.1:#{port}/",
-      retry: false,
-      receive_timeout: 2_000,
-      connect_options: [timeout: 1_000]
+    Req.get(
+      "http://127.0.0.1:#{port}/",
+      [
+        retry: false,
+        receive_timeout: 2_000,
+        connect_options: [timeout: 1_000]
+      ] ++ req_plug()
     )
+  end
+
+  # Pinnable under test, like every other Req caller here.
+  #
+  # The usual argument for pinning is a credential leaking into a real request.
+  # This one carries none — it is a loopback probe — and the risk is the other
+  # way round: the port is an argument, so a test that passes 4000 probes the
+  # developer's own dev server and reads whatever it says as this workspace's
+  # health. `HttpClientsAreStubbableTest` is right to demand it even though the
+  # usual reason does not apply.
+  defp req_plug do
+    case Application.get_env(:code_my_spec, __MODULE__, []) |> Keyword.get(:plug) do
+      nil -> []
+      plug -> [plug: plug]
+    end
   end
 
   @impl true

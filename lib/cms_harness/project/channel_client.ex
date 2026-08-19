@@ -694,6 +694,26 @@ defmodule CmsHarness.Project.ChannelClient do
 
         {:ok, socket}
 
+      # A push that lands after the channel has left its topic. Ordinary
+      # shutdown, not a refusal: `stop`, `just refresh` and `refresh-harness`
+      # all leave a scan in flight, and its manifest arrives at a topic the
+      # process is no longer joined to.
+      #
+      # Given its own clause because the catch-all's diagnosis is actively
+      # wrong here, and expensively so. A QA agent spent a session on it: the
+      # "usually version skew" line sent it comparing shas across two
+      # checkouts, it checked whether a bare restart cleared the symptom, and
+      # reasoned its way to "genuine code drift" — careful work from a false
+      # premise the log handed it. See `2d26df7c`.
+      {:error, %{"reason" => "unmatched topic"}} ->
+        Logger.info(
+          "[CmsHarness] manifest for #{socket.assigns.project.root} arrived after the " <>
+            "channel left its topic — the harness is shutting down or reconnecting. " <>
+            "Nothing is wrong and nothing was lost; the next join re-syncs."
+        )
+
+        {:ok, socket}
+
       other ->
         # Loud, and says what it means: the working copy and the server's
         # picture of it are now different, and nothing downstream can tell.
@@ -701,13 +721,19 @@ defmodule CmsHarness.Project.ChannelClient do
         # "Could not read the reply" now has its own clause above, so this is
         # reserved for a reply that does not claim success — which is the only
         # kind that deserves the word REJECTED.
+        #
+        # It no longer guesses at *why*. The server supplies a reason and the
+        # old text overwrote it with "usually version skew" on every rejection
+        # — a deploy-shaped diagnosis, asserted unconditionally, and false in
+        # the one case that actually occurs regularly. Naming the reply and
+        # leaving the cause unstated is worth more than a confident wrong
+        # answer.
         Logger.error("""
         [CmsHarness] the server REJECTED the manifest for #{socket.assigns.project.root}: #{inspect(other)}
 
         The server's picture of this project is now out of step with the disk,
         and the requirement graph is computed from the server's picture. This is
-        not "nothing changed" — the sync was refused. Usually version skew
-        between this harness and the server.
+        not "nothing changed" — the sync was refused, for the reason above.
         """)
 
         {:ok, socket}

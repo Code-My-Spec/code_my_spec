@@ -264,6 +264,12 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 
+# Loopback health probe. Unpinned, a test that passes a real port — 4000 is
+# the obvious one — probes the running dev server and reads its answer as a
+# workspace's health.
+config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
+  plug: {Req.Test, CodeMySpec.Workspaces.Runner.Local}
+
 
 # The platform deploy key, set once so tests that need one present do not have
 # to write it into application env themselves. `app_credential_test` and
