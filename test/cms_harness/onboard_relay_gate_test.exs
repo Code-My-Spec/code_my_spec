@@ -1,14 +1,16 @@
 defmodule CmsHarness.OnboardRelayGateTest do
   @moduledoc """
-  Onboarding installs hooks that are run by `cms-mcp-relay hook …`, so it
-  refuses to install them against a relay that has no `hook` subcommand.
+  Every hook Claude Code fires shells out to `cms-mcp-relay hook …` — the
+  ordinary installed plugin, not anything onboarding writes. This checks
+  whether that binary is capable, so a stale one is named in the report
+  instead of discovered as eight silently dead hooks.
 
-  The failure it prevents is the quiet kind. An old relay does not reject the
-  argument — `hook` is not a flag it knows, so it falls through to the MCP
-  path, posts the hook payload to /mcp?dir=, takes the JSON-RPC parse error it
-  gets back, and exits 0. Claude Code reads 0 as a hook that ran. Eight hooks
-  go dead with no error on either side, and the only symptom is that everything
-  the harness was supposed to decide stops happening.
+  The failure it catches is the quiet kind. An old relay does not reject the
+  `hook` argument — it is not a flag that binary knows, so it falls through to
+  the MCP path, posts the hook payload to /mcp?dir=, takes the JSON-RPC parse
+  error it gets back, and exits 0. Claude Code reads 0 as a hook that ran.
+  Eight hooks go dead with no error on either side, and the only symptom is
+  that everything the harness was supposed to decide stops happening.
 
   Both binaries exit 0, so the exit status cannot be the signal. The marker on
   stdout is, and an old binary cannot print it: it has no `capabilities` branch
@@ -65,41 +67,5 @@ defmodule CmsHarness.OnboardRelayGateTest do
 
     assert us < 30_000_000,
            "the probe has to give up — a check that hangs becomes an onboarding that hangs"
-  end
-
-  describe "the pinned relay path" do
-    setup %{dir: dir} do
-      # The real shipped hooks, so this breaks if the plugin stops naming the
-      # relay the way the gate assumes.
-      src = Path.join([File.cwd!(), "plugins", "claude", "hooks", "hooks.json"])
-      dest = Path.join(dir, "plugin")
-      File.mkdir_p!(Path.join(dest, "hooks"))
-      File.cp!(src, Path.join([dest, "hooks", "hooks.json"]))
-      {:ok, dest: dest}
-    end
-
-    test "writes the verified binary's absolute path, not a bare command", %{dest: dest} do
-      relay = "/opt/somewhere/cms-mcp-relay"
-
-      assert {:ok, count} = Onboard.address_hooks(dest, "harness-1", relay)
-      assert count > 0, "the fixture should contain hook endpoints to address"
-
-      hooks = File.read!(Path.join([dest, "hooks", "hooks.json"]))
-
-      assert hooks =~ ~s|"command": "#{relay}"|,
-             "run time resolves this command on Claude Code's PATH, not ours"
-
-      refute hooks =~ ~s|"command": "cms-mcp-relay"|,
-             "a bare command can resolve to a different binary than the one checked"
-    end
-
-    test "still addresses the hook endpoints to the harness", %{dest: dest} do
-      assert {:ok, _} = Onboard.address_hooks(dest, "harness-1", "/bin/relay")
-
-      hooks = File.read!(Path.join([dest, "hooks", "hooks.json"]))
-
-      assert hooks =~ "/api/harnesses/harness-1/hooks/"
-      refute hooks =~ ~s|"/api/hooks/|
-    end
   end
 end

@@ -6,22 +6,34 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
       mix cms.harness.onboard
 
-  Reads the id the server issued this working copy and writes a plugin
-  directory whose hooks post to `/api/harnesses/<id>/hooks/*` instead of the
-  shared `/api/hooks/*`. Start the agent against that directory and every hook
-  it fires says which checkout it came from.
+  Reads the id the server issued this working copy and writes it to
+  `.cms_harness.json` and `.claude/settings.local.json`. **Neither `--plugin-dir`
+  nor the generated `.claude/plugin-dev` copy is required for this to work.**
+  The tracked, installed plugin (`codemyspec@codemyspec`, already enabled by
+  default) resolves the working copy on its own:
 
-  ## Why a generated directory
+    * Hooks call the *generic* `cms-mcp-relay hook /api/hooks/<name>` — no id in
+      the command. The relay reads the hook payload's own `cwd`, walks up
+      looking for `.cms_harness.json`, and attaches `X-Harness-Id` itself
+      (`relay/hook.go`, `harnessID/1`).
+    * MCP is declared as `{"type": "http", "url": "http://localhost:4004/mcp",
+      "headers": {"X-Harness-Id": "${CMS_HARNESS_ID}"}}` in the tracked
+      `plugin.json` — Claude Code interpolates `${CMS_HARNESS_ID}` straight out
+      of `.claude/settings.local.json`'s `env` block, which this task already
+      writes regardless of what else it does.
 
-  The tracked plugin under `plugins/claude` has to stay generic: it is what the
-  release packager ships, and a harness id baked into a published plugin would
-  be one machine's identity handed to everyone who installs it. The tracked
-  copy also cannot simply be edited in place — it is tracked, so an id written
-  into it is an id committed, and a committed id is cloned into every checkout.
-  That is the corruption the id exists to prevent.
+  Verified live on 2026-08-19: a hand-built hook payload posted to the generic
+  path, and a raw MCP `initialize` posted with only `X-Harness-Id` set, both
+  resolved this working copy correctly — no path-embedded id, no
+  `--plugin-dir`, nothing installed beyond the ordinary marketplace plugin.
 
-  So this writes somewhere gitignored, per working copy, and leaves the shipped
-  plugin alone.
+  This task writes no plugin directory at all — there is nothing left for it to
+  address that the installed plugin does not already resolve on its own. The
+  one exception, and the reason `plugins/claude` still exists as source in this
+  repo, is developing the plugin itself: editing `plugins/claude/agents`,
+  `skills`, or `hooks.json` and needing an agent to run *this checkout's* copy
+  before it ships. That is a manual `--plugin-dir` pointed at `plugins/claude`
+  directly — this task has no part in it, because it is not about addressing.
 
   ## What gets minted
 
@@ -59,8 +71,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   @settings_file ".claude/settings.local.json"
   @harness_config_file ".cms_harness.json"
-  @plugin_source "plugins/claude"
-  @plugin_dest ".claude/plugin-dev"
 
   @impl Mix.Task
   def run(args) do
@@ -73,12 +83,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     {:ok, _} = Application.ensure_all_started(:req)
 
     root = target_root(args)
-    dest = Path.join(root, @plugin_dest)
     env = environment(root, args)
 
     case Enum.member?(args, "--check") do
       true -> check(env, root)
-      false -> onboard(env, root, dest, args)
+      false -> onboard(env, root)
     end
   end
 
@@ -204,14 +213,13 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
   end
 
-  defp onboard(env, root, dest, args) do
+  defp onboard(env, root) do
     bootstrap_local_dev_env(root)
 
     with {:ok, id} <- identity(env, root),
-         :ok <- address_model_turns(env, root, id, hook_base_url(dest)) do
+         :ok <- address_model_turns(env, root, id) do
       git = configure_git(env)
-      hooks = install_hooks(env, root, dest, id, args)
-      outstanding(env, root, id, git, hooks)
+      outstanding(root, id, git, check_relay())
     else
       {:error, message} -> Mix.raise(message)
     end
@@ -232,8 +240,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `nil` or `root` itself and everything below no-ops.
   defp bootstrap_local_dev_env(root) do
     case main_checkout_root(root) do
-      nil -> :ok
-      ^root -> :ok
+      nil ->
+        :ok
+
+      ^root ->
+        :ok
+
       main_root ->
         link_if_missing(root, main_root, "envs")
         link_if_missing(root, Path.dirname(main_root), "code_my_spec_test_repos")
@@ -337,36 +349,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end)
   end
 
-  # The relay gates the hooks, not the command.
-  #
-  # It used to gate everything: no usable relay and nothing was written at all.
-  # The reasoning was sound for what it guarded — the hooks it installs are run
-  # by that binary, and installing hooks that cannot run is worse than installing
-  # none. It does not extend to the rest. A working copy's identity, its
-  # partition, its git config and its Anthropic address have nothing to do with
-  # the relay, and refusing them because one of six steps is unavailable leaves
-  # the copy unonboarded for a reason that explains none of its symptoms.
-  #
-  # That is this story's own anti-pattern arriving from inside: a missing thing
-  # reported as something else. Now the copy is onboarded, the hooks are reported
-  # as skipped, and the reason is on screen.
-  defp install_hooks(%{type: :memory}, _root, _dest, _id, _args),
-    do: {:skipped, "no directory to install into"}
-
-  defp install_hooks(_env, root, dest, id, args) do
-    with {:ok, relay} <- check_relay(),
-         :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id, relay),
-         :ok <- address_mcp(dest, id) do
-      report(id, dest, count, args)
-      {:ok, count}
-    else
-      {:error, message} ->
-        Mix.shell().info("\nHooks not addressed:\n#{message}")
-        {:skipped, message}
-    end
-  end
-
   # Named, never run. Onboarding does not create, migrate or drop a database, and
   # the rule is not stylistic: the version of this that did shelled out to `mix`
   # with an environment that had `MIX_ENV` scrubbed out of it, so it resolved to
@@ -378,7 +360,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # which database it acts on is the defect this replaces: the migration guard
   # printed `MIX_ENV=test mix ecto.migrate` while checking a partition that
   # command never touches.
-  defp outstanding(_env, root, id, git, hooks) do
+  defp outstanding(root, id, git, relay) do
     partition = Onboarding.partition_name(root)
     databases = Onboarding.databases(partition, Mix.Project.config()[:app])
 
@@ -392,7 +374,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       harness id: #{id}
       partition:  #{partition}
       submodules: #{if git, do: "recursing", else: "not configured"}
-      hooks:      #{describe_hooks(hooks)}
+      relay:      #{describe_relay(relay)}
     """)
 
     Mix.shell().info("Databases this working copy needs (create and migrate them yourself):")
@@ -401,18 +383,30 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
     end)
 
+    if match?({:error, _}, relay) do
+      {:error, message} = relay
+      Mix.shell().info("\n#{message}")
+    end
+
     %{
       harness_id: id,
       partition: partition,
       databases: databases,
       git: %{submodule_recurse: git},
-      hooks: hooks,
+      relay: relay,
       issued_ddl: false
     }
   end
 
-  defp describe_hooks({:ok, count}), do: "addressed (#{count})"
-  defp describe_hooks({:skipped, reason}), do: "skipped — #{first_line(reason)}"
+  # Informational only — the installed marketplace plugin already calls
+  # `cms-mcp-relay hook /api/hooks/<name>` with no id in the command, and the
+  # relay itself resolves this working copy by walking up from the hook
+  # payload's `cwd` to `.cms_harness.json` (`relay/hook.go`, `harnessID/1`).
+  # Nothing here writes to, or depends on, that binary — onboarding has no
+  # plugin config left to gate. This only exists so a stale relay is named
+  # instead of discovered as eight silently dead hooks.
+  defp describe_relay({:ok, _path}), do: "current"
+  defp describe_relay({:error, reason}), do: "stale — #{first_line(reason)}"
 
   defp first_line(text) do
     text |> String.split("\n", parts: 2) |> hd() |> String.trim()
@@ -427,20 +421,21 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # release number at all, and pinning a number would reject it.
   @min_release "codemyspec 2.0"
 
-  # Refuse before writing anything, because the thing being written depends on
-  # a binary this does not ship.
+  # Reported, never a gate. Every hook Claude Code fires — from the ordinary
+  # installed plugin, not anything this task writes — shells out to
+  # `cms-mcp-relay hook /api/hooks/<name>`. A relay from before that subcommand
+  # existed does not reject the argument: `hook` is not a flag it knows, so it
+  # falls through to the MCP path, posts the hook payload to /mcp?dir=, takes
+  # the JSON-RPC parse error it gets back, and exits 0. Claude Code reads 0 as
+  # a hook that ran. All eight go silently dead, and the only symptom is that
+  # everything the harness was supposed to decide quietly stops happening — no
+  # error anywhere, on either side, and nothing about the working copy's own
+  # identity or address would have caught it.
   #
-  # The hooks it installs are `cms-mcp-relay hook --port … /api/hooks/<name>`.
-  # A relay from before that subcommand existed does not reject the argument —
-  # `hook` is not a flag it knows, so it falls through to the MCP path, posts
-  # the hook payload to /mcp?dir=, takes the JSON-RPC parse error it gets back
-  # and exits 0. Claude Code reads 0 as a hook that ran. All eight go silently
-  # dead, and the only symptom is that everything the harness was supposed to
-  # decide quietly stops happening — no error anywhere, on either side.
-  #
-  # So the marker is the gate. An old binary cannot print it: it has no
-  # `capabilities` branch either and relays stdin instead, which with stdin
-  # closed is an immediate EOF and an empty stdout. Absence is the answer.
+  # So the marker is checked and named, not gated on. An old binary cannot
+  # print it: it has no `capabilities` branch either and relays stdin instead,
+  # which with stdin closed is an immediate EOF and an empty stdout. Absence is
+  # the answer.
   defp check_relay do
     case System.find_executable(@relay) do
       nil ->
@@ -448,8 +443,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          """
          No #{@relay} on PATH.
 
-         The hooks this installs are run by it. Without it every hook is a
-         command that does not exist, which Claude Code reports per turn.
+         Every hook Claude Code fires is a command that does not exist until
+         this is installed — brew installs it as part of codemyspec, or build
+         it from `relay/` in a checkout.
          """}
 
       path ->
@@ -458,15 +454,15 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         else
           {:error,
            """
-           #{path} is too old for the hooks this would install.
+           #{path} is too old to run hooks.
 
            It has no `hook` subcommand, and it does not fail when given one:
            it treats the payload as MCP traffic, and exits 0. Claude Code
-           reads that as a hook that ran, so onboarding this working copy
-           would leave every hook silently dead rather than visibly broken.
+           reads that as a hook that ran, so every hook this working copy
+           fires is silently dead rather than visibly broken.
 
            The hook subcommand ships in #{@min_release}. Upgrade, then run
-           this again:
+           this again to confirm:
 
                brew upgrade codemyspec
 
@@ -477,9 +473,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
                mkdir -p ~/.codemyspec/bin
                cp relay/cms-mcp-relay ~/.codemyspec/bin/
                export PATH="$HOME/.codemyspec/bin:$PATH"
-
-           Nothing has been written — this refused before touching the plugin
-           config or .claude/settings.local.json.
            """}
         end
     end
@@ -601,69 +594,21 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     )
   end
 
-  defp copy_plugin(root, dest) do
-    source = Path.join(root, @plugin_source)
-
-    if File.dir?(source) do
-      File.rm_rf!(dest)
-      File.mkdir_p!(Path.dirname(dest))
-      File.cp_r!(source, dest)
-      :ok
-    else
-      {:error, "No #{@plugin_source} at #{source} — run this from a checkout root."}
-    end
-  end
-
-  # Only the hook paths move. The port, the headers and the payload are the
-  # shipped plugin's and stay as they are, so the generated copy differs from
-  # what users run in exactly one respect.
-  # The relay is pinned by absolute path, not left as a bare command.
-  #
-  # `check_relay/0` resolves it on *this* PATH; Claude Code resolves the hook
-  # command on *its* PATH, minutes or days later, from a login shell this never
-  # saw. Those are only the same binary by luck, and the way to have the hook
-  # subcommand before 2.0 ships is a checkout build on a prepended PATH — which
-  # is precisely the case where they differ. Onboarding would then verify a
-  # capable relay, write a bare command, and every session would run the old
-  # one: hooks silently dead, with the check having passed.
-  #
-  # Writing the path the check actually verified makes run time and check time
-  # the same binary by construction. Safe here for the same reason the harness
-  # id is: this directory is generated per working copy and gitignored, so a
-  # machine-specific path in it is never shared and never committed.
-  @doc false
-  def address_hooks(dest, id, relay) do
-    file = Path.join([dest, "hooks", "hooks.json"])
-
-    case File.read(file) do
-      {:ok, contents} ->
-        addressed =
-          contents
-          |> String.replace("/api/hooks/", "/api/harnesses/#{id}/hooks/")
-          |> String.replace(~s|"command": "#{@relay}"|, ~s|"command": #{Jason.encode!(relay)}|)
-
-        File.write!(file, addressed)
-
-        {:ok, contents |> String.split("/api/hooks/") |> length() |> Kernel.-(1)}
-
-      {:error, reason} ->
-        {:error, "Could not read #{file}: #{inspect(reason)}"}
-    end
-  end
-
   # The model turns, same question again.
   #
-  # This one cannot be addressed in the plugin: a Claude Code plugin has no way
+  # This one cannot be addressed by the plugin: a Claude Code plugin has no way
   # to set an environment variable for the session, and `ANTHROPIC_BASE_URL` is
-  # read by the agent process itself. Claude Code's settings are where a
-  # checkout says what its sessions run with, so that is where the address goes.
+  # read by the agent process itself, posted to directly, never through the
+  # relay. Claude Code's settings are where a checkout says what its sessions
+  # run with, so that is where the address goes — the one thing left that
+  # genuinely has to carry this working copy's id, because nothing reads it
+  # back off a file or a header the way hooks and MCP do.
   #
   # `settings.local.json`, not `settings.json`. The URL carries this working
   # copy's harness id, and `settings.json` is tracked — writing it there would
-  # commit one machine's identity into every checkout that clones the repo,
-  # which is the corruption the id exists to prevent and the same reason the
-  # plugin is generated rather than edited in place. The `.local` file is
-  # gitignored by convention and Claude Code merges it over the tracked one.
+  # commit one machine's identity into every checkout that clones the repo. The
+  # `.local` file is gitignored by convention and Claude Code merges it over
+  # the tracked one.
   #
   # Merged, never replaced, because it is still a file the operator may have
   # written in: it keeps every key already there and rewrites exactly one.
@@ -700,8 +645,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     # two disagreed — `/api/harnesses/<id>` against `/harnesses/<id>/anthropic`,
     # only one of which is a real route (3498d841). Two derivations of one value is
     # the defect this story removes, and the refactor meant to fix it reintroduced
-    # it in the split. CodeMySpec still decides the *base*, because only it knows
-    # the port the generated plugin was addressed to.
+    # it in the split.
     url = Onboarding.anthropic_url(base_url || default_hook_base_url(), id)
 
     with {:ok, settings} <- read_settings(env) do
@@ -771,8 +715,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # superproject's dirty-pointer line is suppressed project-wide, for unrelated
   # and well-reasoned purposes.
 
-  # The harness the hooks were just addressed to, so a model turn goes to the
-  # same place they do.
+  # The harness a model turn is posted to. Hooks and MCP resolve this working
+  # copy on their own now (`.cms_harness.json`, `${CMS_HARNESS_ID}`); this is
+  # the one address that still has to be told, because Claude Code's own
+  # Anthropic client posts here directly and reads nothing back off a file.
   #
   # This used to default to `Config.server_url()` — the CodeMySpec server. That
   # is the wrong host entirely: `/api/harnesses/:harness_id/v1/messages` exists
@@ -785,98 +731,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # be tested directly" is exactly what kept the default off the tested path —
   # so the default now has a test of its own below.
   #
-  # Read out of the generated `hooks.json` rather than from config: that file is
-  # what the hooks will actually post to, and deriving both from one source is
-  # what stops them addressing different harnesses. Config would be a second
-  # opinion that can disagree — `config.exs` says 4005 and the shipped plugin
-  # says 4004, and they are both right about different deployments.
-  defp hook_base_url(dest) do
-    dest
-    |> Path.join("hooks/hooks.json")
-    |> File.read()
-    |> case do
-      {:ok, contents} -> contents |> hook_port() |> local_url()
-      {:error, _reason} -> default_hook_base_url()
-    end
-  end
-
-  # The value after `--port` in the first hook that names one. Deliberately not
-  # a JSON walk: the shape is an array of args and the position of the flag is
-  # the contract, so matching on the flag is both simpler and harder to break.
-  defp hook_port(contents) do
-    case Regex.run(~r/"--port"\s*,\s*"(\d+)"/, contents) do
-      [_match, port] -> port
-      nil -> nil
-    end
-  end
-
-  defp local_url(nil), do: default_hook_base_url()
-  defp local_url(port), do: "http://localhost:#{port}"
-
-  # Matches the shipped plugin's hooks. `CMS_HARNESS_PORT` wins, because a
-  # sprite sets it and its harness is the thing serving hooks.
+  # Matches the shipped plugin's hooks, which is `--port 4004` unconditionally
+  # — there is no generated file left to read a port out of. `CMS_HARNESS_PORT`
+  # wins, because a sprite sets it and its harness is the thing serving hooks.
   defp default_hook_base_url do
-    local_url(System.get_env("CMS_HARNESS_PORT") || "4004")
-  end
-
-  # A missing file is an empty one. A malformed file is not — overwriting it
-  # would throw away settings the operator wrote, so it stops and says so.
-
-  # The MCP surface has the same question to answer as the hooks — which
-  # working copy is this? — so it gets the same answer, written into the url
-  # because this copy has the id in hand and nothing needs to be set for a url
-  # to survive.
-  #
-  # The published plugin cannot do that: it is installed once and serves every
-  # checkout, so it has no id at build time and interpolates
-  # `${CMS_HARNESS_ID}` into a header instead. `HarnessScope` reads both — it
-  # did not, which is why this rewrite spent its life producing a parameter the
-  # server ignored.
-  #
-  # Matched on the header rather than the old `?dir=${CLAUDE_PROJECT_DIR}`,
-  # which is gone from the source plugin. A `String.replace` against a string
-  # that is no longer there does not fail; it writes the file back unchanged and
-  # reports `:ok`.
-  defp address_mcp(dest, id) do
-    file = Path.join([dest, ".claude-plugin", "plugin.json"])
-
-    with {:ok, contents} <- File.read(file),
-         {:ok, addressed} <- swap_mcp_address(contents, id) do
-      File.write!(file, addressed)
-      :ok
-    else
-      {:error, :no_mcp_address} ->
-        {:error,
-         "#{file} has no local MCP mount to address. The source plugin's " <>
-           "`mcpServers.local` entry is what this rewrites; if it moved, this moved too."}
-
-      {:error, reason} ->
-        {:error, "Could not read #{file}: #{inspect(reason)}"}
-    end
-  end
-
-  @mcp_header ~s|"X-Harness-Id": "${CMS_HARNESS_ID}"|
-
-  defp swap_mcp_address(contents, id) do
-    case String.contains?(contents, @mcp_header) do
-      true -> {:ok, String.replace(contents, @mcp_header, ~s|"X-Harness-Id": "#{id}"|)}
-      false -> {:error, :no_mcp_address}
-    end
-  end
-
-  defp report(id, dest, count, _args) do
-    Mix.shell().info("""
-
-    Harness id:  #{id}
-    Plugin dir:  #{dest}
-    Addressed:   #{count} hook endpoint(s)
-
-    Start the agent against it:
-
-        claude --plugin-dir #{dest}
-
-    Every hook now names this working copy. A hook naming an id the harness
-    does not serve is refused rather than resolved to a neighbouring checkout.
-    """)
+    "http://localhost:#{System.get_env("CMS_HARNESS_PORT") || "4004"}"
   end
 end
