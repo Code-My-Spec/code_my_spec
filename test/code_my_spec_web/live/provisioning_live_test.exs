@@ -430,7 +430,11 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
         state: :done,
         position: Sequence.position(:deploy),
         resources: [
-          %{kind: "image_retention", location: "30 days", identifier: "enforced_by=bucket_lifecycle"}
+          %{
+            kind: "image_retention",
+            location: "30 days",
+            identifier: "enforced_by=bucket_lifecycle"
+          }
         ]
       })
 
@@ -452,12 +456,46 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       StepRepository.upsert(scope, :deploy, %{
         state: :done,
         position: Sequence.position(:deploy),
-        resources: [%{kind: "published_image", location: "localhost:5000/app:abc123", identifier: "built=true"}]
+        resources: [
+          %{
+            kind: "published_image",
+            location: "localhost:5000/app:abc123",
+            identifier: "built=true"
+          }
+        ]
       })
 
       {:ok, _view, html} = live(conn, path(project))
 
       refute html =~ ~s(data-test="image-retention")
+      refute html =~ "bucket_lifecycle"
+    end
+
+    # 6dcb62b8: local-volume storage — the real, final registry design — has
+    # no bucket for a lifecycle rule to live in, so its retention claim is
+    # `Registry.prune/2` having actually run, recorded with a distinct
+    # `enforced_by` rather than reused under `bucket_lifecycle`'s.
+    test "a pruned registry claims retention in images, not days", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :deploy, %{
+        state: :done,
+        position: Sequence.position(:deploy),
+        resources: [
+          %{
+            kind: "image_retention",
+            location: "5 images",
+            identifier: "enforced_by=prune_on_push"
+          }
+        ]
+      })
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ ~r/data-test="image-retention"[^>]*data-enforced-by="prune_on_push"/
+      assert html =~ ~r/data-test="image-retention"[^>]*data-images="5"/
       refute html =~ "bucket_lifecycle"
     end
   end

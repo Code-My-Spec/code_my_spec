@@ -117,10 +117,10 @@ defmodule CodeMySpec.Provisioning.Registry do
 
   `retention_days/1` answers with a number regardless of storage mode — it is
   a duration, not a claim about who applies it. Only `ensure_storage(:s3, ...)`
-  ever calls `Storage.put_lifecycle/4`; `:filesystem` (the real default since
-  the eventual-consistency `unknown blob` failures made S3-backed pushes
-  unreliable against Hetzner) creates no bucket and installs no rule, so
-  nothing expires an image ever.
+  ever calls `Storage.put_lifecycle/4`; `:filesystem` — local-volume storage,
+  the real and final design (1b4af45c) rather than a placeholder waiting on an
+  S3 fix — creates no bucket and installs no rule, so a bucket lifecycle rule
+  is never what enforces retention there. `prune/2` is.
 
   A caller that records or renders retention has to ask this, not just read
   `retention_days/1`, or it claims a window is enforced when nothing is
@@ -128,6 +128,16 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec retention_enforced?(keyword()) :: boolean()
   def retention_enforced?(opts), do: Keyword.get(opts, :storage, :filesystem) == :s3
+
+  # Keeps enough images to roll back a bad deploy or two while it is still
+  # fresh in mind, without turning every push into a bigger volume than the
+  # last. Overridable, like `retention_days`, because how far back "roll
+  # back" needs to reach is a project's call, not ours.
+  @default_keep_images 5
+
+  @doc "How many images stay on the box before `prune/2` deletes the rest."
+  @spec keep_images(keyword()) :: pos_integer()
+  def keep_images(opts), do: Keyword.get(opts, :keep_images, @default_keep_images)
 
   @doc "The prefix retention applies to."
   @spec blobs_prefix() :: String.t()
@@ -363,6 +373,118 @@ defmodule CodeMySpec.Provisioning.Registry do
     end
   end
 
+  @doc """
+  Keep only the `keep_images/1` most recent images, deleting the rest and
+  reclaiming the blobs only they held.
+
+  `:filesystem` storage has no bucket for `Storage.put_lifecycle/4` to expire
+  anything in, so nothing else prunes a volume that grows by one image every
+  deploy forever. This is what makes criterion 8241 true under the design
+  that's actually final rather than one still waiting on the S3 push-reliability
+  fix.
+
+  Each of this registry's tags is content-addressed and never reused — a
+  push always mints a new tag from the commit it built, never overwrites an
+  old one — so the mtime of a tag's own `_manifests/tags/<tag>/current/link`
+  is the moment it was last pushed, with no push history to track ourselves.
+  Newest first by that mtime, keep the front `keep_images`, delete an older
+  tag by the manifest digest its own link file already names, and run the
+  registry's own garbage-collect once to reclaim the blobs only the deleted
+  manifests held — shared base layers other kept images still reference
+  survive, the same layer-versus-manifest distinction `blobs_prefix/0`
+  documents for the S3 side.
+
+  A repository with nothing pushed yet has no `_manifests/tags` directory at
+  all; that is not a failure, there is simply nothing to prune. A deploy that
+  just shipped must not fail because its own cleanup could not reach the box
+  afterward — a caller gets `{:error, _}` back to log, not to propagate.
+  """
+  @spec prune(Scope.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def prune(%Scope{} = scope, opts \\ []) do
+    run = Keyword.fetch!(opts, :run)
+    bind = Keyword.get(opts, :bind, "127.0.0.1")
+    keep = keep_images(opts)
+
+    with {:ok, repository} <- repository(scope, opts),
+         {:ok, credential} <- serve_credential(scope, opts),
+         {:ok, tags} <- tags_by_recency(repository, run) do
+      to_prune = Enum.drop(tags, keep)
+      Enum.each(to_prune, &delete_tag(repository, &1, bind, credential, run))
+
+      case to_prune do
+        [] -> {:ok, []}
+        _ -> with :ok <- garbage_collect(run), do: {:ok, to_prune}
+      end
+    end
+  end
+
+  defp tags_dir(repository),
+    do: "/var/lib/registry/docker/registry/v2/repositories/#{repository}/_manifests/tags"
+
+  # One shell invocation inside the container, so the box's own idea of "what
+  # exists and when" is what decides — the same reason `serve_command` builds
+  # one string per real action rather than several. `[ -d ... ] || exit 0`
+  # rather than letting a glob that matched nothing become a literal `*/`
+  # `for` loop iterates over: a project with no images yet has no directory,
+  # and that is nothing to prune, not an error.
+  defp tags_by_recency(repository, run) do
+    dir = tags_dir(repository)
+
+    script =
+      "[ -d #{shell_escape(dir)} ] || exit 0; " <>
+        "for d in #{shell_escape(dir)}/*/; do " <>
+        "t=$(stat -c %Y \"$d\"current/link 2>/dev/null) && echo \"$t $(basename \"$d\")\"; " <>
+        "done"
+
+    case run.(["docker exec #{@container} sh -c #{shell_escape(script)}"]) do
+      {output, 0} -> {:ok, parse_tag_listing(output)}
+      {output, status} -> {:error, {:prune_listing_failed, status, String.trim(output)}}
+    end
+  end
+
+  # Newest first. Tags sort no other way — they are short commit SHAs, not
+  # timestamps — so recency only exists as the mtime the box already reads.
+  defp parse_tag_listing(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.split(&1, " ", parts: 2))
+    |> Enum.filter(&match?([_, _], &1))
+    |> Enum.sort_by(fn [ts, _tag] -> String.to_integer(ts) end, :desc)
+    |> Enum.map(fn [_ts, tag] -> tag end)
+  end
+
+  # The digest is read off the tag's own link file rather than asked of the
+  # API — it is the same value either way, and this is one `docker exec`
+  # instead of a second authenticated HTTP round trip for something already
+  # sitting in a file `tags_by_recency/2` just walked past.
+  #
+  # Best-effort: a tag that fails to delete is one `prune/2` did not get to
+  # this time, not a reason to stop deleting the rest of the list.
+  defp delete_tag(repository, tag, bind, credential, run) do
+    dir = tags_dir(repository)
+    auth = "#{credential.username}:#{credential.password}"
+
+    {digest, _status} = run.(["docker exec #{@container} cat #{dir}/#{tag}/current/link"])
+
+    run.([
+      "curl -sf -u #{shell_escape(auth)} -X DELETE " <>
+        "http://#{bind}:#{port()}/v2/#{repository}/manifests/#{String.trim(digest)}"
+    ])
+  end
+
+  # Deleting a manifest unlinks its tag but leaves the layers on disk until
+  # this runs — blobs are only reclaimed once nothing references them. No
+  # `-m`: that flag also sweeps manifests no tag ever pointed at, which is a
+  # different claim than "keep the last N" and not one this makes.
+  defp garbage_collect(run) do
+    case run.([
+           "docker exec #{@container} /bin/registry garbage-collect /etc/distribution/config.yml"
+         ]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:prune_gc_failed, status, String.trim(output)}}
+    end
+  end
+
   # Hetzner's object storage is S3-compatible but not S3: it needs path-style
   # addressing, and a virtual-host-style request reaches a bucket that does not
   # exist rather than failing usefully.
@@ -429,10 +551,11 @@ defmodule CodeMySpec.Provisioning.Registry do
   end
 
   # `distribution` takes its backing store from the environment, and which
-  # store is a real configuration axis rather than a constant: S3 in front of
-  # the project's bucket everywhere it runs for real, and the filesystem when
-  # it is being exercised on a machine that has no bucket and should not create
-  # one.
+  # store is a real configuration axis rather than a constant — not because
+  # S3 is meant to run for real (it isn't, see `storage_env(:filesystem, ...)`
+  # below) but because the tests below need a real assertion surface for what
+  # was tried and rejected, and `:s3` stays reachable behind `storage: :s3`
+  # for whoever revisits Hetzner's eventual consistency later.
   #
   # Hetzner's object storage is S3-compatible but not S3: it needs path-style
   # addressing, and a virtual-host-style request reaches a bucket that does not
@@ -466,18 +589,20 @@ defmodule CodeMySpec.Provisioning.Registry do
     ]
   end
 
-  # The default, and the reason is the provider rather than the design.
-  #
-  # Backed by the project's Hetzner bucket, `docker push` failed with `unknown
-  # blob` after retrying individual layers for a minute: the registry writes a
-  # layer to an eventually consistent store, immediately asks whether the blob
-  # exists, and is told it does not. Some layers land, others never do. A
-  # descriptor cache is not enough — it caches what the registry knows, not
-  # what the bucket will admit to.
+  # The default and the final design, not a placeholder waiting on a fix for
+  # the provider issue below. Backed by the project's Hetzner bucket, `docker
+  # push` failed with `unknown blob` after retrying individual layers for a
+  # minute: the registry writes a layer to an eventually consistent store,
+  # immediately asks whether the blob exists, and is told it does not. Some
+  # layers land, others never do. A descriptor cache is not enough — it
+  # caches what the registry knows, not what the bucket will admit to.
   #
   # A volume on the box has none of that. What it gives up is the registry
   # surviving the box, and images are rebuildable from a commit — an old build
-  # is not worth an unreliable push.
+  # is not worth an unreliable push. Retention — the other thing a bucket
+  # would have given this for free — is `Registry.prune/2`'s job instead:
+  # keep the last `keep_images`, delete the rest by manifest digest, and run
+  # the registry's own garbage-collect.
   defp storage_env(:filesystem, _bucket, _credentials, _location) do
     [
       {"REGISTRY_STORAGE", "filesystem"},

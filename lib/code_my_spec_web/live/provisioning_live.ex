@@ -742,19 +742,44 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               built on {b.location}, destroyed after
             </span>
             
-    <!-- Present only when the registry actually has a bucket lifecycle
-                 rule behind it (8241) — `retention_resource/1` omits this
-                 resource entirely under `:filesystem` storage, the real
-                 default since 1b4af45c, so there is nothing here to read
-                 `enforced_by` from and no false claim gets made. -->
+    <!-- Two mechanisms, two blocks (6dcb62b8) — `:s3` storage's bucket
+                 lifecycle rule and `:filesystem` storage's prune-on-push are not
+                 the same claim in the same units, and forcing one span to read
+                 either is how the last version ended up asserting a lifecycle
+                 rule that was never installed. `retention_resource/1` emits at
+                 most one of these per deploy, keyed to whichever mechanism
+                 `retention_claim/3` actually ran; neither renders at all if
+                 pruning failed to reach the box this time (8241). -->
             <span
-              :for={r <- Enum.filter(step.resources, &(&1.kind == "image_retention"))}
+              :for={
+                r <-
+                  Enum.filter(step.resources, fn r ->
+                    r.kind == "image_retention" and
+                      identifier_field(r, "enforced_by") == "bucket_lifecycle"
+                  end)
+              }
               data-test="image-retention"
               data-days={r.location |> String.replace_suffix(" days", "")}
-              data-enforced-by={identifier_field(r, "enforced_by")}
+              data-enforced-by="bucket_lifecycle"
               class="mt-1 block text-xs font-mono opacity-70"
             >
               images expire after {r.location}
+            </span>
+
+            <span
+              :for={
+                r <-
+                  Enum.filter(step.resources, fn r ->
+                    r.kind == "image_retention" and
+                      identifier_field(r, "enforced_by") == "prune_on_push"
+                  end)
+              }
+              data-test="image-retention"
+              data-images={r.location |> String.replace_suffix(" images", "")}
+              data-enforced-by="prune_on_push"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              the registry keeps the newest {r.location}
             </span>
 
             <span

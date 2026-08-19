@@ -285,7 +285,12 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         {"", 0}
       end
 
-      assert {:ok, _} = Registry.serve(scope(), run: run, credentials: creds(), registry_credentials: registry_cred())
+      assert {:ok, _} =
+               Registry.serve(scope(),
+                 run: run,
+                 credentials: creds(),
+                 registry_credentials: registry_cred()
+               )
 
       assert_received {:ran, _trust}
       assert_received {:ran, _start}
@@ -344,9 +349,131 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     test "without storage credentials there is nothing to back it with" do
       assert {:error, :no_storage_credentials} =
-               Registry.serve(scope(), run: recorder(self()), credentials: :none, registry_credentials: registry_cred())
+               Registry.serve(scope(),
+                 run: recorder(self()),
+                 credentials: :none,
+                 registry_credentials: registry_cred()
+               )
 
       refute_received {:ran, _}
+    end
+  end
+
+  # `prune/2` is the mechanism `:filesystem` storage actually has instead of
+  # a bucket lifecycle rule (6dcb62b8) — validated first against a real
+  # `registry:3` container (four distinct pushed images, deleted the two
+  # oldest by the digest their own `current/link` named, ran garbage-collect,
+  # confirmed the kept images still pulled and the deleted ones' unique blobs
+  # were gone). These fake the box the same way `serve/2`'s tests do: dispatch
+  # on the shape of the command rather than starting a real registry, which
+  # would make this a network test and prove nothing about the commands.
+  describe "prune/2" do
+    # Command shapes from `tags_by_recency/2`, `delete_tag/5` and
+    # `garbage_collect/1`, matched the same order they're built in.
+    defp box(owner, listing) do
+      fn [cmd] ->
+        send(owner, {:ran, cmd})
+
+        cond do
+          cmd =~ "_manifests/tags" and cmd =~ "sh -c" ->
+            {listing, 0}
+
+          cmd =~ ~r{cat .*/([^/]+)/current/link$} ->
+            [_, tag] = Regex.run(~r{/([^/]+)/current/link$}, cmd)
+            {"sha256:digest-#{tag}", 0}
+
+          cmd =~ "-X DELETE" ->
+            {"", 0}
+
+          cmd =~ "garbage-collect" ->
+            {"", 0}
+        end
+      end
+    end
+
+    defp prune(listing, opts) do
+      Registry.prune(
+        scope(),
+        Keyword.merge(
+          [run: box(self(), listing), registry_credentials: registry_cred()],
+          opts
+        )
+      )
+    end
+
+    # Newest first by the mtime `stat` reads off each tag's own link file —
+    # tags are short commit SHAs, so there is no other order to sort them by.
+    defp listing(pairs), do: Enum.map_join(pairs, "\n", fn {ts, tag} -> "#{ts} #{tag}" end)
+
+    test "keeps the newest N, deletes the rest, and reclaims their blobs" do
+      four_tags = listing([{100, "aaa"}, {200, "bbb"}, {300, "ccc"}, {400, "ddd"}])
+
+      assert {:ok, pruned} = prune(four_tags, keep_images: 2)
+
+      # Newest two (ddd, ccc) survive; the older two are what got deleted.
+      assert pruned == ["bbb", "aaa"]
+
+      assert_received {:ran, listing_cmd}
+      assert listing_cmd =~ "docker exec cms-registry sh -c"
+
+      assert_received {:ran, cat_bbb}
+      assert cat_bbb =~ "bbb/current/link"
+
+      assert_received {:ran, delete_bbb}
+      assert delete_bbb =~ "-X DELETE"
+      assert delete_bbb =~ "manifests/sha256:digest-bbb"
+
+      assert_received {:ran, cat_aaa}
+      assert cat_aaa =~ "aaa/current/link"
+
+      assert_received {:ran, delete_aaa}
+      assert delete_aaa =~ "manifests/sha256:digest-aaa"
+
+      assert_received {:ran, gc_cmd}
+
+      assert gc_cmd =~
+               "docker exec cms-registry /bin/registry garbage-collect /etc/distribution/config.yml"
+    end
+
+    test "nothing pruned, nothing deleted, no garbage-collect" do
+      two_tags = listing([{100, "aaa"}, {200, "bbb"}])
+
+      assert {:ok, []} = prune(two_tags, keep_images: 5)
+
+      assert_received {:ran, _listing}
+      refute_received {:ran, _anything_else}
+    end
+
+    # A repository with nothing pushed yet has no `_manifests/tags`
+    # directory at all — not a failure, simply nothing to prune.
+    test "a registry with nothing pushed yet has nothing to prune" do
+      assert {:ok, []} = prune("", keep_images: 2)
+
+      assert_received {:ran, _listing}
+      refute_received {:ran, _anything_else}
+    end
+
+    test "a listing failure is an error, not a crash" do
+      failing_run = fn [_cmd] -> {"stat: not found", 1} end
+
+      assert {:error, {:prune_listing_failed, 1, "stat: not found"}} =
+               Registry.prune(scope(), run: failing_run, registry_credentials: registry_cred())
+    end
+
+    test "addresses the box at the bind it was told, on the registry's own port" do
+      one_tag = listing([{100, "aaa"}, {200, "bbb"}, {300, "ccc"}])
+
+      assert {:ok, _} = prune(one_tag, keep_images: 1, bind: "10.0.0.2")
+
+      assert_received {:ran, _listing}
+      assert_received {:ran, _cat}
+      assert_received {:ran, delete_cmd}
+      assert delete_cmd =~ "http://10.0.0.2:5000/v2/sam-s-app/manifests/"
+    end
+
+    test "how many images stay defaults to 5, and is overridable" do
+      assert Registry.keep_images([]) == 5
+      assert Registry.keep_images(keep_images: 1) == 1
     end
   end
 end

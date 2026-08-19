@@ -2320,7 +2320,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # build and never surfaced is one teardown cannot find.
          network: Keyword.get(opts, :network_resource),
          architecture: build.architecture,
-         retention_days: enforced_retention_days(opts),
+         retention: retention_claim(scope, environment, opts),
          builder: build.builder,
          builder_image: build.builder_image,
          builder_destroyed: build.builder_destroyed
@@ -2328,16 +2328,52 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # `nil` under `:filesystem` — the real default since 1b4af45c reverted the
-  # registry's blobs to a volume on the box, because Hetzner's eventual
-  # consistency made `docker push` fail with `unknown blob` under `:s3` — rather
-  # than the number `Registry.retention_days/1` would still hand back. A window
-  # nothing enforces is not a retention, and `retention_resource/1` below reads
-  # this as "say nothing" for the same reason `image_resources(:not_built)`
-  # does: a claim with no mechanism behind it is worse than no claim.
-  defp enforced_retention_days(opts) do
+  # Retention's claim is proven by what just happened, not assumed from
+  # config (6dcb62b8). `:s3` storage already got a bucket lifecycle rule from
+  # `Registry.ensure/2` back when the server step ran — the days are the
+  # claim, and nothing more to do here. `:filesystem` — local-volume storage,
+  # the real and final design (1b4af45c) — has no such rule, so this is what
+  # makes retention true there: prune the registry down to `keep_images`
+  # right after the push that may have made it too big.
+  #
+  # The claim is only made if the prune actually ran. A deploy that just
+  # shipped must not fail because its own cleanup could not reach the box
+  # afterward, but a claim rendered from `retention_days`/`keep_images` alone
+  # — regardless of whether pruning succeeded — is exactly the bug this
+  # replaces: a number with no mechanism behind it.
+  defp retention_claim(scope, environment, opts) do
     if Registry.retention_enforced?(opts) do
-      Registry.retention_days(opts)
+      {:days, Registry.retention_days(opts)}
+    else
+      case prune_registry(scope, environment, opts) do
+        :ok -> {:images, Registry.keep_images(opts)}
+        :error -> nil
+      end
+    end
+  end
+
+  # A second, independent `Hetzner.find_server` lookup rather than threading
+  # the app server's IP down from wherever else it gets read — `build_image`
+  # runs before `with_host_ip` sets one on `deploy_opts`, and the registry
+  # this prunes lives on the app server, not on the ephemeral builder box
+  # `with_builder_ssh` was written for. The SSH key material it wrote to
+  # `opts` reaches any box the account owns, so this only needs the address.
+  #
+  # `Keyword.get(opts, :run)` wins over a freshly built SSH runner for the
+  # same reason `serve_one_registry/5` checks it first: a caller — the local
+  # fleet standing in for a box, or a test — that already supplied one is
+  # answering "how do I reach it" more specifically than an IP this scope
+  # happens to have, and building a second runner from a provider's fake
+  # address would try to reach a box that was never made.
+  defp prune_registry(scope, environment, opts) do
+    with ip when is_binary(ip) and ip != "" <- environment_ip(scope, %{name: environment}, opts),
+         run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => ip}, opts),
+         bind = Keyword.get(opts, :registry_bind) || Keyword.get(opts, :bind, "127.0.0.1"),
+         prune_opts = opts |> Keyword.put(:run, run) |> Keyword.put(:bind, bind),
+         {:ok, _pruned} <- Registry.prune(scope, prune_opts) do
+      :ok
+    else
+      _ -> :error
     end
   end
 
@@ -2566,22 +2602,32 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp network_resources(%{network: %{} = network}), do: [network]
   defp network_resources(_image), do: []
 
-  # Old images stop costing money because the registry's bucket expires them,
-  # not because anything here runs on a schedule — the same shape as the
-  # backups' retention, and recorded so it is visible without reading a
-  # bucket policy.
-  #
-  # `retention_days` arrives here already filtered by `enforced_retention_days/1`
-  # to `nil` under `:filesystem` storage, so this only fires when a bucket
-  # lifecycle rule actually exists to make the claim true. `ProvisioningLive`
-  # reads `enforced_by` off this resource rather than asserting the string
+  # Old images stop costing money because something here actually enforces
+  # it, not because anything here runs on a schedule (6dcb62b8). Two
+  # mechanisms, two honest shapes: `:s3` storage gets its claim from the
+  # bucket's own lifecycle rule, the same shape as the backups' retention;
+  # `:filesystem` — local-volume storage, the real and final design — has no
+  # bucket, so its claim comes from `retention_claim/3` having actually run
+  # `Registry.prune/2` this build. `nil` (no enforcement happened) yields no
+  # resource at all, the same absence-over-false-claim shape
+  # `image_resources(:not_built)` uses. `ProvisioningLive` reads `enforced_by`
+  # off whichever resource shows up rather than asserting either string
   # itself — this is the one place that decides it.
-  defp retention_resource(%{retention_days: days}) when is_integer(days),
+  defp retention_resource(%{retention: {:days, days}}),
     do: [
       %{
         kind: "image_retention",
         location: "#{days} days",
         identifier: "enforced_by=bucket_lifecycle"
+      }
+    ]
+
+  defp retention_resource(%{retention: {:images, count}}),
+    do: [
+      %{
+        kind: "image_retention",
+        location: "#{count} images",
+        identifier: "enforced_by=prune_on_push"
       }
     ]
 
