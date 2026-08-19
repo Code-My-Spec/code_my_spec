@@ -152,6 +152,11 @@ config :code_my_spec, :cloudflare_tunnel,
 #
 # `target` stays as it is: it is only read by `ensure/2`, which writes a
 # Cloudflare record and has no business running against a dev machine.
+# Bare metal, not Docker — see `CodeMySpec.Workspaces.Runner.Local`'s
+# moduledoc for what that trades away (each instance's own filesystem and
+# loopback) against what it does not need (a Docker daemon on this machine).
+config :code_my_spec, CodeMySpec.Workspaces, runner: CodeMySpec.Workspaces.Runner.Local
+
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "astralbi.com",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
