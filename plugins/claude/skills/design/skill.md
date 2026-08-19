@@ -8,6 +8,6 @@ argument-hint: "[architecture|ui|strategy]"
 
 The JSON response from the skill endpoint:
 
-!`curl -s -X POST http://localhost:4004/api/skills/start -H "X-Harness-Id: $(grep -o '"harness_id"[[:space:]]*:[[:space:]]*"[^"]*"' "${CLAUDE_PROJECT_DIR}/.cms_harness.json" | head -1 | cut -d'"' -f4)" --data-urlencode "skill=design" --data-urlencode "external_id=${CLAUDE_SESSION_ID}" --data-urlencode "arguments=$ARGUMENTS"`
+!`HID="$(grep -o '"harness_id"[[:space:]]*:[[:space:]]*"[^"]*"' "${CLAUDE_PROJECT_DIR}/.cms_harness.json" | head -1 | cut -d'"' -f4)"; curl -s -X POST "http://localhost:4004/api/harnesses/${HID:-unonboarded}/skills/start" --data-urlencode "skill=design" --data-urlencode "external_id=${CLAUDE_SESSION_ID}" --data-urlencode "arguments=$ARGUMENTS"`
 
 The response is JSON with a `prompt` field containing your instructions. Extract and follow the prompt.

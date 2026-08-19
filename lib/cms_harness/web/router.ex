@@ -55,6 +55,10 @@ defmodule CmsHarness.Web.Router do
     # that wants to stop against fresh results — see `AnalysisController.wait/2`
     # for why this is HTTP and not an MCP tool.
     post("/analysis/wait", AnalysisController, :wait)
+
+    # `4396345b`: the surface every `skills/*/skill.md` posts to. Addressed the
+    # same way analysis and hooks are — see `SkillsController`.
+    post("/skills/start", SkillsController, :start)
   end
 
   # There is no unaddressed hook surface. A request that does not name a

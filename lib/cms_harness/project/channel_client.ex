@@ -242,6 +242,25 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc """
+  Ask the server to resolve a skill invocation to a prompt.
+
+  Same shape as `decide_hook/3` — resolving a skill is a DB-bound lookup
+  (`StartAgentTask.run/2` creates a session row and returns a prompt string;
+  it does not run the agent turn itself), not a `mix` invocation, so it shares
+  `decide_hook/3`'s timeout class rather than `await_analysis/3`'s.
+  """
+  @spec start_skill(String.t(), map()) ::
+          {:ok, map()} | {:error, :not_connected | :no_credential | :no_reply}
+  def start_skill(root, params) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, {:start_skill, params}, decision_timeout() + 2_000)
+      [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc """
   Run one analyzer for the agent and wait for the server's answer.
 
   The agent's own `mix test`, rewritten by the PreToolUse hook. It goes to the
@@ -1051,6 +1070,22 @@ defmodule CmsHarness.Project.ChannelClient do
            %{"hook" => hook, "payload" => payload, "port" => local_port()},
            decision_timeout()
          ) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, decision_timeout())
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _reason} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
+  end
+
+  def handle_call({:start_skill, _params}, _from, %{assigns: %{joined: false}} = socket) do
+    reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
+    {:reply, {:error, reason}, socket}
+  end
+
+  def handle_call({:start_skill, params}, from, socket) do
+    case push(socket, socket.assigns.topic, "skill_start", %{"params" => params}, decision_timeout()) do
       {:ok, ref} ->
         timer = Process.send_after(self(), {:reply_timeout, ref}, decision_timeout())
         {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}

@@ -39,6 +39,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -324,6 +325,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # A skill invocation for the working copy this channel serves — `4396345b`.
+  # `CmsHarness.Web` has no reachable `/api/skills/start`: it never had a
+  # command runner, only this channel, so a light-harness session's skill.md
+  # curl had nowhere to land. Same shape as `hook_decision` right above —
+  # deferred to a task so a crash in `SkillRouter.resolve/2` (or the session it
+  # starts) cannot take the channel down, and answered even on an unknown
+  # skill rather than left to time out.
+  def handle_in("skill_start", %{"params" => params} = _msg, socket) when is_map(params) do
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Phoenix.Channel.reply(ref, skill_reply(scope, params))
+    end)
+
+    {:noreply, socket}
+  end
+
   # What an analyzer printed on the machine that has the working copy.
   #
   # The split this carries: the harness has the disk and the toolchain, so it
@@ -471,6 +490,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       )
 
       {:error, %{"reason" => "decision_crashed", "hook" => hook}}
+  end
+
+  # Same crash-safety reasoning as `decision_reply/4` above: a bad skill
+  # invocation (an unknown skill, a session that fails to start) must come
+  # back as a reply, never as a dead channel.
+  defp skill_reply(scope, params) do
+    case SkillRouter.resolve(scope, params) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason, available} -> {:error, %{"error" => reason, "available" => available}}
+      {:error, reason} -> {:error, %{"error" => reason}}
+    end
+  rescue
+    exception ->
+      Logger.error(
+        "[HarnessProject] skill_start crashed: #{Exception.message(exception)}\n" <>
+          Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, %{"error" => "skill_crashed"}}
   end
 
   # Same contract as before, moved off the channel process. The two warnings

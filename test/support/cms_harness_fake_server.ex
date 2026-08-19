@@ -35,6 +35,7 @@ defmodule CmsHarnessTest.FakeServer do
 
     listen(self())
     put_hook_decision(Keyword.get(opts, :hook_decision, %{"systemMessage" => "ok"}))
+    put_skill_reply(Keyword.get(opts, :skill_reply, %{"prompt" => "ok"}))
     :persistent_term.put({__MODULE__, :reject_obs}, nil)
     :persistent_term.put({__MODULE__, :reject_analysis}, nil)
     :persistent_term.put({__MODULE__, :channel}, nil)
@@ -124,6 +125,9 @@ defmodule CmsHarnessTest.FakeServer do
 
   def put_hook_decision(decision), do: :persistent_term.put({__MODULE__, :decision}, decision)
   def hook_decision, do: :persistent_term.get({__MODULE__, :decision}, %{})
+
+  def put_skill_reply(reply), do: :persistent_term.put({__MODULE__, :skill_reply}, reply)
+  def skill_reply, do: :persistent_term.get({__MODULE__, :skill_reply}, %{"prompt" => "ok"})
 
   # Lets a test make the server reject a manifest, the way version skew would.
   def reject_observations(reason), do: :persistent_term.put({__MODULE__, :reject_obs}, reason)
@@ -231,6 +235,15 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
     case FakeServer.hook_decision() do
       :no_answer -> {:noreply, socket}
       decision -> {:reply, {:ok, decision}, socket}
+    end
+  end
+
+  def handle_in("skill_start", payload, socket) do
+    FakeServer.notify({:skill_start, payload})
+
+    case FakeServer.skill_reply() do
+      :no_answer -> {:noreply, socket}
+      reply -> {:reply, {:ok, reply}, socket}
     end
   end
 

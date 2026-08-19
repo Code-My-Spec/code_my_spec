@@ -62,6 +62,16 @@ defmodule CmsHarnessTest.ConnCase do
         |> post("/api/harnesses/#{harness_id}/hooks/#{hook}", payload)
       end
 
+      defp post_skill(conn, working_dir, payload \\ %{}) do
+        post_skill_as(conn, harness_id_at(working_dir), payload)
+      end
+
+      defp post_skill_as(conn, harness_id, payload \\ %{}) do
+        conn
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post("/api/harnesses/#{harness_id}/skills/start", payload)
+      end
+
       defp harness_id_at(root) do
         case CmsHarness.HarnessConfig.read(root) do
           {:ok, %{harness_id: id}} -> id

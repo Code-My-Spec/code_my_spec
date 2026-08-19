@@ -6,82 +6,32 @@ defmodule CodeMySpecLocalWeb.SkillController do
   - `start_skill/2` — routes skill + subcommand to the right session type
   - `start_task/2`  — accepts session_type directly (used by bin/agent-task)
 
-  Both delegate to StartAgentTask.run for the actual work.
+  `start_skill/2` delegates the routing itself to `SkillRouter.resolve/2` —
+  see that module's moduledoc for why it isn't inline here anymore.
+  `start_task/2` still calls `StartAgentTask.run/2` directly: it takes
+  `session_type` as given rather than resolving one from a skill name, so
+  there is no routing table to share.
   """
   use CodeMySpecLocalWeb, :controller
 
+  alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.AgentTasks.StartAgentTask
-  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Files.FileSync
-
-  # skill → {subcommand → session_type}
-  # nil subcommand means "no args" default
-  @skill_routes %{
-    "product" => %{
-      "interview" => "story_interview",
-      "review" => "story_review",
-      "three-amigos" => "three_amigos"
-    },
-    "design" => %{
-      "architecture" => "architecture_design",
-      "ui" => "design_ui",
-      "strategy" => "technical_strategy"
-    },
-    "develop" => %{
-      "context" => "develop_context",
-      "liveview" => "develop_live_view"
-    },
-    "qa" => %{
-      nil => "qa_app",
-      "story" => "qa_story",
-      "integrations" => "qa_integration_plan",
-      "triage" => "triage_issues",
-      "fix" => "fix_issues"
-    },
-    "implement" => %{
-      nil => "start_implementation",
-      "start" => "start_implementation"
-    },
-    # "sync" handled as a special route (not an agent task)
-    "sync" => %{}
-  }
 
   # ── Skill routing (POST /api/skills/start) ──────────────────────
 
-  def start_skill(conn, %{"skill" => skill} = params) do
-    # Skill markdown invokes us via inline curl with one positional argument
-    # string (`arguments`). Split it into subcommand + module_name here so
-    # callers don't have to do that in bash. The explicit `subcommand` /
-    # `module_name` fields still win when set (used by direct API callers).
-    {arg_subcommand, arg_module_name} = split_arguments(params["arguments"])
-
-    subcommand = params["subcommand"] || arg_subcommand
-    module_name = params["module_name"] || arg_module_name
-    external_id = params["external_id"]
-
-    case resolve_route(skill, subcommand) do
-      {:ok, :sync} ->
-        run_sync(conn)
-
-      {:ok, :next} ->
-        run_next(conn)
-
-      {:ok, session_type} ->
-        run_task(conn, external_id, session_type, module_name)
-
-      {:error, :stopped} ->
+  def start_skill(conn, params) do
+    case SkillRouter.resolve(conn.assigns.current_scope, params) do
+      {:ok, %{stopped: true}} ->
         json(conn, %{stopped: true})
 
-      {:error, :unknown_skill} ->
-        conn |> put_status(400) |> json(%{error: "Unknown skill: #{skill}"})
+      {:ok, result} ->
+        json(conn, result)
 
-      {:error, :unknown_subcommand, available} ->
-        conn
-        |> put_status(400)
-        |> json(%{
-          error: "Unknown subcommand '#{subcommand}' for /codemyspec:#{skill}",
-          available: available
-        })
+      {:error, reason, available} ->
+        conn |> put_status(400) |> json(%{error: reason, available: available})
+
+      {:error, reason} ->
+        conn |> put_status(400) |> json(%{error: reason})
     end
   end
 
@@ -90,41 +40,6 @@ defmodule CodeMySpecLocalWeb.SkillController do
   def start_task(conn, params) do
     run_task(conn, params["external_id"], params["session_type"], params["module_name"])
   end
-
-  # Splits `"ui"` → {"ui", nil}, `"context Foo.Bar"` → {"context", "Foo.Bar"},
-  # `nil`/`""` → {nil, nil}. Mirrors the old `bin/skill` script's split
-  # semantics so callers stay simple.
-  defp split_arguments(nil), do: {nil, nil}
-
-  defp split_arguments(args) when is_binary(args) do
-    case String.split(String.trim(args), ~r/\s+/, parts: 2) do
-      [""] -> {nil, nil}
-      [sub] -> {sub, nil}
-      [sub, rest] -> {sub, rest}
-    end
-  end
-
-  # ── Route resolution ────────────────────────────────────────────
-
-  defp resolve_route("sync", nil), do: {:ok, :sync}
-  defp resolve_route("implement", "stop"), do: {:error, :stopped}
-  defp resolve_route("next", _), do: {:ok, :next}
-
-  defp resolve_route(skill, subcommand) do
-    case Map.get(@skill_routes, skill) do
-      nil ->
-        {:error, :unknown_skill}
-
-      routes ->
-        case Map.get(routes, subcommand) do
-          nil when is_nil(subcommand) -> {:error, :unknown_subcommand, Map.keys(routes) -- [nil]}
-          nil -> {:error, :unknown_subcommand, Map.keys(routes) -- [nil]}
-          session_type -> {:ok, session_type}
-        end
-    end
-  end
-
-  # ── Task execution ─────────────────────────────────────────────
 
   defp run_task(conn, external_id, session_type, module_name) do
     scope = conn.assigns.current_scope
@@ -142,102 +57,5 @@ defmodule CodeMySpecLocalWeb.SkillController do
       {:error, reason} ->
         conn |> put_status(400) |> json(%{error: inspect(reason)})
     end
-  end
-
-  defp run_sync(conn) do
-    scope = conn.assigns.current_scope
-
-    with {:ok, cwd} <- validate_cwd(scope),
-         {:ok, file_result} <- FileSync.sync(scope, base_dir: cwd),
-         {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: cwd) do
-      files = file_result.total_files
-      changed = length(file_result.changed_paths)
-      components = length(comp_result.all_components)
-
-      prompt = """
-      Sync complete. #{files} files (#{changed} changed), #{components} components.
-
-      Call `get_next_requirement` to find your next task.
-      """
-
-      json(conn, %{prompt: prompt})
-    else
-      {:error, reason} ->
-        conn |> put_status(400) |> json(%{error: "Sync failed: #{inspect(reason)}"})
-    end
-  end
-
-  defp validate_cwd(%{cwd: cwd}) when is_binary(cwd), do: {:ok, cwd}
-  # The scope came from a harness id, so a missing cwd means the harness has no
-  # root recorded and its project has no `local_path` — not that a header was
-  # left off. Naming the header sent readers to fix the caller, which was
-  # already correct.
-  defp validate_cwd(_) do
-    {:error,
-     "This harness has no working copy on this machine. Its record carries no root " <>
-       "and its project no local_path, so there is nowhere to run. Reconnect the " <>
-       "harness from the checkout, or set the project's local path."}
-  end
-
-  # ── /next ───────────────────────────────────────────────────────
-  # Single-step "do the next requirement" gesture. Resolves the next
-  # actionable requirement on the server so the agent gets the full
-  # context inline and can call `start_task` directly — saves a
-  # roundtrip over chaining `get_next_requirement` → `start_task`,
-  # and gives the user immediate visibility into what's coming next.
-  defp run_next(conn) do
-    scope = conn.assigns.current_scope
-
-    if scope == nil or scope.active_project == nil do
-      json(conn, %{
-        prompt: """
-        No active project linked locally. Run `/codemyspec:init` to bootstrap, \
-        or visit http://localhost:4003 to pick a project.
-        """
-      })
-    else
-      next_prompt(conn, scope)
-    end
-  end
-
-  defp next_prompt(conn, scope) do
-    if scope.cwd do
-      FileSync.sync(scope, base_dir: scope.cwd)
-      FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
-    end
-
-    case CodeMySpec.Requirements.RequirementGraph.next_actionable(scope) do
-      [] ->
-        case CodeMySpec.Requirements.RequirementGraph.compute_all(scope) do
-          [] ->
-            json(conn, %{
-              prompt: "No requirements found. Run `/codemyspec:sync` to refresh the graph."
-            })
-
-          _ ->
-            json(conn, %{
-              prompt: "✓ All requirements satisfied. Nothing left to do on this project."
-            })
-        end
-
-      [node | _] ->
-        json(conn, %{prompt: render_next_prompt(node)})
-    end
-  end
-
-  defp render_next_prompt(node) do
-    """
-    # Next: #{node.name}
-
-    Your next task is **#{node.name}** for #{node.entity_type} `#{node.entity_name}`.
-
-    Call `start_task` with:
-    - `requirement_name`: `"#{node.name}"`
-    - `entity_type`: `"#{node.entity_type}"`
-    - `entity_id`: `"#{node.entity_id}"`
-
-    `start_task` returns the work prompt for this requirement. Do the work,
-    then run `/next` again for the following task.
-    """
   end
 end
