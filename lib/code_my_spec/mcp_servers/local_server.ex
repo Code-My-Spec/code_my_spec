@@ -181,4 +181,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
   component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
+  component(CodeMySpec.McpServers.Devops.Tools.ReadProjectFile)
+  component(CodeMySpec.McpServers.Devops.Tools.WriteProjectFile)
 end
