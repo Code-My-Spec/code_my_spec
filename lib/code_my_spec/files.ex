@@ -5,6 +5,8 @@ defmodule CodeMySpec.Files do
 
   import Ecto.Query
 
+  require Logger
+
   alias CodeMySpec.Components
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
@@ -183,6 +185,69 @@ defmodule CodeMySpec.Files do
     |> MapSet.new()
   end
 
+
+  # A `component_id` naming a component that no longer exists fails the whole
+  # insert, and with it the whole reconcile.
+  #
+  # Ownership is resolved against a read model built moments earlier in this
+  # request (`Scanner.resolve_owners/2`), which is fresh — so the component was
+  # there when it was read. Components are project-scoped by design, though, and
+  # several working copies sync one project concurrently: another harness's
+  # `ComponentSync` can prune a component between our read and our insert. The
+  # result was a `files_component_id_fkey` violation that killed
+  # `start_reconcile/2`, closed the channel, and had the harness reconnect and
+  # do it again — a storm that repaired nothing, because the rollback discarded
+  # the manifest too (issue `ef981256`).
+  #
+  # Dropping the id degrades instead. A file owned by nothing is wrong in a way
+  # the next sync fixes — `ComponentSync` re-links it as soon as the component
+  # exists again — where a crashed reconcile is wrong in a way nothing fixes.
+  # One dangling id should cost one link, not every file in the manifest.
+  #
+  # This narrows the race rather than closing it: the check and the insert are
+  # in one transaction, so the window is small, but a concurrent prune could
+  # still land between them and the FK would fire as before. Closing it properly
+  # means serialising reconcile per project, which is expensive in exactly the
+  # case this project is built for — several agents on one project is the
+  # design, not an anomaly.
+  defp drop_missing_component_ids(entries) do
+    ids =
+      entries
+      |> Enum.map(&Map.get(&1, :component_id))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case ids do
+      [] ->
+        entries
+
+      ids ->
+        present =
+          Components.Component
+          |> where([c], c.id in ^ids)
+          |> select([c], c.id)
+          |> Repo.all()
+          |> MapSet.new()
+
+        missing = Enum.reject(ids, &MapSet.member?(present, &1))
+
+        if missing != [] do
+          Logger.warning(
+            "[Files] dropped #{length(missing)} component link(s) whose component " <>
+              "no longer exists: #{Enum.join(missing, ", ")}. Another working copy " <>
+              "pruned them mid-sync; the next sync re-links whatever comes back."
+          )
+        end
+
+        Enum.map(entries, fn entry ->
+          case Map.get(entry, :component_id) do
+            nil -> entry
+            id -> if MapSet.member?(present, id), do: entry, else: Map.put(entry, :component_id, nil)
+          end
+        end)
+    end
+  end
+
   @doc "List files for a specific story."
   @spec list_story_files(Scope.t(), integer()) :: [File.t()]
   def list_story_files(%Scope{active_project_id: project_id} = scope, story_id) do
@@ -254,6 +319,7 @@ defmodule CodeMySpec.Files do
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
       end)
+      |> drop_missing_component_ids()
 
     {total_count, files} =
       entries
