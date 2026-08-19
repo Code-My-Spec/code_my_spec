@@ -858,12 +858,33 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # transaction, so a killed reconcile rolls back rather than leaving a half
   # projection. The work is redone by the join that replaces it, which was going
   # to redo it anyway.
-  defp shutdown_reconcile(%{assigns: %{reconciling: %Task{} = task}}) do
+  defp shutdown_reconcile(%{assigns: %{reconciling: %Task{} = task}} = socket) do
     Task.shutdown(task, :brutal_kill)
+
+    # Logged because a fix that works silently cannot be told from one that
+    # never runs. The test proves the mechanism; this is the only thing that
+    # says it is happening here, on this machine, on the closes that actually
+    # occur. Info rather than warning: this is the healthy path — the reconcile
+    # is redone by the join that replaces it — and the unhealthy version of the
+    # same situation is the skip in `maybe_start_reconcile/2`, which warns.
+    Logger.info(
+      "[HarnessProject] killed the in-flight reconcile for #{closing_copy(socket)} — its " <>
+        "channel is closing and the rejoin re-sends the whole manifest anyway. Left running, " <>
+        "it would still hold a connection when the next join starts another (1aed7edf)."
+    )
+
     :ok
   end
 
   defp shutdown_reconcile(_socket), do: :ok
+
+  # Not `harness_label/1`, which already exists for join payloads. Same idea,
+  # different input, and merging them would make one function that takes either
+  # a socket or a payload.
+  defp closing_copy(%{assigns: %{scope: %Scope{active_harness_id: id}}}) when is_binary(id),
+    do: "harness #{id}"
+
+  defp closing_copy(socket), do: socket.topic
 
   # Say which of the two things happened, because they read identically and
   # only one of them is about the working copy.

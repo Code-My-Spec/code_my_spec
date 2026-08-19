@@ -42,6 +42,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
     Application.put_env(:code_my_spec, :analysis_mode, :async)
     on_exit(fn -> Application.put_env(:code_my_spec, :analysis_mode, previous) end)
 
+    # The kill logs at :info — it is the healthy path, and warning would cry
+    # wolf on every ordinary refresh. The suite runs at :warning, and
+    # `capture_log/2`'s `:level` selects among messages that already got
+    # through rather than letting more through, so the primary level has to
+    # come down for the assertion to see it.
+    previous_level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
     scope = full_scope_fixture()
 
     {:ok, _reply, channel} =
@@ -126,17 +135,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
     # task is in the channel's *own* assigns, and a fabricated socket carries
     # `reconciling: nil`, so `shutdown_reconcile/1` would find nothing and this
     # would pass without exercising anything.
-    ref = leave(channel)
-    assert_reply ref, :ok, _payload, 2_000
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        ref = leave(channel)
+        assert_reply ref, :ok, _payload, 2_000
 
-    assert await_death(pid), """
-    The reconcile outlived its channel.
+        assert await_death(pid), """
+        The reconcile outlived its channel.
 
-    The rejoin that follows gets a fresh channel with empty assigns, starts a
-    second reconcile on top of this one, and each holds a connection until the
-    pool is gone. That is the storm, and it does not self-clear because every
-    attempt is as slow as the last.
-    """
+        The rejoin that follows gets a fresh channel with empty assigns, starts a
+        second reconcile on top of this one, and each holds a connection until the
+        pool is gone. That is the storm, and it does not self-clear because every
+        attempt is as slow as the last.
+        """
+      end)
+
+    assert log =~ "killed the in-flight reconcile",
+           "a fix that works silently cannot be told from one that never runs — the " <>
+             "test proves the mechanism, this line is the only thing that says it is " <>
+             "happening on a real machine"
   end
 
   test "a second reconcile is skipped while one is already running for this copy", %{
