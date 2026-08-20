@@ -879,33 +879,52 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # An empty set now demotes, so the note reports that instead of asking for the
   # work. It still says something, because silence would be wrong in the other
   # direction: an agent whose findings all became advisory should know why they
-  # stopped blocking, and that the reason is a claim about *this session* — no
-  # recorded edits — rather than a judgment that the findings do not matter.
-  # A gate that stops blocking has to say so; that is the same rule the
-  # `unattributed_count` field follows.
+  # stopped blocking, and that the reason is a claim about *this session* rather
+  # than a judgment that the findings do not matter. A gate that stops blocking
+  # has to say so; that is the same rule the `unattributed_count` field follows.
   #
   # `76008385` is what the old shape cost: a QA agent, which writes no project
   # files by nature, followed this note exactly — `git log -1` per path,
   # confirmed neither was its own, escalated to the owner — and got the same
   # block again on the next stop, with no action available that would change it.
+  #
+  # Two claims in the old wording became false and are corrected here, both
+  # reported as a single self-contradicting message (339725c7): findings with no
+  # file, and spex findings, were named as still blocking while the same
+  # paragraph announced a blanket demotion. Under story 894's rule an agent that
+  # made no edits is blocked by nothing, spex and file-less findings included —
+  # they block the next session that does edit.
+  #
+  # "No file this project tracks" rather than "no recorded edits", because the
+  # session that reads this most often did record edits: a QA agent writing
+  # under `.code_my_spec/qa/`, which git ignores, so nothing it wrote is a file
+  # here (a9e9caca). Being told it had no recorded edits, having just written
+  # its brief, reads as the gate being broken.
   defp attribution_note(%MapSet{} = session_paths) do
     if MapSet.size(session_paths) == 0 do
-      "\n\nThis session has no recorded edits, so every finding that names a file " <>
-        "was demoted to advisory — a session that wrote nothing cannot own one. " <>
+      "\n\nThis session changed no file this project tracks, so every finding was " <>
+        "demoted to advisory — an agent that made no edits is blocked by nothing. " <>
         "They are still real and still someone's: if one names a file you were " <>
         "about to work in, `git log -1 -- <path>` says whose, and telling its " <>
-        "owner beats editing an in-flight file you do not own. Findings with no " <>
-        "file at all still block, because unattributable is not the same as " <>
-        "somebody else's."
+        "owner beats editing an in-flight file you do not own. The next session " <>
+        "that does edit gets them."
     else
       ""
     end
   end
 
+  # `nil` is narrower than it used to be, and the difference is what makes this
+  # actionable. It no longer means "no session id" or "you touched nothing
+  # here": it means project files demonstrably changed while this task ran, and
+  # the edit ledger names none of them. So the recording is broken, not absent,
+  # and the agent is the only one positioned to say so.
   defp attribution_note(_session_paths) do
-    "\n\nAttribution is unavailable for this session, so nothing could be demoted " <>
-      "and every finding blocks — including any that arrived with a rebase. Check " <>
-      "`git log -1 -- <path>` before repairing anything you do not recognise."
+    "\n\nFiles in this project changed while this task ran, but none of them are " <>
+      "in this session's edit ledger — so nothing could be attributed, nothing " <>
+      "was demoted, and every finding blocks, including any that arrived with a " <>
+      "rebase. Check `git log -1 -- <path>` before repairing anything you do not " <>
+      "recognise. If you did not edit those files, the recording itself is wrong " <>
+      "and worth reporting: `create_issue` with scope `framework`."
   end
 
   defp truncate_message(message, max) when is_binary(message) do

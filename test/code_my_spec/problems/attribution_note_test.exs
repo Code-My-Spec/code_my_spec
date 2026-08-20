@@ -20,18 +20,24 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   refused alongside an unusable one, because "the session wrote nothing" and
   "attribution broke" were indistinguishable from there.
 
-  They are not indistinguishable any more — `verify_against_ledger/3` answers
-  `nil` for the broken case specifically — so an empty set now demotes, and
-  `76008385` is what the old shape cost: a QA agent, which writes no project
-  files by nature, hit it on every stop and had no action available that would
-  change the answer.
+  They are not indistinguishable any more, though not from inside that function
+  — `corroborate_with_disk/2` asks whether the project moved while the task ran,
+  which a broken recording cannot hide and a session that edited nothing cannot
+  fake. So an empty set demotes, and `76008385` is what the old shape cost: a QA
+  agent, which writes no project files by nature, hit it on every stop and had
+  no action available that would change the answer.
 
   The note stays, with the opposite content. Silence would be wrong in the
   other direction: an agent whose findings all became advisory should know why
   they stopped blocking, and that the reason is a claim about this session
   rather than a judgment that the findings do not matter.
 
-  The unusable case is unchanged and still blocks everything.
+  Both notes are pinned on their wording, not just their existence, because
+  both have been wrong in the field while reading as authoritative. 339725c7
+  announced a blanket demotion in the same paragraph as two exceptions the gate
+  no longer makes, directly under 26 findings it was still blocking on; and the
+  empty-set note told a QA agent it had "no recorded edits" moments after it
+  wrote its brief, because the brief lives somewhere git ignores (a9e9caca).
   """
 
   use ExUnit.Case, async: true
@@ -52,10 +58,10 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
     ProblemRenderer.render_stop_response([problem()], [], session_paths: session_paths)
   end
 
-  test "a session with no recorded edits is told its findings were demoted" do
+  test "a session that changed no tracked file is told its findings were demoted" do
     text = render(MapSet.new())
 
-    assert text =~ "no recorded edits"
+    assert text =~ "changed no file this project tracks"
     assert text =~ "demoted to advisory"
 
     assert text =~ "git log -1 -- <path>",
@@ -67,11 +73,43 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
              "is worse than saying nothing at all"
   end
 
+  # 339725c7 read as the gate being broken, and fairly: the same paragraph
+  # announced a blanket demotion and named two categories that were still
+  # blocking, with 26 of them listed directly above it.
+  test "it does not promise exceptions the demotion no longer makes" do
+    text = render(MapSet.new())
+
+    refute text =~ "still block",
+           "spex and file-less findings are demoted too under story 894's rule. " <>
+             "Naming an exception the gate does not make is what made this message " <>
+             "contradict the 26 blocking findings printed above it."
+  end
+
+  # The QA session this is mostly written for did record edits — to
+  # `.code_my_spec/qa/…`, which git ignores and `Files` therefore never rows.
+  # Telling it that it has "no recorded edits" reads as the gate being wrong
+  # about a file it just wrote.
+  test "it claims nothing about what was recorded, only about what changed here" do
+    refute render(MapSet.new()) =~ "no recorded edits"
+  end
+
   test "a session whose attribution is unusable is told that too" do
     text = render(nil)
 
-    assert text =~ "Attribution is unavailable"
+    assert text =~ "edit ledger"
     assert text =~ "git log -1 -- <path>"
+  end
+
+  # `nil` now means one specific thing — project files changed and the ledger
+  # names none of them — and the note is only actionable if it says which.
+  test "the unusable note describes the evidence rather than asserting a verdict" do
+    text = render(nil)
+
+    assert text =~ "changed while this task ran"
+
+    assert text =~ "create_issue",
+           "a broken recording is not something the agent can fix by editing, and " <>
+             "it is the only party positioned to report it"
   end
 
   # The note is about the gate having no evidence. With evidence it has already
@@ -81,8 +119,8 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   test "a session with recorded edits gets no note" do
     text = render(MapSet.new(["lib/code_my_spec/validation.ex"]))
 
-    refute text =~ "no recorded edits"
-    refute text =~ "Attribution is unavailable"
+    refute text =~ "changed no file this project tracks"
+    refute text =~ "edit ledger"
   end
 
   # The distinction the whole thing turns on: this one is the session's own
@@ -91,6 +129,6 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
     text = render(MapSet.new(["test/spex/886_preview/criterion_2328_spex.exs"]))
 
     refute text =~ "not edited by this session"
-    refute text =~ "no recorded edits"
+    refute text =~ "changed no file this project tracks"
   end
 end
