@@ -338,17 +338,67 @@ defmodule CodeMySpec.IssuesTest do
       assert {:ok, _dismissed} = Issues.dismiss_issue(scope, issue, "Not needed")
     end
 
-    test "returns error when issue is not in :incoming status" do
+    # This asserted the opposite until 2026-08-20 — that dismissing an accepted
+    # issue errors — under the name "returns error when issue is not in
+    # :incoming status" and with the reason "Too late". It stated the rule
+    # without a reason for it, and the rule turned out to cost more than it
+    # bought: the only remaining exit from `accepted` was `resolved`, so
+    # withdrawing an issue meant writing a resolution for something nobody
+    # fixed. See the withdrawal tests above.
+    #
+    # What is genuinely worth pinning is the half that did not change: a
+    # terminal state is terminal. Reopening is not a triage decision, and an
+    # issue that can leave `dismissed` or `resolved` makes both meaningless.
+    test "a closed issue stays closed" do
       scope = full_scope_fixture()
-      issue = create_issue(scope)
-      {:ok, accepted} = Issues.accept_issue(scope, issue)
 
-      assert {:error, changeset} = Issues.dismiss_issue(scope, accepted, "Too late")
+      dismissed_issue = create_issue(scope)
+      {:ok, dismissed} = Issues.dismiss_issue(scope, dismissed_issue, "Not a real defect")
+
+      assert {:error, changeset} = Issues.accept_issue(scope, dismissed)
+      assert errors_on(changeset).status
+
+      resolved_issue = create_issue(scope)
+      {:ok, accepted} = Issues.accept_issue(scope, resolved_issue)
+      {:ok, resolved} = Issues.resolve_issue(scope, accepted, "Fixed in abc123")
+
+      assert {:error, changeset} = Issues.dismiss_issue(scope, resolved, "Changed my mind")
       assert errors_on(changeset).status
     end
   end
 
   describe "resolve_issue/3" do
+    # Accepting is a triage decision made from a report, so learning afterwards
+    # that an issue is a duplicate, out of scope, or about a surface being
+    # retired is ordinary. Without this the only exit from `accepted` is
+    # `resolved`, which means writing a resolution for something nobody fixed —
+    # a lie in the one field whose purpose is to say how it was fixed. Measured
+    # 2026-08-20: `358f6c0f` was closed that way, its resolution opening
+    # "Nothing was fixed."
+    test "an accepted issue can still be withdrawn, with a reason" do
+      scope = full_scope_fixture()
+      issue = create_issue(scope)
+      {:ok, accepted} = Issues.accept_issue(scope, issue)
+
+      assert {:ok, dismissed} =
+               Issues.dismiss_issue(scope, accepted, "Duplicate of the canonical report")
+
+      assert dismissed.status == :dismissed
+      assert dismissed.resolution == "Duplicate of the canonical report"
+    end
+
+    # The reason is what makes withdrawal legitimate rather than a way to make
+    # the graph green, so it is required from `accepted` exactly as from
+    # `incoming`.
+    test "withdrawing an accepted issue still demands a reason" do
+      scope = full_scope_fixture()
+      issue = create_issue(scope)
+      {:ok, accepted} = Issues.accept_issue(scope, issue)
+
+      assert {:error, changeset} = Issues.dismiss_issue(scope, accepted, nil)
+      assert "can't be blank" in errors_on(changeset).resolution
+    end
+
     test "transitions accepted issue to resolved" do
       scope = full_scope_fixture()
       issue = create_issue(scope)

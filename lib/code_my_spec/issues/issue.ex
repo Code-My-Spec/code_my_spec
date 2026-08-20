@@ -28,9 +28,26 @@ defmodule CodeMySpec.Issues.Issue do
   @statuses [:incoming, :accepted, :dismissed, :resolved]
   @categories [:bug, :requirements_change]
 
+  # `accepted -> dismissed` exists because accepting is a triage decision, and
+  # triage decisions are made from a report rather than from the code. Finding
+  # out afterwards that an issue is a duplicate, out of scope, or about a
+  # surface being retired is ordinary, and it happened twice in one session.
+  #
+  # Without it the only exit from `accepted` is `resolved`, so withdrawing an
+  # issue means writing a resolution for something nobody fixed — a lie in the
+  # one field whose entire purpose is to say how it was fixed, and the field a
+  # later reader trusts most. Measured 2026-08-20: `358f6c0f` had to be closed
+  # that way, with its resolution opening "Nothing was fixed."
+  #
+  # It costs nothing in the graph. `dismissed` is already terminal and already
+  # reachable from `incoming`, and everything that asks whether an issue is
+  # still open asks for `incoming ++ accepted` (`AgentTasks.QaApp`), so both
+  # exits close it identically. `dismiss_issue` requires a reason, so the
+  # withdrawal is always explained — which is more than `resolved` demanded of
+  # the same decision.
   @valid_transitions %{
     incoming: [:accepted, :dismissed],
-    accepted: [:resolved],
+    accepted: [:resolved, :dismissed],
     dismissed: [],
     resolved: []
   }
