@@ -146,4 +146,134 @@ defmodule CmsHarness.TestDatabase do
   def partition_for(cwd, "spex"), do: partition_for(cwd) <> "s"
   def partition_for(cwd, "exunit"), do: partition_for(cwd) <> "a"
   def partition_for(cwd, _source), do: partition_for(cwd)
+
+  @maintenance_database "postgres"
+  @probe_timeout_ms 1_000
+
+  @doc """
+  Which of `names` exist on the Postgres these databases would live on.
+
+  Reading, not managing. The moduledoc above is emphatic that nothing here
+  creates, migrates or drops a database, and this does not change that: one
+  `SELECT datname FROM pg_database` on a connection that is opened, asked and
+  closed. It has no DDL to issue and cannot acquire any.
+
+  It exists because naming a database and never asking whether it is there
+  produced its own failure. `mix cms.harness.onboard` printed six commands and
+  reported the copy onboarded whether or not anybody ran them, so "onboarded"
+  and "usable" came apart with no way to tell from the outside — the missing
+  database surfaced later as `undefined_column`, or as a suite that would not
+  start, wearing a different failure's costume. That is story 1013's own
+  complaint about everything else, reproduced by the task that fixed it.
+
+  **Three answers, not two.** A server that cannot be reached returns
+  `{:error, reason}` and never "none of them exist": an unreachable Postgres is
+  the absence of an answer, and reporting it as absence-of-databases would send
+  the reader to create three databases that may already be there. `devops_status`
+  splits missing from unreachable for the same reason and it is the same mistake.
+
+  Connection parameters come from this project's configured repo with the
+  database swapped for the maintenance one, because `config/test.exs` and
+  `config/dev.exs` name the same server and differ only in `database:` — which
+  is the field being asked about, so it is the one field that cannot be
+  inherited.
+
+  `overrides` replaces connection parameters for one call. It exists so the
+  unreachable branch can be exercised by naming a port nothing is listening on,
+  rather than by mutating this node's application environment — which is the
+  whole `Repo` config, shared with everything else running at the time.
+  """
+  @spec existence([String.t()], keyword()) ::
+          {:ok, %{String.t() => boolean()}} | {:error, String.t()}
+  def existence(names, overrides \\ []) when is_list(names) do
+    with {:ok, _apps} <- Application.ensure_all_started(:postgrex),
+         {:ok, conn} <- connect(overrides) do
+      result = present(conn, names)
+      GenServer.stop(conn, :normal, 1_000)
+      result
+    end
+  end
+
+  # Default backoff on purpose. `backoff_type: :stop` would read better — ask
+  # once, give up — but `start_link` links the connection to whoever called
+  # this, so a Postgres that is down would take the mix task down with it
+  # rather than being reported. Retrying quietly and letting the queue time out
+  # turns the same condition into a return value.
+  defp connect(overrides) do
+    opts =
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.Repo, [])
+      |> Keyword.take([:username, :password, :hostname, :port, :socket_dir, :ssl])
+      |> Keyword.merge(overrides)
+      |> Keyword.merge(
+        database: @maintenance_database,
+        pool_size: 1,
+        queue_target: 500,
+        queue_interval: 1_000
+      )
+
+    with :ok <- listening?(opts) do
+      case Postgrex.start_link(opts) do
+        {:ok, conn} -> {:ok, conn}
+        {:error, reason} -> {:error, describe(reason)}
+      end
+    end
+  end
+
+  # Asked before Postgrex, because Postgrex answers this question badly.
+  #
+  # A refused port reaches the caller as a queue timeout — three seconds of
+  # retries, two `failed to connect` lines on the way, and a message that
+  # recommends raising `pool_size` and tracking down slow queries. All of that
+  # argues for a defect that is not the one in front of the reader, which is the
+  # most expensive kind of wrong message: it is specific, confident, and about
+  # something else. One `:gen_tcp.connect` says `:econnrefused` or `:nxdomain` in
+  # under a second and says nothing else.
+  #
+  # Skipped entirely for a Unix socket, which has no host or port to probe —
+  # there the queue timeout is the only answer available and is left alone.
+  defp listening?(opts) do
+    cond do
+      opts[:socket_dir] || opts[:socket] ->
+        :ok
+
+      true ->
+        host = to_charlist(opts[:hostname] || "localhost")
+        port = opts[:port] || 5432
+
+        case :gen_tcp.connect(host, port, [:binary, active: false], @probe_timeout_ms) do
+          {:ok, socket} ->
+            :gen_tcp.close(socket)
+            :ok
+
+          {:error, reason} ->
+            {:error, "nothing answered at #{opts[:hostname] || "localhost"}:#{port} (#{reason})"}
+        end
+    end
+  end
+
+  defp present(conn, names) do
+    case Postgrex.query(conn, "SELECT datname FROM pg_database", [], timeout: 5_000) do
+      {:ok, %{rows: rows}} ->
+        have = MapSet.new(rows, fn [name] -> name end)
+        {:ok, Map.new(names, &{&1, MapSet.member?(have, &1)})}
+
+      {:error, reason} ->
+        {:error, describe(reason)}
+    end
+  end
+
+  # DBConnection's pool-exhaustion prose is right for a busy pool and wrong for
+  # every way this can fail, so it is not passed through. A single query on a
+  # one-connection pool that never got a connection means the server did not let
+  # us in; anything else keeps its own words.
+  defp describe(%DBConnection.ConnectionError{message: message}) do
+    case String.contains?(message, "connection not available") do
+      true -> "could not open a connection (credentials, or the server refused it)"
+      false -> message
+    end
+  end
+
+  defp describe(%Postgrex.Error{postgres: %{message: message}}), do: message
+  defp describe(reason), do: inspect(reason)
 end

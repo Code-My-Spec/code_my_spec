@@ -74,6 +74,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.Token
   alias CodeMySpec.Environments
   alias CodeMySpec.Projects
+  alias CmsHarness.TestDatabase
 
   @settings_file ".claude/settings.local.json"
   @harness_config_file ".cms_harness.json"
@@ -163,10 +164,82 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # reads through `Environments` so specs can drive an in-memory copy.
   defp check(env, root) do
     missing = missing_settings(env)
-    onboarded = missing == []
-    announce_check(onboarded, missing, root)
+    databases = database_status(root)
+    onboarded = missing == [] and databases.missing == []
+    announce_check(onboarded, missing, databases, root)
 
-    %{onboarded: onboarded, missing: missing, remedy: "mix cms.harness.onboard"}
+    %{
+      onboarded: onboarded,
+      missing: missing,
+      databases: databases.all,
+      missing_databases: databases.missing,
+      databases_reachable: databases.reachable,
+      remedy: "mix cms.harness.onboard"
+    }
+  end
+
+  # The settings and the databases are both required and neither implies the
+  # other, so `onboarded` is the conjunction — a copy whose `env` block is
+  # perfect and whose three databases do not exist is not a copy anything can
+  # run, and answering `onboarded: true` there is the defect this now closes.
+  #
+  # An **unreachable** Postgres is not a third state of the databases; it is the
+  # absence of an answer about them. `missing` is empty in that case on purpose,
+  # so a laptop with the server stopped does not report a working copy broken
+  # and send its agent to create three databases that are already there. The
+  # reason is carried out and printed instead.
+  defp database_status(root) do
+    databases = Onboarding.databases(Onboarding.partition_name(root), Mix.Project.config()[:app])
+
+    case TestDatabase.existence(Enum.map(databases, & &1.name)) do
+      {:ok, present} ->
+        all = Enum.map(databases, &Map.put(&1, :exists, Map.get(present, &1.name, false)))
+        %{all: all, missing: Enum.reject(all, & &1.exists), reachable: true, unreachable: nil}
+
+      {:error, reason} ->
+        all = Enum.map(databases, &Map.put(&1, :exists, :unknown))
+        %{all: all, missing: [], reachable: false, unreachable: reason}
+    end
+  end
+
+  # One printer for both callers.
+  #
+  # `--check` and the onboarding report answer the same question and used to
+  # answer it in two different shapes — which is the defect this project keeps
+  # meeting: two renderings of one fact with nothing holding them together, free
+  # to drift the moment either is edited. The report's own comment says the same
+  # thing about its structured return and its printed form. So there is one
+  # block, and both call it.
+  defp announce_databases(_root, %{reachable: false, unreachable: reason}) do
+    Mix.shell().info(
+      "  databases: unknown — could not reach Postgres (#{reason}).\n" <>
+        "             That is the absence of an answer, not a verdict: they may all be present."
+    )
+  end
+
+  defp announce_databases(_root, %{missing: [], all: all}) do
+    Mix.shell().info("  databases: #{length(all)} present")
+  end
+
+  # Names the directory, because the commands do not. An agent copying them runs
+  # them wherever its shell happens to be, and a worktree-isolated one is
+  # somewhere else by construction — that path is the whole difference between
+  # migrating this checkout and migrating the one it was made from.
+  #
+  # Only the absent ones get commands. Printing all three every time is what made
+  # this "six commands is six chances to do five": the two nobody needs are
+  # indistinguishable from the one that matters, and the `s` and `a` partitions
+  # are the easy ones to skip because nothing wants them until a spex or analyzer
+  # run — which is when a missing one costs most and looks least related.
+  defp announce_databases(root, %{missing: missing, all: all}) do
+    Mix.shell().info("  databases: #{length(all) - length(missing)}/#{length(all)} present")
+    Mix.shell().info("  create these yourself, from #{root}:")
+
+    Enum.each(missing, fn database ->
+      Mix.shell().info(
+        "    #{database.name}\n      #{database.create}\n      #{database.migrate}"
+      )
+    end)
   end
 
   # `ANTHROPIC_BASE_URL` is not required: it is opt-in (`--relay-model-turns`)
@@ -216,22 +289,33 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp blank_or_invalid?(_key, value) when is_binary(value), do: String.trim(value) == ""
   defp blank_or_invalid?(_key, _value), do: true
 
-  defp announce_check(true, _missing, root) do
+  defp announce_check(true, _missing, databases, root) do
     Mix.shell().info("onboarded: #{root}")
+    announce_databases(root, databases)
   end
 
   # Names them, because "not onboarded" alone sends the reader back to the file
   # to work out which half failed — and the half-onboarded copy, file present
   # and some keys right, is where that costs most.
-  defp announce_check(false, [_ | _] = missing, root) do
-    Mix.shell().info(
-      "not onboarded: #{root}\n  missing: #{Enum.join(missing, ", ")}\n" <>
-        "run: mix cms.harness.onboard"
-    )
-  end
+  #
+  # Each half carries its own remedy, and that is not tidiness. Settings and
+  # databases fail independently and `mix cms.harness.onboard` fixes exactly one
+  # of them, so a copy whose `env` block is perfect and whose databases are
+  # absent used to read "not onboarded … run: mix cms.harness.onboard" — a
+  # confident instruction to re-run the command that had already succeeded,
+  # which is worse than saying nothing.
+  defp announce_check(false, missing, databases, root) do
+    Mix.shell().info("not onboarded: #{root}")
 
-  defp announce_check(false, _missing, root) do
-    Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
+    case missing do
+      [] ->
+        :ok
+
+      _ ->
+        Mix.shell().info("  missing: #{Enum.join(missing, ", ")}\n  run: mix cms.harness.onboard")
+    end
+
+    announce_databases(root, databases)
   end
 
   defp onboard(env, root, relay_model_turns?) do
@@ -393,9 +477,17 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # which database it acts on is the defect this replaces: the migration guard
   # printed `MIX_ENV=test mix ecto.migrate` while checking a partition that
   # command never touches.
+  #
+  # It does now *ask* whether they exist, which is a different verb and the one
+  # thing the old shape was missing: a copy could be onboarded, print its six
+  # commands, have nobody run them, and answer `--check` with `onboarded` — so
+  # "configured" and "usable" came apart with nothing able to tell them apart
+  # from outside. `TestDatabase.existence/1` issues one `SELECT` and has no DDL
+  # to reach for; the rule above is about what this writes, not about what it is
+  # allowed to know.
   defp outstanding(root, id, git) do
     partition = Onboarding.partition_name(root)
-    databases = Onboarding.databases(partition, Mix.Project.config()[:app])
+    status = database_status(root)
 
     # Everything the report knows, the terminal says. The report is the callable
     # answer and the print is the readable one, and they carry the same facts —
@@ -409,45 +501,19 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       submodules: #{if git, do: "recursing", else: "not configured"}
     """)
 
-    Mix.shell().info("Databases this working copy needs (create and migrate them yourself):")
-
-    Enum.each(databases, fn database ->
-      Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
-    end)
+    announce_databases(root, status)
 
     %{
       harness_id: id,
       partition: partition,
-      databases: databases,
+      databases: status.all,
+      missing_databases: status.missing,
+      databases_reachable: status.reachable,
       git: %{submodule_recurse: git},
       issued_ddl: false
     }
   end
 
-  # Informational only — the installed marketplace plugin already calls
-  # `cms-mcp-relay hook /api/hooks/<name>` with no id in the command, and the
-  # relay itself resolves this working copy by walking up from the hook
-  # payload's `cwd` to `.cms_harness.json` (`relay/hook.go`, `harnessID/1`).
-  # Nothing here writes to, or depends on, that binary — onboarding has no
-  # plugin config left to gate. This only exists so a stale relay is named
-  # instead of discovered as eight silently dead hooks.
-
-  # `cms-mcp-relay` is no longer checked here.
-  #
-  # It was, and the reasoning was sound: hooks shelled out to
-  # `cms-mcp-relay hook /api/hooks/<name>`, and a relay from before that
-  # subcommand existed did not reject the argument — `hook` was not a flag it
-  # knew, so it fell through to the MCP path, posted the hook payload to
-  # /mcp?dir=, took the JSON-RPC parse error and exited 0. Claude Code reads 0
-  # as a hook that ran. All eight went silently dead with no error on either
-  # side, which is why the `capabilities` marker existed and why this reported
-  # its absence.
-  #
-  # Hooks are a plain `curl` now and the relay is not in that path, so the
-  # class is gone rather than mitigated: there is no version of curl that can
-  # be stale, and no argv a wrong binary can misread. The relay still ships
-  # for Codex's MCP mount, which is a different question from whether this
-  # checkout's hooks will fire.
   # Takes a path so one checkout can onboard another. A worktree on an older
   # branch does not have this task, and asking somebody to merge a branch
   # before they can be onboarded is a worse first experience than a positional
