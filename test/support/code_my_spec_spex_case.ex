@@ -2382,6 +2382,32 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Answer the inbound step's pause for a probe address, and wait for the run
+  it starts.
+
+  `run(:inbound, ...)` deliberately does not check for a missing address
+  before publishing records — only `default_inbound_probe/3`, at the very
+  end, does — so a first plain "Run" click (no form data, `4ed72738`) always
+  settles at `:paused` rather than `:done` once an address is not already
+  configured (`7df39199`). `2f8c4208` gave the paused step the only way to
+  answer it: the `[data-test='inbound-probe-address']` form. A spex driving
+  inbound to completion needs both halves — the click that reaches the
+  pause (the caller's job, same as any other step) and this, which submits
+  the address and waits for the resulting run.
+
+  `address` must end in `@<domain being set up>` — `probe_address_on_domain/2`
+  refuses to prove an inbox with a message sent to any other domain.
+  """
+  @spec resolve_inbound_probe_pause(term(), String.t()) :: :ok
+  def resolve_inbound_probe_pause(view, address) do
+    view
+    |> Phoenix.LiveViewTest.form("[data-test='inbound-probe-address']", %{"probe_to" => address})
+    |> Phoenix.LiveViewTest.render_submit()
+
+    await_step(view, :inbound)
+  end
+
+  @doc """
   Point the widget step at a real application and at the fleet's site.
 
       setup :widget_on_the_fleet

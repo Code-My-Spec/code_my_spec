@@ -60,12 +60,19 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
       end
 
       when_ "setup verifies the step", context do
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
-          |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
+        |> render_click()
 
-        {:ok, Map.put(context, :html, html)}
+        # The plain "Run" click carries no address, so :inbound settles at
+        # :paused rather than :done (7df39199) — its records are already
+        # published, and the pause is only about proving delivery. Answer it
+        # the way 2f8c4208 gave the page to, then read the page after the
+        # run rather than what the click handed back.
+        CodeMySpecSpex.Case.await_step(context.view, :inbound)
+        CodeMySpecSpex.Case.resolve_inbound_probe_pause(context.view, "sam@c8033.astralbi.com")
+
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "it confirms a real message was delivered end to end", context do

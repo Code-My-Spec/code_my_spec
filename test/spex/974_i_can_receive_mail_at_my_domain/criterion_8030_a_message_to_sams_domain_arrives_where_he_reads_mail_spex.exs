@@ -54,6 +54,12 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
           CodeMySpecSpex.Case.await_step(view, step)
         end
 
+        # The plain "Run" click above carries no address, so :inbound settles
+        # at :paused rather than :done (7df39199) — its records are already
+        # published, and the pause is only about proving delivery. Answer it
+        # the way 2f8c4208 gave the page to.
+        CodeMySpecSpex.Case.resolve_inbound_probe_pause(view, "sam@#{@domain}")
+
         assert render(view) =~ ~r/data-step="inbound"[^>]*data-state="done"/,
                "expected inbound to be set up before a probe is sent to it"
 
