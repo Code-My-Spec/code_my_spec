@@ -291,7 +291,14 @@ defmodule CodeMySpec.Documents do
   end
 
   @valid_severities ~w(critical high medium low info)
-  @valid_scopes ~w(app qa docs)
+
+  # Same reasoning as `QaIssue.@scopes`, and the same drift: this list and that
+  # one both restated `Issue`'s scopes and both missed `:framework` when it was
+  # added in `9198be0f`. Read off the schema so the next scope needs adding
+  # once.
+  @valid_scopes CodeMySpec.Issues.Issue
+                |> Ecto.Enum.values(:scope)
+                |> Enum.map(&Atom.to_string/1)
 
   defp validate_parsed_issues(%{"issues" => issues}) when is_list(issues) do
     bad =

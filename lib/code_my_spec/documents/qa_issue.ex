@@ -11,7 +11,22 @@ defmodule CodeMySpec.Documents.QaIssue do
   @primary_key false
 
   @severities ~w(critical high medium low info)
-  @scopes ~w(app qa docs)
+
+  # Read off `Issue`, not restated. A QA result reports issues into the same
+  # domain the schema defines, so a scope one accepts and the other does not is
+  # a finding with nowhere to go.
+  #
+  # It was restated, and drifted: `9198be0f` added `:framework` to `Issue`,
+  # `Issues`, `create_issue` and `list_issues` and missed this list and
+  # `Documents.@valid_scopes`, three months ago. `Issues.parse_scope/1` grew a
+  # `"framework"` clause that this rejected before it could ever run — so the
+  # code that files the issue expected it to work and the code that validates
+  # the document it arrives in did not.
+  #
+  # A QA agent hits framework friction more than anyone: the harness itself, a
+  # looping hook, a tool that will not answer. Rejecting the document is
+  # rejecting the only channel that has.
+  @scopes CodeMySpec.Issues.Issue |> Ecto.Enum.values(:scope) |> Enum.map(&Atom.to_string/1)
 
   embedded_schema do
     field :title, :string
