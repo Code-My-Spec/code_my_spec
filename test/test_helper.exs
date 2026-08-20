@@ -34,6 +34,13 @@ ExUnit.start(
       :docker,
       :fleet,
       :registry,
+      # `:real_pool` brutally kills a process that holds a database connection.
+      # Under `{:shared, owner}` that is the connection every process is using,
+      # so the kill breaks it for whatever runs next — which in the one test
+      # tagged this way is the same channel's own `terminate/2`, one line later.
+      # In production the killed task holds its own pooled connection and the
+      # sequence is safe. Run it with `mix test --only real_pool`. (883af150)
+      :real_pool,
       :analyzer,
       :record_google_login_shape,
       :record_github_login_shape

@@ -120,6 +120,36 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
     end)
   end
 
+  # Excluded from the default suite, and the reason is not that it is flaky —
+  # it is that it cannot be honest inside the sandbox.
+  #
+  # Its subject is `terminate/2` brutally killing the in-flight reconcile. Under
+  # `{:shared, owner}` every process shares one connection, so the kill breaks
+  # the connection the very next line needs — `Analysis.fail_in_flight/2`, at
+  # `harness_project_channel.ex:835` — and the channel dies with
+  # `DBConnection.OwnershipError`. In production the task holds its own pooled
+  # connection and the sequence is safe, which is why this is an artifact of the
+  # sandbox rather than a defect in what it tests.
+  #
+  # Measured 2026-08-20: ~3 failures in 10 full-suite runs, none standalone, and
+  # every failure reported an ownership error that says nothing about the
+  # mechanism under test. A guard that cries wolf a third of the time is one
+  # nobody reads.
+  #
+  # Kept rather than deleted because nothing else covers this: `grep` finds
+  # `shutdown_reconcile` and its log line in this file and the channel, nowhere
+  # else. What it guards is `1aed7edf` — a rejoin every ~1.2s, each starting a
+  # reconcile that holds a connection for 9-10s until the pool is exhausted,
+  # 15+ minutes across two working copies, and it does not self-clear because
+  # every attempt is as slow as the last.
+  #
+  # Run it deliberately: `MIX_ENV=test mix test --only real_pool`. The honest
+  # cost is that a regression in the kill path is caught later rather than
+  # sooner — which, at a 30% false-alarm rate, was already true.
+  #
+  # See issue 883af150 for the full diagnosis, including the two rival
+  # explanations that were tested and eliminated.
+  @tag :real_pool
   test "the reconcile dies with the channel that started it", %{
     scope: scope,
     channel: channel
