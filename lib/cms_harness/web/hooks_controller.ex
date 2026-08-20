@@ -21,12 +21,11 @@ defmodule CmsHarness.Web.HooksController do
   alias CmsHarness.HookDecision
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
-  alias CmsHarness.WorkingCopies
 
   def handle(conn, params) do
     hook = hook_name(conn)
 
-    case locate(conn, params) do
+    case conn.assigns.working_copy do
       {:ok, working_dir} ->
         conn
         |> put_status(200)
@@ -42,6 +41,11 @@ defmodule CmsHarness.Web.HooksController do
         |> put_status(200)
         |> json(server_unreachable(hook, id, reason, params))
 
+      {:not_onboarded, dir} ->
+        conn
+        |> put_status(200)
+        |> json(not_onboarded(hook, dir, params))
+
       :no_harness ->
         conn
         |> put_status(200)
@@ -49,53 +53,14 @@ defmodule CmsHarness.Web.HooksController do
     end
   end
 
-  # A request says which working copy it is about, or it is refused. There is
-  # no directory anywhere in this path and there is not going to be one: the
-  # walk it replaced resolved a hook fired from a subdirectory differently from
-  # one fired at the root, resolved a nested checkout to the outer one, and
-  # could not tell two copies at the same path on different machines apart at
-  # all.
-  #
-  # The id comes from the URL, which onboarding wrote by reading
-  # `.cms_harness.json` — a file, per working copy, that the harness owns.
-  #
-  # The header is still accepted, because a host that cannot template a URL can
-  # send one and the proxy forwards a real id to the server on every MCP call.
-  # What is gone is the *environment variable* that used to populate it in the
-  # plugin template: `X-Harness-Id: ${CMS_HARNESS_ID}` on eight hooks, with
-  # nothing anywhere setting `CMS_HARNESS_ID`. It arrived unexpanded on every
-  # request — 76 of them measured in one run (f32c4a4a) — and was discarded
-  # here, which is the whole of "plugin hooks send no X-Harness-Id".
-  #
-  # Not replaced with something that sets the variable. Identity lives in the
-  # config file the harness already writes; asking an operator to also export
-  # it is a second source of truth that can disagree with the first.
-  defp locate(conn, params) do
-    case params["harness_id"] || header_id(conn) do
-      id when is_binary(id) and id != "" -> from_id(id)
-      _ -> :no_harness
-    end
-  end
+  # The payload said where it fired, and that directory is the top of a project
+  # with no `.cms_harness.json` in it. Distinct from `no_harness/2`, which is
+  # "nothing identified this at all": here the checkout is named, and naming it
+  # is the whole remedy.
+  defp not_onboarded(hook, dir, params) do
+    Logger.warning("[CmsHarness] #{hook} fired in #{dir}, which has not been onboarded")
 
-  defp header_id(conn) do
-    case conn |> get_req_header("x-harness-id") |> List.first() do
-      value when is_binary(value) -> unexpanded(String.trim(value))
-      _ -> nil
-    end
-  end
-
-  # An unset variable arrives as the literal `${CMS_HARNESS_ID}`. That is a
-  # plugin that was never onboarded, not an id.
-  defp unexpanded("$" <> _), do: nil
-  defp unexpanded(""), do: nil
-  defp unexpanded(id), do: id
-
-  defp from_id(id) do
-    case WorkingCopies.root(id) do
-      {:ok, root} -> {:ok, root}
-      :unknown -> {:unknown_harness, id}
-      {:unreachable, reason} -> {:server_unreachable, id, reason}
-    end
+    HookDecision.unreachable(hook, {:not_onboarded, dir}, dir, params)
   end
 
   # Named rather than guessed at. The old behaviour walked up from whatever
@@ -173,7 +138,9 @@ defmodule CmsHarness.Web.HooksController do
   # person who cannot see the agent's copy — got `{:not_connected, {:http, 200}}`
   # and went looking at the network while the server was up and answering.
   defp refuse(hook, reason, working_dir, params) do
-    Logger.warning("[CmsHarness] #{hook} refused for #{working_dir}: #{HookDecision.summarize(reason)}")
+    Logger.warning(
+      "[CmsHarness] #{hook} refused for #{working_dir}: #{HookDecision.summarize(reason)}"
+    )
 
     HookDecision.unreachable(hook, reason, working_dir, params)
   end

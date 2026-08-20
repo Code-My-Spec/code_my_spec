@@ -128,6 +128,10 @@ defmodule CmsHarness.HookDecision do
 
   def summarize(:no_harness), do: "the hook named no working copy"
 
+  def summarize({:not_onboarded, dir}) do
+    "the hook fired in #{dir}, which is a project with no .cms_harness.json"
+  end
+
   def summarize(other), do: inspect(other)
 
   defp already_blocked?(%{"stop_hook_active" => true}), do: true
@@ -270,6 +274,27 @@ defmodule CmsHarness.HookDecision do
   defp explain(:invalid_config, working_dir) do
     """
     The harness found `#{Path.join(working_dir, ".code_my_spec/config.yml")}` but could not read a project id out of it.
+    """
+    |> String.trim()
+  end
+
+  # The payload said where it fired and that directory is a project — a `.git`
+  # or a `mix.exs` — with no harness config in it. Distinct from `:no_harness`,
+  # where nothing identified the request at all: here the checkout is named, so
+  # the remedy is one command in a directory the reader can see.
+  #
+  # The walk stops at that boundary rather than climbing through it, which is
+  # what keeps an un-onboarded checkout from adopting its parent's identity —
+  # the defect the previous, `mix.exs`-seeking walk was removed for.
+  defp explain({:not_onboarded, dir}, _working_dir) do
+    """
+    #{dir} has not been onboarded, so this harness has no identity for it.
+
+    Run `mix cms.harness.onboard #{dir}` there. Until then nothing in this \
+    checkout is recorded — its files, problems and analysis all key on an id it \
+    does not have.
+
+    The MCP tools do not go through this path and work meanwhile.
     """
     |> String.trim()
   end

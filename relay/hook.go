@@ -25,7 +25,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -76,12 +75,19 @@ func runHook(args []string) int {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Working-Dir", dir)
 
-	// Only when found. The server reads an empty value as absent anyway, and a
-	// header present-but-blank invites the reader to conclude an id was sent
-	// and rejected.
-	if id := harnessID(dir); id != "" {
-		req.Header.Set("X-Harness-Id", id)
-	}
+	// No id is sent, and none is resolved here.
+	//
+	// This used to walk up from dir for `.cms_harness.json` and set
+	// `X-Harness-Id`. The walk had no boundary: it climbed to the filesystem
+	// root, so an un-onboarded checkout nested inside an onboarded one found its
+	// *parent's* config and reported its work under an identity that was not its
+	// own. Silently, because a found id looks exactly like a correct one.
+	//
+	// The harness does the walk now, from the `X-Working-Dir` above, and stops
+	// at a project boundary — a `.git` or a `mix.exs` — refusing there by name
+	// instead of climbing through it. That is one implementation of the rule
+	// rather than two in two languages, and it is the one that can say
+	// "%s has not been onboarded" with the directory in it.
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
@@ -157,48 +163,6 @@ func payloadKeys(payload []byte) string {
 	return strings.Join(keys, ", ")
 }
 
-// harnessID reads the id this working copy was issued, walking up from dir.
-//
-// A published plugin is installed once and serves every checkout, so it cannot
-// bake an id into its URLs the way a generated per-harness config does, and it
-// cannot take one from the environment either — nothing sets CMS_HARNESS_ID,
-// and the server treats an unexpanded "${...}" as absent. `.cms_harness.json`
-// has been in every working copy the whole time with the id in it.
-//
-// Walking up because a hook's cwd is wherever the agent happens to be, which is
-// not always the checkout root.
-func harnessID(dir string) string {
-	for {
-		if id := readHarnessID(filepath.Join(dir, ".cms_harness.json")); id != "" {
-			return id
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-
-		dir = parent
-	}
-}
-
-func readHarnessID(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	var doc struct {
-		HarnessID string `json:"harness_id"`
-	}
-
-	if err := json.NewDecoder(f).Decode(&doc); err != nil {
-		return ""
-	}
-
-	return strings.TrimSpace(doc.HarnessID)
-}
 
 // The port is an argument rather than a constant, because `hooks.json` is where
 // the release packager can see it: it walks the whole plugin tree swapping every

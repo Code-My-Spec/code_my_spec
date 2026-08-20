@@ -20,6 +20,13 @@ defmodule CmsHarness.Web.Router do
 
   pipeline :hook do
     plug(:accepts, ["json"])
+
+    # Which working copy this request is about, resolved once for every surface
+    # below. Hooks, skills and analysis each used to answer that separately and
+    # slightly differently. See `ResolveWorkingCopy`; it assigns what it found,
+    # including why it found nothing, and each controller refuses in its own
+    # voice.
+    plug(CmsHarness.Web.ResolveWorkingCopy)
   end
 
   # The id-addressed surface. Onboarding writes the harness id into the URL in
