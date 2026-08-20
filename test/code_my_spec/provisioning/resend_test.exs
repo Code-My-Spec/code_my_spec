@@ -265,10 +265,22 @@ defmodule CodeMySpec.Provisioning.ResendTest do
     test "reuses an existing domain rather than registering a duplicate" do
       stub(fn
         %{method: "GET"} = conn ->
-          json(conn, 200, %{"data" => [%{"id" => "d1", "name" => "uat.example.com"}]})
+          json(conn, 200, %{
+            "data" => [
+              %{
+                "id" => "d1",
+                "name" => "uat.example.com",
+                "capabilities" => %{"sending" => "enabled", "receiving" => "disabled"}
+              }
+            ]
+          })
 
         %{method: "POST"} = conn ->
           flunk("ensure_domain registered a domain that already existed")
+          conn
+
+        %{method: "PATCH"} = conn ->
+          flunk("ensure_domain re-enabled sending on a domain that already sends")
           conn
       end)
 
@@ -282,6 +294,154 @@ defmodule CodeMySpec.Provisioning.ResendTest do
       end)
 
       assert {:ok, %{"id" => "d2"}} = Resend.ensure_domain(@scope, "uat.example.com")
+    end
+
+    # bfcd550a's promotion path: the inbound step registers a receiving-only
+    # domain with sending deliberately off (see "ensure_receiving_domain/3"
+    # below), and this step is what a project later promoted to production
+    # runs against that same domain for the first time. "Already registered"
+    # must not mean sending stays off — Sam would have a receiving-only apex
+    # forever with no error naming why production mail 403s.
+    test "turns sending on when it finds a domain adopted with it off" do
+      stub(fn
+        %{method: "GET", request_path: "/domains"} = conn ->
+          json(conn, 200, %{
+            "data" => [
+              %{
+                "id" => "d1",
+                "name" => "example.com",
+                "capabilities" => %{"sending" => "disabled", "receiving" => "enabled"}
+              }
+            ]
+          })
+
+        %{method: "PATCH", request_path: "/domains/d1"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          assert payload["capabilities"]["sending"] == "enabled"
+
+          assert payload["capabilities"]["receiving"] == "enabled",
+                 "turning sending on must not turn receiving off along the way"
+
+          json(conn, 200, %{"object" => "domain", "id" => "d1"})
+
+        %{method: "GET", request_path: "/domains/d1"} = conn ->
+          json(conn, 200, %{
+            "id" => "d1",
+            "name" => "example.com",
+            "capabilities" => %{"sending" => "enabled", "receiving" => "enabled"}
+          })
+      end)
+
+      assert {:ok, %{"id" => "d1"} = domain} = Resend.ensure_domain(@scope, "example.com")
+      assert Resend.sending?(domain)
+    end
+  end
+
+  describe "ensure_receiving_domain/3" do
+    # The heart of bfcd550a: requesting `sending: "enabled"` on a domain that
+    # will never publish DKIM/SPF asked Resend to hold it `pending` forever,
+    # and Resend bounced mail to the one record this step owns and had
+    # verified — the apex MX — because the domain as a whole never resolved
+    # its sending half. A fresh receiving-only domain asks for receiving
+    # alone.
+    test "creates a new domain receiving-only, asking nothing of sending" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"data" => []})
+
+        %{method: "POST"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          assert payload["capabilities"]["sending"] == "disabled"
+          assert payload["capabilities"]["receiving"] == "enabled"
+
+          json(conn, 201, %{
+            "id" => "d3",
+            "name" => "example.com",
+            "capabilities" => payload["capabilities"]
+          })
+      end)
+
+      assert {:ok, %{"id" => "d3"}} = Resend.ensure_receiving_domain(@scope, "example.com")
+    end
+
+    test "enabling receiving on a domain that already sends leaves sending on" do
+      stub(fn
+        %{method: "GET", request_path: "/domains"} = conn ->
+          json(conn, 200, %{
+            "data" => [
+              %{
+                "id" => "d1",
+                "name" => "example.com",
+                "capabilities" => %{"sending" => "enabled", "receiving" => "disabled"}
+              }
+            ]
+          })
+
+        %{method: "PATCH", request_path: "/domains/d1"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          assert payload["capabilities"]["sending"] == "enabled",
+                 "a domain already sending must not be PATCHed off while turning receiving on"
+
+          assert payload["capabilities"]["receiving"] == "enabled"
+          json(conn, 200, %{"object" => "domain", "id" => "d1"})
+
+        %{method: "GET", request_path: "/domains/d1"} = conn ->
+          json(conn, 200, %{
+            "id" => "d1",
+            "name" => "example.com",
+            "capabilities" => %{"sending" => "enabled", "receiving" => "enabled"}
+          })
+      end)
+
+      assert {:ok, domain} = Resend.ensure_receiving_domain(@scope, "example.com")
+      assert Resend.sending?(domain)
+      assert Resend.receiving?(domain)
+    end
+
+    # The other half of the same trap, reached a second way: a domain this
+    # step itself created receiving-only on an earlier run, found again here
+    # (receiving somehow reads disabled — a dashboard change, a partial
+    # earlier failure). Re-enabling receiving must not also flip sending on,
+    # or the pending-forever trap springs on the very next verification poll.
+    test "enabling receiving on a receiving-only domain leaves sending off" do
+      stub(fn
+        %{method: "GET", request_path: "/domains"} = conn ->
+          json(conn, 200, %{
+            "data" => [
+              %{
+                "id" => "d1",
+                "name" => "example.com",
+                "capabilities" => %{"sending" => "disabled", "receiving" => "disabled"}
+              }
+            ]
+          })
+
+        %{method: "PATCH", request_path: "/domains/d1"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          assert payload["capabilities"]["sending"] == "disabled",
+                 "receiving-only must stay receiving-only across a re-enable"
+
+          json(conn, 200, %{"object" => "domain", "id" => "d1"})
+
+        %{method: "GET", request_path: "/domains/d1"} = conn ->
+          json(conn, 200, %{
+            "id" => "d1",
+            "name" => "example.com",
+            "capabilities" => %{"sending" => "disabled", "receiving" => "enabled"}
+          })
+      end)
+
+      assert {:ok, domain} = Resend.ensure_receiving_domain(@scope, "example.com")
+      refute Resend.sending?(domain)
+      assert Resend.receiving?(domain)
     end
   end
 

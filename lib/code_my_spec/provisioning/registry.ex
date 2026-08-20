@@ -276,7 +276,8 @@ defmodule CodeMySpec.Provisioning.Registry do
   reachable from inside" is a property of today's firewall rather than of the
   registry.
   """
-  @spec credential(Scope.t()) :: {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
+  @spec credential(Scope.t()) ::
+          {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
   def credential(%Scope{} = scope) do
     case ProjectSecrets.fetch_value(scope, @password_secret) do
       {:ok, password} when is_binary(password) and password != "" ->
@@ -347,19 +348,59 @@ defmodule CodeMySpec.Provisioning.Registry do
   # container's own logs rather than a timeout — the reason is in them, and a
   # drill costs ten minutes to repeat.
   defp await_registry(run, bucket, bind, credential, attempts) do
-    auth = "#{credential.username}:#{credential.password}"
-
-    case run.(["curl -sf -u #{shell_escape(auth)} http://#{bind}:#{port()}/v2/ > /dev/null"]) do
-      {_output, 0} ->
+    case probe(run, bind, credential) do
+      :ok ->
         {:ok, %{bucket: bucket, bind: bind, port: port()}}
 
-      _ when attempts > 1 ->
+      :error when attempts > 1 ->
         Wait.sleep(2_000)
         await_registry(run, bucket, bind, credential, attempts - 1)
 
-      _ ->
+      :error ->
         {logs, _} = run.(["docker logs --tail 50 #{@container} 2>&1"])
         {:error, {:registry_not_listening, "#{bind}:#{port()}", String.trim(logs)}}
+    end
+  end
+
+  # The one question both `await_registry/5` and `reachable?/2` ask: does
+  # something answer `/v2/` through the credential a stranger would be
+  # rejected by. Shared so a caller asking "is it up right now" and `serve/2`
+  # asking "did the container I just started come up" run the identical
+  # check rather than two curls that could drift apart.
+  defp probe(run, bind, credential) do
+    auth = "#{credential.username}:#{credential.password}"
+
+    case run.(["curl -sf -u #{shell_escape(auth)} http://#{bind}:#{port()}/v2/ > /dev/null"]) do
+      {_output, 0} -> :ok
+      _ -> :error
+    end
+  end
+
+  @doc """
+  Whether the registry actually answers on a box, right now.
+
+  `serve/2` is the only thing that starts a registry, so it is the only step
+  that can notice one never came up — and `verify(:server, …)` used to infer
+  it from a Hetzner server listing plus a file read, which is satisfied by a
+  box that exists and a `DATABASE_URL` left over from a previous run. Neither
+  says anything about the container `serve/2` would have started (c1d8eaff).
+
+  The same probe `await_registry/5` loops on after starting one, run once: a
+  caller checking whether a registry is already up should get one curl's
+  worth of latency, not fifteen.
+
+  `:run` is required, the same as `serve/2` — how to reach the box is the
+  caller's to supply, and a caller standing in a local fleet or a fake for
+  the box supplies its own. `:bind` defaults to loopback, same as `serve/2`.
+  """
+  @spec reachable?(Scope.t(), keyword()) :: boolean()
+  def reachable?(%Scope{} = scope, opts) do
+    run = Keyword.fetch!(opts, :run)
+    bind = Keyword.get(opts, :bind, "127.0.0.1")
+
+    case serve_credential(scope, opts) do
+      {:ok, credential} -> probe(run, bind, credential) == :ok
+      _ -> false
     end
   end
 
@@ -506,16 +547,16 @@ defmodule CodeMySpec.Provisioning.Registry do
     # The htpasswd file is written before the container starts and mounted
     # read-only. bcrypt because `distribution` accepts nothing else, and
     # generated here because `htpasswd` is not installed on the box.
+    # A named volume, so images outlive the container. `docker rm -f` above
+    # replaces the registry on every run, and without this every replacement
+    # threw away everything it held — including the image the box is running,
+    # which is the one a rollback needs.
     "mkdir -p /etc/cms-registry && " <>
       "printf %s #{shell_escape(htpasswd)} > /etc/cms-registry/htpasswd && " <>
       "chmod 600 /etc/cms-registry/htpasswd && " <>
       "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
       "-v /etc/cms-registry/htpasswd:/auth/htpasswd:ro " <>
-      # A named volume, so images outlive the container. `docker rm -f` above
-      # replaces the registry on every run, and without this every replacement
-      # threw away everything it held — including the image the box is running,
-      # which is the one a rollback needs.
       "-v #{@volume}:/var/lib/registry " <>
       "-e REGISTRY_AUTH=htpasswd " <>
       "-e REGISTRY_AUTH_HTPASSWD_REALM=cms " <>

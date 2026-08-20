@@ -146,9 +146,20 @@ defmodule CodeMySpec.Provisioning.Resend do
         Logger.info("[Resend] sending domain #{name} already registered — reusing")
         # Marked adopted so teardown leaves it alone. Setup found this domain;
         # it did not make it, and removing something a user already had is not
-        # cleanup — it is destruction. Resend's capabilities are creation-only,
-        # so a delete-and-recreate silently drops inbound mail.
-        {:ok, Map.put(domain, "__adopted__", true)}
+        # cleanup — it is destruction. Nothing is deleted and recreated —
+        # `PATCH /domains/:id` accepts capabilities (measured against the live
+        # API; see `ensure_receiving_domain/3`), so a domain found with sending
+        # off does not need one.
+        #
+        # Found with sending off happens on purpose now: the inbound step
+        # registers a receiving-only domain with `sending: "disabled"`
+        # (bfcd550a), so it never sits `pending` on DKIM/SPF nobody will
+        # publish. Promoting that project to production is this step running
+        # for the first time against the domain inbound already made, and
+        # "already registered" must not mean sending stays off forever.
+        with {:ok, domain} <- ensure_sending_enabled(scope, domain) do
+          {:ok, Map.put(domain, "__adopted__", true)}
+        end
 
       {:error, :not_found} ->
         # Sending only. The inbound step turns receiving on when Sam actually
@@ -170,6 +181,26 @@ defmodule CodeMySpec.Provisioning.Resend do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # Sending, turned on without disturbing receiving. `capabilities` PATCHes as
+  # a whole object — `enable_receiving/3` learned that the hard way — so this
+  # reads back the domain's own receiving flag rather than assuming, and a
+  # domain that already sends is left untouched rather than PATCHed for
+  # nothing.
+  defp ensure_sending_enabled(scope, domain) do
+    if sending?(domain) do
+      {:ok, domain}
+    else
+      receiving = if receiving?(domain), do: "enabled", else: "disabled"
+
+      with {:ok, _} <-
+             request(scope, :patch, "/domains/#{domain["id"]}",
+               json: %{capabilities: %{sending: "enabled", receiving: receiving}}
+             ) do
+        get_domain(scope, domain["id"])
+      end
     end
   end
 
@@ -266,6 +297,19 @@ defmodule CodeMySpec.Provisioning.Resend do
 
   Nothing is deleted and recreated: that rotates the DKIM key of a domain that
   may be sending production mail.
+
+  ## Sending stays off unless it is already on
+
+  A fresh domain is created `sending: "disabled"`. Requesting sending here
+  used to ask Resend to expect DKIM and the `send.` SPF/MX pair — records
+  that are the outbound story's to publish (criterion 8029) and that a
+  project with no permitted production environment never runs the step that
+  publishes. The domain then sat at `status: "pending"` forever waiting on
+  records nobody was ever going to send, and Resend bounced mail addressed to
+  it despite the one record this step owns — the apex MX — reading
+  `verified` on its own (bfcd550a). A domain found already sending is left
+  that way; this only chooses the capability for one this call creates or
+  finds not yet sending.
   """
   @spec ensure_receiving_domain(Scope.t(), String.t(), keyword()) ::
           {:ok, body()} | {:error, term()}
@@ -278,7 +322,7 @@ defmodule CodeMySpec.Provisioning.Resend do
         create_domain(
           scope,
           name,
-          Keyword.put(opts, :capabilities, %{sending: "enabled", receiving: "enabled"})
+          Keyword.put(opts, :capabilities, %{sending: "disabled", receiving: "enabled"})
         )
 
       {:error, _} = error ->
@@ -294,12 +338,21 @@ defmodule CodeMySpec.Provisioning.Resend do
   # `{"object":"domain","id":"…"}` and carries no capabilities at all. Reading
   # it for the flag reported every successful enable as a refusal — the step
   # paused telling Sam to visit the dashboard for a domain it had just fixed.
+  #
+  # Sending is carried through as-is rather than forced to `"enabled"`. This
+  # domain already exists — reused from an earlier run, or a customer's own —
+  # and PATCHing sending on here was the other way the pending-forever trap
+  # got sprung: a domain this same step had earlier created receiving-only,
+  # found again on the next call, had its sending capability re-enabled for
+  # no reason, right back onto records nobody was going to publish
+  # (bfcd550a).
   defp enable_receiving(%Scope{} = scope, domain, name) do
     id = domain["id"]
+    sending = if sending?(domain), do: "enabled", else: "disabled"
 
     with {:ok, _} <-
            request(scope, :patch, "/domains/#{id}",
-             json: %{capabilities: %{sending: "enabled", receiving: "enabled"}}
+             json: %{capabilities: %{sending: sending, receiving: "enabled"}}
            ),
          {:ok, updated} <- get_domain(scope, id),
          true <- receiving?(updated) do

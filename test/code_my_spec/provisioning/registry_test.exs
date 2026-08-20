@@ -359,6 +359,61 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     end
   end
 
+  # The question `verify(:server, …)` asks without having just run `serve/2`
+  # itself — c1d8eaff: a box Hetzner reports and a registry that answers on
+  # it are different claims, and `serve/2` is the only thing that starts one.
+  describe "reachable?/2" do
+    defp reachable(opts) do
+      Registry.reachable?(
+        scope(),
+        Keyword.merge([registry_credentials: registry_cred()], opts)
+      )
+    end
+
+    test "true when the registry answers the same probe serve/2 waits on" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 0}
+      end
+
+      assert reachable(run: run) == true
+
+      assert_received {:ran, probe}
+      assert probe =~ "curl"
+      assert probe =~ "/v2/"
+    end
+
+    test "false when nothing answers" do
+      run = fn [_command] -> {"", 7} end
+
+      assert reachable(run: run) == false
+    end
+
+    # One curl, not `await_registry/5`'s fifteen — this is a caller asking
+    # "is it up right now", not one waiting for a container that just started.
+    test "asks exactly once, with no retry wait" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 1}
+      end
+
+      assert reachable(run: run) == false
+      assert_received {:ran, _first}
+      refute_received {:ran, _second}
+    end
+
+    test "asks at the address it was told to bind" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 0}
+      end
+
+      assert reachable(run: run, bind: "10.0.0.5") == true
+      assert_received {:ran, command}
+      assert command =~ "http://10.0.0.5:5000/v2/"
+    end
+  end
+
   # `prune/2` is the mechanism `:filesystem` storage actually has instead of
   # a bucket lifecycle rule (6dcb62b8) — validated first against a real
   # `registry:3` container (four distinct pushed images, deleted the two

@@ -161,8 +161,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     # database exists. Marking it unsatisfied would have run it, produced no
     # `DATABASE_URL`, and left it unsatisfied — a step that reruns forever
     # instead of one that reports done wrongly, which is not an improvement.
+    #
+    # The registry is the fourth instance of the identical shape, named as
+    # such in c1d8eaff: `run/3` is what starts it (`serve_one_registry/5`),
+    # so `run/3` is the only place that ever finds out it did not come up.
+    # Reproduced live — a box created by a run that errored before
+    # provisioning still carried `DATABASE_URL` left over from a previous
+    # domain's checkout, so both cheap checks above passed, `run/3` was
+    # skipped, and the failure surfaced two steps later at `deploy` as a
+    # bare connection refused that never named the registry.
+    #
+    # Checked last and only when the cheap checks already agree: a curl
+    # through SSH costs real time per environment, and a project with no box
+    # yet has nothing worth reaching for it — `found != []` above already
+    # answers that case for free. Run on every verify rather than only for a
+    # box this walk just created, because the reproduced failure is a box
+    # from an *earlier* run — nothing about this walk would distinguish it.
     if length(found) == length(environments) and found != [] and
-         Enum.all?(environments, &database_url_present?(scope, &1)) do
+         Enum.all?(environments, &database_url_present?(scope, &1)) and
+         registries_reachable?(scope, name, environments, opts) do
       # The step also makes a firewall and an ssh_key, shared across
       # environments. A second run takes this satisfied path instead of
       # `run/3`; returning only the servers would drop those two from the
@@ -320,17 +337,31 @@ defmodule CodeMySpec.Provisioning.Steps do
       #
       # So a proof a previous run recorded **for this domain** is what satisfies
       # this. Absent one, the step runs and proves it.
+      #
+      # For *this* domain's current incarnation, not merely its name. A full
+      # teardown-and-rebuild deletes the Resend domain object and creates a
+      # new one at the same name — new DKIM, new MX, receiving nothing has
+      # proven yet — and `proof_on_domain?/2` alone cannot tell that apart
+      # from the one the proof was earned against. One level deeper than the
+      # domain-name check: a proof stamped for a Resend domain id that no
+      # longer answers to this name is treated the same as no proof at all,
+      # the same way a rebuilt environment's stale proof once certified a
+      # receiving setup that had just failed ten minutes earlier (1040172a).
       case delivery_proof(scope, name) do
         nil ->
           {:ok, :absent}
 
         proof ->
-          {:ok, :satisfied,
-           [
-             %{kind: "receiving_domain", location: "resend/#{name}"},
-             %{kind: "webhook", location: webhook_endpoint(scope, opts)},
-             proof
-           ]}
+          if proof_current?(proof, domain["id"]) do
+            {:ok, :satisfied,
+             [
+               %{kind: "receiving_domain", location: "resend/#{name}"},
+               %{kind: "webhook", location: webhook_endpoint(scope, opts)},
+               proof
+             ]}
+          else
+            {:ok, :absent}
+          end
       end
     else
       # Anything short of "receiving domain plus an ENABLED webhook" is absent.
@@ -735,7 +766,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # verified while the domain sat pending on three records nobody here
          # had published.
          {:ok, _inbound} <- Resend.await_inbound_verified(scope, domain["id"], name, opts),
-         {:ok, proof} <- prove_delivery(scope, name, opts) do
+         {:ok, proof} <- prove_delivery(scope, name, domain["id"], opts) do
       {:ok,
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
@@ -1540,9 +1571,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # deployed — and would report failure for a site that is merely not up yet.
   # `GET /emails/receiving` is the same delivery, seen from a place that does
   # not need anything deployed.
-  defp prove_delivery(scope, name, opts) do
+  defp prove_delivery(scope, name, domain_id, opts) do
     probe = Keyword.get(opts, :inbound_probe, &default_inbound_probe/3)
-    probe.(scope, name, opts)
+    # Carried through opts rather than added to the probe's own arity, so an
+    # injected probe — the shape a spex stages — keeps the three-argument
+    # contract `prove_delivery/4` has always offered it.
+    probe.(scope, name, Keyword.put(opts, :resend_domain_id, domain_id))
   end
 
   defp default_inbound_probe(scope, name, opts) do
@@ -1567,7 +1601,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     case Keyword.get(opts, :inbound_probe_to) || owner_address(scope, name) do
       to when is_binary(to) and to != "" ->
         with {:ok, message} <- send_and_await(scope, to, token, opts) do
-          {:ok, inbound_proof(to, message)}
+          {:ok, inbound_proof(to, message, Keyword.get(opts, :resend_domain_id))}
         end
 
       _ ->
@@ -1772,13 +1806,43 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The message, turned into what the step records. Kept apart from the send so
   # `probe_inbound/3` can hand the caller the message itself — the page needs
   # where it landed, not a formatted string it would have to parse back.
-  defp inbound_proof(to, message) do
+  #
+  # Stamped with the Resend domain id it was earned against, tokenised the
+  # same way `environment=` already is on other resources. `verify/3` reads
+  # it back through `proof_current?/2` and refuses a proof whose domain no
+  # longer exists — a teardown-and-rebuild deletes and recreates the Resend
+  # domain object under the same name, so the name alone cannot tell a live
+  # proof from one earned against servers that are gone (1040172a). `nil` is
+  # written the same as any other value: absent on read, `proof_current?/2`
+  # treats it as not current rather than crash on a probe run without one.
+  defp inbound_proof(to, message, domain_id) do
     %{
       kind: "inbound_proof",
       location: to,
-      identifier: "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+      identifier:
+        "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]} " <>
+          "resend_domain_id=#{domain_id}"
     }
   end
+
+  # Whether a recorded proof was earned against *this* Resend domain, not
+  # merely a domain of the same name. See `inbound_proof/3` for why the id
+  # travels with the proof rather than the name alone.
+  #
+  # A proof with no stamp — recorded before this check existed — is treated
+  # as not current rather than grandfathered in. `verify/3` already treats
+  # anything a provider cannot answer for as absent (see the moduledoc); an
+  # unstamped proof is exactly that, and the cost of being wrong the unsafe
+  # way is a false "satisfied" this step exists to prevent.
+  defp proof_current?(%{identifier: identifier}, domain_id)
+       when is_binary(identifier) and is_binary(domain_id) do
+    case Regex.run(~r/resend_domain_id=(\S+)/, identifier) do
+      [_, ^domain_id] -> true
+      _ -> false
+    end
+  end
+
+  defp proof_current?(_proof, _domain_id), do: false
 
   # A verified sender on the account, or a clear reason there is none.
   defp probe_sender(scope, domain) do
@@ -2835,7 +2899,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp register_sending_domains(scope, base, environments, opts) do    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
+  defp register_sending_domains(scope, base, environments, opts) do
+    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case register_sending_domain(scope, base, environment, opts) do
         {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
         # Carries what earlier environments already made, exactly as the error
@@ -3296,7 +3361,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # environment this project has; a caller naming one environment explicitly
   # takes the `deploy_environment/3` path in `run(:deploy, …)` above instead
   # of this one, so that legitimate single-environment call is untouched.
-  defp deploy_environments(scope, [], _opts), do: {:error, no_permitted_environments_message(scope)}
+  defp deploy_environments(scope, [], _opts),
+    do: {:error, no_permitted_environments_message(scope)}
 
   defp deploy_environments(scope, environments, opts) do
     Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
@@ -4721,6 +4787,68 @@ defmodule CodeMySpec.Provisioning.Steps do
       end
     else
       true
+    end
+  end
+
+  # Every environment's registry, reached over SSH the way `serve_one_registry`
+  # reaches it — a curl through the credential `Registry.credential/1` mints,
+  # asked once rather than the fifteen times `await_registry/5` allows a
+  # freshly-started container.
+  #
+  # One SSH identity for every environment in the walk, not one per box: the
+  # key is the account's and opens all of them, so minting it once and reusing
+  # it is the same key `with_builder_ssh/2` already writes for a build. Cleaned
+  # up in `after`, the same guard `build_on_builder/4` uses, because this runs
+  # on every `devops_status` read rather than once per setup click — a key
+  # written and never removed here would litter the temp directory on a
+  # cadence a build never has.
+  #
+  # No network, no registry to ask about: a project whose server step has
+  # never run has nothing `Hetzner.find_network/2` can find, and that is
+  # `{:ok, :absent}` already, by the same `found != []` guard this sits
+  # behind.
+  defp registries_reachable?(scope, name, environments, opts) do
+    case with_builder_ssh(scope, opts) do
+      {:ok, ssh_opts} -> registries_reachable_with_ssh(scope, name, environments, ssh_opts)
+      _ -> false
+    end
+  end
+
+  defp registries_reachable_with_ssh(scope, name, environments, ssh_opts) do
+    case Hetzner.find_network(scope, name) do
+      {:ok, network} ->
+        Enum.all?(environments, &registry_reachable?(scope, network, &1, ssh_opts))
+
+      _ ->
+        false
+    end
+  after
+    case Keyword.get(ssh_opts, :builder_key_dir) do
+      dir when is_binary(dir) -> File.rm_rf(dir)
+      _ -> :ok
+    end
+  end
+
+  # The box's own address to SSH into, and the private address the registry
+  # would answer on — the same two lookups `serve_one_registry/5` makes before
+  # starting one, asked here to find out whether it already answers.
+  #
+  # `Keyword.get(opts, :run)` wins over a runner built from the box's address,
+  # for the same reason `serve_one_registry/5` and `prune_registry/3` check it
+  # first: a caller standing in a local fleet, or a fake, for the box is
+  # answering "how do I reach it" more specifically than an IP this scope
+  # happens to have.
+  defp registry_reachable?(scope, network, environment, opts) do
+    name = server_name(scope, opts, environment)
+
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         public when is_binary(public) and public != "" <-
+           get_in(server, ["public_net", "ipv4", "ip"]),
+         {:ok, bind} <- Hetzner.private_ip(server, network["id"]) do
+      run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts)
+      Registry.reachable?(scope, Keyword.merge(opts, run: run, bind: bind))
+    else
+      _ -> false
     end
   end
 
