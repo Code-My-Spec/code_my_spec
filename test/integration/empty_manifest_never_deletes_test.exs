@@ -99,6 +99,53 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
 
       assert length(Files.list_files(local)) == before
     end
+
+    # The refusal is right and permanent for this environment, which is exactly
+    # why it must not be an error.
+    #
+    # `Environments.Harness.stream_files/3` returns `:not_supported_on_harness`
+    # unconditionally — a working copy on another machine has no disk here — so
+    # a harness-backed copy takes this branch on every stop hook. Logged at
+    # `:error` it produced 197 error-level lines in one `web.log`, and made the
+    # top four entries by volume in that file this and its consequences; finding
+    # a real error in there meant bucketing by message shape first.
+    #
+    # Asserted on the decision rather than through `CaptureLog`, because the
+    # suite pins the global Logger at `:warning`: an `:info` line never reaches
+    # the capture handler, so a log-based test of the quiet branch would assert
+    # only that nothing was captured — which is just as true of a line nobody
+    # writes. That is the shape this file exists to complain about.
+    test "the structural refusal is reported, but not as an error" do
+      assert FileSync.scan_refusal_level(:not_supported_on_harness) == :info,
+             "a condition that holds for every stop hook on this environment is a " <>
+               "property, not an event, and an error nobody can act on is how real " <>
+               "errors get skipped"
+
+      assert FileSync.scan_refusal_level(:enoent) == :error,
+             "a scan that failed for any other reason is an event and still deserves " <>
+               "the level — this must not become a blanket downgrade"
+    end
+
+    # The level moved; nothing else did. `scannable/1` folded this refusal into
+    # `[]` and deleted 3936 rows and 452 Problems, twice, because "could not
+    # look" reached the caller as "nothing is there". Quieting a log line is
+    # safe; letting the caller believe the scan happened is what was not.
+    test "quieting the log did not quiet the refusal" do
+      {local, tmp_dir} = local_scope()
+
+      write_impl(tmp_dir, "my_app/accounts", "MyApp.Accounts")
+      {:ok, _} = FileSync.sync(local, base_dir: tmp_dir, embed: false)
+
+      before = Files.list_files(local) |> length()
+      assert before >= 1
+
+      server = %{local | environment: Environment.new(:harness, nil)}
+
+      assert {:error, {:cannot_scan, :not_supported_on_harness}} =
+               FileSync.sync_changed(server, base_dir: tmp_dir)
+
+      assert length(Files.list_files(local)) == before
+    end
   end
 
   describe "a working copy that really is empty" do

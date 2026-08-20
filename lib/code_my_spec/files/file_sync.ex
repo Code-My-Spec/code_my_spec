@@ -726,7 +726,8 @@ defmodule CodeMySpec.Files.FileSync do
         {:ok, stream}
 
       {:error, reason} ->
-        Logger.error(
+        Logger.log(
+          scan_refusal_level(reason),
           "[FileSync] #{working_copy(scope)}: refusing to sync changed files — this " <>
             "environment cannot walk a working copy (#{inspect(reason)}). Nothing was " <>
             "scanned, so nothing is authoritative and the recorded rows stand."
@@ -735,6 +736,39 @@ defmodule CodeMySpec.Files.FileSync do
         {:error, {:cannot_scan, reason}}
     end
   end
+
+  # The refusal is identical either way; only how loudly it is said changes.
+  #
+  # `:not_supported_on_harness` is a property of the environment, not an event.
+  # `Environments.Harness` returns it from `stream_files/3` unconditionally —
+  # a working copy on another machine has no disk here to walk — so a
+  # harness-backed copy takes this branch on **every stop hook** and it never
+  # means anything went wrong. Measured 2026-08-20: 193 error-level lines in one
+  # `web.log`, 165 for the main checkout and 28 for a worktree, and the top four
+  # entries by volume in that log were this and its consequences. Finding a real
+  # error in there meant bucketing by message shape first.
+  #
+  # A scan that failed for any other reason is an event and keeps `:error`.
+  #
+  # Only the level moves. The message, the `{:error, {:cannot_scan, reason}}`
+  # return and the refusal itself are untouched, and that is deliberate: the
+  # `scannable/1` clause that used to fold this into `[]` deleted 3936 rows and
+  # 452 Problems, twice, because "could not look" reached the caller as "nothing
+  # is there". Quieting a log line is safe; letting the caller believe the scan
+  # happened is what was not.
+  # Public so the decision can be asserted directly. The suite pins the global
+  # Logger at `:warning`, so an `:info` line never reaches `CaptureLog` and the
+  # quiet branch is unobservable through the log — testing it there would assert
+  # only that nothing was captured, which is equally true of a line that was
+  # never written.
+  #
+  # `observe/3` above keeps `:error` for the same reason this one does not: it
+  # is `sync/2`'s path — a manual full sync or app boot — and fired twice in the
+  # log this came from, against `walk/2`'s 197. Rare and operator-initiated is
+  # exactly when an error level earns its keep.
+  @doc false
+  def scan_refusal_level(:not_supported_on_harness), do: :info
+  def scan_refusal_level(_reason), do: :error
 
   defp finish_sync_changed(%Scope{} = scope, env, file_entries, start) do
     scan_ms = System.monotonic_time(:millisecond) - start
