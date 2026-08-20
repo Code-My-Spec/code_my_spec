@@ -94,6 +94,11 @@ defmodule CodeMySpecWeb.ConversationChannel do
   # Live delivery: a message persisted elsewhere (operator reply, or another of
   # this user's connections) arrives on the per-conversation topic.
   def handle_info({:new_message, %Message{} = message}, socket) do
+    Logger.warning(
+      "[DIAG859] pushing new_message conversation=#{socket.assigns.conversation.id} " <>
+        "message_id=#{message.id} role=#{message.role}"
+    )
+
     push(socket, "new_message", message_payload(message))
     {:noreply, socket}
   end
