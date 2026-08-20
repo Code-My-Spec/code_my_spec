@@ -39,33 +39,20 @@ defmodule CmsHarness.Web.SkillsController do
   alias CmsHarness.HookDecision
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
-  alias CmsHarness.WorkingCopies
-
-  # What a skill sends when it could not find an id to send.
-  #
-  # `skill.md` is a static marketplace file, so it cannot ask the harness who it
-  # is — it greps `.cms_harness.json` and falls back to this literal via
-  # `${HID:-unonboarded}`. Without matching it by name, "this copy was never
-  # onboarded" arrives indistinguishable from "onboarded against an id this
-  # machine does not serve", and those need opposite answers: one is a setup
-  # step nobody ran, the other is a working copy pointed somewhere wrong.
-  #
-  # `HookDecision` cannot know about this: it is a convention between a shell
-  # fallback in a markdown file and this clause, which is why it is named here
-  # and not there.
-  @unonboarded "unonboarded"
 
   def start(conn, params) do
-    case locate(params) do
+    case conn.assigns.working_copy do
       {:ok, working_dir} ->
         conn |> put_status(200) |> json(decide(working_dir, params))
 
-      :unonboarded ->
-        Logger.warning(
-          "[CmsHarness] skills/start from a working copy that has not been onboarded"
-        )
-
-        answer(conn, :unonboarded)
+      # The directory said which project it is, and that project has no
+      # `.cms_harness.json`. Named rather than guessed at, and the naming is the
+      # remedy — this used to arrive as the literal string "unonboarded", a
+      # sentinel a shell fallback produced, because the client resolved identity
+      # itself. It sends where it is now and the harness resolves.
+      {:not_onboarded, dir} ->
+        Logger.warning("[CmsHarness] skills/start fired in #{dir}, which has not been onboarded")
+        answer(conn, {:not_onboarded, dir})
 
       reason ->
         Logger.warning("[CmsHarness] skills/start could not locate a copy: #{summary(reason)}")
@@ -78,12 +65,10 @@ defmodule CmsHarness.Web.SkillsController do
   # body is the only thing that was going to help.
   defp answer(conn, reason), do: conn |> put_status(200) |> json(%{error: message(reason)})
 
-  defp message(:unonboarded) do
-    "This working copy has not been onboarded, so there is no harness to run the skill. " <>
-      "Every skill.md reads the harness id out of `.cms_harness.json` and falls back to " <>
-      "the literal \"unonboarded\" when that file is missing or has no `harness_id` — " <>
-      "which is what arrived here. Run `mix cms.harness.onboard <path>` in this working " <>
-      "copy and restart the agent. The MCP tools do not need onboarding and work meanwhile."
+  defp message({:not_onboarded, dir}) do
+    "#{dir} has not been onboarded, so there is no harness to run the skill. Run " <>
+      "`mix cms.harness.onboard #{dir}` there and restart the agent. The MCP tools do " <>
+      "not need onboarding and work meanwhile."
   end
 
   defp message(reason) do
@@ -91,34 +76,6 @@ defmodule CmsHarness.Web.SkillsController do
   end
 
   defp summary(reason), do: HookDecision.summarize(reason)
-
-  # Same identity rule `HooksController.locate/2` documents: the URL's
-  # `harness_id` is what `mix cms.harness.onboard` writes into the plugin, so
-  # a request names the working copy it is about rather than the directory it
-  # happened to fire in.
-  defp locate(params) do
-    case params["harness_id"] do
-      # Answered before the lookup, not after it, because there is nothing to
-      # look up: this is a sentinel a shell fallback produced, not an id anyone
-      # issued. Asking the server where it is makes the reply depend on whether
-      # the server answers — `:unknown` when it does, `:server_unreachable` when
-      # it does not — so a copy that was never onboarded got told the server was
-      # unreachable, which is a different problem with a different fix. Caught by
-      # the test below, which ran with no credential and therefore took the
-      # second path every time.
-      @unonboarded -> :unonboarded
-      id when is_binary(id) and id != "" -> from_id(id)
-      _ -> :no_harness
-    end
-  end
-
-  defp from_id(id) do
-    case WorkingCopies.root(id) do
-      {:ok, root} -> {:ok, root}
-      :unknown -> {:unknown_harness, id}
-      {:unreachable, reason} -> {:server_unreachable, id, reason}
-    end
-  end
 
   defp decide(working_dir, params) do
     case Projects.ensure_started(working_dir) do

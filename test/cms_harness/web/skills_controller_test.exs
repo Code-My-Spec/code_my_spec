@@ -49,27 +49,30 @@ defmodule CmsHarness.Web.SkillsControllerTest do
                "from 'the server is down', which need opposite responses"
     end
 
-    # Renamed. This posts the literal `unonboarded`, which is not "no harness id
-    # at all" — it is the fallback in `${HID:-unonboarded}` that every skill.md
-    # uses when `.cms_harness.json` is missing or has no `harness_id`. The old
-    # name described a case this request does not make, and the assertion passed
-    # for either.
-    test "a copy that was never onboarded is told to onboard", %{conn: conn} do
+    # Was a test about the literal string "unonboarded", which every skill.md
+    # sent as `${HID:-unonboarded}` when it could not grep an id out of
+    # `.cms_harness.json`. The client does not resolve identity any more — it
+    # says where it is and the harness walks — so the sentinel is gone and with
+    # it the branch that special-cased it.
+    #
+    # The message is better for it: it names the directory to onboard instead of
+    # explaining a shell fallback the reader never saw.
+    test "a project with no config is told to onboard, by name", %{conn: conn} do
+      bare = Path.join(System.tmp_dir!(), "bare_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(bare)
+      File.write!(Path.join(bare, "mix.exs"), "defmodule X do end")
+      on_exit(fn -> File.rm_rf!(bare) end)
+
       body =
         conn
         |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/harnesses/unonboarded/skills/start", %{"skill" => "qa"})
+        |> Plug.Conn.put_req_header("x-working-dir", bare)
+        |> post("/api/skills/start", %{"skill" => "qa"})
         |> json_response(200)
 
       assert body["error"] =~ "has not been onboarded"
-      assert body["error"] =~ "mix cms.harness.onboard"
-
-      refute body["error"] =~ "not serving",
-             "the unknown-harness wording sends the reader to check an id against " <>
-               "the server, and there is no id here — nothing was ever written"
-
-      assert body["error"] =~ "MCP tools",
-             "the workaround several agents found on their own belongs in the message"
+      assert body["error"] =~ bare
+      assert body["error"] =~ "MCP tools"
     end
   end
 

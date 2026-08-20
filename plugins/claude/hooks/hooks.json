@@ -158,18 +158,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/permissions/request",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/approve"
             ]
           }
         ]

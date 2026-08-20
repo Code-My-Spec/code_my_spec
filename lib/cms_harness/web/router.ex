@@ -68,9 +68,25 @@ defmodule CmsHarness.Web.Router do
     post("/skills/start", SkillsController, :start)
   end
 
-  # There is no unaddressed hook surface. A request that does not name a
-  # working copy has no answer here — the directory it fired in is not one, and
-  # accepting it as one is what this replaced.
+  # Skills, unaddressed.
+  #
+  # There used to be nothing here, on the reasoning that "a request that does
+  # not name a working copy has no answer" — true while the client was the only
+  # thing that could resolve one. Every `skill.md` therefore grepped
+  # `.cms_harness.json` itself and sent `${HID:-unonboarded}` when it could not,
+  # which is a sentinel this server had to special-case.
+  #
+  # `ResolveWorkingCopy` answers it now, from `X-Working-Dir`, and refuses by
+  # naming the directory to onboard rather than explaining a shell fallback the
+  # reader never saw. The addressed route above still works and still wins.
+  scope "/api", CmsHarness.Web do
+    pipe_through(:hook)
+
+    post("/skills/start", SkillsController, :start)
+  end
+
+  # There is no unaddressed hook surface *by path*: a hook says where it fired
+  # in its own payload, which this catch-all resolves the same way.
   scope "/api/hooks", CmsHarness.Web do
     pipe_through(:hook)
 

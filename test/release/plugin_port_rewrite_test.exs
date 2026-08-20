@@ -57,16 +57,28 @@ defmodule CodeMySpec.Release.PluginPortRewriteTest do
     end
   end
 
-  test "every skill declares a port list" do
-    for path <- skill_files() do
-      assert port_list(File.read!(path)),
-             "#{Path.relative_to(path, @skills)} has no PORTS list — it hardcodes a " <>
-               "port somewhere, and whichever one it picked is wrong for half the users"
-    end
+  # Only `init` still carries a pair.
+  #
+  # The other seven post to `/api/skills/start`, which the harness serves, so
+  # one port is the whole answer and the rewrite is an ordinary single-token
+  # swap. `init` posts to `/api/skills/init`, which only `CodeMySpecLocalWeb`
+  # has — the two services expose disjoint routes, so init is the one client
+  # that genuinely has to try both. That asymmetry is a known gap rather than a
+  # design; if it closes, the pair handling in `PluginPorts` goes with it.
+  defp with_port_list, do: Enum.filter(skill_files(), &port_list(File.read!(&1)))
+
+  test "a skill whose route is on the other service still declares a pair" do
+    assert with_port_list() != [], """
+    No skill declares a port pair any more.
+
+    Correct for the seven the harness serves. Wrong for `init`, whose route
+    exists only on CodeMySpecLocalWeb — with one port it reaches whichever
+    service the packager happened to aim it at, and 404s on the other.
+    """
   end
 
   test "the shipped port list keeps two distinct ports, prod first" do
-    for path <- skill_files() do
+    for path <- with_port_list() do
       shipped = path |> File.read!() |> PluginPorts.rewrite() |> port_list()
 
       assert shipped == ["4003", "4004"], """
@@ -81,7 +93,7 @@ defmodule CodeMySpec.Release.PluginPortRewriteTest do
   end
 
   test "the dev tree keeps the dev port first" do
-    for path <- skill_files() do
+    for path <- with_port_list() do
       assert port_list(File.read!(path)) == ["4004", "4003"],
              "#{Path.relative_to(path, @skills)} does not try the dev harness first, so " <>
                "`just claude-dev` would reach the packaged binary instead of the checkout " <>
