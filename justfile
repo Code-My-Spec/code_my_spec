@@ -574,31 +574,53 @@ harness port="4004" server="http://localhost:4000": _submodules
 claude-dev *args: _submodules
     #!/usr/bin/env bash
     set -euo pipefail
-    # Against `.claude/plugin-dev`, not `plugins/claude`. The tracked plugin is
-    # what the packager ships, so it carries no harness id — pointed at a
-    # harness it gets refused with "this hook did not say which working copy it
-    # is about", which is correct and reads like a bug. The generated one has
-    # this checkout's id in every hook URL and in the MCP URL.
+    # Against `plugins/claude` — the tracked plugin, the one that ships.
     #
-    # Onboarding is idempotent and mints an id from the server if this checkout
-    # has none, so a fresh worktree works on the first run.
-    PLUGIN="{{justfile_directory()}}/.claude/plugin-dev"
-    if [ ! -d "$PLUGIN" ]; then
-      echo "No generated plugin yet — onboarding this checkout."
-      # Same export `harness` does, for the same reason: minting an id is a
-      # call to the server, `CmsHarness.Config` reads `System.get_env`, and
-      # Dotenvy's default side effect writes the *process dictionary* rather
-      # than the OS environment. Without this a fresh worktree fails onboarding
-      # with `{:error, :no_credential}` while envs/.env sits right there.
-      if [ -f envs/.env ]; then
-        while IFS='=' read -r key value; do
-          [ -n "${!key:-}" ] || export "$key=$value"
-        done < <(grep -E '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env)
-      fi
-      # `elixir -S mix`, not bare `mix`: in a worktree the latter resolves
-      # against the main checkout and onboards the wrong tree.
-      elixir -S mix cms.harness.onboard
+    # This pointed at a generated `.claude/plugin-dev` because the tracked
+    # plugin "carries no harness id — pointed at a harness it gets refused with
+    # 'this hook did not say which working copy it is about'". That was true and
+    # is not any more, which is the point of the change that made it false:
+    # hooks are a plain `curl` carrying no id at all, and the harness walks up
+    # from the payload's `cwd` to `.cms_harness.json`. MCP is the one surface
+    # that still needs the id, and it interpolates `${CMS_HARNESS_ID}` out of
+    # the `env` block onboarding writes below.
+    #
+    # So there is nothing left to generate, `mix cms.harness.onboard` stopped
+    # writing a plugin directory, and pointing at one that no longer exists
+    # launches Claude against an empty path.
+    #
+    # The main checkout's copy, absolute, rather than `{{justfile_directory()}}`.
+    # Every worktree gets the same plugin that way — a worktree sitting on an
+    # older branch carries an older `plugins/claude`, and launching an agent
+    # against a stale hook config is the failure this whole surface keeps
+    # producing: it does not error, it addresses the wrong thing quietly.
+    #
+    # The exception is developing the plugin itself. Editing
+    # `plugins/claude/{agents,skills,hooks}` in a worktree and wanting an agent
+    # to run *that* copy means overriding this — `claude --plugin-dir
+    # "$PWD/plugins/claude"` directly, which is what the moduledoc on
+    # `mix cms.harness.onboard` describes.
+    PLUGIN="/Users/johndavenport/Documents/github/code_my_spec/plugins/claude"
+
+    # Unconditionally, not "if the plugin is missing". The plugin is tracked and
+    # always there, so that guard would never fire — and the thing actually
+    # worth guaranteeing is the `env` block, which is what MCP reads. Onboarding
+    # is idempotent and does no network work for a copy that already has an id.
+    #
+    # Same export `harness` does, for the same reason: minting an id is a call
+    # to the server, `CmsHarness.Config` reads `System.get_env`, and Dotenvy's
+    # default side effect writes the *process dictionary* rather than the OS
+    # environment. Without this a fresh worktree fails onboarding with
+    # `{:error, :no_credential}` while envs/.env sits right there.
+    if [ -f envs/.env ]; then
+      while IFS='=' read -r key value; do
+        [ -n "${!key:-}" ] || export "$key=$value"
+      done < <(grep -E '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env)
     fi
+    # `elixir -S mix`, not bare `mix`: in a worktree the latter resolves
+    # against the main checkout and onboards the wrong tree.
+    elixir -S mix cms.harness.onboard
+
     # Session-scoped: --plugin-dir applies to this invocation only, so every
     # other Claude session keeps the marketplace plugin and the cms on 4003.
     claude --plugin-dir "$PLUGIN" {{args}}
