@@ -192,4 +192,109 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                Builder.build(scope(), "abc123", opts(architecture: :sparc))
     end
   end
+
+  # Issue faaf76b6: a builder name is deterministic from `ref`, so a 409 here
+  # is not two callers racing (RunLock already serializes per project) — it
+  # is a box an earlier interrupted run left behind. These prove that box
+  # gets cleared and the create retried, rather than the bare provider error
+  # propagating forever.
+  describe "build/3 — orphaned builder from an earlier interrupted run" do
+    test "clears the orphan and retries the create" do
+      owner = self()
+      name = "builder-abc123"
+      orphan = %{"id" => 999, "name" => name}
+
+      create = fn _scope, _name, _create_opts ->
+        case Process.get(:create_calls, 0) do
+          0 ->
+            Process.put(:create_calls, 1)
+
+            {:error,
+             {:hetzner_error, 409,
+              %{"error" => %{"code" => "uniqueness_error", "message" => "server name #{name} is already used"}}}}
+
+          _ ->
+            {:ok, server()}
+        end
+      end
+
+      find = fn _scope, ^name -> {:ok, orphan} end
+      destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
+
+      build = fn _scope, _server, _ref, arch ->
+        {:ok, %{reference: "img", architecture: arch}}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(create: create, find: find, destroy: destroy, build_fun: build)
+               )
+
+      # The orphan goes, and so does the box this run actually built on.
+      assert_received {:destroyed, 999}
+      assert_received {:destroyed, 42}
+    end
+
+    test "retries the create when the orphan is gone by the time it looks" do
+      create = fn _scope, _name, _create_opts ->
+        case Process.get(:create_calls, 0) do
+          0 ->
+            Process.put(:create_calls, 1)
+            {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+
+          _ ->
+            {:ok, server()}
+        end
+      end
+
+      find = fn _scope, _name -> {:error, :not_found} end
+
+      build = fn _scope, _server, _ref, arch ->
+        {:ok, %{reference: "img", architecture: arch}}
+      end
+
+      assert {:ok, _} =
+               Builder.build(scope(), "abc123", opts(create: create, find: find, build_fun: build))
+    end
+
+    test "surfaces a clear, distinguishing error when the orphan cannot be removed" do
+      name = "builder-abc123"
+      orphan = %{"id" => 999, "name" => name}
+
+      create = fn _scope, _name, _create_opts ->
+        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+      end
+
+      find = fn _scope, ^name -> {:ok, orphan} end
+      destroy = fn _scope, 999 -> {:error, {:hetzner_error, 423, %{"error" => %{"code" => "locked"}}}} end
+
+      assert {:error, {:orphaned_builder, message}} =
+               Builder.build(scope(), "abc123", opts(create: create, find: find, destroy: destroy))
+
+      assert message =~ "already exists at Hetzner"
+      assert message =~ "could not be removed"
+    end
+
+    test "surfaces a clear, distinguishing error when the orphan can't be looked up" do
+      create = fn _scope, _name, _create_opts ->
+        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+      end
+
+      find = fn _scope, _name -> {:error, {:hetzner_error, 500, %{}}} end
+
+      assert {:error, {:orphaned_builder, message}} =
+               Builder.build(scope(), "abc123", opts(create: create, find: find))
+
+      assert message =~ "already exists at Hetzner"
+    end
+
+    test "a non-collision creation error is left alone" do
+      create = fn _scope, _name, _create_opts -> {:error, {:capacity_unavailable, "no boxes"}} end
+
+      assert {:error, {:capacity_unavailable, "no boxes"}} =
+               Builder.build(scope(), "abc123", opts(create: create))
+    end
+  end
 end

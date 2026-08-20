@@ -164,10 +164,11 @@ defmodule CodeMySpec.Provisioning.Builder do
 
   defp start_builder(scope, ref, spec, opts) do
     create = Keyword.get(opts, :create, &Hetzner.create_server/3)
+    name = builder_name(ref)
 
     # `ssh_key_ids` is forwarded rather than dropped: `create_server/3` refuses
     # without one, and a builder nobody can log into cannot build anything.
-    create.(scope, builder_name(ref), [
+    create_opts = [
       server_type: spec.server_type,
       # The app box's location when there is one. The builder pushes to a
       # registry on that box's private network, and a network's subnet lives in
@@ -181,7 +182,58 @@ defmodule CodeMySpec.Provisioning.Builder do
       # has to be on that network. Attached at creation rather than after: the
       # reference it was handed names an address it would not yet hold.
       network_ids: Keyword.get(opts, :network_ids)
-    ])
+    ]
+
+    case create.(scope, name, create_opts) do
+      {:error, {:hetzner_error, 409, _}} -> reclaim_orphan(scope, name, create, create_opts, opts)
+      other -> other
+    end
+  end
+
+  # The name is deterministic from `ref` (criterion: same commit always
+  # builds on the same box name), so a collision here is not two callers
+  # racing — RunLock already serializes runs per project — it is a box an
+  # earlier run created and never reached `destroy/3` for: a crash, a kill, an
+  # MCP transport timeout (issue faaf76b6).
+  #
+  # `Hetzner.ensure_server/3` would adopt a same-named collision, and that is
+  # right for a server meant to live for months. It is wrong here: a builder
+  # is single-use and destroyed at the end of every build specifically so one
+  # customer's source never sits on a box that held another's (see
+  # moduledoc). A box that survived to collide is not a peer to build on top
+  # of — it may hold a half-finished push or a docker daemon left mid-crash
+  # from whatever killed the run that made it. So this clears the orphan and
+  # retries the create once, rather than adopting.
+  defp reclaim_orphan(scope, name, create, create_opts, opts) do
+    find = Keyword.get(opts, :find, &Hetzner.find_server/2)
+
+    case find.(scope, name) do
+      {:ok, orphan} ->
+        case destroy(scope, orphan, opts) do
+          :ok -> create.(scope, name, create_opts)
+          other -> orphan_undestroyable_error(name, other)
+        end
+
+      {:error, :not_found} ->
+        # Destroyed between the 409 and this lookup — by another cleanup, or
+        # a server the API hasn't listed yet. Either way the retry is the
+        # caller's best shot, not a second special case.
+        create.(scope, name, create_opts)
+
+      {:error, reason} ->
+        {:error,
+         {:orphaned_builder,
+          "A builder named #{name} already exists at Hetzner, left over from an earlier " <>
+            "interrupted run, but looking it up to clear it failed: #{inspect(reason)}."}}
+    end
+  end
+
+  defp orphan_undestroyable_error(name, reason) do
+    {:error,
+     {:orphaned_builder,
+      "A builder named #{name} already exists at Hetzner, left over from an earlier " <>
+        "interrupted run, and could not be removed to make way for this one: " <>
+        "#{inspect(reason)}. Delete it manually at Hetzner and re-run."}}
   end
 
   defp run(scope, server, ref, architecture, opts) do
