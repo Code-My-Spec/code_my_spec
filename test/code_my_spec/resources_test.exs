@@ -52,7 +52,10 @@ defmodule CodeMySpec.ResourcesTest do
       # keeps running against this test's sandboxed connection after the
       # assertion above returns. Letting the test process exit while it is
       # still mid-sequence tears that connection down out from under it.
-      wait_until(fn -> StepRepository.get(scope, :callback_credential) != nil end)
+      # Waited on `:done`, not on the row existing — see `step_state/2`.
+      wait_until(fn -> step_state(scope, :repository) == :done end)
+      wait_until(fn -> step_state(scope, :callback_credential) == :done end)
+
       assert StepRepository.get(scope, :repository).state == :done
       assert StepRepository.get(scope, :callback_credential).state == :done
     end
@@ -103,7 +106,10 @@ defmodule CodeMySpec.ResourcesTest do
 
       assert [{^project_id, {:ok, :started}}] = Resources.fix_all_async(scope)
 
-      wait_until(fn -> StepRepository.get(scope, :callback_credential) != nil end)
+      # Waited on `:done`, not on the row existing — see `step_state/2`.
+      wait_until(fn -> step_state(scope, :repository) == :done end)
+      wait_until(fn -> step_state(scope, :callback_credential) == :done end)
+
       assert StepRepository.get(scope, :repository).state == :done
       assert StepRepository.get(scope, :callback_credential).state == :done
     end
@@ -121,7 +127,9 @@ defmodule CodeMySpec.ResourcesTest do
     test "resolves a runnable environment from the project's own checkout, even when the caller's scope has none",
          %{scope: scope} do
       {:ok, checkout} = Briefly.create(directory: true)
-      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: checkout})
+
+      {:ok, project} =
+        Projects.update_project(scope, scope.active_project, %{local_path: checkout})
 
       # What a browser-session scope actually looks like — `Scope.for_user/1`
       # never populates `environment`.
@@ -148,9 +156,14 @@ defmodule CodeMySpec.ResourcesTest do
     test "a harness-typed scope still re-derives :local from the project's checkout, unaffected by this fix",
          %{scope: scope} do
       {:ok, checkout} = Briefly.create(directory: true)
-      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: checkout})
 
-      harness_scope = %{scope | environment: Environment.new(:harness, "/wherever/the/harness/runs")}
+      {:ok, project} =
+        Projects.update_project(scope, scope.active_project, %{local_path: checkout})
+
+      harness_scope = %{
+        scope
+        | environment: Environment.new(:harness, "/wherever/the/harness/runs")
+      }
 
       resolved = Resources.project_scope(harness_scope, project)
 
@@ -162,6 +175,30 @@ defmodule CodeMySpec.ResourcesTest do
       resolved = Resources.project_scope(scope, scope.active_project)
 
       assert resolved.environment == scope.environment
+    end
+  end
+
+  # The state of a step, or `nil` while it has not been written yet.
+  #
+  # Both callers used to wait on `StepRepository.get(...) != nil` and then
+  # assert the state was `:done`. A step row is written when the step *starts*
+  # and updated when it finishes, so that wait was satisfied by the exact state
+  # the assertion rejects: the two were about different things, and the gap
+  # between them was however long the work actually took. It passed only while
+  # the machine was quiet enough for a step to finish inside one 10ms tick.
+  #
+  # Both tests in this file that used it were intermittent in full-suite runs.
+  # Caught 2026-08-20:
+  #
+  #     assert StepRepository.get(scope, :callback_credential).state == :done
+  #     left:  :running
+  #
+  # `nil` rather than raising for an unwritten step, because that is the
+  # ordinary state while async work is starting and it is what the wait is for.
+  defp step_state(scope, step) do
+    case StepRepository.get(scope, step) do
+      nil -> nil
+      record -> record.state
     end
   end
 
