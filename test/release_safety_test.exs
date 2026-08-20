@@ -44,6 +44,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
       |> Path.wildcard()
       |> Enum.flat_map(&scan_file/1)
       |> Enum.reject(fn {rel, _line, _src} -> rel in @allowed_paths end)
+      |> Enum.reject(fn {rel, _line, _src} -> mix_task?(rel) end)
 
     assert violations == [],
            build_violation_message(violations)
@@ -83,6 +84,20 @@ defmodule CodeMySpec.ReleaseSafetyTest do
            #{Enum.map_join(offenders, "\n", &"  #{inspect(&1)}")}
            """
   end
+
+  # The same exemption `@allowed_modules` already grants, applied where the
+  # source scan can see it.
+  #
+  # These two checks were exempting on different grounds for one reason. The
+  # compiled test says it outright — "Mix tasks do not exist in a release; that
+  # is what makes them tasks" — and matches `Elixir.Mix.Tasks.*`; the source scan
+  # had only a hand-listed path, so every mix task that used `Mix.env` had to be
+  # added to a list by hand while the check that actually guarantees the property
+  # already knew the rule. Two lists that must agree, with nothing linking them.
+  #
+  # `lib/mix/tasks/` is exactly the directory whose modules compile to
+  # `Elixir.Mix.Tasks.*`, so this is the same predicate spelled for a path.
+  defp mix_task?(rel), do: String.starts_with?(rel, "mix/tasks/")
 
   defp scan_file(path) do
     rel = Path.relative_to(path, @lib_root)
