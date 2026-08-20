@@ -44,13 +44,39 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignSubagent do
          {:ok, _updated} <- Sessions.reassign_agent(scope, session, task_id, agent_id) do
       msg =
         "Assigned sub-agent `#{agent_id}` to task `#{task_id}` " <>
-          "(#{target.requirement_name || "—"})."
+          "(#{target.requirement_name || "—"}).\n\n" <> git_note()
 
       {:reply, Response.tool() |> Response.text(msg), frame}
     else
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{format_reason(reason)}"), frame}
     end
+  end
+
+  # Said at assignment time, because that is when the prompt gets written.
+  #
+  # `PreToolUse` denies every mutating git subcommand to a sub-agent — b5e305fc,
+  # where a wandering QA sub-agent ran `git revert` under the engineer's
+  # identity and silently destroyed a fix. The guard is right and stays.
+  #
+  # What it could not do is reach the agent writing the assignment. 461ff38b:
+  # a fix-* sub-agent was handed a prompt with detailed commit-and-push
+  # instructions across three repos and a "Git safety" section, did all the
+  # work, verified it, and then discovered at the first `git add` that none of
+  # it was followable. It had to hand the diffs back and report the assignment
+  # incomplete — and the assigning agent had no way to know, since the
+  # restriction only announced itself in a refusal the assigner never sees.
+  @doc false
+  # Public only so the wording can be asserted without standing up a task
+  # through `StartTask`, the same reason `Validation.blocking_key/1` is. The
+  # wiring is covered by story 704's spex, which run this tool for real.
+  @spec git_note() :: String.t()
+  def git_note do
+    "Sub-agents cannot commit. `PreToolUse` allows read-only git only, so do not " <>
+      "write commit, push, rebase or stash steps into this task's prompt — the " <>
+      "sub-agent will do the work and then be unable to follow them. It hands " <>
+      "finished work back as file edits in the working copy; committing stays with " <>
+      "you."
   end
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
