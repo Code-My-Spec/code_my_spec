@@ -43,7 +43,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     Conversations,
     Deploys,
     Environments,
-    Mail,
     Projects,
     ProjectSecrets
   }
@@ -1579,7 +1578,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     probe.(scope, name, Keyword.put(opts, :resend_domain_id, domain_id))
   end
 
-  defp default_inbound_probe(scope, name, opts) do
+  defp default_inbound_probe(scope, _name, opts) do
     # A token in the subject, because the account receives real mail too and
     # "something arrived" is not "the thing we sent arrived".
     token = "cms-inbound-#{System.unique_integer([:positive])}"
@@ -1598,7 +1597,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # Pausing for an address Sam already receives at is the honest move: setup
     # cannot discover it, and guessing produces a failure that blames the
     # inbox for the guess.
-    case Keyword.get(opts, :inbound_probe_to) || owner_address(scope, name) do
+    case Keyword.get(opts, :inbound_probe_to) do
       to when is_binary(to) and to != "" ->
         with {:ok, message} <- send_and_await(scope, to, token, opts) do
           {:ok, inbound_proof(to, message, Keyword.get(opts, :resend_domain_id))}
@@ -1608,79 +1607,6 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, :no_probe_address}
     end
   end
-
-  # Sam's own local part at this domain. Derived rather than invented, which is
-  # the distinction that matters: `setup-probe@` was a name nobody had
-  # configured, and Resend drops mail to an unconfigured address in silence, so
-  # the step reported the inbox broken. The address Sam reads his own mail at
-  # is the one he is most likely to have set up, and he can override it.
-  #
-  # Still a guess, so when it does not arrive the error says to check the
-  # address first — that being the likeliest cause and the one that reads as a
-  # broken inbox.
-  # The address the project receives at, made rather than guessed.
-  #
-  # This derived a local part from Sam's own email and hoped somebody had
-  # configured it — "still a guess", as the comment above admitted, and wrong on
-  # every freshly provisioned domain: mail to an address nothing routes is
-  # discarded, the poll runs to exhaustion, and the step reports the inbox
-  # broken.
-  #
-  # `Mail` owns routing, so it does not have to be guessed. `catch_all_mailbox/1`
-  # is the one that takes delivery for anything at the domain, and when a project
-  # has none this makes one — which is what setting an inbox up *means*, and is
-  # this step's job rather than a precondition for it.
-  defp owner_address(%Scope{} = scope, domain) when is_binary(domain) do
-    case ensure_catch_all(scope, domain) do
-      {:ok, address} -> address
-      _ -> derived_address(scope, domain)
-    end
-  end
-
-  defp owner_address(_scope, _domain), do: nil
-
-  defp ensure_catch_all(%Scope{active_project_id: id} = scope, domain) when not is_nil(id) do
-    # On *this* domain. The mailbox is keyed to the project and the project
-    # outlives its domain, so a project that changed domains kept a catch-all at
-    # the old one — and the probe was addressed to `inbox@` a domain that no
-    # longer existed. It never arrived, and the step reported the inbox broken,
-    # which is true of an address nobody can deliver to and says nothing about
-    # the domain being set up.
-    case Mail.catch_all_mailbox(id) do
-      %{address: address} when is_binary(address) and address != "" ->
-        if String.ends_with?(address, "@" <> domain),
-          do: {:ok, address},
-          else: create_catch_all(scope, domain)
-
-      _ ->
-        create_catch_all(scope, domain)
-    end
-  end
-
-  defp ensure_catch_all(_scope, _domain), do: :error
-
-  # `inbox@` because it has to be called something and that is what a person
-  # expects to find. `catch_all: true` is the load-bearing part — it is what
-  # makes mail to any local part at this domain route somewhere rather than be
-  # dropped.
-  defp create_catch_all(scope, domain) do
-    case Mail.create_mailbox(scope, %{address: "inbox@#{domain}", catch_all: true}) do
-      {:ok, %{address: address}} -> {:ok, address}
-      other -> other
-    end
-  end
-
-  # Kept as the fallback for a project whose mailboxes cannot be reached —
-  # better than inventing a name nobody has configured.
-  defp derived_address(%Scope{user: %{email: email}}, domain)
-       when is_binary(email) and is_binary(domain) do
-    case String.split(email, "@") do
-      [local | _] when local != "" -> "#{local}@#{domain}"
-      _ -> nil
-    end
-  end
-
-  defp derived_address(_scope, _domain), do: nil
 
   # On *this* domain, or the proof is about somebody else's inbox: a message to
   # an address elsewhere arrives just as happily and says nothing about whether
