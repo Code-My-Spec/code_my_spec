@@ -35,7 +35,7 @@ defmodule CmsHarness.Web.MessagesController do
         json(conn, body)
 
       {:ok, %{status: status, body: body}} ->
-        conn |> put_status(status) |> json(body)
+        conn |> put_status(forwardable(status)) |> json(body)
 
       {:error, reason} ->
         Logger.error("[CmsHarness] upstream call failed: #{inspect(reason)}")
@@ -44,6 +44,41 @@ defmodule CmsHarness.Web.MessagesController do
         |> put_status(502)
         |> json(%{"type" => "error", "error" => %{"message" => "upstream unreachable"}})
     end
+  end
+
+  # A status this process can actually send.
+  #
+  # Forwarding upstream's status is what a proxy should do, and `put_status/2`
+  # raises `ArgumentError: unknown status code` for anything outside Plug's
+  # table — so a code Plug had not heard of became a 500 from *here*. Measured:
+  # Anthropic returned 529 "overloaded", the agent was told "The CodeMySpec
+  # harness failed to handle this hook (Internal Server Error) ... check its
+  # log", and went looking at localhost:4004 for a problem that was upstream and
+  # transient.
+  #
+  # 529 is configured now (`config :plug, :statuses`), which is the documented
+  # mechanism and the right home for a code we expect. This is for the ones we
+  # do not: an upstream, or something between us and it, can return anything,
+  # and a proxy that raises on an unfamiliar number is a proxy that converts
+  # somebody else's transient answer into our own hard failure.
+  #
+  # Falls back within the same class, so a client's retry logic still sees a
+  # 5xx as a 5xx, and logs the original — the number is the one piece of
+  # information the fallback destroys.
+  defp forwardable(status) do
+    _ = Plug.Conn.Status.reason_phrase(status)
+    status
+  rescue
+    ArgumentError ->
+      substitute = if status >= 500, do: 502, else: 400
+
+      Logger.warning(
+        "[CmsHarness] upstream answered #{status}, which Plug has no reason phrase for; " <>
+          "forwarding #{substitute} instead. Add it to `config :plug, :statuses` if it is " <>
+          "a code we expect to see."
+      )
+
+      substitute
   end
 
   defp forward(request, headers, query_string) do

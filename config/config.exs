@@ -201,6 +201,21 @@ config :code_my_spec, CodeMySpec.Vault,
     }
   ]
 
+# Status codes Plug does not ship a reason phrase for, and which we forward
+# from upstream rather than invent.
+#
+# `MessagesController` proxies model turns and passes the upstream status
+# through, which is what a proxy should do. But Bandit needs a reason phrase for
+# whatever it is handed, and `put_status/2` raises `ArgumentError: unknown status
+# code` for anything outside Plug's table — so an upstream code Plug has not
+# heard of became a 500 from *this* process.
+#
+# 529 is Anthropic's "overloaded". It is transient and the client already knows
+# how to back off on it; turning it into a harness 500 replaced a retryable
+# answer with one that reads as a bug in the harness, and sent the reader to
+# `localhost:4004` for a problem that was never there.
+config :plug, :statuses, %{529 => "Overloaded"}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
