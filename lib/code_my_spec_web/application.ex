@@ -42,6 +42,10 @@ defmodule CodeMySpecWeb.Application do
         # run elsewhere, so it belongs to the web app rather than to the
         # analysis subtree.
         CodeMySpec.Files.ReconcileRegistry,
+        # Which projects have a setup run in flight. Provisioning talks to real
+        # providers from here, not from the local harness, so the lock that
+        # keeps two runs from racing the same project belongs here too.
+        CodeMySpec.Provisioning.RunLock,
         CodeMySpecWeb.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to

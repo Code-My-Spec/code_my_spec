@@ -46,6 +46,7 @@ defmodule CodeMySpec.Provisioning do
   alias CodeMySpec.Provisioning.{
     Environment,
     EnvironmentRepository,
+    RunLock,
     Sequence,
     Step,
     StepRepository,
@@ -312,6 +313,7 @@ defmodule CodeMySpec.Provisioning do
   def run_step(%Scope{} = scope, key, opts \\ []) do
     execute = Keyword.get(opts, :execute, &execute_step/3)
     scope = reread_project(scope)
+    previous = StepRepository.get(scope, key)
 
     case verify(scope, key, opts) do
       {:ok, :satisfied, resources} ->
@@ -319,6 +321,21 @@ defmodule CodeMySpec.Provisioning do
 
       {:ok, :absent} ->
         run_and_record(scope, key, execute, opts)
+
+      # A provider that could not be read is not a verdict that the resource
+      # is gone — `reverify/3`'s own rule (a page load never demotes a
+      # `:done` step on a transient error), extended here so re-verifying a
+      # `:done` step at the top of a `run/3`/`resume/2` walk cannot do the
+      # same thing a page load is careful not to. Without this, a DNS blip
+      # against a step that finished yesterday knocked it back to `:errored`
+      # exactly like the resource had actually been deleted, and the halt
+      # that followed reported "provider refused" for something the provider
+      # was never asked. The run still halts — nothing after this step can be
+      # trusted to build on a foundation nobody could just confirm — but the
+      # row keeps saying `:done` so the next attempt re-verifies instead of
+      # rebuilding real infrastructure on the strength of a timeout.
+      {:error, reason} when not is_nil(previous) and previous.state == :done ->
+        {:halt, previous, describe(reason)}
 
       {:error, reason} ->
         {:halt, mark(scope, key, :errored, error_attrs(key, reason)), describe(reason)}
@@ -371,10 +388,27 @@ defmodule CodeMySpec.Provisioning do
     end
   end
 
-  defp spawn_step(scope, key, opts) do
+  defp spawn_step(%Scope{active_project_id: project_id} = scope, key, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        run_step(scope, key, opts)
+        # Guards against the same race a whole-sequence run guards against —
+        # a single-step retry writes to the same project's rows a
+        # `run_devops_setup`/`fix-all` run in flight is writing to. Refusing
+        # silently rather than surfacing an error is a deliberate, narrower
+        # choice than the whole-run path takes: this button is optimistic
+        # already (the caller never awaited a result even before this
+        # existed), so there is no caller here to hand a "try again" message
+        # to — only a log line for whoever goes looking.
+        case RunLock.with_lock(project_id, fn -> run_step(scope, key, opts) end) do
+          {:error, {:already_running, started_at}} ->
+            Logger.info(
+              "[Provisioning] #{key} skipped — a run for this project is already in flight" <>
+                (started_at && " (started #{started_at})" || "")
+            )
+
+          _result ->
+            :ok
+        end
       end)
 
     :ok

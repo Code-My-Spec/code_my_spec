@@ -36,6 +36,7 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Repo
   alias CodeMySpec.Resources.Acknowledgement
@@ -171,6 +172,84 @@ defmodule CodeMySpec.Resources do
   @spec fix_all(Scope.t()) :: [{Ecto.UUID.t(), term()}]
   def fix_all(%Scope{} = scope) do
     for project <- deployable(scope), do: {project.id, fix(scope, project.id)}
+  end
+
+  @doc """
+  Start one project's setup without waiting for it to finish.
+
+  `fix/2` blocks for the whole run, which is the honest shape for a page
+  holding a connection open — and exactly what breaks a caller that cannot:
+  the MCP transport's call timeout is far shorter than a real run (deploy
+  alone measured ~167s), so `run_devops_setup` calling `fix/2` returned
+  `-32603` to the caller long before the run itself finished. The run kept
+  going server-side regardless, and the caller — reading the timeout as
+  failure — retried into a project that already had a run in flight, racing
+  its own writes against real Cloudflare/Hetzner/Resend/GitHub state.
+
+  This returns as soon as the run has either started or been refused —
+  never once the work is done. `RunLock` is what makes "started or refused"
+  the only two outcomes: a project already mid-run gets
+  `{:error, {:already_running, started_at}}` back immediately, without a
+  second `Provisioning.run/3` ever starting. The caller polls
+  `Resources.report/1` (what `devops_status` already reads) to watch it
+  converge.
+  """
+  @spec fix_async(Scope.t(), Ecto.UUID.t()) ::
+          {:ok, :started}
+          | {:error, :not_found}
+          | {:error, {:already_running, DateTime.t() | nil}}
+          | {:error, :lock_handshake_timeout}
+  def fix_async(%Scope{} = scope, project_id) when is_binary(project_id) do
+    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
+      nil -> {:error, :not_found}
+      project -> start_fix(scope, project)
+    end
+  end
+
+  @doc """
+  Start setup for every project meant to be deployed, without waiting for any
+  of them.
+
+  Each project gets its own `RunLock`, so one project's run already in
+  flight refuses only that project — the rest still start, the same
+  independence `fix_all/1` gives the synchronous path.
+  """
+  @spec fix_all_async(Scope.t()) :: [{Ecto.UUID.t(), term()}]
+  def fix_all_async(%Scope{} = scope) do
+    for project <- deployable(scope), do: {project.id, start_fix(scope, project)}
+  end
+
+  # The handshake that makes `fix_async/2` genuinely async while still
+  # answering "did it start" synchronously: the spawned task claims the lock
+  # first and only then signals the caller, so the caller learns the true
+  # outcome — locked-and-running, or refused — in milliseconds, without ever
+  # waiting on the run itself. `RunLock.with_lock/2`'s `Registry.register/3`
+  # is the atomic step; the ack just carries its result back across process
+  # boundaries so this function can return synchronously with an answer.
+  defp start_fix(scope, project) do
+    project_scope = project_scope(scope, project)
+    options = Provisioning.setup_options(project)
+    parent = self()
+    ref = make_ref()
+
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        RunLock.with_lock(project.id, fn ->
+          send(parent, {ref, :locked})
+          Provisioning.run(project_scope, options, step_opts())
+        end)
+        |> case do
+          {:error, {:already_running, _}} = refused -> send(parent, {ref, refused})
+          _finished -> :ok
+        end
+      end)
+
+    receive do
+      {^ref, :locked} -> {:ok, :started}
+      {^ref, {:error, {:already_running, _}} = refused} -> refused
+    after
+      5_000 -> {:error, :lock_handshake_timeout}
+    end
   end
 
   defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])

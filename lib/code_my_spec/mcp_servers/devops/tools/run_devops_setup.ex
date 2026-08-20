@@ -18,6 +18,17 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
   Call `devops_status` first. If it reports a provider unreachable, the answer
   is unknown rather than "not done", and running setup on that basis may build
   things that already exist.
+
+  ## This returns as soon as the run starts, not when it finishes
+
+  A real run can take minutes — deploy alone has measured ~167s — which is
+  longer than this tool's own transport waits for a reply. Calling and then
+  waiting for a definitive "complete" here will time out even when the run is
+  proceeding normally; call `devops_status` afterward to watch it converge
+  instead of retrying this call. Retrying while a run is still going does not
+  start a second one — the project is locked for the run's duration and the
+  retry is told a run is already in progress, rather than racing the first
+  run's writes against the same provider.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -38,10 +49,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params) do
       case Map.get(params, :project_id) do
         id when is_binary(id) and id != "" ->
-          {:reply, ok(one(id, Resources.fix(scope, id))), frame}
+          {:reply, ok(one(id, Resources.fix_async(scope, id))), frame}
 
         _ ->
-          {:reply, ok(all(Resources.fix_all(scope))), frame}
+          {:reply, ok(all(Resources.fix_all_async(scope))), frame}
       end
     else
       {:error, reason} -> {:reply, error(reason), frame}
@@ -60,15 +71,24 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
 
   defp all(results),
     do:
-      "Ran setup for #{length(results)} project(s).\n\n" <>
+      "Started setup for #{length(results)} project(s). Call devops_status to watch them converge.\n\n" <>
         Enum.map_join(results, "\n", fn {id, result} -> "  - #{id}: #{outcome(result)}" end)
 
-  # Named per outcome rather than inspected. A paused run is waiting on a person
-  # and a halted one stopped at a named step; reporting both as "error" would
-  # invite a retry that cannot succeed.
-  defp outcome({:ok, _}), do: "complete"
-  defp outcome({:paused, instructions}), do: "paused — #{instructions}"
-  defp outcome({:halt, key, reason}), do: "halted at #{key} — #{inspect(reason)}"
+  # Named per outcome rather than inspected, same as before — but the
+  # outcomes are now about whether the run *started*, not whether it
+  # *finished*. `run_devops_setup` returns long before a real run does, so
+  # there is no "complete"/"halted at"/"failed" to report here any more —
+  # only whether this call caused a run to begin, and if not, why not.
+  defp outcome({:ok, :started}), do: "started — call devops_status to watch it converge"
+
+  defp outcome({:error, {:already_running, started_at}}) do
+    since = started_at && " (started #{started_at})"
+    "a run is already in progress#{since} — call devops_status rather than retrying"
+  end
+
+  defp outcome({:error, :lock_handshake_timeout}),
+    do: "could not confirm the run started — check devops_status, or try again shortly"
+
   defp outcome({:error, reason}), do: "failed — #{inspect(reason)}"
   defp outcome(other), do: inspect(other)
 

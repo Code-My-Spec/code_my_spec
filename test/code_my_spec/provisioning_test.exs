@@ -187,6 +187,60 @@ defmodule CodeMySpec.ProvisioningTest do
     end
   end
 
+  describe "a done step survives a provider that could not be read" do
+    # The re-verify at the top of every run/resume walk asks the provider
+    # again before trusting a :done row — and a provider that could not be
+    # reached is not evidence the resource is gone, the same "unreachable ≠
+    # not done" rule devops_status's own moduledoc states for its read path.
+    # Before this, any :error from verify demoted the row to :errored, so a
+    # DNS blip against a step that finished yesterday read exactly like the
+    # resource having been deleted.
+    test "verify's transient error halts the run without demoting a done step", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+
+      verify = fn
+        _scope, :repository -> {:error, :nxdomain}
+        _scope, _key -> {:ok, :absent}
+      end
+
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :repository, verify: verify)
+
+      assert row.state == :done
+      assert reason =~ "nxdomain"
+      assert StepRepository.get(scope, :repository).state == :done
+    end
+
+    # A step with no prior :done row has nothing to protect — the provider's
+    # refusal is the only answer there is, and it still has to be recorded
+    # as errored so the escalation can name what happened.
+    test "a step with no prior :done row still errors on a provider failure", %{scope: scope} do
+      verify = fn _scope, _key -> {:error, "no capacity"} end
+
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :server, verify: verify)
+
+      assert row.state == :errored
+      assert reason =~ "no capacity"
+    end
+
+    # A step that previously errored or paused is not protected either —
+    # only :done means "this was confirmed working", so only :done is worth
+    # shielding from a transient read failure.
+    test "a previously errored step still errors on a provider failure", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, %{
+        state: :errored,
+        position: 0,
+        attempted: "run the repository step",
+        provider_error: "token lacks permission"
+      })
+
+      verify = fn _scope, _key -> {:error, :nxdomain} end
+
+      assert {:halt, row, _reason} = Provisioning.run_step(scope, :repository, verify: verify)
+
+      assert row.state == :errored
+    end
+  end
+
   describe "resume/3" do
     # Criterion 7963: steps that already succeeded are not re-executed —
     # re-running from the top would re-provision servers and re-charge for
