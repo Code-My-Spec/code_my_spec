@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   @moduledoc """
   Delegate checker for the `personas_complete` requirement on `project_graph`.
 
-  Iterates over every persona in the active project and confirms each has:
+  Satisfied by **at least one** persona in the active project having:
 
     * A `personas` row (always true for anything list returns — proof by construction)
     * `.code_my_spec/personas/<slug>/summary.md` that validates as `persona_summary`
@@ -11,6 +11,13 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   Personas are project-scoped. Story linkage is enforced by the Three Amigos
   flow later, not here — `personas_complete` only certifies that the project
   has at least one persona with research on disk.
+
+  This paragraph and the list above used to disagree with each other, and the
+  code implemented the list: every persona had to be complete, so one bare stub
+  held the requirement shut while a fully researched persona sat beside it. The
+  sentence was the contract — it is what the requirement's own description tells
+  an agent — so the code matches it now, and personas without research are
+  reported in the status rather than blocking.
 
   ## Decided at sync, read here
 
@@ -52,22 +59,47 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
 
       personas ->
         by_path = synced_persona_files(scope)
+        {done, gaps} = Enum.split_with(personas, &(check_persona(by_path, &1) == :ok))
 
-        gaps =
-          personas
-          |> Enum.map(&check_persona(by_path, &1))
-          |> Enum.reject(&(&1 == :ok))
-
-        if gaps == [] do
-          {true, %{status: "#{length(personas)} persona(s) complete"}}
-        else
-          {false, %{reason: format_gaps(gaps)}}
-        end
+        verdict(done, Enum.map(gaps, &check_persona(by_path, &1)), length(personas))
     end
   end
 
   def complete?(%Scope{}, _entity) do
     {false, %{reason: "No active project in scope — cannot check personas."}}
+  end
+
+  # One complete persona satisfies this, which is what the requirement has
+  # always said and not what it did.
+  #
+  # `gaps == []` required *every* persona on the project to have valid research,
+  # so a single bare stub held the requirement shut forever. Measured on Broken
+  # Oaths: "Gem-Weary Wes" had a complete record, `summary.md` and `sources.md`
+  # written and well-cited; two other personas existed as DB stubs with no files.
+  # `get_next_requirement` kept returning `personas_complete`, and an agent that
+  # did exactly the documented work — "at least one persona researched" — was
+  # told it had not.
+  #
+  # That is the expensive direction for a gate to be wrong in. Demanding more
+  # than the contract says means the work an agent was told to do never opens
+  # the gate, and the only way to find out is to read the checker.
+  #
+  # The stubs are still named. Satisfying quietly would trade one invisible
+  # problem for another — the requirement passes and nobody learns that two
+  # personas on the project are empty — so the incomplete ones travel in the
+  # status, where they are informational rather than blocking.
+  defp verdict([], gaps, _total), do: {false, %{reason: format_gaps(gaps)}}
+
+  defp verdict(done, [], _total),
+    do: {true, %{status: "#{length(done)} persona(s) complete"}}
+
+  defp verdict(done, gaps, total) do
+    {true,
+     %{
+       status:
+         "#{length(done)} of #{total} persona(s) complete — enough to satisfy this " <>
+           "requirement. Still without research on disk:\n#{format_gaps(gaps)}"
+     }}
   end
 
   defp synced_persona_files(scope) do

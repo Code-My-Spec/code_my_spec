@@ -8,15 +8,24 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Formatters
 
-  def persona_response(persona) do
+  @doc """
+  One persona, rendered for whoever asked.
+
+  `:heading` because this is reached two ways and only one of them is a
+  creation. `get_persona` calls the same function, so fetching an existing
+  persona answered "Persona created:" — a tool reporting an event that did not
+  happen, in its first line, to an agent with no other way to check.
+  """
+  def persona_response(persona, opts \\ []) do
+    heading = Keyword.get(opts, :heading, "Persona created")
     type_line = "Type: `#{persona.persona_type}` — #{persona_type_note(persona.persona_type)}"
 
     summary = """
-    Persona created: "#{persona.name}" (slug: `#{persona.slug}`, id: `#{persona.id}`)
+    #{heading}: "#{persona.name}" (slug: `#{persona.slug}`, id: `#{persona.id}`)
 
     #{type_line}
 
-    Next steps:
+    Next steps, if not already done:
     - Write `.code_my_spec/personas/#{persona.slug}/summary.md` with required sections (Role, Goals, Pain Points, Context, Decision Drivers, Evidence).
     - Write `.code_my_spec/personas/#{persona.slug}/sources.md` with URL + title + access date per entry.
     - Call `link_persona_to_story` with persona_id `#{persona.id}` and a story_id this persona applies to.

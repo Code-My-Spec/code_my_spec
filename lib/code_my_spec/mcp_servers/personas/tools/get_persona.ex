@@ -15,8 +15,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :slug, :string,
-      doc: "Persona slug (e.g., 'founder'). Provide either slug or id."
+    field :slug, :string, doc: "Persona slug (e.g., 'founder'). Provide either slug or id."
 
     field :id, :string,
       doc: "Persona UUID. Provide either slug or id. Slug wins if both are given."
@@ -26,7 +25,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, persona} <- resolve_persona(scope, params) do
-      {:reply, PersonasMapper.persona_response(persona), frame}
+      {:reply, PersonasMapper.persona_response(persona, heading: "Persona"), frame}
     else
       {:error, :not_found} ->
         {:reply, PersonasMapper.error(:not_found), frame}
