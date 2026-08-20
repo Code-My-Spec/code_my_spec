@@ -156,65 +156,29 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # plugin's MCP mount sent the literal `${CMS_HARNESS_ID}` and every hook
   # resolved to the *parent* checkout's harness for three days (`c79ee092`).
   #
-  # So this asserts the keys `address_model_turns/4` writes. `client_utils`
-  # carries the same fix in `Onboarding.check/2` — two implementations, which is
-  # this story's own complaint about onboarding, and they are kept in step by
-  # naming the same three keys rather than by one calling the other: this side
-  # reads through `Environments` so specs can drive an in-memory copy.
+  # So this asks `client_utils`, which is the only implementation now.
+  #
+  # There were two. This side had its own `check/2`, its own `@required_env`,
+  # its own `blank_or_invalid?/2` — and its own comment saying so: "two
+  # implementations … kept in step by naming the same three keys rather than by
+  # one calling the other: this side reads through `Environments` so specs can
+  # drive an in-memory copy." The reason was real and the conclusion was not.
+  # `Onboarding`'s port takes `{module, handle}` and its callbacks are
+  # `Environments`' own functions, so driving it through `Environments` is the
+  # argument below and nothing else.
   defp check(env, root) do
-    missing = missing_settings(env)
-    onboarded = missing == []
-    announce_check(onboarded, missing, root)
-
-    %{onboarded: onboarded, missing: missing, remedy: "mix cms.harness.onboard"}
+    report = Onboarding.check(root, io: io(env))
+    announce_check(report.onboarded, report.missing, root)
+    report
   end
 
-  # `ANTHROPIC_BASE_URL` is not required: it is opt-in (`--relay-model-turns`)
-  # precisely because most working copies should not carry it — see
-  # `address/4`'s comment — so a copy that never asked for it is not
-  # half-onboarded for lacking it. If it *is* present, `missing_settings/1`
-  # below still checks it is not the dangling-prefix shape a refused mint
-  # leaves; presence with a broken value is still reported.
-  @required_env ["CMS_HARNESS_ID", "MIX_TEST_PARTITION"]
-
-  defp missing_settings(env) do
-    settings =
-      case Environments.read_file(env, @settings_file) do
-        {:ok, contents} -> decode_env(contents)
-        _ -> %{}
-      end
-
-    Enum.filter(@required_env, &blank_or_invalid?(&1, Map.get(settings, &1))) ++
-      invalid_if_present(settings, "ANTHROPIC_BASE_URL")
-  end
-
-  defp invalid_if_present(settings, key) do
-    case Map.get(settings, key) do
-      nil -> []
-      value -> if blank_or_invalid?(key, value), do: [key], else: []
-    end
-  end
-
-  defp decode_env(contents) do
-    case Jason.decode(contents) do
-      {:ok, %{"env" => env}} when is_map(env) -> env
-      _ -> %{}
-    end
-  end
-
-  # Checked for an id rather than for presence: the measured failure had
-  # `http://localhost:4004/api/harnesses/` — the prefix with nothing after it,
-  # which is not a route to anything and is what a run that refused before
-  # learning its harness id leaves behind.
-  defp blank_or_invalid?("ANTHROPIC_BASE_URL", value) when is_binary(value) do
-    case String.split(value, "/api/harnesses/") do
-      [_prefix, id] -> String.trim(id) == ""
-      _ -> true
-    end
-  end
-
-  defp blank_or_invalid?(_key, value) when is_binary(value), do: String.trim(value) == ""
-  defp blank_or_invalid?(_key, _value), do: true
+  # No adapter, on purpose. `Onboarding.Port` calls `read_file/2`,
+  # `write_file/3`, `file_exists?/2` and `cmd/4` on whatever module it is given,
+  # with the handle it is paired with — which is `CodeMySpec.Environments`'
+  # contract exactly. A translation module here would have contained four
+  # renames and nothing else, and a layer whose whole content is a rename is a
+  # layer that will eventually disagree with the thing it renames.
+  defp io(env), do: {Environments, env}
 
   defp announce_check(true, _missing, root) do
     Mix.shell().info("onboarded: #{root}")
@@ -256,7 +220,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp address(env, root, id, false), do: address_mcp(env, root, id)
 
   @doc false
-  def address_mcp(env, root, id), do: write_address(env, root, id, %{})
+  def address_mcp(env, root, id), do: write_settings(env, root, id, false, nil)
 
   # A brand-new worktree has neither of the dev-only surfaces this repo keeps
   # outside git: `envs/.env` (other secrets this build reads, and the fixture
@@ -601,59 +565,48 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     # only one of which is a real route (3498d841). Two derivations of one value is
     # the defect this story removes, and the refactor meant to fix it reintroduced
     # it in the split.
-    url = Onboarding.anthropic_url(base_url || default_hook_base_url(), id)
-
-    write_address(env, root, id, %{"ANTHROPIC_BASE_URL" => url})
+    write_settings(env, root, id, true, base_url || default_hook_base_url())
   end
 
-  # Shared by `address_model_turns/4` and `address_mcp/3`: both keep every key
-  # the operator already had (`Map.get("env", %{})` starts from what's there,
-  # `extra` only adds), so a bare re-run never blanks out an address a prior,
-  # opted-in run already wrote — it just isn't asked to write one itself.
-  defp write_address(env, root, id, extra) do
-    with {:ok, settings} <- read_settings(env) do
-      env_block =
-        settings
-        |> Map.get("env", %{})
-        |> Map.merge(extra)
-        |> Map.put("CMS_HARNESS_ID", id)
-        |> Map.put_new("MIX_TEST_PARTITION", Onboarding.partition_name(root))
-
-      merged = Map.put(settings, "env", env_block)
-
-      case Environments.write_file(env, @settings_file, Jason.encode!(merged, pretty: true)) do
-        :ok -> :ok
-        {:error, reason} -> {:error, "Could not write #{@settings_file}: #{inspect(reason)}"}
-      end
-    end
-  end
-
-  # Absent is an empty object; empty is an empty object; unparseable is a refusal.
+  # Both shapes are one call into `Onboarding.onboard/2`.
   #
-  # The distinction is the operator's file. Treating malformed JSON as "no
-  # settings" would rewrite it from scratch and destroy whatever they were
-  # halfway through editing — and a half-edited settings file is exactly the
-  # state someone is in when they run this to fix it.
-  defp read_settings(env) do
-    case Environments.read_file(env, @settings_file) do
-      {:ok, ""} ->
-        {:ok, %{}}
+  # This was `write_address/4` plus a private `read_settings/1`, and both were
+  # reimplementations. The merge that keeps every key the operator already had,
+  # and the refusal to rewrite a settings file that is not valid JSON — "a
+  # half-edited settings file is exactly the state someone is in when they run
+  # this to fix it" — were written here and, in the same words, in
+  # `client_utils`. Two copies of a rule about not destroying somebody's file is
+  # one copy too many.
+  #
+  # `onboard/2` also writes `.cms_harness.json` and sets `submodule.recurse`,
+  # which this path did not. Both are idempotent, and both are things every
+  # onboarded copy should have — a copy that was addressed but never given a
+  # harness config is exactly the half-state `check/2` now reports as
+  # `HARNESS_CONFIG` missing.
+  defp write_settings(env, root, id, relay_model_turns?, base_url) do
+    opts = [
+      io: io(env),
+      app: Mix.Project.config()[:app],
+      harness_id: id,
+      relay_model_turns: relay_model_turns?
+    ]
 
-      {:ok, contents} ->
-        case Jason.decode(contents) do
-          {:ok, %{} = settings} ->
-            {:ok, settings}
+    opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
 
-          _ ->
-            {:error,
-             "#{@settings_file} is not valid JSON. Refusing to overwrite it — fix or " <>
-               "move it and run this again."}
-        end
-
-      _ ->
-        {:ok, %{}}
+    case Onboarding.onboard(root, opts) do
+      %{settings: {:ok, _path}} -> :ok
+      %{settings: {:error, reason}} -> {:error, describe_settings_error(reason)}
     end
   end
+
+  # `client_utils` returns its own refusal sentence for malformed JSON and a raw
+  # posix reason for anything else. The sentence is passed through rather than
+  # rewritten: it is the useful one, and inventing a second wording for it here
+  # is how the two implementations drifted to begin with.
+  defp describe_settings_error(reason) when is_binary(reason), do: reason
+
+  defp describe_settings_error(reason),
+    do: "Could not write #{@settings_file}: #{inspect(reason)}"
 
   # `put_new`, unlike the URL beside it. The address has to be corrected when the
   # harness id changes; the partition must not move once anything has been built
