@@ -303,11 +303,10 @@ defmodule CodeMySpec.Resources do
   # upstream expects `cmd/4` to disagree with its own declared contract.
   #
   # Provisioning has always run against the project's own checkout, regardless
-  # of which session asked for it to run — the same assumption the web UI's
-  # `ProvisioningLive` gets for free by never carrying a harness-typed scope in
-  # the first place. Re-deriving `:local` here, the same way
-  # `Scope.for_local_project/2` does, is what makes an MCP-invoked run behave
-  # like the button on the page instead of like whichever connection issued it.
+  # of which session asked for it to run. Re-deriving `:local` here, the same
+  # way `Scope.for_local_project/2` does, is what makes an MCP-invoked run
+  # behave like the button on the page instead of like whichever connection
+  # issued it.
   @doc """
   A scope acting as `project`, with an `environment` real commands can run in.
 
@@ -320,6 +319,43 @@ defmodule CodeMySpec.Resources do
   def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
     environment = Environment.new(:local, project.local_path)
     %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
+  end
+
+  # A scope built from an HTTP session — `/app/resources`' own button, unlike
+  # `ProvisioningLive`'s — carries no environment at all: `Scope.for_user/1`
+  # never sets one. Left alone, every shelling-out step (repository push,
+  # deploy, backups) hit `is_nil(env(scope))` and errored with "no working
+  # environment" on every run this page started — even for a project whose
+  # checkout is real, current, and sitting right where `local_path` says.
+  # The persisted `:repository` row (a step re-verified on every run,
+  # deliberately — see `verify(:repository, …)`) then flipped from `:done` to
+  # `:error`, and the checklist read that as a fresh "Missing" (issue a2ea10a8).
+  #
+  # `ProvisioningLive.with_project_environment/2` already solved this for the
+  # per-project setup page by resolving through `Scope.for_local_project/2` —
+  # which checks a live-registered harness before falling back to
+  # `project.local_path`, so a currently-connected checkout wins over a stale
+  # column. This mirrors it so the account-wide "Run setup" button gets the
+  # same real environment instead of running blind.
+  #
+  # A project truly reachable nowhere (no registration, no `local_path`) still
+  # falls through with `environment: nil`, and the shelling-out steps still
+  # name that plainly rather than guessing — there is nothing to adopt here,
+  # only somewhere real to look first.
+  def project_scope(%Scope{environment: nil} = scope, project) do
+    case Scope.for_local_project(project) do
+      {:ok, %{environment: environment, cwd: cwd}} ->
+        %Scope{
+          scope
+          | active_project: project,
+            active_project_id: project.id,
+            environment: environment,
+            cwd: cwd
+        }
+
+      {:error, _reason} ->
+        %Scope{scope | active_project: project, active_project_id: project.id}
+    end
   end
 
   def project_scope(%Scope{} = scope, project) do

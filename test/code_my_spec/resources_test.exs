@@ -4,6 +4,8 @@ defmodule CodeMySpec.ResourcesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.{RunLock, StepRepository}
   alias CodeMySpec.Resources
 
@@ -104,6 +106,62 @@ defmodule CodeMySpec.ResourcesTest do
       wait_until(fn -> StepRepository.get(scope, :callback_credential) != nil end)
       assert StepRepository.get(scope, :repository).state == :done
       assert StepRepository.get(scope, :callback_credential).state == :done
+    end
+  end
+
+  # Story a2ea10a8: `/app/resources`' "Run setup" button hands `project_scope/2`
+  # a plain web-session scope, which — unlike a harness-connected scope, and
+  # unlike the fixtures elsewhere in this file — carries no `environment` at
+  # all. Steps that shell out (`:repository` chief among them, since
+  # `verify(:repository, …)` always answers `{:ok, :absent}` and so re-runs on
+  # every pass) read that as "nowhere to run commands" and erred, flipping a
+  # genuinely intact repository from `:done` back to `:error` on every account
+  # page click.
+  describe "project_scope/2" do
+    test "resolves a runnable environment from the project's own checkout, even when the caller's scope has none",
+         %{scope: scope} do
+      {:ok, checkout} = Briefly.create(directory: true)
+      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: checkout})
+
+      # What a browser-session scope actually looks like — `Scope.for_user/1`
+      # never populates `environment`.
+      web_scope = %{scope | environment: nil}
+
+      resolved = Resources.project_scope(web_scope, project)
+
+      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+      assert resolved.active_project_id == project.id
+    end
+
+    test "leaves the environment nil for a project with no reachable checkout anywhere, rather than guessing one",
+         %{scope: scope} do
+      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: nil})
+
+      web_scope = %{scope | environment: nil}
+
+      resolved = Resources.project_scope(web_scope, project)
+
+      assert resolved.environment == nil
+      assert resolved.active_project_id == project.id
+    end
+
+    test "a harness-typed scope still re-derives :local from the project's checkout, unaffected by this fix",
+         %{scope: scope} do
+      {:ok, checkout} = Briefly.create(directory: true)
+      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: checkout})
+
+      harness_scope = %{scope | environment: Environment.new(:harness, "/wherever/the/harness/runs")}
+
+      resolved = Resources.project_scope(harness_scope, project)
+
+      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+    end
+
+    test "a scope that already carries a real environment keeps it, e.g. an MCP/CLI caller",
+         %{scope: scope} do
+      resolved = Resources.project_scope(scope, scope.active_project)
+
+      assert resolved.environment == scope.environment
     end
   end
 
