@@ -34,9 +34,7 @@ defmodule CmsHarness.OnboardSettingsTest do
     {:ok, env} = Environments.create(:local, working_dir: root)
 
     {:ok,
-     root: root,
-     env: env,
-     settings_file: Path.join([root, ".claude", "settings.local.json"])}
+     root: root, env: env, settings_file: Path.join([root, ".claude", "settings.local.json"])}
   end
 
   defp read!(file), do: file |> File.read!() |> Jason.decode!()
@@ -67,7 +65,11 @@ defmodule CmsHarness.OnboardSettingsTest do
              "routing key."
   end
 
-  test "keeps every other setting the operator wrote", %{root: root, env: env, settings_file: file} do
+  test "keeps every other setting the operator wrote", %{
+    root: root,
+    env: env,
+    settings_file: file
+  } do
     File.mkdir_p!(Path.dirname(file))
 
     File.write!(
@@ -91,7 +93,11 @@ defmodule CmsHarness.OnboardSettingsTest do
     assert settings["env"]["ANTHROPIC_BASE_URL"] == "#{@base}/api/harnesses/abc-123"
   end
 
-  test "re-onboarding to a new id rewrites only the address", %{root: root, env: env, settings_file: file} do
+  test "re-onboarding to a new id rewrites only the address", %{
+    root: root,
+    env: env,
+    settings_file: file
+  } do
     assert :ok = Onboard.address_model_turns(env, root, "first", @base)
     assert :ok = Onboard.address_model_turns(env, root, "second", @base)
 
@@ -116,7 +122,11 @@ defmodule CmsHarness.OnboardSettingsTest do
            "a file we could not parse is a file we must not replace"
   end
 
-  test "treats an empty file as an empty settings object", %{root: root, env: env, settings_file: file} do
+  test "treats an empty file as an empty settings object", %{
+    root: root,
+    env: env,
+    settings_file: file
+  } do
     File.mkdir_p!(Path.dirname(file))
     File.write!(file, "")
 
@@ -133,7 +143,11 @@ defmodule CmsHarness.OnboardSettingsTest do
   # The parameter that exists "only so it can be tested directly" was exactly
   # what kept the real path untested. So these exercise the default.
   describe "the address it picks when nobody passes one" do
-    test "is a local harness, not the CodeMySpec server", %{root: root, env: env, settings_file: file} do
+    test "is a local harness, not the CodeMySpec server", %{
+      root: root,
+      env: env,
+      settings_file: file
+    } do
       assert :ok = Onboard.address_model_turns(env, root, "abc-123")
 
       url = read!(file)["env"]["ANTHROPIC_BASE_URL"]
@@ -157,6 +171,64 @@ defmodule CmsHarness.OnboardSettingsTest do
 
       assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
                "http://localhost:4321/api/harnesses/abc-123"
+    end
+  end
+
+  describe "the databases a report names" do
+    # `Mix.Project.config()[:app]` answers for the project the VM booted, which
+    # is this repo — so onboarding another directory named its databases after
+    # this one. Measured 2026-08-20: a generated application called `verifyapp`
+    # was told it needed `code_my_spec_testhf3e24487`, while running
+    # `mix harness.onboard` inside it correctly said `verifyapp_testhf3e24487`.
+    # The partition agreed in both, since it is derived from the path; only the
+    # prefix was wrong, and wrong in the direction of naming a database that
+    # belongs to a different application.
+    #
+    # `client_utils` warned about this exact symptom in `onboard_opts/1` — "a
+    # printed command that creates a different database than the one it names"
+    # — after it was caused by defaulting the value. It stopped being defaulted
+    # and started being read from the wrong project.
+    test "are named after the app being onboarded, not the one running the task" do
+      root = CodeMySpec.TempFile.dir("onboard-app-name")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      File.write!(root <> "/mix.exs", """
+      defmodule Verifyapp.MixProject do
+        use Mix.Project
+
+        def project do
+          [
+            app: :verifyapp,
+            version: "0.1.0"
+          ]
+        end
+      end
+      """)
+
+      assert Onboard.target_app(root) == :verifyapp,
+             "the report names databases for the target, so it has to read the " <>
+               "target's own mix.exs rather than the project this task booted in"
+    end
+
+    # Onboarding this checkout is the common case and must not start parsing a
+    # file to answer a question the VM already knows.
+    test "the running project answers for itself" do
+      assert Onboard.target_app(File.cwd!()) == Mix.Project.config()[:app]
+    end
+
+    # A compromise, recorded so it is not mistaken for an oversight: this is the
+    # old behaviour, and it is wrong in the same way. It is chosen over refusing
+    # because the names are informational now — nothing runs the printed
+    # commands, since the first `mix test` creates what it needs — so a wrong
+    # prefix misinforms where a refusal would block an onboarding with nothing
+    # else wrong with it.
+    test "a target with no readable mix.exs keeps the running project's answer" do
+      root = CodeMySpec.TempFile.dir("onboard-app-name-missing")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      assert Onboard.target_app(root) == Mix.Project.config()[:app]
     end
   end
 end

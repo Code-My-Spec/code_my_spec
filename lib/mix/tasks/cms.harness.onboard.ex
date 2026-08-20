@@ -373,9 +373,58 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # this working copy owns, and that question survives having nobody to answer
   # it — it is what you read when you are looking at a list of databases
   # wondering which to drop.
+  # The app the *target* is, not the app this task is running in.
+  #
+  # `Mix.Project.config()[:app]` answers for the project the VM booted, which is
+  # this repo. Onboarding another directory then named its databases after this
+  # one: a generated application called `verifyapp` was told it needed
+  # `code_my_spec_testhf3e24487`, while running `mix harness.onboard` inside it
+  # correctly said `verifyapp_testhf3e24487`. The partition agrees in both —
+  # it is derived from the path — so only the prefix was wrong, and wrong in the
+  # direction of naming a database belonging to a different application.
+  #
+  # `client_utils` warned about exactly this in `onboard_opts/1`: "The app name
+  # is required, never defaulted. Defaulting it is what produced
+  # `code_my_spec_test_*` inside an application called something else — a
+  # printed command that creates a different database than the one it names."
+  # It stopped being defaulted and started being taken from the wrong project,
+  # which produces the identical symptom.
+  #
+  # Read from the target's own `mix.exs` rather than evaluated: evaluating
+  # another project's build file to print a database name is far more than the
+  # question deserves, and `app:` is a literal atom in every generated app.
+  @doc false
+  def target_app(root) do
+    case Mix.Project.config()[:app] do
+      app when is_atom(app) and not is_nil(app) ->
+        if Path.expand(root) == Path.expand(File.cwd!()),
+          do: app,
+          else: app_from_mix_exs(root, app)
+
+      _ ->
+        app_from_mix_exs(root, nil)
+    end
+  end
+
+  # A target whose `mix.exs` cannot be read or does not name an app keeps the
+  # running project's answer, and that is a compromise rather than a fix: it is
+  # the old behaviour, and it is wrong in the same way. It is chosen over
+  # refusing because the databases are named for information now — nothing runs
+  # the printed commands since the first `mix test` creates what it needs — so a
+  # wrong prefix misinforms where a refusal would block an onboarding that has
+  # nothing else wrong with it.
+  defp app_from_mix_exs(root, fallback) do
+    with {:ok, contents} <- File.read(Path.join(Path.expand(root), "mix.exs")),
+         [_, app] <- Regex.run(~r/^\s*app:\s*:([a-z][a-z0-9_]*)/m, contents) do
+      String.to_atom(app)
+    else
+      _ -> fallback
+    end
+  end
+
   defp outstanding(root, id, git) do
     partition = Onboarding.partition_name(root)
-    databases = Onboarding.databases(partition, Mix.Project.config()[:app])
+    databases = Onboarding.databases(partition, target_app(root))
 
     # Everything the report knows, the terminal says. The report is the callable
     # answer and the print is the readable one, and they carry the same facts —
@@ -593,7 +642,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp write_settings(env, root, id, relay_model_turns?, base_url) do
     opts = [
       io: io(env),
-      app: Mix.Project.config()[:app],
+      app: target_app(root),
       harness_id: id,
       relay_model_turns: relay_model_turns?
     ]
