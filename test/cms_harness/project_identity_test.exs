@@ -98,6 +98,43 @@ defmodule CmsHarness.ProjectIdentityTest do
     assert {:ok, %{harness_id: nil}} = ProjectIdentity.resolve(project.root)
   end
 
+  # A copy that resolved its project through the environment is not
+  # necessarily a fresh sprite — it might be a real, already-onboarded working
+  # copy that simply never got a `.code_my_spec/config.yml` of its own (an
+  # external project onboarded onto a harness for testing, say). Its
+  # `.cms_harness.json` is still the right answer and has to win over whatever
+  # id the launching session happened to export.
+  #
+  # Measured 2026-08-20 on exactly this shape: a real working copy, onboarded,
+  # with its own correct `.cms_harness.json`, no `config.yml` — every join
+  # presented the daemon's own exported CMS_HARNESS_ID instead, because that
+  # was checked before the file naming its real one.
+  test "a copy with no config but a real harness file uses the file, not the shell" do
+    project = project_dir(project_id: nil)
+    System.put_env("CMS_PROJECT_ID", "999")
+
+    previous = System.get_env("CMS_HARNESS_ID")
+    System.put_env("CMS_HARNESS_ID", "borrowed-from-another-checkout")
+    on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
+
+    assert {:ok, %{harness_id: harness_id}} = ProjectIdentity.resolve(project.root)
+    assert harness_id == project.harness_id
+    refute harness_id == "borrowed-from-another-checkout"
+  end
+
+  # The genuine sprite: no config, no harness file of its own — the file the
+  # test above relies on to win is exactly what this one has none of, so the
+  # environment is the only answer there is.
+  test "a copy with neither config nor harness file falls through to the shell" do
+    System.put_env("CMS_PROJECT_ID", "999")
+
+    previous = System.get_env("CMS_HARNESS_ID")
+    System.put_env("CMS_HARNESS_ID", "sprite-issued-id")
+    on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
+
+    assert {:ok, %{harness_id: "sprite-issued-id"}} = ProjectIdentity.resolve(anonymous_dir())
+  end
+
   test "a directory that cannot say which project it is gets an error, not a guess" do
     assert {:error, :no_project_id} = ProjectIdentity.resolve(anonymous_dir())
   end

@@ -125,23 +125,25 @@ defmodule CmsHarness.ProjectIdentity do
   # refuses to overwrite one, so the stranding that would cause is contained to
   # the one session rather than made permanent.
   #
-  # **The same source answers both questions.** A copy whose project came from
-  # its own `config.yml` takes its harness id from its own file and nothing
-  # else; only a copy that had no config to read — the sprite — falls through to
-  # the environment, where `CMS_HARNESS_ID` was injected for it.
+  # **The file wins for both sources, and only `:env` falls further.** A copy
+  # whose project came from its own `config.yml` takes its harness id from its
+  # own file and nothing else — no working copy with a real config gets to
+  # borrow another one's exported id. A copy with no config to read might still
+  # be a real, already-onboarded working copy rather than a fresh sprite — it
+  # just never got a `.code_my_spec/config.yml` of its own — so `:env` checks
+  # the file first too, via the same `HarnessConfig.read/1` a single-root
+  # resolution always uses, and only falls through to `CMS_HARNESS_ID` when
+  # there is truly no file to read.
   #
-  # Otherwise a never-onboarded directory on a developer's machine adopts
-  # whatever id the launching session exported and presents it on join.
-  # `Analysis.take_over/3` now refuses that (same id, different root), so it
-  # announces itself rather than evicting the rightful holder — but being
-  # refused for carrying a borrowed id is a much worse answer than carrying none
-  # and being issued one, which is exactly what `nil` gets you
-  # (`channel_client.ex:511`). Measured 2026-08-20: a scratch copy with no
-  # `.cms_harness.json` resolved to this worktree's harness id.
+  # Checking the environment first here, unconditionally, was the bug:
+  # measured 2026-08-20 on a real working copy — onboarded, with its own
+  # correct `.cms_harness.json`, but never given a `config.yml` — every join
+  # presented the *launching session's* harness id instead of its own,
+  # because that was checked before the file that actually named it.
   defp harness_id(:env, root) do
-    case System.get_env("CMS_HARNESS_ID") do
-      id when is_binary(id) and id != "" -> id
-      _ -> from_harness_config(root)
+    case HarnessConfig.read(root) do
+      {:ok, %{harness_id: id}} -> id
+      _ -> nil
     end
   end
 
