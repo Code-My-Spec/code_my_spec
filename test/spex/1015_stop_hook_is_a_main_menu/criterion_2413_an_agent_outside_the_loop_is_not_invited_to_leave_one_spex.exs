@@ -51,6 +51,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
       given_ "a problem is outstanding", context do
         # No `start_continuous_mode` here, and that absence is the scenario.
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 

@@ -80,6 +80,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
       given_ "a problem is outstanding, so the stop will be refused", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 

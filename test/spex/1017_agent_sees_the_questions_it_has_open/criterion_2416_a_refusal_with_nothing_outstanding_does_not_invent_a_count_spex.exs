@@ -62,6 +62,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
         # No question is asked anywhere in this scenario, and that absence is
         # the scenario.
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 

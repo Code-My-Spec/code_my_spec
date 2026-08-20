@@ -79,22 +79,64 @@ defmodule CodeMySpec.Validation.UnattributedDemotionTest do
       assert {[], [^theirs]} = Validation.split_unattributed([theirs], MapSet.new())
     end
 
-    test "a finding with no file still blocks, even then" do
-      # Unattributable is not the same as somebody else's. A spex that died in
-      # `setup_all` has nothing to attribute, and demoting it drops the finding
-      # nobody can place.
+    test "a finding with no file is demoted too, because nothing is this agent's" do
+      # This asserted the opposite until story 894's rule — "an agent that made
+      # no edits is blocked by nothing" — was written down, on the reasoning
+      # that "unattributable is not the same as somebody else's: a spex that
+      # died in `setup_all` has nothing to attribute, and demoting it drops the
+      # finding nobody can place."
+      #
+      # That reasoning still holds, and nothing is dropped: a finding with no
+      # file is unattributable, so it blocks *every* session that recorded an
+      # edit — see the `attributable_to?/2` clause below. What changed is only
+      # who carries it, and a session that wrote nothing cannot have caused it.
+      # The next agent to touch anything is still stopped by it.
       orphan = problem(nil)
 
-      assert {[^orphan], []} = Validation.split_unattributed([orphan], MapSet.new())
+      assert {[], [^orphan]} = Validation.split_unattributed([orphan], MapSet.new())
     end
 
-    test "spex still blocks, because its mandate was decided upstream" do
-      # `split_by_story_enforcement/3` already answered "is this red mine to
-      # fix" from the owning story's latch. Letting attribution answer it again
-      # is what turned `spex: :block_all` into a no-op for months.
+    test "a finding with no file still blocks a session that did edit" do
+      # The other half of the trade above, pinned so the demotion cannot widen
+      # into "unattributable findings are advisory".
+      orphan = problem(nil)
+
+      assert {[^orphan], []} =
+               Validation.split_unattributed([orphan], MapSet.new(["lib/mine.ex"]))
+    end
+
+    test "spex is demoted too — a session that wrote nothing owns no red" do
+      # This asserted the opposite, on reasoning worth keeping: "
+      # `split_by_story_enforcement/3` already answered 'is this red mine to
+      # fix' from the owning story's latch. Letting attribution answer it again
+      # is what turned `spex: :block_all` into a no-op for months."
+      #
+      # It is still not a no-op. Attribution only overrides the latch for a
+      # session that recorded no edits at all; every session that touched
+      # anything still gets spex regardless of which files it touched, which is
+      # the property that reasoning was defending — see the test below.
+      #
+      # The case that forced the carve-out, a9e9caca: a QA session with a
+      # provably empty `git status` was refused a stop over 26 spex failures in
+      # three unrelated stories, all last touched days earlier by someone else.
+      # QA sessions hit it every time, because their artifacts live under
+      # `.code_my_spec/qa/`, which git ignores — so real work leaves no tracked
+      # edit and the agent is handed the whole project's red.
       spex = %{problem("test/spex/a_spex.exs") | source: "spex"}
 
-      assert {[^spex], []} = Validation.split_unattributed([spex], MapSet.new())
+      assert {[], [^spex]} = Validation.split_unattributed([spex], MapSet.new())
+    end
+  end
+
+  describe "when the session did edit" do
+    # What the story-894 carve-out must not become. A session that touched
+    # anything still gets every spex failure, whatever files it touched — the
+    # latch decides that upstream, and attribution must not second-guess it.
+    test "spex blocks whatever the session touched" do
+      spex = %{problem("test/spex/a_spex.exs") | source: "spex"}
+
+      assert {[^spex], []} =
+               Validation.split_unattributed([spex], MapSet.new(["lib/unrelated.ex"]))
     end
   end
 

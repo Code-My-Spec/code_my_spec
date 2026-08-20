@@ -1040,6 +1040,36 @@ defmodule CodeMySpecSpex.SharedGivens do
   # wrong root ride along unnoticed, which is the failure mode itself: the server
   # answers where the working copy is, from the harness record, so a spex that
   # also announced one could not have caught them disagreeing.
+  @doc """
+  Record an edit the way an agent records one — through `PostToolUse`.
+
+  Writing a file is only half of what an agent does to it. The other half is the
+  hook that puts the path in the session's edit ledger, and story 894's rule
+  turns on that ledger: an agent that made no edits is blocked by nothing. A
+  scenario that writes a file without this models an agent that broke something
+  without touching it, and then asserts it is held responsible — which the
+  product, correctly, declines to do.
+
+  Ten criteria across stories 894, 1000 and 1017 did exactly that, and the
+  resulting failures read as a defect in the stop hook for most of a day.
+
+  The real route, not `FileEdits.track_edit/3`: the ledger is written by a hook,
+  and a scenario that calls past it cannot notice the day that hook stops
+  writing.
+  """
+  def record_edit(context, path, tool \\ "Write") do
+    context.scope
+    |> hook_conn()
+    |> Phoenix.ConnTest.post("/api/hooks/post-tool-use", %{
+      "session_id" => context.session_id,
+      "tool_name" => tool,
+      "tool_input" => %{"file_path" => path}
+    })
+    |> Phoenix.ConnTest.json_response(200)
+
+    :ok
+  end
+
   defp hook_conn(scope) do
     Phoenix.ConnTest.build_conn()
     |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)

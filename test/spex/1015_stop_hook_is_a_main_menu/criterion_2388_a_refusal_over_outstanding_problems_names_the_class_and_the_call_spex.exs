@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2388Spex do
 
       given_ "the agent leaves a finding behind in a file it edited", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 

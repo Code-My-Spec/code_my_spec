@@ -426,15 +426,33 @@ defmodule CodeMySpec.Validation do
 
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
+  # Story 894: an agent that made no edits is blocked by nothing — and nothing
+  # means nothing, `@attribution_exempt_sources` included.
+  #
+  # The exempt list exists so a finding with no file to attribute, or a spex
+  # failure that belongs to a story rather than a file, is not silently demoted
+  # away from an agent that *was* working. Applied to a session that wrote
+  # nothing at all it does the opposite: it hands that agent every failing spex
+  # in the project. Measured 2026-08-20 — a QA session with a provably empty
+  # `git status` was refused a stop over 26 spex failures in three unrelated
+  # stories, all last touched days earlier by someone else (a9e9caca).
+  #
+  # Ownership is the whole question this function asks, and a session that
+  # edited nothing owns nothing. There is no finding it could have caused.
   def split_unattributed(blocking, %MapSet{} = session_paths) do
-    Enum.split_with(blocking, fn problem ->
-      problem.source in @attribution_exempt_sources or
-        not is_binary(problem.file_path) or
-        MapSet.member?(session_paths, problem.file_path)
-    end)
+    case MapSet.size(session_paths) do
+      0 -> {[], blocking}
+      _ -> Enum.split_with(blocking, &attributable_to?(&1, session_paths))
+    end
   end
 
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  defp attributable_to?(problem, session_paths) do
+    problem.source in @attribution_exempt_sources or
+      not is_binary(problem.file_path) or
+      MapSet.member?(session_paths, problem.file_path)
+  end
 
   @doc """
   Split blocking findings whose source is stale *and* currently re-running.
@@ -561,8 +579,9 @@ defmodule CodeMySpec.Validation do
   # The bug this guards against was a `nil` that reads as "attribution
   # unavailable", and the only way to catch that regressing is to look at the
   # value rather than at the sentence built from it.
-  @spec session_paths_for_test(Scope.t(), keyword()) :: MapSet.t() | nil
-  def session_paths_for_test(scope, opts), do: session_paths(scope, opts)
+  @spec session_paths_for_test(Scope.t(), keyword(), [map()]) :: MapSet.t() | nil
+  def session_paths_for_test(scope, opts, changed_files \\ []),
+    do: session_paths(scope, opts, changed_files)
 
   # No `when is_binary(cwd)`. A scope without one is the *normal* shape on the
   # light harness — the server holds no working copy — and requiring it threw
@@ -585,7 +604,7 @@ defmodule CodeMySpec.Validation do
   # demote anything whether or not a cwd was present, so dropping the guard
   # cannot manufacture a bogus demotion — it can only stop discarding a good
   # one.
-  defp session_paths(%Scope{cwd: cwd} = scope, opts) do
+  defp session_paths(%Scope{cwd: cwd} = scope, opts, changed_files) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         session_id
@@ -593,13 +612,44 @@ defmodule CodeMySpec.Validation do
         |> Enum.map(&relativize(&1, cwd))
         |> MapSet.new()
         |> verify_against_ledger(scope, session_id)
+        |> corroborate_with_disk(changed_files)
 
       _ ->
         nil
     end
   end
 
-  defp session_paths(_scope, _opts), do: nil
+  defp session_paths(_scope, _opts, _changed_files), do: nil
+
+  # An empty hook ledger means "no edits were recorded", which is not the same
+  # fact as "no edits were made", and story 894's rule turns on the second one.
+  #
+  # `PostToolUse` records a path from `tool_input.file_path`. A `Bash` call
+  # carries no such field, so an agent editing through a heredoc, `sed -i`, or
+  # a script it writes and runs records nothing at all while its work sits
+  # plainly on disk. Left alone, the rule would hand that agent a blanket
+  # exemption from every finding in the project — the precise failure the rule
+  # was written to end, pointed the other way.
+  #
+  # Disk is what separates the agent that made no edits from the one whose
+  # edits the ledger could not see. `changed_files` is the same set the
+  # pipeline analyzes, already computed against the task's `started_at`.
+  #
+  # It answers only whether the session edited, never what it edited: `nil` —
+  # the value that already means "attribution is unusable, so nothing is
+  # demoted" — and never a set of paths. Widening attribution from disk would
+  # credit this session with whatever else changed in the working copy during
+  # its task, which is what attribution exists to prevent.
+  defp corroborate_with_disk(nil, _changed_files), do: nil
+
+  defp corroborate_with_disk(paths, [_ | _] = _changed_files) do
+    case MapSet.size(paths) do
+      0 -> nil
+      _ -> paths
+    end
+  end
+
+  defp corroborate_with_disk(paths, _changed_files), do: paths
 
   # Does the attribution actually correspond to this project's files?
   #
@@ -621,14 +671,20 @@ defmodule CodeMySpec.Validation do
   # session's own.
   defp verify_against_ledger(paths, scope, session_id) do
     cond do
-      # `nil`, not the empty set, and the comment above has said so since this
-      # was written — the code returned `paths`. An empty set is indistinguishable
-      # from a working comparison that matched nothing, so `block_changed`
-      # demoted every finding to advisory and the stop hook refused nothing at
-      # all. A session with no recorded edits could not be blocked by any
-      # problem, however severe: a compile error included.
+      # An empty ledger is a fact about the session, not a broken recording, and
+      # `f89429e4` is the commit that says so — "A session that edited nothing
+      # does not block on anyone's findings". Story 894's rule states it
+      # outright: an agent that made no edits is blocked by nothing.
+      #
+      # This answered `nil` for a few hours on 2026-08-20 because I read the
+      # branch as an unexplained carve-out. It is not: `nil` means attribution
+      # is *unusable*, which is a different claim from "this session touched
+      # nothing", and conflating them blocks every zero-edit session on the
+      # whole project's findings. QA sessions hit that constantly — their
+      # artifacts live under `.code_my_spec/qa/`, which git ignores, so a
+      # session doing real work records no edits by design.
       MapSet.size(paths) == 0 ->
-        nil
+        paths
 
       Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
         paths
@@ -765,7 +821,7 @@ defmodule CodeMySpec.Validation do
     stale_sources = Enum.reject(ledger_sources, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    session_paths = session_paths(scope, opts)
+    session_paths = session_paths(scope, opts, changed_files)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     advisory = advisory ++ unattributed
     log_demotions(unattributed, session_paths, opts)
@@ -805,7 +861,7 @@ defmodule CodeMySpec.Validation do
       # set have already been demoted above, so this only labels what survives
       # — it is the safety net for the case where the set is unknown and
       # nothing was demoted.
-      session_paths: session_paths(scope, opts),
+      session_paths: session_paths,
       # How many moved to advisory, and why, so the advisory pile does not
       # absorb them silently. A gate that stops blocking has to say so.
       unattributed_count: length(unattributed),

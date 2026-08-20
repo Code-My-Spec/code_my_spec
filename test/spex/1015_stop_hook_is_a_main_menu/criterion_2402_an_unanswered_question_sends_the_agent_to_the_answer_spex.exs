@@ -61,6 +61,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
 
       given_ "a problem is outstanding", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 

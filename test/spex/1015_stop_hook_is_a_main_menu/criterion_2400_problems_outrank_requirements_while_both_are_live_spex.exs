@@ -46,6 +46,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2400Spex do
 
       given_ "a problem is outstanding alongside unsatisfied requirements", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 
