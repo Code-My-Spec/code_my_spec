@@ -1,11 +1,24 @@
 defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   @moduledoc """
-  Overrides the active project in scope when an `X-Project-ID` header is present.
+  Which working copy — and therefore which project — a request is about.
 
-  Runs after authentication (require_oauth_token) and checks for the header.
-  If present, loads the project, verifies the user has account access, and
-  overrides the scope. If absent, passes through unchanged for backward
-  compatibility.
+  `X-Harness-Id` is the answer. A harness *is* a working copy and it belongs to
+  exactly one project, so it settles both questions at once and cannot
+  contradict itself.
+
+  `X-Project-ID` is still accepted, for callers that only have one. It is the
+  coarser key: two worktrees of one project send the same value, so on its own
+  the far end cannot tell them apart and answers about both — `await_analysis`
+  reported 1141 credo problems to a copy that has 563, the rest belonging to a
+  checkout it could not see and could not fix.
+
+  Sending both is allowed and is what the plugin did. It is also the shape that
+  invites the two to disagree: a harness id from one checkout beside a project
+  id from another project. When both arrive the harness wins and the project
+  header is ignored, because the more specific of two answers to the same
+  question is the one to keep.
+
+  Runs after authentication. Absent both headers, it passes through unchanged.
   """
 
   import Plug.Conn
@@ -22,61 +35,63 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
 
   @impl true
   def call(conn, _opts) do
-    scope = conn.assigns[:current_scope]
-
-    case {scope, get_req_header(conn, "x-project-id")} do
-      {nil, _} ->
-        conn
-
-      {_scope, []} ->
-        conn
-
-      {_scope, [""]} ->
-        conn
-
-      {scope, [project_id | _]} ->
-        override_project(conn, scope, project_id)
+    case conn.assigns[:current_scope] do
+      nil -> conn
+      scope -> override(conn, scope, header(conn, "x-harness-id"), header(conn, "x-project-id"))
     end
   end
 
-  # `x-project-id` says which project; `x-harness-id` says which checkout of it.
-  # Two worktrees of one project send the same project header, so without this
-  # the far end cannot tell them apart and answers about both: `await_analysis`
-  # reported 1141 credo problems to a copy that has 563, the rest belonging to a
-  # checkout it cannot see and could not fix.
-  #
-  # Here rather than in `DeployKeyOrOAuth`, because this is the plug the harness
-  # actually goes through — `/mcp/harness` runs `:mcp_protected`, which is
-  # `require_oauth_token` and this. Two earlier attempts put it somewhere the
-  # request never reaches.
-  #
-  # A harness belonging to another project is ignored rather than adopted, and
-  # an absent or unreadable id leaves the scope unscoped: reading widely is a
-  # bad answer, claiming another checkout's identity is a worse one.
-  defp with_harness(scope, conn, project) do
-    case get_req_header(conn, "x-harness-id") do
-      [id | _] when is_binary(id) and id != "" -> adopt(scope, id, project)
-      _ -> scope
-    end
-  end
-
-  defp adopt(scope, id, project) do
-    case Harnesses.fetch(id) do
-      # `put_scope/2` rather than setting the id alone. Naming the working copy
-      # and being able to reach it are two different things, and this set only
-      # the first — so a tool over `/mcp/harness` knew exactly which checkout it
-      # was talking about and could not read or write a byte of it. The channel
-      # had always set all three; this had not, and the two drifted because
-      # nothing made them the same call.
-      {:ok, %{project_id: pid} = harness} when pid == project.id ->
-        Harnesses.put_scope(scope, harness)
+  # The harness first, and alone if that is all there is. It names the working
+  # copy *and* the project it belongs to, so a caller that has one needs nothing
+  # else — and cannot send a pair that disagrees.
+  defp override(conn, scope, harness_id, _project_id) when is_binary(harness_id) do
+    case Harnesses.fetch(harness_id) do
+      {:ok, harness} ->
+        override_project(conn, scope, harness.project_id, harness)
 
       _ ->
-        scope
+        # Not quietly falling back to the project header. An id this server does
+        # not know is a client pointed somewhere wrong, and answering about a
+        # project it happens to also name is how a wrong address becomes a
+        # plausible answer about somebody else's checkout.
+        conn
+        |> put_status(:not_found)
+        |> Phoenix.Controller.json(%{error: "Unknown harness #{harness_id}"})
+        |> halt()
     end
   end
 
-  defp override_project(conn, scope, project_id) do
+  defp override(conn, scope, _harness_id, project_id) when is_binary(project_id),
+    do: override_project(conn, scope, project_id, nil)
+
+  defp override(conn, _scope, _harness_id, _project_id), do: conn
+
+  defp header(conn, name) do
+    case get_req_header(conn, name) do
+      # An unexpanded shell variable is not an id. The plugin interpolates these
+      # from the environment, and an unset one arrives literally.
+      ["$" <> _ | _] -> nil
+      [value | _] when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
+
+  # A harness resolved above, adopted only if it really belongs to this project.
+  # A mismatch is ignored rather than adopted: reading widely is a bad answer,
+  # claiming another checkout's identity is a worse one.
+  #
+  # `put_scope/2` rather than setting the id alone. Naming the working copy and
+  # being able to reach it are two different things, and this set only the first
+  # — so a tool over `/mcp/harness` knew exactly which checkout it was talking
+  # about and could not read or write a byte of it. The channel had always set
+  # all three; this had not, and the two drifted because nothing made them the
+  # same call.
+  defp with_harness(scope, %{project_id: pid} = harness, project) when pid == project.id,
+    do: Harnesses.put_scope(scope, harness)
+
+  defp with_harness(scope, _harness, _project), do: scope
+
+  defp override_project(conn, scope, project_id, harness) do
     case Projects.get_project_by_id(project_id) do
       nil ->
         conn
@@ -97,7 +112,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
                 active_account: account,
                 active_account_id: project.account_id
             }
-            |> with_harness(conn, project)
+            |> with_harness(harness, project)
 
           assign(conn, :current_scope, updated_scope)
         else

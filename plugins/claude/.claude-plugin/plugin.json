@@ -31,7 +31,7 @@
       "type": "http",
       "url": "https://dev.codemyspec.com/mcp/harness",
       "headers": {
-        "X-Project-ID": "${CMS_CLOUD_PROJECT_ID}"
+        "X-Harness-Id": "${CMS_HARNESS_ID}"
       }
     },
     "vibium": {
