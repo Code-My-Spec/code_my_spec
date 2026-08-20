@@ -235,7 +235,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   def verify(:email, %Scope{} = scope, opts) do
     case {domain(scope), mail_environments(scope, opts)} do
       {nil, _} -> {:ok, :absent}
-      {_base, []} -> {:ok, :satisfied, []}
+      {base, []} -> verify_no_permitted_mail_environments(scope, base)
       {base, environments} -> verify_sending_domains(scope, base, environments)
     end
   end
@@ -532,7 +532,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # project's — two domains in one run, each believing it was the only one.
     case {base_domain(scope, opts), mail_environments(scope, opts)} do
       {nil, _} -> {:error, "no domain set on the project"}
-      {_base, []} -> {:ok, []}
+      {base, []} -> run_no_permitted_mail_environments(scope, base)
       {base, environments} -> register_sending_domains(scope, base, environments, opts)
     end
   end
@@ -1128,6 +1128,53 @@ defmodule CodeMySpec.Provisioning.Steps do
   # domain with no delivery proof — criterion 8033 exactly.
   defp mail_environments(scope, opts) do
     Enum.filter(environments(scope, opts), &(&1 in ["prod", "production"]))
+  end
+
+  # `mail_environments/2` filters to the *permitted* prod-shaped rows, so an
+  # empty list means either nothing has ever touched Resend for this project,
+  # or the devops level narrowed after something already had (4dc83128: a
+  # project provisioned with prod on, then switched to `devops: :uat`, kept a
+  # real Resend domain object sitting unverified/failed while every later run
+  # skipped it entirely — the page's own live Resend read showed "failed" next
+  # to a step badge that had reported "done"). One `find_domain` call per
+  # otherwise-filtered row, same cost `verify_sending_domains/3` already pays
+  # when the row is permitted.
+  defp mail_orphans(scope, base) do
+    for environment <- EnvironmentRepository.names(scope),
+        environment in ["prod", "production"],
+        sending = Resend.sending_domain(base, environment),
+        match?({:ok, _}, Resend.find_domain(scope, sending)) do
+      sending
+    end
+  end
+
+  # Verify's half: satisfied only when nothing was ever registered anywhere.
+  # An orphan is not satisfied — reporting it that way is exactly the
+  # false-positive 4dc83128 found live — so `run_step/3` falls through to
+  # `run(:email, …)` instead of marking this step done unchecked.
+  defp verify_no_permitted_mail_environments(scope, base) do
+    case mail_orphans(scope, base) do
+      [] -> {:ok, :satisfied, []}
+      _orphans -> {:ok, :absent}
+    end
+  end
+
+  # Run's half, reached only because verify above found an orphan (a clean
+  # project never gets here — verify already reported satisfied). Nothing
+  # here can register a domain the devops level now refuses, and nothing here
+  # should silently discard the fact that one already exists, so this pauses
+  # by name rather than the `{:ok, []}` no-op done was standing in for.
+  defp run_no_permitted_mail_environments(scope, base) do
+    case mail_orphans(scope, base) do
+      [] ->
+        {:ok, []}
+
+      orphans ->
+        {:paused,
+         "#{Enum.join(orphans, ", ")} already exists at Resend from an earlier run, but " <>
+           "this project's devops level no longer permits sending for that environment. " <>
+           "Resolve or remove it at the provider before this step can report done."}
+    end
   end
 
   defp blank?(nil), do: true

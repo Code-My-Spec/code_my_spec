@@ -23,7 +23,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps}
+  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Resend, Steps}
 
   setup do
     {:ok, scope: full_scope_fixture()}
@@ -92,6 +92,58 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
         200,
         Jason.encode!(%{"success" => true, "errors" => [], "result" => result})
       )
+    end
+  end
+
+  # 4dc83128: devops-drill's own shape — a `prod` row from before `devops` was
+  # narrowed to `:uat`, no `uat` row seeded to replace it, and a real Resend
+  # domain object left behind from before the narrowing. `mail_environments/2`
+  # filters `prod` out either way; the difference under test is whether
+  # something was ever actually registered at the provider.
+  describe "email" do
+    setup ctx do
+      {:ok, _} = Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
+      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
+
+      %{scope: %{ctx.scope | active_project: %{ctx.scope.active_project | domain: "astralbi.com"}}}
+    end
+
+    test "verify reports satisfied when nothing was ever registered", ctx do
+      stub_resend_domains(fn -> [] end)
+      assert {:ok, :satisfied, []} = Steps.verify(:email, ctx.scope, [])
+    end
+
+    test "run stays a no-op when nothing was ever registered", ctx do
+      stub_resend_domains(fn -> [] end)
+      assert {:ok, []} = Steps.run(:email, ctx.scope, [])
+    end
+
+    test "verify does not report a stale registered domain satisfied", ctx do
+      stub_resend_domains(fn -> [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}] end)
+      assert {:ok, :absent} = Steps.verify(:email, ctx.scope, [])
+    end
+
+    test "run pauses and names the orphan instead of calling it done", ctx do
+      stub_resend_domains(fn -> [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}] end)
+      assert {:paused, reason} = Steps.run(:email, ctx.scope, [])
+      assert reason =~ "astralbi.com"
+      assert reason =~ "devops level"
+    end
+
+    defp stub_resend_domains(list_fun) do
+      Application.put_env(:code_my_spec, Resend,
+        api_key: "test-key",
+        plug: fn conn -> resend_reply(conn, conn.request_path, list_fun.()) end
+      )
+
+      on_exit(fn -> Application.delete_env(:code_my_spec, Resend) end)
+    end
+
+    defp resend_reply(conn, "/domains", domains) do
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(%{"data" => domains}))
     end
   end
 end
