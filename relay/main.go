@@ -61,30 +61,23 @@ import (
 
 const defaultBaseURL = "http://localhost:4003"
 
-// capabilities is what `cms-mcp-relay capabilities` prints, and the only way
-// to tell this binary from one that predates the hook subcommand.
+// capabilities is what `cms-mcp-relay capabilities` prints.
 //
-// A relay without `hook` does not reject `hook /api/hooks/stop` — argv[1] is
-// not a flag it knows, so it falls through to the MCP path, posts the hook
-// payload to /mcp?dir=, gets a JSON-RPC parse error back and exits 0. Claude
-// Code reads 0 as a hook that ran. Eight hooks, all silently dead, and the
-// only symptom is that nothing the harness should have decided ever happens.
+// It existed to tell this binary from one that predates the `hook` subcommand,
+// because an older relay did not *reject* `hook /api/hooks/stop` — argv[1] was
+// not a flag it knew, so it fell through to the MCP path, posted the hook
+// payload to /mcp?dir=, got a JSON-RPC parse error back and exited 0. Claude
+// Code reads 0 as a hook that ran: eight hooks, all silently dead, with no
+// symptom except that nothing the harness should have decided ever happened.
 //
-// The probe is a marker rather than a version number because the question is
-// never "which version" but "can it do this", and an old binary answering the
-// probe at all is the thing that cannot happen: it has no `capabilities`
-// branch either, so it relays stdin instead and prints nothing.
-const capabilities = "cms-mcp-relay hooks=1"
+// The hooks are plain `curl` now and this binary is not in that path at all,
+// so that whole class is gone — there is no version of curl that can be stale.
+// The marker stays because `mix cms.harness.onboard` still probes it, and an
+// onboarding that cannot tell whether a relay is present is a different
+// problem from the one it was guarding.
+const capabilities = "cms-mcp-relay hooks=0"
 
 func main() {
-	// `hook <endpoint>` forwards a Claude Code hook instead of relaying MCP.
-	// Same binary because the same binary is what every packager already puts
-	// on PATH, with a .exe on Windows — which is the whole reason the hooks
-	// need it. See hook.go.
-	if len(os.Args) > 1 && os.Args[1] == "hook" {
-		os.Exit(runHook(os.Args[2:]))
-	}
-
 	// Asked by `mix cms.harness.onboard` before it writes a hooks.json that
 	// depends on the branch above.
 	if len(os.Args) > 1 && os.Args[1] == "capabilities" {
