@@ -26,12 +26,39 @@ defmodule CmsHarness.HealthDegradedTest do
 
   defp project(attrs) do
     Map.merge(
-      %{root: "/tmp/wc", connected: true, watching: true, server_replied_ago_s: 3, joined_ago_s: 900},
+      %{
+        root: "/tmp/wc",
+        connected: true,
+        watching: true,
+        onboarded: true,
+        server_replied_ago_s: 3,
+        joined_ago_s: 900
+      },
       attrs
     )
   end
 
   describe "what counts as degraded" do
+    # A copy can hold a perfect socket and still run nothing.
+    #
+    # `ChannelClient.persist_issued_identity/2` writes `.cms_harness.json` when
+    # a join issues an id to a copy that has none — correctly, and it is all it
+    # can do, because the test partition lives in `settings.local.json` and that
+    # is onboarding's to write. The copy is then served, asked for analysis, and
+    # every analyzer raises before it starts.
+    #
+    # Measured on this machine 2026-08-20: the main checkout in exactly that
+    # state, 2304 crashes in `harness.log` over 8.7 hours, all four analyzers,
+    # while `/health` reported it `connected: true, watching: true`. Every
+    # failure *was* reported — the analyzer said it crashed, the harness sent
+    # the error, the server rejected it — and each of those is a line nobody
+    # reads on a system that looks healthy.
+    test "a copy that was never onboarded is degraded, however good its socket" do
+      assert HealthController.degraded?(project(%{onboarded: false})),
+             "connected and watching describe the socket and the watcher. " <>
+               "Neither says whether the copy can run anything, and this one cannot."
+    end
+
     test "a channel that never joined is degraded, as it always was" do
       assert HealthController.degraded?(project(%{connected: false}))
     end

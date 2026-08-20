@@ -10,6 +10,7 @@ defmodule CmsHarness.Web.HealthController do
 
   use Phoenix.Controller, formats: [:json]
 
+  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Config
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Project.Watcher
@@ -39,7 +40,33 @@ defmodule CmsHarness.Web.HealthController do
           # own outage. `nil` means the server has never answered this channel,
           # which is a different fact from `connected: false`.
           server_replied_ago_s: ChannelClient.server_replied_ago(root),
-          joined_ago_s: ChannelClient.joined_ago(root)
+          joined_ago_s: ChannelClient.joined_ago(root),
+          # Whether this copy can run anything, which the two flags above do not
+          # say. `connected` is about the socket and `watching` is about the
+          # watcher; a copy can have both and still fail every analyzer.
+          #
+          # It happens without anybody doing something wrong.
+          # `ChannelClient.persist_issued_identity/2` writes `.cms_harness.json`
+          # when a join issues an id to a copy that has none — correctly, and it
+          # is all it can do, because the test partition lives in
+          # `settings.local.json` and that is onboarding's to write. The copy is
+          # then served, asked for analysis, and `resolve_partition!/2` raises
+          # for every run of it.
+          #
+          # Measured on this machine 2026-08-20: the main checkout in exactly
+          # that state, **2304 crashes in `harness.log` over 8.7 hours**, about
+          # four a minute, all four analyzers, while this endpoint reported it
+          # `connected: true, watching: true`. The failures were reported — the
+          # analyzer said it crashed, the harness sent the error, the server
+          # rejected it — and every one of those is a line nobody reads on a
+          # system that looks healthy. An agent in that checkout simply never
+          # got test results, which reads as "no test problems".
+          #
+          # A file read, not a network call. The comment above is right that a
+          # health check which blocks on the network is its own outage; this
+          # reads the copy's own settings, which is the same disk the harness is
+          # already watching.
+          onboarded: onboarded?(root)
         }
       end)
 
@@ -82,7 +109,21 @@ defmodule CmsHarness.Web.HealthController do
   # Public for the same reason `HookDecision.channel_age_note/1` is: the
   # readings can then be asserted without standing up a channel and a server to
   # not answer it.
-  def degraded?(project), do: not project.connected or never_answered?(project)
+  def degraded?(project),
+    do: not project.connected or not project.onboarded or never_answered?(project)
+
+  # A copy with no recorded partition is degraded even when its socket is
+  # perfect, because `degraded` is read as "can this working copy do its job"
+  # and this one cannot: every analyzer run against it raises before it starts.
+  # Leaving it green would be the same false green `connected` alone gave —
+  # a reading that is true about the thing it measures and silent about the
+  # thing the reader wanted.
+  #
+  # It is also the one condition here a person can fix in one command, which is
+  # the argument for surfacing it rather than merely recording it.
+  defp onboarded?(root) do
+    match?({:ok, _partition}, Onboarding.resolve_partition(root))
+  end
 
   # Deliberately narrow. "Has not replied lately" is not evidence of anything —
   # a harness nobody is working in legitimately goes hours without a reply, and
