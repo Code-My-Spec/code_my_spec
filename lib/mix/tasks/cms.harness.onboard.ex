@@ -12,20 +12,26 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   The tracked, installed plugin (`codemyspec@codemyspec`, already enabled by
   default) resolves the working copy on its own:
 
-    * Hooks call the *generic* `cms-mcp-relay hook /api/hooks/<name>` — no id in
-      the command. The relay reads the hook payload's own `cwd`, walks up
-      looking for `.cms_harness.json`, and attaches `X-Harness-Id` itself
-      (`relay/hook.go`, `harnessID/1`).
+    * Hooks are a plain `curl` that posts the payload and nothing else. Every
+      Claude Code hook payload carries `cwd`, and the harness walks up from it
+      to `.cms_harness.json` — see `CmsHarness.Web.ResolveWorkingCopy`. No id in
+      the command, no interpolated variable, no per-platform shell: `bin/hook`,
+      `hook.cmd` and `hook.ps1` were three implementations of one walk and are
+      gone.
+
     * MCP is declared as `{"type": "http", "url": "http://localhost:4004/mcp",
       "headers": {"X-Harness-Id": "${CMS_HARNESS_ID}"}}` in the tracked
-      `plugin.json` — Claude Code interpolates `${CMS_HARNESS_ID}` straight out
-      of `.claude/settings.local.json`'s `env` block, which this task already
-      writes regardless of what else it does.
+      `plugin.json`. An `mcpServers` entry interpolates environment variables
+      and cannot read a file, so this is the one surface that needs the
+      variable — and the `env` block this task writes is what sets it. The
+      cloud mount takes the same header and nothing else: a harness belongs to
+      exactly one project, so it answers both questions and cannot contradict
+      itself.
 
-  Verified live on 2026-08-19: a hand-built hook payload posted to the generic
-  path, and a raw MCP `initialize` posted with only `X-Harness-Id` set, both
-  resolved this working copy correctly — no path-embedded id, no
-  `--plugin-dir`, nothing installed beyond the ordinary marketplace plugin.
+  Verified live on 2026-08-20: a bare `curl` posting only `{"cwd": …}` resolved
+  this working copy, and an un-onboarded directory came back named — "… has not
+  been onboarded, run `mix cms.harness.onboard <dir>`" — rather than silently
+  adopting a parent checkout's identity.
 
   This task writes no plugin directory at all — there is nothing left for it to
   address that the installed plugin does not already resolve on its own. The
@@ -234,7 +240,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     with {:ok, id} <- identity(env, root),
          :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
-      outstanding(root, id, git, check_relay())
+      outstanding(root, id, git)
     else
       {:error, message} -> Mix.raise(message)
     end
@@ -387,7 +393,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # which database it acts on is the defect this replaces: the migration guard
   # printed `MIX_ENV=test mix ecto.migrate` while checking a partition that
   # command never touches.
-  defp outstanding(root, id, git, relay) do
+  defp outstanding(root, id, git) do
     partition = Onboarding.partition_name(root)
     databases = Onboarding.databases(partition, Mix.Project.config()[:app])
 
@@ -401,7 +407,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       harness id: #{id}
       partition:  #{partition}
       submodules: #{if git, do: "recursing", else: "not configured"}
-      relay:      #{describe_relay(relay)}
     """)
 
     Mix.shell().info("Databases this working copy needs (create and migrate them yourself):")
@@ -410,17 +415,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
     end)
 
-    if match?({:error, _}, relay) do
-      {:error, message} = relay
-      Mix.shell().info("\n#{message}")
-    end
-
     %{
       harness_id: id,
       partition: partition,
       databases: databases,
       git: %{submodule_recurse: git},
-      relay: relay,
       issued_ddl: false
     }
   end
@@ -432,99 +431,23 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Nothing here writes to, or depends on, that binary — onboarding has no
   # plugin config left to gate. This only exists so a stale relay is named
   # instead of discovered as eight silently dead hooks.
-  defp describe_relay({:ok, _path}), do: "current"
-  defp describe_relay({:error, reason}), do: "stale — #{first_line(reason)}"
 
-  defp first_line(text) do
-    text |> String.split("\n", parts: 2) |> hd() |> String.trim()
-  end
-
-  @relay "cms-mcp-relay"
-  @capability "hooks=1"
-
-  # Named in the refusal so the operator knows what to wait for, not used to
-  # decide anything. The check is the capability, because "which version" is
-  # never the question — a checkout build carries the subcommand with no
-  # release number at all, and pinning a number would reject it.
-  @min_release "codemyspec 2.0"
-
-  # Reported, never a gate. Every hook Claude Code fires — from the ordinary
-  # installed plugin, not anything this task writes — shells out to
-  # `cms-mcp-relay hook /api/hooks/<name>`. A relay from before that subcommand
-  # existed does not reject the argument: `hook` is not a flag it knows, so it
-  # falls through to the MCP path, posts the hook payload to /mcp?dir=, takes
-  # the JSON-RPC parse error it gets back, and exits 0. Claude Code reads 0 as
-  # a hook that ran. All eight go silently dead, and the only symptom is that
-  # everything the harness was supposed to decide quietly stops happening — no
-  # error anywhere, on either side, and nothing about the working copy's own
-  # identity or address would have caught it.
+  # `cms-mcp-relay` is no longer checked here.
   #
-  # So the marker is checked and named, not gated on. An old binary cannot
-  # print it: it has no `capabilities` branch either and relays stdin instead,
-  # which with stdin closed is an immediate EOF and an empty stdout. Absence is
-  # the answer.
-  defp check_relay do
-    case System.find_executable(@relay) do
-      nil ->
-        {:error,
-         """
-         No #{@relay} on PATH.
-
-         Every hook Claude Code fires is a command that does not exist until
-         this is installed — brew installs it as part of codemyspec, or build
-         it from `relay/` in a checkout.
-         """}
-
-      path ->
-        if capable?(path) do
-          {:ok, path}
-        else
-          {:error,
-           """
-           #{path} is too old to run hooks.
-
-           It has no `hook` subcommand, and it does not fail when given one:
-           it treats the payload as MCP traffic, and exits 0. Claude Code
-           reads that as a hook that ran, so every hook this working copy
-           fires is silently dead rather than visibly broken.
-
-           The hook subcommand ships in #{@min_release}. Upgrade, then run
-           this again to confirm:
-
-               brew upgrade codemyspec
-
-           Working from a checkout instead — which is how to get it before
-           that release exists:
-
-               (cd relay && go build -o cms-mcp-relay .)
-               mkdir -p ~/.codemyspec/bin
-               cp relay/cms-mcp-relay ~/.codemyspec/bin/
-               export PATH="$HOME/.codemyspec/bin:$PATH"
-           """}
-        end
-    end
-  end
-
-  # Stdin closed on purpose: a relay that does not know the argument reads
-  # stdin, and a probe that inherits a terminal would sit there. The timeout is
-  # the backstop for anything that manages to block anyway — a probe that hangs
-  # must not become an onboarding that hangs.
-  @doc false
-  def capable?(path) do
-    task =
-      Task.async(fn ->
-        case System.cmd(path, ["capabilities"], stderr_to_stdout: true) do
-          {out, 0} -> String.contains?(out, @capability)
-          _ -> false
-        end
-      end)
-
-    case Task.yield(task, to_timeout(second: 10)) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} -> result
-      _ -> false
-    end
-  end
-
+  # It was, and the reasoning was sound: hooks shelled out to
+  # `cms-mcp-relay hook /api/hooks/<name>`, and a relay from before that
+  # subcommand existed did not reject the argument — `hook` was not a flag it
+  # knew, so it fell through to the MCP path, posted the hook payload to
+  # /mcp?dir=, took the JSON-RPC parse error and exited 0. Claude Code reads 0
+  # as a hook that ran. All eight went silently dead with no error on either
+  # side, which is why the `capabilities` marker existed and why this reported
+  # its absence.
+  #
+  # Hooks are a plain `curl` now and the relay is not in that path, so the
+  # class is gone rather than mitigated: there is no version of curl that can
+  # be stale, and no argv a wrong binary can misread. The relay still ships
+  # for Codex's MCP mount, which is a different question from whether this
+  # checkout's hooks will fire.
   # Takes a path so one checkout can onboard another. A worktree on an older
   # branch does not have this task, and asking somebody to merge a branch
   # before they can be onboarded is a worse first experience than a positional
