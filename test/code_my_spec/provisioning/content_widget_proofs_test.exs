@@ -120,4 +120,44 @@ defmodule CodeMySpec.Provisioning.ContentWidgetProofsTest do
       assert find(resources, "content_object") == []
     end
   end
+
+  describe "no content yet, but publishing is wired" do
+    # The ordinary state of a freshly generated project: nothing has been
+    # authored, and the step should say so as `:ok` rather than error on a
+    # project that has done nothing wrong yet.
+    test "reports done with an honest note instead of erroring", ctx do
+      assert {:ok, [resource]} =
+               Steps.run(:content, ctx.scope,
+                 publish: fn _scope -> flunk("nothing to publish — should not call publish") end
+               )
+
+      assert resource.kind == "content"
+      assert resource.location == "no content to publish yet"
+    end
+  end
+
+  describe "no content bucket — the real precondition unmet" do
+    # `content_bucket` is written by the storage step once its bucket exists,
+    # not typed in by hand. A project whose storage step is still paused on
+    # Sam's console-only Hetzner key never gets one — reporting this step
+    # `:done` with "no content to publish yet" would hide that storage is
+    # what he is actually still waiting on, the same silently-vacuous shape
+    # already fixed once for the `:email` step.
+    test "pauses instead of reporting done when content_bucket was never set", ctx do
+      {:ok, project} =
+        CodeMySpec.Projects.update_project(ctx.scope, ctx.scope.active_project, %{
+          content_bucket: nil
+        })
+
+      scope = %{ctx.scope | active_project: project}
+
+      assert {:paused, message} =
+               Steps.run(:content, scope,
+                 publish: fn _scope -> flunk("not publishable — should not call publish") end
+               )
+
+      assert message =~ "content_bucket"
+      assert message =~ "storage"
+    end
+  end
 end

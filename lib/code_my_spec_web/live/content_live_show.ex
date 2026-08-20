@@ -16,7 +16,6 @@ defmodule CodeMySpecWeb.ContentLive.Show do
      assign(socket,
        section: :content,
        page_title: "Content",
-       current_scope: nil,
        row: nil
      )}
   end

@@ -584,6 +584,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     case content_proof_target(scope, opts) do
       {:ok, opts} -> publish_content(scope, opts)
       {:nothing_to_publish, message} -> {:ok, [%{kind: "content", location: message}]}
+      {:not_publishable, missing} -> {:paused, not_publishable_message(missing)}
     end
   end
 
@@ -949,6 +950,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # project's first setup report a broken step it cannot fix by trying again.
   defp content_proof_target(scope, opts) do
     with :error <- proof_from_opts(opts),
+         :ok <- ContentPublishing.ensure_publishable(scope),
          [_ | _] = rows <- publishable_content(scope) do
       row = hd(rows)
       meta = row.metadata || %{}
@@ -959,8 +961,26 @@ defmodule CodeMySpec.Provisioning.Steps do
        |> Keyword.put(:expect, meta["title"] || meta["slug"])}
     else
       {:ok, _opts} = supplied -> supplied
+      {:error, {:not_publishable, missing}} -> {:not_publishable, missing}
       [] -> {:nothing_to_publish, "no content to publish yet"}
     end
+  end
+
+  # `content_bucket` is not a field Sam types in — `write_content_bucket/3`
+  # sets it as a side effect of the storage step finding or creating a
+  # bucket, which for a Hetzner project waits on his console-only key pair
+  # the same way `run(:storage, ...)` itself pauses. Reporting this step
+  # `:done` with "no content to publish yet" when the bucket is unset would
+  # hide that storage is the thing actually still waiting on him — the
+  # `:email` step's fix for the same silently-vacuous shape.
+  defp not_publishable_message(missing) do
+    "Content publishing needs #{Enum.join(missing, ", ")} before it can run. " <>
+      if :content_bucket in missing do
+        "content_bucket is written automatically once the storage step finishes " <>
+          "provisioning a bucket — resume that step, then this one will re-check."
+      else
+        "Set it on the project's Content settings, then resume."
+      end
   end
 
   defp proof_from_opts(opts) do

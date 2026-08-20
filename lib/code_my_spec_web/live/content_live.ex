@@ -22,7 +22,6 @@ defmodule CodeMySpecWeb.ContentLive do
      assign(socket,
        section: :content,
        page_title: "Content",
-       current_scope: nil,
        rows: [],
        counts: %{success: 0, error: 0},
        last_synced_at: nil,
