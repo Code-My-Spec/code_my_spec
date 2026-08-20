@@ -342,6 +342,21 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
              "the password must reach the box hashed, not in the clear"
     end
 
+    # 9656c705: `distribution` answers a manifest DELETE with 405 unless
+    # started with this set — the image's baked-in config.yml claims
+    # `storage.delete.enabled: true` regardless, because that file is never
+    # rewritten by an env var override, only read once as the pre-override
+    # default. Confirmed against a real `registry:3` container: DELETE
+    # returns 405 without this flag, 202 with it.
+    test "delete is enabled, so prune/2 can actually reclaim space" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, _trust}
+      assert_received {:ran, command}
+
+      assert command =~ "REGISTRY_STORAGE_DELETE_ENABLED=true"
+    end
+
     test "a registry that will not start is an error, not a success" do
       assert {:error, {:registry_start_failed, 125, _}} =
                serve(run: recorder(self(), 125))
@@ -425,7 +440,15 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
   describe "prune/2" do
     # Command shapes from `tags_by_recency/2`, `delete_tag/5` and
     # `garbage_collect/1`, matched the same order they're built in.
-    defp box(owner, listing) do
+    #
+    # `-X DELETE` answers with the tuple `delete_tag/5` actually reads: the
+    # trimmed HTTP status code text and a 0 shell exit, mirroring
+    # `curl -s -o /dev/null -w '%{http_code}'`. `failing_tags` fakes the
+    # 405 a real `distribution` container answers when
+    # `storage.delete.enabled` is off (9656c705) — a digest a caller
+    # attempts to delete but whose tag is listed here comes back rejected
+    # rather than silently accepted.
+    defp box(owner, listing, failing_tags \\ []) do
       fn [cmd] ->
         send(owner, {:ran, cmd})
 
@@ -438,7 +461,11 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
             {"sha256:digest-#{tag}", 0}
 
           cmd =~ "-X DELETE" ->
-            {"", 0}
+            if Enum.any?(failing_tags, &(cmd =~ "manifests/sha256:digest-#{&1}")) do
+              {"405", 0}
+            else
+              {"202", 0}
+            end
 
           cmd =~ "garbage-collect" ->
             {"", 0}
@@ -451,6 +478,16 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         scope(),
         Keyword.merge(
           [run: box(self(), listing), registry_credentials: registry_cred()],
+          opts
+        )
+      )
+    end
+
+    defp prune_with_failures(listing, failing_tags, opts) do
+      Registry.prune(
+        scope(),
+        Keyword.merge(
+          [run: box(self(), listing, failing_tags), registry_credentials: registry_cred()],
           opts
         )
       )
@@ -529,6 +566,39 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "how many images stay defaults to 5, and is overridable" do
       assert Registry.keep_images([]) == 5
       assert Registry.keep_images(keep_images: 1) == 1
+    end
+
+    # 9656c705: the old code discarded the DELETE response and reported
+    # every attempted tag as pruned regardless of whether the registry
+    # actually deleted it (the live symptom: 11 tags on disk against a
+    # `keep_images` of 5). A tag whose DELETE comes back anything other
+    # than 202 must not appear in the returned list.
+    test "a tag whose delete fails is not claimed as pruned" do
+      four_tags = listing([{100, "aaa"}, {200, "bbb"}, {300, "ccc"}, {400, "ddd"}])
+
+      assert {:ok, pruned} = prune_with_failures(four_tags, ["bbb"], keep_images: 2)
+
+      assert pruned == ["aaa"]
+    end
+
+    # Garbage-collect reclaims blobs only unlinked manifests held. Running
+    # it when nothing was actually unlinked is not wrong, but skipping it
+    # keeps the command trail honest about what this run accomplished.
+    test "garbage-collect still runs for the deletes that did succeed" do
+      four_tags = listing([{100, "aaa"}, {200, "bbb"}, {300, "ccc"}, {400, "ddd"}])
+
+      assert {:ok, pruned} = prune_with_failures(four_tags, ["bbb"], keep_images: 2)
+      assert pruned == ["aaa"]
+
+      assert_received {:ran, "docker exec cms-registry /bin/registry garbage-collect" <> _}
+    end
+
+    test "garbage-collect is skipped when every delete fails" do
+      four_tags = listing([{100, "aaa"}, {200, "bbb"}, {300, "ccc"}, {400, "ddd"}])
+
+      assert {:ok, []} = prune_with_failures(four_tags, ["bbb", "aaa"], keep_images: 2)
+
+      refute_received {:ran, "docker exec cms-registry /bin/registry garbage-collect" <> _}
     end
   end
 end

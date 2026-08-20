@@ -48,6 +48,8 @@ defmodule CodeMySpec.Provisioning.Registry do
   protocol is `distribution`'s job, not ours.
   """
 
+  require Logger
+
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Wait
@@ -450,11 +452,15 @@ defmodule CodeMySpec.Provisioning.Registry do
          {:ok, credential} <- serve_credential(scope, opts),
          {:ok, tags} <- tags_by_recency(repository, run) do
       to_prune = Enum.drop(tags, keep)
-      Enum.each(to_prune, &delete_tag(repository, &1, bind, credential, run))
 
-      case to_prune do
+      deleted =
+        Enum.filter(to_prune, fn tag ->
+          delete_tag(repository, tag, bind, credential, run) == :ok
+        end)
+
+      case deleted do
         [] -> {:ok, []}
-        _ -> with :ok <- garbage_collect(run), do: {:ok, to_prune}
+        _ -> with :ok <- garbage_collect(run), do: {:ok, deleted}
       end
     end
   end
@@ -499,18 +505,32 @@ defmodule CodeMySpec.Provisioning.Registry do
   # instead of a second authenticated HTTP round trip for something already
   # sitting in a file `tags_by_recency/2` just walked past.
   #
-  # Best-effort: a tag that fails to delete is one `prune/2` did not get to
-  # this time, not a reason to stop deleting the rest of the list.
+  # Best-effort: a tag whose delete fails is one `prune/2` did not get to
+  # this time, not a reason to stop deleting the rest of the list. But
+  # `prune/2` needs to know which — the manifest API answers 202 on an
+  # actual delete, and this used to run `curl -sf` and discard the tuple
+  # unread, so a 405 (what `distribution` answers when
+  # `storage.delete.enabled` is off) was indistinguishable from success:
+  # `prune/2` reported every attempted tag as pruned regardless (9656c705).
   defp delete_tag(repository, tag, bind, credential, run) do
     dir = tags_dir(repository)
     auth = "#{credential.username}:#{credential.password}"
 
-    {digest, _status} = run.(["docker exec #{@container} cat #{dir}/#{tag}/current/link"])
-
-    run.([
-      "curl -sf -u #{shell_escape(auth)} -X DELETE " <>
-        "http://#{bind}:#{port()}/v2/#{repository}/manifests/#{String.trim(digest)}"
-    ])
+    with {digest, 0} <- run.(["docker exec #{@container} cat #{dir}/#{tag}/current/link"]),
+         digest = String.trim(digest),
+         true <- digest != "",
+         {status, 0} <-
+           run.([
+             "curl -s -o /dev/null -w '%{http_code}' -u #{shell_escape(auth)} -X DELETE " <>
+               "http://#{bind}:#{port()}/v2/#{repository}/manifests/#{digest}"
+           ]),
+         "202" <- String.trim(status) do
+      :ok
+    else
+      other ->
+        Logger.warning("[Registry] delete of #{repository}:#{tag} failed: #{inspect(other)}")
+        {:error, {:delete_failed, tag}}
+    end
   end
 
   # Deleting a manifest unlinks its tag but leaves the layers on disk until
@@ -551,6 +571,12 @@ defmodule CodeMySpec.Provisioning.Registry do
     # replaces the registry on every run, and without this every replacement
     # threw away everything it held — including the image the box is running,
     # which is the one a rollback needs.
+    #
+    # `REGISTRY_STORAGE_DELETE_ENABLED=true` — without it `DELETE
+    # /v2/<repo>/manifests/<digest>` answers 405 regardless of what the
+    # image's baked-in config.yml says (that file is never rewritten; env
+    # vars are merged in at startup), so `prune/2` ran every deploy and
+    # deleted nothing. 9656c705.
     "mkdir -p /etc/cms-registry && " <>
       "printf %s #{shell_escape(htpasswd)} > /etc/cms-registry/htpasswd && " <>
       "chmod 600 /etc/cms-registry/htpasswd && " <>
@@ -561,6 +587,7 @@ defmodule CodeMySpec.Provisioning.Registry do
       "-e REGISTRY_AUTH=htpasswd " <>
       "-e REGISTRY_AUTH_HTPASSWD_REALM=cms " <>
       "-e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd " <>
+      "-e REGISTRY_STORAGE_DELETE_ENABLED=true " <>
       "-p #{bind}:#{port()}:#{port()} #{env} #{image}"
   end
 
