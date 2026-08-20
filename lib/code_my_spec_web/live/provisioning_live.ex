@@ -500,6 +500,32 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               </.button>
             </div>
 
+            <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
+                 rather than repeat the mistake `59f366cc` fixed, but nothing gave
+                 Sam a way to supply the one it's asking for — the plain "Run"
+                 button above re-runs with the same missing opt and loops back to
+                 this same pause forever. Same shape as the two blocks above:
+                 a paused step naming a decision only Sam can make. -->
+            <form
+              :if={step.key == :inbound and step.state == :paused}
+              data-test="inbound-probe-address"
+              phx-submit="run_step_with_probe_address"
+              class="mt-3 flex gap-2"
+            >
+              <input type="hidden" name="key" value={step.key} />
+              <input
+                type="email"
+                name="probe_to"
+                data-test="inbound-probe-address-input"
+                placeholder="an address you already receive at this domain"
+                required
+                class="input input-bordered input-sm flex-1"
+              />
+              <.button type="submit" data-test="inbound-probe-address-submit" class="btn-primary">
+                Use this address
+              </.button>
+            </form>
+
             <div
               :if={step.state == :errored}
               data-test="escalation"
@@ -1943,6 +1969,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     scope = socket.assigns.current_scope
 
     :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), step_opts())
+
+    {:noreply,
+     socket
+     |> assign(halted_at: nil, halt_reason: nil)
+     |> load(socket.assigns.options)}
+  end
+
+  # 4ed72738: the plain "Run" button above carries no form data — a paused
+  # `inbound` step asking for an address Sam has to supply had nothing that
+  # could ever answer it, and looped back to the identical pause forever.
+  # `inbound_probe_to` is the one opt `default_inbound_probe/3` reads for
+  # this; every other step ignores an opt key it doesn't recognise, so
+  # sending it through `step_opts()` on a single-step re-run is safe.
+  def handle_event("run_step_with_probe_address", %{"key" => key, "probe_to" => address}, socket)
+      when is_binary(address) and address != "" do
+    scope = socket.assigns.current_scope
+
+    :ok =
+      Provisioning.run_step_async(
+        scope,
+        String.to_existing_atom(key),
+        [inbound_probe_to: address] ++ step_opts()
+      )
 
     {:noreply,
      socket

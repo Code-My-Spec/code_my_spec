@@ -27,6 +27,23 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end)
   end
 
+  # Same mechanism as `stub_verifier/1`, one step down `run_step/3`'s own
+  # chain: `execute = Keyword.get(opts, :execute, &execute_step/3)`. Captures
+  # what a submit actually sent through rather than reaching a real provider.
+  defp stub_execute(fun) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :execute, fun)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+  end
+
   describe "the plan is visible before anything runs" do
     # Criterion 7959: Sam sees the shape of the run before it starts, rather
     # than steps appearing one at a time as they execute.
@@ -207,6 +224,74 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert html =~ ~r/data-step="domain"[^>]*data-state="paused"/
       assert has_element?(view, "[data-test='paused-instructions'][data-step='domain']")
       assert html =~ "Cloudflare dashboard"
+    end
+
+    # 4ed72738: a paused `inbound` step names an address Sam has to supply,
+    # and the plain "Run" button carries no form data — nothing could ever
+    # answer it. Same rendering test as the two escape hatches above
+    # (apex-repoint, repository-collision): the affordance shows up exactly
+    # when the step that needs it is paused, and not otherwise.
+    test "a paused inbound step offers a way to supply the probe address", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :inbound, %{
+        state: :paused,
+        position: Sequence.position(:inbound),
+        paused_instructions: "the inbound records are published... Give it an address and resume."
+      })
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='inbound-probe-address']")
+      assert has_element?(view, "[data-test='inbound-probe-address-input']")
+    end
+
+    test "the probe-address form does not appear for an unrelated paused step", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :domain, %{
+        state: :paused,
+        position: Sequence.position(:domain),
+        paused_instructions: "Register it in the Cloudflare dashboard, then resume."
+      })
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='inbound-probe-address']")
+    end
+
+    # The wiring, not just the markup: submitting carries `inbound_probe_to`
+    # through to the step the same opts every other run path already
+    # threads it to (`default_inbound_probe/3` reads it, and every other
+    # step ignores a key it doesn't recognise).
+    test "submitting the probe address threads it through as inbound_probe_to", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :inbound, %{
+        state: :paused,
+        position: Sequence.position(:inbound),
+        paused_instructions: "Give it an address and resume."
+      })
+
+      test_pid = self()
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+      stub_execute(fn _scope, _key, opts -> send(test_pid, {:executed, opts}) && {:ok, []} end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view
+      |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@example.com"})
+      |> render_submit()
+
+      assert_received {:executed, opts}
+      assert Keyword.get(opts, :inbound_probe_to) == "sam@example.com"
     end
 
     test "an errored step carries the provider's own words", %{
