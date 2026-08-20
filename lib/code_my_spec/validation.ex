@@ -619,17 +619,54 @@ defmodule CodeMySpec.Validation do
   defp session_paths(%Scope{cwd: cwd} = scope, opts, project_changed?) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
-        session_id
-        |> attributed_paths(Keyword.get(opts, :agent_id))
-        |> Enum.map(&relativize(&1, cwd))
-        |> MapSet.new()
-        |> verify_against_ledger(scope, session_id)
-        |> corroborate_with_disk(project_changed?)
+        recorded =
+          session_id
+          |> attributed_paths(Keyword.get(opts, :agent_id))
+          |> Enum.map(&relativize(&1, cwd))
+
+        case split_by_working_copy(recorded, cwd) do
+          {[], [_ | _]} ->
+            # Every edit this session recorded landed outside this working copy.
+            # That is a session working in another repo, not a session whose
+            # recording failed, and it owns nothing here however much the
+            # project moved meanwhile.
+            #
+            # 042e343b is the shape: a task scoped to the `cms_new` and
+            # `devops_drill` repos, finished and reported, refused a stop over
+            # 26 spex last touched days earlier — while a *concurrent* agent's
+            # uncommitted edit to `lib/code_my_spec/compile.ex` sat in the same
+            # shared worktree, which is what kept answering "the project
+            # changed". It had also been refused `git commit`, so it could not
+            # have acted on the findings even had they been its own.
+            MapSet.new()
+
+          {inside, _outside} ->
+            inside
+            |> MapSet.new()
+            |> verify_against_ledger(scope, session_id)
+            |> corroborate_with_disk(project_changed?)
+        end
 
       _ ->
         nil
     end
   end
+
+  # Which recorded edits are edits to *this* working copy.
+  #
+  # `relativize/2` leaves a path it cannot make relative absolute, so after it
+  # runs, "still absolute" means "not under this cwd" — a different repo, a
+  # scratchpad, another worktree.
+  #
+  # Only asked when there is a cwd to ask about. Without one, `relativize/2` is
+  # a no-op and an absolute path is exactly the ambiguity 9a623a13 is about: it
+  # could be a project file the recording failed to normalize. Everything counts
+  # as inside there, so that case keeps falling through to the ledger join and
+  # the corroboration, unchanged.
+  defp split_by_working_copy(paths, cwd) when is_binary(cwd),
+    do: Enum.split_with(paths, &(Path.type(&1) == :relative))
+
+  defp split_by_working_copy(paths, _cwd), do: {paths, []}
 
   defp session_paths(_scope, _opts, _project_changed?), do: nil
 

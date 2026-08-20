@@ -192,7 +192,12 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
     # gate silently reverting to block-everything is precisely what this module
     # exists to catch.
     test "and the project did change, the gate blocks — the recording is unusable", ctx do
-      :ok = FileEdits.track_edit(ctx.session, "/somewhere/else/entirely.ex")
+      # A path inside this working copy that names no file row. That is what a
+      # failed recording looks like when there is a cwd to normalize against —
+      # not `/somewhere/else/entirely.ex`, which is a session working in another
+      # repo and is now read as one (042e343b), and which this test used before
+      # the two were told apart.
+      :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, "lib/my_app/never_synced.ex"))
 
       # What a mangled recording looks like from outside: a file it never
       # managed to name is different than it was when the task started.
@@ -212,6 +217,28 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session),
              "unusable attribution must fail closed, not demote everything"
+    end
+
+    test "and every recorded edit landed in another repo, it owns none of the red", ctx do
+      # 042e343b: a task scoped to two other repositories, finished and
+      # reported, refused a stop over 26 spex it never touched — because a
+      # concurrent agent's uncommitted edit in the same shared worktree kept
+      # answering "the project changed". Its own edits are absolute paths under
+      # neither this cwd nor any file row here, and it had separately been
+      # refused `git commit`, so it could not have acted on the findings even if
+      # they had been its own.
+      :ok = FileEdits.track_edit(ctx.session, "/Users/someone/devops_drill/lib/webhooks.ex")
+
+      path = Path.join(ctx.tmp, @theirs)
+      File.write!(path, "defmodule MyApp.Theirs do\n  # somebody else\nend\n")
+      File.touch!(path, System.os_time(:second) + 5)
+
+      problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
+      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+
+      assert {:ok, _} = stop(ctx.scope, ctx.session),
+             "the project moved, but not by this session's hand — every edit it made " <>
+               "is in another repo, and no amount of movement here makes them its own"
     end
 
     test "and nothing in the project changed, it owns none of the red", ctx do

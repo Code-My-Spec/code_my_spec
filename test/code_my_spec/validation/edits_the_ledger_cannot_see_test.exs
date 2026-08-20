@@ -86,10 +86,29 @@ defmodule CodeMySpec.Validation.EditsTheLedgerCannotSeeTest do
     # And the case the old `nil` was written for, which still answers `nil`: a
     # recording that names nothing joinable *while the project demonstrably
     # moved* is a recording that failed, not a session that stayed still.
+    #
+    # This scope has no cwd — the light harness shape — so there is nothing to
+    # measure a path against and every recorded path counts as inside. That is
+    # the ambiguity 9a623a13 is about, and it is why the corroboration has to
+    # answer it rather than the path.
     test "and the project did move, attribution is broken and blocks", ctx do
-      :ok = FileEdits.track_edit(@session, "/Users/someone/elsewhere/lib/mine.ex")
+      :ok = FileEdits.track_edit(@session, "lib/never_synced.ex")
 
       assert is_nil(paths_for(ctx.scope, true))
+    end
+
+    # With a cwd there is a third answer, and it is not "broken". A path that
+    # stays absolute after `relativize/2` is a path under some other root: a
+    # different repo, a scratchpad, another worktree. The session did edit, and
+    # not here — so the project moving underneath it says nothing about what it
+    # owns (042e343b).
+    test "and a cwd shows the edits went to another repo, it owns nothing here", ctx do
+      :ok = FileEdits.track_edit(@session, "/Users/someone/devops_drill/lib/webhooks.ex")
+
+      scope = %{ctx.scope | cwd: "/Users/someone/code_my_spec"}
+
+      assert Validation.session_paths_for_test(scope, [session_id: @session], true) ==
+               MapSet.new()
     end
   end
 
