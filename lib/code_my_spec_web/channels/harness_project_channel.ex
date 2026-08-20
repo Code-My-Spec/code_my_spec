@@ -1188,7 +1188,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # two processes still cannot tell which to stop. The holder's instance and the
   # checkout's root are both things this server has, so it says them.
   defp take_working_copy(harness, payload) do
-    case Analysis.register_executor(harness.id, payload["instance"]) do
+    case Analysis.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
         :ok
 
@@ -1200,7 +1200,40 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         )
 
         {:error, working_copy_in_use(harness, pid)}
+
+      # One process, one id, two different checkouts. Not a second harness —
+      # the same one, whose working copies have collapsed onto a single
+      # identity upstream.
+      #
+      # Evicting here is what produced the 2026-08-20 outage: each join killed
+      # the sibling's channel, the victim rejoined and killed it back, 1078
+      # times at roughly one a second with every stop hook refused. Refusing
+      # names both roots, which is a thing an operator can act on.
+      {:error, {:id_collision, _pid, held_root}} ->
+        Logger.error(
+          "[HarnessProject] refused a join for #{inspect(payload["root"])}: harness " <>
+            "#{harness.id} is already held by the same process serving " <>
+            "#{inspect(held_root)}. Two working copies are presenting one identity."
+        )
+
+        {:error, id_collision(harness, payload["root"], held_root)}
     end
+  end
+
+  defp id_collision(harness, joining_root, held_root) do
+    %{
+      reason: "harness_id_collision",
+      harness_id: harness.id,
+      root: joining_root,
+      held_by_root: held_root,
+      detail:
+        "Two working copies are presenting harness #{harness.id}: this join is for " <>
+          "#{inspect(joining_root)} and the id is already held for #{inspect(held_root)}. " <>
+          "A harness id names one checkout, so one of these read its identity from " <>
+          "somewhere other than its own `.cms_harness.json` — most often `CMS_HARNESS_ID` " <>
+          "inherited from the session that started the daemon. Restart the harness from " <>
+          "an environment without it, and check each checkout's `.cms_harness.json`."
+    }
   end
 
   defp working_copy_in_use(harness, pid) do

@@ -54,24 +54,52 @@ defmodule CmsHarness.HarnessConfig do
   @doc """
   What this working copy says about itself, or `:none`.
 
-  `CMS_HARNESS_ID` overrides the file, so a one-off run can name a harness
-  without editing anything — and `write/2` refuses to persist that override,
-  which would outlive it.
+  The file is the answer. `CMS_HARNESS_ID` is consulted only when there is no
+  file at all — a container or sprite that was handed an id and has nowhere to
+  have stored it.
 
-  This is right for exactly the shape `CMS_HARNESS_ID` is set for: a sprite,
-  one process, one working copy. It is wrong for a caller enumerating *many*
-  working copies — `WorkingCopies.all/0` calls this once per root it knows
-  about, and every one of those calls would see the same env var and return
-  the same id, collapsing a map of N roots down to whichever one processed
-  last. Use `read_file/1` there; it never looks at the environment.
+  ## The env used to win, and it collapsed every root onto one id
+
+  Onboarding writes `CMS_HARNESS_ID` into each checkout's
+  `.claude/settings.local.json`, because the Claude Code MCP mount interpolates
+  environment variables and cannot read a file — that one consumer is the whole
+  reason the variable exists. A session in worktree W therefore carries `id(W)`,
+  and `just refresh-harness` is designed to be launched from any session, so the
+  daemon it starts inherits it.
+
+  That daemon serves several roots and calls this once per root. With the env
+  checked first, every root answered `id(W)`. On the server they then presented
+  one id from one OS process, which `Analysis.take_over/3` reads as a harness
+  reconnecting to its own slot — so each join killed the previous one. Measured:
+  1078 evictions, roughly one every 1.4 seconds, every stop hook refused, until
+  the daemon was restarted with the variable stripped.
+
+  Inverting costs nothing for a correctly onboarded copy, because onboarding
+  writes the *same* id to `.cms_harness.json` and to `settings.local.json`. The
+  two differ only when something has gone wrong, and there the file is right: it
+  is the one that knows which working copy it is sitting in.
+
+  A file that exists but cannot be read returns its error rather than falling
+  through to the environment. Substituting another working copy's id for a
+  broken config is precisely the failure this ordering exists to prevent, and it
+  is worse than saying so — `write/2` already refuses to overwrite a malformed
+  config for the same reason.
   """
   @spec read(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read(root) do
     root = Path.expand(root)
 
+    case from_file(root) do
+      {:ok, config} -> {:ok, config}
+      :none -> from_env_config(root)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp from_env_config(root) do
     case from_env() do
       {:ok, id} -> {:ok, %{harness_id: id, project_id: nil, root: root}}
-      :none -> from_file(root)
+      :none -> :none
     end
   end
 

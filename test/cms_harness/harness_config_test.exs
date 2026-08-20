@@ -73,8 +73,33 @@ defmodule CmsHarness.HarnessConfigTest do
   end
 
   describe "CMS_HARNESS_ID" do
-    test "overrides the file", %{root: root} do
+    # Was "overrides the file", and asserted the opposite of this.
+    #
+    # The override was written for one shape — a container handed an id, with no
+    # file to have stored it in — and it was implemented as "env wins", which is
+    # a different and much larger claim. Onboarding writes the variable into
+    # every checkout's `settings.local.json` (the MCP mount interpolates env and
+    # cannot read a file), `just refresh-harness` is designed to be launched
+    # from any session, and the daemon inherits it. Serving N roots, it then
+    # answered every one of them with the launching session's id.
+    #
+    # On the server that is one id from one OS process, which `take_over/3`
+    # reads as a harness reconnecting to its own slot — so each join killed the
+    # previous. 1078 evictions, about one every 1.4s, every stop hook refused.
+    # Restarting the daemon with the variable stripped stopped it dead, which is
+    # how the cause was confirmed.
+    #
+    # The override survives for the case it was written for: no file. See
+    # `HarnessConfigPrecedenceTest` for the full precedence.
+    test "does not override a file that names an id", %{root: root} do
       :ok = HarnessConfig.write(root, %{harness_id: @id, project_id: "p1", root: root})
+      System.put_env("CMS_HARNESS_ID", @other)
+
+      assert {:ok, %{harness_id: @id}} = HarnessConfig.read(root),
+             "the file is the one that knows which working copy it is sitting in"
+    end
+
+    test "answers a working copy that has no file — the case it exists for", %{root: root} do
       System.put_env("CMS_HARNESS_ID", @other)
 
       assert {:ok, %{harness_id: @other}} = HarnessConfig.read(root)

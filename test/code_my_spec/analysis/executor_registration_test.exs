@@ -26,12 +26,12 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
 
   # A stand-in for the channel process: it holds the registration and stays up
   # until told otherwise, exactly as an orphaned channel does.
-  defp holder(harness_id, instance) do
+  defp holder(harness_id, instance, root \\ nil) do
     test = self()
 
     pid =
       spawn(fn ->
-        result = Analysis.register_executor(harness_id, instance)
+        result = Analysis.register_executor(harness_id, instance, root)
         send(test, {:registered, self(), result})
         receive do: (:never -> :ok)
       end)
@@ -50,8 +50,45 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
     refute Process.alive?(ghost),
            "the orphaned channel has to go, or the registry still points at it"
 
-    assert [{self_pid, "boxy:4242"}] = Registry.lookup(Analysis.HarnessRegistry, harness_id)
+    assert [{self_pid, {"boxy:4242", nil}}] =
+             Registry.lookup(Analysis.HarnessRegistry, harness_id)
+
     assert self_pid == self()
+  end
+
+  # The 2026-08-20 outage. `take_over/4` matched on the instance alone, and one
+  # daemon serves several working copies — so a join for checkout B, arriving
+  # from the same OS process as checkout A's channel, looked like A reconnecting
+  # and killed it. A rejoined and killed B back: 1078 evictions at roughly one a
+  # second, every stop hook refused, until the process was restarted.
+  #
+  # It needed the ids to have collapsed first (`HarnessConfig.read/1` used to let
+  # `CMS_HARNESS_ID` beat the file), which is fixed separately. This is the guard
+  # that makes the next identity bug a refusal naming both roots instead of a
+  # loop diagnosed from the outside.
+  test "one process holding two different roots is refused, not evicted", %{
+    harness_id: harness_id
+  } do
+    incumbent = holder(harness_id, "boxy:4242", "/checkouts/a")
+
+    assert {:error, {:id_collision, ^incumbent, "/checkouts/a"}} =
+             Analysis.register_executor(harness_id, "boxy:4242", "/checkouts/b"),
+           "same instance is 'the same OS process', not 'the same working copy'"
+
+    assert Process.alive?(incumbent),
+           "the sibling's channel must survive — killing it is the loop"
+  end
+
+  test "the same process reconnecting to the same root still takes it back", %{
+    harness_id: harness_id
+  } do
+    ghost = holder(harness_id, "boxy:4242", "/checkouts/a")
+
+    assert Analysis.register_executor(harness_id, "boxy:4242", "/checkouts/a") == :ok,
+           "adding the root must not break the ghost-entry recovery the instance " <>
+             "match exists for — that deadlock cleared only by killing the harness"
+
+    refute Process.alive?(ghost)
   end
 
   test "a different instance is still refused", %{harness_id: harness_id} do

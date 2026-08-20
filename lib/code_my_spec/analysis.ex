@@ -703,15 +703,30 @@ defmodule CodeMySpec.Analysis do
   are not in the code. Registered entries are always live — Registry drops them
   when the channel dies — so a live entry from another instance means a real
   rival, not a leftover.
+
+  ## The instance is necessary and not sufficient
+
+  It answers "same OS process", and one daemon serves several working copies.
+  So two channels for *different checkouts* presented the same instance, and a
+  guard meaning "this is me reconnecting" fired for a sibling — killing it. The
+  victim rejoined and killed the other back, about once a second, until the
+  process was restarted: 1078 evictions in one evening with every stop hook
+  refused.
+
+  It only got the chance because their ids had collapsed onto one — see
+  `CmsHarness.HarnessConfig.read/1` — and with distinct ids these are different
+  registry keys that never meet. This pairs the root with the instance anyway,
+  so the day identity breaks again the answer is a refusal naming both roots
+  rather than a loop that has to be diagnosed from the outside.
   """
-  @spec register_executor(String.t(), String.t() | nil) ::
-          :ok | {:error, {:already_registered, pid()}}
-  def register_executor(harness_id, instance \\ nil) do
+  @spec register_executor(String.t(), String.t() | nil, String.t() | nil) ::
+          :ok | {:error, {:already_registered, pid()}} | {:error, {:id_collision, pid(), term()}}
+  def register_executor(harness_id, instance \\ nil, root \\ nil) do
     key = to_string(harness_id)
 
-    case Registry.register(HarnessRegistry, key, instance) do
+    case Registry.register(HarnessRegistry, key, {instance, root}) do
       {:ok, _} -> :ok
-      {:error, {:already_registered, pid}} -> take_over(key, pid, instance)
+      {:error, {:already_registered, pid}} -> take_over(key, pid, instance, root)
     end
   end
 
@@ -732,7 +747,7 @@ defmodule CodeMySpec.Analysis do
   @spec executor_holder(String.t()) :: {:ok, pid(), String.t() | nil} | :error
   def executor_holder(harness_id) do
     case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
-      [{pid, instance} | _] -> {:ok, pid, instance}
+      [{pid, {instance, _root}} | _] -> {:ok, pid, instance}
       [] -> :error
     end
   end
@@ -740,20 +755,34 @@ defmodule CodeMySpec.Analysis do
   # Only from the same instance, and only when we know both — an unknown
   # instance on either side is not evidence of sameness, and guessing wrong
   # here is the `_build` corruption the lock exists to prevent.
-  defp take_over(_key, pid, nil), do: {:error, {:already_registered, pid}}
+  defp take_over(_key, pid, nil, _root), do: {:error, {:already_registered, pid}}
 
-  defp take_over(key, pid, instance) do
+  defp take_over(key, pid, instance, root) do
     case Registry.lookup(HarnessRegistry, key) do
-      [{^pid, ^instance}] -> evict(key, pid, instance)
+      # Same process, same working copy: this is the harness reconnecting to its
+      # own slot, which it is allowed to do.
+      [{^pid, {^instance, ^root}}] ->
+        evict(key, pid, instance, root)
+
+      # Same process, *different* working copy. Not a reconnect — two checkouts
+      # claiming one identity, which is only possible when something upstream
+      # collapsed their ids. Refusing names both roots; evicting starts a loop
+      # that has to be diagnosed from the outside.
+      [{^pid, {^instance, held_root}}] ->
+        {:error, {:id_collision, pid, held_root}}
+
       # It went between the register and the lookup. The slot is free now.
-      [] -> register_executor(key, instance)
-      _ -> {:error, {:already_registered, pid}}
+      [] ->
+        register_executor(key, instance, root)
+
+      _ ->
+        {:error, {:already_registered, pid}}
     end
   end
 
   # Kill it and wait for the entry to actually clear. Registry unregisters on
   # the process's :DOWN, so registering before that lands would race and lose.
-  defp evict(key, pid, instance) do
+  defp evict(key, pid, instance, root) do
     Logger.info(
       "[Analysis] harness #{key} reconnected from #{instance}; taking back the " <>
         "registration held by its previous channel #{inspect(pid)}"
@@ -768,7 +797,7 @@ defmodule CodeMySpec.Analysis do
       5_000 -> Process.demonitor(ref, [:flush])
     end
 
-    case Registry.register(HarnessRegistry, key, instance) do
+    case Registry.register(HarnessRegistry, key, {instance, root}) do
       {:ok, _} -> :ok
       {:error, {:already_registered, other}} -> {:error, {:already_registered, other}}
     end
