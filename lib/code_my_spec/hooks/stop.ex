@@ -175,7 +175,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp do_decide(scope, session_id, session, active_task, idle_sub, validation_opts, req_id) do
     cond do
-      has_active_subagent_task?(session) ->
+      has_active_subagent_task?(scope, session) ->
         allow(req_id, "Active subagent task")
 
       r5b_applies?(session, active_task, idle_sub) ->
@@ -527,10 +527,53 @@ defmodule CodeMySpec.Hooks.Stop do
   # whoever holds the `agent_id`. When the main agent starts a
   # :sub_agent-typed requirement directly, the task stays main-agent
   # owned until an assignment lands.
-  defp has_active_subagent_task?(session) do
+  # An open task is not evidence that a subagent is working.
+  #
+  # This exemption exists so the stop hook does not hammer a parent while a
+  # subagent is mid-flight, which is right. It keyed on `task.status == :active
+  # and agent_id != nil`, and a task row outlives the agent that owned it: a
+  # subagent that is killed, crashes, or is stopped by the operator never
+  # completes its task, so the row stays `:active` for ever and the parent is
+  # exempt from every check for the rest of the session.
+  #
+  # Measured 2026-08-20 on this session. Two rows said subagents were working:
+  #
+  #     ● qa_complete — [active] agent=qa-873b
+  #     ● qa_complete — [active] agent=aqa-727-8475683e9d966b73
+  #
+  # Both belonged to QA subagents the operator had stopped hours earlier.
+  # `list_session_subagents` — which filters by `subagent_ttl_minutes` —
+  # answered "No registered sub-agents on this session" at the same moment. The
+  # registrations were right and the task rows were tombstones, and the parent
+  # spent hours unable to be blocked by anything, including a failing spex suite
+  # that was stopping another agent on the same project.
+  #
+  # So the question is asked of the thing that expires. `Session.active_subagents/2`
+  # already filters on `last_heartbeat_at` against the configured TTL, and is
+  # what `list_session_subagents` reports from — one source for "who is working
+  # here", rather than two that can disagree.
+  defp has_active_subagent_task?(scope, session) do
+    subagent_task_live?(session, live_agent_ids(scope, session))
+  end
+
+  @doc false
+  # Public, and split from the lookup, so the rule can be asserted without a
+  # database: the interesting cases are all about which agent ids are live, and
+  # `Configurations.get_or_create/1` inserts on miss.
+  @spec subagent_task_live?(Session.t(), MapSet.t(String.t())) :: boolean()
+  def subagent_task_live?(session, live_agent_ids) do
     Enum.any?(session.tasks || [], fn task ->
-      task.status == :active and not is_nil(task.agent_id)
+      task.status == :active and not is_nil(task.agent_id) and
+        MapSet.member?(live_agent_ids, task.agent_id)
     end)
+  end
+
+  defp live_agent_ids(scope, session) do
+    ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
+
+    session
+    |> Session.active_subagents(ttl)
+    |> MapSet.new(& &1.agent_id)
   end
 
   defp has_active_manual_task?(session) do
@@ -563,11 +606,12 @@ defmodule CodeMySpec.Hooks.Stop do
 
             %{
               "decision" => "block",
-              "reason" => """
-              Task completed successfully. Continuing the autonomous loop with the next assignment:
+              "reason" =>
+                """
+                Task completed successfully. Continuing the autonomous loop with the next assignment:
 
-              #{directive}
-              """ <> Menu.tap_out_offer(true)
+                #{directive}
+                """ <> Menu.tap_out_offer(true)
             }
 
           [] ->
