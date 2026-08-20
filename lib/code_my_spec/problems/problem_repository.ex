@@ -83,6 +83,12 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   - `:filter` — `:all` (default) or one of the source strings
     (`"credo"`, `"compiler"`, `"exunit"`, `"spex"`,
     `"spec_validation"`, `"qa_validation"`).
+  - `:severity` — `:error`, `:warning` or `:info`. Omit for all.
+
+  Severity narrows the scope before the counts are taken, so
+  `counts_by_source` and `unfiltered_count` describe the same population the
+  page does. A chip reading 26 above a page that can only ever show errors
+  would be counting a different question than the one asked.
   """
   @spec list_problems_paginated(Scope.t(), keyword()) :: %{
           problems: [Problem.t()],
@@ -100,7 +106,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     filter = Keyword.get(opts, :filter, :all)
 
     project_scope =
-      Problem |> where([p], p.project_id == ^project_id) |> scope_to_harness(scope)
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> scope_to_harness(scope)
+      |> apply_severity(Keyword.get(opts, :severity))
 
     unfiltered_count = Repo.aggregate(project_scope, :count, :id)
 
@@ -142,6 +151,11 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       filter: filter
     }
   end
+
+  defp apply_severity(query, nil), do: query
+
+  defp apply_severity(query, severity) when is_atom(severity),
+    do: where(query, [p], p.severity == ^severity)
 
   defp apply_problem_filter(query, :all), do: query
 

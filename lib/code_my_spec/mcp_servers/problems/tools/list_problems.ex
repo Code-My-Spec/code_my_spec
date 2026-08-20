@@ -48,19 +48,51 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame, params) do
       {:ok, scope} ->
-        opts = [
-          page: page(params),
-          per_page: per_page(params),
-          filter: Map.get(params, :source) || :all
-        ]
+        case severity(params) do
+          {:ok, severity} ->
+            opts = [
+              page: page(params),
+              per_page: per_page(params),
+              filter: Map.get(params, :source) || :all,
+              severity: severity
+            ]
 
-        %{problems: problems, total_count: total, page: page, total_pages: pages} =
-          Problems.list_problems_paginated(scope, opts)
+            %{problems: problems, total_count: total, page: page, total_pages: pages} =
+              Problems.list_problems_paginated(scope, opts)
 
-        {:reply, ok(render(problems, total, page, pages, params)), frame}
+            {:reply, ok(render(problems, total, page, pages, params)), frame}
+
+          {:error, reason} ->
+            {:reply, error(reason), frame}
+        end
 
       {:error, reason} ->
         {:reply, error(reason), frame}
+    end
+  end
+
+  # `severity` was declared in the schema, printed in the header as
+  # "· severity: error", and never applied — so the tool labelled an unfiltered
+  # list as filtered, which is worse than ignoring the parameter. Two agents
+  # called it while trying to check a stop-hook refusal against the record and
+  # got an answer to a question they had not asked (2071faa6, 339725c7).
+  #
+  # Rejected rather than ignored when unrecognised, for the same reason: a
+  # filter that quietly does nothing is indistinguishable from one that matched
+  # nothing.
+  @severities ~w(error warning info)
+
+  defp severity(params) do
+    case Map.get(params, :severity) do
+      nil ->
+        {:ok, nil}
+
+      value when value in @severities ->
+        {:ok, String.to_existing_atom(value)}
+
+      value ->
+        {:error,
+         "Unknown severity #{inspect(value)}. Expected one of: #{Enum.join(@severities, ", ")}."}
     end
   end
 
@@ -72,8 +104,27 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
     |> min(@max_per_page)
   end
 
-  defp render([], total, _page, _pages, _params) when total == 0,
-    do: "No problems recorded for this working copy."
+  # Names the filters in play. "No problems recorded" under a severity or source
+  # filter reads as "this working copy is clean", and an agent checking a
+  # refusal against the record will believe the refusal is phantom.
+  defp render([], total, _page, _pages, params) when total == 0 do
+    case filters_in_play(params) do
+      "" -> "No problems recorded for this working copy."
+      filters -> "No problems#{filters} for this working copy. Call without them for all."
+    end
+  end
+
+  defp filters_in_play(params) do
+    [
+      {"severity", Map.get(params, :severity)},
+      {"source", Map.get(params, :source)}
+    ]
+    |> Enum.reject(fn {_label, value} -> is_nil(value) end)
+    |> case do
+      [] -> ""
+      pairs -> " matching " <> Enum.map_join(pairs, " and ", fn {l, v} -> "#{l} #{v}" end)
+    end
+  end
 
   defp render(problems, total, page, pages, params) do
     header =
