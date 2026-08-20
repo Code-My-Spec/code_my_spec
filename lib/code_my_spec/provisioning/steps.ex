@@ -809,6 +809,17 @@ defmodule CodeMySpec.Provisioning.Steps do
            "domain's inbox — mail to another domain arrives whether or not this one is " <>
            "configured. Give an address at #{name} and resume."}
 
+      # 22b0e27c: a name already has an MX pointing somewhere Resend did not
+      # just hand back, and `ensure_dns_record/5` would replace rather than
+      # add to it. Paused the same way `apex_repoint/4` is — a decision only
+      # Sam can make, not a failure to retry.
+      {:error, {:competing_mx, record_name, current}} ->
+        {:paused,
+         "#{record_name} already has an MX record pointing at #{current}, and publishing " <>
+           "Resend's here would replace it rather than add alongside it — if mail for this " <>
+           "name already routes through #{current}, that redirects or breaks it silently. " <>
+           "Confirm to publish anyway, or resolve it at the provider first."}
+
       # Paused, because the likeliest cause is a thing only a person can do and
       # nothing here can rule it out.
       #
@@ -4534,9 +4545,46 @@ defmodule CodeMySpec.Provisioning.Steps do
       records ->
         base = base_domain(scope, opts)
 
-        with {:ok, zone} <- Cloudflare.find_zone(scope, base) do
+        with {:ok, zone} <- Cloudflare.find_zone(scope, base),
+             :ok <- check_competing_mx(scope, zone, records, opts) do
           Enum.reduce_while(records, {:ok, []}, &publish_mx_record(&1, &2, scope, zone))
         end
+    end
+  end
+
+  # `Cloudflare.ensure_dns_record/5` matches on name AND type: an existing MX
+  # at this name with different content is not "already right", so its own
+  # `%{"id" => id} -> update_dns_record(...)` branch overwrites it. For an A
+  # record that is `apex_repoint/4`'s whole concern; for MX it is worse,
+  # because MX genuinely supports several records at once (a domain split
+  # across two providers is not automatically wrong the way two apex A
+  # records would be) — so overwriting one is not "repointing what was
+  # already ours", it can be silently taking over somebody else's inbox.
+  #
+  # 22b0e27c: found live, never checked. `ensure_receiving_domain/3` and
+  # `run(:inbound, …)` went straight to publishing Resend's MX with nothing
+  # anywhere reading what a name already resolved to first — the same class
+  # of gap `apex_repoint/4` closed for the A record, missed here for MX.
+  defp check_competing_mx(scope, zone, records, opts) do
+    if Keyword.get(opts, :confirm_inbound_mx_repoint, false) do
+      :ok
+    else
+      with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+        records
+        |> Enum.find_value(fn record ->
+          record_name = qualify(record["name"], zone["name"])
+
+          Enum.find(
+            existing,
+            &(&1["name"] == record_name and &1["type"] == "MX" and
+                &1["content"] != record["value"])
+          )
+        end)
+        |> case do
+          nil -> :ok
+          %{"name" => record_name, "content" => current} -> {:error, {:competing_mx, record_name, current}}
+        end
+      end
     end
   end
 
