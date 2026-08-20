@@ -71,8 +71,8 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
       assert locations(ctx.scope, :server) == ["hetzner/uat-box"]
     end
 
-    # Earlier entries win on collision, and this is why. Teardown refuses to
-    # delete what it only adopted; letting a retry restate the same resource as
+    # `origin` wins on collision, and this is why. Teardown refuses to delete
+    # what it only adopted; letting a retry restate the same resource as
     # `created` would license it to destroy something Sam had before setup ran.
     test "cannot re-label an adopted resource as created", ctx do
       {:ok, _} =
@@ -91,6 +91,86 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
       )
 
       assert [%{origin: "adopted"}] = StepRepository.get(ctx.scope, :domain).resources
+    end
+
+    # 3a010015: a server destroyed and rebuilt at a new address kept the old
+    # one on record, because the earlier struct won *whole* on collision —
+    # not just its `origin`. A rebuilt resource's `identifier` has to be this
+    # run's, or a person reading it back (criterion 7969) and teardown's own
+    # address comparison both work from an address that belongs to nobody.
+    test "a rebuilt resource's identifier is this run's, not the one before it", ctx do
+      {:ok, _} =
+        Provisioning.run_step(
+          ctx.scope,
+          :server,
+          succeed_with([
+            %{
+              kind: "server",
+              location: "hetzner/uat-box",
+              identifier: "5.161.239.73 environment=uat",
+              origin: "created"
+            }
+          ])
+        )
+
+      {:ok, _} =
+        Provisioning.run_step(ctx.scope, :server,
+          verify: fn _, _ -> {:ok, :absent} end,
+          execute: fn _, _, _ ->
+            {:ok,
+             [
+               %{
+                 kind: "server",
+                 location: "hetzner/uat-box",
+                 identifier: "49.12.189.154 environment=uat",
+                 origin: "created"
+               }
+             ]}
+          end
+        )
+
+      assert [%{identifier: "49.12.189.154 environment=uat", origin: "created"}] =
+               StepRepository.get(ctx.scope, :server).resources,
+             "the box was destroyed and rebuilt at a new address — the record must follow it"
+    end
+
+    # The two properties at once, which is what the issue's own DNS record
+    # was: `origin: "adopted"` (so teardown keeps sparing it) pointing at a
+    # server that was genuinely rebuilt this run (so its address has to be
+    # current). Neither property may borrow the other's staleness.
+    test "an adopted resource keeps its origin but takes this run's identifier", ctx do
+      {:ok, _} =
+        Provisioning.run_step(
+          ctx.scope,
+          :dns,
+          succeed_with([
+            %{
+              kind: "dns_record",
+              location: "cloudflare/uat.example.com",
+              identifier: "5.161.239.73 environment=uat",
+              origin: "adopted"
+            }
+          ])
+        )
+
+      {:ok, _} =
+        Provisioning.run_step(ctx.scope, :dns,
+          verify: fn _, _ -> {:ok, :absent} end,
+          execute: fn _, _, _ ->
+            {:ok,
+             [
+               %{
+                 kind: "dns_record",
+                 location: "cloudflare/uat.example.com",
+                 identifier: "49.12.189.154 environment=uat",
+                 origin: "created"
+               }
+             ]}
+          end
+        )
+
+      assert [%{identifier: "49.12.189.154 environment=uat", origin: "adopted"}] =
+               StepRepository.get(ctx.scope, :dns).resources
     end
   end
 

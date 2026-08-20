@@ -297,4 +297,142 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                Builder.build(scope(), "abc123", opts(create: create))
     end
   end
+
+  # Issue 13ad1abe: a killed process leaves its builder running, attributable
+  # to no project. Nothing about it collides on name with the *next* build —
+  # that build asks for a differently-named box and gets refused for account
+  # capacity instead, which reads as "this account is too small" when the
+  # truth is "a box from a run that died hours ago is still holding a slot".
+  describe "build/3 — a server-limit refusal from an old orphaned builder" do
+    defp resource_limit_error do
+      {:error,
+       {:hetzner_error, 403,
+        %{
+          "error" => %{
+            "code" => "resource_limit_exceeded",
+            "details" => %{"limits" => [%{"name" => "server_limit"}]}
+          }
+        }}}
+    end
+
+    test "reaps a stale builder-* box and retries the create" do
+      owner = self()
+      stale = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T00:00:00Z"}
+
+      create = fn _scope, _name, _create_opts ->
+        case Process.get(:create_calls, 0) do
+          0 ->
+            Process.put(:create_calls, 1)
+            resource_limit_error()
+
+          _ ->
+            {:ok, server()}
+        end
+      end
+
+      list = fn _scope -> {:ok, [stale]} end
+      destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
+
+      build = fn _scope, _server, _ref, arch ->
+        {:ok, %{reference: "img", architecture: arch}}
+      end
+
+      # `now` is an hour past the stale box's `created` — well past
+      # `@orphan_max_age_minutes`, so it reads as abandoned rather than
+      # in-flight.
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   create: create,
+                   list: list,
+                   destroy: destroy,
+                   build_fun: build,
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
+               )
+
+      # The stale box goes, and so does the one this run actually built on.
+      assert_received {:destroyed, 501}
+      assert_received {:destroyed, 42}
+    end
+
+    test "leaves a builder-* box alone when it is younger than the age cutoff" do
+      recent = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T01:50:00Z"}
+
+      create = fn _scope, _name, _create_opts -> resource_limit_error() end
+      list = fn _scope -> {:ok, [recent]} end
+
+      # No `:destroy` fake — a destroy call here would raise the default
+      # `Keyword.get(opts, :destroy, ...)` real Hetzner call and fail the
+      # test, which is exactly the point: nothing should be reaped.
+      assert {:error, {:hetzner_error, 403, _}} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 Keyword.merge(opts(create: create, list: list),
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
+               )
+    end
+
+    test "leaves non-builder boxes alone even when old" do
+      other = %{"id" => 501, "name" => "fuellytics-prod", "created" => "2020-01-01T00:00:00Z"}
+
+      create = fn _scope, _name, _create_opts -> resource_limit_error() end
+      list = fn _scope -> {:ok, [other]} end
+
+      assert {:error, {:hetzner_error, 403, _}} =
+               Builder.build(scope(), "abc123", opts(create: create, list: list))
+    end
+
+    test "a box with no creation timestamp is not reaped" do
+      undated = %{"id" => 501, "name" => "builder-deadbeef0000"}
+
+      create = fn _scope, _name, _create_opts -> resource_limit_error() end
+      list = fn _scope -> {:ok, [undated]} end
+
+      assert {:error, {:hetzner_error, 403, _}} =
+               Builder.build(scope(), "abc123", opts(create: create, list: list))
+    end
+
+    test "a real shortage with nothing to reap surfaces unchanged" do
+      create = fn _scope, _name, _create_opts -> resource_limit_error() end
+      list = fn _scope -> {:ok, []} end
+
+      assert {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} =
+               Builder.build(scope(), "abc123", opts(create: create, list: list))
+    end
+
+    test "a retry that still fails surfaces its own error, not the original" do
+      stale = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T00:00:00Z"}
+
+      create = fn _scope, _name, _create_opts ->
+        case Process.get(:create_calls, 0) do
+          0 ->
+            Process.put(:create_calls, 1)
+            resource_limit_error()
+
+          _ ->
+            {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}}
+        end
+      end
+
+      list = fn _scope -> {:ok, [stale]} end
+      destroy = fn _scope, _id -> {:ok, %{}} end
+
+      assert {:error, {:hetzner_error, 403, _}} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   create: create,
+                   list: list,
+                   destroy: destroy,
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
+               )
+    end
+  end
 end

@@ -91,6 +91,20 @@ defmodule CodeMySpec.Provisioning.Builder do
   # comfortably. It is heavier on paper and much lighter in practice.
   @builder_image "docker-ce"
 
+  # Shared with `builder_name/1` below and with the age-based reap, so a
+  # renamed prefix cannot silently stop matching one of the two places that
+  # depend on it recognizing the same boxes.
+  @builder_prefix "builder-"
+
+  # How old a `builder-*` box has to be before it stops being read as
+  # in-flight. A build either finishes or fails in minutes (see moduledoc);
+  # nothing here is legitimately long-lived, so a box past this age is not
+  # somebody's run in progress, it is the box a killed process — SIGKILL, a
+  # killed `mix test`, a cancelled drill — never got a chance to destroy
+  # (issue 13ad1abe). An hour matches the window `mix cms.provisioning_leaks`
+  # already uses for the same judgment call.
+  @orphan_max_age_minutes 60
+
   @doc """
   Build `ref` for `architecture`, and take the builder with it either way.
 
@@ -185,8 +199,67 @@ defmodule CodeMySpec.Provisioning.Builder do
     ]
 
     case create.(scope, name, create_opts) do
-      {:error, {:hetzner_error, 409, _}} -> reclaim_orphan(scope, name, create, create_opts, opts)
-      other -> other
+      {:error, {:hetzner_error, 409, _}} ->
+        reclaim_orphan(scope, name, create, create_opts, opts)
+
+      {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} = error ->
+        reap_and_retry(scope, name, create, create_opts, opts, error)
+
+      other ->
+        other
+    end
+  end
+
+  # A server-limit refusal reads as "the account is too small" (issue
+  # 13ad1abe's whole point), when the true cause is often a `builder-*` box a
+  # dead process never destroyed still holding a slot. Before surfacing that
+  # error, clear anything that fits — named like a builder, older than
+  # `@orphan_max_age_minutes` — and retry the create once.
+  #
+  # If nothing was old enough to reap, the shortage is real and the original
+  # error is the honest answer; retrying would only ask Hetzner the same
+  # question again. If something was reaped but the retry still fails —
+  # Hetzner's delete is asynchronous, so the slot may not be free yet — that
+  # retry's own error is what the caller sees, which is no worse than today.
+  defp reap_and_retry(scope, name, create, create_opts, opts, error) do
+    case reap_orphaned_builders(scope, opts) do
+      [] -> error
+      _reaped -> create.(scope, name, create_opts)
+    end
+  end
+
+  # Age-based on purpose: it needs no cooperation from the process that
+  # died, which is the one signal a SIGKILL, a killed `mix test`, or a
+  # cancelled drill can never give.
+  defp reap_orphaned_builders(scope, opts) do
+    list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
+    destroy_server = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
+    cutoff = DateTime.add(now.(), -@orphan_max_age_minutes * 60, :second)
+
+    case list.(scope) do
+      {:ok, servers} ->
+        orphans = Enum.filter(servers, &stale_orphan?(&1, cutoff))
+        Enum.each(orphans, &destroy_server.(scope, server_id(&1)))
+        orphans
+
+      _ ->
+        []
+    end
+  end
+
+  defp stale_orphan?(server, cutoff) do
+    name = server_name(server) || ""
+    String.starts_with?(name, @builder_prefix) and created_before?(server, cutoff)
+  end
+
+  # No timestamp is not evidence of age. The safe reading is "not old enough
+  # to reap" — the mirror of `mix cms.provisioning_leaks`' own rule that no
+  # timestamp reads as "recent" for the opposite question.
+  defp created_before?(server, cutoff) do
+    case DateTime.from_iso8601(to_string(server["created"] || "")) do
+      {:ok, created, _} -> DateTime.compare(created, cutoff) == :lt
+      _ -> false
     end
   end
 
@@ -293,7 +366,7 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  defp builder_name(ref), do: "builder-" <> String.slice(ref, 0, 12)
+  defp builder_name(ref), do: @builder_prefix <> String.slice(ref, 0, 12)
 
   defp server_id(%{"id" => id}), do: id
   defp server_id(%{"server" => %{"id" => id}}), do: id

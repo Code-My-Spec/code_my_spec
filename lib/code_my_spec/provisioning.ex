@@ -355,11 +355,18 @@ defmodule CodeMySpec.Provisioning do
   Worse, the work died with the caller. `Builder.build/3` destroys its box
   either way — proven against real build failures — but not when the process
   running it is killed, which is exactly what a client timeout does. A builder
-  was left running on the account that way, attributable to no project and
-  invisible to the leak audit.
+  was left running on the account that way, attributable to no project.
 
   Under a supervised task, a client that disconnects no longer takes the run
-  with it, and `destroy` runs.
+  with it, and `destroy` runs. That still leaves a SIGKILL, a killed
+  `mix test`, or a cancelled drill — nothing gives the builder's own process a
+  chance to run its cleanup there either. `mix cms.provisioning_leaks` sees
+  the result (`builder-*` is always reported LEAKED) but only a human running
+  `--delete` acts on it; `Builder.build/3` itself now reaps anything
+  `builder-*` and past its age cutoff whenever Hetzner refuses a create for
+  account capacity, so the next build recovers the slot rather than
+  surfacing a `resource_limit_exceeded` that reads like the account is too
+  small (issue 13ad1abe).
 
   Returns immediately. The caller follows the same way anything else does:
   `mark/3` broadcasts every transition, so `subscribe/1` sees the step move
@@ -766,11 +773,23 @@ defmodule CodeMySpec.Provisioning do
   # `spex-story966-criterion8156-uat` running — run one created and recorded the
   # box, run two errored on a cassette miss, and the box became invisible.
   #
-  # Earlier entries win on collision. A stale one costs nothing, because
-  # teardown reads `{:error, :not_found}` as success; overwriting one could
-  # turn an `adopted` resource into a `created` one and license teardown to
-  # delete something Sam had before setup ran. Forgetting and over-claiming are
-  # both worse than a duplicate.
+  # On collision, only `origin` comes from the earlier entry — everything else
+  # comes from this run. `origin` is sticky for the reason above: overwriting
+  # it could turn an `adopted` resource into a `created` one and license
+  # teardown to delete something Sam had before setup ran.
+  #
+  # The rest of the resource is not sticky, and an earlier version of this
+  # function kept the whole earlier struct on collision — the same protection
+  # applied to every field, not just `origin`. That is how a server rebuilt at
+  # a new address kept the old one on record: the run that recreated it after
+  # a destroy returned the true, current identifier in `partial`, and the old
+  # struct's stale one won anyway, because both shared the same `{kind,
+  # location}` (167394ad / 3a010015). A stale `identifier` is not the harmless
+  # duplicate a stale `origin` would be — it is read by a person going to find
+  # the resource in the provider's console (criterion 7969), and the exact
+  # comparison this collision guard was written to protect (teardown deciding
+  # whether an adopted record still points at one of our servers) reads it
+  # too.
   #
   # `verify/3`'s satisfied path deliberately still replaces: that list is read
   # back from the provider, so it is the one answer entitled to overrule what
@@ -795,11 +814,21 @@ defmodule CodeMySpec.Provisioning do
       end
       |> Enum.reject(&(&1.kind in @run_scoped))
 
-    seen = MapSet.new(earlier, &{&1.kind, &1.location})
+    origins = Map.new(earlier, &{{&1.kind, &1.location}, &1.origin})
+    made_this_run = MapSet.new(partial, &{&1[:kind], &1[:location]})
+
+    refreshed =
+      Enum.map(partial, fn resource ->
+        case Map.fetch(origins, {resource[:kind], resource[:location]}) do
+          {:ok, origin} -> Map.put(resource, :origin, origin)
+          :error -> resource
+        end
+      end)
 
     earlier
+    |> Enum.reject(&MapSet.member?(made_this_run, {&1.kind, &1.location}))
     |> Enum.map(&Map.from_struct/1)
-    |> Enum.concat(Enum.reject(partial, &MapSet.member?(seen, {&1[:kind], &1[:location]})))
+    |> Enum.concat(refreshed)
   end
 
   # Verify's list is the provider's answer about what exists, and it overrules —
