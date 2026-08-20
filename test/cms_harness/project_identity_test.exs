@@ -28,14 +28,17 @@ defmodule CmsHarness.ProjectIdentityTest do
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
 
-    on_exit(fn ->
-      if previous,
-        do: System.put_env("CMS_PROJECT_ID", previous),
-        else: System.delete_env("CMS_PROJECT_ID")
-    end)
+    on_exit(fn -> restore("CMS_PROJECT_ID", previous) end)
 
     :ok
   end
+
+  # Two clauses rather than an `if`. Restoring to "it was not set" is a distinct
+  # case, not the negative of one, and the project's credo rule bans imperative
+  # branching anywhere in a test file — helpers included, which is why this is
+  # matched rather than `case`d.
+  defp restore(key, nil), do: System.delete_env(key)
+  defp restore(key, value), do: System.put_env(key, value)
 
   test "reads the id out of the project's config" do
     project = project_dir(project_id: 712)
@@ -88,11 +91,7 @@ defmodule CmsHarness.ProjectIdentityTest do
     previous = System.get_env("CMS_HARNESS_ID")
     System.put_env("CMS_HARNESS_ID", "borrowed-from-another-checkout")
 
-    on_exit(fn ->
-      if previous,
-        do: System.put_env("CMS_HARNESS_ID", previous),
-        else: System.delete_env("CMS_HARNESS_ID")
-    end)
+    on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
     File.rm(Path.join(project.root, ".cms_harness.json"))
 
