@@ -63,16 +63,45 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   # Every tool call means this session is doing work: touch its updated_at
   # so the agent-progress view can derive "active" by recency on load (and
   # refresh open pages live). Fire-and-forget.
-  defp mark_active(scope, %{"session_id" => session_id}) when is_binary(session_id) do
+  defp mark_active(scope, %{"session_id" => session_id} = params) when is_binary(session_id) do
     with %Scope{} = scope <- scope,
          session when not is_nil(session) <- Sessions.get_by_external_id(scope, session_id) do
       Sessions.touch_session(scope, session)
+      touch_subagent(scope, session, Map.get(params, "agent_id"))
     else
       _ -> :ok
     end
   end
 
   defp mark_active(_scope, _params), do: :ok
+
+  # A sub-agent making a tool call is the best evidence of life there is, and
+  # until now nothing recorded it: `last_heartbeat_at` was set once at
+  # `SubagentStart` and never again, so `Session.active_subagents/2` dropped any
+  # sub-agent still working after `subagent_ttl_minutes` — ten by default.
+  #
+  # That was survivable while the stop hook's exemption keyed on the task row,
+  # which never expires. It stopped being survivable when the exemption started
+  # asking the registration instead (`a10c035e`): a QA sub-agent running longer
+  # than ten minutes would fall off the roster mid-flight and the parent would
+  # begin blocking on problems while its sub-agent was demonstrably working —
+  # exactly what the exemption exists to prevent. Sub-agents here routinely run
+  # far longer than that; one sat in a single browser call for 1800s the day
+  # this was written.
+  #
+  # Here rather than in `track_edit/1` for the reason the comment above
+  # `AnalysisAlert.check/2` already gives: scoping to the tools that write
+  # reintroduces a "which tools count" judgement, and whichever tool is the
+  # exception becomes the blind spot. A sub-agent reading files is alive too.
+  #
+  # Fire-and-forget like everything else on this path — a tool call must proceed
+  # even when the bookkeeping about it fails.
+  defp touch_subagent(_scope, _session, nil), do: :ok
+
+  defp touch_subagent(scope, session, agent_id) when is_binary(agent_id) do
+    Sessions.touch_subagent(scope, session, agent_id)
+    :ok
+  end
 
   defp track_edit(
          %{

@@ -193,6 +193,36 @@ defmodule CodeMySpec.Sessions.Session do
     |> put_embed(:subagents, updated)
   end
 
+  @doc """
+  Refresh a registered sub-agent's evidence-of-life.
+
+  Only refreshes; never registers. A tool call from an `agent_id` this session
+  has no registration for is not evidence that a sub-agent started — it is
+  evidence that something else is using that id — and inventing a registration
+  from it would make the roster unfalsifiable.
+  """
+  @spec touch_subagent(t(), String.t()) :: Ecto.Changeset.t()
+  def touch_subagent(%__MODULE__{} = session, agent_id) do
+    existing = session.subagents || []
+
+    updated =
+      case Enum.find_index(existing, &(&1.agent_id == agent_id)) do
+        nil ->
+          existing
+
+        idx ->
+          List.update_at(existing, idx, fn current ->
+            current
+            |> Map.from_struct()
+            |> Map.put(:last_heartbeat_at, DateTime.utc_now())
+          end)
+      end
+
+    session
+    |> change()
+    |> put_embed(:subagents, updated)
+  end
+
   @doc "Unregister a sub-agent by `agent_id`."
   @spec unregister_subagent(t(), String.t()) :: Ecto.Changeset.t()
   def unregister_subagent(%__MODULE__{} = session, agent_id) do

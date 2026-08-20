@@ -187,6 +187,17 @@ defmodule CodeMySpec.Sessions do
   end
 
   @doc """
+  Refresh a registered sub-agent's heartbeat. No-op if it is not registered.
+  """
+  @spec touch_subagent(Scope.t(), Session.t(), String.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def touch_subagent(%Scope{} = _scope, %Session{} = session, agent_id) do
+    session
+    |> Session.touch_subagent(agent_id)
+    |> Repo.update()
+  end
+
+  @doc """
   Unregister a sub-agent by `agent_id`.
 
   Story 704 / Rule 1. Removes the registration from the session's
