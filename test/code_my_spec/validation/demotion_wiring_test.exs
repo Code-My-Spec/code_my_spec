@@ -180,17 +180,53 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   end
 
   describe "when attribution names nothing in this project" do
-    test "the gate blocks on everything rather than demoting", ctx do
-      # The guard from 5d361fb7. A recorded path that corresponds to no file
-      # here means the comparison is not usable — and demoting on it would
-      # switch the gate off while looking like it worked.
+    # The guard from 5d361fb7 held that a recorded path corresponding to no file
+    # here means the comparison is not usable, so the gate must fail closed —
+    # demoting on it would switch the gate off while looking like it worked.
+    #
+    # That is right about a mangled recording and wrong about a session whose
+    # work genuinely lives outside the tracked tree, and the two were
+    # indistinguishable at the point the guard ran. They are distinguishable one
+    # step later: a mangled recording is mangled about files that changed, so
+    # the project moved underneath it. Both halves are pinned here because the
+    # gate silently reverting to block-everything is precisely what this module
+    # exists to catch.
+    test "and the project did change, the gate blocks — the recording is unusable", ctx do
       :ok = FileEdits.track_edit(ctx.session, "/somewhere/else/entirely.ex")
+
+      # What a mangled recording looks like from outside: a file it never
+      # managed to name is different than it was when the task started.
+      #
+      # Stamped rather than merely written. `FileSync.sync_changed/2` pre-filters
+      # on mtime against the row it holds, and the row was written by this
+      # test's own setup a few milliseconds ago — at second resolution the edit
+      # is not newer than the record of it, and the scan sees nothing. Real
+      # edits arrive seconds after a sync; a test that wrote and stopped inside
+      # one second would silently assert against an empty changed set.
+      path = Path.join(ctx.tmp, @theirs)
+      File.write!(path, "defmodule MyApp.Theirs do\n  # edited\nend\n")
+      File.touch!(path, System.os_time(:second) + 5)
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope, ["credo"])
 
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session),
              "unusable attribution must fail closed, not demote everything"
+    end
+
+    test "and nothing in the project changed, it owns none of the red", ctx do
+      # The QA session of a9e9caca, in miniature: its only write went somewhere
+      # `Files` does not row — there, `.code_my_spec/qa/884/brief.md`, which git
+      # ignores by design. Nothing in the project moved, so there is nothing it
+      # could have broken, and no action it could take that would change the
+      # answer. It was handed 26 failing spex in three unrelated stories.
+      :ok = FileEdits.track_edit(ctx.session, ".code_my_spec/qa/884/brief.md")
+
+      problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
+      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+
+      assert {:ok, _} = stop(ctx.scope, ctx.session),
+             "an agent that changed no project file is blocked by nothing (story 894)"
     end
   end
 end

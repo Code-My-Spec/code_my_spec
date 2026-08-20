@@ -53,47 +53,54 @@ defmodule CodeMySpec.Validation.EditsTheLedgerCannotSeeTest do
     %{scope: scope}
   end
 
-  # What the pipeline hands `check_blocking_problems/4`: the files this task
-  # changed, already computed against the task's `started_at`.
-  defp changed(paths), do: Enum.map(paths, &%{path: &1, component_id: nil})
-
-  defp paths_for(scope, changed_files),
-    do: Validation.session_paths_for_test(scope, [session_id: @session], changed_files)
+  # `project_changed?` — whether anything in the project moved while this task
+  # ran, read before attribution narrows anything. A boolean on purpose: it is
+  # evidence that the session edited, never evidence of what.
+  defp paths_for(scope, project_changed?),
+    do: Validation.session_paths_for_test(scope, [session_id: @session], project_changed?)
 
   describe "the ledger is empty" do
-    test "and nothing changed on disk — the session owns nothing", ctx do
-      paths = paths_for(ctx.scope, changed([]))
-
-      assert paths == MapSet.new(),
+    test "and nothing in the project moved — the session owns nothing", ctx do
+      assert paths_for(ctx.scope, false) == MapSet.new(),
              "an empty set is what demotes every finding, which is story 894's rule. " <>
                "nil here would block a session that provably did nothing."
     end
 
-    test "but files changed on disk — attribution is unusable, so nothing is demoted", ctx do
-      paths = paths_for(ctx.scope, changed(["lib/mine.ex"]))
-
-      assert is_nil(paths),
+    test "but the project moved — attribution is unusable, so nothing is demoted", ctx do
+      assert is_nil(paths_for(ctx.scope, true)),
              "this session edited through a tool the ledger cannot see. Sparing it " <>
                "would exempt every shell-editing agent from every finding."
     end
+  end
 
-    test "disk does not name what the session edited", ctx do
-      # The half that must not drift: a changed file is evidence the session
-      # edited, never evidence it edited *that*. Another agent's write landing
-      # in this working copy during the task would otherwise become this
-      # session's to answer for.
-      refute match?(%MapSet{}, paths_for(ctx.scope, changed(["lib/theirs.ex"])))
+  describe "the ledger names only files this project does not track" do
+    # The QA case, and the reason this is not simply "the ledger is empty":
+    # `.code_my_spec/qa/` is gitignored, so `Files` never rows it and the paths
+    # join nothing. Real work, no project file, owns none of the project's red.
+    test "and the project did not otherwise move, it owns nothing", ctx do
+      :ok = FileEdits.track_edit(@session, ".code_my_spec/qa/884/brief.md")
+
+      assert paths_for(ctx.scope, false) == MapSet.new()
+    end
+
+    # And the case the old `nil` was written for, which still answers `nil`: a
+    # recording that names nothing joinable *while the project demonstrably
+    # moved* is a recording that failed, not a session that stayed still.
+    test "and the project did move, attribution is broken and blocks", ctx do
+      :ok = FileEdits.track_edit(@session, "/Users/someone/elsewhere/lib/mine.ex")
+
+      assert is_nil(paths_for(ctx.scope, true))
     end
   end
 
-  describe "the ledger is not empty" do
-    test "disk changes it did not record do not widen what it owns", ctx do
+  describe "the ledger names files this project tracks" do
+    test "a project that moved does not widen what the session owns", ctx do
       :ok = FileEdits.track_edit(@session, "lib/mine.ex")
 
-      paths = paths_for(ctx.scope, changed(["lib/mine.ex", "lib/theirs.ex"]))
-
-      assert MapSet.to_list(paths) == ["lib/mine.ex"],
-             "corroboration answers whether the session edited, not what"
+      assert MapSet.to_list(paths_for(ctx.scope, true)) == ["lib/mine.ex"],
+             "corroboration answers whether the session edited, not what. Widening " <>
+               "from disk would credit this session with whatever else changed in " <>
+               "the working copy while its task ran."
     end
   end
 end

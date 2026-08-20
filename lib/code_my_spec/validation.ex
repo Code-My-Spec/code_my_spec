@@ -155,10 +155,8 @@ defmodule CodeMySpec.Validation do
       changed_paths: sync_result.changed_paths
     )
 
-    changed_files =
-      scope
-      |> resolve_changed_files(task, sync_result)
-      |> filter_by_session_attribution(cwd, opts)
+    all_changed = resolve_changed_files(scope, task, sync_result)
+    changed_files = filter_by_session_attribution(all_changed, cwd, opts)
 
     config = Configurations.get_or_create(scope)
 
@@ -177,7 +175,7 @@ defmodule CodeMySpec.Validation do
 
     opts = Keyword.put(opts, :already_running, already_running)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
+    with :ok <- check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
@@ -199,6 +197,7 @@ defmodule CodeMySpec.Validation do
   defp remote_validate_stop(scope, task, opts) do
     changed_files = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
+    project_changed? = project_changed?(scope, task)
 
     already_running = Analysis.in_flight(scope)
 
@@ -208,10 +207,23 @@ defmodule CodeMySpec.Validation do
 
     opts = Keyword.put(opts, :already_running, already_running)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
+    with :ok <- check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
+
+  # Did anything in the project move while this task ran, before attribution has
+  # a say. `changed_files` cannot answer it: both paths narrow that set to the
+  # files this session is credited with, so asking it whether the session edited
+  # is circular — it says no exactly when attribution is broken, which is the
+  # one case that must not be believed.
+  #
+  # Without a task there is no window to ask about and no scan on this side, so
+  # the honest answer is "no independent evidence" and the ledger stands alone.
+  defp project_changed?(scope, %{started_at: started_at}) when not is_nil(started_at),
+    do: Files.changed_since(scope, started_at) != []
+
+  defp project_changed?(_scope, _task), do: false
 
   # With a task, the same answer the local path gives: every File row whose
   # mtime moved since the task started. mtime comes off the harness's manifest,
@@ -579,9 +591,9 @@ defmodule CodeMySpec.Validation do
   # The bug this guards against was a `nil` that reads as "attribution
   # unavailable", and the only way to catch that regressing is to look at the
   # value rather than at the sentence built from it.
-  @spec session_paths_for_test(Scope.t(), keyword(), [map()]) :: MapSet.t() | nil
-  def session_paths_for_test(scope, opts, changed_files \\ []),
-    do: session_paths(scope, opts, changed_files)
+  @spec session_paths_for_test(Scope.t(), keyword(), boolean()) :: MapSet.t() | nil
+  def session_paths_for_test(scope, opts, project_changed? \\ false),
+    do: session_paths(scope, opts, project_changed?)
 
   # No `when is_binary(cwd)`. A scope without one is the *normal* shape on the
   # light harness — the server holds no working copy — and requiring it threw
@@ -604,7 +616,7 @@ defmodule CodeMySpec.Validation do
   # demote anything whether or not a cwd was present, so dropping the guard
   # cannot manufacture a bogus demotion — it can only stop discarding a good
   # one.
-  defp session_paths(%Scope{cwd: cwd} = scope, opts, changed_files) do
+  defp session_paths(%Scope{cwd: cwd} = scope, opts, project_changed?) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         session_id
@@ -612,14 +624,14 @@ defmodule CodeMySpec.Validation do
         |> Enum.map(&relativize(&1, cwd))
         |> MapSet.new()
         |> verify_against_ledger(scope, session_id)
-        |> corroborate_with_disk(changed_files)
+        |> corroborate_with_disk(project_changed?)
 
       _ ->
         nil
     end
   end
 
-  defp session_paths(_scope, _opts, _changed_files), do: nil
+  defp session_paths(_scope, _opts, _project_changed?), do: nil
 
   # An empty hook ledger means "no edits were recorded", which is not the same
   # fact as "no edits were made", and story 894's rule turns on the second one.
@@ -632,24 +644,32 @@ defmodule CodeMySpec.Validation do
   # was written to end, pointed the other way.
   #
   # Disk is what separates the agent that made no edits from the one whose
-  # edits the ledger could not see. `changed_files` is the same set the
-  # pipeline analyzes, already computed against the task's `started_at`.
+  # edits the ledger could not see — `project_changed?/2`, read before
+  # attribution narrows anything, because the narrowed set answers "no" exactly
+  # when attribution is broken.
   #
   # It answers only whether the session edited, never what it edited: `nil` —
   # the value that already means "attribution is unusable, so nothing is
   # demoted" — and never a set of paths. Widening attribution from disk would
   # credit this session with whatever else changed in the working copy during
   # its task, which is what attribution exists to prevent.
-  defp corroborate_with_disk(nil, _changed_files), do: nil
+  #
+  # It carries a second case that used to be decided upstream and could not be:
+  # a ledger whose paths name no file in this project. That is a QA session
+  # writing under gitignored `.code_my_spec/qa/` (owns no project file, demote)
+  # or a recording that mangled its paths (the project files behind them did
+  # change, so they are here, and it blocks). One question separates them, and
+  # it is this one — see the `true ->` branch of `verify_against_ledger/3`.
+  defp corroborate_with_disk(nil, _project_changed?), do: nil
 
-  defp corroborate_with_disk(paths, [_ | _] = _changed_files) do
+  defp corroborate_with_disk(paths, true) do
     case MapSet.size(paths) do
       0 -> nil
       _ -> paths
     end
   end
 
-  defp corroborate_with_disk(paths, _changed_files), do: paths
+  defp corroborate_with_disk(paths, _project_changed?), do: paths
 
   # Does the attribution actually correspond to this project's files?
   #
@@ -689,15 +709,35 @@ defmodule CodeMySpec.Validation do
       Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
         paths
 
+      # Recorded paths that name no file in this project used to answer `nil`
+      # here, on the reasoning that "a broken recording looks identical to a
+      # session that touched none of the project". The two are only identical
+      # from inside this function; disk tells them apart, so the decision moves
+      # to `corroborate_with_disk/2` and this answers what it actually knows —
+      # no *project* file is attributable to this session.
+      #
+      # Both cases are real and they want opposite answers:
+      #
+      #   * a QA session whose only writes went to `.code_my_spec/qa/`, which
+      #     git ignores and `Files` therefore never rows. Real work, no project
+      #     file, owns none of the project's red (a9e9caca).
+      #   * a recording that mangles its paths — the 595 absolute paths of
+      #     9a623a13. The project files behind them did change, so they are in
+      #     `changed_files`, and disk answers `nil` for exactly that reason.
+      #
+      # Logged at info: on the common path this is a QA session doing its job,
+      # and a warning that fires every time one stops is noise that trains
+      # people past the case where it means something.
       true ->
-        Logger.warning(
+        Logger.info(
           "[Validation] session #{session_id} recorded #{MapSet.size(paths)} edited " <>
-            "path(s), none of which name a file in this project. Attribution is not " <>
-            "usable, so nothing will be demoted and every finding blocks. Check that " <>
-            "PostToolUse paths normalize against #{inspect(scope.cwd)}."
+            "path(s), none of which name a file in this project. No project file is " <>
+            "attributable to it; whether that is untracked work or a normalization " <>
+            "failure is decided against the files this task changed on disk. If the " <>
+            "latter, check that PostToolUse paths normalize against #{inspect(scope.cwd)}."
         )
 
-        nil
+        MapSet.new()
     end
   end
 
@@ -776,7 +816,7 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  defp check_blocking_problems(scope, changed_files, config, opts) do
+  defp check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
     sources = active_blocking_sources(config)
 
     # Problems are an eventually consistent projection: block on what is
@@ -821,7 +861,7 @@ defmodule CodeMySpec.Validation do
     stale_sources = Enum.reject(ledger_sources, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    session_paths = session_paths(scope, opts, changed_files)
+    session_paths = session_paths(scope, opts, project_changed?)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     advisory = advisory ++ unattributed
     log_demotions(unattributed, session_paths, opts)
