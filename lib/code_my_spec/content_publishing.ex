@@ -76,17 +76,37 @@ defmodule CodeMySpec.ContentPublishing do
     project = scope.active_project
     rows = list_snapshot(scope)
 
-    case Enum.find(rows, &(&1.parse_status == :error)) do
-      %Snapshot{} = bad ->
-        {:error,
-         %{
-           message:
-             "Cannot publish: #{bad.metadata["filename"]} has parse errors — re-sync clean first"
-         }}
+    with :ok <- ensure_bucket(project) do
+      case Enum.find(rows, &(&1.parse_status == :error)) do
+        %Snapshot{} = bad ->
+          {:error,
+           %{
+             message:
+               "Cannot publish: #{bad.metadata["filename"]} has parse errors — re-sync clean first"
+           }}
 
-      nil ->
-        do_publish(project, Enum.filter(rows, &(&1.parse_status == :success)))
+        nil ->
+          do_publish(project, Enum.filter(rows, &(&1.parse_status == :success)))
+      end
     end
+  end
+
+  # `do_publish/2` goes straight to `S3Client.put_object/4` with no
+  # precondition of its own, and ExAws raises `RuntimeError` on a `nil`
+  # bucket rather than returning an error tuple — a project whose storage
+  # step hasn't finished (or was never configured) crashed the calling
+  # LiveView's gen_server outright, past the `{:error, %{message:}}`
+  # flash-handling clause entirely. `client_api_url`/`deploy_key` are left
+  # unchecked here on purpose: `trigger_client/2` already fails those
+  # gracefully *after* the S3 write, which is the behaviour criterion 6275
+  # exercises (bucket set, trigger fields blank, blob/manifest still land).
+  defp ensure_bucket(%{content_bucket: bucket}) when is_binary(bucket) and bucket != "", do: :ok
+
+  defp ensure_bucket(_project) do
+    {:error,
+     %{
+       message: "Cannot publish: no content bucket configured — set one in Content settings first"
+     }}
   end
 
   defp do_publish(project, success_rows) do
