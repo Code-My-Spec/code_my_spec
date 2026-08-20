@@ -57,6 +57,13 @@ defmodule CmsHarness.HarnessConfig do
   `CMS_HARNESS_ID` overrides the file, so a one-off run can name a harness
   without editing anything — and `write/2` refuses to persist that override,
   which would outlive it.
+
+  This is right for exactly the shape `CMS_HARNESS_ID` is set for: a sprite,
+  one process, one working copy. It is wrong for a caller enumerating *many*
+  working copies — `WorkingCopies.all/0` calls this once per root it knows
+  about, and every one of those calls would see the same env var and return
+  the same id, collapsing a map of N roots down to whichever one processed
+  last. Use `read_file/1` there; it never looks at the environment.
   """
   @spec read(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read(root) do
@@ -67,6 +74,17 @@ defmodule CmsHarness.HarnessConfig do
       :none -> from_file(root)
     end
   end
+
+  @doc """
+  What `.cms_harness.json` itself says about this working copy, ignoring
+  `CMS_HARNESS_ID`.
+
+  For callers resolving *this specific root's* own identity — never for
+  enumerating several roots at once, where the env override would make every
+  one of them answer with the same id. See `read/1`'s doc.
+  """
+  @spec read_file(String.t()) :: {:ok, t()} | :none | {:error, term()}
+  def read_file(root), do: root |> Path.expand() |> from_file()
 
   @doc """
   The id the environment names, if it names one.

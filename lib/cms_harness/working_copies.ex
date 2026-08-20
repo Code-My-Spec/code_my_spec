@@ -113,7 +113,12 @@ defmodule CmsHarness.WorkingCopies do
   end
 
   defp entry(root) do
-    case HarnessConfig.read(root) do
+    # `read_file/1`, not `read/1`: this enumerates every working copy the
+    # harness knows about, and `read/1` honors `CMS_HARNESS_ID` — set in the
+    # environment of every worktree session on this machine — which would
+    # answer every root here with the same id and collapse this map down to
+    # whichever root got processed last.
+    case HarnessConfig.read_file(root) do
       {:ok, %{harness_id: id, root: configured}} -> [{id, configured || root}]
       _ -> []
     end
