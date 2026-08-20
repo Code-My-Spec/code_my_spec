@@ -577,12 +577,21 @@ defmodule CodeMySpec.Provisioning.Registry do
     # image's baked-in config.yml says (that file is never rewritten; env
     # vars are merged in at startup), so `prune/2` ran every deploy and
     # deleted nothing. 9656c705.
-    "mkdir -p /etc/cms-registry && " <>
-      "printf %s #{shell_escape(htpasswd)} > /etc/cms-registry/htpasswd && " <>
-      "chmod 600 /etc/cms-registry/htpasswd && " <>
+    #
+    # `:auth_dir` defaults to the real box's path, but is overridable: on
+    # `local_runner`, `mkdir`/`printf` run on the host while the bind mount
+    # resolves inside a VM (Colima) with a different filesystem, so
+    # `/etc/cms-registry` written on the host is invisible to the mount and
+    # Docker creates a directory there instead of finding the file —
+    # `baseline_local_test`'s own real failure mode. 8dcb9751.
+    auth_dir = Keyword.get(opts, :auth_dir, "/etc/cms-registry")
+
+    "mkdir -p #{auth_dir} && " <>
+      "printf %s #{shell_escape(htpasswd)} > #{auth_dir}/htpasswd && " <>
+      "chmod 600 #{auth_dir}/htpasswd && " <>
       "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
-      "-v /etc/cms-registry/htpasswd:/auth/htpasswd:ro " <>
+      "-v #{auth_dir}/htpasswd:/auth/htpasswd:ro " <>
       "-v #{@volume}:/var/lib/registry " <>
       "-e REGISTRY_AUTH=htpasswd " <>
       "-e REGISTRY_AUTH_HTPASSWD_REALM=cms " <>
