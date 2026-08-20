@@ -127,11 +127,62 @@ defmodule CodeMySpec.Compile do
 
     %{
       status: if(exit_code == 0, do: :ok, else: :error),
-      data: %{compiler_results: result_data, diagnostics_available: diagnostics_available},
+      data: %{
+        compiler_results: relativize_diagnostics(result_data, env.cwd),
+        diagnostics_available: diagnostics_available
+      },
       exit_code: exit_code,
       output_file: output_file
     }
   end
+
+  # A diagnostic's paths have to leave here relative to the root the compiler
+  # ran under, and they do not arrive that way from every environment.
+  #
+  # `CodeMySpec.BddSpecs.Spex.relativize_error_file/2` is this exact fix for the
+  # spex path (`cc643bf3`, `fa76604b`), and the compiler path never got it.
+  # `Analysis.Reconciler.patch_file_path/1` sees the result and says so —
+  # "problem recorded with an absolute file_path … this row will be deleted by
+  # the next file sync" — but only warns, deliberately, since rejecting would
+  # roll back every other problem from the same source.
+  #
+  # What that costs: `clear_problems_for_missing_files/2` deletes any Problem
+  # whose path is not in the current file list, and that list is relative, so
+  # the row is removed on the next sync as though its file had been deleted —
+  # while the stop hook has already blocked on it, and the next compile writes a
+  # fresh one. The finding is real, `list_problems` cannot see it, and it
+  # returns on the next sweep. Seven agents in one evening reported the same
+  # symptom from that loop (b4c34f92 collects them).
+  #
+  # `env.cwd` is the right root for every environment, including the one that
+  # produces the absolute paths: `Container.create/1` sets `cwd` to the
+  # container's own workdir (`/workspace`), which is exactly the prefix its
+  # compiler reports under. A path from some *other* root stays absolute, per
+  # `Path.relative_to/2`, and the reconciler's warning still catches it.
+  #
+  # Covers both ways diagnostics arrive. A caller-supplied `:output_file` — the
+  # stop hook's `test_output_files` — reads a host-local fixture but is parsed
+  # by this same function, so it is relativized here too.
+  @doc false
+  # Public so the rule can be asserted without running a compiler, the same
+  # reason `parse_jsonl/1` and `extract_compiler_errors/1` are.
+  @spec relativize_diagnostics([map()], String.t() | nil) :: [map()]
+  def relativize_diagnostics(diagnostics, cwd) when is_binary(cwd) and is_list(diagnostics) do
+    Enum.map(diagnostics, &relativize_diagnostic(&1, cwd))
+  end
+
+  def relativize_diagnostics(diagnostics, _cwd), do: diagnostics
+
+  defp relativize_diagnostic(%{} = diagnostic, cwd) do
+    Enum.reduce(~w(file source), diagnostic, fn key, acc ->
+      case Map.get(acc, key) do
+        path when is_binary(path) -> Map.put(acc, key, Path.relative_to(path, cwd))
+        _ -> acc
+      end
+    end)
+  end
+
+  defp relativize_diagnostic(diagnostic, _cwd), do: diagnostic
 
   @doc """
   Execute mix compile asynchronously with callback.
