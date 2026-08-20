@@ -480,8 +480,17 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:paused, instructions} ->
             {:paused, instructions}
 
+          # `register_domain/3`'s `:confirmation_required` is never reachable
+          # here as an actual confirm-then-buy round trip — `opts` never
+          # carries `confirmed: true` on this path, so the atom always means
+          # the same thing: the account does not hold `name`, and the
+          # Registrar API cannot sell it one it doesn't already have. That is
+          # an errand for Sam, not a decision for setup to wait on, so it
+          # still pauses (`resume/2` re-verifies rather than assuming he
+          # bought it) — only the message was wrong about what it was
+          # pausing for.
           {:error, :confirmation_required} ->
-            {:paused, confirmation_message(name)}
+            {:paused, not_owned_message(name)}
 
           {:error, reason} ->
             {:error, format(reason)}
@@ -4641,9 +4650,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     }
   end
 
-  defp confirmation_message(name) do
-    "#{name} is available. Registering it costs money and is not refundable, " <>
-      "so setup will not buy it without an explicit confirmation."
+  # `owned?/2` returning false means "not in this account", not "available to
+  # register" — Cloudflare's registrar API only answers availability, price,
+  # and current registrar for a domain the account already holds; for
+  # anything else (including a name nobody could ever buy, like google.com)
+  # it returns just the name and whether the extension is supported, and
+  # `check_availability/2` reads that absence as `:unknown` rather than
+  # inventing a verdict. Reusing that same absence here as "is available" was
+  # the defect — this app cannot register a name it does not already hold, so
+  # the honest answer is the dashboard errand `Steps.run(:domain, ...)`
+  # otherwise sends every unsupported-TLD and payment-method failure to
+  # (`classify_registration_error/1`), and the one the domain panel already
+  # gives (`CodeMySpecWeb.ProvisioningLive`'s `domain-dashboard-handoff`).
+  defp not_owned_message(name) do
+    "#{name} is not registered to this account. This app cannot register a " <>
+      "name it does not already hold — the Registrar API will not price or " <>
+      "sell it. Buy #{name} in the Cloudflare dashboard, then return here and " <>
+      "setup will adopt it."
   end
 
   # One key per environment, and the private half never leaves ProjectSecrets

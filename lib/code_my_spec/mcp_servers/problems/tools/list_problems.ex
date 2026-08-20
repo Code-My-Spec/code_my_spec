@@ -114,18 +114,6 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
     end
   end
 
-  defp filters_in_play(params) do
-    [
-      {"severity", Map.get(params, :severity)},
-      {"source", Map.get(params, :source)}
-    ]
-    |> Enum.reject(fn {_label, value} -> is_nil(value) end)
-    |> case do
-      [] -> ""
-      pairs -> " matching " <> Enum.map_join(pairs, " and ", fn {l, v} -> "#{l} #{v}" end)
-    end
-  end
-
   defp render(problems, total, page, pages, params) do
     header =
       "# Problems (#{length(problems)} of #{total}) — page #{page}/#{max(pages, 1)}" <>
@@ -142,6 +130,18 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
         else: ""
 
     header <> "\n\n" <> body <> footer
+  end
+
+  defp filters_in_play(params) do
+    [
+      {"severity", Map.get(params, :severity)},
+      {"source", Map.get(params, :source)}
+    ]
+    |> Enum.reject(fn {_label, value} -> is_nil(value) end)
+    |> case do
+      [] -> ""
+      pairs -> " matching " <> Enum.map_join(pairs, " and ", fn {l, v} -> "#{l} #{v}" end)
+    end
   end
 
   defp severity_note(params) do

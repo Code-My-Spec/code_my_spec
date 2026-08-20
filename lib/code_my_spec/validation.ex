@@ -652,6 +652,8 @@ defmodule CodeMySpec.Validation do
     end
   end
 
+  defp session_paths(_scope, _opts, _project_changed?), do: nil
+
   # Which recorded edits are edits to *this* working copy.
   #
   # `relativize/2` leaves a path it cannot make relative absolute, so after it
@@ -667,8 +669,6 @@ defmodule CodeMySpec.Validation do
     do: Enum.split_with(paths, &(Path.type(&1) == :relative))
 
   defp split_by_working_copy(paths, _cwd), do: {paths, []}
-
-  defp session_paths(_scope, _opts, _project_changed?), do: nil
 
   # An empty hook ledger means "no edits were recorded", which is not the same
   # fact as "no edits were made", and story 894's rule turns on the second one.
