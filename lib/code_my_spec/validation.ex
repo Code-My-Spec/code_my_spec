@@ -621,8 +621,14 @@ defmodule CodeMySpec.Validation do
   # session's own.
   defp verify_against_ledger(paths, scope, session_id) do
     cond do
+      # `nil`, not the empty set, and the comment above has said so since this
+      # was written — the code returned `paths`. An empty set is indistinguishable
+      # from a working comparison that matched nothing, so `block_changed`
+      # demoted every finding to advisory and the stop hook refused nothing at
+      # all. A session with no recorded edits could not be blocked by any
+      # problem, however severe: a compile error included.
       MapSet.size(paths) == 0 ->
-        paths
+        nil
 
       Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
         paths
