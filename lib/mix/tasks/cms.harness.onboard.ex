@@ -167,8 +167,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `Environments`' own functions, so driving it through `Environments` is the
   # argument below and nothing else.
   defp check(env, root) do
-    report = Onboarding.check(root, io: io(env))
-    announce_check(report.onboarded, report.missing, root)
+    report = Onboarding.check(root, io: io(env), remedy: "mix cms.harness.onboard")
+    announce_check(report.onboarded, report.missing, report.remedy, root)
     report
   end
 
@@ -180,22 +180,29 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # layer that will eventually disagree with the thing it renames.
   defp io(env), do: {Environments, env}
 
-  defp announce_check(true, _missing, root) do
+  defp announce_check(true, _missing, _remedy, root) do
     Mix.shell().info("onboarded: #{root}")
   end
 
   # Names them, because "not onboarded" alone sends the reader back to the file
   # to work out which half failed — and the half-onboarded copy, file present
   # and some keys right, is where that costs most.
-  defp announce_check(false, [_ | _] = missing, root) do
+  #
+  # The remedy is the one `check/2` returned, not a constant repeated here. The
+  # shared default names `--id`, because a generated application cannot mint a
+  # harness id — nothing in it talks to the server, so a bare re-run leaves the
+  # same keys missing and the advice is a loop. This task *does* mint, which is
+  # why it passes `remedy: "mix cms.harness.onboard"`: here the bare command is
+  # the whole fix, and printing `--id` would send the reader hunting a value
+  # they never need.
+  defp announce_check(false, [_ | _] = missing, remedy, root) do
     Mix.shell().info(
-      "not onboarded: #{root}\n  missing: #{Enum.join(missing, ", ")}\n" <>
-        "run: mix cms.harness.onboard"
+      "not onboarded: #{root}\n  missing: #{Enum.join(missing, ", ")}\nrun: #{remedy}"
     )
   end
 
-  defp announce_check(false, _missing, root) do
-    Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
+  defp announce_check(false, _missing, remedy, root) do
+    Mix.shell().info("not onboarded: #{root}\nrun: #{remedy}")
   end
 
   defp onboard(env, root, relay_model_turns?) do
