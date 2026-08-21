@@ -45,7 +45,12 @@ defmodule CmsHarness.HarnessConfig do
   @filename ".cms_harness.json"
   @env_var "CMS_HARNESS_ID"
 
-  @type t :: %{harness_id: String.t(), project_id: String.t() | nil, root: String.t()}
+  @type t :: %{
+          harness_id: String.t(),
+          project_id: String.t() | nil,
+          deploy_key: String.t() | nil,
+          root: String.t()
+        }
 
   @doc "Where the config lives for a working copy."
   @spec path(String.t()) :: String.t()
@@ -98,7 +103,7 @@ defmodule CmsHarness.HarnessConfig do
 
   defp from_env_config(root) do
     case from_env() do
-      {:ok, id} -> {:ok, %{harness_id: id, project_id: nil, root: root}}
+      {:ok, id} -> {:ok, %{harness_id: id, project_id: nil, deploy_key: nil, root: root}}
       :none -> :none
     end
   end
@@ -141,13 +146,25 @@ defmodule CmsHarness.HarnessConfig do
     root = Path.expand(root)
     file = path(root)
 
+    # Merged over what is already recorded, not written from scratch. Callers
+    # supply the fields they know — `mint/1` knows the id and the project, and
+    # nothing about the deploy key — and a write that dropped the rest would
+    # take this copy's credential with it on the next mint.
     body =
-      %{harness_id: id, project_id: config[:project_id], root: root}
+      root
+      |> recorded()
+      |> Map.merge(%{harness_id: id, root: root})
+      |> merge_present(:project_id, config[:project_id])
+      |> merge_present(:deploy_key, config[:deploy_key])
       |> Jason.encode!(pretty: true)
 
     with :ok <- refuse_to_clobber(root, file),
          :ok <- File.mkdir_p(Path.dirname(file)),
-         :ok <- File.write(file, body <> "\n") do
+         :ok <- File.write(file, body <> "\n"),
+         # It holds a credential now, so it is not world-readable. The file is
+         # gitignored, which keeps it out of the repository; this keeps it out of
+         # other accounts on the machine.
+         :ok <- File.chmod(file, 0o600) do
       :ok
     else
       {:error, reason} ->
@@ -191,6 +208,21 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
+  # What the file already says, as a plain map, or empty when there is none to
+  # read. Deliberately not `from_file/1`'s error tuple: a caller here is about
+  # to write, and `refuse_to_clobber/2` is what decides whether an unreadable
+  # file may be replaced.
+  defp recorded(root) do
+    case from_file(root) do
+      {:ok, config} -> Map.take(config, [:harness_id, :project_id, :deploy_key, :root])
+      _ -> %{}
+    end
+  end
+
+  defp merge_present(map, _key, nil), do: map
+  defp merge_present(map, _key, ""), do: map
+  defp merge_present(map, key, value), do: Map.put(map, key, value)
+
   defp from_file(root) do
     case File.read(path(root)) do
       {:ok, contents} -> decode(contents, root)
@@ -202,7 +234,13 @@ defmodule CmsHarness.HarnessConfig do
   defp decode(contents, root) do
     case Jason.decode(contents) do
       {:ok, %{"harness_id" => id} = map} when is_binary(id) and id != "" ->
-        {:ok, %{harness_id: id, project_id: map["project_id"], root: map["root"] || root}}
+        {:ok,
+         %{
+           harness_id: id,
+           project_id: map["project_id"],
+           deploy_key: map["deploy_key"],
+           root: map["root"] || root
+         }}
 
       _ ->
         Logger.error("[CmsHarness] #{path(root)} is not a harness config")

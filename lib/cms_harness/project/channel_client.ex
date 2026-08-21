@@ -53,6 +53,7 @@ defmodule CmsHarness.Project.ChannelClient do
   require Logger
 
   alias CmsHarness.Config
+  alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.Transport
@@ -382,7 +383,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @impl Slipstream
   def handle_continue(:connect, socket) do
-    case Config.socket_url() do
+    case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
         {:noreply, connect!(socket, uri: uri)}
 
@@ -584,9 +585,66 @@ defmodule CmsHarness.Project.ChannelClient do
              reason in ["working_copy_in_use", "project_in_use"] ->
         {:ok, refused(socket, holder)}
 
+      # A credential that reaches a different project. The socket connects — the
+      # key is valid — and the join is refused, so every hook in the working
+      # copy answers "channel down, server answering 200" while the harness's
+      # own /health says connected, because that is about the socket.
+      #
+      # Measured 2026-08-21: a `broken_oaths` checkout served by the CodeMySpec
+      # daemon, refused every thirty seconds for hours, with nothing on either
+      # side naming the credential. This is the whole of what that cost.
+      {kind, %{"reason" => "unauthorized"}} when kind in [:error, :failed_to_join] ->
+        {:ok, schedule_rejoin(unauthorized(socket, topic))}
+
       other ->
         Logger.warning("[CmsHarness] #{topic} closed: #{inspect(other)}")
         {:ok, schedule_rejoin(socket)}
+    end
+  end
+
+  # Named by which credential answered, because the remedy differs and the
+  # harness cannot see the project a deploy key belongs to — only the server
+  # resolves that (`Projects.get_project_by_deploy_key/1`).
+  defp unauthorized(socket, topic) do
+    project = socket.assigns.project
+
+    Logger.error("""
+    [CmsHarness] #{topic} refused the join as unauthorized.
+
+    #{credential_note(project)}
+
+    The socket connected, so the credential itself is valid — a deploy key
+    reaches exactly one project, and this working copy belongs to another.
+    """)
+
+    socket
+  end
+
+  defp credential_note(project) do
+    case Credentials.for_working_copy(project.root) do
+      {:ok, _token, :env_deploy_key} ->
+        "This harness presented CMS_DEPLOY_KEY, which is issued per project and " <>
+          "belongs to whatever started the daemon. Give this copy its own:\n\n" <>
+          "    cd #{project.root} && mix cms.harness.onboard\n\n" <>
+          "which records the project's key in its .cms_harness.json. On a machine " <>
+          "with no local database to read it from, the key is at " <>
+          "<server>/app/projects/#{project.id}/edit — Generate fills the field, " <>
+          "Save is what stores the hash."
+
+      {:ok, _token, :working_copy_key} ->
+        "This harness presented the deploy_key recorded in " <>
+          "#{project.root}/.cms_harness.json. The server does not accept it for " <>
+          "project #{project.id}, so it is the wrong key or it has been rotated — " <>
+          "Save a new one and onboard this copy again."
+
+      {:ok, _token, :user_token} ->
+        "This harness presented CMS_TOKEN. A user token reaches every project its " <>
+          "user can access, so a refusal means this user has no access to " <>
+          "#{project.id} — or the token has expired, which it does silently " <>
+          "because a CMS_TOKEN is never refreshed."
+
+      {:error, :no_credential} ->
+        "This harness has no credential at all for #{project.root}."
     end
   end
 
@@ -996,7 +1054,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @impl Slipstream
   def handle_info(:reconnect, socket) do
-    case Config.socket_url() do
+    case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
         {:ok, socket} = connect(socket, uri: uri)
         {:noreply, socket}

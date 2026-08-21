@@ -56,6 +56,7 @@ defmodule CmsHarness.Token do
   require Logger
 
   alias CmsHarness.Config
+  alias CmsHarness.Credentials
 
   # Re-exchange this far ahead of expiry. A token that expires between the
   # check and the request arrives at the server as a 401 the caller cannot
@@ -82,13 +83,22 @@ defmodule CmsHarness.Token do
   call can arrive at once on a cold start, and N simultaneous exchanges for one
   deploy key is N-1 tokens nobody uses.
   """
-  @spec access_token() :: {:ok, String.t()} | {:error, refusal()}
-  def access_token do
-    case Config.user_token() do
-      {:ok, token} -> {:ok, token}
-      {:error, :no_credential} -> exchanged()
+  @spec access_token(String.t() | nil) :: {:ok, String.t()} | {:error, refusal()}
+  def access_token(root \\ nil) do
+    case credential(root) do
+      {:ok, token, :user_token} -> {:ok, token}
+      {:ok, key, _source} -> call_for_token(root, key)
+      {:error, :no_credential} -> {:error, :no_credential}
     end
   end
+
+  # A working copy when the caller has one, any credential when it does not.
+  # `WorkingCopies.ask_server/1` asks the server where a harness is; the answer
+  # does not depend on who asks, and demanding a root there would make the
+  # lookup impossible for the case it exists to resolve — an id this daemon
+  # cannot yet place on disk.
+  defp credential(nil), do: Credentials.any()
+  defp credential(root), do: Credentials.for_working_copy(root)
 
   @doc """
   Throw away the cached token, so the next call exchanges again.
@@ -103,22 +113,15 @@ defmodule CmsHarness.Token do
     if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, :invalidate), else: :ok
   end
 
-  defp exchanged do
-    case Config.deploy_key() do
-      {:ok, _key} -> call_for_token()
-      {:error, :no_credential} -> {:error, :no_credential}
-    end
-  end
-
   # Without the process — a `mix run`, a test that did not start the tree — do
   # the exchange inline rather than failing. Losing the cache is a slower path,
   # not a broken one, and a credential module that only works under a
   # supervisor is a trap for exactly the scripts most likely to need it.
-  defp call_for_token do
+  defp call_for_token(root, key) do
     if Process.whereis(__MODULE__) do
-      GenServer.call(__MODULE__, :access_token, @exchange_timeout + 5_000)
+      GenServer.call(__MODULE__, {:access_token, root, key}, @exchange_timeout + 5_000)
     else
-      case exchange() do
+      case exchange(key) do
         {:ok, token, _expires_at} -> {:ok, token}
         {:error, reason} -> {:error, reason}
       end
@@ -127,29 +130,36 @@ defmodule CmsHarness.Token do
 
   # --- server ---
 
+  # Keyed by working copy. One cached token was right while a daemon held one
+  # deploy key; a key reaches exactly one project, so a daemon serving several
+  # holds several, and caching them in one slot would hand whichever was
+  # exchanged last to whoever asked next.
+  #
+  # `nil` is a key like any other — the copy-less lookup — so it caches too.
   @impl true
-  def init(_opts), do: {:ok, %{token: nil, expires_at: nil}}
+  def init(_opts), do: {:ok, %{}}
 
   @impl true
-  def handle_call(:access_token, _from, state) do
-    if fresh?(state) do
-      {:reply, {:ok, state.token}, state}
+  def handle_call({:access_token, root, key}, _from, state) do
+    if fresh?(Map.get(state, root)) do
+      {:reply, {:ok, state[root].token}, state}
     else
-      case exchange() do
+      case exchange(key) do
         {:ok, token, expires_at} ->
-          {:reply, {:ok, token}, %{token: token, expires_at: expires_at}}
+          {:reply, {:ok, token}, Map.put(state, root, %{token: token, expires_at: expires_at})}
 
         {:error, reason} ->
-          # The old token is dropped even on a failed exchange. Keeping one
-          # past its window means presenting a credential known to be stale,
-          # and the refusal that comes back says nothing about why.
-          {:reply, {:error, reason}, %{token: nil, expires_at: nil}}
+          # The old token is dropped even on a failed exchange, and only this
+          # copy's. Keeping one past its window means presenting a credential
+          # known to be stale, and the refusal that comes back says nothing
+          # about why.
+          {:reply, {:error, reason}, Map.delete(state, root)}
       end
     end
   end
 
   @impl true
-  def handle_cast(:invalidate, _state), do: {:noreply, %{token: nil, expires_at: nil}}
+  def handle_cast(:invalidate, _state), do: {:noreply, %{}}
 
   defp fresh?(%{token: token, expires_at: expires_at})
        when is_binary(token) and is_integer(expires_at) do
@@ -158,8 +168,15 @@ defmodule CmsHarness.Token do
 
   defp fresh?(_), do: false
 
-  defp exchange do
-    with {:ok, key} <- Config.deploy_key() do
+  # The same `{:error, :no_credential}` `Config.deploy_key/0` used to answer, so
+  # every caller's error handling is unchanged. Reached when a credential was
+  # resolved and turns out to be unusable, which is a wiring bug rather than a
+  # state — `Credentials` does not return blanks.
+  defp usable(key) when is_binary(key) and key != "", do: {:ok, key}
+  defp usable(_key), do: {:error, :no_credential}
+
+  defp exchange(key) do
+    with {:ok, key} <- usable(key) do
       url = Config.server_url() |> String.trim_trailing("/") |> Kernel.<>("/api/sprite/token")
 
       request =

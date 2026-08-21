@@ -7,6 +7,8 @@ defmodule CmsHarness.Config do
   nothing and look exactly like a harness with nothing to do.
   """
 
+  alias CmsHarness.Credentials
+
   # The server this build points at when nothing else says.
   #
   # `compile_env` rather than reading the build environment through Mix: Mix is
@@ -55,19 +57,24 @@ defmodule CmsHarness.Config do
   end
 
   @doc """
-  The credential the socket authenticates with.
+  The credential the socket authenticates with, for a given project.
 
-  A user token when someone is signed in on this machine, a project deploy key
-  when it is a sprite. The server's `UserSocket` accepts either, which is why
-  this one function serves the socket — and why it does *not* serve the rest.
-  `/mcp/harness` is behind `require_oauth_token`, which takes only the first, so
-  everything HTTP goes through `CmsHarness.Token.access_token/0` instead.
+  A user token when someone is signed in on this machine, otherwise a deploy
+  key — this project's if one is recorded, the environment's if not. The
+  server's `UserSocket` accepts either, which is why this one function serves
+  the socket and does *not* serve the rest: `/mcp/harness` is behind
+  `require_oauth_token`, which takes only the first, so everything HTTP goes
+  through `CmsHarness.Token` instead.
+
+  Takes a working copy because a deploy key reaches exactly one project, this
+  harness serves several, and the copy's own `.cms_harness.json` is where its
+  key is recorded. See `CmsHarness.Credentials`.
   """
-  @spec credential() :: {:ok, String.t()} | {:error, :no_credential}
-  def credential do
-    case user_token() do
-      {:ok, token} -> {:ok, token}
-      {:error, :no_credential} -> deploy_key()
+  @spec credential(String.t() | nil) :: {:ok, String.t()} | {:error, :no_credential}
+  def credential(root \\ nil) do
+    case Credentials.for_working_copy(root) do
+      {:ok, token, _source} -> {:ok, token}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -107,9 +114,9 @@ defmodule CmsHarness.Config do
   refused anyway, and "refused" is a much harder failure to read than "you have
   not given me a token".
   """
-  @spec socket_url() :: {:ok, String.t()} | {:error, :no_credential}
-  def socket_url do
-    with {:ok, token} <- credential() do
+  @spec socket_url(String.t() | nil) :: {:ok, String.t()} | {:error, :no_credential}
+  def socket_url(root \\ nil) do
+    with {:ok, token} <- credential(root) do
       url =
         server_url()
         |> String.replace(~r{^https://}, "wss://")

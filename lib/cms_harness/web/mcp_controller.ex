@@ -66,7 +66,7 @@ defmodule CmsHarness.Web.McpController do
 
   def proxy(conn, _params) do
     with {:ok, project} <- project(conn),
-         {:ok, token} <- Token.access_token() do
+         {:ok, token} <- Token.access_token(project.root) do
       dispatch(conn, project, token)
     else
       {:error, reason} -> refuse(conn, reason)
