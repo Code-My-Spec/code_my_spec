@@ -46,6 +46,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   use CodeMySpecWeb, :live_view
 
+  require Logger
+
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSecrets
@@ -1115,10 +1117,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-completed-at={@mail_send_result.completed_at}
         data-dkim={@mail_send_result.dkim}
         data-domain={@mail_send_result.domain}
+        data-reason={@mail_send_result.reason}
       >
         sent from {@mail_send_result.from}: {if @mail_send_result.accepted,
           do: "accepted",
           else: "refused"}
+        <span :if={@mail_send_result.reason}>— {@mail_send_result.reason}</span>
       </div>
 
       <%!-- Sending is only half of it. A domain you can send from but not
@@ -1548,10 +1552,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             provider_id: sent.id,
             completed_at: DateTime.to_iso8601(DateTime.utc_now()),
             dkim: state && state.dkim,
-            domain: state && state.domain
+            domain: state && state.domain,
+            reason: nil
           }
 
         {:error, reason} ->
+          Logger.warning(
+            "[ProvisioningLive] mail_send_probe refused for #{Resend.probe_from(scope, environment)}: #{inspect(reason)}"
+          )
+
           %{
             from: Resend.probe_from(scope, environment),
             accepted: false,
