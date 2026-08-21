@@ -35,6 +35,11 @@ defmodule CodeMySpecWeb.MigrationsController do
 
   # The reason is for a person deciding what to do next, so it names the record
   # that could not be placed rather than echoing a changeset.
+  defp describe(:plan_required),
+    do:
+      "migrating a project into the cloud needs a paid plan — free accounts can " <>
+        "work here, but bringing in a project from a local harness is not free"
+
   defp describe({:unknown_story, id}),
     do: "a rule or scenario referenced story #{inspect(id)}, which is not in the payload"
 

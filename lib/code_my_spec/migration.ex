@@ -310,8 +310,18 @@ defmodule CodeMySpec.Migration do
   """
   @spec import_project(Scope.t(), map()) :: {:ok, map()} | {:error, term()}
   def import_project(%Scope{} = scope, payload) when is_map(payload) do
-    do_import(scope, payload)
+    with :ok <- require_paid_plan(scope) do
+      do_import(scope, payload)
+    end
   end
+
+  # Checked before `do_import/2` opens its transaction — criterion 8228's
+  # whole point is that a refused migration writes nothing, and the story
+  # keeps billing out of this path entirely: migrating is how Sam upgrades,
+  # not where he buys, so the refusal has to be legible on its own rather
+  # than a validation error he reads as "my data is malformed."
+  defp require_paid_plan(%Scope{active_account: %{plan: :free}}), do: {:error, :plan_required}
+  defp require_paid_plan(_scope), do: :ok
 
   defp do_import(scope, payload) do
     Repo.transaction(fn ->
