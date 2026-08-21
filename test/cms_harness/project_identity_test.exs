@@ -122,6 +122,65 @@ defmodule CmsHarness.ProjectIdentityTest do
     refute harness_id == "borrowed-from-another-checkout"
   end
 
+  # The same rule for `project_id`, which is the half that decides which
+  # project's rows a checkout's files are written to.
+  #
+  # `.cms_harness.json` carries both ids and only `harness_id` was read here, so
+  # an onboarded copy with no `config.yml` fell past its own answer to the
+  # variable. Measured 2026-08-21 from harness.log, one daemon serving three
+  # roots:
+  #
+  #     serving project 708492f9-… at …/broken_oaths
+  #     serving project 708492f9-… at …/code_my_spec
+  #     serving project 708492f9-… at …/code_my_spec/.claude/worktrees/…
+  #
+  # `broken_oaths` is a different repository. Its `.cms_harness.json` said
+  # `49760b8b-…`; the daemon carried `CMS_PROJECT_ID=708492f9-…` from the
+  # session that started it. So its files reconciled into CodeMySpec's project
+  # and its spex answered CodeMySpec's spex requests, leaving 96 warnings that
+  # read `could not read spec file .code_my_spec/spec/broken_oaths/…
+  # (:enoent)` — a row written from one checkout, looked for in another.
+  test "a copy with no config but a harness file naming a project uses that project" do
+    project = project_dir()
+    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
+    System.put_env("CMS_PROJECT_ID", "999")
+
+    assert {:ok, %{id: id}} = ProjectIdentity.resolve(project.root)
+
+    assert id == project.id
+    refute id == "999"
+  end
+
+  # And it takes its harness id from that same file, for the reason the
+  # `config.yml` case does: one file names this working copy, and an identity
+  # assembled from two sources is two things that can disagree.
+  test "and its harness id comes from the same file" do
+    project = project_dir()
+    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
+
+    previous = System.get_env("CMS_HARNESS_ID")
+    System.put_env("CMS_HARNESS_ID", "borrowed-from-another-checkout")
+    on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
+
+    assert {:ok, %{harness_id: harness_id}} = ProjectIdentity.resolve(project.root)
+    assert harness_id == project.harness_id
+  end
+
+  # Not refused, said. A daemon that would not start over a variable it
+  # inherited is much harder to diagnose from the inside than one that starts
+  # and names which of the two it took — and the line has to name the file, or
+  # the reader cannot tell which of the copy's two identity files answered.
+  test "a harness file disagreeing with the shell is logged, naming the file" do
+    project = project_dir()
+    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
+    System.put_env("CMS_PROJECT_ID", "999")
+
+    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.resolve(project.root) end)
+
+    assert log =~ ".cms_harness.json"
+    assert log =~ "999"
+  end
+
   # The genuine sprite: no config, no harness file of its own — the file the
   # test above relies on to win is exactly what this one has none of, so the
   # environment is the only answer there is.

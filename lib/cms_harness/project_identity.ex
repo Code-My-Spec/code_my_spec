@@ -10,12 +10,40 @@ defmodule CmsHarness.ProjectIdentity do
   Resolution order:
 
     1. `project_id` in the working copy's own `.code_my_spec/config.yml`
-    2. `CMS_PROJECT_ID` — for a copy that names no project, which is a sprite
-    3. refuse
+    2. `project_id` in the working copy's own `.cms_harness.json`
+    3. `CMS_PROJECT_ID` — for a copy that names no project, which is a sprite
+    4. refuse
 
-  There is no fourth step. A directory that cannot say which project it is gets
+  There is no fifth step. A directory that cannot say which project it is gets
   an error naming the file it should have said it in, because guessing here
   means syncing one checkout's files over another project's rows.
+
+  ## Step 2, and why the env fallback had to be narrowed to reach it
+
+  `.cms_harness.json` is what `mix cms.harness.onboard` writes, and it carries
+  `project_id` as well as `harness_id`. Only the second was ever read here, so
+  a working copy that was properly onboarded but never given a
+  `.code_my_spec/config.yml` fell straight past its own answer to the variable.
+
+  Measured 2026-08-21 from `harness.log`, on this machine. One daemon serving
+  three roots:
+
+      serving project 708492f9-… at …/broken_oaths
+      serving project 708492f9-… at …/code_my_spec
+      serving project 708492f9-… at …/code_my_spec/.claude/worktrees/phx-new-generator
+
+  `broken_oaths` is a different repository. Its `.cms_harness.json` says
+  `49760b8b-…`; the daemon carried `CMS_PROJECT_ID=708492f9-…` from the session
+  that started it, and with no `config.yml` to read, the variable won. So its
+  files reconciled into CodeMySpec's project and its spex runs answered
+  CodeMySpec's spex requests. The trail is 96 warnings reading `could not read
+  spec file .code_my_spec/spec/broken_oaths/technology/research.spec.md
+  (:enoent)` — a row written from one checkout, looked for in another.
+
+  This is the same defect the section below describes, at the same call site,
+  one field over: `harness_id(:env, root)` was taught to check the file first
+  and `project_id` was not, so the narrower half of the identity was safe while
+  the half that decides *which project's rows get written* was not.
 
   ## The file wins, and it did not used to
 
@@ -85,14 +113,28 @@ defmodule CmsHarness.ProjectIdentity do
 
   defp resolve_project(root) do
     case from_config(root) do
-      {:ok, project} -> note_disagreement(project)
-      {:error, :no_project_id} -> from_env(root)
+      {:ok, project} -> note_disagreement(project, :config)
+      {:error, :no_project_id} -> from_harness_file(root)
       {:error, reason} -> {:error, reason}
     end
   end
 
-  # A copy that names no project falls through to the variable. That is the
-  # sprite: one VM, one project, no config file of its own to read.
+  # The other file the working copy names itself in, and the one onboarding
+  # actually writes. Read before the variable for the reason the whole module
+  # exists: this runs once per root, and the variable belongs to whatever
+  # started the daemon.
+  defp from_harness_file(root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{project_id: id}} when is_binary(id) and id != "" ->
+        note_disagreement(%{id: id, root: root}, :harness_file)
+
+      _ ->
+        from_env(root)
+    end
+  end
+
+  # A copy that names no project in either file falls through to the variable.
+  # That is the sprite: one VM, one project, no config of its own to read.
   defp from_env(root) do
     case System.get_env("CMS_PROJECT_ID") do
       id when is_binary(id) and id != "" -> {:ok, :env, %{id: id, root: root}}
@@ -104,21 +146,25 @@ defmodule CmsHarness.ProjectIdentity do
   # misconfiguration and worth saying so — but a container that refused to start
   # over an environment variable it inherited is far harder to diagnose from the
   # inside than one that starts and says which of the two it took.
-  defp note_disagreement(%{id: id, root: root} = project) do
+  defp note_disagreement(%{id: id, root: root} = project, source) do
     case System.get_env("CMS_PROJECT_ID") do
       other when is_binary(other) and other != "" and other != id ->
         Logger.warning(
-          "[CmsHarness] #{root} says it is project #{id} and CMS_PROJECT_ID says #{other}. " <>
-            "Serving #{id} — the working copy's own config wins, because one harness serves " <>
-            "several copies and the variable belongs to whatever started it."
+          "[CmsHarness] #{root} says it is project #{id} (#{file_for(source)}) and " <>
+            "CMS_PROJECT_ID says #{other}. Serving #{id} — the working copy's own file " <>
+            "wins, because one harness serves several copies and the variable belongs to " <>
+            "whatever started it."
         )
 
-        {:ok, :config, project}
+        {:ok, source, project}
 
       _ ->
-        {:ok, :config, project}
+        {:ok, source, project}
     end
   end
+
+  defp file_for(:config), do: @config_path
+  defp file_for(:harness_file), do: ".cms_harness.json"
 
   # `nil` means "not issued yet", which is ordinary — the first join mints it.
   # An unreadable config also reads as `nil` here, but `HarnessConfig.write/2`
@@ -148,6 +194,8 @@ defmodule CmsHarness.ProjectIdentity do
   end
 
   defp harness_id(:config, root), do: from_harness_config(root)
+
+  defp harness_id(:harness_file, root), do: from_harness_config(root)
 
   defp from_harness_config(root) do
     case HarnessConfig.read_file(root) do
