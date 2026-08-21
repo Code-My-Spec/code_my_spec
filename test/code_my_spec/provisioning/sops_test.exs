@@ -157,6 +157,28 @@ defmodule CodeMySpec.Provisioning.SopsTest do
                  "SECRET_KEY_BASE"
                ])
     end
+
+    # cms.new ships every environment's .enc.env as a scaffold — a plain
+    # comment header, no sops metadata — so a generated project's real first
+    # run hits exactly this, not a missing file. Reproduced live on
+    # devops-drill's real prod.enc.env the first time it was ever provisioned:
+    # `sops decrypt` answered "sops metadata not found" (exit 1), a different
+    # string from the missing-file case, and it propagated as a hard
+    # {:sops_failed, 1, ...} error instead of "everything is missing".
+    test "counts everything as missing when the file exists but was never encrypted", ctx do
+      :ok =
+        Environments.write_file(
+          ctx.env,
+          "envs/prod.enc.env",
+          "# prod secrets for this project, encrypted with sops.\n# This file is scaffolding and holds no values yet.\n"
+        )
+
+      assert {:ok, ["DATABASE_URL", "SECRET_KEY_BASE"]} =
+               Sops.missing_secrets(ctx.env, "prod", ctx.prod.priv, [
+                 "DATABASE_URL",
+                 "SECRET_KEY_BASE"
+               ])
+    end
   end
 
   describe "write_config/2" do

@@ -251,6 +251,16 @@ defmodule CodeMySpec.Provisioning.Sops do
   obviously "you have not set any secrets yet". The state is ordinary rather
   than exceptional: `secrets` mints the key and writes `.sops.yaml`, and the
   file itself only appears when a first secret is set.
+
+  A file that exists but was never actually encrypted reads the same way, for
+  the same reason: `cms.new` ships every environment's `.enc.env` as a
+  scaffold — a plain-text comment header explaining how to add values, no
+  sops metadata at all — so a project generated straight from the template
+  and never touched hits `sops decrypt` on real content that was never
+  ciphertext. sops answers "sops metadata not found" (exit 1), which is a
+  different string from the missing-file case and was reaching the setup page
+  the same unhelpful way. Undecryptable and absent mean the same thing here —
+  nothing this step can read is nothing the boot secret has been set.
   """
   @spec missing_secrets(Environments.Environment.t(), env_name(), String.t(), [String.t()]) ::
           {:ok, [String.t()]} | error()
@@ -260,9 +270,19 @@ defmodule CodeMySpec.Provisioning.Sops do
         {:ok, required}
 
       true ->
-        with {:ok, present} <- decrypt(env, environment, private_key) do
-          {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
+        case decrypt(env, environment, private_key) do
+          {:ok, present} -> {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
+          {:error, {:sops_failed, _status, output} = reason} -> unencrypted_scaffold(reason, output, required)
+          {:error, _reason} = error -> error
         end
+    end
+  end
+
+  defp unencrypted_scaffold(reason, output, required) do
+    if String.contains?(output, "metadata not found") do
+      {:ok, required}
+    else
+      {:error, reason}
     end
   end
 
