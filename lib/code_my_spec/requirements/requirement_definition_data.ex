@@ -861,7 +861,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.PersonaResearch,
         artifact_type: :specification,
         description:
-          "At least one persona researched — DB record + summary.md + sources.md (story linkage happens later via Three Amigos)",
+          "Every persona researched — DB record + summary.md + sources.md (story linkage happens later via Three Amigos)",
         # The root of this graph since `project_setup` left it. Setup is no
         # longer a requirement: `cms new` covers it, and the mainline exits the
         # generator with it complete, so a generated project has nothing to do.

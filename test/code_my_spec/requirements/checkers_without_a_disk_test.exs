@@ -76,7 +76,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       sync(scope, Personas.sources_path("overloaded-ic"), :persona_sources)
 
       assert {true, %{status: status}} = PersonasChecker.complete?(scope, nil)
-      assert status =~ "1 persona"
+      assert status =~ "all personas complete"
     end
 
     test "an unsynced artifact reads as missing", %{scope: scope} do
