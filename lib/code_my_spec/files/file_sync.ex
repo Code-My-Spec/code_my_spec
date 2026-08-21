@@ -115,8 +115,20 @@ defmodule CodeMySpec.Files.FileSync do
         {:ok, observations}
 
       {:error, reason} ->
-        Logger.error(
-          "[FileSync] refusing to sync #{scope.active_project_id}: this environment " <>
+        # Through `scan_refusal_level/1` for the reason it exists, which applies
+        # here at least as strongly: `:not_supported_on_harness` is a property of
+        # the environment rather than an event, and `sync_project` now takes this
+        # branch deliberately on every call against a harness-held working copy —
+        # it is how the tool discovers the disk is elsewhere before asking the
+        # harness to scan it. An error level would mean the tool logs a fault
+        # every time it works.
+        #
+        # Named by working copy rather than by project id, matching `walk/2`.
+        # Two checkouts of one project share the id, so the id alone cannot say
+        # which of them refused.
+        Logger.log(
+          scan_refusal_level(reason),
+          "[FileSync] #{working_copy(scope)}: refusing to sync — this environment " <>
             "cannot walk a working copy (#{inspect(reason)}). Nothing was scanned, so " <>
             "nothing is authoritative — the rows already recorded stand."
         )

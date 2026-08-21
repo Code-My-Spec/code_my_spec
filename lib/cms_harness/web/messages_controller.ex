@@ -101,6 +101,20 @@ defmodule CmsHarness.Web.MessagesController do
   # whatever the server later does with the record of it.
   defp record(conn, request, response) do
     case working_copy(conn) do
+      # The request named a working copy and `from_id/1` could not resolve it,
+      # having already logged which and why. Saying anything more here is worse
+      # than saying nothing: the line below asserts the request named nothing,
+      # which is the opposite of what happened, and sends the reader to re-run
+      # onboarding when the actual cause was the server answering 500 mid-compile.
+      #
+      # Both lines were emitted for one request, one millisecond apart, on
+      # 2026-08-21. `from_id/1`'s own comment is the rule this restores —
+      # "saying which is the difference between 'the server is down' and 'this
+      # harness is misconfigured'" — which it said and then discarded by
+      # answering `nil` to both.
+      :unresolved ->
+        :ok
+
       nil ->
         Logger.warning(
           "[CmsHarness] turn not recorded: this request did not name a working copy and " <>
@@ -150,17 +164,22 @@ defmodule CmsHarness.Web.MessagesController do
 
       :unknown ->
         Logger.warning("[CmsHarness] turn not recorded: no working copy #{id}")
-        nil
+        :unresolved
 
       {:unreachable, reason} ->
         # Not fatal and not silent. The turn already reached the agent; what is
         # lost is the record of it, and saying which is the difference between
         # "the server is down" and "this harness is misconfigured".
+        #
+        # `:unresolved` rather than `nil` so `record/3` can keep that
+        # distinction. Answering `nil` here made this branch indistinguishable
+        # from a request that named nothing at all, and the caller then said so
+        # in as many words.
         Logger.warning(
           "[CmsHarness] turn not recorded: could not resolve #{id} (#{inspect(reason)})"
         )
 
-        nil
+        :unresolved
     end
   end
 
