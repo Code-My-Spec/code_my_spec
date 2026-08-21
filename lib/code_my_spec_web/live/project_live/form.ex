@@ -144,15 +144,20 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
         </div>
 
         <.form
-          :if={is_nil(@domain)}
+          :if={not @domain_registered?}
           for={%{}}
           phx-submit="setup_domain"
           data-test="add-domain-form"
           class="space-y-3 rounded-box bg-base-200 p-4"
         >
+          <p :if={@domain} class="text-sm opacity-70">
+            <span class="font-mono">{@domain}</span>
+            is set on the project but was never registered with the mail provider — submit
+            below to adopt it (or register a different one).
+          </p>
           <.input
             name="project[domain]"
-            value=""
+            value={@domain || ""}
             type="text"
             label="Sending domain"
             placeholder="inbound.yourdomain.com"
@@ -161,7 +166,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
         </.form>
 
         <div
-          :if={not @domain_verified? and not is_nil(@domain)}
+          :if={not @domain_verified? and @domain_registered?}
           data-test="domain-pending"
           class="space-y-3 rounded-box bg-base-200 p-4"
         >
@@ -255,6 +260,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     socket
     |> assign(:can_administer_domain?, Mail.can_administer?(socket.assigns.current_scope))
     |> assign(:domain, project && project.domain)
+    |> assign(:domain_registered?, Project.domain_registered?(project))
     |> assign(:domain_verified?, Project.domain_verified?(project))
     |> assign(:dns_records, [])
     |> assign(:domain_status, nil)
@@ -301,6 +307,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
          socket
          |> assign(:project, project)
          |> assign(:domain, project.domain)
+         |> assign(:domain_registered?, true)
          |> assign(:domain_verified?, Project.domain_verified?(project))
          |> assign(:dns_records, records)
          |> assign(

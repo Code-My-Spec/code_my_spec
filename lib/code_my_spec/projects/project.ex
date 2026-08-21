@@ -176,6 +176,18 @@ defmodule CodeMySpec.Projects.Project do
   def domain_verified?(%__MODULE__{domain_verified_at: %DateTime{}}), do: true
   def domain_verified?(_), do: false
 
+  @doc """
+  True once the project's sending domain has been registered with the mail
+  provider — `resend_domain_id` set.
+
+  Not the same question as `domain_verified?/1`, and not implied by it: a
+  project's `domain` field can be set by something other than
+  `Mail.setup_domain/3` (provisioning's own domain step reads it, it does not
+  write it), leaving a domain with no provider registration behind it at all.
+  """
+  def domain_registered?(%__MODULE__{resend_domain_id: id}), do: not is_nil(id)
+  def domain_registered?(_), do: false
+
   defp put_deploy_key_hash(changeset) do
     case fetch_change(changeset, :deploy_key) do
       {:ok, key} -> put_change(changeset, :deploy_key_hash, hash_deploy_key(key))
