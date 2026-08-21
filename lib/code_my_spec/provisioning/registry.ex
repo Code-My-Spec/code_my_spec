@@ -491,13 +491,27 @@ defmodule CodeMySpec.Provisioning.Registry do
 
   # Newest first. Tags sort no other way — they are short commit SHAs, not
   # timestamps — so recency only exists as the mtime the box already reads.
+  #
+  # A line whose first token is not an integer is not tag data — skip it
+  # rather than crash. `run.()` falls back to a real SSH runner whenever no
+  # `:run` override is supplied (see `prune_registry/3`), and a caller that
+  # reaches an address answering with anything other than this exact script's
+  # output (a banner, an error page, a stray log line) must not take the
+  # whole deploy down over a step the module's own moduledoc already
+  # documents as best-effort and non-fatal.
   defp parse_tag_listing(output) do
     output
     |> String.split("\n", trim: true)
     |> Enum.map(&String.split(&1, " ", parts: 2))
     |> Enum.filter(&match?([_, _], &1))
-    |> Enum.sort_by(fn [ts, _tag] -> String.to_integer(ts) end, :desc)
-    |> Enum.map(fn [_ts, tag] -> tag end)
+    |> Enum.flat_map(fn [ts, tag] ->
+      case Integer.parse(ts) do
+        {int, ""} -> [{int, tag}]
+        _ -> []
+      end
+    end)
+    |> Enum.sort_by(fn {ts, _tag} -> ts end, :desc)
+    |> Enum.map(fn {_ts, tag} -> tag end)
   end
 
   # The digest is read off the tag's own link file rather than asked of the

@@ -3156,6 +3156,30 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  An address inbound can probe deliverability against, so the step does not
+  take the pause `default_inbound_probe/3` correctly takes when none is
+  supplied (7df39199/2f8c4208 — a guessed address that failed delivery read
+  as a broken inbox, so setup asks a person instead of guessing one).
+
+  Threaded through `provisioning_step_opts`, the same app config every other
+  step-opts override in this file uses: `run_devops_setup`'s MCP schema has
+  no `inbound_probe_to` field, so this is the only path from a spex into a
+  full run started that way.
+  """
+  def inbound_probe_configured(address) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :inbound_probe_to, address)
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+    :ok
+  end
+
+  @doc """
   Publish an MX at the zone apex and register its removal.
 
   Criterion 8029 asserts that setting up *sending* leaves an existing inbound

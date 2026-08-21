@@ -220,6 +220,11 @@ config :code_my_spec, CodeMySpec.Intake,
 # ExUnit sandbox connection instead of racing the test process.
 config :code_my_spec, content_pull_async: false
 
+# Story 841/5ff00ca3: run devops setup synchronously in tests, same reasoning
+# — the spawned Task holds neither the Sandbox checkout nor Req.Test stub
+# allowances the test process set up.
+config :code_my_spec, provisioning_async: false
+
 # Analysis runs execute inline (caller process) in tests: sandbox-owned DB
 # connections, deterministic ordering, and the old synchronous stop-hook
 # semantics for existing tests. The async ProjectServer path is exercised

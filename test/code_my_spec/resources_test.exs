@@ -16,6 +16,14 @@ defmodule CodeMySpec.ResourcesTest do
   # module runs `async: false`: two tests mutating the same global config
   # concurrently would race each other exactly like the bug under test.
   setup do
+    # `config/test.exs` runs `start_fix/2` inline everywhere else, same
+    # reasoning as `content_pull_async: false` — but that is precisely the
+    # behavior this module exists to prove is NOT what happens. Forced back
+    # on here, locally, so these tests still see the real handoff.
+    previous_async = Application.get_env(:code_my_spec, :provisioning_async, true)
+    Application.put_env(:code_my_spec, :provisioning_async, true)
+    on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_async, previous_async) end)
+
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
     Application.put_env(:code_my_spec, :provisioning_step_opts,

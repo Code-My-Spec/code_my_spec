@@ -58,6 +58,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
         # carries `bin/backup`, which is the script this criterion is about.
         deploy_ready_checkout(context)
 
+        # And an address inbound can prove delivery to. `inbound` runs before
+        # `backups` in the sequence, and 7df39199/2f8c4208 correctly stopped
+        # it from guessing an address — without this it pauses ("waiting on
+        # a person, not broken") and backups, the thing this criterion is
+        # about, never runs either.
+        :ok = inbound_probe_configured("sam@c1968.legwork.ca")
+
         # Run, not asserted. Backups being in place is what the criterion is
         # about, so the run that would put them there has to actually happen.
         frame = %Frame{assigns: %{current_scope: context.scope}}

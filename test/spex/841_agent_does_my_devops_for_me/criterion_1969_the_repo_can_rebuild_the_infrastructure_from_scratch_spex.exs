@@ -50,6 +50,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
         # rebuild *finishes* has to say where that came from.
         visitor_message_from(context, "https://c1969.legwork.ca")
 
+        # And an address inbound can prove delivery to — 7df39199/2f8c4208
+        # correctly stopped the step from guessing one, so without this it
+        # pauses and storage/backups/content/callback_credential behind it
+        # never run either, same reasoning as `visitor_message_from` above.
+        :ok = inbound_probe_configured("sam@c1969.legwork.ca")
+
         # "From scratch" is the premise, so nothing is provisioned — this
         # scenario never runs setup before the `when_`. What has to be
         # established is the other half: the repo actually carries the

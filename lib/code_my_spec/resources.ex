@@ -226,9 +226,28 @@ defmodule CodeMySpec.Resources do
   # waiting on the run itself. `RunLock.with_lock/2`'s `Registry.register/3`
   # is the atomic step; the ack just carries its result back across process
   # boundaries so this function can return synchronously with an answer.
+  #
+  # In tests, run inline instead — same reasoning as `content_pull_async:
+  # false`. The spawned Task is a genuinely different process, so it holds
+  # neither the Ecto Sandbox checkout nor the Req.Test stub allowances the
+  # test process set up; against fakes there is nothing to wait for anyway,
+  # so running synchronously costs nothing and shares both.
   defp start_fix(scope, project) do
     project_scope = project_scope(scope, project)
     options = Provisioning.setup_options(project)
+
+    if Application.get_env(:code_my_spec, :provisioning_async, true) do
+      start_fix_async(project_scope, project, options)
+    else
+      RunLock.with_lock(project.id, fn -> Provisioning.run(project_scope, options, step_opts()) end)
+      |> case do
+        {:error, {:already_running, _}} = refused -> refused
+        _finished -> {:ok, :started}
+      end
+    end
+  end
+
+  defp start_fix_async(project_scope, project, options) do
     parent = self()
     ref = make_ref()
 

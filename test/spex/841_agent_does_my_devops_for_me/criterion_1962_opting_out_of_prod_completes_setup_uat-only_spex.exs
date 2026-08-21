@@ -62,6 +62,14 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
         # the origin check exists to draw.
         visitor_message_from(context, "https://uat.c1962.legwork.ca")
 
+        # And an address inbound can prove delivery to — 7df39199/2f8c4208
+        # correctly stopped the step from guessing one, so without this it
+        # pauses ("waiting on a person, not broken") and storage/backups/
+        # content/callback_credential behind it never run either. A
+        # criterion asserting setup *finishes* has to supply what a person
+        # would, same reasoning as `visitor_message_from` above.
+        :ok = inbound_probe_configured("sam@c1962.legwork.ca")
+
         # Production is off from `setup :devops_uat_only`. UAT is provisioned by
         # running setup — the criterion is about what is true afterwards, so
         # something has to make it true.
