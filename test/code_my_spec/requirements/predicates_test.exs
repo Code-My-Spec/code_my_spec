@@ -413,14 +413,20 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       assert interpreted
     end
 
-    # The guard for the limit documented on `satisfied/4`: both field checks
+    # The guard for the limit documented on `satisfied/4`: these checks all
     # correlate through `story_id`, so one on a component or project would read
     # unsatisfied forever. Under-satisfying is the safe direction, but silently
     # is not — this fails when someone adds one, which is the moment to decide
     # whether to grow the predicate or leave that definition interpreted.
-    test "no field check has escaped the story graph" do
+    #
+    # `:component_exists` is in the list for the same reason the other two are:
+    # it joins `parent_as(:node).story_id`. It is not a field check, but the
+    # limit it shares is what this guards.
+    test "no story-correlated check has escaped the story graph" do
       field_checks = fn defs ->
-        for d <- defs, d.check_type in [:field_present, :field_true], do: d.name
+        for d <- defs,
+            d.check_type in [:field_present, :field_true, :component_exists],
+            do: d.name
       end
 
       # Guard against the assertion below passing on empty lists: if these

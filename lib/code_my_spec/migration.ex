@@ -35,6 +35,7 @@ defmodule CodeMySpec.Migration do
     Stories
   }
 
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Users.Scope
@@ -44,67 +45,6 @@ defmodule CodeMySpec.Migration do
   @doc "Kinds the harness recomputes, which this deliberately does not carry."
   @spec derived_kinds() :: [String.t()]
   def derived_kinds, do: @derived
-
-  @doc """
-  Link migrated stories to the components they name, once those components exist.
-
-  The last step of a migration, and the only one that cannot run during it.
-  Components are `@derived` — this module deliberately does not carry them,
-  because the destination rebuilds them from the working copy — so `import_project/2`
-  resolves each story's `component_module_name` against the components that exist
-  at import time, which on a first migration is none of them. The working copy
-  has not synced yet.
-
-  Measured 2026-08-21 on Broken Oaths: 52 stories arrived, 38 of them linked in
-  the source and 0 in the destination, against 171 components that showed up
-  minutes later and matched by name exactly — all 13 distinct module names, none
-  missing. `analyze_story_linkage` reported every story unlinked and
-  `get_next_requirement` offered `architecture_designed`, as though the project
-  had never been mapped. The export's own comment predicted the shape: "a
-  migrated project reports 0/0 satisfied for everything, which reads as 'nothing
-  is done' rather than 'nothing is linked'".
-
-  Explicit, and run once. Not folded into `Files.ComponentSync`, which is where
-  it first went: that runs on every sync of every project, several times a
-  minute, to do something that matters once in a project's life. Work that
-  matters once should not be paid for continuously, and a rule that only ever
-  fires for one project is one nobody reading the sync path would expect to find
-  there.
-
-  Only stories whose `component_id` is null. A story someone has since pointed
-  somewhere else is not re-pointed: the destination is authoritative once
-  anybody edits the link there, the same rule this module already applies to
-  title, narrative and description.
-
-  Returns the number of stories linked, so the caller can say so.
-  """
-  @spec relink_components(Scope.t()) :: {:ok, non_neg_integer()}
-  def relink_components(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    components = component_ids_by_module(%Scope{active_project_id: project_id})
-
-    linked =
-      Stories.Story
-      |> where([s], s.project_id == ^project_id)
-      |> where([s], is_nil(s.component_id) and not is_nil(s.component_module_name))
-      |> select([s], {s.id, s.component_module_name})
-      |> Repo.all()
-      |> Enum.reduce(0, fn {story_id, module_name}, acc ->
-        acc + link_one(story_id, Map.get(components, module_name))
-      end)
-
-    {:ok, linked}
-  end
-
-  defp link_one(_story_id, nil), do: 0
-
-  defp link_one(story_id, component_id) do
-    {count, _} =
-      Stories.Story
-      |> where([s], s.id == ^story_id and is_nil(s.component_id))
-      |> Repo.update_all(set: [component_id: component_id])
-
-    count
-  end
 
   @doc """
   Read one project's authored graph off the local harness.
@@ -458,11 +398,9 @@ defmodule CodeMySpec.Migration do
 
   defp put_stories(scope, stories, epics) do
     known = scope |> project_stories() |> index_stories()
-    components = component_ids_by_module(scope)
-
     stories
     |> Enum.reduce_while({:ok, %{}, %{}}, fn story, {:ok, acc, made} ->
-      case put_story(scope, story, known, made, components, epics) do
+      case put_story(scope, story, known, made, epics) do
         {:ok, created} ->
           {:cont,
            {:ok, Map.put(acc, story["local_id"], created),
@@ -494,9 +432,9 @@ defmodule CodeMySpec.Migration do
   #     a unique index, and no import can decide which of Sam's stories to
   #     keep. Adopting one for the other is the silent merge `match_by_title`
   #     already refuses; this says so instead, naming both.
-  defp put_story(scope, story, known, made, components, epics) do
+  defp put_story(scope, story, known, made, epics) do
     case Map.get(made, story["title"]) do
-      nil -> create_or_relink(scope, story, known, components, epics)
+      nil -> create_or_relink(scope, story, known, epics)
       {local_id, created} -> adopt_or_conflict(local_id, created, story)
     end
   end
@@ -507,16 +445,16 @@ defmodule CodeMySpec.Migration do
     {:error, {:duplicate_title, story["title"], local_id, story["local_id"]}}
   end
 
-  defp create_or_relink(scope, story, known, components, epics) do
+  defp create_or_relink(scope, story, known, epics) do
     case find_existing(known, story) do
       %{} = already ->
-        relink(scope, already, components, epics, story)
+        relink(scope, already, epics, story)
 
       nil ->
         story
         |> attrs(Stories.Story)
         |> put_ref(:epic_id, epics[story["epic_local_id"]])
-        |> put_component(components, story["component_module_name"])
+        |> put_component(scope, story["component_module_name"])
         |> Map.put(:migrated_from_id, story["local_id"])
         |> then(&Stories.create_story(scope, &1))
     end
@@ -537,9 +475,9 @@ defmodule CodeMySpec.Migration do
   # edited at the destination once a project has moved, and the source stops
   # being authoritative about them the moment somebody does. Readiness and
   # priority are the migration's business until the move is finished.
-  defp relink(scope, story, components, epics, payload) do
+  defp relink(scope, story, epics, payload) do
     story
-    |> resync_attrs(components, epics, payload)
+    |> resync_attrs(scope, epics, payload)
     |> case do
       changes when map_size(changes) == 0 -> {:ok, story}
       changes -> Stories.update_story(scope, story, changes)
@@ -562,18 +500,11 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  defp resync_attrs(story, components, epics, payload) do
+  defp resync_attrs(story, scope, epics, payload) do
     epic = epics[payload["epic_local_id"]]
 
-    module_name = payload["component_module_name"]
-
     %{}
-    |> put_changed(story, :component_id, Map.get(components, module_name || :none))
-    # Recorded whether or not it resolved. On a first migration it resolves to
-    # nothing — the components arrive with the working copy's first sync, after
-    # this runs — and this is what lets `Files.ComponentSync` finish the job
-    # then instead of the link being lost for good.
-    |> put_changed(story, :component_module_name, module_name)
+    |> put_changed(story, :component_id, component_id(scope, payload["component_module_name"]))
     |> put_changed(story, :epic_id, epic && epic.id)
     |> put_changed(story, :ready_for_dev, payload["ready_for_dev"])
     |> put_changed(story, :specs_ready, payload["specs_ready"])
@@ -634,31 +565,43 @@ defmodule CodeMySpec.Migration do
   # arrives with the next scan — and the story can be linked then — or it never
   # existed here, and a component conjured from a name would be a fiction the
   # requirement graph would then compute against.
-  defp put_component(attrs, _components, nil), do: attrs
-
-  # The name is recorded whether or not it resolves; the id only when it does.
-  #
-  # On a first migration nothing resolves — components are `@derived`, so the
-  # destination has none until the working copy syncs, which happens after this
-  # runs. Recording the name is what lets `Files.ComponentSync` finish the link
-  # then. Before it, the answer was computed once at the only moment it could
-  # not be known and thrown away.
-  defp put_component(attrs, components, module_name) do
-    attrs
-    |> Map.put(:component_module_name, module_name)
-    |> put_component_id(Map.get(components, module_name))
+  defp put_component(attrs, scope, module_name) do
+    put_component_id(attrs, component_id(scope, module_name))
   end
 
   defp put_component_id(attrs, nil), do: attrs
   defp put_component_id(attrs, id), do: Map.put(attrs, :component_id, id)
 
-  defp component_ids_by_module(%Scope{active_project_id: project_id}) do
-    CodeMySpec.Components.Component
-    |> where([c], c.project_id == ^project_id)
-    |> select([c], {c.module_name, c.id})
-    |> Repo.all()
-    |> Map.new()
-  end
+  # Computed, not looked up.
+  #
+  # A component's id is a pure function of its project and its module name —
+  # `Component.deterministic_id/2`, a UUIDv5 over
+  # `project:<project_id>:module:<module_name>` — so the destination can name the
+  # component this story belongs to without that component existing yet.
+  #
+  # It has to be able to. Components are `@derived`: this module deliberately
+  # does not carry them, because the destination rebuilds them from the working
+  # copy on first sync — which happens *after* the import. Looking the id up in
+  # the components table meant asking a question at the one moment it could not
+  # be answered, and every story on a first migration landed unlinked. Broken
+  # Oaths arrived with 52 stories, 38 linked in the source and 0 in the
+  # destination, against 171 components that showed up minutes later and matched
+  # by name exactly.
+  #
+  # The id cannot simply travel, for the same reason it can be computed: the
+  # project id is part of it, and a migration changes the project. The same
+  # module is a different id on the far side, so a carried id would name a row
+  # nothing will ever create — and `stories.component_id` has no foreign key to
+  # catch that.
+  #
+  # A story pointing at a component that never syncs reads *unsatisfied* rather
+  # than falsely linked: `component_linked` checks that the component exists,
+  # not merely that the field is set.
+  defp component_id(_scope, nil), do: nil
+  defp component_id(_scope, ""), do: nil
+
+  defp component_id(%Scope{active_project_id: project_id}, module_name),
+    do: Component.deterministic_id(project_id, module_name)
 
   # Idempotence by natural key rather than by remembering local ids. Migrating
   # twice must not produce two of anything, and the second run has no memory of

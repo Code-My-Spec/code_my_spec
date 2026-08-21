@@ -700,8 +700,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         id: 1,
         name: "component_linked",
         node_scope: :self,
-        check_type: :field_present,
-        config: %{field: :component_id},
+        # Not `:field_present` on `component_id`. The migration computes a
+        # component's id rather than looking it up — it is a pure function of the
+        # project and the module name — so a story can carry a correct id for a
+        # component the working copy has not synced yet. Presence would call that
+        # linked; this asks whether the component is actually there, and becomes
+        # satisfied on its own when the sync creates it.
+        check_type: :component_exists,
+        config: %{},
         satisfied_by: AgentTasks.ArchitectureDesign,
         artifact_type: :dependencies,
         description: "Story has a linked surface component",

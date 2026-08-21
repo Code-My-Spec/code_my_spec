@@ -102,6 +102,24 @@ defmodule CodeMySpec.Components.Component do
 
   # Generates a deterministic UUID v5 based on the module_name and project_id.
   # This ensures the same module in the same project always gets the same ID.
+  @doc """
+  The id a component has, given the project it belongs to and its module name.
+
+  A pure function of the two, so anyone holding both can name a component
+  without the row existing yet — which is what lets a migration link a story to
+  a component the destination has not synced from its working copy.
+
+  Scoped by project on purpose: two projects may each have a `MyApp.Accounts`,
+  and they are different components. That is also why an id cannot travel across
+  a migration — the project id changes, so the same module is a different id on
+  the far side, and a carried id would name a row nothing will ever create.
+  """
+  @spec deterministic_id(Ecto.UUID.t(), String.t()) :: Ecto.UUID.t()
+  def deterministic_id(project_id, module_name)
+      when is_binary(project_id) and is_binary(module_name) do
+    UUID.uuid5(@component_namespace_uuid, "project:#{project_id}:module:#{module_name}")
+  end
+
   @spec generate_deterministic_id(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   defp generate_deterministic_id(changeset) do
     # Only generate ID for new records (inserts)
@@ -110,13 +128,7 @@ defmodule CodeMySpec.Components.Component do
       project_id = get_field(changeset, :project_id)
 
       if module_name && project_id do
-        # Create a unique name combining project_id and module_name
-        unique_name = "project:#{project_id}:module:#{module_name}"
-
-        # Generate UUID v5 from namespace and unique name using the UUID library
-        uuid = UUID.uuid5(@component_namespace_uuid, unique_name)
-
-        put_change(changeset, :id, uuid)
+        put_change(changeset, :id, deterministic_id(project_id, module_name))
       else
         changeset
       end

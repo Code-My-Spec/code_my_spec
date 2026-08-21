@@ -76,6 +76,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :path_exists,
     :field_present,
     :field_true,
+    # A story's component resolves to a row that is there.
+    #
+    # Distinct from `:field_present` on `component_id`, which cannot tell a link
+    # from a pointer. The migration computes component ids rather than looking
+    # them up — an id is a pure function of the project and the module name — so
+    # a story can carry a correct id for a component the working copy has not
+    # synced yet. Presence would call that linked.
+    :component_exists,
     :no_problems,
     :tests_passing,
     :delegate,

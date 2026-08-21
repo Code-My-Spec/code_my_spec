@@ -72,6 +72,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Stories.Story
 
   @doc """
@@ -137,6 +138,7 @@ defmodule CodeMySpec.Requirements.Predicates do
           :file_exists
           | :file_valid
           | :path_exists
+          | :component_exists
           | :field_present
           | :field_true
           | :deployed
@@ -221,6 +223,44 @@ defmodule CodeMySpec.Requirements.Predicates do
       _ ->
         where(query, [node: _n], fragment("FALSE"))
     end
+  end
+
+  # A story is linked when the component it points at exists, not merely when the
+  # field is set.
+  #
+  # `:field_present` could not tell those apart, and the difference became load
+  # bearing once the migration started computing component ids rather than
+  # looking them up. A component's id is a pure function of its project and
+  # module name, so the import can name the component a story belongs to before
+  # the working copy has synced it — which is the whole point, since components
+  # are rebuilt at the destination and arrive after the import. The id is right;
+  # the row is not there yet.
+  #
+  # Under `:field_present` that reads satisfied: the requirement reports a story
+  # linked to a component nobody can open. This module's own rule is the other
+  # way round — "under-satisfying is the safe failure … the reverse would report
+  # a requirement done that nobody did" — so it asks whether the component is
+  # there, and flips to satisfied on its own when the sync creates it.
+  #
+  # It also retires a real defect rather than only guarding a new path.
+  # `stories.component_id` has no foreign key to `components`, so a deleted
+  # component leaves its stories pointing at nothing; `Migration`'s own comment
+  # records "nine stories came to point at components that no longer existed",
+  # and every one of them read as linked. Measured before this landed: 117
+  # linked stories, 0 dangling — so nothing in the field changes today.
+  def satisfied(query, :component_exists, _config, _harness_id) do
+    where(
+      query,
+      [node: n],
+      exists(
+        from(s in Story,
+          join: c in Component,
+          on: c.id == s.component_id,
+          where: s.id == parent_as(:node).story_id,
+          select: 1
+        )
+      )
+    )
   end
 
   def satisfied(query, :field_present, config, _harness_id) do

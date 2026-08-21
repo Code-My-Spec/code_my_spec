@@ -9,6 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:file_exists`   — File record with configured role exists
   - `:file_valid`    — File record with configured role has valid: true
   - `:path_exists`   — File at configured path exists in project file list
+  - `:component_exists` — Story's `component_id` resolves to a component that exists
   - `:field_present` — Field on entity struct is not nil
   - `:field_true`    — Boolean field on entity struct is exactly `true`
   - `:no_problems`   — Zero Problem records from configured source
@@ -82,6 +83,27 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # The story's component is linked when it resolves to a component that exists,
+  # not when the field is merely set.
+  #
+  # A component's id is a pure function of its project and module name, so the
+  # migration computes it rather than looking it up — which lets a story name the
+  # component it belongs to before the working copy has synced it. The id is
+  # right; the row is not there yet, and `:field_present` would call that linked.
+  #
+  # The two reasons are different work: nothing to point at is an architecture
+  # question, and pointing at something absent resolves itself when the sync
+  # runs. Saying which is the difference between "map this story" and "wait".
+  defp check(%{check_type: :component_exists}, scope, entity, _files, _ctx) do
+    case Map.get(entity, :component_id) do
+      nil ->
+        {false, %{reason: "component_id is not set"}}
+
+      component_id ->
+        component_exists_details(scope, component_id)
+    end
+  end
+
   defp check(%{check_type: :field_present, config: config}, _scope, entity, _files, _ctx) do
     field = config_field(config)
     value = Map.get(entity, field)
@@ -90,6 +112,22 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       {false, %{reason: "#{field} is not set"}}
     else
       {true, %{status: "#{field} is set"} |> Map.put(field, value)}
+    end
+  end
+
+  defp component_exists_details(scope, component_id) do
+    case Repo.get_by(Component, id: component_id, project_id: scope.active_project_id) do
+      nil ->
+        {false,
+         %{
+           reason:
+             "component #{component_id} does not exist yet — it is named correctly and " <>
+               "appears when the working copy syncs the module it projects from",
+           component_id: component_id
+         }}
+
+      _component ->
+        {true, %{status: "component_id is set", component_id: component_id}}
     end
   end
 
