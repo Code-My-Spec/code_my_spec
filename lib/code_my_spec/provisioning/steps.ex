@@ -4563,20 +4563,35 @@ defmodule CodeMySpec.Provisioning.Steps do
   # shape either way, so a re-run that only *adopts* an already-enabled
   # webhook carries no secret to seed — nothing was lost, there was never
   # anything here to place. 04349864.
+  #
+  # Best-effort, deliberately: this only makes the controller's own
+  # already-safe fallback unnecessary, it does not make inbound work — a
+  # sops failure seeding it (a fresh environment whose secrets file was never
+  # touched, a runner sops genuinely cannot reach) must not fail the step
+  # that just finished proving a real message was delivered end to end. Logged
+  # rather than silent, so it does not vanish the way a swallowed error would.
   defp seed_webhook_secret(scope, %{"signing_secret" => secret})
        when is_binary(secret) and secret != "" do
-    scope
-    |> EnvironmentRepository.names()
-    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-      case put_secret(scope, environment, "RESEND_WEBHOOK_SECRET", secret) do
-        {:ok, _} ->
-          resource = %{kind: "secret", location: "#{environment}/RESEND_WEBHOOK_SECRET"}
-          {:cont, {:ok, [resource | acc]}}
+    resources =
+      scope
+      |> EnvironmentRepository.names()
+      |> Enum.flat_map(fn environment ->
+        case put_secret(scope, environment, "RESEND_WEBHOOK_SECRET", secret) do
+          {:ok, _} ->
+            [%{kind: "secret", location: "#{environment}/RESEND_WEBHOOK_SECRET"}]
 
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
+          {:error, reason} ->
+            Logger.warning(
+              "[Steps] could not seed RESEND_WEBHOOK_SECRET for #{environment}: " <>
+                "#{inspect(reason)} — inbound still works, signature verification " <>
+                "stays off until this is seeded"
+            )
+
+            []
+        end
+      end)
+
+    {:ok, resources}
   end
 
   defp seed_webhook_secret(_scope, _webhook), do: {:ok, []}
