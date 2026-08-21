@@ -209,7 +209,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     bootstrap_local_dev_env(root)
 
     with {:ok, id} <- identity(env, root),
-         :ok <- record_deploy_key(root, id),
          :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
       outstanding(root, id, git)
@@ -295,56 +294,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
 
     :ok
-  end
-
-  # Written into the copy's own `.cms_harness.json`, beside the identity it
-  # authenticates.
-  #
-  # Exporting `CMS_DEPLOY_KEY` serves this task's own HTTP calls and dies with
-  # the process. The daemon that serves this copy afterwards needs a key too,
-  # and a deploy key reaches exactly one project while one daemon serves several
-  # working copies — so the key has to be somewhere per copy, and this file is
-  # already the per-copy answer to "what is this checkout". `.gitignore` names
-  # it, and `HarnessConfig.write/2` sets `0600`.
-  #
-  # Recorded even when `CMS_DEPLOY_KEY` is already exported, which is the case
-  # that matters: onboarding a second project's checkout from a shell carrying
-  # the first project's key. The exported one is wrong for this copy by
-  # construction; the row in the database is right.
-  #
-  # Best-effort, like the export. A machine with no local database to read the
-  # key from onboards exactly as before and is served by whatever the daemon
-  # holds — which is correct whenever that is this project's key.
-  defp record_deploy_key(root, harness_id) do
-    with {:ok, project} <- ProjectIdentity.resolve(root),
-         key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
-      write_deploy_key(root, harness_id, project, key)
-    else
-      _ -> :ok
-    end
-  end
-
-  defp write_deploy_key(root, harness_id, project, key) do
-    config = %{harness_id: harness_id, project_id: project.id, deploy_key: key, root: root}
-
-    case HarnessConfig.write(root, config) do
-      :ok ->
-        # Said, because onboarding's rule is that its output is enough to finish
-        # the job. A harness that cannot serve this copy fails much later and
-        # somewhere else — "channel down, server answering 200" — and nothing
-        # there points back here.
-        Mix.shell().info("  recorded this project's deploy key in .cms_harness.json")
-        :ok
-
-      {:error, reason} ->
-        Mix.shell().info(
-          "  note: could not record this project's deploy key (#{inspect(reason)}). " <>
-            "The harness will fall back to CMS_DEPLOY_KEY, which reaches whichever " <>
-            "project that key belongs to."
-        )
-
-        :ok
-    end
   end
 
   defp blank?(nil), do: true
@@ -695,7 +644,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       io: io(env),
       app: target_app(root),
       harness_id: id,
-      relay_model_turns: relay_model_turns?
+      relay_model_turns: relay_model_turns?,
+      deploy_key: deploy_key_for(root)
     ]
 
     opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
@@ -703,6 +653,31 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     case Onboarding.onboard(root, opts) do
       %{settings: {:ok, _path}} -> :ok
       %{settings: {:error, reason}} -> {:error, describe_settings_error(reason)}
+    end
+  end
+
+  # This project's own key, read out of the database this machine already has —
+  # a local dev server and this task read the same `code_my_spec_dev`, so there
+  # is nothing to keep in sync. `onboard/2` records it in `.cms_harness.json`,
+  # so the daemon that serves this copy afterwards can authenticate *as this
+  # project*: a deploy key reaches exactly one, and one daemon serves several
+  # working copies.
+  #
+  # Read even when `CMS_DEPLOY_KEY` is already exported, which is the case that
+  # matters — onboarding a second project's checkout from a shell carrying the
+  # first project's key. The exported one is wrong for this copy by
+  # construction; the row in the database is right.
+  #
+  # `nil` is ordinary and not an error: no local database, a project it does not
+  # know, or a project with no key generated yet. `onboard/2` then leaves any key
+  # already recorded alone, and the copy is served by whatever the daemon holds
+  # — which is correct whenever that is this project's key.
+  defp deploy_key_for(root) do
+    with {:ok, project} <- ProjectIdentity.resolve(root),
+         key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
+      key
+    else
+      _ -> nil
     end
   end
 
