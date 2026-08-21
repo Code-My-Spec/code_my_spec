@@ -240,7 +240,7 @@ defmodule CodeMySpec.Files.Scanner do
       {:error, reason} ->
         Map.merge(entry, %{
           valid: false,
-          validation_errors: %{error: "Read failed: #{inspect(reason)}"}
+          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
         })
     end
   end
@@ -284,7 +284,7 @@ defmodule CodeMySpec.Files.Scanner do
       {:error, reason} ->
         Map.merge(entry, %{
           valid: false,
-          validation_errors: %{error: "Read failed: #{inspect(reason)}"}
+          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
         })
     end
   end
@@ -724,11 +724,11 @@ defmodule CodeMySpec.Files.Scanner do
         Map.merge(entry, %{valid: true, validation_errors: component_data(content)})
 
       {:error, error} ->
-        Map.merge(entry, %{valid: false, validation_errors: %{error: to_string(error)}})
+        Map.merge(entry, %{valid: false, validation_errors: %{"error" => to_string(error)}})
     end
   rescue
     e ->
-      Map.merge(entry, %{valid: false, validation_errors: %{error: Exception.message(e)}})
+      Map.merge(entry, %{valid: false, validation_errors: %{"error" => Exception.message(e)}})
   end
 
   # Extract document type from spec content's ## Type section.
