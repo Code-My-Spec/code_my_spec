@@ -35,6 +35,21 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
   spex "Old images stop costing money without anyone remembering to delete them" do
     scenario "the registry expires old images on its own" do
       given_ "Sam has deployed, so an image exists", context do
+        # The bucket lifecycle rule is `retention_enforced?/1`'s :s3 branch —
+        # `:filesystem` (the default `Keyword.get(opts, :storage, :filesystem)`
+        # falls back to) creates no bucket and installs no rule, so a
+        # criterion about *that* mechanism specifically has to opt into it,
+        # the same way registry_test.exs's own unit tests do.
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :storage, :s3)
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
         {:ok, built_deploy_run(context)}
       end
 
