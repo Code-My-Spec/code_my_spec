@@ -170,15 +170,47 @@ defmodule CmsHarness.ProjectIdentityTest do
   # inherited is much harder to diagnose from the inside than one that starts
   # and names which of the two it took — and the line has to name the file, or
   # the reader cannot tell which of the copy's two identity files answered.
+  #
+  # Said by `log_env_disagreement/1` rather than by `resolve/1`, and the split
+  # is the point. `resolve/1` runs once per working copy *per resolution* —
+  # every hook, every operation — so a permanent disagreement said itself
+  # forever: 787 identical warnings in two hours on one machine. It is now
+  # emitted from `Projects.ensure_started/1`'s serving branch, which is reached
+  # once per root per daemon, the rate this fact actually changes at.
   test "a harness file disagreeing with the shell is logged, naming the file" do
+    project = project_dir()
+    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
+    System.put_env("CMS_PROJECT_ID", "999")
+
+    {:ok, resolved} = ProjectIdentity.resolve(project.root)
+
+    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.log_env_disagreement(resolved) end)
+
+    assert log =~ ".cms_harness.json"
+    assert log =~ "999"
+  end
+
+  # The half that keeps the fix honest: resolving is silent, so the number of
+  # these lines tracks working copies rather than hook traffic.
+  test "resolving does not log the disagreement on every call" do
     project = project_dir()
     File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
     System.put_env("CMS_PROJECT_ID", "999")
 
     log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.resolve(project.root) end)
 
-    assert log =~ ".cms_harness.json"
-    assert log =~ "999"
+    refute log =~ "CMS_PROJECT_ID says"
+  end
+
+  test "and there is nothing to say when the two agree" do
+    project = project_dir(project_id: 712)
+    System.put_env("CMS_PROJECT_ID", "712")
+
+    {:ok, resolved} = ProjectIdentity.resolve(project.root)
+
+    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.log_env_disagreement(resolved) end)
+
+    refute log =~ "CMS_PROJECT_ID says"
   end
 
   # The genuine sprite: no config, no harness file of its own — the file the
