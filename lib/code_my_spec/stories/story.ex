@@ -77,6 +77,27 @@ defmodule CodeMySpec.Stories.Story do
     # number names different stories on either side and nothing errors.
     field :migrated_from_id, :integer
 
+    # Which module this story is about, as opposed to which component row.
+    #
+    # Components are projections of files, rebuilt per deployment, so their ids
+    # differ across a migration and the module name is what both sides agree on
+    # — the natural key `components_module_name_project_id_index` enforces. The
+    # wire format has always used it; this is where the destination keeps it.
+    #
+    # It has to be kept because the component may not exist yet. The migration
+    # deliberately does not carry components, and the working copy that produces
+    # them syncs *after* the import — so on a first migration the import resolves
+    # every module name against an empty set. Without somewhere to put the
+    # answer, the link is simply lost: 38 of Broken Oaths' 52 linked stories
+    # arrived unlinked on 2026-08-21, against components that showed up minutes
+    # later and matched by name exactly.
+    #
+    # `Files.ComponentSync` fills `component_id` from this once the component
+    # appears. Cleared when someone sets the link at the destination, because at
+    # that point the destination is authoritative — the same rule the migration
+    # already applies to title, narrative and description.
+    field :component_module_name, :string
+
     # The durable name for this story, as opposed to `id`, which is a
     # per-deployment sequence that renumbers on migration. Spex directories and
     # QA folders are named from this, so a file on disk keeps pointing at the
@@ -150,6 +171,7 @@ defmodule CodeMySpec.Stories.Story do
       :component_id,
       :epic_id,
       :migrated_from_id,
+      :component_module_name,
       :number
     ])
     |> sync_story_and_description()

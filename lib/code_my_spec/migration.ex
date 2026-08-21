@@ -46,6 +46,67 @@ defmodule CodeMySpec.Migration do
   def derived_kinds, do: @derived
 
   @doc """
+  Link migrated stories to the components they name, once those components exist.
+
+  The last step of a migration, and the only one that cannot run during it.
+  Components are `@derived` — this module deliberately does not carry them,
+  because the destination rebuilds them from the working copy — so `import_project/2`
+  resolves each story's `component_module_name` against the components that exist
+  at import time, which on a first migration is none of them. The working copy
+  has not synced yet.
+
+  Measured 2026-08-21 on Broken Oaths: 52 stories arrived, 38 of them linked in
+  the source and 0 in the destination, against 171 components that showed up
+  minutes later and matched by name exactly — all 13 distinct module names, none
+  missing. `analyze_story_linkage` reported every story unlinked and
+  `get_next_requirement` offered `architecture_designed`, as though the project
+  had never been mapped. The export's own comment predicted the shape: "a
+  migrated project reports 0/0 satisfied for everything, which reads as 'nothing
+  is done' rather than 'nothing is linked'".
+
+  Explicit, and run once. Not folded into `Files.ComponentSync`, which is where
+  it first went: that runs on every sync of every project, several times a
+  minute, to do something that matters once in a project's life. Work that
+  matters once should not be paid for continuously, and a rule that only ever
+  fires for one project is one nobody reading the sync path would expect to find
+  there.
+
+  Only stories whose `component_id` is null. A story someone has since pointed
+  somewhere else is not re-pointed: the destination is authoritative once
+  anybody edits the link there, the same rule this module already applies to
+  title, narrative and description.
+
+  Returns the number of stories linked, so the caller can say so.
+  """
+  @spec relink_components(Scope.t()) :: {:ok, non_neg_integer()}
+  def relink_components(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    components = component_ids_by_module(%Scope{active_project_id: project_id})
+
+    linked =
+      Stories.Story
+      |> where([s], s.project_id == ^project_id)
+      |> where([s], is_nil(s.component_id) and not is_nil(s.component_module_name))
+      |> select([s], {s.id, s.component_module_name})
+      |> Repo.all()
+      |> Enum.reduce(0, fn {story_id, module_name}, acc ->
+        acc + link_one(story_id, Map.get(components, module_name))
+      end)
+
+    {:ok, linked}
+  end
+
+  defp link_one(_story_id, nil), do: 0
+
+  defp link_one(story_id, component_id) do
+    {count, _} =
+      Stories.Story
+      |> where([s], s.id == ^story_id and is_nil(s.component_id))
+      |> Repo.update_all(set: [component_id: component_id])
+
+    count
+  end
+
+  @doc """
   Read one project's authored graph off the local harness.
 
   Reads through the contexts rather than the database, because the local
@@ -504,12 +565,15 @@ defmodule CodeMySpec.Migration do
   defp resync_attrs(story, components, epics, payload) do
     epic = epics[payload["epic_local_id"]]
 
+    module_name = payload["component_module_name"]
+
     %{}
-    |> put_changed(
-      story,
-      :component_id,
-      Map.get(components, payload["component_module_name"] || :none)
-    )
+    |> put_changed(story, :component_id, Map.get(components, module_name || :none))
+    # Recorded whether or not it resolved. On a first migration it resolves to
+    # nothing — the components arrive with the working copy's first sync, after
+    # this runs — and this is what lets `Files.ComponentSync` finish the job
+    # then instead of the link being lost for good.
+    |> put_changed(story, :component_module_name, module_name)
     |> put_changed(story, :epic_id, epic && epic.id)
     |> put_changed(story, :ready_for_dev, payload["ready_for_dev"])
     |> put_changed(story, :specs_ready, payload["specs_ready"])
@@ -572,8 +636,18 @@ defmodule CodeMySpec.Migration do
   # requirement graph would then compute against.
   defp put_component(attrs, _components, nil), do: attrs
 
-  defp put_component(attrs, components, module_name),
-    do: put_component_id(attrs, Map.get(components, module_name))
+  # The name is recorded whether or not it resolves; the id only when it does.
+  #
+  # On a first migration nothing resolves — components are `@derived`, so the
+  # destination has none until the working copy syncs, which happens after this
+  # runs. Recording the name is what lets `Files.ComponentSync` finish the link
+  # then. Before it, the answer was computed once at the only moment it could
+  # not be known and thrown away.
+  defp put_component(attrs, components, module_name) do
+    attrs
+    |> Map.put(:component_module_name, module_name)
+    |> put_component_id(Map.get(components, module_name))
+  end
 
   defp put_component_id(attrs, nil), do: attrs
   defp put_component_id(attrs, id), do: Map.put(attrs, :component_id, id)
