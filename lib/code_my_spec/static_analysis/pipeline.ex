@@ -53,7 +53,26 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     test: [:credo, :exunit_stale],
     test_support: [:credo, :exunit_stale],
     spec: [:validate_spec],
-    bdd_spec: [:validate_bdd, :spex_stale],
+    # `:credo` for the same reason `:test` and `:test_support` carry it, and
+    # against the same failure the comment above this map describes.
+    #
+    # A `_spex.exs` file is Elixir under `test/`, so credo analyses it and files
+    # findings against it — 282 of them on one project, every one a real credo
+    # finding about a real spex file. Those findings block. But `bdd_spec` did
+    # not schedule credo, so the only work that could clear them was an edit to
+    # some *other* kind of file: an agent writing specs was blocked by credo
+    # findings on the specs it was writing, and nothing it did while writing
+    # them could ever refresh the result.
+    #
+    # Measured 2026-08-21: byte-identical credo feedback across consecutive
+    # stops, the findings recorded at 11:10 and the fix that cleared them landed
+    # at 08:02. Every stop in that window enqueued `compiler, spex`; credo was
+    # in neither the enqueued nor the skipped list, because it was never in the
+    # request set at all.
+    #
+    # A source whose findings can block has to be re-runnable by the edits that
+    # would fix them. That is the rule the `:test` row already encodes.
+    bdd_spec: [:credo, :validate_bdd, :spex_stale],
     qa_brief: [:validate_qa],
     qa_result: [:validate_qa],
     architecture: [],
@@ -337,7 +356,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   defp with_test_output(runner_opts, _atom, _opts), do: runner_opts
 
   defp log_analyzer_success(atom, problems, analyzer_files, ms) do
-    file_count = if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
+    file_count =
+      if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
 
     Logger.info(
       "[Pipeline] #{atom}: #{length(problems)} problem(s) on #{file_count} file(s) (#{ms}ms)"

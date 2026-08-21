@@ -115,22 +115,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  defp component_exists_details(scope, component_id) do
-    case Repo.get_by(Component, id: component_id, project_id: scope.active_project_id) do
-      nil ->
-        {false,
-         %{
-           reason:
-             "component #{component_id} does not exist yet — it is named correctly and " <>
-               "appears when the working copy syncs the module it projects from",
-           component_id: component_id
-         }}
-
-      _component ->
-        {true, %{status: "component_id is set", component_id: component_id}}
-    end
-  end
-
   # Distinct from :field_present because `false` is a legitimate value that
   # must read as unsatisfied — :field_present only rejects nil, so a latch
   # sitting at `false` would report satisfied.
@@ -214,6 +198,22 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp check(%{check_type: check_type}, _scope, _entity, _files, _ctx) do
     {false, %{reason: "Unknown check_type: #{check_type}"}}
+  end
+
+  defp component_exists_details(scope, component_id) do
+    case Repo.get_by(Component, id: component_id, project_id: scope.active_project_id) do
+      nil ->
+        {false,
+         %{
+           reason:
+             "component #{component_id} does not exist yet — it is named correctly and " <>
+               "appears when the working copy syncs the module it projects from",
+           component_id: component_id
+         }}
+
+      _component ->
+        {true, %{status: "component_id is set", component_id: component_id}}
+    end
   end
 
   # Stale analysis is asymmetric: serve the findings, refuse the clean.
@@ -377,8 +377,12 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp deployed_verdict(scope, %{id: story_id}, environment) do
     case Deploys.deployed?(scope, story_id, environment) do
-      true -> {true, %{status: "deployed to #{environment} and health-verified"}}
-      false -> {false, %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
+      true ->
+        {true, %{status: "deployed to #{environment} and health-verified"}}
+
+      false ->
+        {false,
+         %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
     end
   end
 
