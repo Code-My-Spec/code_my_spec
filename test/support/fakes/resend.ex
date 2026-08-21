@@ -200,14 +200,20 @@ defmodule CodeMySpecSpex.Fakes.Resend do
   end
 
   defp route("POST", "/webhooks", body, state) do
-    hook = %{
+    stored = %{
       "id" => "hook-#{state.next_id}",
       "endpoint" => body["endpoint"],
       "events" => body["events"] || [],
       "status" => "enabled"
     }
 
-    {{201, hook}, %{state | webhooks: state.webhooks ++ [hook], next_id: state.next_id + 1}}
+    # Real Resend returns `signing_secret` only from this create response,
+    # never from list/get — stored is what a later GET/list sees again, and
+    # it deliberately doesn't carry it, so an adopted (not freshly created)
+    # webhook in a test is exactly as secret-less as the real thing. 04349864.
+    created = Map.put(stored, "signing_secret", "whsec_fake#{state.next_id}")
+
+    {{201, created}, %{state | webhooks: state.webhooks ++ [stored], next_id: state.next_id + 1}}
   end
 
   defp route("PATCH", "/webhooks/" <> id, body, state) do

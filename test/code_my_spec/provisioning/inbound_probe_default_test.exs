@@ -77,5 +77,30 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
       assert Enum.any?(resources, &(&1[:kind] == "inbound_proof" and &1[:location] == to)),
              "expected a recorded proof of delivery to #{to}, got #{inspect(resources)}"
     end
+
+    # 04349864: Resend hands back a webhook's `signing_secret` only from the
+    # create call, never from list/get — nothing ever captured or threaded
+    # it, so ResendWebhookController on the deployed app always fell back to
+    # its own graceful no-secret-configured path (skip verification) instead
+    # of actually verifying requests came from Resend.
+    test "threads the webhook's signing secret into every environment's secrets", ctx do
+      to = "sam@#{@domain}"
+
+      assert {:ok, resources} = Steps.run(:inbound, ctx.scope, inbound_probe_to: to)
+
+      secret_locations =
+        resources
+        |> Enum.filter(&(&1[:kind] == "secret"))
+        |> Enum.map(& &1[:location])
+
+      environments = CodeMySpec.Provisioning.EnvironmentRepository.names(ctx.scope)
+      assert environments != [], "this test is meaningless with no environments to seed"
+
+      for environment <- environments do
+        assert "#{environment}/RESEND_WEBHOOK_SECRET" in secret_locations,
+               "expected a recorded secret resource for #{environment}, got " <>
+                 inspect(secret_locations)
+      end
+    end
   end
 end

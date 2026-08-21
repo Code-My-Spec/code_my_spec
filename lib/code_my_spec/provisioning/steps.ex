@@ -762,6 +762,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          :ok <- probe_address_on_domain(name, opts),
          {:ok, domain} <- Resend.ensure_receiving_domain(scope, name, opts),
          {:ok, webhook} <- Resend.ensure_webhook(scope, endpoint, opts),
+         {:ok, secret_resources} <- seed_webhook_secret(scope, webhook),
          {:ok, mx} <- publish_mx(scope, name, domain, opts),
          # The inbound records, not the domain. Mail addressed to a name Resend
          # has not checked yet is not accepted, so probing straight after
@@ -780,7 +781,7 @@ defmodule CodeMySpec.Provisioning.Steps do
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
          %{kind: "webhook", location: endpoint, identifier: webhook["id"]}
-       ] ++ mx ++ [proof]}
+       ] ++ mx ++ secret_resources ++ [proof]}
     else
       nil ->
         {:error, "no domain set on the project — nothing to receive mail at"}
@@ -4553,6 +4554,32 @@ defmodule CodeMySpec.Provisioning.Steps do
     Keyword.get(opts, :webhook_endpoint) ||
       "https://#{Keyword.get(opts, :app_host) || domain(scope)}/webhooks/resend"
   end
+
+  # Resend hands back `signing_secret` only from the create call, never from
+  # list or get — the deployed app's own ResendWebhookController needs it to
+  # verify a request genuinely came from Resend rather than skip verification
+  # entirely (its own documented graceful degradation for exactly the case
+  # where nothing was ever threaded here). `ensure_webhook/3` returns the same
+  # shape either way, so a re-run that only *adopts* an already-enabled
+  # webhook carries no secret to seed — nothing was lost, there was never
+  # anything here to place. 04349864.
+  defp seed_webhook_secret(scope, %{"signing_secret" => secret})
+       when is_binary(secret) and secret != "" do
+    scope
+    |> EnvironmentRepository.names()
+    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+      case put_secret(scope, environment, "RESEND_WEBHOOK_SECRET", secret) do
+        {:ok, _} ->
+          resource = %{kind: "secret", location: "#{environment}/RESEND_WEBHOOK_SECRET"}
+          {:cont, {:ok, [resource | acc]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp seed_webhook_secret(_scope, _webhook), do: {:ok, []}
 
   # The MX Resend hands back, published at the priority it specifies. Resend
   # only receives when its MX is the lowest priority for the name, so the
