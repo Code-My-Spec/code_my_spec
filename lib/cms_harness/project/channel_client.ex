@@ -879,6 +879,23 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # The server asking for a fresh manifest. It cannot walk this checkout — the
+  # disk is here — so the sync happens on this side and arrives the way every
+  # other manifest does, through `observations`.
+  #
+  # Through `request_sync/1` rather than casting `:sync` directly: the file
+  # watcher already goes that way, and one entry point means a scan triggered by
+  # the server and a scan triggered by a write are the same scan. It resolves to
+  # this process, so the cast is to self, which is fine and keeps the scan out of
+  # the socket process either way.
+  @impl Slipstream
+  def handle_message(_topic, "rescan", _payload, socket) do
+    Logger.info("[CmsHarness] server asked for a rescan of #{socket.assigns.project.root}")
+
+    request_sync(socket.assigns.project.root)
+    {:ok, socket}
+  end
+
   # An event this harness does not implement is version skew, and it is named.
   # The server's own catch-all was made to reply for exactly this reason: a
   # message silently ignored on one side reads as latency on the other.

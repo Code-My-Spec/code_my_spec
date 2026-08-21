@@ -632,6 +632,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # The other thing the server initiates. Same shape and same reason as
+  # `run_analysis`: this side owns the record, that side owns the disk.
+  #
+  # No payload. The harness already knows which working copy this channel is
+  # for, and a root on the wire would be a second answer to a question the
+  # topic has already answered — the class of bug story 891 exists to remove.
+  def handle_info(:rescan, socket) do
+    push(socket, "rescan", %{})
+    {:noreply, socket}
+  end
+
   # The counts the harness used to receive in its reply. Logged here instead,
   # because the reply now leaves before they exist.
   def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do

@@ -678,6 +678,49 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
+  Ask the harness holding this working copy to rescan it and re-send its manifest.
+
+  The server cannot walk a checkout that is on another machine —
+  `Environments.Harness.stream_files/3` answers `:not_supported_on_harness`
+  deliberately, because bulk reads are the manifest's job and not a round trip
+  per file. So the sync a caller wants is performed where the disk is, and
+  arrives the same way every other manifest does.
+
+  Ordinarily nothing needs to ask: the harness watches the working copy and
+  sends what changes. The gap is that watching stops while it is disconnected —
+  it says so, `"File changes are not being recorded"` — and only a reconnect
+  triggers a fresh full scan. An agent that has reason to believe the graph is
+  stale otherwise has no lever, which is what `sync_project` answering
+  `{:cannot_scan, :not_supported_on_harness}` left it with.
+
+  Fire-and-forget, like `run_analysis` and for the same reason: the far side
+  does the work, and a full scan of a few thousand files takes seconds. The
+  result is the manifest, which lands on the ordinary `observations` path and
+  reconciles there. Nothing is returned but whether the request was delivered.
+  """
+  @spec request_rescan(Scope.t()) :: :ok | {:error, {atom(), map()}}
+  def request_rescan(%Scope{active_harness_id: nil}),
+    do: {:error, {:harness_not_registered, %{harness_id: nil}}}
+
+  def request_rescan(%Scope{active_harness_id: harness_id}) do
+    case remote_executor(%Scope{active_harness_id: harness_id}) do
+      {:ok, channel} ->
+        send(channel, :rescan)
+        :ok
+
+      :none ->
+        Logger.warning(
+          "[Analysis] rescan for harness #{harness_id}: nothing registered under that id. " <>
+            "The harness has not joined the channel since this server started; its own " <>
+            "/health will still say connected, because that is about its socket rather " <>
+            "than about whether the server can address it."
+        )
+
+        {:error, {:harness_not_registered, %{harness_id: harness_id}}}
+    end
+  end
+
+  @doc """
   Register the calling process as the executor for `project_id`.
 
   Called from the harness channel at join. The registration dies with the
