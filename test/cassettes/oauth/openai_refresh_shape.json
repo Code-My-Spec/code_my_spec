@@ -1,0 +1,99 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-22T13:38:54.310401Z",
+      "request": {
+        "body": "grant_type=refresh_token&refresh_token=recorded-refresh-token&client_id=app_EMoamEEZ73f0CkXaXp7hrann",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/x-www-form-urlencoded"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://auth.openai.com/oauth/token"
+      },
+      "response": {
+        "body_json": {
+          "access_token": "recorded-jwt",
+          "earliest_refresh_at": 1788183534,
+          "expires_in": 864000,
+          "id_token": "recorded-jwt",
+          "oai_is": "ois1.recorded-jwt",
+          "refresh_token": "recorded-refresh-token",
+          "scope": "openid profile email offline_access",
+          "token_type": "Bearer"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "no-store"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2f247cfac142df2-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-length": [
+            "4974"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 22 Aug 2026 13:38:54 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}"
+          ],
+          "openai-processing-ms": [
+            "225"
+          ],
+          "openai-version": [
+            "2020-10-01"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=BsvWOK6bBtbfo2c6cAQPZHx8Ca%2B0LbtehGFZX2nGXIFVc0bZfBnG0BfYWMabUrYTadUNG%2FmHG0N4YewGCatPq%2BPIhzkCE%2BlDdFbQnfRmhM6UjPLbI%2Bc8CgKM5ngk%2B0AH2g%3D%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "timing-allow-origin": [
+            "*"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-oai-is-update": [
+            "ois1.recorded-jwt"
+          ],
+          "x-openai-proxy-wasm": [
+            "v0.1"
+          ],
+          "x-request-id": [
+            "ab285a10-f8d6-486b-a36b-a16f5067e578"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
