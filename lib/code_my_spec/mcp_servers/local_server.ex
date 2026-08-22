@@ -115,6 +115,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
 
+  # Coding agents on this machine's working copies. Registered here rather than
+  # only existing as modules — the spex call `execute/2` directly, which proves
+  # the contract and says nothing about whether an agent can reach the tool.
+  component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
+  component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
+  component(CodeMySpec.McpServers.Agents.Tools.StopAgent)
+
   # AwaitAnalysis is a tombstone, not a tool. Waiting for the analyzers is
   # `POST /api/analysis/wait` — MCP caps a request at 30s and a sweep runs
   # 200-590s, so the tool could not return for the case it existed to serve.
