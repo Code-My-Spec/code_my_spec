@@ -376,3 +376,8 @@ config :code_my_spec,
 # needs an OAuth round trip has to say so — with `Req.Test.stub(Assent, …)` or
 # through `OAuthSpexHelpers.with_assent_plug/2` and a cassette.
 config :assent, http_adapter: {Assent.HTTPAdapter.Req, plug: {Req.Test, Assent}}
+
+# The OpenAI device-login client, pinned like every other Req client here so a
+# test cannot start a real login against somebody's ChatGPT account.
+config :code_my_spec, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth,
+  plug: {Req.Test, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth}
