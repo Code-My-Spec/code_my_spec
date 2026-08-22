@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
 
   alias CodeMySpecWeb.HarnessChannel
   alias CodeMySpecWeb.UserSocket
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
   setup do
     # The channel runs in its own process, and an owner-only connection is
     # invisible to it.
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
