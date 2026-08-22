@@ -41,8 +41,8 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Device
   alias CodeMySpec.Agents.PiConfig
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
 
   @type start_error ::
