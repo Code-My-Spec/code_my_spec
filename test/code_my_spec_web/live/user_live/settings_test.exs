@@ -88,10 +88,24 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
       %{conn: log_in_user(conn, user_fixture())}
     end
 
-    defp stub_device(lv, fun) do
-      Req.Test.stub(DeviceAuth, fun)
-      # The LiveView is its own process and the stub is owned by this one.
+    # One response per call, queued in the order the flow makes them. Nothing
+    # decides anything: a stub that branches on the request is a second
+    # implementation of the client, and it passes whether or not the real one
+    # calls what it meant to.
+    defp expect_next(lv, fun) do
+      Req.Test.expect(DeviceAuth, fun)
+      # The LiveView is its own process and the expectation is owned by this one.
       Req.Test.allow(DeviceAuth, self(), lv.pid)
+    end
+
+    defp expect_user_code(lv) do
+      expect_next(lv, fn conn ->
+        Req.Test.json(conn, %{
+          "device_auth_id" => "dev-1",
+          "user_code" => "WXYZ-1234",
+          "interval" => 1
+        })
+      end)
     end
 
     test "is offered on the page like the others", %{conn: conn} do
@@ -113,13 +127,7 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
     test "asking to connect shows the code and where to type it", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
 
-      stub_device(lv, fn conn ->
-        Req.Test.json(conn, %{
-          "device_auth_id" => "dev-1",
-          "user_code" => "WXYZ-1234",
-          "interval" => 5
-        })
-      end)
+      expect_user_code(lv)
 
       html = lv |> element("button[phx-click='start_device_auth']") |> render_click()
 
@@ -132,9 +140,13 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
     test "keeps the code up while OpenAI is still waiting", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
 
-      stub_device(lv, &still_waiting/1)
-
+      expect_user_code(lv)
       lv |> element("button[phx-click='start_device_auth']") |> render_click()
+
+      # The second call, and only the second: OpenAI still waiting.
+      expect_next(lv, fn conn ->
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
+      end)
 
       send(lv.pid, :poll_device_auth)
 
@@ -146,9 +158,25 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
     test "connects once the human has finished", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
 
-      stub_device(lv, &human_finished/1)
-
+      expect_user_code(lv)
       lv |> element("button[phx-click='start_device_auth']") |> render_click()
+
+      # Then the poll, then the exchange — two calls, two responses, in order.
+      expect_next(lv, fn conn ->
+        Req.Test.json(conn, %{
+          "authorization_code" => "auth-code",
+          "code_verifier" => "verifier"
+        })
+      end)
+
+      expect_next(lv, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "access-abc",
+          "refresh_token" => "refresh-abc",
+          "expires_in" => 3600
+        })
+      end)
+
       send(lv.pid, :poll_device_auth)
 
       html = render(lv)
@@ -334,38 +362,4 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
     end
   end
 
-  # OpenAI answers three different paths in one login. Routed with function
-  # heads rather than a `case`, which is denied inside a test file — the same
-  # rule that governs a stub as governs a test body.
-  defp still_waiting(%{request_path: "/api/accounts/deviceauth/usercode"} = conn),
-    do: issue_code(conn)
-
-  defp still_waiting(conn),
-    do: conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
-
-  defp human_finished(%{request_path: "/api/accounts/deviceauth/usercode"} = conn),
-    do: issue_code(conn)
-
-  defp human_finished(%{request_path: "/api/accounts/deviceauth/token"} = conn),
-    do:
-      Req.Test.json(conn, %{
-        "authorization_code" => "auth-code",
-        "code_verifier" => "verifier"
-      })
-
-  defp human_finished(conn),
-    do:
-      Req.Test.json(conn, %{
-        "access_token" => "access-abc",
-        "refresh_token" => "refresh-abc",
-        "expires_in" => 3600
-      })
-
-  defp issue_code(conn),
-    do:
-      Req.Test.json(conn, %{
-        "device_auth_id" => "dev-1",
-        "user_code" => "WXYZ-1234",
-        "interval" => 1
-      })
 end
