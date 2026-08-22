@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Device
   alias CodeMySpec.Agents.PiConfig
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Users.Scope
 
@@ -82,10 +83,28 @@ defmodule CodeMySpec.Agents do
          {:ok, config_dir} <- PiConfig.mint(agent, credential),
          {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}),
          {:ok, os_pid} <- Device.start(agent, config_dir),
-         {:ok, agent} <- record_started(scope, agent, %{os_pid: os_pid}) do
+         {:ok, agent} <- record_started(scope, agent, %{os_pid: os_pid}),
+         {:ok, _conversation} <- open_conversation(scope, agent) do
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
+  end
+
+  # An agent that cannot be watched is indistinguishable from one that never
+  # started, so the conversation is opened as part of starting rather than when
+  # the agent first says something. A Pi lane relays its turns up through
+  # `AgentHarness.relay_up/2` into this same conversation, which is why a Pi
+  # agent and a Claude Code agent land on one surface instead of two.
+  #
+  # Keyed by the agent id, because `session_external_id` is what the harness
+  # uses to find the conversation again and one working copy can be running
+  # more than one agent.
+  defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      "agent:#{agent.id}"
+    )
   end
 
   @doc """

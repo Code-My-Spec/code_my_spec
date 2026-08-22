@@ -19,9 +19,12 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
 
@@ -54,7 +57,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
                "the agent conversation surface did not render this project at all, " <>
                  "so an absent Pi agent cannot be told from an absent page."
 
-        assert has_element?(context.live, "[data-test='agent-session']"),
+        assert has_element?(context.live, "[data-test='agent-conversation-row']"),
                "a started Pi agent produced no session on the surface where agents " <>
                  "are watched. A second reporting path means two surfaces to watch " <>
                  "and no single answer to what is running on this project."
@@ -64,10 +67,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
 
       then_ "its work is attributed to the working copy it is on", context do
         assert context.html =~ context.scope.cwd,
-               "the agent's session is not attributed to a working copy. One project " <>
-                 "can have several copies with an agent each, and a session that " <>
-                 "names no copy cannot be told from the others. Every other harness " <>
-                 "surface is keyed this way. Got page without: #{context.scope.cwd}"
+               "the agent's session is not attributed to a working copy on the page " <>
+                 "where agents are watched. One project can have several copies with " <>
+                 "an agent each, and a session that names no copy cannot be told from " <>
+                 "the others. Every other harness surface is keyed this way."
 
         {:ok, context}
       end
