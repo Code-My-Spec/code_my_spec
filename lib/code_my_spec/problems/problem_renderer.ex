@@ -913,18 +913,39 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  # `nil` is narrower than it used to be, and the difference is what makes this
-  # actionable. It no longer means "no session id" or "you touched nothing
-  # here": it means project files demonstrably changed while this task ran, and
-  # the edit ledger names none of them. So the recording is broken, not absent,
-  # and the agent is the only one positioned to say so.
+  # `nil` means project files changed while this task ran and nothing this
+  # session recorded names a file the project has a record of. Blocking is the
+  # intended answer — findings cannot be matched to a session, so none can be
+  # demoted — and that part is unchanged.
+  #
+  # What this used to *say* was that the recording is broken, and invite a
+  # framework issue. That is one cause and not the common one. The ordinary one
+  # is a file created this turn: `verify_against_ledger/3` needs recorded paths
+  # to join `File` rows, and a file the scanner has not reached yet has no row,
+  # so a genuine edit to a genuine file lands here with a perfectly good ledger.
+  #
+  # Two agents filed that issue in one day (07bcd520, 6c27799f), both correct
+  # that they had edited the file and both concluding sub-agent edits go
+  # unrecorded — which is not the mechanism. They were reading the sentence
+  # exactly as written, and following it cost them a report each and left the
+  # real explanation, that the file is simply too new to have a row, unsaid.
+  #
+  # So it describes the state and orders the causes by how often they are it.
+  # The invitation to report stays, narrowed to the case that is actually a
+  # defect: paths that could never name a file here.
   defp attribution_note(_session_paths) do
-    "\n\nFiles in this project changed while this task ran, but none of them are " <>
-      "in this session's edit ledger — so nothing could be attributed, nothing " <>
-      "was demoted, and every finding blocks, including any that arrived with a " <>
-      "rebase. Check `git log -1 -- <path>` before repairing anything you do not " <>
-      "recognise. If you did not edit those files, the recording itself is wrong " <>
-      "and worth reporting: `create_issue` with scope `framework`."
+    "\n\nFiles in this project changed while this task ran, and nothing this " <>
+      "session recorded names a file the project has a record of — so no finding " <>
+      "could be attributed, none were demoted, and all of them block, including " <>
+      "any that arrived with a rebase.\n\n" <>
+      "The usual reason is a file created this turn: a file the scanner has not " <>
+      "reached yet has no record to match against, and the next sync gives it " <>
+      "one. If that is what happened, stopping again once the scan has run " <>
+      "clears this by itself.\n\n" <>
+      "Otherwise check `git log -1 -- <path>` before repairing anything you do " <>
+      "not recognise. If the paths this session recorded could never name a file " <>
+      "here — absolute paths, or another repository's — that is a real defect: " <>
+      "`create_issue` with scope `framework`."
   end
 
   defp truncate_message(message, max) when is_binary(message) do

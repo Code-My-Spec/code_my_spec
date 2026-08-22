@@ -96,20 +96,44 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   test "a session whose attribution is unusable is told that too" do
     text = render(nil)
 
-    assert text =~ "edit ledger"
+    assert text =~ "names a file the project has a record of"
     assert text =~ "git log -1 -- <path>"
   end
 
-  # `nil` now means one specific thing — project files changed and the ledger
-  # names none of them — and the note is only actionable if it says which.
+  # `nil` means one specific thing — project files changed and nothing recorded
+  # names a file the project knows — and the note is only actionable if it says
+  # which.
   test "the unusable note describes the evidence rather than asserting a verdict" do
     text = render(nil)
 
     assert text =~ "changed while this task ran"
 
     assert text =~ "create_issue",
-           "a broken recording is not something the agent can fix by editing, and " <>
-             "it is the only party positioned to report it"
+           "paths that could never name a file here are a real defect, and the agent " <>
+             "is the only party positioned to report one"
+  end
+
+  # Two agents filed the same issue in one day (07bcd520, 6c27799f) because the
+  # note said their recording was broken. It was not: they had each edited a
+  # file created that turn, which the scanner had not reached, so it had no row
+  # to match against. Both concluded sub-agent edits go unrecorded — a mechanism
+  # that does not exist — and each spent a report on it.
+  test "it names the ordinary cause before the defect" do
+    text = render(nil)
+
+    assert text =~ "a file created this turn",
+           "the common reason to land here is a new file with no record yet, and a " <>
+             "note that leads with 'the recording is broken' sends the reader to " <>
+             "file an issue instead"
+
+    assert text =~ "clears this by itself",
+           "and it resolves on its own once the scan runs, which is the difference " <>
+             "between waiting and reporting"
+  end
+
+  test "and it no longer calls a good ledger broken" do
+    refute render(nil) =~ "the recording itself is wrong",
+           "that sentence was true of one cause and read as true of all of them"
   end
 
   # The note is about the gate having no evidence. With evidence it has already
