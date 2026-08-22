@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2826Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Integrations
@@ -70,8 +70,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2826Spex do
         refute context.first.isError, response_text(context.first)
         refute context.second.isError, response_text(context.second)
 
-        first_provider = field(response_text(context.first), "Provider")
-        second_provider = field(response_text(context.second), "Provider")
+        first_provider = response_field(context.first, "Provider")
+        second_provider = response_field(context.second, "Provider")
 
         assert first_provider == "openai-codex",
                "the first agent is not on the provider it was asked for. " <>
@@ -87,24 +87,14 @@ defmodule CodeMySpecSpex.Story1018.Criterion2826Spex do
       end
 
       then_ "neither inherited the other's, nor a machine-wide default", context do
-        refute field(response_text(context.first), "Provider") ==
-                 field(response_text(context.second), "Provider"),
+        refute response_field(context.first, "Provider") ==
+                 response_field(context.second, "Provider"),
                "both agents ended up on one provider, so the argument was ignored " <>
                  "in favour of something ambient. Nobody notices that until a quota " <>
                  "or a bill does."
 
         {:ok, context}
       end
-    end
-  end
-
-  # The tool replies in text, not structured content — `hybrid_response/2`
-  # discards the data map on purpose, because a structured payload makes Claude
-  # ignore the text beside it. So the contract is the labelled line.
-  defp field(text, label) do
-    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
-      [_, value] -> String.trim(value)
-      nil -> nil
     end
   end
 end

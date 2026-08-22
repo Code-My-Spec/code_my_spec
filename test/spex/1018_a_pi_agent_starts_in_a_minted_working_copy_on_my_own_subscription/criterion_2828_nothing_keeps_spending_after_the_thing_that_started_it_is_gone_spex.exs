@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
           StartAgent.execute(
             %{
               "simulate" => "supervisor_down",
-              "agent_id" => field(response_text(context.started), "Agent")
+              "agent_id" => response_field(context.started, "Agent")
             },
             frame
           )
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
 
         text = response_text(listing)
 
-        refute text =~ field(response_text(context.started), "Agent"),
+        refute text =~ response_field(context.started, "Agent"),
                "the agent survived the thing that started it. An orphaned analyzer " <>
                  "wastes CPU; an orphaned agent keeps calling a model on somebody's " <>
                  "subscription with nothing watching and nothing able to stop it. " <>
@@ -87,23 +87,13 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
 
-        refute response_text(listing) =~ field(response_text(context.started), "Agent"),
+        refute response_text(listing) =~ response_field(context.started, "Agent"),
                "the dead agent is still listed as running. A survivor that is still " <>
                  "listed is a bug someone can chase; one that has been forgotten is " <>
                  "a bug nobody knows to look for. Got: #{response_text(listing)}"
 
         {:ok, context}
       end
-    end
-  end
-
-  # The tool replies in text, not structured content — `hybrid_response/2`
-  # discards the data map on purpose, because a structured payload makes Claude
-  # ignore the text beside it. So the contract is the labelled line.
-  defp field(text, label) do
-    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
-      [_, value] -> String.trim(value)
-      nil -> nil
     end
   end
 end

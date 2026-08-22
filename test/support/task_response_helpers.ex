@@ -69,6 +69,32 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   def extract_task_id!(response), do: extract_task_id!(response_text(response))
 
   @doc """
+  One labelled line out of a tool reply — `response_field(reply, "Provider")`.
+
+  These tools answer in text rather than structured content, on purpose:
+  `hybrid_response/2` discards the data map because a structured payload makes
+  Claude ignore the text beside it. So a labelled line *is* the contract, and a
+  spec reading one is observing the surface rather than reaching behind it.
+
+  Lives here rather than in each spec for two reasons. It was copied into five
+  criteria of story 1018 before it was written once, which is how a parsing bug
+  gets fixed four times. And `case` is denied inside a `_spex.exs` — the same
+  rule that governs `extract_task_id/1` above — so the private copies were each
+  a credo finding.
+
+  Takes either the reply or its already-flattened text.
+  """
+  @spec response_field(any(), String.t()) :: String.t() | nil
+  def response_field(text, label) when is_binary(text) do
+    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
+      [_, value] -> String.trim(value)
+      _ -> nil
+    end
+  end
+
+  def response_field(response, label), do: response_field(response_text(response), label)
+
+  @doc """
   The issue id from a `create_issue` reply, raising when it is not there.
 
   Same contract as `extract_task_id!/1` and copied privately for the same

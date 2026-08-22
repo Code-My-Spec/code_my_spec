@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
 
         {:reply, stopped, _frame} =
           StopAgent.execute(
-            %{"agent_id" => field(response_text(context.first), "Agent")},
+            %{"agent_id" => response_field(context.first, "Agent")},
             frame
           )
 
@@ -105,16 +105,6 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
 
         {:ok, context}
       end
-    end
-  end
-
-  # The tool replies in text, not structured content — `hybrid_response/2`
-  # discards the data map on purpose, because a structured payload makes Claude
-  # ignore the text beside it. So the contract is the labelled line.
-  defp field(text, label) do
-    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
-      [_, value] -> String.trim(value)
-      nil -> nil
     end
   end
 end

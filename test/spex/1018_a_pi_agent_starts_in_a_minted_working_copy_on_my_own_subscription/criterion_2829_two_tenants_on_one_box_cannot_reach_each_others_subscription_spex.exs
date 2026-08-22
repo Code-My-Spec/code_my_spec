@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Integrations
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
       then_ "it is authenticated on that tenant's subscription only", context do
         refute context.response.isError, response_text(context.response)
 
-        account_id = field(response_text(context.response), "Account")
+        account_id = response_field(context.response, "Account")
 
         assert is_binary(account_id),
                "the started agent does not say whose credential it is running on, " <>
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
       end
 
       then_ "nothing it can read names the other tenant's credential", context do
-        config_dir = field(response_text(context.response), "Config dir")
+        config_dir = response_field(context.response, "Config dir")
 
         assert config_dir =~ to_string(context.account.id) or
                  config_dir =~ to_string(context.project.id),
@@ -98,16 +98,6 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
 
         {:ok, context}
       end
-    end
-  end
-
-  # The tool replies in text, not structured content — `hybrid_response/2`
-  # discards the data map on purpose, because a structured payload makes Claude
-  # ignore the text beside it. So the contract is the labelled line.
-  defp field(text, label) do
-    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
-      [_, value] -> String.trim(value)
-      nil -> nil
     end
   end
 end
