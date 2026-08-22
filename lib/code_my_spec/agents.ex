@@ -39,7 +39,6 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
-  alias CodeMySpec.Agents.Device
   alias CodeMySpec.Agents.PiConfig
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Conversations
@@ -82,8 +81,6 @@ defmodule CodeMySpec.Agents do
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, config_dir} <- PiConfig.mint(agent, credential),
          {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}),
-         {:ok, os_pid} <- Device.start(agent, config_dir),
-         {:ok, agent} <- record_started(scope, agent, %{os_pid: os_pid}),
          {:ok, _conversation} <- open_conversation(scope, agent) do
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
@@ -108,25 +105,77 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  What is running, reconciled against the device rather than remembered.
+  Record what a harness reports it is actually running.
 
-  `list_running/1` answers from the database — what we asked for. This asks the
-  box what it actually has and marks anything missing as stopped, because those
-  two disagreeing is the failure worth catching: an agent that outlived whatever
-  started it keeps spending a subscription, and a row that still claims it is
-  running is how nobody notices.
+  `list_running/1` answers from the database — the agents we asked for. This is
+  the other half: the set the device says it has, which is the only half that
+  can spend a subscription. Anything the report omits is marked stopped.
+
+  ## Why the device is the authority and we are not
+
+  The harness already knows this without being asked. A lane is joined to
+  `harness:session:<external_id>` for exactly as long as it is alive, and
+  Presence is that fact — story 704 replaced a polled subagent-TTL registry with
+  it precisely because a liveness record maintained by hand drifts from the
+  processes it claims to describe. So the report is a projection of Presence,
+  and an agent whose process died is absent from it without anybody having to
+  notice or send anything.
+
+  That is also what makes the orphan case real rather than arranged: nothing
+  simulates the death, the lane simply stops being joined.
   """
-  @spec reconcile_running(Scope.t()) :: {:ok, [Agent.t()]} | {:error, term()}
-  def reconcile_running(%Scope{} = scope) do
-    with {:ok, ids} <- Device.running_ids(scope) do
-      alive = MapSet.new(ids)
+  @spec record_reported(Scope.t(), [map()]) :: {:ok, [Agent.t()]}
+  def record_reported(%Scope{} = scope, reported) when is_list(reported) do
+    adopted = Enum.map(reported, &adopt(scope, &1))
+    alive = MapSet.new(adopted, & &1.id)
 
+    running =
       scope
       |> AgentsRepository.list_running()
       |> Enum.map(&reap_if_absent(scope, &1, MapSet.member?(alive, &1.id)))
-      |> Enum.filter(& &1.status in [:starting, :running])
-      |> then(&{:ok, &1})
-    end
+      |> Enum.filter(&(&1.status in [:starting, :running]))
+
+    {:ok, running}
+  end
+
+  # A reported agent the server has no row for is adopted rather than refused.
+  #
+  # The harness is the authority on what is running, and it can be running
+  # something we did not start — a lane an engineer launched by hand, or one
+  # that survived a server restart. Refusing those would make the server's list
+  # a record of its own requests rather than of what exists, which is the
+  # distinction this whole reconcile is about.
+  #
+  # Keyed on the working copy, because that is the natural key everywhere else
+  # in the harness and one copy runs one lane per role.
+  defp adopt(%Scope{} = scope, %{"working_copy" => working_copy} = report) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.find(&(&1.working_copy == working_copy))
+    |> upsert(scope, report)
+  end
+
+  defp upsert(nil, scope, report) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :pi,
+        provider: report["provider"] || "unknown",
+        working_copy: report["working_copy"],
+        os_pid: report["os_pid"],
+        status: :running
+      })
+
+    agent
+  end
+
+  defp upsert(%Agent{} = agent, scope, report) do
+    {:ok, updated} =
+      AgentsRepository.update_agent(scope, agent, %{
+        status: :running,
+        os_pid: report["os_pid"] || agent.os_pid
+      })
+
+    updated
   end
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
@@ -147,7 +196,6 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, :not_found | :cross_project | Ecto.Changeset.t()}
   def stop_agent(%Scope{} = scope, id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
-         :ok <- Device.stop(agent),
          {:ok, stopped} <-
            AgentsRepository.update_agent(scope, agent, %{status: :stopped, os_pid: nil}) do
       broadcast(scope, {:agent_stopped, stopped})

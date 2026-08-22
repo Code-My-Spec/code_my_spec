@@ -15,6 +15,7 @@ defmodule CodeMySpecWeb.HarnessChannel do
 
   use CodeMySpecWeb, :channel
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
@@ -53,6 +54,27 @@ defmodule CodeMySpecWeb.HarnessChannel do
 
     Conversations.add_agent_message(conversation, role, kind, text)
     {:noreply, ensure_subscribed(socket, conversation)}
+  end
+
+  # ---- Up: what the harness is actually running -----------------------------
+
+  # The device's own answer to "what is running", which is the only answer that
+  # can spend a subscription. It is a projection of Presence on the lane topics
+  # — a lane is joined for exactly as long as it is alive — so an agent whose
+  # process died is absent from this without anybody having to notice.
+  #
+  # Replies rather than staying silent, because the harness has no other way to
+  # learn that the server disagreed with it, and "reported and ignored" looks
+  # identical to "never reported" from the device side.
+  def handle_in("agents_running", %{"agents" => agents}, socket) when is_list(agents) do
+    {:ok, running} = Agents.record_reported(socket.assigns.scope, agents)
+
+    {:reply,
+     {:ok,
+      %{
+        "running" =>
+          Enum.map(running, &%{"id" => &1.id, "working_copy" => &1.working_copy})
+      }}, socket}
   end
 
   def handle_in(_event, _payload, socket), do: {:noreply, socket}

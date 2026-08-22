@@ -360,12 +360,6 @@ config :code_my_spec, CodeMySpec.Billing.StripeClient,
 config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter,
   plug: {Req.Test, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter}
 
-# Agents start on a device. In test that device is a process rather than a box,
-# so `running_ids/1` can disagree with the database — which is the point: an
-# orphaned agent is exactly that disagreement, and a fake that always answered
-# "running" would make the criterion unfailable.
-config :code_my_spec, :agents_device, CodeMySpec.Agents.Device.Fake
-
 # Never `~/.pi` — a test that minted a credential directory into the operator's
 # real Pi configuration would be writing auth.json over their own.
 config :code_my_spec,
