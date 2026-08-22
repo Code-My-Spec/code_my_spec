@@ -5,64 +5,88 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
 
   Rule: A started Pi agent reports to the same places a Claude Code agent does.
 
-  This is the criterion the whole story is worth doing for. The operator surface —
-  the list of sessions against a project and the transcript of any one of them —
-  already exists and already carries Claude Code's turns up through
-  `AgentHarness.relay_up/2`. If Pi arrives with its own reporting path, there are
-  two surfaces to watch, two to maintain, and no single answer to "what is running
-  on this project".
+  This is the criterion the story is worth doing for, and the surface it names
+  already exists. `CodeMySpecWeb.HarnessChannel` is the user plane: the local
+  app's proxy joins `harness:<account_id>`, relays each lane's `agent_message`
+  up, and the channel persists it with `Conversations.add_agent_message/4` onto
+  the conversation for that session. Claude Code's turns arrive that way today.
 
-  So the assertion is about the surface, not the engine: a Pi agent's turns appear
-  where a Claude Code agent's do, attributed to the working copy it is on, and
-  nothing downstream had to learn which engine produced them.
+  So the spec drives that channel rather than anything Pi-specific, which is
+  exactly what is being asserted: if a Pi agent needed its own path to become
+  visible, there would be two surfaces to watch and no single answer to what is
+  running on this project. Needing no new path is the criterion passing.
+
+  ## Why the session id carries the working copy
+
+  `external_id` is `pi:<cwd>` — the Pi launcher's own convention, which
+  `CodeMySpecLocalWeb.HarnessSocket` parses back into a project. The index
+  renders it as `data-session`, so attributing a session to a working copy costs
+  nothing extra and is readable from the page. One project can have several
+  copies with an agent each, and a session naming no copy cannot be told from
+  the others.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
-  alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.HarnessChannel
+  alias CodeMySpecWeb.UserSocket
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup do
+    # The channel runs in its own process, and an owner-only connection is
+    # invisible to it.
+    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
   spex "One place to watch agents work" do
     scenario "One agent, whichever engine is behind it" do
-      given_ "a Pi agent started on a minted working copy", context do
-        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+      given_ "a harness on the account, serving this working copy", context do
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_spex_2824", %{scope: context.scope})
+          |> subscribe_and_join(
+            HarnessChannel,
+            "harness:#{context.scope.active_account_id}",
+            %{}
+          )
 
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
-
-        refute response.isError
-        {:ok, Map.put(context, :response, response)}
+        {:ok, Map.put(context, :socket, socket)}
       end
 
-      when_ "it picks up work and reports progress", context do
-        {:ok, live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+      when_ "a Pi agent on that copy reports what it is doing", context do
+        # Qualified: `Plug.Conn.push/3` is imported here too, and it wins.
+        Phoenix.ChannelTest.push(context.socket, "agent_message", %{
+          "external_id" => "pi:#{context.scope.cwd}",
+          "project_id" => context.project.id,
+          "role" => "develop",
+          "kind" => "text",
+          "text" => "Working the requirement graph."
+        })
 
-        {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
-      end
-
-      then_ "it appears where a Claude Code agent on the same copy would appear", context do
-        assert context.html =~ context.project.name,
-               "the agent conversation surface did not render this project at all, " <>
-                 "so an absent Pi agent cannot be told from an absent page."
-
-        assert has_element?(context.live, "[data-test='agent-conversation-row']"),
-               "a started Pi agent produced no session on the surface where agents " <>
-                 "are watched. A second reporting path means two surfaces to watch " <>
-                 "and no single answer to what is running on this project."
+        # `push/3` is a cast, and the assertions below read what it produced. A
+        # round trip on the same channel process is ordered behind it, which
+        # waits for the work rather than for a clock.
+        _ = :sys.get_state(context.socket.channel_pid)
 
         {:ok, context}
+      end
+
+      then_ "it appears where a Claude Code agent on the same copy would appear",
+            context do
+        {:ok, live, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+
+        assert has_element?(live, "[data-test='agent-conversation-row']"),
+               "a reporting Pi agent produced no session on the surface where agents " <>
+                 "are watched. A second reporting path means two surfaces and no " <>
+                 "single answer to what is running on this project."
+
+        {:ok, Map.put(context, :html, html)}
       end
 
       then_ "its work is attributed to the working copy it is on", context do
