@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.UserLive.SettingsTest do
   use CodeMySpecTest.ConnCase, async: true
 
+  alias CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth
   alias CodeMySpec.Users
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures
@@ -69,6 +70,94 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
         |> follow_redirect(conn, ~p"/users/log-in")
 
       assert conn.resp_body =~ "You must re-authenticate to access this page."
+    end
+  end
+
+  # ChatGPT is the one provider that cannot be connected with a link, and the
+  # reason is not ours: its OAuth client is Pi's, whose registered
+  # `redirect_uri` is `http://localhost:1455/auth/callback`. A redirect URI is
+  # checked against its registration, so a hosted callback of ours is refused
+  # before anyone reaches a consent screen.
+  #
+  # So it gets the device flow — a code typed on OpenAI's own page — and these
+  # exist because until they did, the provider was implemented and connectable
+  # by nobody. There was a working refresh, a working token exchange, and no way
+  # for a person to arrive at either.
+  describe "connecting ChatGPT" do
+    setup %{conn: conn} do
+      %{conn: log_in_user(conn, user_fixture())}
+    end
+
+    defp stub_device(lv, fun) do
+      Req.Test.stub(DeviceAuth, fun)
+      # The LiveView is its own process and the stub is owned by this one.
+      Req.Test.allow(DeviceAuth, self(), lv.pid)
+    end
+
+    test "is offered on the page like the others", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/app/users/settings")
+
+      assert html =~ "Connect ChatGPT",
+             "ChatGPT has to be connectable from here. It was not, and the effect " <>
+               "was a provider with a working refresh that no person could reach."
+    end
+
+    test "does not offer a redirect link, which OpenAI would refuse", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/app/users/settings")
+
+      refute html =~ ~s|href="/auth/openai"|,
+             "a redirect link here would send someone to a callback OpenAI rejects, " <>
+               "because the registered redirect_uri is Pi's localhost:1455"
+    end
+
+    test "asking to connect shows the code and where to type it", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
+
+      stub_device(lv, fn conn ->
+        Req.Test.json(conn, %{
+          "device_auth_id" => "dev-1",
+          "user_code" => "WXYZ-1234",
+          "interval" => 5
+        })
+      end)
+
+      html = lv |> element("button[phx-click='start_device_auth']") |> render_click()
+
+      assert html =~ "WXYZ-1234", "the code the human types has to be on screen"
+
+      assert html =~ "auth.openai.com/codex/device",
+             "a code with no destination strands whoever is holding it"
+    end
+
+    test "keeps the code up while OpenAI is still waiting", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
+
+      stub_device(lv, &still_waiting/1)
+
+      lv |> element("button[phx-click='start_device_auth']") |> render_click()
+
+      send(lv.pid, :poll_device_auth)
+
+      assert render(lv) =~ "WXYZ-1234",
+             "403 is OpenAI still waiting for the human, not a failure. Clearing the " <>
+               "prompt on it takes the code away mid-typing."
+    end
+
+    test "connects once the human has finished", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
+
+      stub_device(lv, &human_finished/1)
+
+      lv |> element("button[phx-click='start_device_auth']") |> render_click()
+      send(lv.pid, :poll_device_auth)
+
+      html = render(lv)
+
+      assert html =~ "ChatGPT connected", "the person is told it worked"
+
+      refute html =~ "WXYZ-1234",
+             "the prompt has to go once it is done, or the page still asks for a code " <>
+               "that has already been used"
     end
   end
 
@@ -244,4 +333,39 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
       assert message == "You must log in to access this page."
     end
   end
+
+  # OpenAI answers three different paths in one login. Routed with function
+  # heads rather than a `case`, which is denied inside a test file — the same
+  # rule that governs a stub as governs a test body.
+  defp still_waiting(%{request_path: "/api/accounts/deviceauth/usercode"} = conn),
+    do: issue_code(conn)
+
+  defp still_waiting(conn),
+    do: conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
+
+  defp human_finished(%{request_path: "/api/accounts/deviceauth/usercode"} = conn),
+    do: issue_code(conn)
+
+  defp human_finished(%{request_path: "/api/accounts/deviceauth/token"} = conn),
+    do:
+      Req.Test.json(conn, %{
+        "authorization_code" => "auth-code",
+        "code_verifier" => "verifier"
+      })
+
+  defp human_finished(conn),
+    do:
+      Req.Test.json(conn, %{
+        "access_token" => "access-abc",
+        "refresh_token" => "refresh-abc",
+        "expires_in" => 3600
+      })
+
+  defp issue_code(conn),
+    do:
+      Req.Test.json(conn, %{
+        "device_auth_id" => "dev-1",
+        "user_code" => "WXYZ-1234",
+        "interval" => 1
+      })
 end

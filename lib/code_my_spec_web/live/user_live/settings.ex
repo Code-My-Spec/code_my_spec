@@ -3,7 +3,10 @@ defmodule CodeMySpecWeb.UserLive.Settings do
 
   on_mount {CodeMySpecWeb.UserAuth, :require_sudo_mode}
 
+  require Logger
+
   alias CodeMySpec.Integrations
+  alias CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth
   alias CodeMySpec.Users
 
   def render(assigns) do
@@ -74,6 +77,8 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         <div :for={service <- @services} class="contents">
           <.connected_service service={service} />
         </div>
+
+        <.device_auth_prompt :if={@device_auth} device={@device_auth} />
       </div>
     </Layouts.app>
     """
@@ -124,10 +129,68 @@ defmodule CodeMySpecWeb.UserLive.Settings do
           on_confirm={JS.dispatch("click", to: "##{"disconnect-#{@service.provider}-link"}")}
         />
       <% else %>
-        <.link href={~p"/auth/#{@service.provider}"} class="btn btn-sm btn-primary">
+        <button
+          :if={@service.device_flow}
+          phx-click="start_device_auth"
+          phx-value-provider={@service.provider}
+          phx-disable-with="Asking OpenAI..."
+          class="btn btn-sm btn-primary"
+        >
+          Connect {@service.label}
+        </button>
+        <.link
+          :if={!@service.device_flow}
+          href={~p"/auth/#{@service.provider}"}
+          class="btn btn-sm btn-primary"
+        >
           Connect {@service.label}
         </.link>
       <% end %>
+    </div>
+    """
+  end
+
+  @doc false
+  # What the human does, on the page, while we wait for them.
+  #
+  # The code and the link are both shown because either alone strands somebody:
+  # a code with no destination, or a page that asks for a code you have to go
+  # back for. `aria-live` so the state changing from waiting to connected is
+  # announced rather than only coloured.
+  attr :device, :map, required: true
+
+  defp device_auth_prompt(assigns) do
+    ~H"""
+    <div
+      data-test="device-auth-prompt"
+      aria-live="polite"
+      class="border border-primary rounded-lg p-4 space-y-3"
+    >
+      <div class="font-medium">Finish connecting ChatGPT</div>
+
+      <ol class="text-sm space-y-2 list-decimal list-inside">
+        <li>
+          Open
+          <.link
+            href={@device.verification_uri}
+            target="_blank"
+            rel="noopener"
+            class="link link-primary"
+          >
+            {@device.verification_uri}
+          </.link>
+        </li>
+        <li>
+          Enter this code:
+          <span data-test="device-user-code" class="font-mono text-lg tracking-widest ml-1">
+            {@device.user_code}
+          </span>
+        </li>
+      </ol>
+
+      <div class="text-sm text-gray-500">
+        Waiting for you to finish — this page updates itself.
+      </div>
     </div>
     """
   end
@@ -177,6 +240,21 @@ defmodule CodeMySpecWeb.UserLive.Settings do
     """
   end
 
+  defp service_icon(%{provider: :openai} = assigns) do
+    ~H"""
+    <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.1" />
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+      <path
+        d="M8.5 10.5 12 8.5l3.5 2v3l-3.5 2-3.5-2v-3Z"
+        stroke="currentColor"
+        stroke-width="1.5"
+        fill="none"
+      />
+    </svg>
+    """
+  end
+
   defp service_icon(%{provider: :resend} = assigns) do
     ~H"""
     <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -213,16 +291,11 @@ defmodule CodeMySpecWeb.UserLive.Settings do
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
       |> assign(:services, services(scope))
+      |> assign(:device_auth, nil)
 
     {:ok, socket}
   end
 
-  # Cloudflare and Resend are here for the same reason GitHub is: setup acts on
-  # the user's own accounts, so the credential should be theirs to grant and
-  # theirs to revoke. They are deliberately absent from `@login_scopes` — you
-  # connect them, you do not sign in with them — and the note says so, because
-  # a row that looks exactly like the sign-in providers invites the assumption
-  # that it is one.
   defp services(scope) do
     [
       %{
@@ -250,9 +323,40 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         note: "Used to verify your sending domain and receive mail at it.",
         disconnect_warning:
           "Setup will not be able to manage your sending or receiving domains until you reconnect."
+      },
+      %{
+        provider: :openai,
+        label: "ChatGPT",
+        note: "Your ChatGPT subscription, so agents run on it instead of an API key.",
+        # The only one that cannot use `/auth/:provider`. Its OAuth client is
+        # Pi's, whose registered `redirect_uri` is `http://localhost:1455`, and a
+        # redirect URI is checked against its registration — so a hosted callback
+        # is refused before anyone sees a consent screen. Device code instead:
+        # a short code typed on OpenAI's own page, no redirect of ours at all.
+        device_flow: true,
+        disconnect_warning: "Agents will not be able to start on your ChatGPT subscription."
       }
     ]
     |> Enum.map(&Map.put(&1, :connected, Integrations.connected?(scope, &1.provider)))
+    |> Enum.map(&Map.put_new(&1, :device_flow, false))
+  end
+
+  def handle_event("start_device_auth", %{"provider" => "openai"}, socket) do
+    case DeviceAuth.request_device_code() do
+      {:ok, device} ->
+        schedule_poll(device)
+        {:noreply, assign(socket, :device_auth, device)}
+
+      {:error, reason} ->
+        Logger.warning("[Settings] could not start a ChatGPT device login: #{inspect(reason)}")
+
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Could not reach OpenAI to start the login. Try again in a moment."
+         )}
+    end
   end
 
   def handle_event("validate_email", params, socket) do
@@ -313,4 +417,66 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         {:noreply, assign(socket, password_form: to_form(changeset, action: :insert))}
     end
   end
+
+  # ---- Device-code connect (ChatGPT) ----------------------------------------
+
+  # Asking again while a code is outstanding, rather than a second code nobody
+  # typed. The prompt is already on screen; issuing a new one would invalidate
+  # the code the person is halfway through entering.
+  def handle_info(:poll_device_auth, %{assigns: %{device_auth: nil}} = socket),
+    do: {:noreply, socket}
+
+  def handle_info(:poll_device_auth, socket) do
+    device = socket.assigns.device_auth
+
+    case DeviceAuth.poll(device) do
+      {:ok, grant} ->
+        {:noreply, complete_device_auth(socket, grant)}
+
+      {:error, :pending} ->
+        schedule_poll(device)
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.warning("[Settings] ChatGPT device login failed: #{inspect(reason)}")
+
+        {:noreply,
+         socket
+         |> assign(:device_auth, nil)
+         |> put_flash(:error, "That login did not complete. Start it again to get a new code.")}
+    end
+  end
+
+  defp complete_device_auth(socket, grant) do
+    scope = socket.assigns.current_scope
+
+    with {:ok, tokens} <- DeviceAuth.exchange(grant),
+         {:ok, _integration} <-
+           Integrations.save_integration(scope, :openai, tokens, %{}) do
+      socket
+      |> assign(:device_auth, nil)
+      |> assign(:services, services(scope))
+      |> put_flash(:info, "ChatGPT connected. Agents can start on your subscription.")
+    else
+      {:error, reason} ->
+        Logger.warning("[Settings] ChatGPT token exchange failed: #{inspect(reason)}")
+
+        socket
+        |> assign(:device_auth, nil)
+        |> put_flash(:error, "OpenAI accepted the code but the exchange failed. Try again.")
+    end
+  end
+
+  # OpenAI names the interval; honour it rather than picking one. Polling faster
+  # than asked is how a client gets rate-limited into looking broken.
+  defp schedule_poll(%{interval_seconds: seconds}) do
+    Process.send_after(self(), :poll_device_auth, seconds * 1000)
+  end
+
+  # Cloudflare and Resend are here for the same reason GitHub is: setup acts on
+  # the user's own accounts, so the credential should be theirs to grant and
+  # theirs to revoke. They are deliberately absent from `@login_scopes` — you
+  # connect them, you do not sign in with them — and the note says so, because
+  # a row that looks exactly like the sign-in providers invites the assumption
+  # that it is one.
 end
