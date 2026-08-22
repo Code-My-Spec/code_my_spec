@@ -5,6 +5,8 @@ defmodule CodeMySpecWeb.Application do
 
   use Application
 
+  alias CodeMySpec.Agents.Device, as: AgentsDevice
+
   require Logger
 
   alias CodeMySpec.Analytics.GoogleAnalytics
@@ -36,7 +38,7 @@ defmodule CodeMySpecWeb.Application do
         # the harness channel and need nothing here; the fake keeps its state in
         # a process, so it has to be supervised like one. Started only when it is
         # the configured device, so production never carries it.
-        CodeMySpec.Agents.Device.child_spec_for_configured(),
+        AgentsDevice.child_spec_for_configured(),
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

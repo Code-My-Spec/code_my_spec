@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project

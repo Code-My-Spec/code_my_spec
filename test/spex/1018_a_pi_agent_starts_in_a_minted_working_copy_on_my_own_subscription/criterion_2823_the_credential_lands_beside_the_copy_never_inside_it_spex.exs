@@ -21,9 +21,9 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -55,10 +55,7 @@ end
       end
 
       then_ "no auth file was written anywhere inside the copy", context do
-        # The real path, because `PiConfig` writes through the real filesystem —
-        # asking the in-memory environment would answer about a different tree
-        # than the one a credential would actually land in.
-        {:ok, listing} = File.ls(context.scope.cwd)
+        {:ok, listing} = Environments.list_directory(context.environment, context.scope.cwd)
 
         refute Enum.any?(listing, &(&1 =~ "auth.json")),
                "an auth file landed inside the working copy. That copy gets " <>

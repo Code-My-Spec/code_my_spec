@@ -24,10 +24,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
