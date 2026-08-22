@@ -91,10 +91,43 @@ defmodule CodeMySpec.Agents.Credential do
        "access" => token,
        "refresh" => integration.refresh_token || "",
        "expires" => expires_ms(integration.expires_at)
-     }}
+     }
+     |> put_account_id(token)}
   end
 
   defp oauth_entry({:error, reason}, _token), do: {:error, reason}
+
+  # OpenAI's account id, which Pi sends as the `chatgpt-account-id` header on
+  # every model call (`openai-codex-responses.js`). An `auth.json` without it
+  # authenticates and then fails on the first request — the quiet failure this
+  # story's rules exist to keep out.
+  #
+  # Read from the access token rather than stored beside it, the way Pi reads it
+  # (`getAccountId/1` decodes the JWT and takes `chatgpt_account_id`). Deriving
+  # it means a refreshed token brings its own, instead of us carrying a copy that
+  # can go stale against the grant it describes.
+  #
+  # A token that carries no such claim is left alone: providers other than
+  # OpenAI have no account id, and inventing an empty one would send an empty
+  # header rather than none.
+  defp put_account_id(entry, token) do
+    case account_id(token) do
+      nil -> entry
+      account_id -> Map.put(entry, "accountId", account_id)
+    end
+  end
+
+  defp account_id(token) when is_binary(token) do
+    with [_header, payload, _signature] <- String.split(token, "."),
+         {:ok, json} <- Base.url_decode64(payload, padding: false),
+         {:ok, claims} <- Jason.decode(json) do
+      claims |> Map.get("https://api.openai.com/auth", %{}) |> Map.get("chatgpt_account_id")
+    else
+      _ -> nil
+    end
+  end
+
+  defp account_id(_token), do: nil
 
   # Pi stores the expiry as epoch milliseconds — `Date.now() + expires_in * 1000`
   # in its own refresh path — so handing it seconds would read as 1970 and make
