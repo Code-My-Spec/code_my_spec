@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2820Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Integrations
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
   setup :register_log_in_setup_account
@@ -30,17 +30,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2820Spex do
   spex "One connection serves every agent" do
     scenario "Connected once, used by every agent" do
       given_ "an engineer who connected their ChatGPT subscription once", context do
-        {:ok, _integration} =
-          Integrations.save_integration(
-            context.scope,
-            :openai,
-            %{
-              "access_token" => "spex-access-#{System.unique_integer([:positive])}",
-              "refresh_token" => "spex-refresh-#{System.unique_integer([:positive])}",
-              "expires_in" => 3600
-            },
-            %{"id" => "spex-chatgpt-account"}
-          )
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
 
         {:ok, context}
       end

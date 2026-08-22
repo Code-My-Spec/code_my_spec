@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2825Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Integrations
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
   setup :register_log_in_setup_account
@@ -34,26 +34,14 @@ defmodule CodeMySpecSpex.Story1018.Criterion2825Spex do
     scenario "Two credential kinds, one way to start an agent" do
       given_ "a subscription connected by OAuth and a coding plan connected by API key",
              context do
-        {:ok, _oauth} =
-          Integrations.save_integration(
-            context.scope,
-            :openai,
-            %{
-              "access_token" => "spex-access",
-              "refresh_token" => "spex-refresh",
-              "expires_in" => 3600
-            },
-            %{"id" => "spex-chatgpt-account"}
-          )
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
 
         # No refresh token, expiry far out — the shape an API key is stored in,
         # and the shape GitHub already uses.
         {:ok, _api_key} =
-          Integrations.save_integration(
-            context.scope,
-            :zai,
-            %{"access_token" => "spex-zai-key", "expires_in" => 31_536_000},
-            %{"id" => "spex-zai-account"}
+          Fixtures.connect_provider(context.scope, :zai,
+            refresh_token: nil,
+            expires_at: DateTime.add(DateTime.utc_now(), 31_536_000, :second)
           )
 
         {:ok, context}

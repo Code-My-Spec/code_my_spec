@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
@@ -30,7 +31,17 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   spex "The tree stays clean" do
     scenario "The credential lands beside the copy, never inside it" do
       given_ "a minted working copy", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
         :ok = Environments.register(context.project.id, context.environment)
+
+        # A minted copy is a project, not an empty directory. It also has to
+        # contain *something* for the tree to be listable at all — and a copy
+        # with no files could not carry a credential either, which would make
+        # this criterion pass for the wrong reason.
+        :ok = Environments.write_file(context.environment, "mix.exs", "defmodule App.MixProject do
+end
+")
+
         {:ok, context}
       end
 
@@ -44,7 +55,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
       end
 
       then_ "no auth file was written anywhere inside the copy", context do
-        {:ok, listing} = Environments.list_directory(context.environment, ".")
+        # The real path, because `PiConfig` writes through the real filesystem —
+        # asking the in-memory environment would answer about a different tree
+        # than the one a credential would actually land in.
+        {:ok, listing} = File.ls(context.scope.cwd)
 
         refute Enum.any?(listing, &(&1 =~ "auth.json")),
                "an auth file landed inside the working copy. That copy gets " <>

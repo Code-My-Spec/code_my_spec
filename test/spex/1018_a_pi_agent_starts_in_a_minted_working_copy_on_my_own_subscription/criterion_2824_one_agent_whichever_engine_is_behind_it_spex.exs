@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
   setup :register_log_in_setup_account
@@ -30,6 +31,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2824Spex do
   spex "One place to watch agents work" do
     scenario "One agent, whichever engine is behind it" do
       given_ "a Pi agent started on a minted working copy", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =

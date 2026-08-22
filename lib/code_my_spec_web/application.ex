@@ -32,6 +32,11 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
+        # The device an agent is started on. Real deployments reach the box over
+        # the harness channel and need nothing here; the fake keeps its state in
+        # a process, so it has to be supervised like one. Started only when it is
+        # the configured device, so production never carries it.
+        CodeMySpec.Agents.Device.child_spec_for_configured(),
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

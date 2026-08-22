@@ -39,6 +39,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
+  alias CodeMySpec.Agents.Device
   alias CodeMySpec.Agents.PiConfig
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Users.Scope
@@ -79,10 +80,41 @@ defmodule CodeMySpec.Agents do
     with {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, config_dir} <- PiConfig.mint(agent, credential),
-         {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}) do
+         {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}),
+         {:ok, os_pid} <- Device.start(agent, config_dir),
+         {:ok, agent} <- record_started(scope, agent, %{os_pid: os_pid}) do
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
+  end
+
+  @doc """
+  What is running, reconciled against the device rather than remembered.
+
+  `list_running/1` answers from the database — what we asked for. This asks the
+  box what it actually has and marks anything missing as stopped, because those
+  two disagreeing is the failure worth catching: an agent that outlived whatever
+  started it keeps spending a subscription, and a row that still claims it is
+  running is how nobody notices.
+  """
+  @spec reconcile_running(Scope.t()) :: {:ok, [Agent.t()]} | {:error, term()}
+  def reconcile_running(%Scope{} = scope) do
+    with {:ok, ids} <- Device.running_ids(scope) do
+      alive = MapSet.new(ids)
+
+      scope
+      |> AgentsRepository.list_running()
+      |> Enum.map(&reap_if_absent(scope, &1, MapSet.member?(alive, &1.id)))
+      |> Enum.filter(& &1.status in [:starting, :running])
+      |> then(&{:ok, &1})
+    end
+  end
+
+  defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
+
+  defp reap_if_absent(scope, %Agent{} = agent, false) do
+    {:ok, stopped} = AgentsRepository.update_agent(scope, agent, %{status: :stopped, os_pid: nil})
+    stopped
   end
 
   @doc """
@@ -96,6 +128,7 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, :not_found | :cross_project | Ecto.Changeset.t()}
   def stop_agent(%Scope{} = scope, id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <- Device.stop(agent),
          {:ok, stopped} <-
            AgentsRepository.update_agent(scope, agent, %{status: :stopped, os_pid: nil}) do
       broadcast(scope, {:agent_stopped, stopped})

@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
@@ -34,6 +35,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
   spex "What is running is answerable, and stoppable" do
     scenario "Started, seen, stopped" do
       given_ "Pi agents started on two minted working copies", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, first, _frame} =

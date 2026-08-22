@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2822Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Integrations
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
   setup :register_log_in_setup_account
@@ -39,15 +39,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2822Spex do
       given_ "a connected provider whose access token has expired but whose refresh works",
              context do
         {:ok, _integration} =
-          Integrations.save_integration(
-            context.scope,
-            :openai,
-            %{
-              "access_token" => "spex-expired-access",
-              "refresh_token" => "spex-live-refresh",
-              "expires_in" => -60
-            },
-            %{"id" => "spex-chatgpt-account"}
+          Fixtures.connect_provider(context.scope, :openai,
+            expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
           )
 
         {:ok, context}

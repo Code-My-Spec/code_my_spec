@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
@@ -39,6 +40,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
   spex "An agent dies with whatever started it" do
     scenario "Nothing keeps spending after the thing that started it is gone" do
       given_ "a Pi agent working on a minted copy", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, started, _frame} =
