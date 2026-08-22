@@ -35,7 +35,8 @@ defmodule CodeMySpec.Integrations do
     github: CodeMySpec.Integrations.Providers.GitHub,
     google: CodeMySpec.Integrations.Providers.Google,
     cloudflare: CodeMySpec.Integrations.Providers.Cloudflare,
-    resend: CodeMySpec.Integrations.Providers.Resend
+    resend: CodeMySpec.Integrations.Providers.Resend,
+    openai: CodeMySpec.Integrations.Providers.OpenAI
   }
 
   # Minimal scopes for social login — just enough for identity. Deliberately

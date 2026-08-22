@@ -617,6 +617,59 @@ defmodule CodeMySpec.IntegrationsTest do
   # spex test-time helper replaces the entire response body with per-test
   # user_json / emails_json, but we still scrub here so the committed shape
   # file never holds real account data.
+  # The OpenAI refresh shape, for story 1018's criterion 2822.
+  #
+  # Not recorded yet, and cannot be until a ChatGPT grant exists —
+  # `~/.pi/agent/auth.json` holds only `anthropic`, because `/login` is a TUI
+  # slash command nobody has run for ChatGPT. Hand-writing the JSON would be
+  # manufacturing a recording, so the criterion stubs the refusal explicitly and
+  # this waits for a real grant.
+  #
+  # To record:
+  #   1. run `/login` in Pi and choose OpenAI (ChatGPT Plus/Pro)
+  #   2. read the refresh token out of ~/.pi/agent/auth.json ("openai-codex")
+  #   3. TEST_OPENAI_REFRESH_TOKEN=<token> mix test --only record_openai_refresh_shape
+  #
+  # What matters in the shape is what Assent parses back: `access_token`,
+  # `refresh_token` (OpenAI rotates it on every refresh) and `expires_in`.
+  @tag :record_openai_refresh_shape
+  test "captures the OpenAI token refresh response shape" do
+    refresh_token =
+      System.get_env("TEST_OPENAI_REFRESH_TOKEN") ||
+        flunk("TEST_OPENAI_REFRESH_TOKEN required to record the OpenAI refresh shape")
+
+    with_cassette "openai_refresh_shape", openai_shape_cassette_opts(), fn plug ->
+      {:ok, _} =
+        Req.post(
+          plug: plug,
+          url: "https://auth.openai.com/oauth/token",
+          form: [
+            grant_type: "refresh_token",
+            refresh_token: refresh_token,
+            client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
+          ]
+        )
+    end
+  end
+
+  defp openai_shape_cassette_opts do
+    [
+      cassette_dir: @cassette_dir,
+      mode: :record,
+      match_requests_on: [:method, :uri],
+      filter_request_headers: ["authorization", "cookie"],
+      filter_response_headers: ["set-cookie"],
+      # Every token in the response is a live credential for somebody's
+      # subscription. The shape is the point; the values must not survive.
+      filter_response_body: fn body ->
+        body
+        |> String.replace(~r/"access_token":"[^"]*"/, ~s("access_token":"recorded-access"))
+        |> String.replace(~r/"refresh_token":"[^"]*"/, ~s("refresh_token":"recorded-refresh"))
+        |> String.replace(~r/"id_token":"[^"]*"/, ~s("id_token":"recorded-id"))
+      end
+    ]
+  end
+
   defp github_shape_cassette_opts do
     [
       cassette_dir: @cassette_dir,

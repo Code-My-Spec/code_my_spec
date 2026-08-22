@@ -101,8 +101,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
   #  binds its payload through a macro pattern, and that binding
   # does not survive the DSL's block. Matching the reply directly binds cleanly
   # and says the same thing.
-  defp report(socket, agent_ids) do
-    ref = Phoenix.ChannelTest.push(socket, "agents_running", %{"agent_ids" => agent_ids})
+  defp report(socket, agents) do
+    ref = Phoenix.ChannelTest.push(socket, "agents_running", %{"agents" => agents})
 
     receive do
       %Phoenix.Socket.Reply{ref: ^ref, status: :ok, payload: payload} -> payload

@@ -43,7 +43,9 @@ ExUnit.start(
       :real_pool,
       :analyzer,
       :record_google_login_shape,
-      :record_github_login_shape
+      :record_github_login_shape,
+      # Waiting on a ChatGPT grant to record from — see the test's own note.
+      :record_openai_refresh_shape
     ] ++ sops_exclusions
 )
 

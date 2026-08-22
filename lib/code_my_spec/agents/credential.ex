@@ -57,6 +57,15 @@ defmodule CodeMySpec.Agents.Credential do
   defp to_credential({:error, :reauthorize_required}, _scope, _provider, _integration_provider),
     do: {:error, :reconnect_required}
 
+  # A refresh the provider refused is a credential that needs reconnecting,
+  # whatever shape the refusal arrived in. Passing the transport error through
+  # would report an `Assent.InvalidResponseError` at somebody who connected a
+  # subscription and wants to know what to do about it — and `invalid_grant` is
+  # exactly what a superseded refresh token gets, which is the case this has to
+  # name correctly rather than dump.
+  defp to_credential({:error, %{__exception__: true}}, _scope, _provider, _integration_provider),
+    do: {:error, :reconnect_required}
+
   defp to_credential({:error, reason}, _scope, _provider, _integration_provider),
     do: {:error, reason}
 

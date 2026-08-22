@@ -365,3 +365,14 @@ config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter,
 config :code_my_spec,
        :pi_config_root,
        Path.join([System.tmp_dir!(), "codemyspec-test", "pi"])
+
+# Assent's HTTP adapter, pinned so an OAuth call in a test cannot leave the
+# machine. Without this it defaults to a live adapter: story 1018's criterion
+# 2822 reached `https://auth.openai.com/oauth/token` from the suite and came
+# back with a real 401. A test holding a credential and an unpinned adapter is
+# the same shape that once posted to real Google Analytics.
+#
+# `Req.Test` refuses an unstubbed call rather than performing it, so a test that
+# needs an OAuth round trip has to say so — with `Req.Test.stub(Assent, …)` or
+# through `OAuthSpexHelpers.with_assent_plug/2` and a cassette.
+config :assent, http_adapter: {Assent.HTTPAdapter.Req, plug: {Req.Test, Assent}}
