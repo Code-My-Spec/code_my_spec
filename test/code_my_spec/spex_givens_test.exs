@@ -91,6 +91,16 @@ defmodule CodeMySpec.SpexGivensTest do
   # 812's session-stitching criteria have no other way to say "a visitor
   # arriving with these GA cookies". The helper's whole body is
   # `Plug.Test.put_req_cookie/3` twice.
+  # `Integrations.save_integration/4` is the call the OAuth callback itself makes
+  # to persist a grant, so a given that connects a provider through it has driven
+  # the app in the only way available: there is no page for connecting a model
+  # provider, and the callback needs an OAuth client these providers do not have.
+  # Same precedent as `Environments.` — a context function whose whole job is to
+  # establish the state the criterion is about.
+  #
+  # Comments belong out here. `~w()` has no comment syntax, so a # line inside the
+  # sigil becomes literal tokens — including every ordinary English word in it,
+  # which then matches almost any given body and silently disables this check.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
@@ -101,6 +111,7 @@ defmodule CodeMySpec.SpexGivensTest do
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
+    Integrations.
     assign put_session seed_cookies
     StoryHelpers. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on

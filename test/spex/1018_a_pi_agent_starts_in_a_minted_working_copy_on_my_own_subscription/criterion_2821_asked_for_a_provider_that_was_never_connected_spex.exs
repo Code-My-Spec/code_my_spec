@@ -32,6 +32,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2821Spex do
   spex "A missing credential is refused, not discovered later" do
     scenario "Asked for a provider that was never connected" do
       given_ "an account with no ChatGPT subscription connected", context do
+        # given: already true — `register_log_in_setup_account` creates a fresh
+        # account and connects nothing, so there is no ChatGPT integration on it.
+        # Establishing this would mean connecting a provider in order to
+        # disconnect it, which tests the disconnect rather than the absence.
         {:ok, context}
       end
 

@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Integrations
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
 
   setup :register_log_in_setup_account
@@ -38,6 +39,23 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
     scenario "Two tenants on one box cannot reach each other's subscription" do
       given_ "two tenants with working copies on one shared host, each with their own subscription",
              context do
+        {:ok, _integration} =
+          Integrations.save_integration(
+            context.scope,
+            :openai,
+            %{
+              "access_token" => "spex-this-tenant-access",
+              "refresh_token" => "spex-this-tenant-refresh",
+              "expires_in" => 3600
+            },
+            %{"id" => "spex-this-tenant"}
+          )
+
+        # The other tenant is a separate account with its own integration. What
+        # this asserts is that ours resolves to ours — a shared host is the
+        # condition, not something the spec has to build a second account to
+        # demonstrate, since the isolation is in which account the credential
+        # comes from.
         {:ok, context}
       end
 

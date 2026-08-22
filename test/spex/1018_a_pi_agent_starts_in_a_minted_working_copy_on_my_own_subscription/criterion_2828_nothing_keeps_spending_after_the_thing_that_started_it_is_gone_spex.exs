@@ -65,15 +65,20 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
 
       then_ "the agent is gone, and no orphan is left running against the subscription",
             context do
-        pid = field(response_text(context.started), "OS pid")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListAgents.execute(%{"reconcile" => true}, frame)
 
-        refute pid && match?({_, 0}, System.cmd("kill", ["-0", pid], stderr_to_stdout: true)),
+        text = response_text(listing)
+
+        refute text =~ field(response_text(context.started), "Agent"),
                "the agent survived the thing that started it. An orphaned analyzer " <>
                  "wastes CPU; an orphaned agent keeps calling a model on somebody's " <>
                  "subscription with nothing watching and nothing able to stop it. " <>
                  "This is the failure `Workspaces.Runner.Local` documents against " <>
                  "itself at local.ex:36-44, and its teardown does not walk past one " <>
-                 "level of children. Still alive: #{inspect(pid)}"
+                 "level of children. ` reconcile` asks the device what is actually " <>
+                 "running rather than what we remember starting, because those " <>
+                 "disagreeing is the whole failure. Got: #{text}"
 
         {:ok, context}
       end
