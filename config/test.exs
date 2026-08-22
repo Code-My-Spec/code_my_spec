@@ -381,3 +381,10 @@ config :assent, http_adapter: {Assent.HTTPAdapter.Req, plug: {Req.Test, Assent}}
 # test cannot start a real login against somebody's ChatGPT account.
 config :code_my_spec, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth}
+
+# The OpenAI browser-login token exchange, pinned like the device client. The
+# listener on 1455 is real in its tests — the port, the path and the state check
+# are the parts that break, and none of them is exercised by stubbing the thing
+# that binds the port.
+config :code_my_spec, CodeMySpec.Integrations.Providers.OpenAI.BrowserAuth,
+  plug: {Req.Test, CodeMySpec.Integrations.Providers.OpenAI.BrowserAuth}
