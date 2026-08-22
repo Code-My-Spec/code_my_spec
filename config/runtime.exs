@@ -235,6 +235,8 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
     cloudflare_client_secret: env!("CLOUDFLARE_CLIENT_SECRET", :string, ""),
     resend_client_id: env!("RESEND_CLIENT_ID", :string, ""),
     resend_client_secret: env!("RESEND_CLIENT_SECRET", :string, ""),
+    # No secret: OpenAI's is a public-client flow, PKCE and a client id only.
+    openai_client_id: env!("OPENAI_CLIENT_ID", :string, ""),
     base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
     deploy_key: env!("DEPLOY_KEY"),
     indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)

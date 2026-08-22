@@ -2,23 +2,6 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
   @moduledoc """
   Pi's ChatGPT login, reproduced — the device-code half.
 
-  ## Why this half and not the browser half
-
-  Pi offers both. The browser flow cannot be copied server-side, and not for
-  want of trying: its `redirect_uri` is `http://localhost:1455/auth/callback`,
-  a fixed value registered against Pi's client. A redirect URI is checked
-  against the client's registration, so a callback of ours — hosted, on a
-  container, anywhere but that port on that machine — is refused before a human
-  ever sees a consent screen. Copying the browser flow means running a listener
-  on port 1455 of the user's own machine, which the local app could do and a
-  cloud host never can.
-
-  The device flow needs no redirect of ours at all. OpenAI's own
-  `/deviceauth/callback` absorbs it, the human types a short code on a page they
-  already trust, and the credential lands wherever the polling happened. That is
-  the one shape that works from a container, and the multi-tenant host is the
-  case this story is ultimately for.
-
   ## The exchange, as Pi performs it
 
       POST /api/accounts/deviceauth/usercode  {client_id}
@@ -36,18 +19,37 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
   noticing: this is PKCE with the challenge minted at OpenAI's end rather than
   ours, which is why nothing here generates one.
 
-  ## Client id
+  ## Why this is the only flow, not the fallback
 
-  Pi's, `app_EMoamEEZ73f0CkXaXp7hrann`, for the same reason
-  `CodeMySpec.Integrations.Providers.OpenAI` uses it: the grant this mints is
-  one Pi will spend, and a refresh token is bound to the client that issued it.
-  `originator` is `pi` for the same reason — it is how OpenAI attributes the
-  session, and claiming to be something else would be a lie told to the party
-  granting the credential.
+  Pi offers a browser flow too, and it is reproducible — it binds
+  `localhost:1455`, catches the callback there, and the local app could do the
+  same. Two reasons it is not what we do.
+
+  A hosted callback is not available to us at all: `redirect_uri` is checked
+  against the client's registration, the client is OpenAI's, and its registered
+  redirects are that localhost port and OpenAI's own deviceauth callback. An
+  authorize request naming ours comes back `invalid_authorize_request` —
+  confirmed by trying it, after asserting it twice without.
+
+  And a listener on 1455 only helps when the app is on the machine the human is
+  sitting at, which is not something we get to assume. A flow that works in some
+  situations is not a flow. This one needs no port, no listener and no browser
+  on the same host: OpenAI's `/deviceauth/callback` absorbs the redirect and the
+  credential lands wherever the polling happened.
+
+  ## Client id, and one thing that will catch people
+
+  Read from `Providers.OpenAI` rather than repeated here — it is OpenAI's Codex
+  client, and there is no third-party registration to replace it with.
+  `originator` is `pi` because that is how OpenAI attributes the session on a
+  shared client.
+
+  **Device authorization has to be enabled on the OpenAI account first.**
+  Without it the flow refuses at the first call, and the message does not say
+  that is why.
   """
 
   @auth_base "https://auth.openai.com"
-  @client_id "app_EMoamEEZ73f0CkXaXp7hrann"
   @originator "pi"
   @verification_uri "#{@auth_base}/codex/device"
   @device_redirect_uri "#{@auth_base}/deviceauth/callback"
@@ -119,7 +121,9 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
   @spec verification_uri() :: String.t()
   def verification_uri, do: @verification_uri
 
-  defp client_id, do: Application.get_env(:code_my_spec, :openai_client_id, @client_id)
+  # One definition, in the provider. Two copies of a client id drift, and the
+  # drift shows up as a redirect the registration does not recognise.
+  defp client_id, do: CodeMySpec.Integrations.Providers.OpenAI.client_id()
 
   # One place the plug is applied, so a test pins this the way every other Req
   # client here is pinned rather than reaching the network.
