@@ -54,18 +54,22 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
              "server-side walk could make them"
   end
 
-  test "/sync on a scannable environment still actually syncs", %{scope: scope} do
-    # The guard must not swallow a real environment's real failure, nor skip
-    # work it could have done.
-    result = SkillRouter.resolve(scope, %{"skill" => "sync", "external_id" => "ext-2"})
+  # The counterpart to the test above, and the whole point of the pair: the
+  # excuse is the harness's alone. Anything else that fails to scan says why.
+  #
+  # This scope names no working copy, so the scan fails for a reason of its own.
+  # That is the outcome worth pinning — an earlier version accepted either an
+  # ok or an error and asserted nothing in the error case, which meant it passed
+  # without ever reaching the branch its name described.
+  test "/sync elsewhere reports its own failure, not the harness's excuse", %{scope: scope} do
+    assert {:error, message} =
+             SkillRouter.resolve(scope, %{"skill" => "sync", "external_id" => "ext-2"})
 
-    case result do
-      {:ok, %{prompt: prompt}} ->
-        refute prompt =~ "synced by its harness",
-               "a local environment has a tree to walk and must walk it"
+    refute message =~ "synced by its harness",
+           "a local environment has a tree to walk; failing to walk it must not be " <>
+             "reported as the harness having already done the work"
 
-      {:error, _} ->
-        :ok
-    end
+    assert message =~ "no working copy on this machine",
+           "the real reason has to survive the guard rather than be replaced by it"
   end
 end

@@ -29,16 +29,12 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
 
   setup do
     previous = System.get_env("CMS_HARNESS_ID")
-
-    on_exit(fn ->
-      case previous do
-        nil -> System.delete_env("CMS_HARNESS_ID")
-        value -> System.put_env("CMS_HARNESS_ID", value)
-      end
-    end)
-
+    on_exit(fn -> restore_harness_id(previous) end)
     :ok
   end
+
+  defp restore_harness_id(nil), do: System.delete_env("CMS_HARNESS_ID")
+  defp restore_harness_id(value), do: System.put_env("CMS_HARNESS_ID", value)
 
   defp checkout_with_id(id) do
     root = Path.join(System.tmp_dir!(), "cms_precedence_#{System.unique_integer([:positive])}")

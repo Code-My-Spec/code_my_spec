@@ -43,8 +43,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
       |> Path.join("**/*.ex")
       |> Path.wildcard()
       |> Enum.flat_map(&scan_file/1)
-      |> Enum.reject(fn {rel, _line, _src} -> rel in @allowed_paths end)
-      |> Enum.reject(fn {rel, _line, _src} -> mix_task?(rel) end)
+      |> Enum.reject(fn {rel, _line, _src} -> rel in @allowed_paths or mix_task?(rel) end)
 
     assert violations == [],
            build_violation_message(violations)

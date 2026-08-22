@@ -19,8 +19,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   import Ecto.Query
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File}
   alias CodeMySpec.Harnesses

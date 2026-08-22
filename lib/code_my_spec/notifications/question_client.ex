@@ -29,27 +29,30 @@ defmodule CodeMySpec.Notifications.QuestionClient do
   @doc "Create a remote question request. Returns `{:ok, id}` or `{:error, reason}`."
   @spec ask([map()], String.t() | nil) :: {:ok, String.t()} | {:error, term()}
   def ask(questions, title \\ nil, harness_id \\ nil) when is_list(questions) do
-    with {:ok, token} <- credential() do
-      url = "#{OAuthClient.get_server_url()}/api/questions/ask"
-      # The harness, not the session. The asking agent has a scope carrying a
-      # working copy; the server turns that into the session running there,
-      # the same way it does for a recorded model turn.
-      body = %{questions: questions, title: title, harness_id: harness_id}
-
-      case Req.post(url, headers: [{"authorization", "Bearer #{token}"}], json: body) do
-        {:ok, %{status: status, body: %{"id" => id}}} when status in [200, 201] ->
-          {:ok, id}
-
-        {:ok, %{status: status, body: body}} ->
-          Logger.warning("[QuestionClient] ask failed (#{status}): #{inspect(body)}")
-          {:error, {:http, status}}
-
-        {:error, reason} ->
-          Logger.warning("[QuestionClient] ask transport error: #{inspect(reason)}")
-          {:error, reason}
-      end
-    else
+    case credential() do
+      {:ok, token} -> post_question(token, questions, title, harness_id)
       {:error, _} -> {:error, :not_configured}
+    end
+  end
+
+  defp post_question(token, questions, title, harness_id) do
+    url = "#{OAuthClient.get_server_url()}/api/questions/ask"
+    # The harness, not the session. The asking agent has a scope carrying a
+    # working copy; the server turns that into the session running there,
+    # the same way it does for a recorded model turn.
+    body = %{questions: questions, title: title, harness_id: harness_id}
+
+    case Req.post(url, headers: [{"authorization", "Bearer #{token}"}], json: body) do
+      {:ok, %{status: status, body: %{"id" => id}}} when status in [200, 201] ->
+        {:ok, id}
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("[QuestionClient] ask failed (#{status}): #{inspect(body)}")
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        Logger.warning("[QuestionClient] ask transport error: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -62,9 +65,8 @@ defmodule CodeMySpec.Notifications.QuestionClient do
   def await_answer(id, opts \\ []) do
     deadline = now_ms() + Keyword.get(opts, :timeout_ms, @default_timeout_ms)
 
-    with {:ok, token} <- credential() do
-      poll(id, token, deadline)
-    else
+    case credential() do
+      {:ok, token} -> poll(id, token, deadline)
       {:error, _} -> {:error, :not_configured}
     end
   end

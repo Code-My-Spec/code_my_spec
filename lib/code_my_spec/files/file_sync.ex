@@ -577,25 +577,25 @@ defmodule CodeMySpec.Files.FileSync do
 
   defp explain_changes(changed, existing_by_path, fields) do
     detail =
-      Enum.map_join(changed, "; ", fn entry ->
-        case Map.get(existing_by_path, entry.path) do
-          nil ->
-            "#{entry.path}: new"
-
-          record ->
-            reasons =
-              fields
-              |> Enum.filter(&differs?(entry, record, &1))
-              |> Enum.map_join(", ", fn field ->
-                "#{field} #{inspect(Map.get(entry, field), limit: 2)} != " <>
-                  "#{inspect(Map.get(record, field), limit: 2)}"
-              end)
-
-            "#{entry.path}: #{reasons}"
-        end
-      end)
+      Enum.map_join(changed, "; ", &explain_change(&1, Map.get(existing_by_path, &1.path), fields))
 
     Logger.info("[FileSync] writing #{length(changed)} row(s) — #{detail}")
+  end
+
+  defp explain_change(entry, nil, _fields), do: "#{entry.path}: new"
+
+  defp explain_change(entry, record, fields) do
+    reasons =
+      fields
+      |> Enum.filter(&differs?(entry, record, &1))
+      |> Enum.map_join(", ", &describe_difference(entry, record, &1))
+
+    "#{entry.path}: #{reasons}"
+  end
+
+  defp describe_difference(entry, record, field) do
+    "#{field} #{inspect(Map.get(entry, field), limit: 2)} != " <>
+      "#{inspect(Map.get(record, field), limit: 2)}"
   end
 
   defp differs?(entry, record, field) do

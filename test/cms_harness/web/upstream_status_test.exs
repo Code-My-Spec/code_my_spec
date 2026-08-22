@@ -22,17 +22,19 @@ defmodule CmsHarness.Web.UpstreamStatusTest do
   """
   use ExUnit.Case, async: true
 
+  alias Plug.Conn.Status
+
   describe "codes we expect" do
     test "529 has a reason phrase, so it can be forwarded as itself" do
-      assert Plug.Conn.Status.reason_phrase(529) == "Overloaded", """
+      assert Status.reason_phrase(529) == "Overloaded", """
       529 is not configured. `config :plug, :statuses` in config/config.exs is
       what stops Anthropic's overload answer becoming a harness 500.
       """
     end
 
     test "configuring it did not disturb the ordinary ones" do
-      assert Plug.Conn.Status.reason_phrase(200) == "OK"
-      assert Plug.Conn.Status.reason_phrase(502) == "Bad Gateway"
+      assert Status.reason_phrase(200) == "OK"
+      assert Status.reason_phrase(502) == "Bad Gateway"
     end
   end
 
@@ -43,7 +45,7 @@ defmodule CmsHarness.Web.UpstreamStatusTest do
     # changed that to returning nil, the guard would stop working and nothing
     # else here would notice.
     test "an unconfigured code raises ArgumentError, which is what the guard catches" do
-      assert_raise ArgumentError, fn -> Plug.Conn.Status.reason_phrase(599) end
+      assert_raise ArgumentError, fn -> Status.reason_phrase(599) end
     end
   end
 end

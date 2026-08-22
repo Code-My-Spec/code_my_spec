@@ -51,11 +51,11 @@ defmodule CodeMySpec.Release.PluginPortRewriteTest do
   end
 
   defp port_list(content) do
-    case Regex.run(~r/PORTS="([0-9 ]+)"/, content) do
-      [_, list] -> String.split(list, " ", trim: true)
-      nil -> nil
-    end
+    ~r/PORTS="([0-9 ]+)"/ |> Regex.run(content) |> split_ports()
   end
+
+  defp split_ports([_, list]), do: String.split(list, " ", trim: true)
+  defp split_ports(nil), do: nil
 
   # Only `init` still carries a pair.
   #

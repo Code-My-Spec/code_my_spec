@@ -203,22 +203,19 @@ defmodule CodeMySpec.ResourcesTest do
   #
   # `nil` rather than raising for an unwritten step, because that is the
   # ordinary state while async work is starting and it is what the wait is for.
-  defp step_state(scope, step) do
-    case StepRepository.get(scope, step) do
-      nil -> nil
-      record -> record.state
-    end
-  end
+  defp step_state(scope, step), do: scope |> StepRepository.get(step) |> state_of()
+
+  defp state_of(nil), do: nil
+  defp state_of(record), do: record.state
 
   defp wait_until(fun, attempts \\ 50)
   defp wait_until(_fun, 0), do: flunk("condition never became true")
+  defp wait_until(fun, attempts), do: retry_until(fun.(), fun, attempts)
 
-  defp wait_until(fun, attempts) do
-    if fun.() do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until(fun, attempts - 1)
-    end
+  defp retry_until(true, _fun, _attempts), do: :ok
+
+  defp retry_until(_falsy, fun, attempts) do
+    Process.sleep(10)
+    wait_until(fun, attempts - 1)
   end
 end

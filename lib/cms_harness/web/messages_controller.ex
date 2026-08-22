@@ -18,6 +18,7 @@ defmodule CmsHarness.Web.MessagesController do
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarness.WorkingCopies
+  alias Plug.Conn.Status
 
   @upstream "https://api.anthropic.com"
 
@@ -66,7 +67,7 @@ defmodule CmsHarness.Web.MessagesController do
   # 5xx as a 5xx, and logs the original — the number is the one piece of
   # information the fallback destroys.
   defp forwardable(status) do
-    _ = Plug.Conn.Status.reason_phrase(status)
+    _ = Status.reason_phrase(status)
     status
   rescue
     ArgumentError ->

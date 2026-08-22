@@ -93,10 +93,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
   # this file exists to assert.
   defp await_reconcile_pid(harness_id, attempts \\ 200) do
     Enum.reduce_while(1..attempts, nil, fn _, _ ->
-      case Registry.lookup(ReconcileRegistry, to_string(harness_id)) do
-        [{pid, _meta}] -> {:halt, pid}
-        [] -> tick()
-      end
+      ReconcileRegistry |> Registry.lookup(to_string(harness_id)) |> halt_on_pid()
     end) ||
       flunk("""
       No reconcile was ever observed in the registry.
@@ -109,16 +106,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
       """)
   end
 
+  defp halt_on_pid([{pid, _meta}]), do: {:halt, pid}
+  defp halt_on_pid([]), do: tick()
+
   defp tick do
     Process.sleep(5)
     {:cont, nil}
   end
 
   defp await_death(pid, attempts \\ 200) do
-    Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if Process.alive?(pid), do: tick(), else: {:halt, true}
-    end)
+    Enum.reduce_while(1..attempts, false, fn _, _ -> halt_on_death(Process.alive?(pid)) end)
   end
+
+  defp halt_on_death(true), do: tick()
+  defp halt_on_death(false), do: {:halt, true}
 
   # Excluded from the default suite, and the reason is not that it is flaky —
   # it is that it cannot be honest inside the sandbox.

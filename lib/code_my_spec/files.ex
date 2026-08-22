@@ -229,44 +229,50 @@ defmodule CodeMySpec.Files do
   # case this project is built for — several agents on one project is the
   # design, not an anomaly.
   defp drop_missing_component_ids(entries) do
-    ids =
-      entries
-      |> Enum.map(&Map.get(&1, :component_id))
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
+    entries
+    |> Enum.map(&Map.get(&1, :component_id))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> drop_absent_links(entries)
+  end
 
-    case ids do
-      [] ->
-        entries
+  defp drop_absent_links([], entries), do: entries
 
-      ids ->
-        present =
-          Components.Component
-          |> where([c], c.id in ^ids)
-          |> select([c], c.id)
-          |> Repo.all()
-          |> MapSet.new()
+  defp drop_absent_links(ids, entries) do
+    present = present_component_ids(ids)
 
-        missing = Enum.reject(ids, &MapSet.member?(present, &1))
+    ids
+    |> Enum.reject(&MapSet.member?(present, &1))
+    |> warn_dropped_links()
 
-        if missing != [] do
-          Logger.warning(
-            "[Files] dropped #{length(missing)} component link(s) whose component " <>
-              "no longer exists: #{Enum.join(missing, ", ")}. Another working copy " <>
-              "pruned them mid-sync; the next sync re-links whatever comes back."
-          )
-        end
+    Enum.map(entries, &clear_absent_link(&1, present))
+  end
 
-        Enum.map(entries, fn entry ->
-          case Map.get(entry, :component_id) do
-            nil ->
-              entry
+  defp present_component_ids(ids) do
+    Components.Component
+    |> where([c], c.id in ^ids)
+    |> select([c], c.id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
 
-            id ->
-              if MapSet.member?(present, id), do: entry, else: Map.put(entry, :component_id, nil)
-          end
-        end)
-    end
+  defp warn_dropped_links([]), do: :ok
+
+  defp warn_dropped_links(missing) do
+    Logger.warning(
+      "[Files] dropped #{length(missing)} component link(s) whose component " <>
+        "no longer exists: #{Enum.join(missing, ", ")}. Another working copy " <>
+        "pruned them mid-sync; the next sync re-links whatever comes back."
+    )
+  end
+
+  defp clear_absent_link(entry, present),
+    do: clear_absent_link(entry, Map.get(entry, :component_id), present)
+
+  defp clear_absent_link(entry, nil, _present), do: entry
+
+  defp clear_absent_link(entry, id, present) do
+    if MapSet.member?(present, id), do: entry, else: Map.put(entry, :component_id, nil)
   end
 
   @doc "List files for a specific story."
