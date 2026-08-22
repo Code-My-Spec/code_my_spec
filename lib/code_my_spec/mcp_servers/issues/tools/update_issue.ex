@@ -69,7 +69,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          :ok <- ensure_some_field(attrs, params[:append]),
-         issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
+         # `include_framework` so an agent can correct a framework issue it
+         # filed. Reading was scoped to the caller's project while filing was
+         # not, so `append` — which exists precisely because reports go stale —
+         # could not reach the one kind of issue most likely to.
+         issue when not is_nil(issue) <-
+           Issues.get_issue(scope, params.issue_id, include_framework: true),
          attrs = maybe_append(attrs, issue, params[:append]),
          {:ok, updated} <- Issues.update_issue(scope, issue, attrs) do
       {:reply, IssuesMapper.issue_updated_response(updated, "updated"), frame}

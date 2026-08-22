@@ -63,8 +63,8 @@ defmodule CodeMySpec.Issues do
 
   def attribute_to_story(_scope, _issue_ids, _story_id), do: 0
 
-  def get_issue(%Scope{} = scope, id) do
-    IssuesRepository.get_issue(scope, id)
+  def get_issue(%Scope{} = scope, id, opts \\ []) do
+    IssuesRepository.get_issue(scope, id, opts)
   end
 
   @doc """
@@ -74,7 +74,7 @@ defmodule CodeMySpec.Issues do
   `get_issue/2` wherever the answer is shown to somebody, so an ambiguous prefix
   can say so instead of being reported as a missing issue.
   """
-  defdelegate fetch_issue(scope, id), to: IssuesRepository
+  defdelegate fetch_issue(scope, id, opts \\ []), to: IssuesRepository
 
   def get_issue!(%Scope{} = scope, id) do
     IssuesRepository.get_issue!(scope, id)

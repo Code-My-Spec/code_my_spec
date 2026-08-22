@@ -87,8 +87,8 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Repo.get_by!(Issue, id: id, project_id: scope.active_project.id)
   end
 
-  def get_issue(%Scope{} = scope, id) do
-    case fetch_issue(scope, id) do
+  def get_issue(%Scope{} = scope, id, opts \\ []) do
+    case fetch_issue(scope, id, opts) do
       {:ok, issue} -> issue
       _ -> nil
     end
@@ -130,15 +130,60 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   """
   @spec fetch_issue(Scope.t(), String.t()) ::
           {:ok, Issue.t()} | :not_found | {:ambiguous, [String.t()]}
-  def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> exact(scope, uuid)
-      :error -> by_prefix(scope, id)
+  def fetch_issue(%Scope{} = scope, id, opts \\ []) when is_binary(id) do
+    case lookup(scope.active_project.id, id) do
+      :not_found -> framework_retry(id, Keyword.get(opts, :include_framework, false))
+      found -> found
     end
   end
 
-  defp exact(scope, uuid) do
-    case Repo.get_by(Issue, id: uuid, project_id: scope.active_project.id) do
+  # A framework issue does not live in the project that filed it.
+  #
+  # `CreateIssue` files `scope: framework` against the configured CodeMySpec
+  # project, because friction with the framework belongs to the framework
+  # (7c44ed8d). Reading stayed scoped to the caller's own project, so an agent
+  # could file one and then never read it back, append to it, or correct it —
+  # and the only way to add what it had learned was to file another.
+  #
+  # Measured 2026-08-21: four separate issues for one Vibium defect, the fullest
+  # of them opening "could not append to that issue directly — cross-project
+  # scoping, same limitation as before — so filing this as the authoritative,
+  # fuller version instead". Three agents' evidence, spread across four reports,
+  # because the one surface that would have consolidated them was closed.
+  #
+  # Opt-in rather than automatic, and only for `scope: framework`. This widens
+  # reading to a project the caller has no access to, which is the same narrow
+  # relaxation `Plugs.ProjectScopeOverride.framework_issue_create?/2` already
+  # makes for filing one. The triage tools — accept, dismiss, resolve — do not
+  # pass it, so deciding what happens to a framework report stays with the
+  # people who maintain the framework.
+  defp framework_retry(_id, false), do: :not_found
+
+  defp framework_retry(id, true) do
+    case Application.get_env(:code_my_spec, :code_my_spec_project_id) do
+      project_id when is_binary(project_id) and project_id != "" ->
+        project_id |> lookup(id) |> only_framework()
+
+      _ ->
+        :not_found
+    end
+  end
+
+  # A non-framework issue in that project is that project's own business and is
+  # not reachable this way.
+  defp only_framework({:ok, %Issue{scope: :framework} = issue}), do: {:ok, issue}
+  defp only_framework({:ok, _issue}), do: :not_found
+  defp only_framework(other), do: other
+
+  defp lookup(project_id, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> exact(project_id, uuid)
+      :error -> by_prefix(project_id, id)
+    end
+  end
+
+  defp exact(project_id, uuid) do
+    case Repo.get_by(Issue, id: uuid, project_id: project_id) do
       nil -> :not_found
       issue -> {:ok, issue}
     end
@@ -150,22 +195,22 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   # purpose, and matching it would turn a typo into a wrong issue.
   @min_prefix 4
 
-  defp by_prefix(scope, prefix) do
+  defp by_prefix(project_id, prefix) do
     normalized = String.downcase(prefix)
 
     if String.length(normalized) >= @min_prefix and normalized =~ ~r/\A[0-9a-f-]+\z/ do
-      from(i in Issue, where: i.project_id == ^scope.active_project.id, select: i.id)
+      from(i in Issue, where: i.project_id == ^project_id, select: i.id)
       |> Repo.all()
       |> Enum.filter(&String.starts_with?(String.downcase(to_string(&1)), normalized))
-      |> resolve_prefix_matches(scope)
+      |> resolve_prefix_matches(project_id)
     else
       :not_found
     end
   end
 
-  defp resolve_prefix_matches([], _scope), do: :not_found
-  defp resolve_prefix_matches([id], scope), do: exact(scope, id)
-  defp resolve_prefix_matches(ids, _scope), do: {:ambiguous, Enum.map(ids, &to_string/1)}
+  defp resolve_prefix_matches([], _project_id), do: :not_found
+  defp resolve_prefix_matches([id], project_id), do: exact(project_id, id)
+  defp resolve_prefix_matches(ids, _project_id), do: {:ambiguous, Enum.map(ids, &to_string/1)}
 
   def create_issue(%Scope{} = scope, attrs) do
     scope
