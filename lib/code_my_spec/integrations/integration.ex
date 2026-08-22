@@ -35,7 +35,22 @@ defmodule CodeMySpec.Integrations.Integration do
         }
 
   schema "integrations" do
-    field :provider, Ecto.Enum, values: [:github, :gitlab, :bitbucket, :google, :cloudflare, :resend]
+    field :provider, Ecto.Enum,
+      values: [
+        :github,
+        :gitlab,
+        :bitbucket,
+        :google,
+        :cloudflare,
+        :resend,
+        # Model providers an agent can be started on. Z.AI issues an API key
+        # rather than an OAuth grant, which needs nothing new here: GitHub is
+        # already stored the same way — no refresh token, an expiry set far out —
+        # and `fetch_access_token/2` takes the fresh path for both.
+        :openai,
+        :anthropic,
+        :zai
+      ]
     field :access_token, CodeMySpec.Encrypted.Binary
     field :refresh_token, CodeMySpec.Encrypted.Binary
     field :expires_at, :utc_datetime_usec

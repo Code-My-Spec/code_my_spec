@@ -49,27 +49,41 @@ defmodule CodeMySpecSpex.Story1018.Criterion2826Spex do
         refute context.first.isError, response_text(context.first)
         refute context.second.isError, response_text(context.second)
 
-        assert %{provider: "openai-codex"} = context.first.result,
-               "the first agent is not on the provider it was asked for. " <>
-                 "Got: #{inspect(context.first.result)}"
+        first_provider = field(response_text(context.first), "Provider")
+        second_provider = field(response_text(context.second), "Provider")
 
-        assert %{provider: "zai"} = context.second.result,
+        assert first_provider == "openai-codex",
+               "the first agent is not on the provider it was asked for. " <>
+                 "Got: #{inspect(first_provider)}"
+
+        assert second_provider == "zai",
                "the second agent is not on the provider it was asked for. This is " <>
                  "how an ambient default fails: it answers correctly until two " <>
                  "callers want different things, then spends the wrong subscription " <>
-                 "for one of them. Got: #{inspect(context.second.result)}"
+                 "for one of them. Got: #{inspect(second_provider)}"
 
         {:ok, context}
       end
 
       then_ "neither inherited the other's, nor a machine-wide default", context do
-        refute context.first.result[:provider] == context.second.result[:provider],
+        refute field(response_text(context.first), "Provider") ==
+                 field(response_text(context.second), "Provider"),
                "both agents ended up on one provider, so the argument was ignored " <>
                  "in favour of something ambient. Nobody notices that until a quota " <>
                  "or a bill does."
 
         {:ok, context}
       end
+    end
+  end
+
+  # The tool replies in text, not structured content — `hybrid_response/2`
+  # discards the data map on purpose, because a structured payload makes Claude
+  # ignore the text beside it. So the contract is the labelled line.
+  defp field(text, label) do
+    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
+      [_, value] -> String.trim(value)
+      nil -> nil
     end
   end
 end

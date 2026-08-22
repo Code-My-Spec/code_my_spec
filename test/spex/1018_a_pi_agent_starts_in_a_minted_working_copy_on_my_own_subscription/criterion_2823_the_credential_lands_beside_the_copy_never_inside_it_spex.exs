@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
@@ -58,9 +60,12 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
       end
 
       then_ "the config directory the agent runs against sits outside the copy", context do
-        assert %{config_dir: config_dir} = context.response.result,
+        config_dir = field(response_text(context.response), "Config dir")
+
+        assert is_binary(config_dir),
                "the response does not say where the agent's config directory is, so " <>
-                 "nothing can check that it is outside the tree."
+                 "nothing can check that it is outside the tree. " <>
+                 "Got: #{response_text(context.response)}"
 
         refute String.starts_with?(config_dir, context.scope.cwd),
                "the per-copy config directory is inside the working copy. Per-copy " <>
@@ -70,6 +75,16 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
 
         {:ok, context}
       end
+    end
+  end
+
+  # The tool replies in text, not structured content — `hybrid_response/2`
+  # discards the data map on purpose, because a structured payload makes Claude
+  # ignore the text beside it. So the contract is the labelled line.
+  defp field(text, label) do
+    case Regex.run(~r/^#{Regex.escape(label)}:[ ]*(.+)$/m, text) do
+      [_, value] -> String.trim(value)
+      nil -> nil
     end
   end
 end
