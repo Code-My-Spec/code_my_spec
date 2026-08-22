@@ -93,14 +93,25 @@ defmodule CodeMySpec.Agents do
   # `AgentHarness.relay_up/2` into this same conversation, which is why a Pi
   # agent and a Claude Code agent land on one surface instead of two.
   #
-  # Keyed by the agent id, because `session_external_id` is what the harness
-  # uses to find the conversation again and one working copy can be running
-  # more than one agent.
+  # Keyed by the working copy, not the agent id, because that is how a Pi lane
+  # keys itself: `CodeMySpecLocalWeb.HarnessSocket` uses `pi:<cwd>` and the
+  # conversation index renders it as `data-session`.
+  #
+  # Keying on the agent id instead produced a row reading `agent:<uuid>`, which
+  # is unreadable the moment a project has more than one copy — QA had three at
+  # once and could not tell them apart (18f50c87). It also split one copy's
+  # transcript in two: the lane reporting over the channel wrote to
+  # `pi:<cwd>` while the tool that started it wrote somewhere else, so the
+  # agent's own turns did not land on the session that represented it.
+  #
+  # One conversation per working copy matches the harness's own model, where
+  # every lane on a copy joins `harness:session:pi:<cwd>` and the whole team's
+  # transcript lands together.
   defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
       scope.active_project_id,
-      "agent:#{agent.id}"
+      "pi:#{agent.working_copy}"
     )
   end
 
