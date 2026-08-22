@@ -23,16 +23,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.GetIssue do
   @impl true
   def execute(params, frame) do
     case Validators.validate_local_scope(frame, params) do
-      {:ok, scope} ->
-        # `include_framework` so an agent can read back a framework issue it
-        # filed. Those land in CodeMySpec's project rather than the caller's
-        # (7c44ed8d), and without this an agent could file one and never see it
-        # again — which is how one Vibium defect came to be reported four times.
-        reply(
-          Issues.fetch_issue(scope, params.issue_id, include_framework: true),
-          params,
-          frame
-        )
+      {:ok, scope} -> reply(Issues.fetch_issue(scope, params.issue_id), params, frame)
       {:error, reason} -> {:reply, IssuesMapper.error(reason), frame}
     end
   end

@@ -87,8 +87,8 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Repo.get_by!(Issue, id: id, project_id: scope.active_project.id)
   end
 
-  def get_issue(%Scope{} = scope, id, opts \\ []) do
-    case fetch_issue(scope, id, opts) do
+  def get_issue(%Scope{} = scope, id) do
+    case fetch_issue(scope, id) do
       {:ok, issue} -> issue
       _ -> nil
     end
@@ -130,50 +130,9 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   """
   @spec fetch_issue(Scope.t(), String.t()) ::
           {:ok, Issue.t()} | :not_found | {:ambiguous, [String.t()]}
-  def fetch_issue(%Scope{} = scope, id, opts \\ []) when is_binary(id) do
-    case lookup(scope.active_project.id, id) do
-      :not_found -> framework_retry(id, Keyword.get(opts, :include_framework, false))
-      found -> found
-    end
+  def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
+    lookup(scope.active_project.id, id)
   end
-
-  # A framework issue does not live in the project that filed it.
-  #
-  # `CreateIssue` files `scope: framework` against the configured CodeMySpec
-  # project, because friction with the framework belongs to the framework
-  # (7c44ed8d). Reading stayed scoped to the caller's own project, so an agent
-  # could file one and then never read it back, append to it, or correct it —
-  # and the only way to add what it had learned was to file another.
-  #
-  # Measured 2026-08-21: four separate issues for one Vibium defect, the fullest
-  # of them opening "could not append to that issue directly — cross-project
-  # scoping, same limitation as before — so filing this as the authoritative,
-  # fuller version instead". Three agents' evidence, spread across four reports,
-  # because the one surface that would have consolidated them was closed.
-  #
-  # Opt-in rather than automatic, and only for `scope: framework`. This widens
-  # reading to a project the caller has no access to, which is the same narrow
-  # relaxation `Plugs.ProjectScopeOverride.framework_issue_create?/2` already
-  # makes for filing one. The triage tools — accept, dismiss, resolve — do not
-  # pass it, so deciding what happens to a framework report stays with the
-  # people who maintain the framework.
-  defp framework_retry(_id, false), do: :not_found
-
-  defp framework_retry(id, true) do
-    case Application.get_env(:code_my_spec, :code_my_spec_project_id) do
-      project_id when is_binary(project_id) and project_id != "" ->
-        project_id |> lookup(id) |> only_framework()
-
-      _ ->
-        :not_found
-    end
-  end
-
-  # A non-framework issue in that project is that project's own business and is
-  # not reachable this way.
-  defp only_framework({:ok, %Issue{scope: :framework} = issue}), do: {:ok, issue}
-  defp only_framework({:ok, _issue}), do: :not_found
-  defp only_framework(other), do: other
 
   defp lookup(project_id, id) do
     case Ecto.UUID.cast(id) do
@@ -211,6 +170,49 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   defp resolve_prefix_matches([], _project_id), do: :not_found
   defp resolve_prefix_matches([id], project_id), do: exact(project_id, id)
   defp resolve_prefix_matches(ids, _project_id), do: {:ambiguous, Enum.map(ids, &to_string/1)}
+
+  @doc """
+  Every framework-scoped issue, across every project, for the vendor.
+
+  Framework issues are friction with CodeMySpec itself, and they are filed by
+  agents working in other people's projects. They live where they were filed —
+  one invariant, no exception on any write — and this is the single place that
+  crosses a project boundary to collect them.
+
+  The exception is here rather than on the write for two reasons. It is one
+  guarded query instead of a relaxation that every read surface has to match:
+  when the write crossed, `get_issue` and `update_issue` did not follow, so an
+  agent could file a framework issue and never read it back or correct it, and
+  three agents' Vibium evidence arrived as four separate reports. And it is the
+  milder direction — a vendor reading reports filed *to* the vendor, by someone
+  who filed them precisely so the vendor would read them, rather than a tenant
+  writing into a project it cannot see.
+
+  Refuses unless the caller is the configured CodeMySpec project. An install
+  that has not been told which project that is has no vendor, so nobody may
+  read across.
+  """
+  @spec list_framework_issues(Scope.t()) :: {:ok, [Issue.t()]} | {:error, :not_the_vendor}
+  def list_framework_issues(%Scope{} = scope) do
+    with :ok <- ensure_vendor(scope) do
+      issues =
+        Issue
+        |> where([i], i.scope == :framework)
+        |> ordered_by_severity()
+        |> Repo.all()
+
+      {:ok, issues}
+    end
+  end
+
+  defp ensure_vendor(%Scope{active_project: %{id: id}}) do
+    case Application.get_env(:code_my_spec, :code_my_spec_project_id) do
+      configured when is_binary(configured) and configured != "" and configured == id -> :ok
+      _ -> {:error, :not_the_vendor}
+    end
+  end
+
+  defp ensure_vendor(_scope), do: {:error, :not_the_vendor}
 
   def create_issue(%Scope{} = scope, attrs) do
     scope

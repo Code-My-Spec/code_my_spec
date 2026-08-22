@@ -61,7 +61,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, filters} <- build_filters(params) do
-      issues = Issues.list_filtered(scope, filters)
+      issues = list(scope, filters)
       {:reply, IssuesMapper.issues_list_response(issues, filters), frame}
     else
       {:error, {:invalid_value, field, value, allowed}} ->
@@ -72,6 +72,46 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
       {:error, reason} ->
         {:reply, IssuesMapper.error(reason), frame}
+    end
+  end
+
+  # `scope: framework` asked from CodeMySpec's own project is the vendor's
+  # backlog, and it spans every project.
+  #
+  # Framework issues are friction with CodeMySpec, filed by agents working in
+  # other people's projects, and they live where they were filed — one
+  # invariant, no exception on any write. So the one place that crosses a
+  # boundary is this read, and only for the vendor: `list_framework_issues/1`
+  # refuses anyone whose active project is not the configured CodeMySpec one,
+  # and this falls back to the ordinary project-scoped listing when it does.
+  #
+  # That fallback is what makes the filter mean the same thing everywhere. In
+  # any other project, `scope: framework` still lists that project's own
+  # framework issues — the ones it filed — which is exactly what its author
+  # wants to see.
+  defp list(scope, %{scope: :framework} = filters) do
+    case Issues.list_framework_issues(scope) do
+      {:ok, issues} -> apply_local_filters(issues, filters)
+      {:error, :not_the_vendor} -> Issues.list_filtered(scope, filters)
+    end
+  end
+
+  defp list(scope, filters), do: Issues.list_filtered(scope, filters)
+
+  # The vendor query answers one question — every framework issue — so the
+  # other filters are applied here rather than pushed into it. Keeps the
+  # cross-project surface to a single, auditable query.
+  defp apply_local_filters(issues, filters) do
+    issues
+    |> filter_by(:status, filters)
+    |> filter_by(:severity, filters)
+    |> filter_by(:story_id, filters)
+  end
+
+  defp filter_by(issues, key, filters) do
+    case Map.fetch(filters, key) do
+      {:ok, value} -> Enum.filter(issues, &(Map.get(&1, key) == value))
+      :error -> issues
     end
   end
 

@@ -7,19 +7,10 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Formatters
 
-  def issue_created_response(issue, note \\ nil) do
-    summary =
-      "Issue created: \"#{issue.title}\" [#{issue.severity}] (ID: #{issue.id})" <> note(note)
-
+  def issue_created_response(issue) do
+    summary = "Issue created: \"#{issue.title}\" [#{issue.severity}] (ID: #{issue.id})"
     hybrid_response(summary, issue_data(issue))
   end
-
-  # Said when the issue did not land where the caller is. An agent that files a
-  # framework issue from another project and is told only "Issue created" will
-  # look for it with `list_issues`, which is scoped to that project, and not find
-  # it — which reads as the filing having failed.
-  defp note(nil), do: ""
-  defp note(note) when is_binary(note), do: "\n\n" <> note
 
   def issue_get_response(issue) do
     summary = """

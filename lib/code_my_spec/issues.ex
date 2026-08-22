@@ -63,9 +63,18 @@ defmodule CodeMySpec.Issues do
 
   def attribute_to_story(_scope, _issue_ids, _story_id), do: 0
 
-  def get_issue(%Scope{} = scope, id, opts \\ []) do
-    IssuesRepository.get_issue(scope, id, opts)
+  def get_issue(%Scope{} = scope, id) do
+    IssuesRepository.get_issue(scope, id)
   end
+
+  @doc """
+  Every framework-scoped issue across every project, for the vendor.
+
+  See `CodeMySpec.Issues.IssuesRepository.list_framework_issues/1` — framework
+  issues live in the project that filed them, and this is the one place that
+  crosses a boundary to collect them.
+  """
+  defdelegate list_framework_issues(scope), to: IssuesRepository
 
   @doc """
   An issue by full id or unique prefix — `{:ok, issue} | :not_found | {:ambiguous, ids}`.
@@ -74,7 +83,7 @@ defmodule CodeMySpec.Issues do
   `get_issue/2` wherever the answer is shown to somebody, so an ambiguous prefix
   can say so instead of being reported as a missing issue.
   """
-  defdelegate fetch_issue(scope, id, opts \\ []), to: IssuesRepository
+  defdelegate fetch_issue(scope, id), to: IssuesRepository
 
   def get_issue!(%Scope{} = scope, id) do
     IssuesRepository.get_issue!(scope, id)
