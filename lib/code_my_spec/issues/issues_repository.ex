@@ -130,9 +130,77 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   """
   @spec fetch_issue(Scope.t(), String.t()) ::
           {:ok, Issue.t()} | :not_found | {:ambiguous, [String.t()]}
+  # Four hex characters is roughly 65k values, so a collision across a few
+  # hundred issues is possible rather than fanciful — which is what
+  # `{:ambiguous, …}` is for. Shorter than that is not a prefix anyone typed on
+  # purpose, and matching it would turn a typo into a wrong issue.
+  @min_prefix 4
+
   def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
-    lookup(scope.active_project.id, id)
+    case lookup(scope.active_project.id, id) do
+      :not_found -> vendor_lookup(scope, id)
+      found -> found
+    end
   end
+
+  # The vendor reaches a framework issue in any project, because that is where
+  # framework issues live.
+  #
+  # Gated on who is asking rather than on an option the call site passes, which
+  # is what makes it right for every surface at once. `get_issue`,
+  # `update_issue`, `accept_issue`, `dismiss_issue` and `resolve_issue` all
+  # resolve an issue this way, and the vendor needs all five: seeing a backlog
+  # it cannot work is half a feature. The first cut of this widened only reading
+  # — the vendor could list the framework queue and then not dismiss anything in
+  # it, which is how this was found.
+  #
+  # A tenant gains nothing. `ensure_vendor/1` answers only for the configured
+  # CodeMySpec project, and `only_framework/1` refuses anything else in the
+  # project it lands in, so this cannot become a way to read a stranger's app
+  # issues.
+  defp vendor_lookup(scope, id) do
+    case ensure_vendor(scope) do
+      :ok -> id |> lookup_anywhere() |> only_framework()
+      {:error, :not_the_vendor} -> :not_found
+    end
+  end
+
+  defp lookup_anywhere(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> exact_anywhere(uuid)
+      :error -> by_prefix_anywhere(id)
+    end
+  end
+
+  defp exact_anywhere(uuid) do
+    case Repo.get(Issue, uuid) do
+      nil -> :not_found
+      issue -> {:ok, issue}
+    end
+  end
+
+  defp by_prefix_anywhere(prefix) do
+    normalized = String.downcase(prefix)
+
+    if String.length(normalized) >= @min_prefix and normalized =~ ~r/\A[0-9a-f-]+\z/ do
+      from(i in Issue, where: i.scope == :framework, select: i.id)
+      |> Repo.all()
+      |> Enum.filter(&String.starts_with?(String.downcase(to_string(&1)), normalized))
+      |> resolve_anywhere_matches()
+    else
+      :not_found
+    end
+  end
+
+  defp resolve_anywhere_matches([]), do: :not_found
+  defp resolve_anywhere_matches([id]), do: exact_anywhere(id)
+  defp resolve_anywhere_matches(ids), do: {:ambiguous, Enum.map(ids, &to_string/1)}
+
+  # A non-framework issue in someone else's project is theirs, and is not
+  # reachable this way whoever is asking.
+  defp only_framework({:ok, %Issue{scope: :framework} = issue}), do: {:ok, issue}
+  defp only_framework({:ok, _issue}), do: :not_found
+  defp only_framework(other), do: other
 
   defp lookup(project_id, id) do
     case Ecto.UUID.cast(id) do
@@ -147,12 +215,6 @@ defmodule CodeMySpec.Issues.IssuesRepository do
       issue -> {:ok, issue}
     end
   end
-
-  # Four hex characters is roughly 65k values, so a collision across a few
-  # hundred issues is possible rather than fanciful — which is what
-  # `{:ambiguous, …}` is for. Shorter than that is not a prefix anyone typed on
-  # purpose, and matching it would turn a typo into a wrong issue.
-  @min_prefix 4
 
   defp by_prefix(project_id, prefix) do
     normalized = String.downcase(prefix)

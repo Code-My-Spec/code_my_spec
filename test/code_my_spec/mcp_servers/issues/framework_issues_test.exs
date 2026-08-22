@@ -36,9 +36,12 @@ defmodule CodeMySpec.McpServers.Issues.FrameworkIssuesTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
+  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
 
   setup do
@@ -165,6 +168,85 @@ defmodule CodeMySpec.McpServers.Issues.FrameworkIssuesTest do
       Application.delete_env(:code_my_spec, :code_my_spec_project_id)
 
       assert {:error, :not_the_vendor} = Issues.list_framework_issues(ctx.vendor)
+    end
+  end
+
+  # Seeing a backlog you cannot work is half a feature, and the first cut of
+  # this was exactly that: the vendor could list the framework queue and then
+  # not dismiss anything in it. Found by trying to close a verification issue
+  # and getting "Issue not found".
+  #
+  # Under the previous arrangement — framework issues written into CodeMySpec's
+  # project — leaving triage narrow was right, because the vendor already owned
+  # them and the tenant was the outsider. Inverting where they live inverts who
+  # the outsider is.
+  describe "the vendor works the backlog it can see" do
+    setup ctx do
+      %{issue: file(ctx.caller, "Filed in another project")}
+    end
+
+    test "reads one by id", ctx do
+      {response, body} = run(GetIssue, %{issue_id: ctx.issue.id}, ctx.vendor)
+
+      refute response.isError
+      assert body =~ "Filed in another project"
+    end
+
+    test "accepts one", ctx do
+      {response, _} = run(AcceptIssue, %{issue_id: ctx.issue.id}, ctx.vendor)
+
+      refute response.isError
+      assert Issues.get_issue(ctx.caller, ctx.issue.id).status == :accepted
+    end
+
+    test "dismisses one", ctx do
+      {response, _} =
+        run(DismissIssue, %{issue_id: ctx.issue.id, reason: "Not a defect."}, ctx.vendor)
+
+      refute response.isError
+      assert Issues.get_issue(ctx.caller, ctx.issue.id).status == :dismissed
+    end
+
+    test "resolves one", ctx do
+      {:reply, _, _} =
+        AcceptIssue.execute(%{issue_id: ctx.issue.id}, %Frame{
+          assigns: %{current_scope: ctx.vendor}
+        })
+
+      {response, _} =
+        run(ResolveIssue, %{issue_id: ctx.issue.id, resolution: "Fixed."}, ctx.vendor)
+
+      refute response.isError
+      assert Issues.get_issue(ctx.caller, ctx.issue.id).status == :resolved
+    end
+
+    # The reporter keeps its own report, which is the point of filing locally.
+    test "and the filer can still work its own", ctx do
+      {response, _} =
+        run(UpdateIssue, %{issue_id: ctx.issue.id, append: "More evidence."}, ctx.caller)
+
+      refute response.isError
+      assert Issues.get_issue(ctx.caller, ctx.issue.id).description =~ "More evidence."
+    end
+  end
+
+  describe "a tenant gains nothing from the vendor's reach" do
+    test "cannot touch another project's framework issue", ctx do
+      theirs = file(ctx.vendor, "Filed by the vendor")
+
+      {response, _} = run(GetIssue, %{issue_id: theirs.id}, ctx.caller)
+
+      assert response.isError
+    end
+
+    # The guard that keeps this from becoming a way to read a stranger's app
+    # issues: the vendor's reach is framework-scoped, not project-wide.
+    test "and the vendor cannot reach a non-framework issue either", ctx do
+      theirs = issue_fixture(ctx.caller, %{title: "Their own app bug", scope: :app})
+
+      {response, _} = run(GetIssue, %{issue_id: theirs.id}, ctx.vendor)
+
+      assert response.isError
     end
   end
 end
