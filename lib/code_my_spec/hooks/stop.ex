@@ -64,13 +64,9 @@ defmodule CodeMySpec.Hooks.Stop do
     warn_unresolved_session(scope, session_id, session, req_id)
 
     active_task = session && Session.active_task(session)
-    # Computed once here so the cond below doesn't pay the
-    # Configurations.get_or_create cost (which inserts on miss) twice
-    # for the R5b decision.
-    idle_sub = session && idle_subagent_for(scope, session)
 
     scope
-    |> do_decide(session_id, session, active_task, idle_sub, validation_opts, req_id)
+    |> do_decide(session_id, session, active_task, validation_opts, req_id)
     |> note_config_edits(session_id)
   end
 
@@ -169,17 +165,14 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp warn_unresolved_session(_scope, _session_id, _session, _req_id), do: :ok
 
-  defp do_decide(scope, session_id, nil, _active_task, _idle_sub, validation_opts, req_id) do
+  defp do_decide(scope, session_id, nil, _active_task, validation_opts, req_id) do
     run_and_decide(scope, session_id, nil, nil, validation_opts, req_id)
   end
 
-  defp do_decide(scope, session_id, session, active_task, idle_sub, validation_opts, req_id) do
+  defp do_decide(scope, session_id, session, active_task, validation_opts, req_id) do
     cond do
       has_active_subagent_task?(scope, session) ->
         allow(req_id, "Active subagent task")
-
-      r5b_applies?(session, active_task, idle_sub) ->
-        block_assign_directive(active_task, idle_sub, req_id)
 
       continuous_mode?(session) && stuck_threshold_hit?(session) ->
         terminate_stuck(scope, session, req_id)
@@ -192,55 +185,26 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # R5b — A still-open main-agent task + an alive idle sub-agent: hand
-  # the work off so the main agent can stop and further stops happen via
-  # the sub-agent's own lifecycle. This applies regardless of continuous
-  # mode — the assign-from-outside flow lets the parent set agent_id on
-  # the task BEFORE its own stop, so the R5a short-circuit (active task
-  # with agent_id → allow) fires next turn. Without this rule firing
-  # outside continuous mode, a parent that spawns a subagent for a
-  # one-shot QA pass loses the race between subagent registration and
-  # the parent's stop, falls through to validation, and gets blocked on
-  # "Brief not found." Issue b597bbca.
-  defp r5b_applies?(_session, active_task, idle_sub) do
-    not is_nil(active_task) and not is_nil(idle_sub)
-  end
-
-  # Returns the first alive sub-agent on the session whose agent_id is
-  # not currently assigned to any active task, or nil. A nil scope
-  # project_id (stop hook fires before a project is bound) short-circuits
-  # to nil so `Configurations.get_or_create` — which requires a project —
-  # never raises here.
-  defp idle_subagent_for(%{active_project_id: nil}, _session), do: nil
-
-  defp idle_subagent_for(scope, session) do
-    ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
-
-    assigned_ids =
-      (session.tasks || [])
-      |> Enum.filter(&(&1.status == :active and not is_nil(&1.agent_id)))
-      |> Enum.map(& &1.agent_id)
-      |> MapSet.new()
-
-    session
-    |> Session.active_subagents(ttl)
-    |> Enum.find(&(not MapSet.member?(assigned_ids, &1.agent_id)))
-  end
-
-  defp block_assign_directive(active_task, idle_sub, req_id) do
-    Logger.info(
-      "[StopHook] [#{req_id}] R5b: idle sub-agent #{idle_sub.agent_id} + open task → assign directive"
-    )
-
-    %{
-      "decision" => "block",
-      "reason" => """
-      A sub-agent is idle while task `#{active_task.id}` is still open. Hand the work off so the main agent can stop — further stops will happen via the sub-agent's own lifecycle.
-
-      Call `assign_subagent` with task_id=`#{active_task.id}` agent_id=`#{idle_sub.agent_id}`.
-      """
-    }
-  end
+  # There was an R5b here: an open main-agent task plus any idle sub-agent
+  # blocked the stop with "assign that sub-agent to that task".
+  #
+  # Its predicate was `not is_nil(active_task) and not is_nil(idle_sub)` and
+  # `idle_subagent_for/2` returned the *first* registered sub-agent not already
+  # holding a task. Neither asked whether the two had anything to do with each
+  # other, because the rule was written when a session had one sub-agent and one
+  # task, where the pairing is true by accident.
+  #
+  # It stopped being true. On 2026-08-22 a session spawned a read-only Explore
+  # agent to grep the repo, and the hook told the main agent — twice, as an
+  # exact tool call to copy — to hand it a `qa_complete` task for an unrelated
+  # story whose own agent had finished hours earlier. Following that directive
+  # files a QA verdict from an agent that never opened a browser. Issue
+  # 958fbfaf.
+  #
+  # The race this was written for (b597bbca: a sub-agent registers, the parent
+  # stops before `start_task` sets `agent_id`, validation runs against a brief
+  # that does not exist yet) is real but wants a fix that knows which task
+  # belongs to which agent. Guessing is worse than the race.
 
   defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
     opts =

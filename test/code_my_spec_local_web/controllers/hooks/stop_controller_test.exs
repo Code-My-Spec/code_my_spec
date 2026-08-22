@@ -10,7 +10,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
 
   It runs. `decide/7` has a `session == nil` clause, and that clause calls
   `run_and_decide/6` — the same path a resolved session takes. The session only
-  determines whether the sub-agent rules (R5a/R5b), continuous-mode termination
+  determines whether the sub-agent rule (R5a), continuous-mode termination
   and task evaluation apply; it is not a precondition for validating.
 
   These tests hold that invariant by comparing against a resolvable session
