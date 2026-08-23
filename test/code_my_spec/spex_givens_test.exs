@@ -91,6 +91,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # 812's session-stitching criteria have no other way to say "a visitor
   # arriving with these GA cookies". The helper's whole body is
   # `Plug.Test.put_req_cookie/3` twice.
+  # `join_working_copy/3` and `report_agents/2` are `CodeMySpecSpex.WorkingCopyHelpers`
+  # — both join a real channel and drive it the way the harness does. A working
+  # copy exists *because* a harness joined for it, so joining is the establishing
+  # act rather than a shortcut around one.
+  #
+  # Comments stay out here. `~w()` has no comment syntax, so a `#` line inside the
+  # sigil becomes literal tokens — including every ordinary English word in it,
+  # which then matches almost any given body and silently disables this check.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
@@ -106,6 +114,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
+    join_working_copy report_agents
   )
 
   # The failure message has always offered a second remedy — "if the
