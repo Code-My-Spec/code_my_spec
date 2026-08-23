@@ -1,5 +1,13 @@
 defmodule CodeMySpec.Authorization do
-  @moduledoc false
+  @moduledoc """
+  Role-based authorization checks against account membership.
+
+  Answers whether a scope's user may perform an action on a resource —
+  currently accounts, identified by id. Read access requires any
+  membership; management and deletion require `:owner` or `:admin` (deletion
+  requires `:owner`).
+  """
+
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Users.Scope
 
