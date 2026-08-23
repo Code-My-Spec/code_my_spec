@@ -606,15 +606,36 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Session Helpers
   # ============================================================================
 
-  defp get_story_id(%{story_id: story_id}) when not is_nil(story_id) do
-    case Integer.parse(to_string(story_id)) do
-      {id, _} -> {:ok, id}
-      :error -> {:error, "QaStory requires a numeric story ID, got: #{inspect(story_id)}"}
-    end
-  end
+  # Two routes reach this, and they name the story differently.
+  #
+  # The graph-dispatch route (`start_task`) sets `story_id` from the
+  # requirement's entity. The skill route (`/codemyspec:qa story <id>`) is a
+  # topic task, and `run_topic_task/4` threads the topic through
+  # `requirement_name` — the same convention `ThreeAmigos` follows and
+  # documents.
+  #
+  # Only the first was handled, so every skill invocation fell through to the
+  # "requires a story ID argument" clause regardless of what was passed. The
+  # message named the one thing the caller had definitely done, which is why it
+  # read as a usage error rather than a bug.
+  defp get_story_id(%{story_id: story_id}) when not is_nil(story_id),
+    do: parse_story_id(story_id)
+
+  defp get_story_id(%{requirement_name: requirement}) when is_binary(requirement),
+    do: parse_story_id(requirement)
 
   defp get_story_id(_task) do
     {:error, "QaStory requires a story ID argument. Usage: /qa-story <story_id>"}
+  end
+
+  # `Integer.parse/1` alone accepts "892abc" as 892. On the graph route the value
+  # is already an id, but on the skill route it is whatever was typed after the
+  # topic, so the remainder has to be empty for this to be a story id at all.
+  defp parse_story_id(value) do
+    case Integer.parse(to_string(value)) do
+      {id, ""} -> {:ok, id}
+      _ -> {:error, "QaStory requires a numeric story ID, got: #{inspect(value)}"}
+    end
   end
 
   # ============================================================================

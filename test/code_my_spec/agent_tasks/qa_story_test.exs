@@ -193,15 +193,61 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     )
   end
 
-
   # ============================================================================
   # command/3 Tests
   # ============================================================================
 
+  describe "command/3 — the skill route" do
+    setup [:create_scope, :create_story]
+
+    # The shape `StartAgentTask.run_topic_task/4` builds. Topic tasks thread
+    # their argument through `requirement_name`, which is the convention
+    # `ThreeAmigos` documents and follows — and which `QaStory` did not
+    # implement, so every `/codemyspec:qa story <id>` fell through to "requires
+    # a story ID argument" no matter what was passed.
+    #
+    # Every other test here builds `story_id`, the graph-dispatch shape, so the
+    # whole skill route could be dead with the suite green.
+    test "a story id arriving as the topic reaches the story", %{scope: scope, story: story} do
+      task = %{
+        project_id: scope.active_project.id,
+        requirement_name: to_string(story.id)
+      }
+
+      assert {:ok, prompt} = QaStory.command(scope, task)
+
+      assert prompt =~ "User Authentication",
+             "the skill route passed a story id and the prompt does not carry " <>
+               "that story, so the argument never landed"
+    end
+
+    test "a topic that is not a story id says so", %{scope: scope} do
+      task = %{project_id: scope.active_project.id, requirement_name: "qa_complete"}
+
+      assert {:error, message} = QaStory.command(scope, task)
+
+      assert message =~ "numeric story ID",
+             "a requirement name is not a story id, and reporting it as a " <>
+               "missing argument names the one thing the caller did do"
+    end
+
+    # `Integer.parse/1` answers `{892, "abc"}` for "892abc". On the graph route
+    # the value is already an id; on this one it is whatever was typed.
+    test "a topic that only starts with digits is not a story id", %{scope: scope} do
+      task = %{project_id: scope.active_project.id, requirement_name: "892-and-then-some"}
+
+      assert {:error, message} = QaStory.command(scope, task)
+      assert message =~ "numeric story ID"
+    end
+  end
+
   describe "command/3 — combined prompt" do
     setup [:create_scope, :create_story, :create_task]
 
-    test "returns a combined prompt covering the brief and findings phases", %{scope: scope, task: task} do
+    test "returns a combined prompt covering the brief and findings phases", %{
+      scope: scope,
+      task: task
+    } do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ ~r/QA Story/i
       assert prompt =~ ~r/qa.story.brief/i
@@ -223,16 +269,24 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ "Seed Strategy"
     end
 
-    test "points at the qa-tooling playbook for tool rules and testing approach", %{scope: scope, task: task} do
+    test "points at the qa-tooling playbook for tool rules and testing approach", %{
+      scope: scope,
+      task: task
+    } do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ "qa_story/workflow.md"
       assert prompt =~ "qa-tooling"
     end
 
-    test "references the artifact paths still in the prompt", %{scope: scope, task: task, story: story} do
+    test "references the artifact paths still in the prompt", %{
+      scope: scope,
+      task: task,
+      story: story
+    } do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
       assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
+
       refute prompt =~ ".code_my_spec/qa/#{story.id}/result.md",
              "result.md path was removed from the prompt; findings flow via create_issue + submit_qa_result"
     end
@@ -248,7 +302,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     end
 
     test "accepts string story ID", %{scope: scope, story: story} do
-      task = %{project_id: scope.active_project.id, component_id: nil, story_id: to_string(story.id)}
+      task = %{
+        project_id: scope.active_project.id,
+        component_id: nil,
+        story_id: to_string(story.id)
+      }
+
       assert {:ok, _prompt} = QaStory.command(scope, task)
     end
 
@@ -312,7 +371,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "Brief not found"
       assert feedback =~ ".code_my_spec/qa/#{story.id}/brief.md"
     end
-
   end
 
   # ============================================================================
@@ -633,7 +691,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # starting a new task. No QA files are ever written — the DB flow does
       # not produce them.
       {:ok, attempt} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
-      {:ok, _} = Qa.invalidate_qa_attempt(scope, attempt.id, "Spex-only pass, never probed the surface")
+
+      {:ok, _} =
+        Qa.invalidate_qa_attempt(scope, attempt.id, "Spex-only pass, never probed the surface")
 
       {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
 
