@@ -31,6 +31,8 @@ defmodule CodeMySpecSpex.Story1018.Criterion2819Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
@@ -56,6 +58,22 @@ defmodule CodeMySpecSpex.Story1018.Criterion2819Spex do
           StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
 
         {:ok, Map.put(context, :response, response)}
+      end
+
+      then_ "the copy is configured to be seen, not just to authenticate", context do
+        text = response_text(context.response)
+
+        assert text =~ "mcp.json",
+               "the mint wrote no MCP configuration, so the agent has no way to " <>
+                 "reach this harness. Pi ships no MCP of its own; without it the " <>
+                 "agent runs perfectly and never joins, never appears in Presence, " <>
+                 "never relays a turn. Got: #{text}"
+
+        assert text =~ "settings.json",
+               "the mint wrote no settings, so the adapter extension that gives Pi " <>
+                 "any MCP at all is not loaded. Got: #{text}"
+
+        {:ok, context}
       end
 
       then_ "no preparatory setup call was needed", context do

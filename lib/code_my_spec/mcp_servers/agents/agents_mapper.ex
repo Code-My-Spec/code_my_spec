@@ -16,6 +16,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.PiConfig
   alias CodeMySpec.Agents.Providers
 
   @spec started(Agent.t()) :: Response.t()
@@ -29,6 +30,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Provider: #{agent.provider}
     Working copy: #{agent.working_copy}
     Config dir: #{agent.config_dir}
+    Configured: #{Enum.join(PiConfig.files(agent.provider), ", ")}
     Account: #{agent.account_id}
     OS pid: #{agent.os_pid}
     Status: #{agent.status}
