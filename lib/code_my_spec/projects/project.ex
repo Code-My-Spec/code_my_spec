@@ -92,6 +92,21 @@ defmodule CodeMySpec.Projects.Project do
     # from never having opened the page.
     field :setup_options, {:array, :string}
 
+    # The checkout this project is read from when the reader is not itself a
+    # checkout.
+    #
+    # Requirement satisfaction is per working copy, because it has always been a
+    # statement about what one checkout could see. An agent asks as its own
+    # copy; the UI is not a copy and has to be told which one speaks for the
+    # project. In practice that is the main checkout — the one being pushed to
+    # while agents work in worktrees off it — so reading from it is the
+    # main-branch view without anything having to fetch main.
+    #
+    # Nullable. A project that has not named one has no canonical view, which is
+    # a real state and a visible one, rather than a silent fallback to whichever
+    # checkout answered last.
+    belongs_to :default_working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
+
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
 
     field :status, Ecto.Enum,
@@ -140,7 +155,8 @@ defmodule CodeMySpec.Projects.Project do
       :domain,
       :domain_verified_at,
       :resend_domain_id,
-      :setup_options
+      :setup_options,
+      :default_working_copy_id
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,

@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, Projection, Requirement}
   alias CodeMySpec.Users.Scope
 
   @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
@@ -63,12 +63,28 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   @spec actionable_count(Scope.t()) :: non_neg_integer()
   def actionable_count(%Scope{active_project_id: nil}), do: 0
 
-  def actionable_count(%Scope{active_project_id: project_id}) do
+  def actionable_count(%Scope{active_project_id: project_id} = scope) do
+    # Whose count this is. Rows are per working copy, so an unfiltered count
+    # returns the real number multiplied by however many checkouts have
+    # computed — and `blocked` would let a prerequisite unsatisfied in any one
+    # copy block that node in every other.
+    #
+    # `Projection.vantage/1` is the single definition of "whose view": an agent
+    # counts its own work, and anything that is not a checkout counts the
+    # project's default copy.
+    working_copy_id = Projection.vantage(scope)
+
     blocked =
       from(e in Edge,
         join: prereq in Node,
+        as: :prereq,
         on: prereq.id == e.from_requirement_id,
         where: prereq.satisfied == false,
+        # Named, because `copy_filter/1`'s `dynamic([n], ...)` binds
+        # positionally and position 0 here is the Edge — which has no
+        # `working_copy_id` and says so at runtime rather than quietly
+        # correlating against the wrong table.
+        where: ^prereq_copy_filter(working_copy_id),
         select: e.to_requirement_id
       )
 
@@ -95,6 +111,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
             )
           )
     )
+    |> where(^copy_filter(working_copy_id))
     |> Repo.aggregate(:count)
   end
 
@@ -108,14 +125,23 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   def upsert_all(%Scope{active_project_id: project_id} = scope, nodes) when is_list(nodes) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
+    # Whose view this computation is. `Preloader.load/1` scoped its file query
+    # to this copy, so every verdict below is a statement about what this
+    # checkout could see — and writing it without saying so is what let any
+    # checkout overwrite the project's whole graph.
+    #
+    # `nil` is the UI path, which blends every checkout deliberately. That is a
+    # vantage point too, and gets its own row.
+    working_copy_id = scope.active_working_copy_id
+
     nodes
     |> Enum.group_by(& &1.entity_type)
     |> Enum.each(fn {entity_type, group} ->
-      upsert_group(entity_type, group, now)
+      upsert_group(entity_type, group, working_copy_id, now)
     end)
 
-    keys = ids_by_key(project_id, nodes)
-    delete_departed(scope, nodes, keys)
+    keys = ids_by_key(project_id, working_copy_id, nodes)
+    delete_departed(scope, working_copy_id, nodes, keys)
     keys
   end
 
@@ -135,7 +161,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # Scoped to the entities this computation covered, not to the project. A
   # component the graph did not visit — filtered out, or belonging to work not
   # loaded — must keep its rows rather than be treated as departed.
-  defp delete_departed(%Scope{active_project_id: project_id}, nodes, keys) do
+  defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, nodes, keys) do
     keep = keys |> Map.values() |> MapSet.new()
 
     component_ids = entity_ids(nodes, "component")
@@ -147,6 +173,11 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       n.component_id in ^component_ids or n.story_id in ^story_ids or
         n.project_id == ^project_id
     )
+    # And only this copy's rows. Without it, one checkout syncing would treat
+    # every other checkout's nodes as departed and delete them — the same
+    # overwrite this change exists to stop, arriving as a reap instead of a
+    # write.
+    |> where(^copy_filter(working_copy_id))
     |> select([n], n.id)
     |> Repo.all()
     |> Enum.reject(&MapSet.member?(keep, &1))
@@ -222,7 +253,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     end
   end
 
-  defp upsert_group(entity_type, nodes, now) do
+  defp upsert_group(entity_type, nodes, working_copy_id, now) do
     {owner_field, conflict_target} = owner(entity_type)
 
     entries =
@@ -234,7 +265,8 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           details: node.details || %{},
           checked_at: now,
           inserted_at: now,
-          updated_at: now
+          updated_at: now,
+          working_copy_id: working_copy_id
         }
         |> Map.put(owner_field, node.entity_id)
       end)
@@ -247,19 +279,38 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # leaving the others null. That is what keeps the three partial indexes
   # disjoint — a component node carrying `project_id` would land in two of them.
 
+  # The working copy is part of the identity now, so it is part of every
+  # conflict target. An upsert naming only (owner, name) would still find the
+  # other copy's row and replace its verdict — which is the defect, expressed as
+  # an inference clause.
   defp owner("component"),
-    do: {:component_id, {:unsafe_fragment, "(component_id, name) WHERE component_id IS NOT NULL"}}
+    do:
+      {:component_id,
+       {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}}
 
   defp owner("story"),
-    do: {:story_id, {:unsafe_fragment, "(story_id, name) WHERE story_id IS NOT NULL"}}
+    do:
+      {:story_id,
+       {:unsafe_fragment, "(story_id, name, working_copy_id) WHERE story_id IS NOT NULL"}}
 
   defp owner("project"),
-    do: {:project_id, {:unsafe_fragment, "(project_id, name) WHERE project_id IS NOT NULL"}}
+    do:
+      {:project_id,
+       {:unsafe_fragment, "(project_id, name, working_copy_id) WHERE project_id IS NOT NULL"}}
+
+  # `is_nil` rather than `== nil`: the UI path's rows carry a null working copy,
+  # and `= NULL` is never true in SQL, so comparing that way would match no row
+  # and make every UI render insert a fresh duplicate.
+  defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
+  defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
+
+  defp prereq_copy_filter(nil), do: dynamic([prereq: p], is_nil(p.working_copy_id))
+  defp prereq_copy_filter(id), do: dynamic([prereq: p], p.working_copy_id == ^id)
 
   # Read back rather than trusting `insert_all`'s returning: an upsert that
   # conflicted returns the existing row, and the ids have to be the same ones
   # edges will reference either way.
-  defp ids_by_key(project_id, nodes) do
+  defp ids_by_key(project_id, working_copy_id, nodes) do
     names = nodes |> Enum.map(& &1.name) |> Enum.uniq()
 
     component_ids = entity_ids(nodes, "component")
@@ -272,6 +323,12 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       n.component_id in ^component_ids or n.story_id in ^story_ids or
         n.project_id == ^project_id
     )
+    # This copy's rows only. `{entity_type, entity_id, name}` stopped
+    # identifying a row the moment there is one per copy, so without this
+    # `Map.new/2` keeps whichever the database returned last and every edge is
+    # built against an arbitrary checkout's node ids — silently, and only under
+    # concurrency.
+    |> where(^copy_filter(working_copy_id))
     |> select([n], {n.component_id, n.story_id, n.project_id, n.name, n.id})
     |> Repo.all()
     |> Map.new(fn {component_id, story_id, proj_id, name, id} ->

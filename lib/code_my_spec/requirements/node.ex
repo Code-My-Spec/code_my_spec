@@ -58,6 +58,20 @@ defmodule CodeMySpec.Requirements.Node do
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
 
+    # Which checkout reached this verdict.
+    #
+    # Not an owner — the owner is still exactly one of the three above. This is
+    # the *vantage point*: `Preloader.load/1` scopes its file query to one
+    # working copy, so `satisfied` has only ever been a statement about what one
+    # checkout could see. Storing it without saying whose view it was meant
+    # every checkout that synced overwrote the project's whole graph.
+    #
+    # Nullable, and the null means something: the UI path computes with no
+    # working copy on purpose, blending every checkout's files. That row is the
+    # project-wide answer, and the unique indexes use `NULLS NOT DISTINCT` so
+    # there is exactly one of it rather than a fresh duplicate per render.
+    belongs_to :working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
+
     timestamps()
   end
 
@@ -69,7 +83,8 @@ defmodule CodeMySpec.Requirements.Node do
     :checked_at,
     :component_id,
     :story_id,
-    :project_id
+    :project_id,
+    :working_copy_id
   ]
 
   def changeset(node, attrs) do
@@ -82,6 +97,10 @@ defmodule CodeMySpec.Requirements.Node do
   # A node belongs to exactly one entity. Two owners would satisfy two different
   # unique indexes and be reachable as two different nodes; none would be
   # reachable as neither.
+  #
+  # `working_copy_id` is deliberately not counted here. It is not an owner and
+  # never makes a node reachable — it says whose view produced the verdict, and
+  # every one of the three owners can carry one.
   defp validate_one_owner(changeset) do
     owners =
       [:component_id, :story_id, :project_id]

@@ -40,13 +40,53 @@ defmodule CodeMySpec.Requirements.Projection do
   The graph as `{nodes, edges}`, in the same shape `compute_graph/1` returns.
   """
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
-  def load(%Scope{active_project_id: project_id}, ctx) do
-    rows = project_rows(project_id, ctx)
+  def load(%Scope{active_project_id: project_id} = scope, ctx) do
+    rows = project_rows(project_id, vantage(scope), ctx)
     nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
 
     by_id = Map.new(rows, &{&1.id, &1})
     {nodes, edges_for(rows, by_id, ctx)}
   end
+
+  @doc """
+  Whose view of the project this read is.
+
+  Satisfaction is stored per working copy because that is what it has always
+  been — `Preloader.load/1` scopes its file query to one checkout, so every
+  verdict is a statement about what that checkout could see. Reading therefore
+  has to name a checkout too, and a reader that does not gets one row per copy
+  per node with `Map.new/2` keeping whichever came last.
+
+  An agent reads as itself: it must not be told a spec exists because some other
+  worktree has one, which is the over-satisfaction `Preloader`'s moduledoc
+  measured at 303 skipped specs.
+
+  Anything that is not a checkout reads as the project's **default working
+  copy** — in practice the main checkout, the one being pushed to while agents
+  work in worktrees off it. That makes it the main-branch view without anything
+  having to fetch main, and it is a tree that actually existed, which a union of
+  checkouts is not.
+
+  A project that has named no default falls back to the unscoped row. That row
+  is the blended computation and it over-satisfies; it is the honest answer to
+  "you have not told me which checkout speaks for this project" and is visible
+  as soon as anyone looks.
+  """
+  @spec vantage(Scope.t()) :: Ecto.UUID.t() | nil
+  def vantage(%Scope{active_working_copy_id: working_copy_id}) when is_binary(working_copy_id),
+    do: working_copy_id
+
+  def vantage(%Scope{active_project: %{default_working_copy_id: id}}) when is_binary(id), do: id
+
+  def vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.one(
+      from p in CodeMySpec.Projects.Project,
+        where: p.id == ^project_id,
+        select: p.default_working_copy_id
+    )
+  end
+
+  def vantage(%Scope{}), do: nil
 
   @doc """
   Which requirements a file bears on.
@@ -100,7 +140,7 @@ defmodule CodeMySpec.Requirements.Projection do
   # deleted without its rows going with it would otherwise reappear as a node,
   # and `on_delete: :delete_all` covers the referential half but not a row whose
   # component id was nulled.
-  defp project_rows(project_id, ctx) do
+  defp project_rows(project_id, working_copy_id, ctx) do
     component_ids = Enum.map(ctx.components, & &1.id)
     story_ids = Enum.map(ctx.stories, & &1.id)
 
@@ -110,8 +150,16 @@ defmodule CodeMySpec.Requirements.Projection do
       n.component_id in ^component_ids or n.story_id in ^story_ids or
         n.project_id == ^project_id
     )
+    |> where(^copy_filter(working_copy_id))
     |> Repo.all()
   end
+
+  # `is_nil` rather than `== nil`. `= NULL` is never true in SQL, so a project
+  # with no default working copy would match no row and read as a graph with no
+  # nodes — "you have not chosen a vantage point" arriving as "this project has
+  # no requirements".
+  defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
+  defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
   defp rehydrate(row, ctx) do
     with {:ok, entity_type, entity} <- entity_for(row, ctx),
