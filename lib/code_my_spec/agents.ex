@@ -146,6 +146,12 @@ defmodule CodeMySpec.Agents do
       |> Enum.map(&reap_if_absent(scope, &1, MapSet.member?(alive, &1.id)))
       |> Enum.filter(&(&1.status in [:starting, :running]))
 
+    # A report is the only moment the server learns an agent went away, so it is
+    # the only moment a page watching one can find out. Without this the row
+    # keeps claiming an agent is working until somebody reloads, which is the
+    # stale-row failure the reconcile exists to prevent, moved to the browser.
+    broadcast(scope, {:agents_reported, running})
+
     {:ok, running}
   end
 
@@ -169,7 +175,7 @@ defmodule CodeMySpec.Agents do
   defp upsert(nil, scope, report) do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
-        engine: :pi,
+        engine: engine(report),
         provider: report["provider"] || "unknown",
         working_copy: report["working_copy"],
         os_pid: report["os_pid"],
@@ -182,12 +188,21 @@ defmodule CodeMySpec.Agents do
   defp upsert(%Agent{} = agent, scope, report) do
     {:ok, updated} =
       AgentsRepository.update_agent(scope, agent, %{
+        engine: engine(report),
         status: :running,
         os_pid: report["os_pid"] || agent.os_pid
       })
 
     updated
   end
+
+  # The harness says which engine it is running, and it matters downstream: the
+  # engine decides whether an agent has presence or only a timestamp, and whether
+  # it can be talked to at all. Defaulting every report to `:pi` made a Claude
+  # Code agent claim presence it does not have — caught by story 1019's criterion
+  # 2830, which exists to keep those two facts apart.
+  defp engine(%{"engine" => "claude_code"}), do: :claude_code
+  defp engine(_report), do: :pi
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
 
