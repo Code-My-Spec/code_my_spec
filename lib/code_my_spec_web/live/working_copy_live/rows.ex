@@ -87,7 +87,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   end
 
   defp build(harness, agents, transcripts, now) do
-    on_this_copy = Enum.filter(agents, &(&1.working_copy == harness.root))
+    on_this_copy = Enum.filter(agents, &(&1.harness_id == harness.id))
     transcript = Map.get(transcripts, "pi:#{harness.root}")
 
     %{

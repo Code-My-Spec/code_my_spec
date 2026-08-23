@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2832Spex do
         idle = join_working_copy(context, "/tmp/spex-1019-idle", "idle checkout")
 
         # Only the first one is running anything.
-        report_agents(context, [pi_agent("/tmp/spex-1019-busy")])
+        report_agents(context, [pi_agent(busy.harness_id, "/tmp/spex-1019-busy")])
 
         {:ok, context |> Map.put(:busy, busy) |> Map.put(:idle, idle)}
       end

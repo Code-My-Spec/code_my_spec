@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2834Spex do
   spex "A Claude Code agent is watched, not driven" do
     scenario "A Claude Code agent offers no box to type in" do
       given_ "a Claude Code agent working on a copy", context do
-        join_working_copy(context, "/tmp/spex-1019-claude-only", "claude checkout")
-        report_agents(context, [claude_agent("/tmp/spex-1019-claude-only")])
+        copy = join_working_copy(context, "/tmp/spex-1019-claude-only", "claude checkout")
+        report_agents(context, [claude_agent(copy.harness_id, "/tmp/spex-1019-claude-only")])
 
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")

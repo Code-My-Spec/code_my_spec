@@ -44,12 +44,12 @@ defmodule CodeMySpecSpex.Story1019.Criterion2837Spex do
   spex "Watching is not managing" do
     scenario "Nothing here ends an agent or a harness" do
       given_ "working copies with agents running on them", context do
-        join_working_copy(context, "/tmp/spex-1019-a", "checkout a")
-        join_working_copy(context, "/tmp/spex-1019-b", "checkout b")
+        a = join_working_copy(context, "/tmp/spex-1019-a", "checkout a")
+        b = join_working_copy(context, "/tmp/spex-1019-b", "checkout b")
 
         report_agents(context, [
-          pi_agent("/tmp/spex-1019-a"),
-          claude_agent("/tmp/spex-1019-b")
+          pi_agent(a.harness_id, "/tmp/spex-1019-a"),
+          claude_agent(b.harness_id, "/tmp/spex-1019-b")
         ])
 
         {:ok, context}

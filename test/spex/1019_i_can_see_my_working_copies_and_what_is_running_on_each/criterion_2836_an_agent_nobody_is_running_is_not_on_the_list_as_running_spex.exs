@@ -41,8 +41,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2836Spex do
   spex "What the page claims is what the harness said" do
     scenario "An agent nobody is running is not on the list as running" do
       given_ "an agent shown as running on a copy", context do
-        join_working_copy(context, "/tmp/spex-1019-quiet", "quiet checkout")
-        report_agents(context, [claude_agent("/tmp/spex-1019-quiet")])
+        quiet = join_working_copy(context, "/tmp/spex-1019-quiet", "quiet checkout")
+        report_agents(context, [claude_agent(quiet.harness_id, "/tmp/spex-1019-quiet")])
 
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")

@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
-    |> order_by([a], asc: a.working_copy)
+    |> order_by([a], asc: a.working_copy, asc: a.role)
     |> Repo.all()
   end
 
@@ -70,7 +70,11 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   @spec update_agent(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
-  def update_agent(%Scope{active_project_id: project_id}, %Agent{project_id: project_id} = agent, attrs) do
+  def update_agent(
+        %Scope{active_project_id: project_id},
+        %Agent{project_id: project_id} = agent,
+        attrs
+      ) do
     agent
     |> Agent.changeset(attrs)
     |> Repo.update()

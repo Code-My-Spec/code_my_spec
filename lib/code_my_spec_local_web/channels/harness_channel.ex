@@ -21,6 +21,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.AgentHarness.WorkSource
   alias CodeMySpecLocalWeb.Presence
+  alias CmsHarness.HarnessConfig
 
   # A lane declares itself on join. `role` is required and always has been;
   # `engine` and `provider` are what it is and what is paying for it, and a lane
@@ -52,6 +53,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   @impl true
   def handle_info(:after_join, socket) do
     %{external_id: external_id, role: role} = socket.assigns
+    root = working_copy(external_id)
 
     {:ok, _ref} =
       Presence.track(socket, role, %{
@@ -72,7 +74,8 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
         %{
           external_id: external_id,
           role: role,
-          working_copy: working_copy(external_id),
+          working_copy: root,
+          harness_id: harness_id(root),
           engine: socket.assigns.engine,
           provider: socket.assigns.provider,
           online_at: System.system_time(:second)
@@ -145,4 +148,23 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   # a key at the other end.
   defp working_copy("pi:" <> root), do: root
   defp working_copy(external_id), do: external_id
+
+  # Which working copy this is, by the id the server issued it.
+  #
+  # Read from the checkout's own `.cms_harness.json` — the device wrote that
+  # file and is the only party that knows which of several identically-rooted
+  # harness rows this directory actually is. The server used to match the
+  # reported path against `harnesses.root`, comparing two independently
+  # produced strings and going wrong on a symlink, a trailing slash, or a root
+  # that names more than one row.
+  #
+  # `nil` when the copy has not been onboarded. The report still goes up and the
+  # server refuses that entry loudly, which is a better outcome than attaching
+  # an agent to a copy chosen by a path match.
+  defp harness_id(root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{harness_id: id}} -> id
+      _ -> nil
+    end
+  end
 end

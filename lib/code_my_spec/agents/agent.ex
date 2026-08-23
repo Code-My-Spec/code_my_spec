@@ -2,10 +2,17 @@ defmodule CodeMySpec.Agents.Agent do
   @moduledoc """
   One coding agent CodeMySpec started, on one working copy, on one provider.
 
-  `working_copy` is the root path the agent runs in, and it is the natural key
-  for everything else about it — the harness serving that copy, the requirements
-  it can see, the session its turns are attributed to. Every other harness
-  surface is keyed the same way.
+  `harness_id` is the working copy this agent runs in, and it is the key.
+  Nothing joins on a path: `working_copy` and `harnesses.root` are both strings
+  a device reported, and comparing two reported strings is how an agent ends up
+  attached to a copy that does not exist — a symlink, a trailing slash or
+  `/private/tmp` versus `/tmp` is enough. Two harness rows can also share a
+  root, so a path match is ambiguous exactly where the answer matters.
+
+  `working_copy` stays because the path is real and needed: `PiConfig` mints a
+  configuration directory that must sit outside it, and the conversation key has
+  to match what a lane pushes under. Reported, and not identifying — the same
+  status `harnesses.root` has.
 
   `role` is which lane on that copy this agent is, and it is the half of the key
   that was missing. A copy runs one or more agents; the harness already
@@ -92,7 +99,16 @@ defmodule CodeMySpec.Agents.Agent do
       :project_id,
       :account_id
     ])
-    |> validate_required([:engine, :provider, :working_copy, :role, :project_id, :account_id])
+    |> validate_required([
+      :engine,
+      :provider,
+      :working_copy,
+      :role,
+      :harness_id,
+      :project_id,
+      :account_id
+    ])
+    |> foreign_key_constraint(:harness_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end

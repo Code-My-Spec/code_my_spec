@@ -115,13 +115,30 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
     :ok
   end
 
-  @doc "One Pi agent on a copy, as a harness would report it."
-  @spec pi_agent(String.t()) :: map()
-  def pi_agent(root),
-    do: %{"working_copy" => root, "provider" => "zai", "engine" => "pi"}
+  @doc """
+  One Pi agent on a copy, as a harness would report it.
+
+  Takes the harness id because that is what the wire carries: the device reads
+  it out of the checkout's own `.cms_harness.json` and the server joins on it.
+  A criterion gets one from `join_working_copy/3`'s reply, which is the same
+  route a real checkout takes — minted on join, then presented.
+  """
+  @spec pi_agent(String.t(), String.t()) :: map()
+  def pi_agent(harness_id, root),
+    do: %{
+      "harness_id" => harness_id,
+      "working_copy" => root,
+      "provider" => "zai",
+      "engine" => "pi"
+    }
 
   @doc "One Claude Code agent on a copy, as a harness would report it."
-  @spec claude_agent(String.t()) :: map()
-  def claude_agent(root),
-    do: %{"working_copy" => root, "provider" => "anthropic", "engine" => "claude_code"}
+  @spec claude_agent(String.t(), String.t()) :: map()
+  def claude_agent(harness_id, root),
+    do: %{
+      "harness_id" => harness_id,
+      "working_copy" => root,
+      "provider" => "anthropic",
+      "engine" => "claude_code"
+    }
 end

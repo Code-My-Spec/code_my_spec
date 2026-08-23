@@ -22,6 +22,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Conversations.Message
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -30,6 +31,12 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
   setup do
     scope = full_scope_fixture()
+
+    # A real working copy, issued the way a checkout gets one. The report keys
+    # on this id, so a test that invents a uuid would be testing a shape rather
+    # than the join.
+    {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /tmp/two-lanes")
+    {:ok, harness} = Harnesses.report_root(harness, "/tmp/two-lanes")
 
     {:ok, _reply, channel} =
       CodeMySpecWeb.UserSocket
@@ -40,18 +47,19 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
         %{}
       )
 
-    %{scope: scope, channel: channel}
+    %{scope: scope, channel: channel, harness: harness}
   end
 
   test "two lanes on one working copy are two agents, not one", %{
     scope: scope,
-    channel: channel
+    channel: channel,
+    harness: harness
   } do
     ref =
       push(channel, "agents_running", %{
         "agents" => [
-          %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"},
-          %{"working_copy" => "/tmp/two-lanes", "role" => "qa", "provider" => "zai"}
+          lane(harness, "coding"),
+          lane(harness, "qa")
         ]
       })
 
@@ -67,20 +75,12 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   end
 
   test "a lane that stops being reported stops being running, and its sibling does not",
-       %{scope: scope, channel: channel} do
+       %{scope: scope, channel: channel, harness: harness} do
     push(channel, "agents_running", %{
-      "agents" => [
-        %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"},
-        %{"working_copy" => "/tmp/two-lanes", "role" => "qa", "provider" => "zai"}
-      ]
+      "agents" => [lane(harness, "coding"), lane(harness, "qa")]
     })
 
-    ref =
-      push(channel, "agents_running", %{
-        "agents" => [
-          %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"}
-        ]
-      })
+    ref = push(channel, "agents_running", %{"agents" => [lane(harness, "coding")]})
 
     assert_reply ref, :ok, %{"running" => _}
 
@@ -88,6 +88,38 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
            "the report is the whole set, so a lane it omits has stopped — but " <>
              "only that lane. Reaping by working copy would take the sibling " <>
              "that is still working with it."
+  end
+
+  # One lane on that copy, the way `LaneReporter` composes it. `harness_id` is
+  # the key; `working_copy` rides along because the path is real and the
+  # conversation is keyed from it.
+  defp lane(harness, role) do
+    %{
+      "harness_id" => harness.id,
+      "working_copy" => harness.root,
+      "role" => role,
+      "provider" => "zai"
+    }
+  end
+
+  test "a reported agent naming no working copy is refused, not guessed at", %{
+    scope: scope,
+    channel: channel
+  } do
+    ref =
+      push(channel, "agents_running", %{
+        "agents" => [%{"working_copy" => "/tmp/two-lanes", "role" => "coding"}]
+      })
+
+    assert_reply ref, :ok, %{"running" => running}
+
+    assert running == [],
+           "a report with no harness_id used to be matched against harnesses.root, " <>
+             "which is another reported string. Guessing produces an agent attached " <>
+             "to whichever copy happened to match, and on this project five roots " <>
+             "name more than one harness."
+
+    assert Agents.list_running(scope) == []
   end
 
   test "join is rejected when the account doesn't match the socket scope", %{scope: scope} do

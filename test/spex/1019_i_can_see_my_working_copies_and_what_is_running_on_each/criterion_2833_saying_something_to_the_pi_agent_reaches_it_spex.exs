@@ -50,12 +50,12 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
   spex "A Pi agent can be answered" do
     scenario "Saying something to the Pi agent reaches it" do
       given_ "a Pi agent working on a copy", context do
-        join_working_copy(context, "/tmp/spex-1019-talkable", "talkable checkout")
-        join_working_copy(context, "/tmp/spex-1019-other", "the other checkout")
+        talkable = join_working_copy(context, "/tmp/spex-1019-talkable", "talkable checkout")
+        other = join_working_copy(context, "/tmp/spex-1019-other", "the other checkout")
 
         report_agents(context, [
-          pi_agent("/tmp/spex-1019-talkable"),
-          pi_agent("/tmp/spex-1019-other")
+          pi_agent(talkable.harness_id, "/tmp/spex-1019-talkable"),
+          pi_agent(other.harness_id, "/tmp/spex-1019-other")
         ])
 
         # A line in each copy's own transcript, said the way a lane says it.

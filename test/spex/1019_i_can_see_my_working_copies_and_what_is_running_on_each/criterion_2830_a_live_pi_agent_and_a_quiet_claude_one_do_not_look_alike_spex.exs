@@ -40,12 +40,12 @@ defmodule CodeMySpecSpex.Story1019.Criterion2830Spex do
   spex "Liveness is not one fact" do
     scenario "A live Pi agent and a quiet Claude one do not look alike" do
       given_ "a Pi agent on one copy and a Claude Code agent on another", context do
-        join_working_copy(context, "/tmp/spex-1019-pi", "pi checkout")
-        join_working_copy(context, "/tmp/spex-1019-claude", "claude checkout")
+        pi = join_working_copy(context, "/tmp/spex-1019-pi", "pi checkout")
+        claude = join_working_copy(context, "/tmp/spex-1019-claude", "claude checkout")
 
         report_agents(context, [
-          pi_agent("/tmp/spex-1019-pi"),
-          claude_agent("/tmp/spex-1019-claude")
+          pi_agent(pi.harness_id, "/tmp/spex-1019-pi"),
+          claude_agent(claude.harness_id, "/tmp/spex-1019-claude")
         ])
 
         {:ok, context}

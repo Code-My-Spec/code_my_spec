@@ -139,7 +139,7 @@ defmodule CodeMySpec.Agents do
   """
   @spec record_reported(Scope.t(), [map()]) :: {:ok, [Agent.t()]}
   def record_reported(%Scope{} = scope, reported) when is_list(reported) do
-    adopted = Enum.map(reported, &adopt(scope, &1))
+    adopted = reported |> Enum.map(&adopt(scope, &1)) |> Enum.reject(&is_nil/1)
     Enum.each(adopted, &ensure_conversation(scope, &1))
     alive = MapSet.new(adopted, & &1.id)
 
@@ -173,17 +173,33 @@ defmodule CodeMySpec.Agents do
   # a record of its own requests rather than of what exists, which is the
   # distinction this whole reconcile is about.
   #
-  # Keyed on the working copy **and the lane's role**. The copy alone is not a
-  # key: a checkout runs one or more agents, the harness tells them apart by
-  # role, and finding "the copy's agent" made a second lane overwrite the first
-  # — one row flickering between two engines instead of two rows.
-  defp adopt(%Scope{} = scope, %{"working_copy" => working_copy} = report) do
+  # Keyed on the working copy's **id** and the lane's role.
+  #
+  # The role half: a checkout runs one or more agents, the harness tells them
+  # apart by role, and finding "the copy's agent" made a second lane overwrite
+  # the first — one row flickering between two engines instead of two rows.
+  #
+  # The id half: the copy used to be matched by comparing the reported path to
+  # `harnesses.root`, which is also a reported path. Two strings that are meant
+  # to be equal and are produced independently do not stay equal, and two
+  # harness rows can share a root outright. The device knows which harness id it
+  # holds — it wrote the file — so it says so, and nothing here guesses.
+  defp adopt(%Scope{} = scope, %{"harness_id" => harness_id} = report)
+       when is_binary(harness_id) do
     role = role(report)
 
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.working_copy == working_copy and &1.role == role))
+    |> Enum.find(&(&1.harness_id == harness_id and &1.role == role))
     |> upsert(scope, report)
+  end
+
+  # A report that names no working copy is refused rather than guessed at. It
+  # would otherwise create an agent attached to nothing, which renders nowhere
+  # and reaps nothing — a row that exists only to be wrong.
+  defp adopt(_scope, report) do
+    Logger.warning("[Agents] ignoring a reported agent with no harness_id: #{inspect(report)}")
+    nil
   end
 
   defp upsert(nil, scope, report) do
@@ -193,6 +209,7 @@ defmodule CodeMySpec.Agents do
         provider: report["provider"] || "unknown",
         working_copy: report["working_copy"],
         role: role(report),
+        harness_id: report["harness_id"],
         os_pid: report["os_pid"],
         status: :running
       })
@@ -289,6 +306,7 @@ defmodule CodeMySpec.Agents do
       provider: Map.fetch!(attrs, :provider),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.get(attrs, :role, "main"),
+      harness_id: Map.get(attrs, :harness_id) || scope.active_harness_id,
       status: :starting
     }
   end
