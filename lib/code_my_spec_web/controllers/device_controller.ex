@@ -42,9 +42,7 @@ defmodule CodeMySpecWeb.DeviceController do
   writes that down and presents it next time.
   """
   def create(conn, params) do
-    scope = conn.assigns.current_scope
-
-    case Devices.announce(scope, params["device_id"], attrs(params)) do
+    case Devices.announce(scope(conn), params["device_id"], attrs(params)) do
       {:ok, device} ->
         json(conn, %{device_id: device.id})
 
@@ -54,6 +52,20 @@ defmodule CodeMySpecWeb.DeviceController do
         |> json(%{error: inspect(changeset.errors)})
     end
   end
+
+  # The account this machine belongs to, if it belongs to one.
+  #
+  # A device is account-scoped and a working copy is project-scoped, so a
+  # machine announcing itself names an account at most — never a project. It has
+  # no checkout yet, which is the whole reason this route exists rather than the
+  # channel.
+  #
+  # And it may name nothing. A shared development box belongs to no account:
+  # several people work on it, and forcing one would attach it to whichever
+  # announced first. `Devices.announce/3` takes a scope with a nil account, and
+  # a nil account matches only other accountless devices — so a shared box
+  # recognising itself never becomes a route to somebody's laptop.
+  defp scope(conn), do: conn.assigns[:current_scope] || %CodeMySpec.Users.Scope{}
 
   # Only what a machine can honestly say about itself. `kind` is refused rather
   # than coerced: an unrecognised value is a client this server does not

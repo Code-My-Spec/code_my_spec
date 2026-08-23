@@ -23,6 +23,7 @@ defmodule CodeMySpec.DevicesTest do
 
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -81,6 +82,42 @@ defmodule CodeMySpec.DevicesTest do
     test "a malformed id mints rather than crashing", %{scope: scope} do
       assert {:ok, device} = Devices.announce(scope, "not-a-uuid", %{hostname: "h", kind: :local})
       assert device.id
+    end
+  end
+
+  describe "a machine that belongs to nobody" do
+    test "a shared box is issued an identity without an account" do
+      assert {:ok, device} =
+               Devices.announce(%Scope{}, nil, %{hostname: "the-shared-box", kind: :local})
+
+      assert device.id
+      assert device.account_id == nil
+
+      assert device.hostname == "the-shared-box",
+             "a shared development box holds no project and belongs to no one " <>
+               "account. Requiring one would attach it to whichever account " <>
+               "happened to announce first."
+    end
+
+    test "it recognises itself across restarts" do
+      {:ok, first} = Devices.announce(%Scope{}, nil, %{hostname: "the-shared-box"})
+      {:ok, again} = Devices.announce(%Scope{}, first.id, %{hostname: "the-shared-box"})
+
+      assert again.id == first.id
+    end
+
+    test "an accountless announce cannot reach an account's machine", %{scope: scope} do
+      {:ok, owned} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
+
+      {:ok, shared} = Devices.announce(%Scope{}, owned.id, %{hostname: "the-shared-box"})
+
+      refute shared.id == owned.id,
+             "presenting a real device id with no credentials behind it was " <>
+               "answered with that account's machine. A nil account has to match " <>
+               "only other nil-account devices, or 'belongs to nobody' becomes a " <>
+               "way to reach anybody."
+
+      assert shared.account_id == nil
     end
   end
 

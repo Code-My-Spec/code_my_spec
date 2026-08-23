@@ -25,6 +25,18 @@ defmodule CodeMySpec.Devices do
   that made `WorkingCopies.issue/3` server-side, one level up, and it fails the
   same way if you get it wrong: two machines answering as one, silently.
 
+  ## A machine need not belong to anyone
+
+  `announce/3` takes a scope that may carry no account and no project. A shared
+  development box is not somebody's: several people work on it, it holds no
+  checkout of its own, and requiring an account would attach it to whichever one
+  announced first. It is issued an identity like any other machine.
+
+  Scoping is unchanged where an account exists. This widens what may be stored,
+  not who may read it — and a nil account matches only other nil-account
+  devices, so an accountless box recognising itself never becomes a route to
+  somebody else's laptop.
+
   ## What is deliberately not here
 
   No `stop_device`, no `delete_device`. A device is somebody's machine; the
@@ -53,8 +65,9 @@ defmodule CodeMySpec.Devices do
   """
   @spec announce(Scope.t(), String.t() | nil, map()) ::
           {:ok, Device.t()} | {:error, Ecto.Changeset.t()}
-  def announce(%Scope{active_account_id: account_id}, device_id, attrs \\ %{})
-      when is_binary(account_id) do
+  def announce(%Scope{} = scope, device_id, attrs \\ %{}) do
+    account_id = scope.active_account_id
+
     attrs =
       attrs
       |> Map.take([:hostname, :kind])
@@ -70,13 +83,29 @@ defmodule CodeMySpec.Devices do
   # Scoped by account as well as id. The id arrives from a machine and is
   # therefore an input: without the account check, one account's daemon
   # presenting another's device id would be handed it.
+  #
+  # A nil account matches only devices that are themselves accountless. A shared
+  # box recognises itself across restarts; it does not become a way to reach
+  # somebody's laptop by presenting its id with no credentials attached.
   defp existing(_account_id, nil), do: nil
 
   defp existing(account_id, device_id) when is_binary(device_id) do
     case Ecto.UUID.cast(device_id) do
       :error -> nil
-      {:ok, id} -> Repo.get_by(Device, id: id, account_id: account_id)
+      {:ok, id} -> Repo.one(scoped(id, account_id))
     end
+  end
+
+  # `is_nil/1` rather than `account_id: nil`, which Ecto refuses outright — and
+  # is right to. `= NULL` is never true in SQL, so a nil account compared that
+  # way would match no row and a shared box would be issued a new identity on
+  # every restart, quietly.
+  defp scoped(id, nil) do
+    from(d in Device, where: d.id == ^id and is_nil(d.account_id))
+  end
+
+  defp scoped(id, account_id) do
+    from(d in Device, where: d.id == ^id and d.account_id == ^account_id)
   end
 
   @doc """

@@ -23,6 +23,13 @@ defmodule CodeMySpec.Devices.Device do
   `last_seen_at` is the machine's own liveness and is not the same as any one
   copy's. A laptop that is closed takes every checkout on it at once; before
   this, each copy went quiet separately and nothing connected them.
+
+  `account_id` is nullable, and that is a real state rather than a gap. A shared
+  development box is not anybody's: several people work on it, it holds no
+  project of its own, and requiring an account would attach it to whichever one
+  happened to announce first. Same shape as `working_copies.device_id` — "this
+  belongs to nobody" and "we have not been told whose this is" are one row, and
+  neither is a defect.
   """
 
   use Ecto.Schema
@@ -67,7 +74,6 @@ defmodule CodeMySpec.Devices.Device do
   def changeset(device, attrs) do
     device
     |> cast(attrs, [:hostname, :label, :kind, :account_id, :last_seen_at])
-    |> validate_required([:account_id])
   end
 
   @doc """
