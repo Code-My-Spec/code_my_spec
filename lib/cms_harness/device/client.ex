@@ -24,12 +24,20 @@ defmodule CmsHarness.Device.Client do
   """
 
   @doc """
-  Announce a machine and get back the identity the server issues it.
+  Announce a machine and get back the identity the server issues it, along with
+  the copies the server has attached to it.
 
   `device_id` is what the machine already holds, or nil the first time.
+
+  The reply is a map rather than the bare id it used to be. The exchange is two
+  directions: the machine says which of its checkouts it can still see, and the
+  server says which checkouts it thinks are on this machine. Only the second
+  half lets a restarted harness answer for a copy nobody has worked in since —
+  which is the copy most likely to have been deleted.
   """
   @callback announce(device_id :: String.t() | nil, token :: String.t(), attrs :: map()) ::
-              {:ok, String.t()} | {:error, term()}
+              {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
+              | {:error, term()}
 
   @doc "The configured client. Defaults to real HTTP."
   @spec impl() :: module()

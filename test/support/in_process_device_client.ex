@@ -50,8 +50,11 @@ defmodule CodeMySpecTest.InProcessDeviceClient do
 
   defp issued(%Plug.Conn{status: 200} = conn) do
     case Phoenix.ConnTest.json_response(conn, 200) do
-      %{"device_id" => id} when is_binary(id) -> {:ok, id}
-      other -> {:error, {200, other}}
+      %{"device_id" => id} = body when is_binary(id) ->
+        {:ok, %{device_id: id, working_copies: body["working_copies"] || %{}}}
+
+      other ->
+        {:error, {200, other}}
     end
   end
 

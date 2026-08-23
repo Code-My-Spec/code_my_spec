@@ -41,11 +41,20 @@ defmodule CmsHarness.Device.Client.Http do
     end
   end
 
-  defp issued({:ok, %{status: 200, body: %{"device_id" => id}}}) when is_binary(id),
-    do: {:ok, id}
+  defp issued({:ok, %{status: 200, body: %{"device_id" => id} = body}}) when is_binary(id),
+    do: {:ok, %{device_id: id, working_copies: copies(body["working_copies"])}}
 
   defp issued({:ok, %{status: status, body: body}}), do: {:error, {status, body}}
   defp issued({:error, reason}), do: {:error, reason}
+
+  # A server that predates the two-way exchange answers without the key, and
+  # that reads as "no copies" rather than as an error: the reporter then knows
+  # only what it has served, which is what it knew before this existed.
+  defp copies(map) when is_map(map) do
+    for {id, root} <- map, is_binary(id), is_binary(root), into: %{}, do: {id, root}
+  end
+
+  defp copies(_other), do: %{}
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)

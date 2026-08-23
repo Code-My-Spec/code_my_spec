@@ -47,9 +47,14 @@ defmodule CmsHarness.Device do
   @doc """
   Announce this machine and keep the identity it is issued.
 
-  Returns `{:ok, device_id}`, or `{:error, reason}` when the server could not be
-  reached or refused. Safe to call on every boot: presenting the id we already
-  hold is how the server recognises the machine rather than minting another.
+  Returns `{:ok, %{device_id: id, working_copies: %{id => root}}}`, or
+  `{:error, reason}` when the server could not be reached or refused. Safe to
+  call on every boot: presenting the id we already hold is how the server
+  recognises the machine rather than minting another.
+
+  `working_copies` is what the *server* believes is on this machine, which is
+  the half of the exchange the harness cannot work out for itself — see
+  `CmsHarness.WorkingCopyReporter`.
 
   Safe to call repeatedly, too, and `CmsHarness.WorkingCopyReporter` does. The
   observation it passes — `%{working_copy_id => present?}` — rides along on the
@@ -65,13 +70,15 @@ defmodule CmsHarness.Device do
   *unreported* rather than reported missing — the one outcome the whole story
   exists to avoid. The memory lives in the reporter.
   """
-  @spec announce(%{optional(String.t()) => boolean()}) :: {:ok, String.t()} | {:error, term()}
+  @spec announce(%{optional(String.t()) => boolean()}) ::
+          {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
+          | {:error, term()}
   def announce(observations \\ %{}) do
     with {:ok, token} <- credential(),
-         {:ok, id} <- post(recorded_id(), token, observations) do
+         {:ok, %{device_id: id} = reply} <- post(recorded_id(), token, observations) do
       write(id)
       Logger.info("[CmsHarness] this machine is device #{id}")
-      {:ok, id}
+      {:ok, reply}
     else
       {:error, reason} = error ->
         Logger.warning(

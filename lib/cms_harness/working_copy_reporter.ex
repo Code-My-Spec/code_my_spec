@@ -5,21 +5,31 @@ defmodule CmsHarness.WorkingCopyReporter do
   `CmsHarness.Device.announce/1` carries the observation; this is what computes
   it and what makes it happen more than once.
 
-  ## Why it has to remember
+  ## The two things it has to remember, and why neither is optional
 
-  The obvious implementation is one `File.dir?` over `CmsHarness.WorkingCopies.all/0`,
-  and it is wrong in exactly the case the story is about.
+  The obvious implementation is one `File.dir?` over
+  `CmsHarness.WorkingCopies.all/0`. It is wrong twice, and both times in exactly
+  the case the story is about.
 
-  That map is built by reading `.cms_harness.json` out of each root. The config
-  file lives **inside** the checkout, so a removed worktree takes it with it —
-  and the entry does not become `false`, it disappears. A copy that vanished
-  would therefore be *unreported* rather than reported missing, which the server
-  correctly treats as "no news", which is silence, which is the one reading this
-  whole model exists to stop being fatal.
+  **A vanished copy stops naming itself.** That map is built by reading
+  `.cms_harness.json` out of each root, and the config file lives *inside* the
+  checkout — so a removed worktree takes it with it, and the entry does not turn
+  `false`, it disappears. An unmentioned copy is treated by the server as no
+  news, which is silence, which is the reading this whole model exists to stop
+  being fatal. So every copy that has ever been readable stays in `known`, and
+  removal is inferred from the directory going away, never from the config file
+  going away.
 
-  So the reporter keeps `id => root` for every copy it has ever managed to read,
-  and answers for all of them. Discovery is additive and removal is never
-  inferred from the config file going away — only from the directory going away.
+  **A restarted harness has served nothing yet.** `WorkingCopies.all/0` comes
+  from `Projects.list/0`, which is the roots this harness has been *asked* to
+  serve, and it is asked by a hook arriving. After a restart that list holds the
+  copies somebody is actively working in — and the copy whose worktree was
+  deleted is precisely the one nobody will work in again. Left to itself the
+  harness would look everywhere except at the thing it was watching for.
+
+  The server closes that: `announce/1` answers with the copies attached to this
+  device, and those are merged into `known`. Self-correcting across restarts,
+  with no state to persist anywhere.
 
   ## Why a timer
 
@@ -64,6 +74,14 @@ defmodule CmsHarness.WorkingCopyReporter do
   # somebody's laptop.
   @heartbeat :timer.minutes(2)
 
+  # The first one comes sooner, because the first exchange is mostly a question.
+  # A fresh harness knows only what it has been asked to serve, so its opening
+  # report is thin and its value is the answer — the copies the server says are
+  # on this machine. Waiting a full heartbeat to ask, and another to report on
+  # what came back, would put four minutes between a harness starting and it
+  # looking at the checkout somebody deleted yesterday.
+  @first_report :timer.seconds(20)
+
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: name(opts))
 
   defp name(opts), do: Keyword.get(opts, :name, __MODULE__)
@@ -80,39 +98,57 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   @impl GenServer
   def init(opts) do
-    schedule()
+    schedule(@first_report)
 
     # `known` is seedable because it is genuinely restorable state — "copies
-    # this harness has served, and where" — not a test hook. A harness that
-    # restarts loses it and rebuilds it from discovery on the next tick, which
-    # is why nothing persists it; a caller that already has the answer can hand
-    # it over instead of waiting.
+    # this harness has served, and where" — rather than a test hook. A caller
+    # that already has the answer can hand it over instead of waiting for the
+    # server to say.
     {:ok, Keyword.get(opts, :known, %{})}
   end
 
   @impl GenServer
   def handle_call(:report, _from, known) do
-    {observations, known} = observe(known)
-    announce(observations)
+    {observations, known} = run(known)
     {:reply, observations, known}
   end
 
   @impl GenServer
   def handle_info(:report, known) do
-    {observations, known} = observe(known)
-    announce(observations)
-    schedule()
+    {_observations, known} = run(known)
+    schedule(@heartbeat)
     {:noreply, known}
   end
 
   def handle_info(_message, known), do: {:noreply, known}
 
+  # One exchange: look, say what we saw, keep what the server says we hold.
+  defp run(known) do
+    {observations, known} = observe(known)
+
+    case Device.announce(observations) do
+      {:ok, %{working_copies: from_server}} ->
+        say(observations)
+        {observations, Map.merge(known, from_server)}
+
+      {:error, reason} ->
+        # Debug, not warning. `Device.announce/1` already logs at warning; a box
+        # offline for an afternoon would otherwise put the same line in
+        # harness.log every two minutes.
+        Logger.debug(
+          "[CmsHarness] working copy report did not reach the server: #{inspect(reason)}"
+        )
+
+        {observations, known}
+    end
+  end
+
   @doc """
   What this machine can see, given what it has seen before.
 
   Returns `{observations, known}` — the report to send, and the memory to keep.
-  Separated from the server callbacks so the interesting half can be exercised
-  without a process: it is the half with the rule in it.
+  Separated from the server callbacks so the half with the rule in it can be
+  exercised without a process.
   """
   @spec observe(%{optional(String.t()) => String.t()}) ::
           {%{optional(String.t()) => boolean()}, %{optional(String.t()) => String.t()}}
@@ -123,6 +159,30 @@ defmodule CmsHarness.WorkingCopyReporter do
     known = Map.merge(known, current_roots())
 
     {Map.new(known, fn {id, root} -> {id, File.dir?(root)} end), known}
+  end
+
+  # Says what was reported, because a producer nobody can see is a producer
+  # nobody can tell has stopped. The server-side handler for this shape was
+  # written twice on this project before anything ever pushed into it, and both
+  # times the specs passed because they built the payload themselves — the gap
+  # showed up only as a page that was quietly always right.
+  #
+  # Missing copies are named, present ones counted. Eight healthy roots listed
+  # every two minutes is noise; the one that is gone is the whole message.
+  defp say(observations) do
+    {missing, present} =
+      Enum.split_with(observations, fn {_id, present?} -> present? == false end)
+
+    case missing do
+      [] ->
+        Logger.debug("[CmsHarness] reported #{map_size(observations)} checkouts, all present")
+
+      _ ->
+        Logger.info(
+          "[CmsHarness] reported #{length(present)} checkouts present and " <>
+            "#{length(missing)} gone: #{Enum.map_join(missing, ", ", &elem(&1, 0))}"
+        )
+    end
   end
 
   defp current_roots do
@@ -139,22 +199,5 @@ defmodule CmsHarness.WorkingCopyReporter do
       %{}
   end
 
-  defp announce(observations) do
-    case Device.announce(observations) do
-      {:ok, _id} ->
-        :ok
-
-      {:error, reason} ->
-        # Debug, not warning. `Device.announce/1` already logs at warning; a box
-        # offline for an afternoon would otherwise put the same line in
-        # harness.log every two minutes.
-        Logger.debug(
-          "[CmsHarness] working copy report did not reach the server: #{inspect(reason)}"
-        )
-
-        :ok
-    end
-  end
-
-  defp schedule, do: Process.send_after(self(), :report, @heartbeat)
+  defp schedule(delay), do: Process.send_after(self(), :report, delay)
 end

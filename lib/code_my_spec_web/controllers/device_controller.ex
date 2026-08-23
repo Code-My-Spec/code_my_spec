@@ -37,6 +37,16 @@ defmodule CodeMySpecWeb.DeviceController do
   — `WorkingCopies.observe_paths/2` is scoped to `device_id`, so an id from
   another box is ignored rather than believed.
 
+  ## And the answer says what this device is carrying
+
+  The reply carries `working_copies` — every copy attached to this machine, as
+  `id => root`. The exchange has to go both ways, because a harness builds its
+  own list from the roots it has been asked to serve since it started, and it is
+  asked by a hook arriving. A copy nobody works in again is therefore never on
+  that list, and a copy nobody works in again is exactly the one whose worktree
+  has been deleted. Telling the device what it is carrying is what lets it look
+  at the right places after a restart.
+
   ## Announcing is idempotent, and unrecognised is not an error
 
   A machine presents the id it holds, or none. An id we do not recognise — from
@@ -62,7 +72,11 @@ defmodule CodeMySpecWeb.DeviceController do
     case Devices.announce(scope(conn), params["device_id"], attrs(params)) do
       {:ok, device} ->
         WorkingCopies.observe_paths(device, observations(params["working_copies"]))
-        json(conn, %{device_id: device.id})
+
+        json(conn, %{
+          device_id: device.id,
+          working_copies: WorkingCopies.list_on_device(device)
+        })
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn

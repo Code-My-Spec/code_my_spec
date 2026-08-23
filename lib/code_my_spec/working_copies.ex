@@ -390,6 +390,38 @@ defmodule CodeMySpec.WorkingCopies do
   defp normalize_label(_label), do: nil
 
   @doc """
+  The copies this device is carrying, as `id => root`.
+
+  Answered to the device itself, on announce, so it knows what to look for.
+
+  ## Why the server has to say
+
+  A harness builds its own list from the roots it has been asked to serve since
+  it started, and it is asked by a hook arriving. So a copy nobody works in
+  again is never on that list — and a copy nobody works in again is precisely
+  the one whose worktree has been deleted. The feature could not see its own
+  case, for as long as the harness was the only one keeping track.
+
+  Unfiltered by project on purpose. A device carries checkouts of whatever it
+  carries, and the reporter answers for all of them in one pass; scoping this to
+  a project would need the device to know which projects it is on before it
+  could ask, which is the wrong way round.
+  """
+  @spec list_on_device(Device.t() | Ecto.UUID.t()) :: %{String.t() => String.t()}
+  def list_on_device(%Device{id: device_id}), do: list_on_device(device_id)
+
+  def list_on_device(device_id) when is_binary(device_id) do
+    Repo.all(
+      from w in WorkingCopy,
+        where: w.device_id == ^device_id and not is_nil(w.root),
+        select: {w.id, w.root}
+    )
+    |> Map.new()
+  end
+
+  def list_on_device(_device_id), do: %{}
+
+  @doc """
   Record what a device can see of the copies attached to it.
 
   `observations` is `%{working_copy_id => present?}` — the harness's read of its

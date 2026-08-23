@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
       end
 
       then_ "it is issued an identity and writes it beside the install", context do
-        assert {:ok, device_id} = context.result
+        assert {:ok, %{device_id: device_id}} = context.result
 
         assert File.exists?(context.device_file),
                "the harness onboarded and wrote nothing down, so its next start " <>
