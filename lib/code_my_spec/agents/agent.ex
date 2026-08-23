@@ -7,6 +7,14 @@ defmodule CodeMySpec.Agents.Agent do
   it can see, the session its turns are attributed to. Every other harness
   surface is keyed the same way.
 
+  `role` is which lane on that copy this agent is, and it is the half of the key
+  that was missing. A copy runs one or more agents; the harness already
+  distinguishes them by role — `CodeMySpecLocalWeb.HarnessChannel` joins one
+  session per copy and tracks Presence under the lane's role — so without it the
+  reconcile found "the copy's agent" and a second lane overwrote the first.
+  Defaulted here rather than in the migration, because the code that writes rows
+  is what needs to see the default.
+
   `config_dir` is Pi's configuration directory for this agent
   (`PI_CODING_AGENT_DIR`), recorded rather than derived so a stop knows what to
   clean up even if the naming scheme changes underneath it. It is stored, and
@@ -33,6 +41,7 @@ defmodule CodeMySpec.Agents.Agent do
           engine: atom() | nil,
           provider: String.t() | nil,
           working_copy: String.t() | nil,
+          role: String.t() | nil,
           config_dir: String.t() | nil,
           os_pid: integer() | nil,
           status: atom() | nil,
@@ -50,6 +59,7 @@ defmodule CodeMySpec.Agents.Agent do
     field :engine, Ecto.Enum, values: @engines, default: :pi
     field :provider, :string
     field :working_copy, :string
+    field :role, :string, default: "main"
     field :config_dir, :string
     field :os_pid, :integer
     field :status, Ecto.Enum, values: @statuses, default: :starting
@@ -74,6 +84,7 @@ defmodule CodeMySpec.Agents.Agent do
       :engine,
       :provider,
       :working_copy,
+      :role,
       :config_dir,
       :os_pid,
       :status,
@@ -81,7 +92,7 @@ defmodule CodeMySpec.Agents.Agent do
       :project_id,
       :account_id
     ])
-    |> validate_required([:engine, :provider, :working_copy, :project_id, :account_id])
+    |> validate_required([:engine, :provider, :working_copy, :role, :project_id, :account_id])
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end

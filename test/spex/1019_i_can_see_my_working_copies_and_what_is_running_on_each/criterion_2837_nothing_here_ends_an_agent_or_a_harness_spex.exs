@@ -82,7 +82,10 @@ defmodule CodeMySpecSpex.Story1019.Criterion2837Spex do
       end
 
       then_ "but the agents are still readable", context do
-        assert has_element?(context.live, "[data-test='working-copy'][data-root='/tmp/spex-1019-a']"),
+        assert has_element?(
+                 context.live,
+                 "[data-test='working-copy'][data-root='/tmp/spex-1019-a']"
+               ),
                "an anchor, so the refutes above cannot pass on an empty page — " <>
                  "a page rendering nothing has no stop buttons either"
 

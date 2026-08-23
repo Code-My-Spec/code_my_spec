@@ -49,30 +49,42 @@ defmodule CodeMySpecSpex.Story1019.Criterion2834Spex do
         {:ok, Map.put(context, :live, live)}
       end
 
-      when_ "an engineer opens its transcript", context do
-        html =
+      when_ "an engineer opens that copy", context do
+        {:ok, copy, html} =
           context.live
-          |> element("[data-test='working-copy'][data-root='/tmp/spex-1019-claude-only'] [data-test='open-transcript']")
+          |> element(
+            "[data-test='working-copy'][data-root='/tmp/spex-1019-claude-only'] [data-test='open-working-copy']"
+          )
           |> render_click()
+          |> follow_redirect(context.conn)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, context |> Map.put(:copy, copy) |> Map.put(:html, html)}
       end
 
-      then_ "they can read what it has done", context do
-        assert has_element?(context.live, "[data-test='agent-transcript']"),
+      then_ "they can read what it is and when it was last heard from", context do
+        assert has_element?(context.copy, "[data-test='agent'][data-engine='claude_code']"),
                "a Claude Code agent that cannot be talked to still has to be " <>
-                 "watchable, or there is no reason for its row to be here at all"
+                 "watchable, or there is no reason for it to be here at all"
+
+        assert has_element?(context.copy, "[data-test='agent-liveness-since']"),
+               "the row says the agent is there and not when it was last heard " <>
+                 "from, which is the only fact hooks give us. Without the time, " <>
+                 "an agent that died this morning reads the same as one mid-thought."
 
         {:ok, context}
       end
 
-      then_ "and there is nothing inviting them to reply", context do
-        refute has_element?(context.live, "[data-test='agent-reply']"),
-               "a reply box on a Claude Code agent accepts text and drops it — " <>
-                 "there is no lane to route a user_message to. A control that " <>
-                 "silently does nothing is worse than an absent one: the person " <>
-                 "believes they redirected the agent, and finds out otherwise when " <>
-                 "the work comes back wrong."
+      then_ "and there is nothing offering to take them somewhere to reply", context do
+        refute has_element?(context.copy, "[data-test='open-agent-chat']"),
+               "a chat link on a Claude-Code-only copy leads to a box that accepts " <>
+                 "text and drops it — there is no lane to route a user_message to. " <>
+                 "An offer that silently does nothing is worse than an absent one: " <>
+                 "the person believes they redirected the agent, and finds out " <>
+                 "otherwise when the work comes back wrong."
+
+        assert has_element?(context.copy, "[data-test='no-agent-chat']"),
+               "the copy withholds the chat and says nothing about why, which " <>
+                 "reads as the page being broken rather than as a decision."
 
         {:ok, context}
       end

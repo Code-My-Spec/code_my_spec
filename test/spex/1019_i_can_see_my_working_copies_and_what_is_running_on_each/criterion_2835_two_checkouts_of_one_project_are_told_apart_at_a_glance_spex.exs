@@ -66,10 +66,23 @@ defmodule CodeMySpecSpex.Story1019.Criterion2835Spex do
       end
 
       then_ "and naming one does not require editing a file on disk", context do
-        assert has_element?(
-                 context.live,
-                 "[data-test='working-copy'][data-root='/tmp/spex-1019-qa'] [data-test='rename']"
-               ),
+        {:ok, form, _html} =
+          context.live
+          |> element(
+            "[data-test='working-copy'][data-root='/tmp/spex-1019-qa'] [data-test='edit-working-copy']"
+          )
+          |> render_click()
+          |> follow_redirect(context.conn)
+
+        {:ok, _show, html} =
+          form
+          |> form("[data-test='rename-form']", %{
+            "working_copy" => %{"label" => "the one QA runs on"}
+          })
+          |> render_submit()
+          |> follow_redirect(context.conn)
+
+        assert html =~ "the one QA runs on",
                "there is no way to name a copy from here. `issue/3` has always " <>
                  "accepted a label and nothing sets one — a name nobody can set is " <>
                  "a name nobody has, and the useful name is 'the QA checkout', " <>

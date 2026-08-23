@@ -1,9 +1,22 @@
 defmodule CodeMySpecWeb.AgentConversationLive.Show do
   @moduledoc """
-  Read-only view of one agent session's conversation — the turns it took, the
-  tools it called and what they returned, with sub-agent turns attributed to the
-  sub-agent via `agent_role`. New turns arrive live while the agent runs, with
-  no reload and nothing the operator can send back.
+  One agent session's conversation — the turns it took, the tools it called and
+  what they returned, with sub-agent turns attributed to the sub-agent via
+  `agent_role`. New turns arrive live while the agent runs, with no reload.
+
+  ## Saying something back
+
+  This is the only place a person types at an agent, and it is here because the
+  transcript is here: a composer on a page that does not show the conversation
+  is a person answering something they cannot read. `WorkingCopyLive.Show`
+  links in rather than growing a second, worse transcript of its own.
+
+  The box appears only where there is a lane on the other end — a `pi:<root>`
+  session with a Pi agent the harness is currently reporting on that copy. A
+  Claude Code agent has no channel to receive a `user_message` on, so a box
+  offered against one would take the text and drop it: worse than no box,
+  because the person believes they redirected an agent and finds out when the
+  work comes back wrong.
 
   One page is one **session**, taken from the URL. It used to be "whichever
   conversation for this project moved most recently", which reads as *the*
@@ -19,6 +32,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
@@ -69,9 +83,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:recording_gap, conversation != nil and messages == [])
     |> assign(:questions, questions_for(conversation))
+    |> assign(:talkable?, talkable?(scope, conversation))
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
   end
+
+  # A conversation is answerable when a Pi lane is running on the copy it is
+  # keyed to. Checked against what the harness is reporting rather than against
+  # the key alone: `pi:<root>` outlives the agent that opened it, and a box on a
+  # dead session is the same broken promise as a box on a Claude Code one.
+  defp talkable?(_scope, nil), do: false
+
+  defp talkable?(scope, %{session_external_id: "pi:" <> root}) do
+    scope
+    |> Agents.list_running()
+    |> Enum.any?(&(&1.working_copy == root and &1.engine == :pi))
+  end
+
+  defp talkable?(_scope, _conversation), do: false
 
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
@@ -95,10 +124,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp with_active_project(scope, project),
     do: %{scope | active_project: project, active_project_id: project.id}
 
+  # The turn goes onto the conversation as an operator message; `HarnessChannel`
+  # is subscribed to the topic and pushes it down to the lane as `user_message`.
+  # Nothing is pushed at the harness from here directly — the conversation is
+  # the record, and a send that bypassed it would reach the agent without ever
+  # appearing in the transcript the operator is reading.
+  #
+  # `add_message/4` with role `:operator`, **not** `add_agent_message/4`. The
+  # latter maps every kind but "tool"/"user" to `:assistant`, and the channel
+  # matches `%Message{role: :operator}` to decide what goes down the wire — so a
+  # reply written that way lands in the transcript looking sent and is never
+  # pushed to the lane. It reads as delivered from both ends and reaches nobody.
+  @impl true
+  def handle_event("send_message", %{"message" => message}, socket) do
+    socket.assigns.conversation
+    |> Conversations.add_message(:operator, message, "operator")
+    |> sent(socket)
+  end
+
   # The questions this session asked. They belong here rather than only on a
   # page of their own: a question read without the work that prompted it is a
   # question you cannot answer well.
-  @impl true
   def handle_event("answer_question", params, socket) do
     # The submitted form does not name which question it was; a conversation can
     # hold several, and only one is ever pending, so that is the one being
@@ -177,6 +223,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # and being wrong the other way means the operator can never reach the top.
   defp assign_more_above(socket, fetched, limit),
     do: assign(socket, :more_above?, length(fetched) >= limit)
+
+  # Nothing is appended here on success: the page is subscribed to the
+  # conversation topic, so the message it just wrote arrives back through
+  # `handle_info/2` like any other turn. Appending as well would render it
+  # twice.
+  defp sent({:ok, _message}, socket), do: {:noreply, socket}
+
+  defp sent({:error, _reason}, socket),
+    do: {:noreply, put_flash(socket, :error, "That message could not be sent.")}
 
   @impl true
   def handle_info({:new_message, message}, socket) do
@@ -263,7 +318,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             phx-viewport-top={@more_above? && "load_older"}
             data-more-above={to_string(@more_above?)}
           >
-            <p :if={@more_above?} data-test="loading-older" class="py-2 text-center text-xs opacity-40">
+            <p
+              :if={@more_above?}
+              data-test="loading-older"
+              class="py-2 text-center text-xs opacity-40"
+            >
               loading earlier turns…
             </p>
             <ChatComponents.turn_item
@@ -274,6 +333,32 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             />
           </div>
         </div>
+
+        <form
+          :if={@talkable?}
+          data-test="agent-message-form"
+          phx-submit="send_message"
+          class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
+        >
+          <input
+            type="text"
+            name="message"
+            autocomplete="off"
+            placeholder="say something to this agent"
+            data-test="agent-message"
+            class="input input-sm input-bordered min-w-0 flex-1"
+          />
+          <button type="submit" class="btn btn-sm btn-primary">Send</button>
+        </form>
+
+        <p
+          :if={@conversation != nil and not @talkable?}
+          data-test="agent-not-talkable"
+          class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
+        >
+          Nothing is listening on this session. Only a Pi lane the harness is
+          currently reporting can be answered.
+        </p>
       </div>
     </Layouts.app>
     """

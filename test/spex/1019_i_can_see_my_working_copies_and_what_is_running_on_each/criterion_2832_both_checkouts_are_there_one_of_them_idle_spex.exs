@@ -54,10 +54,16 @@ defmodule CodeMySpecSpex.Story1019.Criterion2832Spex do
       end
 
       then_ "both are listed", context do
-        assert has_element?(context.live, "[data-test='working-copy'][data-root='/tmp/spex-1019-busy']"),
+        assert has_element?(
+                 context.live,
+                 "[data-test='working-copy'][data-root='/tmp/spex-1019-busy']"
+               ),
                "the copy with an agent on it is missing from the list"
 
-        assert has_element?(context.live, "[data-test='working-copy'][data-root='/tmp/spex-1019-idle']"),
+        assert has_element?(
+                 context.live,
+                 "[data-test='working-copy'][data-root='/tmp/spex-1019-idle']"
+               ),
                "the idle copy is missing. Listing only what is busy answers a " <>
                  "different question than the one this page exists for — a copy " <>
                  "that is absent reads as a copy that does not exist."

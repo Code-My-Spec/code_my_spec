@@ -533,7 +533,9 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/mail/:id", MailLive, :show
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
-      live "/projects/:project_id/working-copies", WorkingCopiesLive, :index
+      live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
+      live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
+      live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
       live "/projects/:project_id/agent-conversation", AgentConversationLive.Index, :index
 
       live "/projects/:project_id/agent-conversation/:conversation_id",

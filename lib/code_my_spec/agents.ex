@@ -138,6 +138,7 @@ defmodule CodeMySpec.Agents do
   @spec record_reported(Scope.t(), [map()]) :: {:ok, [Agent.t()]}
   def record_reported(%Scope{} = scope, reported) when is_list(reported) do
     adopted = Enum.map(reported, &adopt(scope, &1))
+    Enum.each(adopted, &ensure_conversation(scope, &1))
     alive = MapSet.new(adopted, & &1.id)
 
     running =
@@ -163,12 +164,16 @@ defmodule CodeMySpec.Agents do
   # a record of its own requests rather than of what exists, which is the
   # distinction this whole reconcile is about.
   #
-  # Keyed on the working copy, because that is the natural key everywhere else
-  # in the harness and one copy runs one lane per role.
+  # Keyed on the working copy **and the lane's role**. The copy alone is not a
+  # key: a checkout runs one or more agents, the harness tells them apart by
+  # role, and finding "the copy's agent" made a second lane overwrite the first
+  # — one row flickering between two engines instead of two rows.
   defp adopt(%Scope{} = scope, %{"working_copy" => working_copy} = report) do
+    role = role(report)
+
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.working_copy == working_copy))
+    |> Enum.find(&(&1.working_copy == working_copy and &1.role == role))
     |> upsert(scope, report)
   end
 
@@ -178,6 +183,7 @@ defmodule CodeMySpec.Agents do
         engine: engine(report),
         provider: report["provider"] || "unknown",
         working_copy: report["working_copy"],
+        role: role(report),
         os_pid: report["os_pid"],
         status: :running
       })
@@ -203,6 +209,36 @@ defmodule CodeMySpec.Agents do
   # 2830, which exists to keep those two facts apart.
   defp engine(%{"engine" => "claude_code"}), do: :claude_code
   defp engine(_report), do: :pi
+
+  # A harness that names no lane is running one, and "main" is what that one is
+  # called. Falling back keeps every report written before roles existed landing
+  # on the row it always did, rather than forking a duplicate the first time
+  # this ships.
+  defp role(%{"role" => role}) when is_binary(role) and role != "", do: role
+  defp role(_report), do: "main"
+
+  # An adopted Pi lane gets the same transcript one we started gets.
+  #
+  # `start_agent/2` opens the conversation as part of starting, on the reasoning
+  # that an agent that cannot be watched is indistinguishable from one that
+  # never started. Adoption is the *ordinary* way an agent arrives — the harness
+  # starts its own lanes and reports them — so leaving those without one made
+  # the common case the unwatchable one: the working copy had a live agent and
+  # nothing to link at until the lane happened to say something.
+  #
+  # Keyed `pi:<working_copy>`, the same key the lane pushes under, so the
+  # transcript opened here and the one written to are one thread.
+  defp ensure_conversation(%Scope{} = scope, %Agent{engine: :pi} = agent) do
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      "pi:#{agent.working_copy}"
+    )
+  end
+
+  # A Claude Code agent gets none. There is no lane to route a reply to, and a
+  # conversation that exists is a conversation the page offers to open.
+  defp ensure_conversation(_scope, _agent), do: :ok
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
 
@@ -243,6 +279,7 @@ defmodule CodeMySpec.Agents do
       engine: Map.get(attrs, :engine, :pi),
       provider: Map.fetch!(attrs, :provider),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
+      role: Map.get(attrs, :role, "main"),
       status: :starting
     }
   end
