@@ -77,7 +77,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     socket
     |> assign(:row, row)
     |> assign(:now, now)
-    |> assign(:page_title, row.label)
+    |> assign(:page_title, row.heading)
   end
 
   # The chat is only an offer where there is something on the other end of it.
@@ -100,7 +100,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         class="mx-auto w-full max-w-3xl"
       >
         <.header>
-          {@row.label}
+          <span class="block break-all">{@row.heading}</span>
           <:subtitle>{@row.harness.root}</:subtitle>
           <:actions>
             <.button
