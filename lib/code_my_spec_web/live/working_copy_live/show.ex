@@ -98,8 +98,35 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   end
 
   # The chat is only an offer where there is something on the other end of it.
+  #
+  # `:running`, not merely `:pi` — the same mistake `Liveness` made, one panel
+  # further down the page. Gating on engine alone offered "Open agent chat" for
+  # a lane that had not confirmed, so the page said "no harness has confirmed
+  # it" and then invited you to message it. The moduledoc above is the argument:
+  # a box with no lane behind it accepts text and drops it, which is worse than
+  # no box, and an *offer* to open one is the same promise one click earlier.
   defp chattable?(%{conversation: nil}), do: false
-  defp chattable?(%{agents: agents}), do: Enum.any?(agents, &(&1.engine == :pi))
+
+  defp chattable?(%{agents: agents}),
+    do: Enum.any?(agents, &(&1.engine == :pi and &1.status == :running))
+
+  # Why there is nothing to talk to, in the terms of this copy rather than in
+  # general. "A Claude Code agent reports over hooks" is a true sentence and the
+  # wrong one in front of somebody looking at a Pi lane that has not come up
+  # yet — they would go and check the wrong thing.
+  defp no_chat_reason(%{agents: []}), do: "Nothing is running on this copy to talk to."
+
+  defp no_chat_reason(%{agents: agents}) do
+    cond do
+      Enum.any?(agents, &(&1.engine == :pi and &1.status == :starting)) ->
+        "This copy's Pi lane has not confirmed yet. There is nothing joined to " <>
+          "receive a message, so the chat opens once the harness reports it."
+
+      true ->
+        "No lane to talk to on this copy. A Claude Code agent reports over hooks " <>
+          "and has no channel to receive a reply on."
+    end
+  end
 
   @impl true
   def render(assigns) do
@@ -218,8 +245,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           </div>
 
           <p :if={not chattable?(@row)} data-test="no-agent-chat" class="mt-3 text-sm opacity-60">
-            No lane to talk to on this copy. A Claude Code agent reports over hooks and
-            has no channel to receive a reply on.
+            {no_chat_reason(@row)}
           </p>
         </section>
       </div>

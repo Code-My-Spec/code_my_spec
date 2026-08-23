@@ -11,11 +11,11 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   require Logger
 
   alias CodeMySpec.AgentHarness.HarnessProxySocket
-  alias CodeMySpecLocalWeb.LaneReporter
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecLocalWeb.LaneReporter
   alias Ecto.Adapters.SQL
 
   def start_link(opts) do
@@ -50,7 +50,31 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
 
   defp build_children do
     accounts_to_serve()
+    |> announce()
     |> Enum.flat_map(&children_for_account/1)
+  end
+
+  # Serving nothing is the interesting case and it was the silent one.
+  #
+  # `list_local_account_ids/0` needs a project with a `local_path`; a machine
+  # with none serves no accounts, starts no proxy and no `LaneReporter`, and
+  # said so nowhere. The symptom is the whole data plane being inert — no
+  # transcripts relayed up, no `agents_running` reported, every working copy
+  # reading idle forever — and the only evidence was an absence, which is
+  # indistinguishable from a report that was sent and dropped. Two people spent
+  # time on that today.
+  defp announce([]) do
+    Logger.warning(
+      "[SocketSupervisor] no local project has a local_path, so no account sockets " <>
+        "started — nothing will relay agent messages or report running agents"
+    )
+
+    []
+  end
+
+  defp announce(accounts) do
+    Logger.info("[SocketSupervisor] serving #{length(accounts)} account(s)")
+    accounts
   end
 
   # A desktop install serves every account it has a local project for. A sprite
