@@ -132,14 +132,12 @@ defmodule CodeMySpec.ContentPublishing do
     with :ok <-
            S3Client.put_object(bucket, "content.json", blob_json,
              content_type: "application/json",
-             credentials: creds,
-             acl: :public_read
+             credentials: creds
            ),
          :ok <-
            S3Client.put_object(bucket, "manifest.json", Jason.encode!(manifest),
              content_type: "application/json",
-             credentials: creds,
-             acl: :public_read
+             credentials: creds
            ) do
       # What was written and where. Criterion 8035 is that the published files
       # are in *Sam's* storage, and that was unanswerable from here: the return

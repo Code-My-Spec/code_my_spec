@@ -28,9 +28,11 @@ defmodule CodeMySpec.Content.S3Client do
   Private by default, matching every other caller of this client (mail and
   conversation attachments, issue screenshots) — those are read back through
   presigned URLs or the app's own authenticated proxy, never a bare bucket
-  URL. Pass `acl: :public_read` for objects a deployed app's own unsigned
-  `PullClient.fetch/1` has to read directly: the published content blob and
-  manifest, and blog images served straight from the bucket.
+  URL. The published content blob and manifest stay private too: a deployed
+  app's `PullClient` reads them back with its own S3 credentials (delivered
+  via the encrypted env), not a public GET. Pass `acl: :public_read` only for
+  objects meant to be fetched with no credentials at all — blog images,
+  served straight from the bucket to a visitor's browser via `images_host`.
   """
   @spec put_object(String.t(), String.t(), iodata(), keyword()) :: :ok | {:error, term()}
   def put_object(bucket, key, body, opts \\ []) do
