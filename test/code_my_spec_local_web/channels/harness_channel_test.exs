@@ -3,6 +3,11 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
   The data-plane harness channel: an `agent_message` from a lane is relayed UP
   toward the server (asserted via the relay PubSub seam, no server needed), and
   the manager's `dispatch` is routed DOWN to the target lane's topic.
+
+  Also what is *running*. `agents_running` had a handler on the server and no
+  producer anywhere, so the working-copies page showed every checkout idle no
+  matter how many agents were on it. These assert against the same relay seam,
+  which is where the absence would have shown up.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -11,6 +16,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentHarness
+  alias CodeMySpecLocalWeb.LaneReporter
 
   @endpoint CodeMySpecLocalWeb.Endpoint
 
@@ -18,6 +24,11 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
 
   setup do
     scope = full_scope_fixture()
+
+    # In production `SocketSupervisor` starts one of these per account. Started
+    # here because the reporter is what these tests are about — without it the
+    # relay seam is silent, which is exactly the state that shipped.
+    start_supervised!({LaneReporter, scope: scope})
 
     {:ok, _reply, channel} =
       CodeMySpecLocalWeb.HarnessSocket
@@ -49,6 +60,49 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     assert payload["role"] == "coding"
     assert payload["external_id"] == @external_id
     assert payload["project_id"] == scope.active_project_id
+  end
+
+  test "a joined lane is reported to the server as running", %{scope: scope} do
+    :ok = AgentHarness.subscribe_relay(scope.active_account_id)
+
+    # The proxy asking on reconnect. Also the cheapest way to observe the set
+    # without racing the join that already happened in setup.
+    AgentHarness.request_report(scope.active_account_id)
+
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+
+    assert [%{"working_copy" => "/tmp/harness-test-proj", "role" => "coding", "engine" => "pi"}] =
+             agents
+  end
+
+  test "a second lane on one copy is reported beside the first, not instead of it",
+       %{scope: scope} do
+    {:ok, _reply, _qa} =
+      CodeMySpecLocalWeb.HarnessSocket
+      |> socket("harness_socket:#{@external_id}-qa", %{
+        scope: scope,
+        account_id: scope.active_account_id,
+        external_id: @external_id
+      })
+      |> subscribe_and_join(
+        CodeMySpecLocalWeb.HarnessChannel,
+        "harness:session:#{@external_id}",
+        %{"role" => "qa"}
+      )
+
+    :ok = AgentHarness.subscribe_relay(scope.active_account_id)
+    AgentHarness.request_report(scope.active_account_id)
+
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+
+    assert Enum.sort(Enum.map(agents, & &1["role"])) == ["coding", "qa"],
+           "one checkout runs one or more lanes. Reporting a single agent per " <>
+             "copy is what made the server's reconcile overwrite one lane with " <>
+             "the next, so the page showed one row flickering between them."
+
+    assert Enum.all?(agents, &(&1["working_copy"] == "/tmp/harness-test-proj")),
+           "both lanes are on the same checkout and have to say so, or they land " <>
+             "on two working copies that do not exist"
   end
 
   test "dispatch is routed to the target lane's topic", %{channel: channel} do

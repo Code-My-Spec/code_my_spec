@@ -14,6 +14,10 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
     * **Down** — a human reply arrives from the server as `user_message`; we route
       it to the interactive lane (or the manager) via
       `CodeMySpec.AgentHarness.route_to_lane/4`.
+    * **Up, again** — what is *running*, as `agents_running`. Composed by
+      `CodeMySpecLocalWeb.LaneReporter` and relayed like any other event: this
+      module is transport and holds no opinion about Presence, which belongs to
+      the local web app.
 
   Reconnects automatically with a fresh OAuth token, mirroring `IssuesSocket`.
   """
@@ -67,6 +71,13 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
   @impl Slipstream
   def handle_join(topic, _response, socket) do
     Logger.info("[HarnessProxySocket] Joined #{topic}")
+
+    # Ask for a fresh report now the socket is up. A reconnect is exactly the
+    # moment the two sides can disagree — lanes may have started or died while
+    # it was down, and dropped pushes are not retried, so nothing would announce
+    # them until the next lane happened to move.
+    AgentHarness.request_report(socket.assigns.scope.active_account_id)
+
     {:ok, socket |> assign(:joined, true) |> assign(:reconnect_attempts, 0)}
   end
 
@@ -83,8 +94,10 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
     {:ok, socket}
   end
 
-  # local -> server: relay an agent transcript message up. Dropped while
-  # disconnected — the server is the render store, not the store of record.
+  # local -> server: relay whatever the data plane broadcast — a transcript line
+  # or a report of what is running. Dropped while disconnected: the server is
+  # the render store, not the store of record, and a report queued now would
+  # describe the box as it was rather than as it is.
   @impl Slipstream
   def handle_info({:relay_up, event, payload}, socket) do
     if socket.assigns[:joined] do

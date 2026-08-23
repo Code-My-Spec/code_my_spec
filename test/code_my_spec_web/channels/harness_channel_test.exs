@@ -4,6 +4,11 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   local app is persisted onto the session's conversation (rendered in the operator
   inbox), and an operator reply is pushed back down to the harness as
   `user_message` tagged with the session's external id.
+
+  Also `agents_running`, the report of what the box is actually running. A copy
+  runs one or more lanes and the reconcile keys on the lane's role — before it
+  did, the second lane on a checkout overwrote the first and the page showed one
+  row flickering between two engines.
   """
 
   # Sync, and this one has a reason: the channel runs in its own process, so an
@@ -15,6 +20,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
 
@@ -35,6 +41,53 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
       )
 
     %{scope: scope, channel: channel}
+  end
+
+  test "two lanes on one working copy are two agents, not one", %{
+    scope: scope,
+    channel: channel
+  } do
+    ref =
+      push(channel, "agents_running", %{
+        "agents" => [
+          %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"},
+          %{"working_copy" => "/tmp/two-lanes", "role" => "qa", "provider" => "zai"}
+        ]
+      })
+
+    assert_reply ref, :ok, %{"running" => running}
+    assert length(running) == 2
+
+    roles = scope |> Agents.list_running() |> Enum.map(& &1.role) |> Enum.sort()
+
+    assert roles == ["coding", "qa"],
+           "a checkout runs one or more agents. Keying the reconcile on the copy " <>
+             "alone made the second lane overwrite the first, so two agents " <>
+             "working side by side rendered as one row changing its mind."
+  end
+
+  test "a lane that stops being reported stops being running, and its sibling does not",
+       %{scope: scope, channel: channel} do
+    push(channel, "agents_running", %{
+      "agents" => [
+        %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"},
+        %{"working_copy" => "/tmp/two-lanes", "role" => "qa", "provider" => "zai"}
+      ]
+    })
+
+    ref =
+      push(channel, "agents_running", %{
+        "agents" => [
+          %{"working_copy" => "/tmp/two-lanes", "role" => "coding", "provider" => "zai"}
+        ]
+      })
+
+    assert_reply ref, :ok, %{"running" => _}
+
+    assert scope |> Agents.list_running() |> Enum.map(& &1.role) == ["coding"],
+           "the report is the whole set, so a lane it omits has stopped — but " <>
+             "only that lane. Reaping by working copy would take the sibling " <>
+             "that is still working with it."
   end
 
   test "join is rejected when the account doesn't match the socket scope", %{scope: scope} do

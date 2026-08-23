@@ -44,9 +44,47 @@ defmodule CodeMySpec.AgentHarness do
   @doc "Topic the per-account proxy listens on for messages headed to the server."
   def relay_topic(account_id), do: "harness:relay:#{account_id}"
 
+  @doc """
+  Topic every lane on this account is tracked on, in addition to its own.
+
+  Presence has no "list all topics", and the set of lanes is exactly what the
+  server needs to be told. Tracking each lane a second time on one per-account
+  topic makes that set a single `Presence.list/1` — still Presence, so a lane
+  still leaves it by its process dying and nothing has to expire.
+
+  Read by `CodeMySpecLocalWeb.LaneReporter`, which outlives every lane. That
+  matters: the report is a whole-set reconcile, and the moment that has to be
+  reported is the *last* lane going away — when no lane channel is left to
+  report it. It lives over there rather than in the proxy because Presence
+  belongs to the local web app and this boundary may not reference it.
+  """
+  def lanes_topic(account_id), do: "harness:lanes:#{account_id}"
+
   @doc "Broadcast an agent message toward the server (picked up by `HarnessProxySocket`)."
-  def relay_up(account_id, payload) do
-    Phoenix.PubSub.broadcast(@pubsub, relay_topic(account_id), {:relay_up, "agent_message", payload})
+  def relay_up(account_id, payload), do: relay_event(account_id, "agent_message", payload)
+
+  @doc """
+  Broadcast any event toward the server on the account's relay topic.
+
+  `relay_up/2` was the whole surface while a transcript line was the only thing
+  going up. `agents_running` is the second, and the proxy already pushes
+  whatever event it is handed — the hardcoded name was the only thing stopping
+  a second producer existing.
+  """
+  def relay_event(account_id, event, payload) do
+    Phoenix.PubSub.broadcast(@pubsub, relay_topic(account_id), {:relay_up, event, payload})
+  end
+
+  @doc """
+  Ask whoever composes the running-agents report to send one now.
+
+  The socket is up and may have missed changes while it was down. Pushes are
+  dropped rather than queued while disconnected, so without this the server
+  keeps whatever it last heard until a lane happens to move — which for an
+  idle-but-alive box is never.
+  """
+  def request_report(account_id) do
+    Phoenix.PubSub.broadcast(@pubsub, lanes_topic(account_id), :report_running)
   end
 
   @doc "Deliver `event`/`payload` to a single lane's channel."
@@ -55,7 +93,8 @@ defmodule CodeMySpec.AgentHarness do
   end
 
   @doc "Subscribe the caller (a lane's own channel) to its lane topic."
-  def subscribe_lane(external_id, role), do: Phoenix.PubSub.subscribe(@pubsub, lane_topic(external_id, role))
+  def subscribe_lane(external_id, role),
+    do: Phoenix.PubSub.subscribe(@pubsub, lane_topic(external_id, role))
 
   @doc "Subscribe the caller (the per-account proxy) to the account's relay topic."
   def subscribe_relay(account_id), do: Phoenix.PubSub.subscribe(@pubsub, relay_topic(account_id))

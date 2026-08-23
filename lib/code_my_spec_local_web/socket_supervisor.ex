@@ -11,6 +11,7 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   require Logger
 
   alias CodeMySpec.AgentHarness.HarnessProxySocket
+  alias CodeMySpecLocalWeb.LaneReporter
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
@@ -111,7 +112,12 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
           [
             Supervisor.child_spec({HarnessProxySocket, scope: scope},
               id: {HarnessProxySocket, account_id}
-            )
+            ),
+            # Beside the proxy, not inside it: the reporter reads Presence, which
+            # the AgentHarness boundary may not touch. It also has to outlive
+            # every lane, because the report nobody else can send is the one
+            # saying the last lane went away.
+            Supervisor.child_spec({LaneReporter, scope: scope}, id: {LaneReporter, account_id})
           ]
 
       {:error, _} ->

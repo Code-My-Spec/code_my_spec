@@ -44,6 +44,26 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
         external_id: external_id
       })
 
+    # Tracked a second time on the account's lanes topic, so the whole set of
+    # lanes is one `Presence.list/1` for the proxy that reports it upward.
+    # Without this the server has no way to learn what is running: it has always
+    # had an `agents_running` handler and nothing has ever pushed one, so every
+    # working copy read as idle no matter how many agents were on it.
+    {:ok, _ref} =
+      Presence.track(
+        self(),
+        AgentHarness.lanes_topic(socket.assigns.account_id),
+        lane_key(socket),
+        %{
+          external_id: external_id,
+          role: role,
+          working_copy: working_copy(external_id),
+          engine: "pi",
+          provider: socket.assigns[:provider] || "unknown",
+          online_at: System.system_time(:second)
+        }
+      )
+
     {:noreply, socket}
   end
 
@@ -96,4 +116,18 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
 
   def handle_in("lane_busy", _payload, socket), do: {:noreply, socket}
   def handle_in(_event, _payload, socket), do: {:noreply, socket}
+
+  # One key per lane rather than per session. Presence keeps a meta per tracking
+  # process either way, so this does not change what gets reported — it makes
+  # `Presence.list/1` on the lanes topic readable as "the lanes", which is what
+  # it is, instead of a session holding an unexplained list.
+  defp lane_key(%{assigns: %{external_id: external_id, role: role}}),
+    do: "#{external_id}|#{role}"
+
+  # A Pi lane's session id is `pi:<cwd>`, and the working copy is the cwd. Said
+  # here rather than on the server so the report carries the same root the
+  # harness registered the checkout under, instead of a path reconstructed from
+  # a key at the other end.
+  defp working_copy("pi:" <> root), do: root
+  defp working_copy(external_id), do: external_id
 end
