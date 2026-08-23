@@ -270,6 +270,17 @@ defmodule CodeMySpec.Environments do
 
   Returns `nil` when no override is registered — the caller should fall
   back to its default env construction.
+
+  Also nil when the registry itself is not running, which is a caller outside a
+  started application rather than a caller with no override. Both are "there is
+  nothing registered for you", and both want the caller's own message about it.
+
+  Without this, `mix cms.harness.onboard --project <id>` died as
+  `** (ArgumentError) unknown registry: CodeMySpec.Environments.Registry` from
+  inside `Registry.lookup/2` — the task starts `:req` and nothing else, on
+  purpose, so a checkout that has never been booted can still onboard. Its own
+  `Mix.raise("no environment is registered for project \#{id}")` was unreachable,
+  and the task's comment two lines above it says absence has to report itself.
   """
   @spec lookup_registered(any()) :: Environment.t() | nil
   def lookup_registered(project_id) do
@@ -277,6 +288,8 @@ defmodule CodeMySpec.Environments do
       [{_pid, env}] -> env
       [] -> nil
     end
+  rescue
+    ArgumentError -> nil
   end
 
   @doc """
@@ -373,7 +386,12 @@ defmodule CodeMySpec.Environments do
     do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Local)
 
   defp impl(:container),
-    do: Application.get_env(:code_my_spec, :container_environment, CodeMySpec.Environments.Container)
+    do:
+      Application.get_env(
+        :code_my_spec,
+        :container_environment,
+        CodeMySpec.Environments.Container
+      )
 
   defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
 
