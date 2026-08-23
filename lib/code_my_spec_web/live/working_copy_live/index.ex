@@ -119,7 +119,12 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   >
                     {row.label}
                   </.link>
-                  <div class="text-xs opacity-60 truncate">{row.harness.root}</div>
+                  <div class="text-xs opacity-60 truncate">
+                    <span data-test="working-copy-id" class="font-mono">
+                      {short_id(row.harness.id)}
+                    </span>
+                    {row.harness.root}
+                  </div>
                 </div>
 
                 <div data-test="liveness" class="shrink-0 text-right">
@@ -178,4 +183,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   defp engine_name(:pi), do: "Pi"
   defp engine_name(:claude_code), do: "Claude Code"
   defp engine_name(other), do: to_string(other)
+
+  # The one thing on the row that is always unique.
+  #
+  # A checkout that joins without presenting an id is minted a new one, and it
+  # reports its root afterwards — so one real directory can hold several harness
+  # rows with the same generated label, the same path and the same status.
+  # Whether that should happen at all is a question about identity across
+  # machines and is not settled here; what is settled is that the page stops
+  # rendering rows a person cannot tell apart. Same reason
+  # `AgentConversationLive.Index` prints the session id beside the name: the
+  # name is a handle, and the id is what you go and grep for.
+  defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
+  defp short_id(_id), do: "????????"
 end
