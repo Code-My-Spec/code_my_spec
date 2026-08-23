@@ -312,6 +312,39 @@ defmodule CodeMySpec.Harnesses do
   Blank clears it rather than storing an empty string, so the display falls back
   to the root instead of showing nothing.
   """
+  @doc """
+  The shortest thing that still identifies this copy.
+
+  A harness that names itself gets `CMS_HARNESS_LABEL`; one that does not gets
+  "the harness at <root> on <host>" from `CmsHarness.Config`. That default is a
+  sentence containing a path, so it reads as a name and identifies like a path —
+  90 characters where two checkouts differ in one directory. The distinguishing
+  part is the root's last segment, which is what this returns.
+
+  A label a person actually chose is returned whole: it is short because they
+  made it short, and truncating somebody's chosen name is a different kind of
+  wrong from truncating a generated one.
+
+  Extracted from `HarnessPicker.short_label/1`, which had this logic to itself
+  while every other surface rendered the full sentence.
+  """
+  @spec display_name(Harness.t()) :: String.t()
+  def display_name(%Harness{label: label} = harness) when is_binary(label) and label != "" do
+    case Regex.run(~r{^the harness at\s+(\S+)}, label) do
+      [_, path] -> Path.basename(path)
+      _ -> label
+    end
+    |> fallback(harness)
+  end
+
+  def display_name(%Harness{root: root}) when is_binary(root) and root != "",
+    do: Path.basename(root)
+
+  def display_name(%Harness{}), do: "unnamed"
+
+  defp fallback("", harness), do: display_name(%{harness | label: nil})
+  defp fallback(name, _harness), do: name
+
   @spec relabel(Scope.t(), Harness.t(), String.t()) ::
           {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
   def relabel(

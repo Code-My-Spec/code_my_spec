@@ -23,12 +23,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   ## `label` and `heading` are not the same string
 
-  `label` is what the copy is called and falls back to the whole root, which is
-  what a list row needs — the path is the only thing distinguishing two
-  unnamed copies, and a row can truncate it. `heading` falls back to the last
-  path segment instead, because a page title set to a 90-character path renders
-  three lines of 3xl text and pushes everything else off the screen. The full
-  root is on the page either way; this only decides which part is shouted.
+  `label` is the copy's stored name, falling back to the whole root — what a
+  list row needs, because the path is the only thing distinguishing two unnamed
+  copies and a row can truncate it.
+
+  `heading` is `Harnesses.display_name/1`: the shortest string that still
+  identifies the copy. A harness that names itself gets "the harness at <root>
+  on <host>", which reads as a name and identifies like a path, and set as a
+  3xl page title it renders four lines and pushes the page off the screen. The
+  full root is on the page either way; this only decides which part is shouted.
   """
 
   alias CodeMySpec.Agents
@@ -90,7 +93,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     %{
       harness: harness,
       label: harness.label || harness.root,
-      heading: harness.label || Path.basename(harness.root || ""),
+      heading: Harnesses.display_name(harness),
       agents: Enum.sort_by(on_this_copy, & &1.role),
       conversation: transcript && transcript.conversation,
       message_count: (transcript && transcript.message_count) || 0,

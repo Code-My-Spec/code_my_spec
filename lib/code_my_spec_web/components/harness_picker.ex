@@ -125,15 +125,9 @@ defmodule CodeMySpecWeb.HarnessPicker do
     end
   end
 
-  # The label is "the harness at <root> on <host>". The root's last segment is
-  # what distinguishes two checkouts of one project, so that is what the button
-  # shows; the whole string is the title attribute.
-  defp short_label(%{label: label}) when is_binary(label) do
-    case Regex.run(~r{at\s+(\S+)}, label) do
-      [_, path] -> path |> String.split("/") |> List.last()
-      _ -> label
-    end
-  end
-
-  defp short_label(_harness), do: "unnamed"
+  # The root's last segment is what distinguishes two checkouts of one project,
+  # so that is what the button shows; the whole string is the title attribute.
+  # `Harnesses.display_name/1` owns the rule now — the working-copies pages need
+  # the same answer, and two copies of it would drift.
+  defp short_label(harness), do: Harnesses.display_name(harness)
 end

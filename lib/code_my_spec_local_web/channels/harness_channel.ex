@@ -22,9 +22,24 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   alias CodeMySpec.AgentHarness.WorkSource
   alias CodeMySpecLocalWeb.Presence
 
+  # A lane declares itself on join. `role` is required and always has been;
+  # `engine` and `provider` are what it is and what is paying for it, and a lane
+  # is the only thing that knows either.
+  #
+  # They default because identity used to be a property of the *session* — one
+  # Claude Code agent per checkout, so "the session" and "the agent" were the
+  # same thing and neither needed saying. A Pi session is a team, and the
+  # defaults are what a lane that has not caught up with that still reports.
   @impl true
-  def join("harness:session:" <> external_id, %{"role" => role}, socket) do
-    socket = assign(socket, external_id: external_id, role: role)
+  def join("harness:session:" <> external_id, %{"role" => role} = params, socket) do
+    socket =
+      assign(socket,
+        external_id: external_id,
+        role: role,
+        engine: params["engine"] || "pi",
+        provider: params["provider"] || "unknown"
+      )
+
     # Each lane also listens on its own topic so cms can target it specifically.
     AgentHarness.subscribe_lane(external_id, role)
     send(self(), :after_join)
@@ -58,8 +73,8 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
           external_id: external_id,
           role: role,
           working_copy: working_copy(external_id),
-          engine: "pi",
-          provider: socket.assigns[:provider] || "unknown",
+          engine: socket.assigns.engine,
+          provider: socket.assigns.provider,
           online_at: System.system_time(:second)
         }
       )

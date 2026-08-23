@@ -105,6 +105,48 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
              "on two working copies that do not exist"
   end
 
+  test "a lane declares its engine and provider, and they reach the report", %{scope: scope} do
+    {:ok, _reply, _lane} =
+      CodeMySpecLocalWeb.HarnessSocket
+      |> socket("harness_socket:#{@external_id}-declared", %{
+        scope: scope,
+        account_id: scope.active_account_id,
+        external_id: @external_id
+      })
+      |> subscribe_and_join(
+        CodeMySpecLocalWeb.HarnessChannel,
+        "harness:session:#{@external_id}",
+        %{"role" => "product", "engine" => "pi", "provider" => "anthropic"}
+      )
+
+    :ok = AgentHarness.subscribe_relay(scope.active_account_id)
+    AgentHarness.request_report(scope.active_account_id)
+
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    declared = Enum.find(agents, &(&1["role"] == "product"))
+
+    assert declared["provider"] == "anthropic",
+           "the lane is the only thing that knows which subscription it spends, " <>
+             "so a report that drops what it declared cannot answer the question " <>
+             "the page exists for"
+
+    assert declared["engine"] == "pi"
+  end
+
+  test "a lane that declares nothing is still reported, as a Pi lane on an unknown provider",
+       %{scope: scope} do
+    :ok = AgentHarness.subscribe_relay(scope.active_account_id)
+    AgentHarness.request_report(scope.active_account_id)
+
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    coding = Enum.find(agents, &(&1["role"] == "coding"))
+
+    assert coding["engine"] == "pi" and coding["provider"] == "unknown",
+           "identity used to belong to the session, so a lane written before " <>
+             "that changed declares only its role. It still has to appear — " <>
+             "dropping it would make the page quietly wrong rather than vague."
+  end
+
   test "dispatch is routed to the target lane's topic", %{channel: channel} do
     :ok = AgentHarness.subscribe_lane(@external_id, "qa")
 
