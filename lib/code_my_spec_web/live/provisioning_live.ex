@@ -1904,14 +1904,18 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # Re-run the step with the decision Sam just made. The guard refuses only
     # when it has not been told; being told is the whole difference between a
     # safeguard and an obstacle.
-    case Provisioning.run_step(scope, :dns, step_opts() ++ [confirm_apex_repoint: true]) do
-      {:ok, _} ->
-        {:noreply,
-         socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+    #
+    # Async for the same reason the plain "Run" button is (fdfdfb67): a dns
+    # confirm fans the step out over every permitted environment, each paying
+    # up to ~33s of resolver settle+retry (issue 74b6e3a0) — two environments
+    # alone push this past the point a LiveView event should hold the socket.
+    # No separate halt-reason plumbing is needed: the step's own row carries
+    # its error the same way any other step's does, through
+    # `{:provisioning, :step, row}` → `load/2` → a fresh `plan` read.
+    :ok = Provisioning.run_step_async(scope, :dns, step_opts() ++ [confirm_apex_repoint: true])
 
-      {:halt, _, reason} ->
-        {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
-    end
+    {:noreply,
+     socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
   end
 
   def handle_event("adopt_repository", _params, socket) do
@@ -1919,14 +1923,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     # Adopt the repository that collided: re-run the step forcing adoption,
     # which is the choice Sam just made rather than one setup made for him.
-    case Provisioning.run_step(scope, :repository, step_opts() ++ [adopt: true]) do
-      {:ok, _} ->
-        {:noreply,
-         socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+    # Async for the same reason as confirm_apex_repoint above (issue 74b6e3a0).
+    :ok = Provisioning.run_step_async(scope, :repository, step_opts() ++ [adopt: true])
 
-      {:halt, _, reason} ->
-        {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
-    end
+    {:noreply,
+     socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
   end
 
   def handle_event("rename_repository", _params, socket) do
@@ -2168,18 +2169,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end)
   end
 
-  # Criterion: a record deleted after verification is noticed. Re-reading from
-  # the provider is the only way to see that — the stored state says verified
-  # and will go on saying so.
-
-  defp reload_project(%{active_project: %{id: id}} = scope) do
-    case Projects.get_project(scope, id) do
-      {:ok, project} -> %{scope | active_project: project}
-      _ -> scope
-    end
-  end
-
-  defp reload_project(scope), do: scope
+  # A record deleted after verification is noticed some other way now: every
+  # render's `plan` comes from `Provisioning.plan/2`, which re-derives step
+  # verification live rather than trusting `current_scope.active_project`'s
+  # cached fields — the only field this LiveView ever reads off
+  # `active_project` is `.id` (line ~1938), which a reload could never change.
+  # `confirm_apex_repoint`/`adopt_repository` were the last callers of a
+  # reload that reloaded nothing anyone read (issue 74b6e3a0).
 
   @impl true
   def handle_info({:provisioning, :step, row}, socket) do

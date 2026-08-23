@@ -333,6 +333,106 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end
   end
 
+  describe "the DNS confirm and repository adopt buttons run through run_step_async" do
+    # Issue 74b6e3a0: both used to call `Provisioning.run_step/3` — the
+    # synchronous form — inside the `handle_event`. A dns confirm alone costs
+    # up to ~33s of resolver settle+retry per environment; held in the
+    # LiveView process, that is long enough to put the socket at risk the
+    # same way the plain "Run" button's fdfdfb67 fix was about.
+    #
+    # Not timing-tested here: `config/test.exs` sets
+    # `provisioning_run_async: false` on purpose, so `run_step_async/3` runs
+    # synchronously in every test — the same reason the plain "Run" button's
+    # own tests don't time it either. A step held under a real async task
+    # would race the ExUnit sandbox connection out from under it, so the
+    # non-blocking property is exercised live, not under this suite. What
+    # these tests do prove: the opt Sam's confirmation carries survives the
+    # switch to `run_step_async/3`, and the step still lands correctly.
+    test "confirming the apex repoint threads confirm_apex_repoint through", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :dns, %{
+        state: :paused,
+        position: Sequence.position(:dns),
+        paused_instructions: "The apex already points elsewhere."
+      })
+
+      test_pid = self()
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      stub_execute(fn _scope, _key, opts ->
+        send(test_pid, {:executed, opts})
+        {:ok, []}
+      end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view |> render_click("confirm_apex_repoint")
+
+      assert_receive {:executed, opts}, 1_000
+      assert Keyword.get(opts, :confirm_apex_repoint) == true
+    end
+
+    test "adopting the colliding repository threads adopt through", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :repository, %{
+        state: :paused,
+        position: Sequence.position(:repository),
+        paused_instructions: "A repository with this name already exists and isn't ours."
+      })
+
+      test_pid = self()
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      stub_execute(fn _scope, _key, opts ->
+        send(test_pid, {:executed, opts})
+        {:ok, []}
+      end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view |> render_click("adopt_repository")
+
+      assert_receive {:executed, opts}, 1_000
+      assert Keyword.get(opts, :adopt) == true
+    end
+
+    # The wiring a synchronous handler used to give for free: a halted step
+    # after the confirm/adopt call still has to show up as errored/paused
+    # from a fresh render, not go silent because nothing calls
+    # `assign(halt_reason: ...)` on this path anymore (issue 74b6e3a0's own
+    # "careful change" warning — a swallowed failure here is worst on exactly
+    # this path, since apex repoint is a destructive decision).
+    test "a step that halts after adopt still renders its provider error", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :repository, %{
+        state: :paused,
+        position: Sequence.position(:repository),
+        paused_instructions: "A repository with this name already exists and isn't ours."
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+      stub_execute(fn _scope, _key, _opts -> {:error, :timeout} end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      html = view |> render_click("adopt_repository")
+
+      assert html =~ ~r/data-step="repository"[^>]*data-state="errored"/
+      assert has_element?(view, "[data-test='escalation'][data-step='repository']")
+    end
+  end
+
   describe "an errored step reports its failure once" do
     # The deploy step carries its provider error twice: `escalation`, which
     # every errored step has, and `boot-failure`, which criterion 8000 selects
