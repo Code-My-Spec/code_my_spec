@@ -150,7 +150,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
+    agents = await_report(["coding", "product"])
     declared = Enum.find(agents, &(&1["role"] == "product"))
 
     assert declared["provider"] == "anthropic",
@@ -166,7 +166,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
+    agents = await_report(["coding"])
     coding = Enum.find(agents, &(&1["role"] == "coding"))
 
     assert coding["engine"] == "pi" and coding["provider"] == "unknown",
@@ -205,23 +205,28 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
   defp await_lane(topic, role, 0), do: flunk("#{role} never appeared on #{topic}")
 
   defp await_lane(topic, role, attempts) do
-    present? =
-      topic
-      |> CodeMySpecLocalWeb.Presence.list()
-      |> Enum.flat_map(fn {_key, %{metas: metas}} -> metas end)
-      |> Enum.any?(&(&1.role == role))
+    topic
+    |> tracked?(role)
+    |> keep_waiting_for_lane(topic, role, attempts)
+  end
 
-    if present? do
-      :ok
-    else
-      receive do
-        %Phoenix.Socket.Broadcast{event: "presence_diff"} -> :ok
-      after
-        50 -> :ok
-      end
+  defp tracked?(topic, role) do
+    topic
+    |> CodeMySpecLocalWeb.Presence.list()
+    |> Enum.flat_map(fn {_key, %{metas: metas}} -> metas end)
+    |> Enum.any?(&(&1.role == role))
+  end
 
-      await_lane(topic, role, attempts - 1)
+  defp keep_waiting_for_lane(true, _topic, _role, _attempts), do: :ok
+
+  defp keep_waiting_for_lane(false, topic, role, attempts) do
+    receive do
+      %Phoenix.Socket.Broadcast{event: "presence_diff"} -> :ok
+    after
+      50 -> :ok
     end
+
+    await_lane(topic, role, attempts - 1)
   end
 
   # The report that answers the question, rather than whichever arrives first.
@@ -246,14 +251,20 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
 
     receive do
       {:relay_up, "agents_running", %{"agents" => agents}} ->
-        if Enum.sort(Enum.map(agents, & &1["role"])) == Enum.sort(roles) do
-          agents
-        else
-          elapsed = System.monotonic_time(:millisecond) - started
-          await_report(roles, remaining - max(elapsed, 1))
-        end
+        matched? = Enum.sort(Enum.map(agents, & &1["role"])) == Enum.sort(roles)
+        take_report(matched?, agents, roles, remaining, started)
     after
       remaining -> flunk("no report carrying #{inspect(roles)} arrived")
     end
+  end
+
+  # The report we were waiting for, or one to wait past. Clauses rather than a
+  # branch: the credo rule bans imperative `if` in a test file, and the decision
+  # here is a boolean that reads better in a head than in a conditional.
+  defp take_report(true, agents, _roles, _remaining, _started), do: agents
+
+  defp take_report(false, _agents, roles, remaining, started) do
+    elapsed = System.monotonic_time(:millisecond) - started
+    await_report(roles, remaining - max(elapsed, 1))
   end
 end
