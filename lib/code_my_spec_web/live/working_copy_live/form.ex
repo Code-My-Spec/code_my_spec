@@ -119,10 +119,12 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
           </p>
 
           <div class="mt-4 flex items-center gap-2">
-            <.button phx-disable-with="Saving..." class="btn-primary" data-test="save">Save</.button>
+            <.button phx-disable-with="Saving..." class="btn btn-primary" data-test="save">
+              Save
+            </.button>
             <.button
               navigate={~p"/app/projects/#{@project.id}/working-copies/#{@harness.id}"}
-              class="btn-ghost"
+              class="btn btn-ghost"
             >
               Cancel
             </.button>

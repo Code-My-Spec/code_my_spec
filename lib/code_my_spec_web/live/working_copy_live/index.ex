@@ -115,7 +115,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   <.link
                     navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}"}
                     data-test="open-working-copy"
-                    class="font-medium truncate link link-hover"
+                    class="block truncate font-medium link link-hover"
                   >
                     {row.label}
                   </.link>
@@ -154,14 +154,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
               <div class="flex items-center gap-2">
                 <.button
                   navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}"}
-                  class="btn-sm"
+                  class="btn btn-sm"
                   data-test="view-working-copy"
                 >
                   View
                 </.button>
                 <.button
                   navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}/edit"}
-                  class="btn-sm btn-ghost"
+                  class="btn btn-sm btn-ghost"
                   data-test="edit-working-copy"
                 >
                   <.icon name="hero-pencil-square" /> Rename

@@ -105,13 +105,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           <:actions>
             <.button
               navigate={~p"/app/projects/#{@project.id}/working-copies"}
-              class="btn-sm btn-ghost"
+              class="btn btn-sm btn-ghost"
             >
               <.icon name="hero-arrow-left" /> All copies
             </.button>
             <.button
               navigate={~p"/app/projects/#{@project.id}/working-copies/#{@row.harness.id}/edit"}
-              class="btn-sm"
+              class="btn btn-sm"
               data-test="edit-working-copy"
             >
               <.icon name="hero-pencil-square" /> Rename
@@ -191,7 +191,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             <.button
               navigate={~p"/app/projects/#{@project.id}/agent-conversation/#{@row.conversation.id}"}
               data-test="open-agent-chat"
-              class="btn-sm btn-primary"
+              class="btn btn-sm btn-primary"
             >
               Open agent chat
             </.button>
