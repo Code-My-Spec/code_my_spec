@@ -24,20 +24,31 @@ defmodule CodeMySpec.Content.S3Client do
   `:region`) to sign with the project's own AWS keys rather than the global
   `:ex_aws` app env — that's how a published install (no `envs/.env`) supplies
   creds. Blank entries should be dropped by the caller so ExAws falls back.
+
+  Private by default, matching every other caller of this client (mail and
+  conversation attachments, issue screenshots) — those are read back through
+  presigned URLs or the app's own authenticated proxy, never a bare bucket
+  URL. Pass `acl: :public_read` for objects a deployed app's own unsigned
+  `PullClient.fetch/1` has to read directly: the published content blob and
+  manifest, and blog images served straight from the bucket.
   """
   @spec put_object(String.t(), String.t(), iodata(), keyword()) :: :ok | {:error, term()}
   def put_object(bucket, key, body, opts \\ []) do
     content_type = Keyword.get(opts, :content_type, "application/octet-stream")
     credentials = Keyword.get(opts, :credentials, [])
+    put_opts = [content_type: content_type] |> maybe_put_acl(Keyword.get(opts, :acl))
 
     bucket
-    |> ExAws.S3.put_object(key, body, content_type: content_type)
+    |> ExAws.S3.put_object(key, body, put_opts)
     |> ExAws.request(request_config(credentials))
     |> case do
       {:ok, _response} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp maybe_put_acl(put_opts, nil), do: put_opts
+  defp maybe_put_acl(put_opts, acl), do: Keyword.put(put_opts, :acl, acl)
 
   @doc """
   GET `s3://<bucket>/<key>`. Returns `{:ok, body}` or `{:error, _}`. Flows
