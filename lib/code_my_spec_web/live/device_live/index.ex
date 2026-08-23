@@ -17,6 +17,12 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   present when its lane is joined and working. Only the middle one had ever
   been built.
 
+  Presence here is read from `HarnessRegistry` — a live process per connected
+  working copy — rather than from a timestamp. A timestamp records when
+  something last happened, which is not the same as whether the machine can be
+  reached now, and the difference showed up immediately: a box that was up and
+  not changing files read as stale.
+
   The rule this page must not break is presenting its own signal as one of the
   others. Story 957 shipped that conflation twice — `Liveness` calling a
   `:starting` agent "Running · present on the harness channel", and
@@ -35,6 +41,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -77,21 +84,41 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     }
   end
 
-  # Presence, said with its evidence — the same shape `WorkingCopyLive.Liveness`
-  # uses, because the reader is answering the same kind of question and a second
-  # vocabulary for it would be one more thing to learn.
+  # Is any of this machine's working copies holding a channel right now?
   #
-  # A machine that has never been heard from is not "absent": nothing has
-  # happened yet, which is a different claim from having gone quiet.
-  defp presence(%{last_seen_at: nil}, _now),
+  # `HarnessRegistry` is a live process per connected copy, which is the whole
+  # reason to ask it rather than a column: a process cannot be stale. A machine
+  # is reachable exactly while something on it is connected.
+  defp reachable?(device) do
+    device.working_copies
+    |> Enum.any?(fn copy -> match?({:ok, _pid, _instance}, Analysis.executor_holder(copy.id)) end)
+  end
+
+  # Presence is the connection; last seen is the fallback for a machine that
+  # has not got one.
+  #
+  # This used to be a threshold on `last_seen_at` — under two minutes meant
+  # Present — and it was wrong in the direction that matters. `last_seen_at` is
+  # written when something happens (a manifest, an announce), so a machine that
+  # is up and simply not changing files went stale while connected: observed
+  # live, reading "Last seen 4m ago" against a `/health` that said
+  # `connected: true` with a four-second-old reply.
+  #
+  # A quiet machine and an unreachable one are precisely what this page exists
+  # to separate, and a timestamp cannot separate them — only the connection can.
+  defp presence(device, now) do
+    presence(reachable?(device), device, now)
+  end
+
+  defp presence(true, _device, _now), do: %{label: "Present", since: nil}
+
+  # Never heard from at all is not the same claim as having gone quiet: nothing
+  # has happened yet, rather than something having stopped.
+  defp presence(false, %{last_seen_at: nil}, _now),
     do: %{label: "Not yet seen", since: nil}
 
-  defp presence(%{last_seen_at: at}, now) do
-    case DateTime.diff(now, at, :second) do
-      seconds when seconds < 120 -> %{label: "Present", since: Liveness.since(at, now)}
-      _ -> %{label: "Last seen", since: Liveness.since(at, now)}
-    end
-  end
+  defp presence(false, %{last_seen_at: at}, now),
+    do: %{label: "Last seen", since: Liveness.since(at, now)}
 
   # "unknown", not a guess. A default here would make a sprite read as somebody's
   # laptop, which is the one distinction the field exists for.
