@@ -118,7 +118,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
+    agents = await_report(["coding", "qa"])
 
     assert Enum.sort(Enum.map(agents, & &1["role"])) == ["coding", "qa"],
            "one checkout runs one or more lanes. Reporting a single agent per " <>
@@ -221,6 +221,39 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
       end
 
       await_lane(topic, role, attempts - 1)
+    end
+  end
+
+  # The report that answers the question, rather than whichever arrives first.
+  #
+  # `LaneReporter` reports on every `presence_diff` as well as on request, so
+  # the second lane's own join produces one. The test subscribes to the relay
+  # after joining, so a report composed a moment before both lanes were up can
+  # still be in flight and be the first message matched — a true statement about
+  # an earlier moment, and not the one being asked about.
+  #
+  # Still bounded, and still catches the defect this test is for: a server that
+  # overwrites one lane with the next never produces a report carrying both, so
+  # this times out rather than passing on a stale message.
+  defp await_report(roles), do: await_report(roles, 2_000)
+
+  defp await_report(roles, remaining) when remaining <= 0 do
+    flunk("no report carrying #{inspect(roles)} arrived")
+  end
+
+  defp await_report(roles, remaining) do
+    started = System.monotonic_time(:millisecond)
+
+    receive do
+      {:relay_up, "agents_running", %{"agents" => agents}} ->
+        if Enum.sort(Enum.map(agents, & &1["role"])) == Enum.sort(roles) do
+          agents
+        else
+          elapsed = System.monotonic_time(:millisecond) - started
+          await_report(roles, remaining - max(elapsed, 1))
+        end
+    after
+      remaining -> flunk("no report carrying #{inspect(roles)} arrived")
     end
   end
 end
