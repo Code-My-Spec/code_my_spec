@@ -44,9 +44,21 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
       )
 
     # `:after_join` runs asynchronously, so the join returning does not mean
-    # `Presence.track` has. Draining the mailbox makes the lane's presence a
-    # fact before any test reads it.
+    # `Presence.track/4` has run. Draining the mailbox establishes that much.
     :sys.get_state(channel.channel_pid)
+
+    # And this establishes the part that actually matters. `track/4` returning
+    # is not `Presence.list/1` reflecting it — Phoenix.Tracker replicates the
+    # join through its own loop, and every test in this file reads a report that
+    # needs `coding` to be in that list.
+    #
+    # `await_lane/2` was added for exactly this and applied only to the two
+    # tests that join a *second* lane, leaving the lane they all share
+    # unsynchronised. Under a loaded suite it lost that lane often enough to
+    # fail most full runs, as whichever test read first — so it looked
+    # intermittent while being entirely deterministic about the thing it was
+    # waiting on.
+    :ok = await_lane(scope, "coding")
 
     %{scope: scope, channel: channel}
   end
