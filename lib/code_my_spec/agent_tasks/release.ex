@@ -14,6 +14,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   by demanding a prod release.
   """
 
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.Stories
@@ -148,8 +149,8 @@ defmodule CodeMySpec.AgentTasks.Release do
   # only so a fast unit test can let real `git` run (a real repo, a real tag)
   # while faking `gh` — no network, no GitHub account, in an `async: true`
   # test. Every real caller gets `Environments.cmd/4` for both.
-  defp unreleased_story_ids(%Scope{environment: env} = _scope, opts) do
-    deployed = deployed_story_ids(env)
+  defp unreleased_story_ids(%Scope{environment: env} = scope, opts) do
+    deployed = deployed_story_ids(scope)
     released = published_release_manifest(env, opts)
 
     Enum.reject(deployed, &released?(released, &1))
@@ -168,20 +169,12 @@ defmodule CodeMySpec.AgentTasks.Release do
     Regex.match?(~r/\bstory_#{Regex.escape(to_string(id))}\b/, released)
   end
 
-  defp deployed_story_ids(env) do
-    case Environments.list_directory(env, Paths.devops_deploys_dir()) do
-      {:ok, entries} -> entries |> Enum.flat_map(&deployed_story_id/1) |> Enum.sort()
-      _ -> []
-    end
-  end
-
-  # A list so it composes with flat_map: one element for a deploy record, none
-  # for anything else in the directory.
-  defp deployed_story_id(entry) do
-    case Regex.run(~r/story_(\d+)\.md$/, entry) do
-      [_, id] -> [id]
-      nil -> []
-    end
+  defp deployed_story_ids(%Scope{} = scope) do
+    scope
+    |> Deploys.list()
+    |> Enum.filter(&(&1.environment == "uat" and Deploys.healthy?(&1)))
+    |> Enum.map(& &1.story_id)
+    |> Enum.sort()
   end
 
   # Concatenate every *published* release record's contents — coverage is
@@ -259,8 +252,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   # ── Prompt helpers ───────────────────────────────────────────────────
 
   defp manifest_section(_scope, []) do
-    "No unreleased deploy records found — verify `#{Paths.devops_deploys_dir()}/` " <>
-      "before proceeding; a release with nothing in it is a no-op."
+    "No unreleased deploys found on UAT — a release with nothing in it is a no-op."
   end
 
   defp manifest_section(scope, story_ids) do
@@ -271,18 +263,12 @@ defmodule CodeMySpec.AgentTasks.Release do
   end
 
   defp story_title(scope, id) do
-    case Integer.parse(id) do
-      {int_id, ""} ->
-        case Stories.get_story(scope, int_id) do
-          %{title: title, description: description} ->
-            "#{title}: #{description}"
-
-          _ ->
-            "(story not found — include it by id)"
-        end
+    case Stories.get_story(scope, id) do
+      %{title: title, description: description} ->
+        "#{title}: #{description}"
 
       _ ->
-        "(unparseable story id)"
+        "(story not found — include it by id)"
     end
   rescue
     _ -> "(story lookup failed — include it by id)"

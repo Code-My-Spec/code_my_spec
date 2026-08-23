@@ -16,35 +16,47 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   tests exercise real `git` against a real repo (so the tag check is the real
   thing) and fake only `gh` via `opts[:cmd]` — no network, no GitHub account,
   needed for an `async: true` unit test.
+
+  What counts as "deployed" is a real `deploys` row (`CodeMySpec.Deploys`),
+  not a file — the graph's own `deploy` requirement and this checker must
+  read the same thing, or one can say shipped while the other says nothing
+  to release (issue 5d17a4d0). `story_id` carries a real FK to `stories`, so
+  every deploy here is recorded against a real, fixture-created story rather
+  than a bare integer — ids are DB-assigned and not literally 1/12/100 the
+  way the old file-named tests could pick, so the substring-boundary tests
+  build the collision by appending a digit to a real id rather than by
+  choosing two convenient literals.
   """
 
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.Release
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.StoriesFixtures
 
   setup do
-    {:ok, root} = Briefly.create(directory: true)
-    env = Environment.new(:local, root)
+    {:ok, tmp_dir} = Briefly.create(directory: true)
+    scope = full_scope_fixture() |> Map.put(:environment, Environment.new(:local, tmp_dir))
 
-    File.mkdir_p!(Path.join(root, Paths.devops_deploys_dir()))
-    File.mkdir_p!(Path.join(root, Paths.releases_dir()))
+    File.mkdir_p!(Path.join(tmp_dir, Paths.releases_dir()))
 
-    {_, 0} = Environments.cmd(env, "git", ["init", "-q"])
-    {_, 0} = Environments.cmd(env, "git", ["config", "user.email", "test@example.com"])
-    {_, 0} = Environments.cmd(env, "git", ["config", "user.name", "Test"])
-    {_, 0} = Environments.cmd(env, "git", ["commit", "--allow-empty", "-q", "-m", "root"])
+    {_, 0} = Environments.cmd(scope.environment, "git", ["init", "-q"])
+    {_, 0} = Environments.cmd(scope.environment, "git", ["config", "user.email", "test@example.com"])
+    {_, 0} = Environments.cmd(scope.environment, "git", ["config", "user.name", "Test"])
+    {_, 0} = Environments.cmd(scope.environment, "git", ["commit", "--allow-empty", "-q", "-m", "root"])
 
-    {:ok, root: root, scope: %Scope{environment: env}}
+    {:ok, root: tmp_dir, scope: scope}
   end
 
-  defp deployed(root, ids) do
-    for id <- ids do
-      File.write!(Path.join([root, Paths.devops_deploys_dir(), "story_#{id}.md"]), "deployed\n")
-    end
+  defp deploy_story!(scope) do
+    story = StoriesFixtures.story_fixture(scope)
+    {:ok, _} = Deploys.record(scope, story.id, "uat", health_verified_at: DateTime.utc_now())
+    story
   end
 
   defp released(root, version, body) do
@@ -66,24 +78,32 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     ]
   end
 
-  test "a manifest naming story_12 does not release story_1", %{root: root, scope: scope} do
-    deployed(root, [1, 12])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_12\n")
+  test "a manifest naming a longer id does not release the shorter id it's a prefix of", %{
+    root: root,
+    scope: scope
+  } do
+    story = deploy_story!(scope)
+    # Appending a digit guarantees `story.id`'s decimal string is a true
+    # prefix of `longer`, regardless of what the DB actually assigned —
+    # reproducing the `story_12` contains `story_1` shape without needing
+    # literal small ids.
+    longer = "#{story.id}9"
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{longer}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
 
-    assert message =~ ~r/\bstory_1\b/,
-           "story 1 is on UAT and no manifest covers it; the substring match " <>
-             "found it inside `story_12` and called it shipped: #{message}"
+    assert message =~ ~r/\bstory_#{story.id}\b/,
+           "story #{story.id} is on UAT and no manifest covers it; the substring match " <>
+             "found it inside story_#{longer} and called it shipped: #{message}"
   end
 
   test "a manifest naming the story itself releases it once tagged and published", %{
     root: root,
     scope: scope
   } do
-    deployed(root, [12])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_12\n")
+    story = deploy_story!(scope)
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
@@ -93,47 +113,64 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     root: root,
     scope: scope
   } do
-    deployed(root, [12])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_12\n")
+    story = deploy_story!(scope)
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
-    assert message =~ "story_12"
+    assert message =~ "story_#{story.id}"
   end
 
   test "a tagged record whose GitHub Release was never published stays unreleased", %{
     root: root,
     scope: scope
   } do
-    deployed(root, [12])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_12\n")
+    story = deploy_story!(scope)
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(1))
-    assert message =~ "story_12"
+    assert message =~ "story_#{story.id}"
   end
 
   test "a tag with the v-prefix the prompt names also satisfies coverage", %{
     root: root,
     scope: scope
   } do
-    deployed(root, [12])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_12\n")
+    story = deploy_story!(scope)
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
     tag(scope.environment, "v1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
 
-  test "longer ids are not released by a shorter prefix", %{root: root, scope: scope} do
-    deployed(root, [100])
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_1\n")
+  test "a shorter manifest token does not release a longer deployed id it's a prefix of", %{
+    root: root,
+    scope: scope
+  } do
+    story = deploy_story!(scope)
+    shorter = String.slice(to_string(story.id), 0..-2//1)
+    shorter = if shorter == "", do: "0", else: shorter
+
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{shorter}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
-    assert message =~ "story_100"
+    assert message =~ "story_#{story.id}"
   end
 
   test "nothing deployed is nothing to release", %{scope: scope} do
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
-end
 
+  test "an unverified deploy is not on UAT, so there is nothing unreleased to complain about", %{
+    root: root,
+    scope: scope
+  } do
+    story = StoriesFixtures.story_fixture(scope)
+    {:ok, _} = Deploys.record(scope, story.id, "uat")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    tag(scope.environment, "1.0.0")
+
+    assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
+  end
+end

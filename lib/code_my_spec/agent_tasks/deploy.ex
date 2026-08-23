@@ -3,15 +3,13 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   Release a story's build to UAT (Stories 858/859).
 
   Once `devops_setup` is complete, every story that clears QA is released
-  to UAT immediately — health-verified, recorded at
-  `.code_my_spec/devops/deploys/story_<id>.md`. Prod promotion does NOT
-  happen here: it belongs to the formal release process
-  (`AgentTasks.Release`), which runs at the end of the cycle after the
-  user journeys are complete.
+  to UAT immediately — health-verified, recorded as a `deploys` row
+  (`CodeMySpec.Deploys`). Prod promotion does NOT happen here: it belongs
+  to the formal release process (`AgentTasks.Release`), which runs at the
+  end of the cycle after the user journeys are complete.
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Paths
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -41,10 +39,10 @@ defmodule CodeMySpec.AgentTasks.Deploy do
 
      ## Procedure
 
-     1. Build and deploy the current build to **UAT** (`kamal deploy` with
-        the UAT config).
-     2. **Verify UAT's health check**: request `https://uat.<domain>/health`
-        and confirm 200 over valid TLS.
+     1. Run the project's deploy step for **UAT** (`run_devops_setup`, or
+        the equivalent devops routine invocation) — the same step that
+        already records the deploy. It writes the `deploys` row itself,
+        automatically, and only after UAT's health check passes.
 
      ## On a failing UAT health check — halt
 
@@ -55,43 +53,39 @@ defmodule CodeMySpec.AgentTasks.Deploy do
 
      ## Done signal
 
-     Write `#{deploy_record_path(story_id)}` recording the version deployed
-     and UAT's verified health check with timestamps. Then call
-     `evaluate_task`. This record is what the release process later compiles
+     Call `evaluate_task`. It reads the `deploys` row directly — there is
+     nothing to write by hand. If it still reports invalid, the deploy has
+     not health-verified yet; re-run the deploy step rather than recording
+     anything yourself. This row is what the release process later compiles
      into the prod release notes.
      """}
   end
 
   @doc """
-  Evaluate: the story's UAT deploy record exists and attests verification.
+  Evaluate: the story is deployed to UAT and health-verified.
 
   Called two ways: as the requirement's delegate check (second arg is the
   Story struct) and as the task evaluator (second arg is the task, which
-  carries `story_id`/`entity_id`). Normalize both.
+  carries `story_id`/`entity_id`). Normalize both. Reads the same `deploys`
+  row the requirement graph's own `check_type: :deployed` check reads, so
+  the two paths cannot disagree about whether a deploy counts.
   """
   @spec evaluate(Scope.t(), map() | struct()) :: {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(%Scope{environment: env}, entity) do
-    story_id = story_id_of(entity)
-    record = deploy_record_path(story_id)
+  def evaluate(%Scope{} = scope, entity) do
+    case story_id_of(entity) do
+      nil ->
+        {:ok, :invalid, "No story to check — the deploy task needs a story_id."}
 
-    case Environments.read_file(env, record) do
-      {:ok, content} ->
-        if content =~ "verified" do
+      story_id ->
+        if Deploys.deployed?(scope, story_id, "uat") do
           {:ok, :valid}
         else
           {:ok, :invalid,
-           "Deploy record `#{record}` exists but doesn't attest a verified health check."}
+           "Story #{story_id} has no health-verified UAT deploy yet. Run the deploy " <>
+             "step — it records the `deploys` row itself once the health check passes."}
         end
-
-      {:error, _} ->
-        {:ok, :invalid,
-         "No deploy record at `#{record}` — the UAT deploy is complete only when " <>
-           "its health check is verified and recorded there."}
     end
   end
-
-  defp deploy_record_path(nil), do: Path.join(Paths.devops_deploys_dir(), "story_<id>.md")
-  defp deploy_record_path(story_id), do: Paths.devops_deploy_record(story_id)
 
   defp story_id_of(%{story_id: id}) when not is_nil(id), do: id
   defp story_id_of(%CodeMySpec.Stories.Story{id: id}), do: id

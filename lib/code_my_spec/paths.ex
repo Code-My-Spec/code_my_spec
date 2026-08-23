@@ -72,12 +72,6 @@ defmodule CodeMySpec.Paths do
   @doc "DevOps setup record (`.code_my_spec/devops/setup.md`)."
   def devops_setup_record, do: Path.join(devops_dir(), "setup.md")
 
-  @doc "Per-story deploy records directory (`.code_my_spec/devops/deploys`)."
-  def devops_deploys_dir, do: Path.join(devops_dir(), "deploys")
-
-  @doc "Deploy record for one story (`.code_my_spec/devops/deploys/story_<id>.md`)."
-  def devops_deploy_record(story_id), do: Path.join(devops_deploys_dir(), "story_#{story_id}.md")
-
   @doc "Prod release records directory (`.code_my_spec/releases`)."
   def releases_dir, do: Path.join(@base_dir, "releases")
 
