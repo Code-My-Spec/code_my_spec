@@ -125,9 +125,10 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   No deploy records at all is satisfied: nothing shipped, nothing to release.
   """
-  @spec evaluate(Scope.t(), map() | struct()) :: {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(%Scope{} = scope, _entity) do
-    case unreleased_story_ids(scope) do
+  @spec evaluate(Scope.t(), map() | struct(), keyword()) ::
+          {:ok, :valid} | {:ok, :invalid, String.t()}
+  def evaluate(%Scope{} = scope, _entity, opts \\ []) do
+    case unreleased_story_ids(scope, opts) do
       [] ->
         {:ok, :valid}
 
@@ -141,9 +142,15 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   # ── Coverage ─────────────────────────────────────────────────────────
 
-  defp unreleased_story_ids(%Scope{environment: env} = _scope) do
+  defp unreleased_story_ids(%Scope{} = scope), do: unreleased_story_ids(scope, [])
+
+  # `opts[:cmd]`, a `(env, command, args) -> {output, status}` override, exists
+  # only so a fast unit test can let real `git` run (a real repo, a real tag)
+  # while faking `gh` — no network, no GitHub account, in an `async: true`
+  # test. Every real caller gets `Environments.cmd/4` for both.
+  defp unreleased_story_ids(%Scope{environment: env} = _scope, opts) do
     deployed = deployed_story_ids(env)
-    released = released_manifest(env)
+    released = published_release_manifest(env, opts)
 
     Enum.reject(deployed, &released?(released, &1))
   end
@@ -177,17 +184,63 @@ defmodule CodeMySpec.AgentTasks.Release do
     end
   end
 
-  # Concatenate every release record's contents — coverage is "the story
-  # token appears in some release manifest".
-  defp released_manifest(env) do
+  # Concatenate every *published* release record's contents — coverage is
+  # "the story token appears in some release manifest that was actually
+  # tagged and released", not merely written to disk.
+  #
+  # A record alone is the local third of "published in all three places" —
+  # counting it on its own let a release read done with nothing tagged and
+  # nothing on GitHub (issue 8db89425). `published?/2` re-proves the other
+  # two against the real repository before the record's content counts
+  # toward coverage.
+  defp published_release_manifest(env, opts) do
     case Environments.list_directory(env, Paths.releases_dir()) do
       {:ok, entries} ->
         entries
-        |> Enum.filter(&String.ends_with?(&1, ".md"))
+        |> Enum.filter(&(String.ends_with?(&1, ".md") and published?(env, &1, opts)))
         |> Enum.map_join("\n", &read_release(env, &1))
 
       _ ->
         ""
+    end
+  end
+
+  # The record's own filename names the version; the tag and GitHub Release
+  # are checked against the real repository in `env.cwd` (the annotated tag
+  # via `git`, the Release via `gh`, which infers the repo from `origin`
+  # the same way the checkout itself does — no separate repo lookup needed).
+  #
+  # The prompt's own instructions leave the "v" prefix ambiguous between the
+  # record's filename and the tag name (step 5 names the file `<version>.md`,
+  # step 4 names the tag `v<version>`), and nothing enforces which convention
+  # an agent actually follows. Trying both keeps this from failing a real
+  # release over a prefix the checker never dictated in the first place.
+  defp published?(env, entry, opts) do
+    entry
+    |> Path.basename(".md")
+    |> tag_candidates()
+    |> Enum.any?(&(tagged?(env, &1, opts) and github_release_published?(env, &1, opts)))
+  end
+
+  defp tag_candidates(version) do
+    if String.starts_with?(version, "v"), do: [version], else: [version, "v#{version}"]
+  end
+
+  defp tagged?(env, tag, opts) do
+    case run_cmd(opts, env, "git", ["tag", "--list", tag]) do
+      {output, 0} -> String.trim(output) == tag
+      _ -> false
+    end
+  end
+
+  defp github_release_published?(env, tag, opts) do
+    match?({_, 0}, run_cmd(opts, env, "gh", ["release", "view", tag]))
+  end
+
+  defp run_cmd(opts, env, command, args) do
+    case Keyword.get(opts, :cmd) do
+      nil -> Environments.cmd(env, command, args)
+      fun -> fun.(env, command, args)
     end
   end
 

@@ -37,6 +37,16 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
   @release_type "release"
 
+  # The same real, durable GitHub Release criterion 1973 published to the
+  # throwaway fixture repo — reused rather than re-published, since this
+  # criterion only needs a release that genuinely exists somewhere, not a
+  # fresh one. Naming the local record and the git tag after it is what lets
+  # `Release.evaluate`'s tag+GitHub check (issue 8db89425) find something
+  # real instead of "fatal: not a git repository".
+  @already_shipped_tag "v1.0.0-spex"
+
+  @cassette "842_1976_release_reopens"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -56,23 +66,52 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       given_ "every story on UAT is covered by a release that already shipped", context do
+        env = context.environment
+
         :ok =
           Environments.write_file(
-            context.environment,
+            env,
             ".code_my_spec/devops/deploys/story_9005.md",
             "# Deploy\n\nstory 9005 to uat — verified\n"
           )
 
+        notes = "# #{@already_shipped_tag}\n\n## Stories\n\n- story_9005\n"
+
+        # `story_<id>`, the format the release prompt specifies and
+        # `released?/2` matches on a word boundary. Written with a space it
+        # covers nothing, so the story reads unreleased and ships twice —
+        # which is the failure this criterion is meant to catch, not stage.
         :ok =
           Environments.write_file(
-            context.environment,
-            ".code_my_spec/releases/v1.0.0.md",
-            # `story_<id>`, the format the release prompt specifies and
-            # `released?/2` matches on a word boundary. Written with a space it
-            # covers nothing, so the story reads unreleased and ships twice —
-            # which is the failure this criterion is meant to catch, not stage.
-            "# v1.0.0\n\n## Stories\n\n- story_9005\n"
+            env,
+            ".code_my_spec/releases/#{@already_shipped_tag}.md",
+            notes
           )
+
+        # `Release.evaluate` (issue 8db89425) no longer takes a record's word
+        # for it — it re-proves the tag and the GitHub Release are real before
+        # counting the record's coverage. `setup_active_project` builds a
+        # directory, not a checkout, so `git tag` had nothing to tag without
+        # this — same reason criterion 1973 does it.
+        {_, 0} = Environments.cmd(env, "git", ["init", "-q"])
+        {_, 0} = Environments.cmd(env, "git", ["config", "user.email", "spex@example.com"])
+        {_, 0} = Environments.cmd(env, "git", ["config", "user.name", "Spex"])
+
+        # `gh release view` with no `--repo` infers the repository from the
+        # `origin` remote, the same way it would in a real deployed checkout
+        # cloned from `project.code_repo` — a fixture built as a bare
+        # directory has no remote to infer from without this.
+        {_, 0} =
+          Environments.cmd(env, "git", [
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/codemy-my-spec-test/release-spex-fixture.git"
+          ])
+
+        {_, 0} = Environments.cmd(env, "git", ["add", "-A"])
+        {_, 0} = Environments.cmd(env, "git", ["commit", "-q", "-m", "the code already shipped"])
+        {_, 0} = Environments.cmd(env, "git", ["tag", "-a", @already_shipped_tag, "-m", notes])
 
         {:ok, context}
       end
@@ -89,15 +128,27 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       when_ "the agent asks what release work is outstanding", context do
-        response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{
-            "session_type" => @release_type,
-            "external_id" => "spex-#{System.unique_integer([:positive])}"
-          })
-          |> Phoenix.ConnTest.json_response(200)
+        # `Release.evaluate`'s tag/GitHub check runs inside this request —
+        # `gh release view` is a real subprocess call, so it needs the same
+        # command cassette criterion 1973 uses for `gh release create`.
+        # Recorded once against the real release that 1973 published; replay
+        # afterward needs neither network nor a GitHub account.
+        {response, status} =
+          with_full_cassette @cassette do
+            resp =
+              Phoenix.ConnTest.build_conn()
+              |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+              |> Plug.Conn.put_req_header("content-type", "application/json")
+              |> post("/api/agent-tasks/start", %{
+                "session_type" => @release_type,
+                "external_id" => "spex-#{System.unique_integer([:positive])}"
+              })
+              |> Phoenix.ConnTest.json_response(200)
+
+            {resp, :ok}
+          end
+
+        _ = status
 
         {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}
       end
