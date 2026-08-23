@@ -104,32 +104,36 @@ defmodule CmsHarness.WorkingCopyReporter do
     # this harness has served, and where" — rather than a test hook. A caller
     # that already has the answer can hand it over instead of waiting for the
     # server to say.
-    {:ok, Keyword.get(opts, :known, %{})}
+    #
+    # `last` is the previous report, held only so a repeat can be recognised and
+    # not said twice. `nil` rather than `%{}`: having reported nothing is a
+    # thing that happened, and is worth one line.
+    {:ok, %{known: Keyword.get(opts, :known, %{}), last: nil}}
   end
 
   @impl GenServer
-  def handle_call(:report, _from, known) do
-    {observations, known} = run(known)
-    {:reply, observations, known}
+  def handle_call(:report, _from, state) do
+    {observations, state} = run(state)
+    {:reply, observations, state}
   end
 
   @impl GenServer
-  def handle_info(:report, known) do
-    {_observations, known} = run(known)
+  def handle_info(:report, state) do
+    {_observations, state} = run(state)
     schedule(@heartbeat)
-    {:noreply, known}
+    {:noreply, state}
   end
 
-  def handle_info(_message, known), do: {:noreply, known}
+  def handle_info(_message, state), do: {:noreply, state}
 
   # One exchange: look, say what we saw, keep what the server says we hold.
-  defp run(known) do
+  defp run(%{known: known, last: last} = state) do
     {observations, known} = observe(known)
 
     case Device.announce(observations) do
       {:ok, %{working_copies: from_server}} ->
-        say(observations)
-        {observations, Map.merge(known, from_server)}
+        say(observations, last)
+        {observations, %{state | known: Map.merge(known, from_server), last: observations}}
 
       {:error, reason} ->
         # Debug, not warning. `Device.announce/1` already logs at warning; a box
@@ -139,7 +143,9 @@ defmodule CmsHarness.WorkingCopyReporter do
           "[CmsHarness] working copy report did not reach the server: #{inspect(reason)}"
         )
 
-        {observations, known}
+        # `last` is deliberately not advanced. The report did not land, so the
+        # next one that does is news even if it says the same thing.
+        {observations, %{state | known: known}}
     end
   end
 
@@ -162,28 +168,35 @@ defmodule CmsHarness.WorkingCopyReporter do
   end
 
   # Says what was reported, because a producer nobody can see is a producer
-  # nobody can tell has stopped. The server-side handler for this shape was
-  # written twice on this project before anything ever pushed into it, and both
-  # times the specs passed because they built the payload themselves — the gap
-  # showed up only as a page that was quietly always right.
+  # nobody can tell has stopped. The server-side handler for this shape has been
+  # built twice on this project with nothing pushing into it, and both times the
+  # specs passed because they constructed the payload themselves — the gap showed
+  # up only as a page that was quietly always right.
   #
-  # Missing copies are named, present ones counted. Eight healthy roots listed
-  # every two minutes is noise; the one that is gone is the whole message.
-  defp say(observations) do
+  # On change rather than on every beat, and at info rather than debug, because
+  # `harness.log` carries info and above. Debug for the healthy case made the
+  # only evidence the reporter was alive the absence of a complaint, which is the
+  # same unfalsifiable shape it exists to remove. A line every two minutes
+  # forever is the opposite failure.
+  #
+  # Missing copies are named, present ones counted: eight healthy roots listed
+  # out is noise, and the one that is gone is the whole message.
+  defp say(observations, observations), do: :ok
+
+  defp say(observations, _last) do
     {missing, present} =
       Enum.split_with(observations, fn {_id, present?} -> present? == false end)
 
-    case missing do
-      [] ->
-        Logger.debug("[CmsHarness] reported #{map_size(observations)} checkouts, all present")
-
-      _ ->
-        Logger.info(
-          "[CmsHarness] reported #{length(present)} checkouts present and " <>
-            "#{length(missing)} gone: #{Enum.map_join(missing, ", ", &elem(&1, 0))}"
-        )
-    end
+    Logger.info(
+      "[CmsHarness] reported #{length(present)} checkout(s) present" <>
+        gone(missing)
+    )
   end
+
+  defp gone([]), do: ", none gone"
+
+  defp gone(missing),
+    do: " and #{length(missing)} gone: #{Enum.map_join(missing, ", ", &elem(&1, 0))}"
 
   defp current_roots do
     CmsHarness.WorkingCopies.all()
