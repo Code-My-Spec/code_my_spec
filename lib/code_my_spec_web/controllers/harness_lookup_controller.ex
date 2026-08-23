@@ -44,6 +44,7 @@ defmodule CodeMySpecWeb.HarnessLookupController do
          {:ok, harness} <- WorkingCopies.report_root(harness, root) do
       json(conn, %{
         working_copy_id: harness.id,
+        harness_id: harness.id,
         project_id: harness.project_id,
         root: harness.root
       })
@@ -88,6 +89,7 @@ defmodule CodeMySpecWeb.HarnessLookupController do
       {:ok, harness} ->
         json(conn, %{
           working_copy_id: harness.id,
+          harness_id: harness.id,
           project_id: harness.project_id,
           root: harness.root,
           label: harness.label

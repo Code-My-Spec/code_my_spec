@@ -25,6 +25,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
 
   import Ecto.Changeset
 
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Projects.Project
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -46,6 +47,12 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :root, :string
     field :last_seen_at, :utc_datetime_usec
 
+    # The machine this checkout is on. Nullable and staying that way: a copy
+    # onboarded before devices existed has none until its daemon reconnects and
+    # says which machine it is announcing from. That is a real state — "we have
+    # not been told" — and different from a copy whose device is known.
+    belongs_to :device, Device
+
     belongs_to :project, Project
 
     timestamps(type: :utc_datetime)
@@ -54,7 +61,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   @doc false
   def changeset(harness, attrs) do
     harness
-    |> cast(attrs, [:label, :last_seen_at, :project_id, :root])
+    |> cast(attrs, [:label, :last_seen_at, :project_id, :root, :device_id])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
   end

@@ -41,12 +41,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Devices
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.Files.Scanner
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Hooks.AskUserQuestion
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
@@ -59,6 +59,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def join("harness_project:" <> project_id, payload, socket) do
@@ -66,8 +67,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with :ok <- check_contract(payload, project_id),
          {:ok, scope} <- authorize(socket, project_id),
-         {:ok, harness} <- WorkingCopies.issue(scope, payload["harness_id"], label: label),
+         {:ok, device} <- announce_device(scope, payload),
+         {:ok, harness} <-
+           WorkingCopies.issue(
+             scope,
+             payload["working_copy_id"] || payload["harness_id"],
+             label: label
+           ),
          {:ok, harness} <- report_root(harness, payload["root"]),
+         {:ok, harness} <- Devices.attach(harness, device),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -87,7 +95,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # Carrying the harness on the scope is what makes that true by default,
       # rather than something each call site has to remember — and forgetting it
       # returns another checkout's files with no error to notice.
-      {:ok, %{working_copy_id: harness.id},
+      {:ok,
+       %{working_copy_id: harness.id, harness_id: harness.id, device_id: device && device.id},
        socket
        |> assign(:scope, scope)
        |> assign(:harness, harness)
@@ -1266,6 +1275,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
           "process, or serve a different checkout."
     }
   end
+
+  # The machine, from what it says about itself on join.
+  #
+  # Optional the whole way down. A daemon that predates devices sends no
+  # `device` key at all, and `nil` here means "no device announced" rather than
+  # "a new one, please" — otherwise every join from an older harness would mint
+  # another machine and the list would fill with duplicates of one laptop.
+  #
+  # `hostname` and `kind` are taken on every announce rather than only at
+  # creation. A box that is re-imaged, renamed, or re-provisioned from a laptop
+  # into a sprite says so on its next connection, and a record that kept only
+  # the first answer would describe the machine as it was when it first
+  # appeared.
+  defp announce_device(scope, %{"device" => device}) when is_map(device) do
+    Devices.announce(scope, device["id"], %{
+      hostname: device["hostname"],
+      kind: device_kind(device["kind"])
+    })
+  end
+
+  defp announce_device(_scope, _payload), do: {:ok, nil}
+
+  # Refused rather than coerced. An unrecognised kind is a client this server
+  # does not understand, and recording it as `:local` would make a sprite read
+  # as somebody's laptop — the one distinction the field exists for.
+  defp device_kind("local"), do: :local
+  defp device_kind("cloud"), do: :cloud
+  defp device_kind(_other), do: nil
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"

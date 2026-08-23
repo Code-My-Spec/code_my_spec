@@ -35,11 +35,20 @@ defmodule CodeMySpec.CliMigrationsTest do
   # `create table(:x)` and `create_if_not_exists table(:x)` are the Ecto DSL;
   # `CREATE TABLE x (` is the raw-SQL form, which `doc_embeddings` uses and
   # which a DSL-only scan reports as a false positive. Both count.
+  # A table can also arrive under a new name. `rename table(:a), to: table(:b)`
+  # makes `b` exist from that migration onward, and a scan that only knows
+  # `create` reports every later `alter table(:b)` as altering something that
+  # was never made — which is a false positive that would push somebody into
+  # *not* mirroring a migration the CLI genuinely needs.
   defp tables_created(source) do
     dsl = Regex.scan(~r/create(?:_if_not_exists)?\s+table\(:(\w+)/, source)
     raw = Regex.scan(~r/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i, source)
+    # Both call shapes: the formatter writes `rename(table(:a), to: table(:b))`,
+    # and it is also written without the outer parens.
+    renamed_to =
+      Regex.scan(~r/rename\(?\s*table\(:\w+\),\s*to:\s*table\(:(\w+)/, source)
 
-    for [_, name] <- dsl ++ raw, into: MapSet.new(), do: name
+    for [_, name] <- dsl ++ raw ++ renamed_to, into: MapSet.new(), do: name
   end
 
   defp tables_altered(source) do
