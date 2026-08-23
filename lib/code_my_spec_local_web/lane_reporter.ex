@@ -80,8 +80,20 @@ defmodule CodeMySpecLocalWeb.LaneReporter do
       |> Enum.flat_map(fn {_key, %{metas: metas}} -> metas end)
       |> Enum.map(&lane/1)
 
-    Logger.debug("[LaneReporter] reporting #{length(agents)} lane(s) to the server")
+    # Info, not debug. This line is the only evidence that the box told the
+    # server anything, and the failure it distinguishes — the server showing
+    # every checkout idle — looks identical whether the report was never sent,
+    # sent empty, or sent and dropped. At debug level the one signal that
+    # separates those three is filtered out of the log somebody goes to read.
+    Logger.info("[LaneReporter] reporting #{length(agents)} lane(s): #{summarize(agents)}")
+
     AgentHarness.relay_event(account_id, "agents_running", %{"agents" => agents})
+  end
+
+  defp summarize([]), do: "nothing running"
+
+  defp summarize(agents) do
+    Enum.map_join(agents, ", ", &"#{&1["role"]}@#{&1["working_copy"]}")
   end
 
   # The shape `Agents.record_reported/2` reconciles against. `role` is what makes

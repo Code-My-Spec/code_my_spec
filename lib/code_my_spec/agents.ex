@@ -36,6 +36,8 @@ defmodule CodeMySpec.Agents do
   indistinguishable from one that never started.
   """
 
+  require Logger
+
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
@@ -140,6 +142,13 @@ defmodule CodeMySpec.Agents do
     adopted = Enum.map(reported, &adopt(scope, &1))
     Enum.each(adopted, &ensure_conversation(scope, &1))
     alive = MapSet.new(adopted, & &1.id)
+
+    # The server half of `[LaneReporter]`. Both sides log because the two
+    # failures look identical from either one alone: a report that was never
+    # sent and a report that arrived and reconciled to nothing both leave the
+    # page showing every checkout idle. Interleaving the pair is what tells them
+    # apart, which is what the log table in CLAUDE.md exists for.
+    Logger.info("[Agents] harness reported #{length(reported)} agent(s)")
 
     running =
       scope

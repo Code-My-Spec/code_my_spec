@@ -312,6 +312,20 @@ defmodule CodeMySpec.Harnesses do
   Blank clears it rather than storing an empty string, so the display falls back
   to the root instead of showing nothing.
   """
+  @spec relabel(Scope.t(), Harness.t(), String.t()) ::
+          {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
+  def relabel(
+        %Scope{active_project_id: project_id},
+        %Harness{project_id: project_id} = harness,
+        label
+      ) do
+    harness
+    |> Harness.changeset(%{label: normalize_label(label)})
+    |> Repo.update()
+  end
+
+  def relabel(%Scope{}, %Harness{}, _label), do: {:error, :cross_project}
+
   @doc """
   The shortest thing that still identifies this copy.
 
@@ -344,20 +358,6 @@ defmodule CodeMySpec.Harnesses do
 
   defp fallback("", harness), do: display_name(%{harness | label: nil})
   defp fallback(name, _harness), do: name
-
-  @spec relabel(Scope.t(), Harness.t(), String.t()) ::
-          {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
-  def relabel(
-        %Scope{active_project_id: project_id},
-        %Harness{project_id: project_id} = harness,
-        label
-      ) do
-    harness
-    |> Harness.changeset(%{label: normalize_label(label)})
-    |> Repo.update()
-  end
-
-  def relabel(%Scope{}, %Harness{}, _label), do: {:error, :cross_project}
 
   defp normalize_label(label) when is_binary(label) do
     case String.trim(label) do
