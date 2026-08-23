@@ -184,7 +184,17 @@ defmodule CodeMySpec.Agents do
   # to be equal and are produced independently do not stay equal, and two
   # harness rows can share a root outright. The device knows which harness id it
   # holds — it wrote the file — so it says so, and nothing here guesses.
-  defp adopt(%Scope{} = scope, %{"harness_id" => working_copy_id} = report)
+  defp adopt(%Scope{} = scope, report) when is_map(report) do
+    adopt(scope, reported_copy_id(report), report)
+  end
+
+  # Both names, new one first — the compatibility window every other reader on
+  # this wire already honours, and this one had been left out of it.
+  defp reported_copy_id(%{"working_copy_id" => id}) when is_binary(id) and id != "", do: id
+  defp reported_copy_id(%{"harness_id" => id}) when is_binary(id) and id != "", do: id
+  defp reported_copy_id(_report), do: nil
+
+  defp adopt(%Scope{} = scope, working_copy_id, report)
        when is_binary(working_copy_id) do
     role = role(report)
 
@@ -197,9 +207,9 @@ defmodule CodeMySpec.Agents do
   # A report that names no working copy is refused rather than guessed at. It
   # would otherwise create an agent attached to nothing, which renders nowhere
   # and reaps nothing — a row that exists only to be wrong.
-  defp adopt(_scope, report) do
+  defp adopt(_scope, nil, report) do
     Logger.warning(
-      "[Agents] ignoring a reported agent with no working_copy_id: #{inspect(report)}"
+      "[Agents] ignoring a reported agent with no working copy id: #{inspect(report)}"
     )
 
     nil
@@ -212,7 +222,7 @@ defmodule CodeMySpec.Agents do
         provider: report["provider"] || "unknown",
         working_copy: report["working_copy"],
         role: role(report),
-        working_copy_id: report["harness_id"],
+        working_copy_id: reported_copy_id(report),
         os_pid: report["os_pid"],
         status: :running
       })

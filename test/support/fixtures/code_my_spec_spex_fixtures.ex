@@ -73,6 +73,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository

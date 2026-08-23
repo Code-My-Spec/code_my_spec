@@ -62,7 +62,16 @@ defmodule CodeMySpecSpex.Story1018.Criterion2828Spex do
 
         first_reply =
           report(socket, [
-            %{"working_copy" => context.scope.cwd, "provider" => "openai-codex", "os_pid" => 4242}
+            %{
+              # The copy this agent is on, by id. A report that names none is
+              # refused rather than matched against `harnesses.root` — two
+              # reported strings compared to each other, and two rows can share
+              # a root. The scope already carries the id its harness was issued.
+              "working_copy_id" => context.scope.active_working_copy_id,
+              "working_copy" => context.scope.cwd,
+              "provider" => "openai-codex",
+              "os_pid" => 4242
+            }
           ])
 
         assert Enum.any?(first_reply["running"], &(&1["working_copy"] == context.scope.cwd)),

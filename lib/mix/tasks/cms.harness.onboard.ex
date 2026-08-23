@@ -513,16 +513,35 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
+  # Both key names, new one first — the compatibility window `HarnessConfig`
+  # already implements, which this had been left out of.
+  #
+  # It read only `harness_id` while `mint_and_record/2` below wrote only
+  # `working_copy_id`, so a copy onboarded twice found nothing the second time
+  # and was minted a *fresh* identity — orphaning every file, problem and
+  # session recorded against the first. Criterion 2356 is "onboarding twice is
+  # the same as onboarding once"; this was the opposite.
   defp existing_id(contents, env, root) do
     case Jason.decode(contents) do
-      {:ok, %{"harness_id" => id}} when is_binary(id) and id != "" -> {:ok, id}
+      {:ok, map} -> recorded_id(map, env, root)
       _ -> mint_and_record(env, root)
     end
   end
 
+  defp recorded_id(%{"working_copy_id" => id}, _env, _root) when is_binary(id) and id != "",
+    do: {:ok, id}
+
+  defp recorded_id(%{"harness_id" => id}, _env, _root) when is_binary(id) and id != "",
+    do: {:ok, id}
+
+  defp recorded_id(_map, env, root), do: mint_and_record(env, root)
+
   defp mint_and_record(env, root) do
     with {:ok, id} <- mint(root) do
-      body = Jason.encode!(%{working_copy_id: id, root: root}, pretty: true)
+      # Both names, matching `HarnessConfig.write/2`. This writes through
+      # `Environments` rather than that function because the copy may be on
+      # another machine — which is exactly how it drifted out of step with it.
+      body = Jason.encode!(%{working_copy_id: id, harness_id: id, root: root}, pretty: true)
       Environments.write_file(env, @harness_config_file, body)
       {:ok, id}
     end
