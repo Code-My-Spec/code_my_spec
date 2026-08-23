@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Harnesses.Harness do
+defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   @moduledoc """
   One working copy the server knows about.
 
@@ -41,7 +41,7 @@ defmodule CodeMySpec.Harnesses.Harness do
           updated_at: DateTime.t() | nil
         }
 
-  schema "harnesses" do
+  schema "working_copies" do
     field :label, :string
     field :root, :string
     field :last_seen_at, :utc_datetime_usec

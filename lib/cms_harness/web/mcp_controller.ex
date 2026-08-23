@@ -133,7 +133,12 @@ defmodule CmsHarness.Web.McpController do
   end
 
   defp html_summary(response),
-    do: UpstreamError.summary(to_string(response.body || ""), response.status, content_type(response))
+    do:
+      UpstreamError.summary(
+        to_string(response.body || ""),
+        response.status,
+        content_type(response)
+      )
 
   defp request(conn, project, token, method, body, receive_timeout) do
     Req.new(
@@ -185,14 +190,14 @@ defmodule CmsHarness.Web.McpController do
   # `?harness=<id>` and nothing can change that until it ships again; refusing
   # them would take MCP down on every machine running the release. They are
   # older spellings of one address, not alternatives to it.
-  defp harness_id(conn) do
-    conn.path_params["harness_id"] ||
+  defp working_copy_id(conn) do
+    conn.path_params["working_copy_id"] || conn.path_params["harness_id"] ||
       conn.query_params["harness"] ||
       List.first(get_req_header(conn, "x-harness-id"))
   end
 
   defp harness_header(conn) do
-    case harness_id(conn) do
+    case working_copy_id(conn) do
       id when is_binary(id) and id != "" -> [{"x-harness-id", id}]
       _ -> []
     end
@@ -268,7 +273,7 @@ defmodule CmsHarness.Web.McpController do
   # host that cannot template a URL. Nothing else — a directory is not an
   # answer to "which working copy is this", which is why it is not consulted.
   defp project(conn) do
-    case harness_id(conn) do
+    case working_copy_id(conn) do
       id when is_binary(id) and id != "" -> by_harness(id)
       _ -> {:error, :no_harness}
     end

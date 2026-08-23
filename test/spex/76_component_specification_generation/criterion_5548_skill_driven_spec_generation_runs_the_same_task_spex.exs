@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5548Spex do
 
         response =
           context.conn
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post("/api/skills/start", %{
             "skill" => "develop",

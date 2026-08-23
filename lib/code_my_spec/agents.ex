@@ -184,13 +184,13 @@ defmodule CodeMySpec.Agents do
   # to be equal and are produced independently do not stay equal, and two
   # harness rows can share a root outright. The device knows which harness id it
   # holds — it wrote the file — so it says so, and nothing here guesses.
-  defp adopt(%Scope{} = scope, %{"harness_id" => harness_id} = report)
-       when is_binary(harness_id) do
+  defp adopt(%Scope{} = scope, %{"harness_id" => working_copy_id} = report)
+       when is_binary(working_copy_id) do
     role = role(report)
 
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.harness_id == harness_id and &1.role == role))
+    |> Enum.find(&(&1.working_copy_id == working_copy_id and &1.role == role))
     |> upsert(scope, report)
   end
 
@@ -198,7 +198,10 @@ defmodule CodeMySpec.Agents do
   # would otherwise create an agent attached to nothing, which renders nowhere
   # and reaps nothing — a row that exists only to be wrong.
   defp adopt(_scope, report) do
-    Logger.warning("[Agents] ignoring a reported agent with no harness_id: #{inspect(report)}")
+    Logger.warning(
+      "[Agents] ignoring a reported agent with no working_copy_id: #{inspect(report)}"
+    )
+
     nil
   end
 
@@ -209,7 +212,7 @@ defmodule CodeMySpec.Agents do
         provider: report["provider"] || "unknown",
         working_copy: report["working_copy"],
         role: role(report),
-        harness_id: report["harness_id"],
+        working_copy_id: report["harness_id"],
         os_pid: report["os_pid"],
         status: :running
       })
@@ -306,7 +309,7 @@ defmodule CodeMySpec.Agents do
       provider: Map.fetch!(attrs, :provider),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.get(attrs, :role, "main"),
-      harness_id: Map.get(attrs, :harness_id) || scope.active_harness_id,
+      working_copy_id: Map.get(attrs, :working_copy_id) || scope.active_working_copy_id,
       status: :starting
     }
   end

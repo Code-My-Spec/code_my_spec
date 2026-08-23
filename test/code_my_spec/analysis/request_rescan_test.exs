@@ -27,15 +27,15 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Users.Scope
 
-  defp scope(harness_id), do: %Scope{active_harness_id: harness_id}
+  defp scope(working_copy_id), do: %Scope{active_working_copy_id: working_copy_id}
 
   # A stand-in for the channel process, which is what the registry holds.
-  defp registered_channel(harness_id) do
+  defp registered_channel(working_copy_id) do
     test = self()
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(harness_id, "test:#{System.unique_integer()}")
+        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
         send(test, {:registered, self()})
 
         receive do
@@ -48,21 +48,21 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
   end
 
   test "a registered harness is sent the rescan" do
-    harness_id = "harness-#{System.unique_integer([:positive])}"
-    _pid = registered_channel(harness_id)
+    working_copy_id = "harness-#{System.unique_integer([:positive])}"
+    _pid = registered_channel(working_copy_id)
 
-    assert Analysis.request_rescan(scope(harness_id)) == :ok
+    assert Analysis.request_rescan(scope(working_copy_id)) == :ok
 
     assert_receive {:channel_got, :rescan}, 1_000
   end
 
   test "nothing registered under that id is named as such, not as a dead harness" do
-    harness_id = "harness-#{System.unique_integer([:positive])}"
+    working_copy_id = "harness-#{System.unique_integer([:positive])}"
 
     assert {:error, {:harness_not_registered, details}} =
-             Analysis.request_rescan(scope(harness_id))
+             Analysis.request_rescan(scope(working_copy_id))
 
-    assert details.harness_id == harness_id,
+    assert details.working_copy_id == working_copy_id,
            "the caller renders this for an agent, and a tag with no id sends the " <>
              "reader looking at the wrong working copy"
   end
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
   # A scope with no harness has no working copy to ask. Distinct from a harness
   # that exists and cannot be reached, and the callers render them differently.
   test "a scope with no harness is refused without a registry lookup" do
-    assert {:error, {:harness_not_registered, %{harness_id: nil}}} =
+    assert {:error, {:harness_not_registered, %{working_copy_id: nil}}} =
              Analysis.request_rescan(scope(nil))
   end
 end

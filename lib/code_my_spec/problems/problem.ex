@@ -9,7 +9,7 @@ defmodule CodeMySpec.Problems.Problem do
   import Ecto.Changeset
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Harnesses.Harness
+  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Projects.Project
 
   @type t :: %__MODULE__{
@@ -52,7 +52,7 @@ defmodule CodeMySpec.Problems.Problem do
 
     # The working copy these were observed from. `nil` means "recorded before
     # harnesses existed"; the first harness to join adopts them.
-    belongs_to :harness, Harness, type: :binary_id
+    belongs_to :working_copy, WorkingCopy, type: :binary_id
 
     timestamps(type: :utc_datetime)
   end
@@ -75,7 +75,7 @@ defmodule CodeMySpec.Problems.Problem do
       :metadata,
       :component_id,
       :project_id,
-      :harness_id,
+      :working_copy_id,
       :file_fingerprint
     ])
     |> put_default_source_type()

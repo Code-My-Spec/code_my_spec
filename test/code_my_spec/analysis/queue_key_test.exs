@@ -17,8 +17,11 @@ defmodule CodeMySpec.Analysis.QueueKeyTest do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.ProjectServer
 
-  defp scope(project_id, harness_id),
-    do: %CodeMySpec.Users.Scope{active_project_id: project_id, active_harness_id: harness_id}
+  defp scope(project_id, working_copy_id),
+    do: %CodeMySpec.Users.Scope{
+      active_project_id: project_id,
+      active_working_copy_id: working_copy_id
+    }
 
   describe "server_key/1" do
     test "two checkouts of one project get different queues" do

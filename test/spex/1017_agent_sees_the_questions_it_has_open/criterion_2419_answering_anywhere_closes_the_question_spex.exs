@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
         session_id = "spex-2419-#{System.unique_integer([:positive])}"
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> Phoenix.ConnTest.dispatch(
           CodeMySpecLocalWeb.Endpoint,

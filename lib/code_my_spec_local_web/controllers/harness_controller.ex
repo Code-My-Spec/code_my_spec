@@ -22,7 +22,7 @@ defmodule CodeMySpecLocalWeb.HarnessController do
 
   require Logger
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 
@@ -31,13 +31,13 @@ defmodule CodeMySpecLocalWeb.HarnessController do
          {:ok, root} <- require_param(params, "root"),
          {:ok, project} <- fetch_project(project_id),
          {:ok, harness} <- issue(project, params),
-         {:ok, harness} <- Harnesses.report_root(harness, root) do
+         {:ok, harness} <- WorkingCopies.report_root(harness, root) do
       Logger.info(
         "[Harnesses] #{harness.id} registered for project #{project_id} at #{harness.root}"
       )
 
       json(conn, %{
-        harness_id: harness.id,
+        working_copy_id: harness.id,
         project_id: harness.project_id,
         root: harness.root,
         label: harness.label
@@ -57,7 +57,7 @@ defmodule CodeMySpecLocalWeb.HarnessController do
   defp issue(project, params) do
     scope = %Scope{active_project_id: project.id, active_project: project}
 
-    Harnesses.issue(scope, params["harness_id"], label: params["label"])
+    WorkingCopies.issue(scope, params["harness_id"], label: params["label"])
   end
 
   defp fetch_project(project_id) do

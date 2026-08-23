@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2832Spex do
   Rule: Every working copy on the project is listed, including the ones running
   nothing.
 
-  A working copy exists because a harness joined for it — `Harnesses.issue/3`
+  A working copy exists because a harness joined for it — `WorkingCopies.issue/3`
   mints one id per checkout on join, which is why "harness id" and "working copy
   id" are the same thing. So the page's list is the set of harnesses, not the set
   of agents, and a copy with nothing running on it is a row.
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2832Spex do
         idle = join_working_copy(context, "/tmp/spex-1019-idle", "idle checkout")
 
         # Only the first one is running anything.
-        report_agents(context, [pi_agent(busy.harness_id, "/tmp/spex-1019-busy")])
+        report_agents(context, [pi_agent(busy.working_copy_id, "/tmp/spex-1019-busy")])
 
         {:ok, context |> Map.put(:busy, busy) |> Map.put(:idle, idle)}
       end

@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
@@ -102,13 +102,13 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   defp with_harness(scope, conn) do
     conn = Plug.Conn.fetch_query_params(conn)
 
-    case Harnesses.fetch(harness_id(conn)) do
+    case WorkingCopies.fetch(working_copy_id(conn)) do
       {:ok, harness} when harness.project_id == scope.active_project_id ->
-        %{scope | active_harness_id: harness.id}
+        %{scope | active_working_copy_id: harness.id}
 
       # No harness named, or one belonging to another project. Left unscoped
       # rather than guessed: adopting the wrong checkout's identity is worse
-      # than reading widely, and `Harnesses.issue/3` on the channel is where an
+      # than reading widely, and `WorkingCopies.issue/3` on the channel is where an
       # id is minted, not here.
       _ ->
         scope
@@ -120,7 +120,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   # query param never reaches here — reading only that made the first version
   # of this inert, and its test passed because the test supplied the param that
   # production does not.
-  defp harness_id(conn) do
+  defp working_copy_id(conn) do
     List.first(get_req_header(conn, "x-harness-id")) || conn.query_params["harness"] || ""
   end
 

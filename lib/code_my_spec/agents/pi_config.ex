@@ -117,14 +117,14 @@ defmodule CodeMySpec.Agents.PiConfig do
   # `mcp()` proxy by default, and the server's PreToolUse enrichment matches on
   # real tool names — so hidden tools arrive unenriched and the matcher silently
   # does nothing.
-  defp mcp(%Agent{harness_id: harness_id}) do
+  defp mcp(%Agent{working_copy_id: working_copy_id}) do
     %{
       "mcpServers" => %{
         "plugin_codemyspec_local" => %{
           "command" => "cms-mcp-relay",
           "env" => %{
             "CMS_MCP_BASE_URL" => base_url(),
-            "CMS_HARNESS_ID" => harness_id
+            "CMS_HARNESS_ID" => working_copy_id
           },
           "lifecycle" => "eager",
           "directTools" => true

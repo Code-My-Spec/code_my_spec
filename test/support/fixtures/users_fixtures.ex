@@ -9,7 +9,7 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.ProjectsFixtures
 
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
@@ -85,13 +85,13 @@ defmodule CodeMySpec.UsersFixtures do
       |> Map.put(:active_project, project)
 
     # Files are keyed on the working copy that observed them — UNIQUE
-    # (project_id, harness_id, path), harness_id NOT NULL — so any scope that
+    # (project_id, working_copy_id, path), working_copy_id NOT NULL — so any scope that
     # can write files needs one. A scope with a project stands in for something
     # serving a checkout of it, so minting here is what makes these fixtures
     # honest rather than a way around the constraint.
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "the test harness for #{project.id}")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the test harness for #{project.id}")
 
-    %{scope | active_harness_id: harness.id}
+    %{scope | active_working_copy_id: harness.id}
   end
 
   def full_scope_fixture(project_attrs \\ %{}) do

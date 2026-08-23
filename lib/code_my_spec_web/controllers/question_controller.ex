@@ -22,7 +22,8 @@ defmodule CodeMySpecWeb.QuestionController do
     attrs = %{
       "questions" => questions,
       "title" => Map.get(params, "title"),
-      "session_external_id" => Sessions.external_id_for_harness(params["harness_id"])
+      "session_external_id" =>
+        Sessions.external_id_for_harness(params["working_copy_id"] || params["harness_id"])
     }
 
     case Notifications.create_question_request(scope.user.id, attrs) do

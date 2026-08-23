@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
             }
           )
 
-        other_id = reply["harness_id"] || reply[:harness_id]
+        other_id = reply["harness_id"] || reply[:working_copy_id]
 
         ref =
           Phoenix.ChannelTest.push(socket, "observations", %{
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
         {:ok,
          context
          |> Map.put(:writer, context.scope)
-         |> Map.put(:other, %{context.scope | active_harness_id: other_id})}
+         |> Map.put(:other, %{context.scope | active_working_copy_id: other_id})}
       end
 
       given_ "one has written the spec a requirement asks for and the other has not", context do

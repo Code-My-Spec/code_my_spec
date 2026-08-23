@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
           Environments.write_file(
             context.environment,
             @harness_config,
-            Jason.encode!(%{harness_id: "spex-harness-2352"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2352"}, pretty: true)
           )
 
         tracked = ~s({\n  "permissions": {\n    "allow": []\n  }\n}\n)

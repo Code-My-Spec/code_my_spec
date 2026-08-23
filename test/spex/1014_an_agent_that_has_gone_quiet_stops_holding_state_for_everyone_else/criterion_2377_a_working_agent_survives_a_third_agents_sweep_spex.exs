@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2377WorkingAgentSpex do
 
       given_ "the worker does some work, which is the only proof it is here", context do
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.worker.active_harness_id)
+        |> Plug.Conn.put_req_header("x-harness-id", context.worker.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/stop", %{
           "session_id" => "spex-worker-#{unique()}"

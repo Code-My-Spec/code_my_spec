@@ -15,7 +15,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, assign(socket, :page_title, "Rename")}
@@ -31,7 +31,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
 
       _project ->
         socket.assigns.current_scope
-        |> Harnesses.list_harnesses()
+        |> WorkingCopies.list_harnesses()
         |> Enum.find(&(&1.id == id))
         |> assign_harness(socket)
     end
@@ -58,7 +58,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
 
   def handle_event("save", %{"working_copy" => %{"label" => label}}, socket) do
     socket.assigns.current_scope
-    |> Harnesses.relabel(socket.assigns.harness, label)
+    |> WorkingCopies.relabel(socket.assigns.harness, label)
     |> saved(socket)
   end
 

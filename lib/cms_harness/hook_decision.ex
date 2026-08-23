@@ -235,9 +235,9 @@ defmodule CmsHarness.HookDecision do
   # Distinct from `:no_project`, which is about a directory that cannot say
   # which project it is — here there is no directory in the question at all,
   # so telling somebody to edit a config file in one would be nonsense.
-  defp explain({:unknown_harness, harness_id}, _working_dir) do
+  defp explain({:unknown_harness, working_copy_id}, _working_dir) do
     """
-    This harness is not serving the working copy #{harness_id}.
+    This harness is not serving the working copy #{working_copy_id}.
 
     The hooks are addressed to a harness id the server does not recognise, or \
     one it has no location for. Re-run `mix cms.harness.onboard` in the \
@@ -251,10 +251,10 @@ defmodule CmsHarness.HookDecision do
   # recognise your id" sends the reader to re-onboard a config that was never
   # wrong. Measured: `:4000` was down, the token exchange returned
   # `econnrefused`, and the refusal blamed the id.
-  defp explain({:server_unreachable, harness_id, reason}, _working_dir) do
+  defp explain({:server_unreachable, working_copy_id, reason}, _working_dir) do
     """
     The harness could not reach the CodeMySpec server to find out where \
-    #{harness_id} is: #{inspect(reason, limit: 5)}
+    #{working_copy_id} is: #{inspect(reason, limit: 5)}
 
     Nothing is wrong with the id, and re-onboarding will not help. The server \
     is down or unreachable from here — check that it is listening, then stop \

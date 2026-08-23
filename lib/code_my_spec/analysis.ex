@@ -377,22 +377,23 @@ defmodule CodeMySpec.Analysis do
   def explain_unknown_run(%Scope{} = scope, run_id) when is_integer(run_id) do
     scope
     |> RunsRepository.get_run_in_project(run_id)
-    |> describe_run(scope.active_harness_id)
+    |> describe_run(scope.active_working_copy_id)
   end
 
   def explain_unknown_run(_scope, run_id), do: "run id is not an integer: #{inspect(run_id)}"
 
-  defp describe_run(nil, _harness_id), do: "no run with that id exists in this project"
+  defp describe_run(nil, _working_copy_id), do: "no run with that id exists in this project"
 
-  defp describe_run(%Run{harness_id: owner}, harness_id) when owner != harness_id do
-    "it belongs to working copy #{inspect(owner)}, not #{inspect(harness_id)}"
+  defp describe_run(%Run{working_copy_id: owner}, working_copy_id)
+       when owner != working_copy_id do
+    "it belongs to working copy #{inspect(owner)}, not #{inspect(working_copy_id)}"
   end
 
-  defp describe_run(%Run{status: :running}, _harness_id) do
+  defp describe_run(%Run{status: :running}, _working_copy_id) do
     "it is still running, so this reply raced its own dispatch"
   end
 
-  defp describe_run(%Run{status: status, finished_at: finished_at}, _harness_id) do
+  defp describe_run(%Run{status: status, finished_at: finished_at}, _working_copy_id) do
     "it was closed as #{status} at #{inspect(finished_at)} — most likely swept " <>
       "while the analyzer was still working"
   end
@@ -562,10 +563,10 @@ defmodule CodeMySpec.Analysis do
   # A scope with no harness has no working copy to dispatch to, so `:none` — the
   # same answer it gave for a project nothing was serving. Callers already treat
   # that as "nothing remote here".
-  def remote_executor(%Scope{active_harness_id: nil}), do: :none
+  def remote_executor(%Scope{active_working_copy_id: nil}), do: :none
 
-  def remote_executor(%Scope{active_harness_id: harness_id}) do
-    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+  def remote_executor(%Scope{active_working_copy_id: working_copy_id}) do
+    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
       [{pid, _}] -> {:ok, pid}
       [] -> :none
     end
@@ -611,13 +612,13 @@ defmodule CodeMySpec.Analysis do
   @impl CodeMySpec.Environments.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
           {:ok, term()} | :ok | {:error, term()}
-  def harness_fs_request(harness_id, op, payload, timeout) do
+  def harness_fs_request(working_copy_id, op, payload, timeout) do
     started = System.monotonic_time(:millisecond)
 
     # Explicit `try`, so the catch clauses can see `started`. A function-level
     # `catch` cannot — the elapsed time is the whole point of the timeout branch.
     try do
-      case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+      case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
         [{pid, _}] ->
           GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
 
@@ -629,21 +630,21 @@ defmodule CodeMySpec.Analysis do
           # harness" and sends the reader after a registration problem that is
           # not there.
           Logger.warning(
-            "[Analysis] #{op} for harness #{harness_id}: nothing registered under that id. " <>
+            "[Analysis] #{op} for harness #{working_copy_id}: nothing registered under that id. " <>
               "The harness has not joined the channel since this server started — its own " <>
               "/health will still say connected, because that is about its socket rather " <>
               "than about whether the server can address it. Restarting the harness rejoins."
           )
 
-          {:error, {:harness_not_registered, %{harness_id: harness_id, op: op}}}
+          {:error, {:harness_not_registered, %{working_copy_id: working_copy_id, op: op}}}
       end
     rescue
       ArgumentError ->
         Logger.warning(
-          "[Analysis] #{op} for harness #{harness_id}: HarnessRegistry is not running"
+          "[Analysis] #{op} for harness #{working_copy_id}: HarnessRegistry is not running"
         )
 
-        {:error, {:harness_registry_down, %{harness_id: harness_id, op: op}}}
+        {:error, {:harness_registry_down, %{working_copy_id: working_copy_id, op: op}}}
     catch
       # A self-call is not a timeout and must not be labelled one. OTP detects
       # it and exits at once with `{:calling_self, …}` — 0ms, not the limit —
@@ -653,19 +654,19 @@ defmodule CodeMySpec.Analysis do
       # not in the harness that is answering perfectly well.
       :exit, {:calling_self, _} = reason ->
         Logger.warning(
-          "[Analysis] #{op} for harness #{harness_id} was called from the channel process " <>
+          "[Analysis] #{op} for harness #{working_copy_id} was called from the channel process " <>
             "itself: #{inspect(reason, limit: 3)}. Nothing is wrong with the harness — this " <>
             "is a reconcile reaching for a file from inside the process that would serve it."
         )
 
-        {:error, {:harness_self_call, %{harness_id: harness_id, op: op}}}
+        {:error, {:harness_self_call, %{working_copy_id: working_copy_id, op: op}}}
 
       :exit, reason ->
         elapsed = System.monotonic_time(:millisecond) - started
         limit = timeout + 5_000
 
         Logger.warning(
-          "[Analysis] #{op} for harness #{harness_id} did not complete after " <>
+          "[Analysis] #{op} for harness #{working_copy_id} did not complete after " <>
             "#{elapsed}ms (limit #{limit}ms): #{inspect(reason, limit: 5)}. The harness is " <>
             "registered, so this is not a connection problem — it accepted the request and " <>
             "did not answer."
@@ -673,7 +674,7 @@ defmodule CodeMySpec.Analysis do
 
         {:error,
          {:harness_timeout,
-          %{harness_id: harness_id, op: op, elapsed_ms: elapsed, limit_ms: limit}}}
+          %{working_copy_id: working_copy_id, op: op, elapsed_ms: elapsed, limit_ms: limit}}}
     end
   end
 
@@ -699,24 +700,24 @@ defmodule CodeMySpec.Analysis do
   reconciles there. Nothing is returned but whether the request was delivered.
   """
   @spec request_rescan(Scope.t()) :: :ok | {:error, {atom(), map()}}
-  def request_rescan(%Scope{active_harness_id: nil}),
-    do: {:error, {:harness_not_registered, %{harness_id: nil}}}
+  def request_rescan(%Scope{active_working_copy_id: nil}),
+    do: {:error, {:harness_not_registered, %{working_copy_id: nil}}}
 
-  def request_rescan(%Scope{active_harness_id: harness_id}) do
-    case remote_executor(%Scope{active_harness_id: harness_id}) do
+  def request_rescan(%Scope{active_working_copy_id: working_copy_id}) do
+    case remote_executor(%Scope{active_working_copy_id: working_copy_id}) do
       {:ok, channel} ->
         send(channel, :rescan)
         :ok
 
       :none ->
         Logger.warning(
-          "[Analysis] rescan for harness #{harness_id}: nothing registered under that id. " <>
+          "[Analysis] rescan for harness #{working_copy_id}: nothing registered under that id. " <>
             "The harness has not joined the channel since this server started; its own " <>
             "/health will still say connected, because that is about its socket rather " <>
             "than about whether the server can address it."
         )
 
-        {:error, {:harness_not_registered, %{harness_id: harness_id}}}
+        {:error, {:harness_not_registered, %{working_copy_id: working_copy_id}}}
     end
   end
 
@@ -728,7 +729,7 @@ defmodule CodeMySpec.Analysis do
   a stored one.
 
   `instance` names the OS process holding the harness's socket. A harness that
-  reconnects presents the same `harness_id` as the registration it is colliding
+  reconnects presents the same `working_copy_id` as the registration it is colliding
   with — that id *is* the working copy, read from a file inside it — so the id
   alone cannot say whether this is a rival or the same process returning. The
   instance can, and a process is allowed to take its own registration back.
@@ -764,8 +765,8 @@ defmodule CodeMySpec.Analysis do
   """
   @spec register_executor(String.t(), String.t() | nil, String.t() | nil) ::
           :ok | {:error, {:already_registered, pid()}} | {:error, {:id_collision, pid(), term()}}
-  def register_executor(harness_id, instance \\ nil, root \\ nil) do
-    key = to_string(harness_id)
+  def register_executor(working_copy_id, instance \\ nil, root \\ nil) do
+    key = to_string(working_copy_id)
 
     case Registry.register(HarnessRegistry, key, {instance, root}) do
       {:ok, _} -> :ok
@@ -788,8 +789,8 @@ defmodule CodeMySpec.Analysis do
   there is to say and is still better than "another harness".
   """
   @spec executor_holder(String.t()) :: {:ok, pid(), String.t() | nil} | :error
-  def executor_holder(harness_id) do
-    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+  def executor_holder(working_copy_id) do
+    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
       [{pid, {instance, _root}} | _] -> {:ok, pid, instance}
       [] -> :error
     end
@@ -1159,8 +1160,9 @@ defmodule CodeMySpec.Analysis do
   @doc false
   # Public only so the property that matters can be asserted directly: two
   # checkouts of one project get different queues, the same checkout gets one.
-  def server_key(%Scope{active_harness_id: harness_id}) when not is_nil(harness_id),
-    do: {:harness, to_string(harness_id)}
+  def server_key(%Scope{active_working_copy_id: working_copy_id})
+      when not is_nil(working_copy_id),
+      do: {:harness, to_string(working_copy_id)}
 
   def server_key(%Scope{active_project_id: project_id}), do: {:project, project_id}
 

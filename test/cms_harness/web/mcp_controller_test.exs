@@ -128,7 +128,8 @@ defmodule CmsHarness.Web.McpControllerTest do
       page =
         "<!DOCTYPE html>\n<html><body><div>** (RuntimeError) could not compile " <>
           "application: code_my_spec. You must restart your server after changing " <>
-          "configuration files</div>" <> String.duplicate("<span>padding</span>", 2_000) <>
+          "configuration files</div>" <>
+          String.duplicate("<span>padding</span>", 2_000) <>
           "</body></html>"
 
       FakeUpstream.respond_with(status: 500, body: page, headers: [{"content-type", "text/html"}])
@@ -215,7 +216,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       conn
       |> Plug.Conn.put_req_header("mcp-session-id", "doomed")
-      |> delete("/mcp?harness=#{harness_id_at(dir)}")
+      |> delete("/mcp?harness=#{working_copy_id_at(dir)}")
 
       # The DELETE specifically, not whatever reached the server most recently.
       # The harness reconnects and retries on its own schedule, so "the last
@@ -236,7 +237,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       conn =
         conn
         |> Plug.Conn.put_req_header("accept", "text/event-stream")
-        |> get("/mcp?harness=#{harness_id_at(dir)}")
+        |> get("/mcp?harness=#{working_copy_id_at(dir)}")
 
       assert conn.status == 200
       assert conn.resp_body =~ "data: one"
@@ -255,7 +256,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       conn =
         conn
         |> Plug.Conn.put_req_header("accept", "text/event-stream")
-        |> get("/mcp?harness=#{harness_id_at(dir)}")
+        |> get("/mcp?harness=#{working_copy_id_at(dir)}")
 
       assert conn.status == 401
       assert conn.resp_body =~ "invalid_token"
@@ -406,6 +407,6 @@ defmodule CmsHarness.Web.McpControllerTest do
   defp post_rpc(conn, dir, payload) do
     conn
     |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> post("/mcp?harness=#{harness_id_at(dir)}", payload)
+    |> post("/mcp?harness=#{working_copy_id_at(dir)}", payload)
   end
 end

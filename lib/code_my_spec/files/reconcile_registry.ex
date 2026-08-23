@@ -37,7 +37,7 @@ defmodule CodeMySpec.Files.ReconcileRegistry do
   end
 
   @doc """
-  Mark this process as the reconcile for `harness_id`.
+  Mark this process as the reconcile for `working_copy_id`.
 
   Called by the task itself, not by the channel that spawned it, so the
   registration lives exactly as long as the work. `:ok` either way — a marker
@@ -46,8 +46,8 @@ defmodule CodeMySpec.Files.ReconcileRegistry do
   @spec mark(Ecto.UUID.t() | nil, non_neg_integer()) :: :ok
   def mark(nil, _count), do: :ok
 
-  def mark(harness_id, count) do
-    case Registry.register(__MODULE__, to_string(harness_id), %{
+  def mark(working_copy_id, count) do
+    case Registry.register(__MODULE__, to_string(working_copy_id), %{
            count: count,
            started_at: DateTime.utc_now()
          }) do
@@ -61,11 +61,12 @@ defmodule CodeMySpec.Files.ReconcileRegistry do
 
   `%{count: n, started_at: t}` while a manifest of `n` observations is landing.
   """
-  @spec in_flight(Ecto.UUID.t() | nil) :: %{count: non_neg_integer(), started_at: DateTime.t()} | nil
+  @spec in_flight(Ecto.UUID.t() | nil) ::
+          %{count: non_neg_integer(), started_at: DateTime.t()} | nil
   def in_flight(nil), do: nil
 
-  def in_flight(harness_id) do
-    case Registry.lookup(__MODULE__, to_string(harness_id)) do
+  def in_flight(working_copy_id) do
+    case Registry.lookup(__MODULE__, to_string(working_copy_id)) do
       [{_pid, meta}] -> meta
       [] -> nil
     end

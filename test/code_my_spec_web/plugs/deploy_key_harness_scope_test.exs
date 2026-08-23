@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.Plugs.DeployKeyOrOAuth
 
   setup do
@@ -49,19 +49,19 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
     |> DeployKeyOrOAuth.call([])
   end
 
-  defp call_with_header(token, harness_id) do
+  defp call_with_header(token, working_copy_id) do
     Phoenix.ConnTest.build_conn(:get, "/mcp/harness")
     |> Plug.Conn.put_req_header("authorization", "Bearer " <> token)
-    |> Plug.Conn.put_req_header("x-harness-id", harness_id)
+    |> Plug.Conn.put_req_header("x-harness-id", working_copy_id)
     |> DeployKeyOrOAuth.call([])
   end
 
   test "adopts the harness from the x-harness-id header", %{scope: scope, token: token} do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
 
     conn = call_with_header(token, harness.id)
 
-    assert conn.assigns.current_scope.active_harness_id == harness.id,
+    assert conn.assigns.current_scope.active_working_copy_id == harness.id,
            "this is how it actually arrives: the proxy resolves /mcp?harness=<id> " <>
              "on its own port and forwards to /mcp/harness, so only the header " <>
              "survives. The first version of this read the query param, passed its " <>
@@ -69,32 +69,32 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
   end
 
   test "adopts the harness the caller names in the query", %{scope: scope, token: token} do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
 
     conn = call(token, "harness=#{harness.id}")
 
-    assert conn.assigns.current_scope.active_harness_id == harness.id
+    assert conn.assigns.current_scope.active_working_copy_id == harness.id
   end
 
   test "ignores a harness belonging to another project", %{token: token} do
     other = full_scope_fixture()
-    {:ok, foreign} = Harnesses.issue(other, nil, label: "someone else's checkout")
+    {:ok, foreign} = WorkingCopies.issue(other, nil, label: "someone else's checkout")
 
     conn = call(token, "harness=#{foreign.id}")
 
-    refute conn.assigns.current_scope.active_harness_id == foreign.id,
+    refute conn.assigns.current_scope.active_working_copy_id == foreign.id,
            "adopting another project's working copy is worse than reading widely"
   end
 
   test "stays unscoped when no harness is named", %{token: token} do
     conn = call(token, "")
 
-    assert is_nil(conn.assigns.current_scope.active_harness_id)
+    assert is_nil(conn.assigns.current_scope.active_working_copy_id)
   end
 
   test "stays unscoped on a malformed id rather than raising", %{token: token} do
     conn = call(token, "harness=not-a-uuid")
 
-    assert is_nil(conn.assigns.current_scope.active_harness_id)
+    assert is_nil(conn.assigns.current_scope.active_working_copy_id)
   end
 end

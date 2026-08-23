@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   ## The hierarchy this exists to make visible
 
-  A **harness is a working copy** — `Harnesses.issue/3` mints one id per
+  A **harness is a working copy** — `WorkingCopies.issue/3` mints one id per
   checkout. A copy runs **one or more agents**, told apart by the lane's role.
   The copy's turns land in **one conversation**, keyed `pi:<root>`, because that
   is how the harness keys itself: every lane on a copy joins
@@ -27,7 +27,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   list row needs, because the path is the only thing distinguishing two unnamed
   copies and a row can truncate it.
 
-  `heading` is `Harnesses.display_name/1`: the shortest string that still
+  `heading` is `WorkingCopies.display_name/1`: the shortest string that still
   identifies the copy. A harness that names itself gets "the harness at <root>
   on <host>", which reads as a name and identifies like a path, and set as a
   3xl page title it renders four lines and pushes the page off the screen. The
@@ -36,7 +36,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @type row :: %{
@@ -60,7 +60,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     transcripts = transcripts(scope, project)
 
     scope
-    |> Harnesses.list_harnesses()
+    |> WorkingCopies.list_harnesses()
     |> Enum.map(&build(&1, agents, transcripts, now))
   end
 
@@ -68,14 +68,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   One working copy by its harness id, or nil.
 
   Found inside the project's own list rather than by a bare id lookup: the id
-  arrives on a URL, and `Harnesses.fetch/1` answers for any harness on any
+  arrives on a URL, and `WorkingCopies.fetch/1` answers for any harness on any
   project.
   """
   @spec get(map(), struct(), String.t(), DateTime.t()) :: row() | nil
-  def get(scope, project, harness_id, now) do
+  def get(scope, project, working_copy_id, now) do
     scope
     |> list(project, now)
-    |> Enum.find(&(&1.harness.id == harness_id))
+    |> Enum.find(&(&1.harness.id == working_copy_id))
   end
 
   # Keyed the way a lane keys itself, so the transcript a copy's agents write to
@@ -87,13 +87,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   end
 
   defp build(harness, agents, transcripts, now) do
-    on_this_copy = Enum.filter(agents, &(&1.harness_id == harness.id))
+    on_this_copy = Enum.filter(agents, &(&1.working_copy_id == harness.id))
     transcript = Map.get(transcripts, "pi:#{harness.root}")
 
     %{
       harness: harness,
       label: harness.label || harness.root,
-      heading: Harnesses.display_name(harness),
+      heading: WorkingCopies.display_name(harness),
       agents: Enum.sort_by(on_this_copy, & &1.role),
       conversation: transcript && transcript.conversation,
       message_count: (transcript && transcript.message_count) || 0,

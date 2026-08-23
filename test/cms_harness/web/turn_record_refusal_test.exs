@@ -12,7 +12,7 @@ defmodule CmsHarness.Web.TurnRecordRefusalTest do
 
       turn not recorded: could not resolve b23243bb-… ({:ok, %Req.Response{status: 500 …
       turn not recorded: this request did not name a working copy and this harness
-        serves 2 of them … Point ANTHROPIC_BASE_URL at /api/harnesses/<harness_id>
+        serves 2 of them … Point ANTHROPIC_BASE_URL at /api/harnesses/<working_copy_id>
 
   The second is false and its remedy is wrong. The request named a working copy;
   the server was answering 500 because it was mid-recompile. An operator reading

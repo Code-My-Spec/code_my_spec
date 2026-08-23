@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2836Spex do
     scenario "An agent nobody is running is not on the list as running" do
       given_ "an agent shown as running on a copy", context do
         quiet = join_working_copy(context, "/tmp/spex-1019-quiet", "quiet checkout")
-        report_agents(context, [claude_agent(quiet.harness_id, "/tmp/spex-1019-quiet")])
+        report_agents(context, [claude_agent(quiet.working_copy_id, "/tmp/spex-1019-quiet")])
 
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")

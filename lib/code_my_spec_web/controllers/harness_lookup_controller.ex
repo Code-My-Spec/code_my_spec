@@ -20,7 +20,7 @@ defmodule CodeMySpecWeb.HarnessLookupController do
 
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 
@@ -41,8 +41,12 @@ defmodule CodeMySpecWeb.HarnessLookupController do
          {:ok, root} <- require_param(params, "root"),
          {:ok, project} <- fetch_project(project_id),
          {:ok, harness} <- issue(project, params),
-         {:ok, harness} <- Harnesses.report_root(harness, root) do
-      json(conn, %{harness_id: harness.id, project_id: harness.project_id, root: harness.root})
+         {:ok, harness} <- WorkingCopies.report_root(harness, root) do
+      json(conn, %{
+        working_copy_id: harness.id,
+        project_id: harness.project_id,
+        root: harness.root
+      })
     else
       {:error, {:missing, key}} ->
         conn |> put_status(400) |> json(%{error: "#{key} is required"})
@@ -58,7 +62,11 @@ defmodule CodeMySpecWeb.HarnessLookupController do
   defp issue(project, params) do
     scope = %Scope{active_project_id: project.id, active_project: project}
 
-    Harnesses.issue(scope, params["harness_id"], label: params["label"])
+    WorkingCopies.issue(
+      scope,
+      params["working_copy_id"] || params["harness_id"],
+      label: params["label"]
+    )
   end
 
   defp fetch_project(project_id) do
@@ -76,10 +84,10 @@ defmodule CodeMySpecWeb.HarnessLookupController do
   end
 
   def show(conn, %{"id" => id}) do
-    case Harnesses.fetch(id) do
+    case WorkingCopies.fetch(id) do
       {:ok, harness} ->
         json(conn, %{
-          harness_id: harness.id,
+          working_copy_id: harness.id,
           project_id: harness.project_id,
           root: harness.root,
           label: harness.label

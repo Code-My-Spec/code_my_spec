@@ -3,7 +3,7 @@ defmodule CmsHarness.Web.Router do
   The hook surface, addressed by harness id.
 
   Every request names the working copy it is about, in the path:
-  `/api/harnesses/<harness_id>/hooks/<name>`. Onboarding writes that id into
+  `/api/harnesses/<working_copy_id>/hooks/<name>`. Onboarding writes that id into
   the plugin's `hooks.json`, so the address is fixed before the agent starts
   and nothing is resolved at request time.
 
@@ -36,7 +36,7 @@ defmodule CmsHarness.Web.Router do
   #
   # `hook_name/1` still reads the last path segment, so these are the same
   # actions with the same names one segment deeper.
-  scope "/api/harnesses/:harness_id/hooks", CmsHarness.Web do
+  scope "/api/harnesses/:working_copy_id/hooks", CmsHarness.Web do
     pipe_through(:hook)
 
     post("/session-start", HooksController, :handle)
@@ -140,7 +140,7 @@ defmodule CmsHarness.Web.Router do
   # any machine serving more than one working copy is never. Every turn was
   # forwarded correctly and then dropped on the floor with a warning nobody
   # reads, which looks identical to an agent that never ran.
-  scope "/api/harnesses/:harness_id/v1", CmsHarness.Web do
+  scope "/api/harnesses/:working_copy_id/v1", CmsHarness.Web do
     pipe_through(:hook)
 
     post("/messages", MessagesController, :create)

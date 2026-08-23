@@ -85,7 +85,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   stops existing, and this clause can go.
   """
   @spec load(Scope.t()) :: {:ok, context()}
-  def load(%Scope{active_harness_id: nil, active_project_id: project_id} = scope) do
+  def load(%Scope{active_working_copy_id: nil, active_project_id: project_id} = scope) do
     Logger.warning(
       "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
         "copy — every checkout's files are read together, so a file present in one and " <>
@@ -95,9 +95,10 @@ defmodule CodeMySpec.Requirements.Preloader do
     do_load(scope, nil)
   end
 
-  def load(%Scope{active_harness_id: harness_id} = scope), do: do_load(scope, harness_id)
+  def load(%Scope{active_working_copy_id: working_copy_id} = scope),
+    do: do_load(scope, working_copy_id)
 
-  defp do_load(%Scope{active_project_id: project_id} = scope, harness_id) do
+  defp do_load(%Scope{active_project_id: project_id} = scope, working_copy_id) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -130,7 +131,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     all_files =
       File
       |> where([f], f.project_id == ^project_id)
-      |> scope_to_harness(harness_id)
+      |> scope_to_harness(working_copy_id)
       |> Repo.all()
 
     files_by_component =
@@ -259,8 +260,8 @@ defmodule CodeMySpec.Requirements.Preloader do
   # UI entirely and failed 86 spex.
   defp scope_to_harness(query, nil), do: query
 
-  defp scope_to_harness(query, harness_id),
-    do: where(query, [f], f.harness_id == ^harness_id)
+  defp scope_to_harness(query, working_copy_id),
+    do: where(query, [f], f.working_copy_id == ^working_copy_id)
 
   defp rules_by_story(project_id) do
     Rule

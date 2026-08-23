@@ -12,7 +12,7 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.Scanner.ReadModel
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -183,7 +183,7 @@ defmodule CodeMySpec.Files do
   Components are project-level on purpose — a component id is stable, and 112
   stories and 4048 requirements link to one. Whether a *checkout* has a spec for
   it is a different question, and this is the side that answers it: `files`
-  carries both `component_id` and `harness_id`, so presence is already per
+  carries both `component_id` and `working_copy_id`, so presence is already per
   working copy without anything moving.
 
   The distinction has teeth. `CodeMySpecLocalWeb.EpicsLive` was deleted from the
@@ -358,17 +358,17 @@ defmodule CodeMySpec.Files do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     # A writer that named its working copy gets that one; one that did not gets
-    # the project's nil-object harness. `harness_id` is NOT NULL because
+    # the project's nil-object harness. `working_copy_id` is NOT NULL because
     # `conflict_target` has to name a unique index and ON CONFLICT never matches
     # a null — so "no working copy" needs a row to point at rather than a hole.
-    harness_id = scope.active_harness_id || Harnesses.ensure_default(scope)
+    working_copy_id = scope.active_working_copy_id || WorkingCopies.ensure_default(scope)
 
     entries =
       Enum.map(file_attrs_list, fn attrs ->
         attrs
         |> Map.drop(@scanner_scratch)
         |> Map.put(:project_id, project_id)
-        |> Map.put(:harness_id, harness_id)
+        |> Map.put(:working_copy_id, working_copy_id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
       end)
@@ -381,7 +381,7 @@ defmodule CodeMySpec.Files do
         {count, batch} =
           Repo.insert_all(File, chunk,
             on_conflict: {:replace, @replaceable_fields ++ [:updated_at]},
-            conflict_target: [:project_id, :harness_id, :path],
+            conflict_target: [:project_id, :working_copy_id, :path],
             returning: true
           )
 
@@ -422,7 +422,10 @@ defmodule CodeMySpec.Files do
       attrs
       |> Map.drop(@scanner_scratch)
       |> Map.put(:project_id, project_id)
-      |> Map.put(:harness_id, scope.active_harness_id || Harnesses.ensure_default(scope))
+      |> Map.put(
+        :working_copy_id,
+        scope.active_working_copy_id || WorkingCopies.ensure_default(scope)
+      )
       |> Map.put(:inserted_at, now)
       |> Map.put(:updated_at, now)
 
@@ -440,7 +443,7 @@ defmodule CodeMySpec.Files do
              :validation_errors,
              :updated_at
            ]},
-        conflict_target: [:project_id, :harness_id, :path],
+        conflict_target: [:project_id, :working_copy_id, :path],
         returning: true
       )
 
@@ -470,13 +473,13 @@ defmodule CodeMySpec.Files do
     |> Repo.delete_all()
   end
 
-  # `is_nil(f.harness_id)` is deliberately *not* matched when a harness is set:
+  # `is_nil(f.working_copy_id)` is deliberately *not* matched when a harness is set:
   # a row owned by nobody is not this checkout's to delete, and leaving it makes
   # the state visible rather than quietly disappearing it.
-  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+  defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
-  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
-    do: where(query, [f], f.harness_id == ^harness_id)
+  defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [f], f.working_copy_id == ^working_copy_id)
 
   @doc """
   Delete specific files by their paths.

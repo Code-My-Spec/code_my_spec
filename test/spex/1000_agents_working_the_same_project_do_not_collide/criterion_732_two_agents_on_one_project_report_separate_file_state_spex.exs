@@ -91,16 +91,16 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
             }
           )
 
-        second_id = second_reply["harness_id"] || second_reply[:harness_id]
+        second_id = second_reply["harness_id"] || second_reply[:working_copy_id]
 
-        refute second_id == context.scope.active_harness_id,
+        refute second_id == context.scope.active_working_copy_id,
                "two working copies must be two agents; the server issued one id for both"
 
         {:ok,
          context
          |> Map.put(:second_socket, second)
          |> Map.put(:second_root, second_root)
-         |> Map.put(:second_harness_id, second_id)}
+         |> Map.put(:second_working_copy_id, second_id)}
       end
 
       given_ "each has synced its own files", context do
@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       given_ "the first agent is working an implementation task", context do
         session_id = "spex-first-agent-#{System.unique_integer([:positive])}"
 
-        post_hook(context.scope.active_harness_id, "/api/hooks/session-start", %{
+        post_hook(context.scope.active_working_copy_id, "/api/hooks/session-start", %{
           "session_id" => session_id
         })
 
@@ -157,7 +157,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       when_ "one agent's analyzer records a failing test", context do
         response =
           use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            post_hook(context.scope.active_harness_id, "/api/hooks/stop", %{
+            post_hook(context.scope.active_working_copy_id, "/api/hooks/stop", %{
               "session_id" => context.session_id,
               "test_output_files" => %{
                 "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -184,7 +184,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
       then_ "the other agent's stop hook reports nothing about it", context do
         other =
-          post_hook(context.second_harness_id, "/api/hooks/stop", %{
+          post_hook(context.second_working_copy_id, "/api/hooks/stop", %{
             "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}"
           })
 

@@ -27,7 +27,7 @@ defmodule CmsHarness.Web.AnalysisController do
 
   @valid_sources ~w(compiler credo exunit spex)
 
-  def run(conn, %{"harness_id" => harness_id} = params) do
+  def run(conn, %{"harness_id" => working_copy_id} = params) do
     source = Map.get(params, "source")
     args = Map.get(params, "args", [])
 
@@ -39,7 +39,7 @@ defmodule CmsHarness.Web.AnalysisController do
         fail(conn, 422, "args must be a list of strings")
 
       true ->
-        dispatch(conn, harness_id, source, args)
+        dispatch(conn, working_copy_id, source, args)
     end
   end
 
@@ -57,14 +57,14 @@ defmodule CmsHarness.Web.AnalysisController do
   `run` action above already relies on. Fire it in the background and be
   notified when it returns.
   """
-  def wait(conn, %{"harness_id" => harness_id}) do
-    case WorkingCopies.root(harness_id) do
+  def wait(conn, %{"harness_id" => working_copy_id}) do
+    case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
         Logger.info("[CmsHarness] waiting for analysis to go idle")
         reply_wait(conn, ChannelClient.await_idle(root))
 
       :unknown ->
-        fail(conn, 404, "this machine does not serve harness id #{harness_id}")
+        fail(conn, 404, "this machine does not serve harness id #{working_copy_id}")
 
       # 503, not 404: the id may be fine and nobody could check. A 404 tells the
       # caller their id is wrong, which is the same wrong turn the hook refusal
@@ -74,7 +74,7 @@ defmodule CmsHarness.Web.AnalysisController do
           conn,
           503,
           "could not reach the CodeMySpec server to resolve harness id " <>
-            "#{harness_id}: #{inspect(reason, limit: 5)}"
+            "#{working_copy_id}: #{inspect(reason, limit: 5)}"
         )
     end
   end
@@ -94,8 +94,8 @@ defmodule CmsHarness.Web.AnalysisController do
   defp reply_wait(conn, {:error, reason}),
     do: fail(conn, 502, "could not wait for analysis: #{inspect(reason)}")
 
-  defp dispatch(conn, harness_id, source, args) do
-    case WorkingCopies.root(harness_id) do
+  defp dispatch(conn, working_copy_id, source, args) do
+    case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
         Logger.info("[CmsHarness] agent run: #{source} #{Enum.join(args, " ")}")
         reply(conn, ChannelClient.await_analysis(root, source, args))
@@ -105,7 +105,7 @@ defmodule CmsHarness.Web.AnalysisController do
       # same refusal the hooks give, for the same reason — a directory is not a
       # working copy's name.
       :unknown ->
-        fail(conn, 404, "this machine does not serve harness id #{harness_id}")
+        fail(conn, 404, "this machine does not serve harness id #{working_copy_id}")
 
       # 503, not 404: the id may be fine and nobody could check. A 404 tells the
       # caller their id is wrong, which is the same wrong turn the hook refusal
@@ -115,7 +115,7 @@ defmodule CmsHarness.Web.AnalysisController do
           conn,
           503,
           "could not reach the CodeMySpec server to resolve harness id " <>
-            "#{harness_id}: #{inspect(reason, limit: 5)}"
+            "#{working_copy_id}: #{inspect(reason, limit: 5)}"
         )
     end
   end

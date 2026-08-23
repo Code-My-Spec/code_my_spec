@@ -121,7 +121,7 @@ defmodule CmsHarness.Web.MessagesController do
           "[CmsHarness] turn not recorded: this request did not name a working copy and " <>
             "this harness serves #{length(Projects.list())} of them, so there is nothing " <>
             "to attribute it to. Point ANTHROPIC_BASE_URL at " <>
-            "/api/harnesses/<harness_id> — `mix cms.harness.onboard` writes it."
+            "/api/harnesses/<working_copy_id> — `mix cms.harness.onboard` writes it."
         )
 
       root ->
@@ -152,7 +152,7 @@ defmodule CmsHarness.Web.MessagesController do
   # fallback and the unexpanded-variable guard: same question, same answer, and
   # a second way to resolve an id is a second way for them to disagree.
   defp working_copy(conn) do
-    case conn.params["harness_id"] || header_id(conn) do
+    case conn.params["working_copy_id"] || conn.params["harness_id"] || header_id(conn) do
       id when is_binary(id) and id != "" -> from_id(id)
       _ -> served_root()
     end

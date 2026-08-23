@@ -80,12 +80,12 @@ defmodule CmsHarnessTest.Projects do
     # Every working copy carries the id the server issued it. Hooks are
     # addressed to that id, so a fixture without one is not a checkout the
     # harness can be asked about.
-    harness_id = Keyword.get(opts, :harness_id, Ecto.UUID.generate())
+    working_copy_id = Keyword.get(opts, :working_copy_id, Ecto.UUID.generate())
 
-    if harness_id do
+    if working_copy_id do
       :ok =
         CmsHarness.HarnessConfig.write(root, %{
-          harness_id: harness_id,
+          working_copy_id: working_copy_id,
           project_id: id && to_string(id),
           root: root
         })
@@ -93,7 +93,7 @@ defmodule CmsHarnessTest.Projects do
 
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
 
-    %{root: root, id: id && to_string(id), harness_id: harness_id}
+    %{root: root, id: id && to_string(id), working_copy_id: working_copy_id}
   end
 
   @doc """

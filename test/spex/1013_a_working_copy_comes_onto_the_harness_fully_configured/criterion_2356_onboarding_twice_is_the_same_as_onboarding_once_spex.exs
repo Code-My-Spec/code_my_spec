@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2356"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2356"}, pretty: true)
           )
 
         Mix.Task.reenable("cms.harness.onboard")
@@ -68,12 +68,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
       end
 
       then_ "no new identity is issued", context do
-        assert context.second.harness_id == context.first.harness_id,
+        assert context.second.working_copy_id == context.first.working_copy_id,
                "the second run issued a different harness id. Problems, files and " <>
                  "the lease are all keyed on it, so everything recorded under the " <>
                  "first id is orphaned while the working copy carries on as though " <>
-                 "nothing happened. Got #{inspect(context.second.harness_id)}, was " <>
-                 inspect(context.first.harness_id)
+                 "nothing happened. Got #{inspect(context.second.working_copy_id)}, was " <>
+                 inspect(context.first.working_copy_id)
 
         {:ok, context}
       end

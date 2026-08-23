@@ -12,7 +12,7 @@ defmodule CodeMySpec.Files.File do
   import Ecto.Changeset
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Harnesses.Harness
+  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Stories.Story
 
@@ -107,7 +107,7 @@ defmodule CodeMySpec.Files.File do
 
     # The working copy these were observed from. `nil` means "recorded before
     # harnesses existed"; the first harness to join adopts them.
-    belongs_to :harness, Harness, type: :binary_id
+    belongs_to :working_copy, WorkingCopy, type: :binary_id
 
     timestamps()
   end
@@ -123,14 +123,14 @@ defmodule CodeMySpec.Files.File do
     :component_id,
     :story_id,
     :project_id,
-    :harness_id
+    :working_copy_id
   ]
 
   def changeset(file, attrs) do
     file
     |> cast(attrs, @cast_fields)
     |> validate_required([:path, :role, :project_id])
-    |> unique_constraint([:project_id, :harness_id, :path])
+    |> unique_constraint([:project_id, :working_copy_id, :path])
   end
 
   @doc "All valid file roles."

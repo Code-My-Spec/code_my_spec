@@ -38,7 +38,7 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
   setup do
     id = "self-call-#{System.unique_integer([:positive])}"
     {:ok, _} = Registry.register(HarnessRegistry, id, :test)
-    %{harness_id: id}
+    %{working_copy_id: id}
   end
 
   test "a request to the calling process is refused rather than deadlocking", ctx do
@@ -47,14 +47,14 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
     # useful; the assertion is that it comes back at all.
     task =
       Task.async(fn ->
-        Registry.register(HarnessRegistry, ctx.harness_id <> "-inner", :test)
-        Analysis.harness_fs_request(ctx.harness_id <> "-inner", "read_file", %{}, 1_000)
+        Registry.register(HarnessRegistry, ctx.working_copy_id <> "-inner", :test)
+        Analysis.harness_fs_request(ctx.working_copy_id <> "-inner", "read_file", %{}, 1_000)
       end)
 
     assert {:error, {:harness_self_call, details}} = Task.await(task, 2_000)
     assert details.op == "read_file"
 
-    assert details.harness_id =~ "-inner",
+    assert details.working_copy_id =~ "-inner",
            "the refusal names the working copy it was for — the whole complaint " <>
              "against the old atom was that it arrived bare"
   end
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
     assert {:error, {:harness_not_registered, details}} =
              Analysis.harness_fs_request("nobody-serves-this", "read_file", %{}, 1_000)
 
-    assert details == %{harness_id: "nobody-serves-this", op: "read_file"}
+    assert details == %{working_copy_id: "nobody-serves-this", op: "read_file"}
   end
 
   # The two arrive at the same `catch` and used to leave it as the same atom.
@@ -77,7 +77,9 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
       end)
 
     assert {:error, {self_tag, _}} = Task.await(task, 2_000)
-    assert {:error, {absent_tag, _}} = Analysis.harness_fs_request("nobody", "read_file", %{}, 1_000)
+
+    assert {:error, {absent_tag, _}} =
+             Analysis.harness_fs_request("nobody", "read_file", %{}, 1_000)
 
     refute self_tag == absent_tag
   end

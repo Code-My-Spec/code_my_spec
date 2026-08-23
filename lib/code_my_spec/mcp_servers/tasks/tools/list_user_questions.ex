@@ -59,7 +59,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   def execute(_params, frame) do
     scope = frame.assigns[:current_scope]
 
-    case Sessions.external_id_for_harness(harness_id(scope)) do
+    case Sessions.external_id_for_harness(working_copy_id(scope)) do
       nil ->
         {:reply, Response.tool() |> Response.text(no_session()), frame}
 
@@ -111,6 +111,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
     """
   end
 
-  defp harness_id(%{active_harness_id: id}) when is_binary(id), do: id
-  defp harness_id(_scope), do: nil
+  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
+  defp working_copy_id(_scope), do: nil
 end

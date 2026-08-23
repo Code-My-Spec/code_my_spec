@@ -163,7 +163,7 @@ defmodule CodeMySpecLocalWeb.Router do
   # asked it to touch.
   #
   # The working copy still knows where it is: `.cms_harness.json` holds
-  # `{harness_id, project_id, root}` at its root, and `harnesses.root` mirrors
+  # `{working_copy_id, project_id, root}` at its root, and `harnesses.root` mirrors
   # it. So the directory travels in config, next to the id that authorises it,
   # and never on the wire. An unknown id fails closed.
   pipeline :hook do

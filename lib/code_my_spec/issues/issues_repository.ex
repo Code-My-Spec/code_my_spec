@@ -300,7 +300,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     # From the scope, never from the caller — an issue is raised *by* a working
     # copy, and letting a report name someone else's would make the field worse
     # than absent. Nil where there is no checkout, which is the web UI.
-    |> Ecto.Changeset.put_change(:harness_id, scope.active_harness_id)
+    |> Ecto.Changeset.put_change(:working_copy_id, scope.active_working_copy_id)
   end
 
   def upsert_issue(%Scope{} = scope, attrs) do

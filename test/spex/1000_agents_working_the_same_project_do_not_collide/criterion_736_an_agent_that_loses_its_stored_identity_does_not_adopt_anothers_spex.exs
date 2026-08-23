@@ -81,18 +81,18 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
     end
   end
 
-  defp join_as(context, harness_id) do
+  defp join_as(context, working_copy_id) do
     UserSocket
     |> socket("harness_forget_#{System.unique_integer([:positive])}", %{scope: context.scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
       "contract_version" => @contract_version,
-      "harness_id" => harness_id,
+      "harness_id" => working_copy_id,
       "root" => @root,
       "label" => "the harness at #{@root}"
     })
   end
 
-  defp id_of(reply), do: reply["harness_id"] || reply[:harness_id]
+  defp id_of(reply), do: reply["harness_id"] || reply[:working_copy_id]
 
   defp observation(path) do
     %{

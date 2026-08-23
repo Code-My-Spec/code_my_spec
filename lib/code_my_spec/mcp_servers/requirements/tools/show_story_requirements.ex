@@ -77,7 +77,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   # transaction, so the partial projection is real; making it atomic is a
   # lock-duration decision on a database three working copies share.
   defp reconciling_note(scope) do
-    case ReconcileRegistry.in_flight(scope.active_harness_id) do
+    case ReconcileRegistry.in_flight(scope.active_working_copy_id) do
       nil ->
         ""
 

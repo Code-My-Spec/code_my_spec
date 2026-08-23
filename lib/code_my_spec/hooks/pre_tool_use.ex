@@ -301,7 +301,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
         Logger.warning(
           "[PreToolUse] not rewriting `mix #{task}`: " <>
             "project_id=#{inspect(scope && scope.active_project_id)} " <>
-            "harness=#{inspect(scope && scope.active_harness_id)} " <>
+            "harness=#{inspect(scope && scope.active_working_copy_id)} " <>
             "cwd=#{inspect(scope && scope.cwd)}. The run will not be recorded."
         )
 
@@ -355,11 +355,11 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # `X-Working-Dir` header — and separating them is the point: a path on the wire
   # is a filesystem location supplied by the caller, which the server then writes
   # to, and a wrong one succeeds against the wrong disk rather than failing.
-  defp analysis_endpoint(%{cwd: cwd, active_harness_id: id})
+  defp analysis_endpoint(%{cwd: cwd, active_working_copy_id: id})
        when is_binary(cwd) and is_binary(id),
        do: {:ok, {:local, id}}
 
-  defp analysis_endpoint(%{active_harness_id: id}) when is_binary(id),
+  defp analysis_endpoint(%{active_working_copy_id: id}) when is_binary(id),
     do: {:ok, {:harness, id}}
 
   defp analysis_endpoint(_scope), do: :error

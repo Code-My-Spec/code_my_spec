@@ -163,10 +163,10 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
     # PreToolUseController. This module used to keep its own copy of the regex
     # and its own arg parsing, which meant the pipe-swallowing bug had to be
     # found and fixed twice.
-    with %{active_project_id: project_id, cwd: cwd, active_harness_id: harness_id}
-         when not is_nil(project_id) and is_binary(cwd) and is_binary(harness_id) <- scope,
+    with %{active_project_id: project_id, cwd: cwd, active_working_copy_id: working_copy_id}
+         when not is_nil(project_id) and is_binary(cwd) and is_binary(working_copy_id) <- scope,
          {:ok, task, source, args} <- PreToolUse.classify_test_command(command) do
-      curl = build_curl(conn, harness_id, source, args)
+      curl = build_curl(conn, working_copy_id, source, args)
 
       {:deny,
        "CodeMySpec routes `mix #{task}` through its analysis service so runs share " <>
@@ -183,12 +183,12 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
   # to be `X-Working-Dir: #{cwd}`, which is a path the agent then pastes into a
   # shell command that the server writes results against — wrong once means the
   # wrong disk, silently.
-  defp build_curl(conn, harness_id, source, args) do
+  defp build_curl(conn, working_copy_id, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
 
     "curl -sS -X POST http://localhost:#{conn.port}/api/analysis/run " <>
       "-H 'Content-Type: application/json' " <>
-      "-H 'X-Harness-Id: #{harness_id}' " <>
+      "-H 'X-Harness-Id: #{working_copy_id}' " <>
       "--data #{shell_quote(payload)}"
   end
 

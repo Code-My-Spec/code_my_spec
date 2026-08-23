@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
         {:ok,
          context
          |> Map.put(:holder, socket)
-         |> Map.put(:holder_id, reply["harness_id"] || reply[:harness_id])}
+         |> Map.put(:holder_id, reply["harness_id"] || reply[:working_copy_id])}
       end
 
       when_ "a second agent starts against that same working copy", context do
@@ -96,10 +96,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
 
   defp topic(context), do: "harness_project:#{context.project.id}"
 
-  defp join_payload(harness_id) do
+  defp join_payload(working_copy_id) do
     %{
       "contract_version" => @contract_version,
-      "harness_id" => harness_id,
+      "harness_id" => working_copy_id,
       "root" => @root,
       "label" => "the harness at #{@root}"
     }

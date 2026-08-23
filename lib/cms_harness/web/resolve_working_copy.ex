@@ -9,7 +9,7 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
 
   ## What it resolves from, in order
 
-  1. `harness_id` in the path, or `X-Harness-Id`. A request that names a working
+  1. `working_copy_id` in the path, or `X-Harness-Id`. A request that names a working
      copy is more specific than one that describes where it was fired.
   2. `X-Working-Dir`, or `cwd` in the body. Every Claude Code hook payload
      carries `cwd` — the shared base in the 2.1.237 binary is `{session_id,
@@ -85,8 +85,13 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
     end
   end
 
+  # Both names, new one first. The path segment is `:working_copy_id` now, and
+  # the header is still `X-Harness-Id` on every plugin generated before this —
+  # `plugin.json` interpolates an environment variable, so an agent that has not
+  # re-onboarded keeps sending the old one until it does.
   defp named_id(conn) do
-    conn.params["harness_id"] || header(conn, "x-harness-id")
+    conn.params["working_copy_id"] || conn.params["harness_id"] ||
+      header(conn, "x-working-copy-id") || header(conn, "x-harness-id")
   end
 
   defp working_dir(conn) do

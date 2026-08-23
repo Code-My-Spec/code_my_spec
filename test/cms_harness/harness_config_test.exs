@@ -3,7 +3,7 @@ defmodule CmsHarness.HarnessConfigTest do
   A working copy says which harness it is, in one file.
 
   There used to be two writers: `HarnessIdentity` wrote an id-only
-  `.cms_harness_id` when the server issued one, and this wrote
+  `.cms_working_copy_id` when the server issued one, and this wrote
   `.cms_harness.json` at onboarding. A copy that went through both carried two
   files naming two harnesses — devops-qa held `5d5c599b` in one and `8a663385`
   in the other — with nothing on disk saying which counted. Reading preferred
@@ -44,9 +44,11 @@ defmodule CmsHarness.HarnessConfigTest do
 
   describe "read/1" do
     test "returns what was written, root included", %{root: root} do
-      :ok = HarnessConfig.write(root, %{harness_id: @id, project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "p1", root: root})
 
-      assert {:ok, %{harness_id: @id, project_id: "p1", root: written}} = HarnessConfig.read(root)
+      assert {:ok, %{working_copy_id: @id, project_id: "p1", root: written}} =
+               HarnessConfig.read(root)
+
       assert Path.expand(written) == Path.expand(root)
     end
 
@@ -57,7 +59,7 @@ defmodule CmsHarness.HarnessConfigTest do
     # The legacy id-only file is gone, not fallen back to. A copy still holding
     # one has no identity as far as this is concerned, which is the point: two
     # files is the state being removed.
-    test "a legacy .cms_harness_id is not read", %{root: root} do
+    test "a legacy .cms_working_copy_id is not read", %{root: root} do
       File.write!(Path.join(root, ".cms_harness_id"), @other <> "\n")
 
       assert :none = HarnessConfig.read(root),
@@ -92,24 +94,24 @@ defmodule CmsHarness.HarnessConfigTest do
     # The override survives for the case it was written for: no file. See
     # `HarnessConfigPrecedenceTest` for the full precedence.
     test "does not override a file that names an id", %{root: root} do
-      :ok = HarnessConfig.write(root, %{harness_id: @id, project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "p1", root: root})
       System.put_env("CMS_HARNESS_ID", @other)
 
-      assert {:ok, %{harness_id: @id}} = HarnessConfig.read(root),
+      assert {:ok, %{working_copy_id: @id}} = HarnessConfig.read(root),
              "the file is the one that knows which working copy it is sitting in"
     end
 
     test "answers a working copy that has no file — the case it exists for", %{root: root} do
       System.put_env("CMS_HARNESS_ID", @other)
 
-      assert {:ok, %{harness_id: @other}} = HarnessConfig.read(root)
+      assert {:ok, %{working_copy_id: @other}} = HarnessConfig.read(root)
     end
 
     test "reading it does not write it — an override that outlived itself would be worse",
          %{root: root} do
       System.put_env("CMS_HARNESS_ID", @other)
 
-      assert {:ok, %{harness_id: @other}} = HarnessConfig.read(root)
+      assert {:ok, %{working_copy_id: @other}} = HarnessConfig.read(root)
 
       refute File.exists?(HarnessConfig.path(root)),
              "a one-off override persisted to disk survives the run that set it"
@@ -125,16 +127,16 @@ defmodule CmsHarness.HarnessConfigTest do
       File.write!(HarnessConfig.path(root), "not json")
 
       assert {:error, :existing_identity_unreadable} =
-               HarnessConfig.write(root, %{harness_id: @id, project_id: "p1", root: root})
+               HarnessConfig.write(root, %{working_copy_id: @id, project_id: "p1", root: root})
 
       assert File.read!(HarnessConfig.path(root)) == "not json"
     end
 
     test "overwrites a readable config", %{root: root} do
-      :ok = HarnessConfig.write(root, %{harness_id: @other, project_id: "p1", root: root})
-      :ok = HarnessConfig.write(root, %{harness_id: @id, project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: @other, project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "p1", root: root})
 
-      assert {:ok, %{harness_id: @id}} = HarnessConfig.read(root)
+      assert {:ok, %{working_copy_id: @id}} = HarnessConfig.read(root)
     end
   end
 end

@@ -58,8 +58,8 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
 
   def check(_scope, nil), do: nil
 
-  def check(%Scope{active_harness_id: harness_id} = scope, session_id)
-      when is_binary(harness_id) and is_binary(session_id) do
+  def check(%Scope{active_working_copy_id: working_copy_id} = scope, session_id)
+      when is_binary(working_copy_id) and is_binary(session_id) do
     # The cheap read: one indexed query for this working copy's problem count
     # and the most recent change among them. Nothing is loaded.
     case Problems.watermark(scope) do
@@ -72,10 +72,10 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
         nil
 
       {_count, latest} = mark ->
-        if already_told?(harness_id, session_id, mark) do
+        if already_told?(working_copy_id, session_id, mark) do
           nil
         else
-          record(harness_id, session_id, mark)
+          record(working_copy_id, session_id, mark)
           message(scope, latest)
         end
     end
@@ -90,12 +90,12 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
   #
   # In memory because it is worth exactly one duplicate alert after a restart,
   # which is cheaper than a column and a write on every tool call.
-  defp already_told?(harness_id, session_id, mark) do
-    :persistent_term.get({__MODULE__, harness_id, session_id}, nil) == mark
+  defp already_told?(working_copy_id, session_id, mark) do
+    :persistent_term.get({__MODULE__, working_copy_id, session_id}, nil) == mark
   end
 
-  defp record(harness_id, session_id, mark) do
-    :persistent_term.put({__MODULE__, harness_id, session_id}, mark)
+  defp record(working_copy_id, session_id, mark) do
+    :persistent_term.put({__MODULE__, working_copy_id, session_id}, mark)
   end
 
   # Sources named, counts only, no file paths. The detail is one `list_problems`

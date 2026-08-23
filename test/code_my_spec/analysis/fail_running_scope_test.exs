@@ -2,7 +2,7 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
   @moduledoc """
   Closing runs is a write, and a scope with no harness names no runs to close.
 
-  `fail_running/3` filtered with `where([r], r.harness_id == ^scope.active_harness_id)`.
+  `fail_running/3` filtered with `where([r], r.working_copy_id == ^scope.active_working_copy_id)`.
   Ecto forbids `== nil` and raises `ArgumentError` rather than matching nothing,
   so a scope without a harness crashed the caller instead of closing nothing —
   six `%ArgumentError{}` out of `Analysis.fail_in_flight/3` during a channel
@@ -32,7 +32,8 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
     scope = full_scope_fixture()
     run = running_run(scope)
 
-    assert {:ok, 0} = RunsRepository.fail_running(%{scope | active_harness_id: nil}, :probe, [])
+    assert {:ok, 0} =
+             RunsRepository.fail_running(%{scope | active_working_copy_id: nil}, :probe, [])
 
     assert RunsRepository.get_run_in_project(scope, run.id).status == :running,
            "another checkout's run must survive a scope that names no harness"

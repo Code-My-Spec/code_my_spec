@@ -56,7 +56,7 @@ defmodule CodeMySpec.Sessions.Session do
     embeds_many :subagents, Subagent, on_replace: :delete
 
     # Which working copy this session is running in. Nil outside a harness.
-    field :harness_id, :binary_id
+    field :working_copy_id, :binary_id
 
     belongs_to :project, Project, type: :binary_id
     belongs_to :account, Account, type: :binary_id
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Sessions.Session do
       :type,
       :status,
       :external_conversation_id,
-      :harness_id,
+      :working_copy_id,
       :component_module_name,
       :state,
       :continuous,

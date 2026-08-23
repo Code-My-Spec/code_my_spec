@@ -34,7 +34,7 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
   defp file!(scope, path, mtime) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       path: path,
       role: :implementation,
       valid: true,

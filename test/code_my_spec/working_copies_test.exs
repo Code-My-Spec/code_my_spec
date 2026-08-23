@@ -1,4 +1,4 @@
-defmodule CodeMySpec.HarnessesTest do
+defmodule CodeMySpec.WorkingCopiesTest do
   @moduledoc """
   Which working copies a project has, and how each one gets its identity.
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.HarnessesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems
 
   setup do
@@ -31,7 +31,7 @@ defmodule CodeMySpec.HarnessesTest do
 
   describe "issue/3" do
     test "a checkout that has never connected is minted one", %{scope: scope} do
-      assert {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /a")
+      assert {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
 
       assert harness.project_id == scope.active_project_id
       assert harness.label == "the harness at /a"
@@ -39,25 +39,25 @@ defmodule CodeMySpec.HarnessesTest do
     end
 
     test "a checkout presenting its id is recognised, not minted again", %{scope: scope} do
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
 
-      assert {:ok, same} = Harnesses.issue(scope, first.id, label: "the harness at /a")
+      assert {:ok, same} = WorkingCopies.issue(scope, first.id, label: "the harness at /a")
 
       assert same.id == first.id
 
-      assert Enum.count(Harnesses.list_harnesses(scope), &(&1.id == first.id)) == 1,
+      assert Enum.count(WorkingCopies.list_harnesses(scope), &(&1.id == first.id)) == 1,
              "recognising an id must not leave a second row behind"
     end
 
     test "two checkouts of one project are two harnesses", %{scope: scope} do
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")
-      {:ok, second} = Harnesses.issue(scope, nil, label: "the harness at /b")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
+      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /b")
 
       refute first.id == second.id,
              "a checkout with no id has never been seen — sharing one with another " <>
                "checkout is the collision this grain exists to remove"
 
-      ids = Enum.map(Harnesses.list_harnesses(scope), & &1.id)
+      ids = Enum.map(WorkingCopies.list_harnesses(scope), & &1.id)
       assert first.id in ids and second.id in ids
     end
 
@@ -65,8 +65,8 @@ defmodule CodeMySpec.HarnessesTest do
       # Two containers at /workspace/app on hosts with generated names produce
       # the same string. That collision is exactly why the label is display only
       # and the id is issued.
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /workspace/app")
-      {:ok, second} = Harnesses.issue(scope, nil, label: "the harness at /workspace/app")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /workspace/app")
+      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /workspace/app")
 
       refute first.id == second.id
     end
@@ -74,7 +74,7 @@ defmodule CodeMySpec.HarnessesTest do
     test "an id naming no harness is reissued rather than refused", %{scope: scope} do
       stale = Ecto.UUID.generate()
 
-      assert {:ok, harness} = Harnesses.issue(scope, stale, label: "the harness at /a")
+      assert {:ok, harness} = WorkingCopies.issue(scope, stale, label: "the harness at /a")
 
       refute harness.id == stale,
              "a row deleted under a working copy that still holds the file must not " <>
@@ -82,15 +82,15 @@ defmodule CodeMySpec.HarnessesTest do
     end
 
     test "a malformed id is reissued rather than crashing the join", %{scope: scope} do
-      assert {:ok, harness} = Harnesses.issue(scope, "not-a-uuid", label: "the harness at /a")
+      assert {:ok, harness} = WorkingCopies.issue(scope, "not-a-uuid", label: "the harness at /a")
       assert harness.id
     end
 
     test "an id belonging to another project does not resolve", %{scope: scope} do
       other = full_scope_fixture()
-      {:ok, theirs} = Harnesses.issue(other, nil, label: "the harness at /theirs")
+      {:ok, theirs} = WorkingCopies.issue(other, nil, label: "the harness at /theirs")
 
-      assert {:ok, mine} = Harnesses.issue(scope, theirs.id, label: "the harness at /mine")
+      assert {:ok, mine} = WorkingCopies.issue(scope, theirs.id, label: "the harness at /mine")
 
       refute mine.id == theirs.id,
              "a misconfigured checkout must not adopt a harness belonging to a " <>
@@ -100,18 +100,18 @@ defmodule CodeMySpec.HarnessesTest do
     end
 
     test "rejoining refreshes the label, because a checkout can move", %{scope: scope} do
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /old")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /old")
 
-      {:ok, same} = Harnesses.issue(scope, first.id, label: "the harness at /new")
+      {:ok, same} = WorkingCopies.issue(scope, first.id, label: "the harness at /new")
 
       assert same.id == first.id
       assert same.label == "the harness at /new"
     end
 
     test "a join carrying no label leaves the last known one alone", %{scope: scope} do
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
 
-      {:ok, same} = Harnesses.issue(scope, first.id)
+      {:ok, same} = WorkingCopies.issue(scope, first.id)
 
       assert same.label == "the harness at /a",
              "losing the only human-readable name for a checkout would leave a " <>
@@ -125,8 +125,8 @@ defmodule CodeMySpec.HarnessesTest do
     # project, that meant each checkout's sync erased the other's files, so the
     # requirement graph — computed from those rows — described neither.
     defp harness_scope(scope, label) do
-      {:ok, harness} = Harnesses.issue(scope, nil, label: label)
-      %{scope | active_harness_id: harness.id}
+      {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
+      %{scope | active_working_copy_id: harness.id}
     end
 
     defp sync(scope, paths) do
@@ -141,7 +141,7 @@ defmodule CodeMySpec.HarnessesTest do
     defp paths_of(scope) do
       scope
       |> Files.list_files()
-      |> Enum.filter(&(&1.harness_id == scope.active_harness_id))
+      |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
       |> Enum.map(& &1.path)
       |> Enum.sort()
     end
@@ -170,7 +170,7 @@ defmodule CodeMySpec.HarnessesTest do
 
       assert paths_of(b) == ["lib/shared.ex"],
              "the same path in two checkouts is two files. UNIQUE " <>
-               "(project_id, harness_id, path) is what makes that expressible — under " <>
+               "(project_id, working_copy_id, path) is what makes that expressible — under " <>
                "the old (project_id, path) b's upsert conflicted onto a's row and b " <>
                "appeared to have no such file"
     end
@@ -199,8 +199,8 @@ defmodule CodeMySpec.HarnessesTest do
 
       # `Repo.one/1` raises on two rows, so an unscoped read here was not merely
       # noisy — it crashed the moment a second checkout held the same path.
-      assert Files.get_by_path(a, "lib/shared.ex").harness_id == a.active_harness_id
-      assert Files.get_by_path(b, "lib/shared.ex").harness_id == b.active_harness_id
+      assert Files.get_by_path(a, "lib/shared.ex").working_copy_id == a.active_working_copy_id
+      assert Files.get_by_path(b, "lib/shared.ex").working_copy_id == b.active_working_copy_id
     end
 
     test "a scope holding no harness still reconciles the whole project", %{scope: scope} do
@@ -210,7 +210,7 @@ defmodule CodeMySpec.HarnessesTest do
       # A caller holding the project rather than one copy of it — a mix task, the
       # web UI. Those still exist, and unscoped is the honest behaviour for them:
       # they are asking about the project, not about a checkout of it.
-      {deleted, _} = Files.delete_removed(%{scope | active_harness_id: nil}, [])
+      {deleted, _} = Files.delete_removed(%{scope | active_working_copy_id: nil}, [])
 
       assert deleted == 1
     end
@@ -224,7 +224,7 @@ defmodule CodeMySpec.HarnessesTest do
     defp problems_of(scope, source) do
       scope
       |> Problems.list_project_problems(source: source)
-      |> Enum.filter(&(&1.harness_id == scope.active_harness_id))
+      |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
       |> Enum.map(& &1.message)
       |> Enum.sort()
     end
@@ -275,7 +275,7 @@ defmodule CodeMySpec.HarnessesTest do
     # writing one design — so every checkout sees the same set. Files and
     # problems are *observed*, so they belong to the checkout that saw them.
     #
-    # It holds because authored tables have no harness_id at all rather than
+    # It holds because authored tables have no working_copy_id at all rather than
     # because anything remembers to skip the filter, which is the version that
     # cannot rot.
     test "a story authored through one checkout is visible from the other", %{scope: scope} do
@@ -312,14 +312,14 @@ defmodule CodeMySpec.HarnessesTest do
 
   describe "the operator's view" do
     test "the most recently active harness is the default", %{scope: scope} do
-      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")
-      {:ok, second} = Harnesses.issue(scope, nil, label: "the harness at /b")
+      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
+      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /b")
 
-      assert Harnesses.most_recent(scope).id == second.id,
+      assert WorkingCopies.most_recent(scope).id == second.id,
              "criterion 739 — no configuration needed, and it stays correct for a " <>
                "checkout nobody thought to classify"
 
-      assert first.id in Enum.map(Harnesses.list_harnesses(scope), & &1.id),
+      assert first.id in Enum.map(WorkingCopies.list_harnesses(scope), & &1.id),
              "the operator can still switch to the other one"
     end
 
@@ -330,9 +330,9 @@ defmodule CodeMySpec.HarnessesTest do
       sync(a, ["lib/only_in_a.ex"])
       sync(b, ["lib/only_in_b.ex"])
 
-      viewing = Harnesses.viewing(scope)
+      viewing = WorkingCopies.viewing(scope)
 
-      assert viewing.active_harness_id == b.active_harness_id
+      assert viewing.active_working_copy_id == b.active_working_copy_id
 
       assert Enum.map(Files.list_files(viewing), & &1.path) == ["lib/only_in_b.ex"],
              "a project-wide scope would list both checkouts' files with nothing " <>
@@ -342,9 +342,9 @@ defmodule CodeMySpec.HarnessesTest do
     test "a project with nothing synced stays project-wide" do
       bare = full_scope_fixture()
       # The fixture mints one, so drop it to get the genuinely-never-synced case.
-      bare = %{bare | active_harness_id: nil}
+      bare = %{bare | active_working_copy_id: nil}
 
-      assert Harnesses.viewing(%{bare | active_project_id: Ecto.UUID.generate()}).active_harness_id ==
+      assert WorkingCopies.viewing(%{bare | active_project_id: Ecto.UUID.generate()}).active_working_copy_id ==
                nil
     end
 
@@ -353,15 +353,15 @@ defmodule CodeMySpec.HarnessesTest do
       # scope that writes files needs one. This is the genuinely empty case.
       bare = user_scope_fixture(user_fixture(), account_fixture())
 
-      assert Harnesses.list_harnesses(%{bare | active_project_id: Ecto.UUID.generate()}) == []
+      assert WorkingCopies.list_harnesses(%{bare | active_project_id: Ecto.UUID.generate()}) == []
     end
 
     test "another project's harnesses are not listed", %{scope: scope} do
       other = full_scope_fixture()
-      {:ok, theirs} = Harnesses.issue(other, nil, label: "the harness at /theirs")
-      {:ok, mine} = Harnesses.issue(scope, nil, label: "the harness at /mine")
+      {:ok, theirs} = WorkingCopies.issue(other, nil, label: "the harness at /theirs")
+      {:ok, mine} = WorkingCopies.issue(scope, nil, label: "the harness at /mine")
 
-      ids = Enum.map(Harnesses.list_harnesses(scope), & &1.id)
+      ids = Enum.map(WorkingCopies.list_harnesses(scope), & &1.id)
       assert mine.id in ids
       refute theirs.id in ids
     end

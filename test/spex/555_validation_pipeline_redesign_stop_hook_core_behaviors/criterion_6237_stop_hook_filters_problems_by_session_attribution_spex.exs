@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
           )
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/post-tool-use", %{
           "session_id" => context.session_id,
@@ -117,7 +117,7 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
         response =
           use_cmd_cassette "clean", record: :none do
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "session_id" => context.session_id,

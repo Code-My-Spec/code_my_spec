@@ -88,7 +88,7 @@ defmodule CodeMySpecWeb.HarnessContractVersionTest do
   describe "a join that names no contract" do
     # A harness that predates the field. Allowed on purpose: refusing it would
     # make this change need a coordinated rollout, and the same reasoning
-    # already governs `active_runs` and `harness_id` in the same payload.
+    # already governs `active_runs` and `working_copy_id` in the same payload.
     test "is not refused for the contract" do
       Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
       scope = full_scope_fixture()

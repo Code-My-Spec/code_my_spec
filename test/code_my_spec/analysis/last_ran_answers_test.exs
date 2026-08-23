@@ -24,13 +24,13 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Validation
 
   setup do
     scope = full_scope_fixture()
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a working copy")
-    %{scope: %{scope | active_harness_id: harness.id}}
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+    %{scope: %{scope | active_working_copy_id: harness.id}}
   end
 
   defp finished_run(scope, source, status, ago_seconds) do
@@ -101,10 +101,10 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     # them, and a busy machine makes that the common case rather than the rare
     # one. Measured there: three stops reported 71m, 78m, 87m, then 5m, while
     # this copy's last completed run never moved.
-    {:ok, other} = Harnesses.issue(scope, nil, label: "a different working copy")
+    {:ok, other} = WorkingCopies.issue(scope, nil, label: "a different working copy")
 
     finished_run(scope, "spex", :completed, 5_760)
-    finished_run(%{scope | active_harness_id: other.id}, "spex", :completed, 300)
+    finished_run(%{scope | active_working_copy_id: other.id}, "spex", :completed, 300)
 
     {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
     age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)

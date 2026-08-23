@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2360Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2360"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2360"}, pretty: true)
           )
 
         Mix.Task.reenable("cms.harness.onboard")

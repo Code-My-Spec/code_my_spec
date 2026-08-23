@@ -415,7 +415,7 @@ defmodule CodeMySpec.Sessions do
         attrs =
           attrs
           |> Map.put(:external_conversation_id, external_id)
-          |> Map.put(:harness_id, scope.active_harness_id)
+          |> Map.put(:working_copy_id, scope.active_working_copy_id)
 
         create_session(scope, attrs)
     end
@@ -436,9 +436,12 @@ defmodule CodeMySpec.Sessions do
   @spec external_id_for_harness(Ecto.UUID.t() | nil) :: String.t() | nil
   def external_id_for_harness(nil), do: nil
 
-  def external_id_for_harness(harness_id) when is_binary(harness_id) do
+  def external_id_for_harness(working_copy_id) when is_binary(working_copy_id) do
     Session
-    |> where([s], s.harness_id == ^harness_id and not is_nil(s.external_conversation_id))
+    |> where(
+      [s],
+      s.working_copy_id == ^working_copy_id and not is_nil(s.external_conversation_id)
+    )
     |> order_by([s], desc: s.inserted_at)
     |> limit(1)
     |> select([s], s.external_conversation_id)

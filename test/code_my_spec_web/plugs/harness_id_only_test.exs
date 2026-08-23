@@ -18,7 +18,7 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.Plugs.ProjectScopeOverride
 
   defp run(conn, scope, headers) do
@@ -30,18 +30,18 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
 
   test "a harness id alone resolves the project", %{conn: conn} do
     scope = full_scope_fixture()
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
 
     result = run(conn, scope, [{"x-harness-id", harness.id}])
 
     assert result.assigns.current_scope.active_project_id == scope.active_project_id
-    assert result.assigns.current_scope.active_harness_id == harness.id
+    assert result.assigns.current_scope.active_working_copy_id == harness.id
     refute result.halted
   end
 
   test "the harness wins when a project header names something else", %{conn: conn} do
     scope = full_scope_fixture()
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
 
     # A second project in the *same account*, so the override would genuinely
     # succeed if the project header won. A project from another account is
@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
     ends up answering about a checkout the caller cannot see.
     """
 
-    assert result.assigns.current_scope.active_harness_id == harness.id
+    assert result.assigns.current_scope.active_working_copy_id == harness.id
   end
 
   test "an unknown harness is refused rather than falling back to the project", %{conn: conn} do

@@ -441,7 +441,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     """)
 
     %{
-      harness_id: id,
+      working_copy_id: id,
       partition: partition,
       databases: databases,
       git: %{submodule_recurse: git},
@@ -522,7 +522,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   defp mint_and_record(env, root) do
     with {:ok, id} <- mint(root) do
-      body = Jason.encode!(%{harness_id: id, root: root}, pretty: true)
+      body = Jason.encode!(%{working_copy_id: id, root: root}, pretty: true)
       Environments.write_file(env, @harness_config_file, body)
       {:ok, id}
     end
@@ -537,7 +537,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          _ = ensure_local_credential(project.id),
          {:ok, token} <- Token.access_token(),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
-         :ok <- HarnessConfig.write(root, %{harness_id: id, project_id: project.id, root: root}) do
+         :ok <-
+           HarnessConfig.write(root, %{working_copy_id: id, project_id: project.id, root: root}) do
       Mix.shell().info("Issued a new harness id for #{root}")
       {:ok, id}
     else
@@ -640,6 +641,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # harness config is exactly the half-state `check/2` now reports as
   # `HARNESS_CONFIG` missing.
   defp write_settings(env, root, id, relay_model_turns?, base_url) do
+    # `working_copy_id:`, not `working_copy_id:`. This crosses into `ClientUtils`,
+    # which is a separate repository on its own release cadence — generated apps
+    # take it from hex — so its option names are as external as the wire and
+    # cannot be renamed from here. It moves when client_utils moves.
+    # `harness_id:`, not `working_copy_id:`. This crosses into `ClientUtils`,
+    # which is a separate repository on its own release cadence — generated apps
+    # take it from hex — so its option names are as external as the wire and
+    # cannot be renamed from here. It moves when client_utils moves.
     opts = [
       io: io(env),
       app: target_app(root),
@@ -719,7 +728,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Anthropic client posts here directly and reads nothing back off a file.
   #
   # This used to default to `Config.server_url()` — the CodeMySpec server. That
-  # is the wrong host entirely: `/api/harnesses/:harness_id/v1/messages` exists
+  # is the wrong host entirely: `/api/harnesses/:working_copy_id/v1/messages` exists
   # only in `CmsHarness.Web.Router`, never in `CodeMySpecWeb.Router`, so an
   # agent pointed there posts every turn to a route that does not exist. The
   # feature could not have worked as written.

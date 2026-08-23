@@ -16,14 +16,14 @@ defmodule CodeMySpec.Environments.HarnessTransport do
   """
 
   @doc """
-  Perform `op` with `payload` on the working copy `harness_id` serves.
+  Perform `op` with `payload` on the working copy `working_copy_id` serves.
 
   Returns whatever the operation returns — `Environments` results pass
   through unchanged — or `{:error, :harness_unreachable}` when no
   process is serving that harness.
   """
   @callback harness_fs_request(
-              harness_id :: String.t(),
+              working_copy_id :: String.t(),
               op :: String.t(),
               payload :: map(),
               timeout :: timeout()

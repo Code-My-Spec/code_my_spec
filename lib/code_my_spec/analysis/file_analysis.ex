@@ -42,13 +42,13 @@ defmodule CodeMySpec.Analysis.FileAnalysis do
 
     field :file_id, :binary_id
     field :project_id, :binary_id
-    field :harness_id, :binary_id
+    field :working_copy_id, :binary_id
     field :run_id, :integer
 
     timestamps(type: :utc_datetime)
   end
 
-  @required [:file_id, :project_id, :harness_id, :source, :fingerprint, :analyzed_at]
+  @required [:file_id, :project_id, :working_copy_id, :source, :fingerprint, :analyzed_at]
   @optional [:run_id]
 
   @doc false
@@ -61,6 +61,6 @@ defmodule CodeMySpec.Analysis.FileAnalysis do
     |> validate_change(:fingerprint, fn :fingerprint, fp ->
       if is_binary(fp) and fp != "", do: [], else: [fingerprint: "must name the content read"]
     end)
-    |> unique_constraint([:harness_id, :file_id, :source])
+    |> unique_constraint([:working_copy_id, :file_id, :source])
   end
 end

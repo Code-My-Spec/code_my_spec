@@ -24,7 +24,7 @@ defmodule CodeMySpec.Analysis.AwaitTimeoutTest do
   defp running_run(scope) do
     Repo.insert!(%Run{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       source: "exunit",
       kind: :full,
       status: :running,
@@ -38,7 +38,11 @@ defmodule CodeMySpec.Analysis.AwaitTimeoutTest do
   # inserted run visible, and it is the shape the tool actually runs in.
   defp serving(scope) do
     {:ok, _} =
-      Registry.register(CodeMySpec.Analysis.HarnessRegistry, to_string(scope.active_harness_id), :test)
+      Registry.register(
+        CodeMySpec.Analysis.HarnessRegistry,
+        to_string(scope.active_working_copy_id),
+        :test
+      )
 
     scope
   end

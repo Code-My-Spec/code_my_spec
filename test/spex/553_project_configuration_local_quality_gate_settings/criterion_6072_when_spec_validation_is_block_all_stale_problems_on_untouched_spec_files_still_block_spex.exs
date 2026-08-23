@@ -49,8 +49,8 @@ defmodule CodeMySpecSpex.Story553.Criterion6072Spex do
 
         _turn_1_response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{
             "test_output_files" => %{
@@ -65,8 +65,8 @@ defmodule CodeMySpecSpex.Story553.Criterion6072Spex do
       when_ "turn 2: the stop hook fires with no file changes", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{})
           |> Phoenix.ConnTest.json_response(200)

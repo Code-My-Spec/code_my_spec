@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
-  alias CodeMySpec.Harnesses.Harness
+  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Mail.Email
@@ -934,10 +934,10 @@ defmodule CodeMySpecSpex.Fixtures do
   `DateTime.utc_now/0` is correct without a workaround — keying liveness on it is
   what makes criterion 2382 hold by construction rather than by care.
   """
-  @spec quiet_harness_fixture(Scope.t(), number(), keyword()) :: Harness.t()
+  @spec quiet_harness_fixture(Scope.t(), number(), keyword()) :: WorkingCopy.t()
   def quiet_harness_fixture(%Scope{} = scope, hours, opts \\ []) do
     label = Keyword.get(opts, :label, "a checkout nobody is running")
-    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
 
     go_quiet(harness, hours)
   end
@@ -983,7 +983,7 @@ defmodule CodeMySpecSpex.Fixtures do
     naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
 
     from(f in CodeMySpec.Files.File,
-      where: f.project_id == ^project_id and f.harness_id == ^scope.active_harness_id
+      where: f.project_id == ^project_id and f.working_copy_id == ^scope.active_working_copy_id
     )
     |> Repo.update_all(set: [updated_at: naive, inserted_at: naive])
 
@@ -1003,8 +1003,8 @@ defmodule CodeMySpecSpex.Fixtures do
   file content, and component extraction reads the spec to find its module name.
   Arranging through the real path avoids inventing a second one.
   """
-  @spec go_quiet(Harness.t() | String.t(), number()) :: Harness.t()
-  def go_quiet(%Harness{} = harness, hours) do
+  @spec go_quiet(WorkingCopy.t() | String.t(), number()) :: WorkingCopy.t()
+  def go_quiet(%WorkingCopy{} = harness, hours) do
     last_seen = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
 
     harness
@@ -1012,9 +1012,9 @@ defmodule CodeMySpecSpex.Fixtures do
     |> Repo.update!()
   end
 
-  def go_quiet(harness_id, hours) when is_binary(harness_id) do
-    Harness
-    |> Repo.get!(harness_id)
+  def go_quiet(working_copy_id, hours) when is_binary(working_copy_id) do
+    WorkingCopy
+    |> Repo.get!(working_copy_id)
     |> go_quiet(hours)
   end
 
@@ -1024,14 +1024,14 @@ defmodule CodeMySpecSpex.Fixtures do
   What the story actually describes — a project whose working copies have all
   been abandoned — and the only arrangement that does not depend on knowing which
   harness a given sync happened to write under. The files-view sync does not
-  always write under `scope.active_harness_id`, so ageing that row by name aged a
+  always write under `scope.active_working_copy_id`, so ageing that row by name aged a
   harness that owned nothing and reclaimed nothing.
   """
   @spec all_agents_go_quiet(Scope.t(), number()) :: :ok
   def all_agents_go_quiet(%Scope{active_project_id: project_id}, hours) do
     at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
 
-    from(h in Harness, where: h.project_id == ^project_id)
+    from(h in WorkingCopy, where: h.project_id == ^project_id)
     |> Repo.update_all(set: [last_seen_at: at])
 
     :ok
@@ -1046,7 +1046,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec live_agent_scope(Scope.t(), keyword()) :: Scope.t()
   def live_agent_scope(%Scope{} = scope, opts \\ []) do
     label = Keyword.get(opts, :label, "the agent still working")
-    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
 
     # Records a root, because the hook rebuilds the scope from the harness row
     # rather than trusting the request: `put_scope/2` takes `cwd` from
@@ -1060,7 +1060,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # re-projects the component from them — correct behaviour, and it would make
     # every scenario here assert that reclaiming does nothing.
     {:ok, root} = Briefly.create(directory: true)
-    {:ok, harness} = Harnesses.report_root(harness, root)
+    {:ok, harness} = WorkingCopies.report_root(harness, root)
 
     # Its own **environment**, not just its own path, and registered against its
     # own root. The hook does not trust the request: it rebuilds the scope from
@@ -1075,7 +1075,7 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, env} = Environments.create(:memory, working_dir: root)
     :ok = Environments.register({:root, root}, env)
 
-    %{scope | active_harness_id: harness.id, cwd: root, environment: env}
+    %{scope | active_working_copy_id: harness.id, cwd: root, environment: env}
   end
 
   @doc """
@@ -1128,8 +1128,8 @@ defmodule CodeMySpecSpex.Fixtures do
   the behaviour under test, and a spec built on it proves the bridge works and
   nothing else.
   """
-  @spec observe_files_as(Scope.t(), Harness.t(), [String.t()], keyword()) :: map()
-  def observe_files_as(%Scope{} = scope, %Harness{} = harness, paths, opts \\ []) do
+  @spec observe_files_as(Scope.t(), WorkingCopy.t(), [String.t()], keyword()) :: map()
+  def observe_files_as(%Scope{} = scope, %WorkingCopy{} = harness, paths, opts \\ []) do
     role = Keyword.get(opts, :role, "implementation")
 
     observations =
@@ -1148,7 +1148,7 @@ defmodule CodeMySpecSpex.Fixtures do
       end)
 
     socket = %Phoenix.Socket{
-      assigns: %{scope: %{scope | active_harness_id: harness.id}}
+      assigns: %{scope: %{scope | active_working_copy_id: harness.id}}
     }
 
     case CodeMySpecWeb.HarnessProjectChannel.handle_in(
@@ -1647,7 +1647,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
     response =
       Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
+      |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Phoenix.ConnTest.dispatch(
         CodeMySpecLocalWeb.Endpoint,

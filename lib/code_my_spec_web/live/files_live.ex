@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.FilesLive do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
@@ -62,7 +62,7 @@ defmodule CodeMySpecWeb.FilesLive do
     {:noreply,
      assign(socket,
        scope: scope,
-       harnesses: Harnesses.list_harnesses(scope),
+       harnesses: WorkingCopies.list_harnesses(scope),
        watching?: connected?(socket),
        page: page,
        filter: filter,
@@ -211,7 +211,7 @@ defmodule CodeMySpecWeb.FilesLive do
           </div>
           <.harness_picker
             harnesses={@harnesses}
-            active_id={@scope.active_harness_id}
+            active_id={@scope.active_working_copy_id}
             path_fun={&files_path(@slug, page: 1, filter: @filter, harness: &1)}
           />
         </div>

@@ -72,8 +72,7 @@ defmodule CodeMySpecWeb.HarnessChannel do
     {:reply,
      {:ok,
       %{
-        "running" =>
-          Enum.map(running, &%{"id" => &1.id, "working_copy" => &1.working_copy})
+        "running" => Enum.map(running, &%{"id" => &1.id, "working_copy" => &1.working_copy})
       }}, socket}
   end
 

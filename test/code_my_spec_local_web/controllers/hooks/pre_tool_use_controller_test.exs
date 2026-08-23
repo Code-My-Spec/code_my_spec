@@ -80,7 +80,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       # and the working copy that id names. The rewrite needs both — the cwd to
       # decide which server can reach the disk, the id to tell that server which
       # checkout it is about.
-      %{scope: %{scope | cwd: "/tmp/proj", active_harness_id: Ecto.UUID.generate()}}
+      %{scope: %{scope | cwd: "/tmp/proj", active_working_copy_id: Ecto.UUID.generate()}}
     end
 
     test "rewrites mix test into an analysis API curl", %{scope: scope} do
@@ -99,7 +99,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ "/api/analysis/run"
       assert command =~ ~s("source":"exunit")
       assert command =~ "test/my_test.exs"
-      assert command =~ "X-Harness-Id: #{scope.active_harness_id}"
+      assert command =~ "X-Harness-Id: #{scope.active_working_copy_id}"
 
       refute command =~ "X-Working-Dir",
              "the endpoint is chosen by cwd; the working copy is named by id"
@@ -131,15 +131,15 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
         |> get_in(["hookSpecificOutput", "updatedInput", "command"])
 
       assert command =~ "/api/analysis/run"
-      assert command =~ "X-Harness-Id: #{scope.active_harness_id}"
+      assert command =~ "X-Harness-Id: #{scope.active_working_copy_id}"
       refute command =~ "/api/harnesses/"
     end
 
     # The light harness: a project, no disk. This used to produce no rewrite at
     # all, so the agent's suite ran unrecorded and the stop hook ran it again.
     test "with no working dir the run is addressed to the harness", %{scope: scope} do
-      harness_id = Ecto.UUID.generate()
-      scope = %{scope | cwd: nil, active_harness_id: harness_id}
+      working_copy_id = Ecto.UUID.generate()
+      scope = %{scope | cwd: nil, active_working_copy_id: working_copy_id}
 
       conn =
         build_post(scope, %{
@@ -154,7 +154,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
         |> Jason.decode!()
         |> get_in(["hookSpecificOutput", "updatedInput", "command"])
 
-      assert command =~ "/api/harnesses/#{harness_id}/analysis/run"
+      assert command =~ "/api/harnesses/#{working_copy_id}/analysis/run"
       refute command =~ "X-Working-Dir"
     end
 
@@ -268,7 +268,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
     # that means "not a test command".
     test "does not rewrite when the scope can name no working copy", %{scope: scope} do
       conn =
-        build_post(%{scope | cwd: nil, active_harness_id: nil}, %{
+        build_post(%{scope | cwd: nil, active_working_copy_id: nil}, %{
           "tool_name" => "Bash",
           "tool_input" => %{"command" => "mix test"}
         })

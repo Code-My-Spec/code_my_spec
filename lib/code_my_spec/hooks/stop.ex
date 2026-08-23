@@ -256,7 +256,7 @@ defmodule CodeMySpec.Hooks.Stop do
   # harness and every harness route names the working copy it is about. A scope
   # with no harness has no local address to offer, so it gets the plain
   # instruction rather than a URL that would 404.
-  defp wait_directive(%{active_harness_id: id}) when not is_nil(id) do
+  defp wait_directive(%{active_working_copy_id: id}) when not is_nil(id) do
     "Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` " <>
       "— run that in the background and you will be notified when it returns — then stop again."
   end

@@ -21,7 +21,7 @@ defmodule CmsHarness.ProjectIdentity do
   ## Step 2, and why the env fallback had to be narrowed to reach it
 
   `.cms_harness.json` is what `mix cms.harness.onboard` writes, and it carries
-  `project_id` as well as `harness_id`. Only the second was ever read here, so
+  `project_id` as well as `working_copy_id`. Only the second was ever read here, so
   a working copy that was properly onboarded but never given a
   `.code_my_spec/config.yml` fell straight past its own answer to the variable.
 
@@ -41,7 +41,7 @@ defmodule CmsHarness.ProjectIdentity do
   (:enoent)` — a row written from one checkout, looked for in another.
 
   This is the same defect the section below describes, at the same call site,
-  one field over: `harness_id(:env, root)` was taught to check the file first
+  one field over: `working_copy_id(:env, root)` was taught to check the file first
   and `project_id` was not, so the narrower half of the identity was safe while
   the half that decides *which project's rows get written* was not.
 
@@ -93,7 +93,7 @@ defmodule CmsHarness.ProjectIdentity do
 
   @config_path ".code_my_spec/config.yml"
 
-  @type t :: %{id: String.t(), root: String.t(), harness_id: String.t() | nil}
+  @type t :: %{id: String.t(), root: String.t(), working_copy_id: String.t() | nil}
 
   @doc """
   Resolve the project id for a working directory.
@@ -107,7 +107,7 @@ defmodule CmsHarness.ProjectIdentity do
     root = Path.expand(root)
 
     with {:ok, source, project} <- resolve_project(root) do
-      {:ok, Map.put(project, :harness_id, harness_id(source, root))}
+      {:ok, Map.put(project, :working_copy_id, working_copy_id(source, root))}
     end
   end
 
@@ -205,20 +205,20 @@ defmodule CmsHarness.ProjectIdentity do
   # correct `.cms_harness.json`, but never given a `config.yml` — every join
   # presented the *launching session's* harness id instead of its own,
   # because that was checked before the file that actually named it.
-  defp harness_id(:env, root) do
+  defp working_copy_id(:env, root) do
     case HarnessConfig.read(root) do
-      {:ok, %{harness_id: id}} -> id
+      {:ok, %{working_copy_id: id}} -> id
       _ -> nil
     end
   end
 
-  defp harness_id(:config, root), do: from_harness_config(root)
+  defp working_copy_id(:config, root), do: from_harness_config(root)
 
-  defp harness_id(:harness_file, root), do: from_harness_config(root)
+  defp working_copy_id(:harness_file, root), do: from_harness_config(root)
 
   defp from_harness_config(root) do
     case HarnessConfig.read_file(root) do
-      {:ok, %{harness_id: id}} -> id
+      {:ok, %{working_copy_id: id}} -> id
       _ -> nil
     end
   end

@@ -48,8 +48,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2837Spex do
         b = join_working_copy(context, "/tmp/spex-1019-b", "checkout b")
 
         report_agents(context, [
-          pi_agent(a.harness_id, "/tmp/spex-1019-a"),
-          claude_agent(b.harness_id, "/tmp/spex-1019-b")
+          pi_agent(a.working_copy_id, "/tmp/spex-1019-a"),
+          claude_agent(b.working_copy_id, "/tmp/spex-1019-b")
         ])
 
         {:ok, context}

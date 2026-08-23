@@ -25,7 +25,7 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Hooks.SessionStart
 
   setup do
@@ -69,8 +69,8 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   test "a session on another checkout warns about tasks, not about git", %{scope: scope} do
     {200, _} = start_session(scope, "session-here")
 
-    {:ok, other} = Harnesses.issue(scope, nil, label: "another checkout")
-    elsewhere = %{scope | active_harness_id: other.id}
+    {:ok, other} = WorkingCopies.issue(scope, nil, label: "another checkout")
+    elsewhere = %{scope | active_working_copy_id: other.id}
 
     {200, body} = start_session(elsewhere, "session-elsewhere")
 
@@ -88,8 +88,8 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   test "both hazards are reported when both are present", %{scope: scope} do
     {200, _} = start_session(scope, "session-same-copy")
 
-    {:ok, other} = Harnesses.issue(scope, nil, label: "another checkout")
-    {200, _} = start_session(%{scope | active_harness_id: other.id}, "session-other-copy")
+    {:ok, other} = WorkingCopies.issue(scope, nil, label: "another checkout")
+    {200, _} = start_session(%{scope | active_working_copy_id: other.id}, "session-other-copy")
 
     {200, body} = start_session(scope, "session-third")
 

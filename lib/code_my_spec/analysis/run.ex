@@ -70,7 +70,7 @@ defmodule CodeMySpec.Analysis.Run do
     # worktree per branch is the ordinary case — and they analyse different
     # trees, so a run that is not attributed to one cannot be looked up or
     # closed without reaching into another checkout's work.
-    field :harness_id, :binary_id
+    field :working_copy_id, :binary_id
 
     timestamps(type: :utc_datetime)
   end
@@ -95,7 +95,7 @@ defmodule CodeMySpec.Analysis.Run do
       :started_at,
       :finished_at,
       :project_id,
-      :harness_id
+      :working_copy_id
     ])
     |> validate_required([:source, :kind, :status, :started_at, :project_id])
     |> validate_inclusion(:source, @sources)

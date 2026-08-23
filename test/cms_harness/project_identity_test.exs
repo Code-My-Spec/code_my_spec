@@ -95,7 +95,7 @@ defmodule CmsHarness.ProjectIdentityTest do
 
     File.rm(Path.join(project.root, ".cms_harness.json"))
 
-    assert {:ok, %{harness_id: nil}} = ProjectIdentity.resolve(project.root)
+    assert {:ok, %{working_copy_id: nil}} = ProjectIdentity.resolve(project.root)
   end
 
   # A copy that resolved its project through the environment is not
@@ -117,15 +117,15 @@ defmodule CmsHarness.ProjectIdentityTest do
     System.put_env("CMS_HARNESS_ID", "borrowed-from-another-checkout")
     on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
-    assert {:ok, %{harness_id: harness_id}} = ProjectIdentity.resolve(project.root)
-    assert harness_id == project.harness_id
-    refute harness_id == "borrowed-from-another-checkout"
+    assert {:ok, %{working_copy_id: working_copy_id}} = ProjectIdentity.resolve(project.root)
+    assert working_copy_id == project.working_copy_id
+    refute working_copy_id == "borrowed-from-another-checkout"
   end
 
   # The same rule for `project_id`, which is the half that decides which
   # project's rows a checkout's files are written to.
   #
-  # `.cms_harness.json` carries both ids and only `harness_id` was read here, so
+  # `.cms_harness.json` carries both ids and only `working_copy_id` was read here, so
   # an onboarded copy with no `config.yml` fell past its own answer to the
   # variable. Measured 2026-08-21 from harness.log, one daemon serving three
   # roots:
@@ -162,8 +162,8 @@ defmodule CmsHarness.ProjectIdentityTest do
     System.put_env("CMS_HARNESS_ID", "borrowed-from-another-checkout")
     on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
-    assert {:ok, %{harness_id: harness_id}} = ProjectIdentity.resolve(project.root)
-    assert harness_id == project.harness_id
+    assert {:ok, %{working_copy_id: working_copy_id}} = ProjectIdentity.resolve(project.root)
+    assert working_copy_id == project.working_copy_id
   end
 
   # Not refused, said. A daemon that would not start over a variable it
@@ -223,7 +223,8 @@ defmodule CmsHarness.ProjectIdentityTest do
     System.put_env("CMS_HARNESS_ID", "sprite-issued-id")
     on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
-    assert {:ok, %{harness_id: "sprite-issued-id"}} = ProjectIdentity.resolve(anonymous_dir())
+    assert {:ok, %{working_copy_id: "sprite-issued-id"}} =
+             ProjectIdentity.resolve(anonymous_dir())
   end
 
   test "a directory that cannot say which project it is gets an error, not a guess" do

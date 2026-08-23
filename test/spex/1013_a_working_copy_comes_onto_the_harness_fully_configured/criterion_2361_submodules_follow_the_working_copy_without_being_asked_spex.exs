@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2361"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2361"}, pretty: true)
           )
 
         # Through the environment, not `System.cmd` — the spex boundary check

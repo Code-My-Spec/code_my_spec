@@ -79,7 +79,7 @@ defmodule CodeMySpec.Transcripts.Replayer do
     ctx = %{
       source_cwd: source_cwd,
       target_dir: target_dir,
-      harness_id: harness_id(target_dir),
+      working_copy_id: working_copy_id(target_dir),
       mcp_url: Keyword.get(opts, :mcp_url),
       log: Keyword.get(opts, :log, :errors),
       delay_ms: Keyword.get(opts, :delay_ms, 0)
@@ -213,8 +213,8 @@ defmodule CodeMySpec.Transcripts.Replayer do
   # The working copy's own record of which harness it is. Read rather than
   # derived: a directory is not an identity, and treating it as one is what let
   # a replay land in a neighbouring checkout.
-  @spec harness_id(String.t()) :: String.t() | nil
-  def harness_id(dir) do
+  @spec working_copy_id(String.t()) :: String.t() | nil
+  def working_copy_id(dir) do
     with {:ok, raw} <- File.read(Path.join(dir, ".cms_harness.json")),
          {:ok, %{"harness_id" => id}} <- Jason.decode(raw),
          true <- is_binary(id) and id != "" do
@@ -235,7 +235,7 @@ defmodule CodeMySpec.Transcripts.Replayer do
     }
 
     headers = [
-      {"x-harness-id", ctx[:harness_id] || harness_id(ctx.target_dir) || ""},
+      {"x-harness-id", ctx[:working_copy_id] || working_copy_id(ctx.target_dir) || ""},
       {"accept", "application/json, text/event-stream"}
     ]
 

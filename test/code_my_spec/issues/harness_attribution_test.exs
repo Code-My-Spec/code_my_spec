@@ -2,7 +2,7 @@ defmodule CodeMySpec.Issues.HarnessAttributionTest do
   @moduledoc """
   An issue records the working copy it was raised from.
 
-  Files, problems and analysis runs all carry `harness_id`; issues did not. So
+  Files, problems and analysis runs all carry `working_copy_id`; issues did not. So
   the first question anyone asks about a report — "is this my checkout or
   another agent's?" — was answerable only from prose the author happened to
   type into the body.
@@ -34,39 +34,39 @@ defmodule CodeMySpec.Issues.HarnessAttributionTest do
     scope = full_scope_fixture()
 
     assert {:ok, issue} = Issues.create_issue(scope, attrs())
-    assert issue.harness_id == scope.active_harness_id
-    refute is_nil(issue.harness_id)
+    assert issue.working_copy_id == scope.active_working_copy_id
+    refute is_nil(issue.working_copy_id)
   end
 
   test "two checkouts of one project file distinguishable issues" do
     a = full_scope_fixture()
-    {:ok, other} = CodeMySpec.Harnesses.issue(a, nil, label: "a second checkout")
-    b = %{a | active_harness_id: other.id}
+    {:ok, other} = CodeMySpec.WorkingCopies.issue(a, nil, label: "a second checkout")
+    b = %{a | active_working_copy_id: other.id}
 
     {:ok, from_a} = Issues.create_issue(a, attrs(%{title: "raised from A"}))
     {:ok, from_b} = Issues.create_issue(b, attrs(%{title: "raised from B"}))
 
-    refute from_a.harness_id == from_b.harness_id,
+    refute from_a.working_copy_id == from_b.working_copy_id,
            "this is the question that gets asked about every report, and it " <>
              "should be answerable from the record rather than from the body text"
   end
 
   test "a scope with no working copy files an unattributed issue rather than failing" do
-    scope = %{full_scope_fixture() | active_harness_id: nil}
+    scope = %{full_scope_fixture() | active_working_copy_id: nil}
 
     assert {:ok, issue} = Issues.create_issue(scope, attrs())
 
-    assert is_nil(issue.harness_id),
+    assert is_nil(issue.working_copy_id),
            "the web UI has no checkout, and that is a legitimate nil rather than a gap"
   end
 
   test "the caller cannot name a working copy that is not its own" do
     scope = full_scope_fixture()
-    {:ok, other} = CodeMySpec.Harnesses.issue(scope, nil, label: "somebody else")
+    {:ok, other} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "somebody else")
 
-    {:ok, issue} = Issues.create_issue(scope, attrs(%{harness_id: other.id}))
+    {:ok, issue} = Issues.create_issue(scope, attrs(%{working_copy_id: other.id}))
 
-    assert issue.harness_id == scope.active_harness_id,
+    assert issue.working_copy_id == scope.active_working_copy_id,
            "attribution comes from the scope; a report that could claim another " <>
              "checkout's identity would be worse than one with none"
   end

@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.TaskEvaluatorTest do
 
   @harness "d1c8f8f5-13e5-4827-865e-55a081f988a6"
 
-  defp feedback(scope \\ %Scope{active_harness_id: @harness}) do
+  defp feedback(scope \\ %Scope{active_working_copy_id: @harness}) do
     TaskEvaluator.unobservable_feedback(%{id: 4321}, "QaIntegrationPlan", scope, :no_environment)
   end
 
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Validation.TaskEvaluatorTest do
   end
 
   test "a scope naming no working copy says so rather than printing nothing" do
-    text = feedback(%Scope{active_harness_id: nil})
+    text = feedback(%Scope{active_working_copy_id: nil})
 
     assert text =~ "no harness on the scope"
   end

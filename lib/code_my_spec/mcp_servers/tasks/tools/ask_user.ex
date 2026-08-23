@@ -98,7 +98,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
       # copy, and the session running there is what a conversation is keyed by.
       # Resolved here for the same reason `QuestionController.ask` resolves it —
       # the agent does not know its own session id.
-      "session_external_id" => Sessions.external_id_for_harness(harness_id(scope))
+      "session_external_id" => Sessions.external_id_for_harness(working_copy_id(scope))
     }
 
     case Notifications.create_question_request(user_id, attrs) do
@@ -141,6 +141,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   # on the scope from the id in the MCP URL; a caller reaching this from
   # somewhere unaddressed has none, and the question is still asked — it simply
   # has no conversation to be shown in.
-  defp harness_id(%{active_harness_id: id}) when is_binary(id), do: id
-  defp harness_id(_scope), do: nil
+  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
+  defp working_copy_id(_scope), do: nil
 end

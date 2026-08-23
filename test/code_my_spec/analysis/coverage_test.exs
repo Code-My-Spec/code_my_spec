@@ -16,12 +16,12 @@ defmodule CodeMySpec.Analysis.CoverageTest do
 
   alias CodeMySpec.Analysis.Coverage
   alias CodeMySpec.Files
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   setup do
     scope = full_scope_fixture()
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "a working copy")
-    %{scope: %{scope | active_harness_id: harness.id}}
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+    %{scope: %{scope | active_working_copy_id: harness.id}}
   end
 
   defp put_file(scope, path, fingerprint, role \\ :implementation) do

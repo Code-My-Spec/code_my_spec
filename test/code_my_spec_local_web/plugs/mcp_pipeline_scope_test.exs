@@ -25,7 +25,7 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
   import Plug.Conn
   import Plug.Test
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecLocalWeb.Plugs.HarnessScope
 
   setup do
@@ -45,8 +45,8 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
   defp mcp(conn), do: HarnessScope.call(conn, [])
 
   defp harness_for(scope, root) do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "mcp test")
-    {:ok, harness} = Harnesses.report_root(harness, root)
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "mcp test")
+    {:ok, harness} = WorkingCopies.report_root(harness, root)
     harness
   end
 
@@ -66,7 +66,7 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
            "a tool that writes to disk needs an environment; a project id alone is what made " <>
              "create_component refuse to write spec stubs"
 
-    assert resolved.active_harness_id == harness.id
+    assert resolved.active_working_copy_id == harness.id
   end
 
   test "a call naming no harness is refused, not resolved by its directory", %{root: root} do

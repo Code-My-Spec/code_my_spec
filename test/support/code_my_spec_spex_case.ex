@@ -1515,7 +1515,7 @@ defmodule CodeMySpecSpex.Case do
 
   Twenty-two criteria across five stories carried their own copy of this, in
   five signatures — `hook(path, context, params)`, `hook(scope, params)`,
-  `hook(harness_id, path, params)` and two more — which is four ways to get the
+  `hook(working_copy_id, path, params)` and two more — which is four ways to get the
   argument order wrong and one definition of "how you address a harness"
   repeated twenty-two times.
 
@@ -1531,16 +1531,16 @@ defmodule CodeMySpecSpex.Case do
   """
   def post_hook(target, path, params) do
     Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", harness_id(target))
+    |> Plug.Conn.put_req_header("x-harness-id", working_copy_id(target))
     |> Plug.Conn.put_req_header("content-type", "application/json")
     |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
     |> Phoenix.ConnTest.json_response(200)
   end
 
   @doc "The harness id out of a context, a scope, or itself."
-  def harness_id(%{scope: %{active_harness_id: id}}), do: id
-  def harness_id(%{active_harness_id: id}), do: id
-  def harness_id(id) when is_binary(id), do: id
+  def working_copy_id(%{scope: %{active_working_copy_id: id}}), do: id
+  def working_copy_id(%{active_working_copy_id: id}), do: id
+  def working_copy_id(id) when is_binary(id), do: id
 
   @doc """
   Retry an assertion until it holds, or until the budget runs out.

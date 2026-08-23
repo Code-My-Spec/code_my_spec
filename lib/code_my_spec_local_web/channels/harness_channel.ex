@@ -75,7 +75,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
           external_id: external_id,
           role: role,
           working_copy: root,
-          harness_id: harness_id(root),
+          working_copy_id: working_copy_id(root),
           engine: socket.assigns.engine,
           provider: socket.assigns.provider,
           online_at: System.system_time(:second)
@@ -161,9 +161,9 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   # `nil` when the copy has not been onboarded. The report still goes up and the
   # server refuses that entry loudly, which is a better outcome than attaching
   # an agent to a copy chosen by a path match.
-  defp harness_id(root) do
+  defp working_copy_id(root) do
     case HarnessConfig.read_file(root) do
-      {:ok, %{harness_id: id}} -> id
+      {:ok, %{working_copy_id: id}} -> id
       _ -> nil
     end
   end

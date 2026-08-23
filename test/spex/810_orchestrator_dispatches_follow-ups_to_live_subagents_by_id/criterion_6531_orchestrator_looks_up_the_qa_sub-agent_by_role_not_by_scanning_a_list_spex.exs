@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6531Spex do
 
         post(
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json"),
           "/api/hooks/session-start",
           %{"session_id" => session_id}
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6531Spex do
             ] do
           post(
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
             |> Plug.Conn.put_req_header("content-type", "application/json"),
             "/api/hooks/subagent-start",
             %{

@@ -26,7 +26,7 @@ defmodule CodeMySpec.Analysis.FreshnessTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   defp run(scope, attrs) do
     {:ok, r} =
@@ -39,8 +39,8 @@ defmodule CodeMySpec.Analysis.FreshnessTest do
 
   test "another checkout's run does not answer for mine" do
     mine = full_scope_fixture()
-    {:ok, other} = Harnesses.issue(mine, nil, label: "a second checkout")
-    theirs = %{mine | active_harness_id: other.id}
+    {:ok, other} = WorkingCopies.issue(mine, nil, label: "a second checkout")
+    theirs = %{mine | active_working_copy_id: other.id}
 
     theirs |> run(%{input_fingerprint: "theirs"}) |> finish(:completed)
 

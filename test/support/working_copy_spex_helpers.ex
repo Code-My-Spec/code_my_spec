@@ -24,9 +24,9 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   @doc """
   Bring a working copy into existence by joining for it.
 
-  `Harnesses.issue/3` mints an id on join when the payload carries none, which
+  `WorkingCopies.issue/3` mints an id on join when the payload carries none, which
   is why a checkout and a harness are the same thing. Returns the join reply,
-  which carries the minted `harness_id`.
+  which carries the minted `working_copy_id`.
   """
   @spec join_working_copy(map(), String.t(), String.t()) :: map()
   def join_working_copy(context, root, label) do
@@ -124,9 +124,9 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   route a real checkout takes — minted on join, then presented.
   """
   @spec pi_agent(String.t(), String.t()) :: map()
-  def pi_agent(harness_id, root),
+  def pi_agent(working_copy_id, root),
     do: %{
-      "harness_id" => harness_id,
+      "harness_id" => working_copy_id,
       "working_copy" => root,
       "provider" => "zai",
       "engine" => "pi"
@@ -134,9 +134,9 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
 
   @doc "One Claude Code agent on a copy, as a harness would report it."
   @spec claude_agent(String.t(), String.t()) :: map()
-  def claude_agent(harness_id, root),
+  def claude_agent(working_copy_id, root),
     do: %{
-      "harness_id" => harness_id,
+      "harness_id" => working_copy_id,
       "working_copy" => root,
       "provider" => "anthropic",
       "engine" => "claude_code"

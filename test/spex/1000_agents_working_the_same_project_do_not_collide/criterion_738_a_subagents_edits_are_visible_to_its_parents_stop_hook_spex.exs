@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
             "harness_project:#{context.project.id}",
             %{
               "contract_version" => @contract_version,
-              "harness_id" => context.scope.active_harness_id,
+              "harness_id" => context.scope.active_working_copy_id,
               "root" => context.scope.cwd,
               "label" => "the harness the parent and its subagent share"
             }
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
           )
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> Phoenix.ConnTest.dispatch(
           CodeMySpecLocalWeb.Endpoint,
@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
       then_ "the parent's stop hook evaluates that change as its own", context do
         stop =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> Phoenix.ConnTest.dispatch(
             CodeMySpecLocalWeb.Endpoint,
@@ -157,7 +157,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
 
   # Counted off the operator's harness picker rather than out of the database:
   # the picker is where a phantom working copy would actually be seen, and the
-  # spex boundary does not reach `CodeMySpec.Harnesses` — correctly, since a
+  # spex boundary does not reach `CodeMySpec.WorkingCopies` — correctly, since a
   # spec asserting on rows nobody renders proves nothing about the product.
   defp working_copies(context) do
     {:ok, _live, html} = live(context.conn, "/app/projects/#{context.project.id}/files")

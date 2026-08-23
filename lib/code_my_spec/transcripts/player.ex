@@ -390,7 +390,7 @@ defmodule CodeMySpec.Transcripts.Player do
       # checkout, which is how a demo replay could seed a session against a
       # neighbouring one.
       headers = [
-        {"x-harness-id", Replayer.harness_id(target) || ""},
+        {"x-harness-id", Replayer.working_copy_id(target) || ""},
         {"content-type", "application/json"}
       ]
 

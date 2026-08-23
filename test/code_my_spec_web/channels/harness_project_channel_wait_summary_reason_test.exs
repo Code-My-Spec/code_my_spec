@@ -44,7 +44,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel.WaitSummaryReasonTest do
       |> socket("harness_test", %{scope: scope})
       |> subscribe_and_join(HarnessProjectChannel, topic, %{
         "label" => @label,
-        "harness_id" => scope.active_harness_id
+        "harness_id" => scope.active_working_copy_id
       })
 
     socket

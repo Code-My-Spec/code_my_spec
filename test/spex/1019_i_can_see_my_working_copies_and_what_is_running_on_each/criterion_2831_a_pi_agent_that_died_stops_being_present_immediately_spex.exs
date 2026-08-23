@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2831Spex do
     scenario "A Pi agent that died stops being present immediately" do
       given_ "a Pi agent shown as present on a copy", context do
         dying = join_working_copy(context, "/tmp/spex-1019-dying", "dying checkout")
-        report_agents(context, [pi_agent(dying.harness_id, "/tmp/spex-1019-dying")])
+        report_agents(context, [pi_agent(dying.working_copy_id, "/tmp/spex-1019-dying")])
 
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")

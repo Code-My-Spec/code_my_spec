@@ -6,7 +6,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -591,7 +591,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       from(f in CodeMySpec.Files.File,
         as: :file,
         where: parent_as(:problem).file_path == f.path,
-        where: parent_as(:problem).harness_id == f.harness_id,
+        where: parent_as(:problem).working_copy_id == f.working_copy_id,
         where: not is_nil(f.fingerprint),
         where: f.fingerprint != parent_as(:problem).file_fingerprint,
         where: not is_nil(f.mtime),
@@ -606,7 +606,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   # A scope that names no working copy means *the project's default one* — the
   # same thing it already meant on the way in, where `insert_all_problems/2`
-  # sends such writes to `Harnesses.ensure_default/1`.
+  # sends such writes to `WorkingCopies.ensure_default/1`.
   #
   # It used to mean "every working copy" here, and that asymmetry was
   # destructive rather than merely wrong. `clear_problems_for_source/3` uses
@@ -623,14 +623,14 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   #
   # `default_id/1` is a pure function of the project id, so this costs a read
   # path nothing and creates no row.
-  defp scope_to_harness(query, %Scope{active_harness_id: nil, active_project_id: project_id})
+  defp scope_to_harness(query, %Scope{active_working_copy_id: nil, active_project_id: project_id})
        when is_binary(project_id),
-       do: where(query, [p], p.harness_id == ^Harnesses.default_id(project_id))
+       do: where(query, [p], p.working_copy_id == ^WorkingCopies.default_id(project_id))
 
-  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+  defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
-  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
-    do: where(query, [p], p.harness_id == ^harness_id)
+  defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [p], p.working_copy_id == ^working_copy_id)
 
   defp insert_all_problems([], _scope), do: {:ok, []}
 
@@ -638,15 +638,15 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     # Resolved once rather than per problem: a reconcile inserts hundreds, and
     # `ensure_default/1` is a write. A writer that named its working copy gets
     # that one; one that did not shares the project's nil object, same as files.
-    harness_id = scope.active_harness_id || Harnesses.ensure_default(scope)
+    working_copy_id = scope.active_working_copy_id || WorkingCopies.ensure_default(scope)
 
     # Likewise once: which version of each file these were found in, so a
     # finding that outlives its file can later be recognised as superseded.
-    fingerprints = fingerprints_for(project_id, harness_id, problems)
+    fingerprints = fingerprints_for(project_id, working_copy_id, problems)
 
     problems
     |> Enum.reduce_while([], fn problem_data, acc ->
-      case insert_single_problem(problem_data, project_id, harness_id, fingerprints) do
+      case insert_single_problem(problem_data, project_id, working_copy_id, fingerprints) do
         {:ok, problem} -> {:cont, [problem | acc]}
         {:error, changeset} -> {:halt, {:error, changeset}}
       end
@@ -660,7 +660,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # One query for the whole batch — a reconcile inserts hundreds, and per-problem
   # lookups would be hundreds of round trips for data that does not change
   # inside a single reconcile.
-  defp fingerprints_for(project_id, harness_id, problems) do
+  defp fingerprints_for(project_id, working_copy_id, problems) do
     paths =
       problems
       |> Enum.map(&problem_path/1)
@@ -668,7 +668,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       |> Enum.uniq()
 
     CodeMySpec.Files.File
-    |> where([f], f.project_id == ^project_id and f.harness_id == ^harness_id)
+    |> where([f], f.project_id == ^project_id and f.working_copy_id == ^working_copy_id)
     |> where([f], f.path in ^paths)
     |> select([f], {f.path, f.fingerprint})
     |> Repo.all()
@@ -679,13 +679,13 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   defp problem_path(%{"file_path" => path}) when is_binary(path), do: path
   defp problem_path(_), do: nil
 
-  defp insert_single_problem(problem_data, project_id, harness_id, fingerprints) do
+  defp insert_single_problem(problem_data, project_id, working_copy_id, fingerprints) do
     attrs = problem_data |> to_attrs_map() |> Map.put(:project_id, project_id)
     fingerprint = Map.get(fingerprints, attrs[:file_path] || attrs["file_path"])
 
     attrs =
       attrs
-      |> Map.put(:harness_id, harness_id)
+      |> Map.put(:working_copy_id, working_copy_id)
       |> Map.put(:file_fingerprint, fingerprint)
 
     %Problem{}

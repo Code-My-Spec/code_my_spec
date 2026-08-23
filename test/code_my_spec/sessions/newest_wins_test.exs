@@ -60,7 +60,8 @@ defmodule CodeMySpec.Sessions.NewestWinsTest do
     _first = start_session(scope, "resolves-first")
     second = start_session(scope, "resolves-second")
 
-    assert Sessions.external_id_for_harness(scope.active_harness_id) == second.external_conversation_id,
+    assert Sessions.external_id_for_harness(scope.active_working_copy_id) ==
+             second.external_conversation_id,
            "newest wins is the documented rule; with a tie it was undefined"
   end
 

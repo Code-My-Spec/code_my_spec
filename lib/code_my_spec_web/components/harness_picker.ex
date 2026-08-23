@@ -36,14 +36,14 @@ defmodule CodeMySpecWeb.HarnessPicker do
 
   use Phoenix.Component
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   # Enough for the checkouts in play, short enough not to wrap on a phone.
   @visible 3
 
   attr :harnesses, :list, required: true
   attr :active_id, :string, default: nil
-  attr :path_fun, :any, required: true, doc: "fn harness_id -> path"
+  attr :path_fun, :any, required: true, doc: "fn working_copy_id -> path"
 
   def harness_picker(assigns) do
     {shown, rest} = split(assigns.harnesses, assigns.active_id)
@@ -116,18 +116,18 @@ defmodule CodeMySpecWeb.HarnessPicker do
   the current one, not a stack trace.
   """
   @spec scope_for(CodeMySpec.Users.Scope.t(), String.t() | nil) :: CodeMySpec.Users.Scope.t()
-  def scope_for(scope, nil), do: Harnesses.viewing(scope)
+  def scope_for(scope, nil), do: WorkingCopies.viewing(scope)
 
-  def scope_for(scope, harness_id) do
-    case Enum.find(Harnesses.list_harnesses(scope), &(&1.id == harness_id)) do
-      nil -> Harnesses.viewing(scope)
-      harness -> %{scope | active_harness_id: harness.id}
+  def scope_for(scope, working_copy_id) do
+    case Enum.find(WorkingCopies.list_harnesses(scope), &(&1.id == working_copy_id)) do
+      nil -> WorkingCopies.viewing(scope)
+      harness -> %{scope | active_working_copy_id: harness.id}
     end
   end
 
   # The root's last segment is what distinguishes two checkouts of one project,
   # so that is what the button shows; the whole string is the title attribute.
-  # `Harnesses.display_name/1` owns the rule now — the working-copies pages need
+  # `WorkingCopies.display_name/1` owns the rule now — the working-copies pages need
   # the same answer, and two copies of it would drift.
-  defp short_label(harness), do: Harnesses.display_name(harness)
+  defp short_label(harness), do: WorkingCopies.display_name(harness)
 end

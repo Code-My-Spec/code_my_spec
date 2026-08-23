@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2378Spex do
 
       given_ "that checkout has been quiet for days", context do
         Fixtures.all_agents_go_quiet(context.scope, 96)
-        {:ok, Map.put(context, :quiet_id, context.scope.active_harness_id)}
+        {:ok, Map.put(context, :quiet_id, context.scope.active_working_copy_id)}
       end
 
       given_ "another agent is working", context do

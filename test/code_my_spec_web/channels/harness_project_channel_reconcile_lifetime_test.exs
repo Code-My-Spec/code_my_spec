@@ -61,7 +61,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
         "harness_project:#{scope.active_project_id}",
         %{
           "label" => "the harness at /workspace/app",
-          "harness_id" => scope.active_harness_id
+          "harness_id" => scope.active_working_copy_id
         }
       )
 
@@ -91,9 +91,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
   # pass for the wrong reason — a reconcile that already finished is
   # indistinguishable from one that was correctly killed, and the second is what
   # this file exists to assert.
-  defp await_reconcile_pid(harness_id, attempts \\ 200) do
+  defp await_reconcile_pid(working_copy_id, attempts \\ 200) do
     Enum.reduce_while(1..attempts, nil, fn _, _ ->
-      ReconcileRegistry |> Registry.lookup(to_string(harness_id)) |> halt_on_pid()
+      ReconcileRegistry |> Registry.lookup(to_string(working_copy_id)) |> halt_on_pid()
     end) ||
       flunk("""
       No reconcile was ever observed in the registry.
@@ -157,7 +157,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
   } do
     push(channel, "observations", %{"observations" => observations(400)})
 
-    pid = await_reconcile_pid(scope.active_harness_id)
+    pid = await_reconcile_pid(scope.active_working_copy_id)
 
     assert Process.alive?(pid),
            "the precondition — there is no point asserting a kill on something already dead"
@@ -197,7 +197,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelReconcileLifetimeTest do
 
     orphan =
       spawn(fn ->
-        ReconcileRegistry.mark(scope.active_harness_id, 4155)
+        ReconcileRegistry.mark(scope.active_working_copy_id, 4155)
         send(test_pid, :marked)
         receive do: (:release -> :ok)
       end)

@@ -4,9 +4,9 @@ defmodule CmsHarness.HarnessConfig do
 
   One file per working copy, at its root, and only one:
 
-      {"harness_id": "…", "project_id": "…", "root": "/abs/path"}
+      {"working_copy_id": "…", "harness_id": "…", "project_id": "…", "root": "/abs/path"}
 
-  There used to be two. `HarnessIdentity` wrote an id-only `.cms_harness_id`
+  There used to be two. `HarnessIdentity` wrote an id-only `.cms_working_copy_id`
   when the server issued one, this wrote `.cms_harness.json` at onboarding, and
   a working copy that had been through both carried two files naming two
   harnesses with nothing on disk saying which counted. Reading preferred the
@@ -46,7 +46,7 @@ defmodule CmsHarness.HarnessConfig do
   @env_var "CMS_HARNESS_ID"
 
   @type t :: %{
-          harness_id: String.t(),
+          working_copy_id: String.t(),
           project_id: String.t() | nil,
           deploy_key: String.t() | nil,
           root: String.t()
@@ -103,7 +103,7 @@ defmodule CmsHarness.HarnessConfig do
 
   defp from_env_config(root) do
     case from_env() do
-      {:ok, id} -> {:ok, %{harness_id: id, project_id: nil, deploy_key: nil, root: root}}
+      {:ok, id} -> {:ok, %{working_copy_id: id, project_id: nil, deploy_key: nil, root: root}}
       :none -> :none
     end
   end
@@ -142,7 +142,7 @@ defmodule CmsHarness.HarnessConfig do
   something to say about it.
   """
   @spec write(String.t(), t()) :: :ok | {:error, term()}
-  def write(root, %{harness_id: id} = config) when is_binary(id) and id != "" do
+  def write(root, %{working_copy_id: id} = config) when is_binary(id) and id != "" do
     root = Path.expand(root)
     file = path(root)
 
@@ -153,7 +153,8 @@ defmodule CmsHarness.HarnessConfig do
     body =
       root
       |> recorded()
-      |> Map.merge(%{harness_id: id, root: root})
+      |> Map.drop([:harness_id, "harness_id"])
+      |> Map.merge(%{working_copy_id: id, harness_id: id, root: root})
       |> merge_present(:project_id, config[:project_id])
       |> merge_present(:deploy_key, config[:deploy_key])
       |> Jason.encode!(pretty: true)
@@ -214,7 +215,7 @@ defmodule CmsHarness.HarnessConfig do
   # file may be replaced.
   defp recorded(root) do
     case from_file(root) do
-      {:ok, config} -> Map.take(config, [:harness_id, :project_id, :deploy_key, :root])
+      {:ok, config} -> Map.take(config, [:working_copy_id, :project_id, :deploy_key, :root])
       _ -> %{}
     end
   end
@@ -231,21 +232,45 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
+  # Both key names are accepted, and that is the compatibility window.
+  #
+  # This file is on disk in every onboarded checkout, written by whichever build
+  # onboarded it, and read by whichever build is running now — including the
+  # published `cms` binary, which is not rebuilt when this repo is. So a reader
+  # that understood only the new name would refuse every existing checkout, and
+  # a writer that emitted only the new name would break the published binary
+  # reading the same file. Both sides accept both until nothing old is left.
+  #
+  # `working_copy_id` wins where both are present: it is what a current build
+  # wrote, and a stale `working_copy_id` beside it is the older of the two.
   defp decode(contents, root) do
     case Jason.decode(contents) do
-      {:ok, %{"harness_id" => id} = map} when is_binary(id) and id != "" ->
-        {:ok,
-         %{
-           harness_id: id,
-           project_id: map["project_id"],
-           deploy_key: map["deploy_key"],
-           root: map["root"] || root
-         }}
+      {:ok, map} ->
+        map |> recorded_id() |> decoded(map, root)
 
       _ ->
-        Logger.error("[CmsHarness] #{path(root)} is not a harness config")
+        Logger.error("[CmsHarness] #{path(root)} is not a working copy config")
         {:error, :malformed}
     end
+  end
+
+  defp recorded_id(%{"working_copy_id" => id}) when is_binary(id) and id != "", do: id
+  defp recorded_id(%{"harness_id" => id}) when is_binary(id) and id != "", do: id
+  defp recorded_id(_map), do: nil
+
+  defp decoded(nil, _map, root) do
+    Logger.error("[CmsHarness] #{path(root)} is not a working copy config")
+    {:error, :malformed}
+  end
+
+  defp decoded(id, map, root) do
+    {:ok,
+     %{
+       working_copy_id: id,
+       project_id: map["project_id"],
+       deploy_key: map["deploy_key"],
+       root: map["root"] || root
+     }}
   end
 
   defp present_or_none(""), do: :none

@@ -45,10 +45,10 @@ defmodule CmsHarness.WorkingCopies do
   the server could not be asked at all, and re-onboarding fixes nothing.
   """
   @spec root(String.t()) :: {:ok, String.t()} | :unknown | {:unreachable, term()}
-  def root(harness_id) when is_binary(harness_id) and harness_id != "" do
-    case Enum.find(known(), fn {id, _root} -> id == harness_id end) do
+  def root(working_copy_id) when is_binary(working_copy_id) and working_copy_id != "" do
+    case Enum.find(known(), fn {id, _root} -> id == working_copy_id end) do
       {_id, root} -> {:ok, root}
-      nil -> ask_server(harness_id)
+      nil -> ask_server(working_copy_id)
     end
   end
 
@@ -57,14 +57,14 @@ defmodule CmsHarness.WorkingCopies do
   # The harness object holds the root each copy reported when it joined. Asking
   # for it is how one harness serves a copy it was not started in, without
   # anybody maintaining a list of directories.
-  defp ask_server(harness_id) do
+  defp ask_server(working_copy_id) do
     with {:ok, token} <- Token.access_token(),
          {:ok, %{status: 200, body: %{"root" => root}}} when is_binary(root) and root != "" <-
-           get(harness_id, token) do
+           get(working_copy_id, token) do
       {:ok, root}
     else
       {:ok, %{status: 404}} ->
-        Logger.warning("[CmsHarness] the server does not know harness #{harness_id}")
+        Logger.warning("[CmsHarness] the server does not know harness #{working_copy_id}")
         :unknown
 
       # Not `:unknown`. "The server said no" and "I could not ask the server"
@@ -78,19 +78,19 @@ defmodule CmsHarness.WorkingCopies do
       # harness.log directly above it.
       other ->
         Logger.warning(
-          "[CmsHarness] could not ask where harness #{harness_id} is: #{inspect(other)}"
+          "[CmsHarness] could not ask where harness #{working_copy_id} is: #{inspect(other)}"
         )
 
         {:unreachable, other}
     end
   end
 
-  defp get(harness_id, token) do
+  defp get(working_copy_id, token) do
     Req.get(
       url:
         Config.server_url()
         |> String.trim_trailing("/")
-        |> Kernel.<>("/api/harnesses/#{harness_id}"),
+        |> Kernel.<>("/api/harnesses/#{working_copy_id}"),
       headers: [{"authorization", "Bearer " <> token}],
       retry: false,
       receive_timeout: to_timeout(second: 10)
@@ -119,7 +119,7 @@ defmodule CmsHarness.WorkingCopies do
     # answer every root here with the same id and collapse this map down to
     # whichever root got processed last.
     case HarnessConfig.read_file(root) do
-      {:ok, %{harness_id: id, root: configured}} -> [{id, configured || root}]
+      {:ok, %{working_copy_id: id, root: configured}} -> [{id, configured || root}]
       _ -> []
     end
   end

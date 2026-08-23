@@ -2,7 +2,7 @@ defmodule CodeMySpec.Agents.Agent do
   @moduledoc """
   One coding agent CodeMySpec started, on one working copy, on one provider.
 
-  `harness_id` is the working copy this agent runs in, and it is the key.
+  `working_copy_id` is the working copy this agent runs in, and it is the key.
   Nothing joins on a path: `working_copy` and `harnesses.root` are both strings
   a device reported, and comparing two reported strings is how an agent ends up
   attached to a copy that does not exist — a symlink, a trailing slash or
@@ -52,7 +52,7 @@ defmodule CodeMySpec.Agents.Agent do
           config_dir: String.t() | nil,
           os_pid: integer() | nil,
           status: atom() | nil,
-          harness_id: Ecto.UUID.t() | nil,
+          working_copy_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Agents.Agent do
     field :config_dir, :string
     field :os_pid, :integer
     field :status, Ecto.Enum, values: @statuses, default: :starting
-    field :harness_id, Ecto.UUID
+    field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
 
     belongs_to :project, Project
@@ -95,7 +95,7 @@ defmodule CodeMySpec.Agents.Agent do
       :config_dir,
       :os_pid,
       :status,
-      :harness_id,
+      :working_copy_id,
       :project_id,
       :account_id
     ])
@@ -104,11 +104,11 @@ defmodule CodeMySpec.Agents.Agent do
       :provider,
       :working_copy,
       :role,
-      :harness_id,
+      :working_copy_id,
       :project_id,
       :account_id
     ])
-    |> foreign_key_constraint(:harness_id)
+    |> foreign_key_constraint(:working_copy_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end

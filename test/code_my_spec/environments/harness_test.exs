@@ -73,7 +73,7 @@ defmodule CodeMySpec.Environments.HarnessTest do
       assert {:error, {_tag, details}} =
                Environments.read_file(env(%{"harness_id" => id}), "lib/thing.ex")
 
-      assert details.harness_id == id
+      assert details.working_copy_id == id
       assert details.op == "read_file"
     end
 

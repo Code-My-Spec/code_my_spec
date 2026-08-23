@@ -22,7 +22,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Conversations.Message
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -35,8 +35,8 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     # A real working copy, issued the way a checkout gets one. The report keys
     # on this id, so a test that invents a uuid would be testing a shape rather
     # than the join.
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /tmp/two-lanes")
-    {:ok, harness} = Harnesses.report_root(harness, "/tmp/two-lanes")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /tmp/two-lanes")
+    {:ok, harness} = WorkingCopies.report_root(harness, "/tmp/two-lanes")
 
     {:ok, _reply, channel} =
       CodeMySpecWeb.UserSocket
@@ -90,7 +90,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
              "that is still working with it."
   end
 
-  # One lane on that copy, the way `LaneReporter` composes it. `harness_id` is
+  # One lane on that copy, the way `LaneReporter` composes it. `working_copy_id` is
   # the key; `working_copy` rides along because the path is real and the
   # conversation is keyed from it.
   defp lane(harness, role) do
@@ -114,7 +114,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     assert_reply ref, :ok, %{"running" => running}
 
     assert running == [],
-           "a report with no harness_id used to be matched against harnesses.root, " <>
+           "a report with no working_copy_id used to be matched against harnesses.root, " <>
              "which is another reported string. Guessing produces an agent attached " <>
              "to whichever copy happened to match, and on this project five roots " <>
              "name more than one harness."

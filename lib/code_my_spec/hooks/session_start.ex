@@ -77,8 +77,8 @@ defmodule CodeMySpec.Hooks.SessionStart do
     end
   end
 
-  defp co_occupancy_message(others, %Session{harness_id: harness_id}) do
-    {same_copy, elsewhere} = Enum.split_with(others, &(&1.harness_id == harness_id))
+  defp co_occupancy_message(others, %Session{working_copy_id: working_copy_id}) do
+    {same_copy, elsewhere} = Enum.split_with(others, &(&1.working_copy_id == working_copy_id))
 
     [shared_index_warning(same_copy), shared_project_warning(elsewhere)]
     |> Enum.reject(&is_nil/1)

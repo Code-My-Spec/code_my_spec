@@ -28,7 +28,7 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   describe "a project no server is tracking" do
     test "is untracked, not idle" do
@@ -48,8 +48,8 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
   describe "a project served by a harness" do
     setup do
       scope = full_scope_fixture()
-      {:ok, harness} = Harnesses.issue(scope, nil, label: "a working copy")
-      scope = %{scope | active_harness_id: harness.id}
+      {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+      scope = %{scope | active_working_copy_id: harness.id}
 
       # Registering an executor is what makes the project *served*. A harness
       # row on its own is not: `remote_executor/1` answers from the registry, so
@@ -74,9 +74,9 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
 
     test "a harness that has never joined is untracked, not idle" do
       unserved = full_scope_fixture()
-      {:ok, harness} = Harnesses.issue(unserved, nil, label: "never joined")
+      {:ok, harness} = WorkingCopies.issue(unserved, nil, label: "never joined")
 
-      assert Analysis.in_flight_state(%{unserved | active_harness_id: harness.id}) ==
+      assert Analysis.in_flight_state(%{unserved | active_working_copy_id: harness.id}) ==
                :untracked,
              "a row is not a running process; nothing would report a run for it"
     end

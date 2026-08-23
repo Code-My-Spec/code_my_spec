@@ -127,9 +127,9 @@ end
 # `CmsHarness.Config` reads these straight from the environment, and the
 # analyzer runs `mix test` as a child of a harness that has all of them. A test
 # that started a fixture working copy therefore opened a real socket, joined,
-# and `Harnesses.issue/3` wrote a row per fixture root: 81 of 86 harness rows on
+# and `WorkingCopies.issue/3` wrote a row per fixture root: 81 of 86 harness rows on
 # the dev server had roots under /var/folders, directories that stopped existing
-# when the test ended. `Harnesses.viewing/1` defaults to the most recently
+# when the test ended. `WorkingCopies.viewing/1` defaults to the most recently
 # active harness, so an operator's view then described a checkout nobody had.
 #
 # `FakeServer.start/1` already clears these for the tests that use it — this is

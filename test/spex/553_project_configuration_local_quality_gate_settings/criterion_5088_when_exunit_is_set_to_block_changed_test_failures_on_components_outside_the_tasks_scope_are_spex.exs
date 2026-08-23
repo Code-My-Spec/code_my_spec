@@ -56,8 +56,8 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         _turn_1_response =
           use_cmd_cassette "pipeline_exunit_failure", record: :none do
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "test_output_files" => %{
@@ -78,8 +78,8 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         # so no cassette wrapper is needed.
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{})
           |> Phoenix.ConnTest.json_response(200)

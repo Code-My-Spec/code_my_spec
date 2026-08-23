@@ -2,7 +2,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   @moduledoc """
   Every working copy on the project, and what is running on each.
 
-  A harness is a working copy — `Harnesses.issue/3` mints one id per checkout,
+  A harness is a working copy — `WorkingCopies.issue/3` mints one id per checkout,
   so "harness id" and "working copy id" are the same thing. The list is the set
   of copies, not the set of agents: a checkout running nothing is still a row,
   because a copy that is absent reads as a copy that does not exist.

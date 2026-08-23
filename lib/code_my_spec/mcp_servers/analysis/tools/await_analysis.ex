@@ -70,11 +70,11 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis do
   # the reply useful.
   defp base(frame) do
     case frame.assigns[:scope] do
-      %{active_harness_id: id} when is_binary(id) ->
+      %{active_working_copy_id: id} when is_binary(id) ->
         "localhost:4004/api/harnesses/#{id}"
 
       _ ->
-        "localhost:4004/api/harnesses/<harness_id>"
+        "localhost:4004/api/harnesses/<working_copy_id>"
     end
   end
 end

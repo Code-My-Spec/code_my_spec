@@ -51,7 +51,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           schedule_tick()
         end
 
-        {:noreply, socket |> assign(:harness_id, id) |> load(project)}
+        {:noreply, socket |> assign(:working_copy_id, id) |> load(project)}
     end
   end
 
@@ -80,7 +80,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     now = DateTime.utc_now()
 
     socket.assigns.current_scope
-    |> Rows.get(project, socket.assigns.harness_id, now)
+    |> Rows.get(project, socket.assigns.working_copy_id, now)
     |> assign_row(socket, now)
   end
 
@@ -166,7 +166,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         <.list>
           <:item title="Working copy id">{@row.harness.id}</:item>
           <:item title="Root">{@row.harness.root}</:item>
-          <:item title="Harness last seen">
+          <:item title="Working copy last seen">
             {Liveness.since(@row.harness.last_seen_at, @now) || "not yet"}
           </:item>
           <:item title="Liveness">

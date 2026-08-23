@@ -19,7 +19,7 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems.ProblemRepository
 
   defp problem(path) do
@@ -46,14 +46,14 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, a} = Harnesses.issue(scope, nil, label: "copy A")
-    {:ok, b} = Harnesses.issue(scope, nil, label: "copy B")
+    {:ok, a} = WorkingCopies.issue(scope, nil, label: "copy A")
+    {:ok, b} = WorkingCopies.issue(scope, nil, label: "copy B")
 
     %{
       scope: scope,
-      a: %{scope | active_harness_id: a.id},
-      b: %{scope | active_harness_id: b.id},
-      nameless: %{scope | active_harness_id: nil}
+      a: %{scope | active_working_copy_id: a.id},
+      b: %{scope | active_working_copy_id: b.id},
+      nameless: %{scope | active_working_copy_id: nil}
     }
   end
 
@@ -84,9 +84,9 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
     # Losing the stored id and registering again. `issue/3` with nil is the
     # whole of a re-onboard from the server's side.
-    {:ok, reissued} = Harnesses.issue(scope, nil, label: "copy A, after re-onboarding")
-    refute reissued.id == old.active_harness_id
-    reonboarded = %{scope | active_harness_id: reissued.id}
+    {:ok, reissued} = WorkingCopies.issue(scope, nil, label: "copy A, after re-onboarding")
+    refute reissued.id == old.active_working_copy_id
+    reonboarded = %{scope | active_working_copy_id: reissued.id}
 
     assert paths(reonboarded) == [],
            "the re-onboarded copy is reading findings recorded under an id it no longer " <>

@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
 
   Components are project-level and their ids are stable — 112 stories and 4048
   requirements link to them, so they must be. Presence is the per-checkout half,
-  and `files` already carries both `component_id` and `harness_id`.
+  and `files` already carries both `component_id` and `working_copy_id`.
 
   Without that distinction, `CodeMySpecLocalWeb.EpicsLive` — deleted from the
   spec tree on 2026-08-10 by `ad775a1`, "Move the EpicsLive specs to where the
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,15 +31,15 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
   test "a context whose only spec lives in another checkout is not this one's orphan" do
     scope = full_scope_fixture()
 
-    {:ok, mine} = Harnesses.issue(scope, nil, label: "mine")
-    {:ok, theirs} = Harnesses.issue(scope, nil, label: "theirs")
+    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "mine")
+    {:ok, theirs} = WorkingCopies.issue(scope, nil, label: "theirs")
 
     component = component_fixture(scope, %{module_name: "MyApp.Stale", type: "context"})
 
     # The spec exists only in the other checkout — the shape a stale worktree
     # leaves after a deletion it has not pulled.
     {1, _} =
-      Files.upsert_files(%{scope | active_harness_id: theirs.id}, [
+      Files.upsert_files(%{scope | active_working_copy_id: theirs.id}, [
         %{
           path: ".code_my_spec/spec/my_app/stale.spec.md",
           role: :spec,
@@ -50,13 +50,19 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
         }
       ])
 
-    theirs_scope = %{scope | active_harness_id: theirs.id}
-    mine_scope = %{scope | active_harness_id: mine.id}
+    theirs_scope = %{scope | active_working_copy_id: theirs.id}
+    mine_scope = %{scope | active_working_copy_id: mine.id}
 
-    assert component.module_name in Enum.map(ArchitectureChecker.orphans(theirs_scope), & &1.module_name),
+    assert component.module_name in Enum.map(
+             ArchitectureChecker.orphans(theirs_scope),
+             & &1.module_name
+           ),
            "the checkout that has the file owns the orphan and can resolve it"
 
-    refute component.module_name in Enum.map(ArchitectureChecker.orphans(mine_scope), & &1.module_name),
+    refute component.module_name in Enum.map(
+             ArchitectureChecker.orphans(mine_scope),
+             & &1.module_name
+           ),
            "a checkout with no file for it cannot resolve it and must not be told to"
   end
 

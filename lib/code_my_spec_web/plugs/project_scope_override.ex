@@ -24,7 +24,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
 
@@ -44,8 +44,8 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   # The harness first, and alone if that is all there is. It names the working
   # copy *and* the project it belongs to, so a caller that has one needs nothing
   # else — and cannot send a pair that disagrees.
-  defp override(conn, scope, harness_id, _project_id) when is_binary(harness_id) do
-    case Harnesses.fetch(harness_id) do
+  defp override(conn, scope, working_copy_id, _project_id) when is_binary(working_copy_id) do
+    case WorkingCopies.fetch(working_copy_id) do
       {:ok, harness} ->
         override_project(conn, scope, harness.project_id, harness)
 
@@ -56,15 +56,15 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
         # plausible answer about somebody else's checkout.
         conn
         |> put_status(:not_found)
-        |> Phoenix.Controller.json(%{error: "Unknown harness #{harness_id}"})
+        |> Phoenix.Controller.json(%{error: "Unknown harness #{working_copy_id}"})
         |> halt()
     end
   end
 
-  defp override(conn, scope, _harness_id, project_id) when is_binary(project_id),
+  defp override(conn, scope, _working_copy_id, project_id) when is_binary(project_id),
     do: override_project(conn, scope, project_id, nil)
 
-  defp override(conn, _scope, _harness_id, _project_id), do: conn
+  defp override(conn, _scope, _working_copy_id, _project_id), do: conn
 
   defp header(conn, name) do
     case get_req_header(conn, name) do
@@ -87,7 +87,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   # all three; this had not, and the two drifted because nothing made them the
   # same call.
   defp with_harness(scope, %{project_id: pid} = harness, project) when pid == project.id,
-    do: Harnesses.put_scope(scope, harness)
+    do: WorkingCopies.put_scope(scope, harness)
 
   defp with_harness(scope, _harness, _project), do: scope
 

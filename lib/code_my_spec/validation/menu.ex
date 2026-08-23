@@ -251,7 +251,7 @@ defmodule CodeMySpec.Validation.Menu do
   # Never raises the stop. A question count that could fail the hook would make
   # asking a question a liability, and the whole point is that asking is cheap.
   defp open_questions(scope) do
-    with id when is_binary(id) <- harness_id(scope),
+    with id when is_binary(id) <- working_copy_id(scope),
          external_id when is_binary(external_id) <- Sessions.external_id_for_harness(id) do
       external_id
       |> Notifications.list_question_requests_for_session()
@@ -261,6 +261,6 @@ defmodule CodeMySpec.Validation.Menu do
     end
   end
 
-  defp harness_id(%{active_harness_id: id}) when is_binary(id), do: id
-  defp harness_id(_scope), do: 0
+  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
+  defp working_copy_id(_scope), do: 0
 end

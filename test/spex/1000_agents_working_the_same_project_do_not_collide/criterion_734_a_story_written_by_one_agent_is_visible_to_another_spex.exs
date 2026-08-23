@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         # Two working copies, one project. What differs is the harness on the
         # scope; the project does not.
         first = context.scope
-        second = %{context.scope | active_harness_id: Ecto.UUID.generate()}
+        second = %{context.scope | active_working_copy_id: Ecto.UUID.generate()}
 
         {:ok, context |> Map.put(:first_agent, first) |> Map.put(:second_agent, second)}
       end

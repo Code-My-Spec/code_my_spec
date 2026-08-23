@@ -48,7 +48,7 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
       in_flight: ["credo"],
       in_flight_since: Keyword.get(opts, :since, %{"credo" => started_at}),
       tracked?: true,
-      harness_id: Keyword.get(opts, :harness_id)
+      working_copy_id: Keyword.get(opts, :working_copy_id)
     )
   end
 
@@ -74,7 +74,7 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
   # agent re-stops immediately, lands inside the same run, and is told the same
   # thing. Now it is offered a wait that outlasts the run instead.
   test "it offers a wait that outlasts the run, not another stop into it" do
-    text = render(13, harness_id: "h-abc")
+    text = render(13, working_copy_id: "h-abc")
 
     assert text =~ "analysis/wait",
            "a stop is what is being refused, so 'stop again' races the run and loses"

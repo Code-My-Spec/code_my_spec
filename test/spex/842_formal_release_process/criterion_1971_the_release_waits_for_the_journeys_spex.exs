@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1971Spex do
       when_ "the agent asks to start the release", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post("/api/agent-tasks/start", %{
             "session_type" => @release_type,

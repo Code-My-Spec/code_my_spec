@@ -530,8 +530,7 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
-    {:ok,
-     Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
+    {:ok, Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
   end
 
   # Drives session_start + start_task and returns the prompt text so specs
@@ -682,8 +681,7 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
-    {:ok,
-     Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
+    {:ok, Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
   end
 
   # The agent has signalled SessionStart and called start_task for the
@@ -1072,8 +1070,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   defp hook_conn(scope) do
     Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
+    |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
     |> Plug.Conn.put_req_header("content-type", "application/json")
   end
-
 end

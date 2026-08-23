@@ -45,7 +45,7 @@ defmodule CodeMySpec.Analysis.Coverage do
   would stamp the current content onto a file whose older bytes the tool
   actually read, which is a false fact rather than a stale one.
 
-  Upserts on `(harness_id, file_id, source)`: only current coverage is a fact
+  Upserts on `(working_copy_id, file_id, source)`: only current coverage is a fact
   anyone asks about, and a row per file per run would be hundreds of thousands a
   day per working copy.
   """
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Analysis.Coverage do
           id: Ecto.UUID.generate(),
           file_id: file_id,
           project_id: scope.active_project_id,
-          harness_id: scope.active_harness_id,
+          working_copy_id: scope.active_working_copy_id,
           source: source,
           fingerprint: fingerprint,
           analyzed_at: analyzed_at,
@@ -75,7 +75,7 @@ defmodule CodeMySpec.Analysis.Coverage do
 
     Repo.insert_all(FileAnalysis, rows,
       on_conflict: {:replace, [:fingerprint, :analyzed_at, :run_id, :updated_at]},
-      conflict_target: [:harness_id, :file_id, :source]
+      conflict_target: [:working_copy_id, :file_id, :source]
     )
   end
 
@@ -105,7 +105,9 @@ defmodule CodeMySpec.Analysis.Coverage do
     scope
     |> feeding_files(source)
     |> join(:left, [f], a in FileAnalysis,
-      on: a.file_id == f.id and a.source == ^source and a.harness_id == ^scope.active_harness_id
+      on:
+        a.file_id == f.id and a.source == ^source and
+          a.working_copy_id == ^scope.active_working_copy_id
     )
     |> where([_f, a], is_nil(a.id))
     |> select([f, _a], f)
@@ -129,7 +131,9 @@ defmodule CodeMySpec.Analysis.Coverage do
     scope
     |> feeding_files(source)
     |> join(:inner, [f], a in FileAnalysis,
-      on: a.file_id == f.id and a.source == ^source and a.harness_id == ^scope.active_harness_id
+      on:
+        a.file_id == f.id and a.source == ^source and
+          a.working_copy_id == ^scope.active_working_copy_id
     )
   end
 
@@ -140,7 +144,7 @@ defmodule CodeMySpec.Analysis.Coverage do
 
     ProjectFile
     |> where([f], f.project_id == ^scope.active_project_id)
-    |> where([f], f.harness_id == ^scope.active_harness_id)
+    |> where([f], f.working_copy_id == ^scope.active_working_copy_id)
     |> where([f], f.role in ^roles)
   end
 end

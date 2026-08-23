@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion733Spex do
     })
   end
 
-  defp id_of(reply), do: reply["harness_id"] || reply[:harness_id]
+  defp id_of(reply), do: reply["harness_id"] || reply[:working_copy_id]
 
   defp observation(path, fingerprint) do
     %{

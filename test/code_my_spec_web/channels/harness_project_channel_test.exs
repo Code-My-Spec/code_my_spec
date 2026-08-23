@@ -22,7 +22,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
@@ -64,7 +64,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     |> harness_socket(opts)
     |> subscribe_and_join(HarnessProjectChannel, topic, %{
       "label" => @label,
-      "harness_id" => scope.active_harness_id
+      "harness_id" => scope.active_working_copy_id
     })
   end
 
@@ -76,8 +76,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # client because every client-derived alternative collides on a real case —
     # two containers at /workspace/app, a generated hostname, a churning
     # session id.
-    defp join_with(scope, topic, harness_id) do
-      payload = %{"label" => @label, "harness_id" => harness_id}
+    defp join_with(scope, topic, working_copy_id) do
+      payload = %{"label" => @label, "harness_id" => working_copy_id}
 
       scope
       |> harness_socket([])
@@ -85,19 +85,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     # Only the wire contract lives here — that the id makes the round trip. The
-    # minting rules are `CodeMySpec.Harnesses`' and are tested there, where a
+    # minting rules are `CodeMySpec.WorkingCopies`' and are tested there, where a
     # second working copy does not have to get past a lease held by the first.
     test "a checkout joining for the first time is issued one", %{scope: scope, topic: topic} do
-      assert {:ok, %{harness_id: id}, _socket} = join_with(scope, topic, nil)
+      assert {:ok, %{working_copy_id: id}, _socket} = join_with(scope, topic, nil)
 
       assert {:ok, _} = Ecto.UUID.cast(id),
              "the harness writes this down; without it every restart is a new harness"
     end
 
     test "presenting an id gets that same id back", %{scope: scope, topic: topic} do
-      {:ok, harness} = Harnesses.issue(scope, nil, label: @label)
+      {:ok, harness} = WorkingCopies.issue(scope, nil, label: @label)
 
-      assert {:ok, %{harness_id: returned}, _socket} = join_with(scope, topic, harness.id)
+      assert {:ok, %{working_copy_id: returned}, _socket} = join_with(scope, topic, harness.id)
 
       assert returned == harness.id,
              "a restart issued a second id orphans everything filed under the first"
@@ -115,7 +115,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # two checkouts hold different ids and both serve, which is the whole point
     # of the grain change.
     test "a second harness on the same working copy is refused", %{scope: scope, topic: topic} do
-      {:ok, %{harness_id: id}, _first} = join_with(scope, topic, nil)
+      {:ok, %{working_copy_id: id}, _first} = join_with(scope, topic, nil)
 
       assert {:error, %{reason: "working_copy_in_use"}} = join_with(scope, topic, id),
              "not for the files — two processes read one disk and agree — but for the " <>
@@ -123,9 +123,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "two working copies of one project both serve", %{scope: scope, topic: topic} do
-      assert {:ok, %{harness_id: first}, _} = join_with(scope, topic, nil)
+      assert {:ok, %{working_copy_id: first}, _} = join_with(scope, topic, nil)
 
-      assert {:ok, %{harness_id: second}, _} = join_with(scope, topic, nil),
+      assert {:ok, %{working_copy_id: second}, _} = join_with(scope, topic, nil),
              "this is what the lease used to prevent, and what story 727 is for"
 
       refute first == second
@@ -186,12 +186,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # where it is still says so there, rather than having a host invented for it.
     test "a harness that does not say where it is is recorded that way",
          %{scope: scope, topic: topic} do
-      {:ok, %{harness_id: id}, _first} =
+      {:ok, %{working_copy_id: id}, _first} =
         scope
         |> harness_socket([])
         |> subscribe_and_join(HarnessProjectChannel, topic, %{})
 
-      harness = Enum.find(Harnesses.list_harnesses(scope), &(&1.id == id))
+      harness = Enum.find(WorkingCopies.list_harnesses(scope), &(&1.id == id))
 
       assert harness.label =~ "did not say where it is"
     end
@@ -873,12 +873,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "are closed when the next harness joins", %{scope: scope, topic: topic} do
-      {:ok, %{harness_id: id}, channel} = join_with(scope, topic, nil)
+      {:ok, %{working_copy_id: id}, channel} = join_with(scope, topic, nil)
 
       # "In flight" is a question about a working copy now — the runs belong to
       # the harness whose queue was going to answer them, and a scope naming a
       # different one is asking about a different machine.
-      served = %{scope | active_harness_id: id}
+      served = %{scope | active_working_copy_id: id}
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000
@@ -911,8 +911,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       scope: scope,
       topic: topic
     } do
-      {:ok, %{harness_id: id}, channel} = join_with(scope, topic, nil)
-      served = %{scope | active_harness_id: id}
+      {:ok, %{working_copy_id: id}, channel} = join_with(scope, topic, nil)
+      served = %{scope | active_working_copy_id: id}
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000
@@ -935,12 +935,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                "or the result it is about to send is refused as unknown_run"
     end
 
-    defp join_claiming(scope, topic, harness_id, run_ids) do
+    defp join_claiming(scope, topic, working_copy_id, run_ids) do
       scope
       |> harness_socket([])
       |> subscribe_and_join(HarnessProjectChannel, topic, %{
         "label" => @label,
-        "harness_id" => harness_id,
+        "harness_id" => working_copy_id,
         "active_runs" => run_ids
       })
     end

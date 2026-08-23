@@ -29,12 +29,12 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
 
   setup do
     previous = System.get_env("CMS_HARNESS_ID")
-    on_exit(fn -> restore_harness_id(previous) end)
+    on_exit(fn -> restore_working_copy_id(previous) end)
     :ok
   end
 
-  defp restore_harness_id(nil), do: System.delete_env("CMS_HARNESS_ID")
-  defp restore_harness_id(value), do: System.put_env("CMS_HARNESS_ID", value)
+  defp restore_working_copy_id(nil), do: System.delete_env("CMS_HARNESS_ID")
+  defp restore_working_copy_id(value), do: System.put_env("CMS_HARNESS_ID", value)
 
   defp checkout_with_id(id) do
     root = Path.join(System.tmp_dir!(), "cms_precedence_#{System.unique_integer([:positive])}")
@@ -64,9 +64,9 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
     # a valid id, belonging to neither of these.
     System.put_env("CMS_HARNESS_ID", Ecto.UUID.generate())
 
-    assert {:ok, %{harness_id: ^a_id}} = HarnessConfig.read(a)
+    assert {:ok, %{working_copy_id: ^a_id}} = HarnessConfig.read(a)
 
-    assert {:ok, %{harness_id: ^b_id}} = HarnessConfig.read(b), """
+    assert {:ok, %{working_copy_id: ^b_id}} = HarnessConfig.read(b), """
     Two working copies answered with the same id.
 
     That is the whole outage: the server cannot tell two checkouts apart, one
@@ -84,7 +84,7 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
     injected = Ecto.UUID.generate()
     System.put_env("CMS_HARNESS_ID", injected)
 
-    assert {:ok, %{harness_id: ^injected}} = HarnessConfig.read(bare_checkout())
+    assert {:ok, %{working_copy_id: ^injected}} = HarnessConfig.read(bare_checkout())
   end
 
   test "no file and no env is still :none, not an invented identity" do
@@ -112,6 +112,6 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
     root = checkout_with_id(id)
     System.put_env("CMS_HARNESS_ID", Ecto.UUID.generate())
 
-    assert {:ok, %{harness_id: ^id}} = HarnessConfig.read_file(root)
+    assert {:ok, %{working_copy_id: ^id}} = HarnessConfig.read_file(root)
   end
 end

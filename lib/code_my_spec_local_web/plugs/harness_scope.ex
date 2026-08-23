@@ -32,7 +32,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
   nobody named, and the analyzer compiling into the agent's tree.
 
   The directory has not gone anywhere; it stopped travelling. `.cms_harness.json`
-  holds `{harness_id, project_id, root}` at the working copy's root and
+  holds `{working_copy_id, project_id, root}` at the working copy's root and
   `harnesses.root` mirrors it, so the path lives in config beside the id that
   authorises it, and a moved checkout is a one-row update rather than a stale
   value on every request.
@@ -40,7 +40,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
 
   import Plug.Conn
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Users.Scope
 
   @behaviour Plug
@@ -100,13 +100,13 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
   defp dispatch(id, conn), do: resolve(conn, id)
 
   defp resolve(conn, id) do
-    case Harnesses.fetch(id) do
+    case WorkingCopies.fetch(id) do
       {:ok, harness} ->
         # A hook arriving from a harness is proof its agent is working, and this
         # is the only place that proof is seen. Without it `last_seen_at` only
         # ever recorded the channel join, so an uninterrupted session's liveness
         # signal aged past the reclaim window while the agent was mid-task.
-        Harnesses.mark_alive(harness)
+        WorkingCopies.mark_alive(harness)
         assign_scope(conn, harness)
 
       {:error, reason} ->
@@ -129,7 +129,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
         conn
         |> assign(:working_dir, root || scope.cwd)
         |> assign(:harness, harness)
-        |> assign(:current_scope, %{scope | active_harness_id: harness.id})
+        |> assign(:current_scope, %{scope | active_working_copy_id: harness.id})
 
       # Named as a fact about the harness, because that is what the caller can
       # act on. A 400 naming the id and the project it points at is one lookup

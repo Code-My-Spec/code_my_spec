@@ -496,10 +496,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # is the UI asking, and refusing there took the graph out of the web view and
   # failed 86 spex. An agent's scope always carries a harness because the plug
   # that builds it does.
-  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+  defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
-  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
-    do: where(query, [f], f.harness_id == ^harness_id)
+  defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [f], f.working_copy_id == ^working_copy_id)
 
   # -- File checks --
 

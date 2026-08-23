@@ -153,7 +153,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
 
       Repo.insert!(%CodeMySpec.Files.File{
         project_id: scope.active_project_id,
-        harness_id: scope.active_harness_id,
+        working_copy_id: scope.active_working_copy_id,
         component_id: component.id,
         path: path,
         role: :implementation
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
 
       Repo.insert!(%CodeMySpec.Files.File{
         project_id: scope.active_project_id,
-        harness_id: scope.active_harness_id,
+        working_copy_id: scope.active_working_copy_id,
         path: path,
         role: :implementation
       })

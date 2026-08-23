@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
         session_id = "spex-2393-#{System.unique_integer([:positive])}"
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
         |> Phoenix.ConnTest.json_response(200)
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
       when_ "the agent attempts to stop", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)

@@ -1,6 +1,6 @@
 defmodule CmsHarness.Web.SkillsController do
   @moduledoc """
-  `POST /api/harnesses/:harness_id/skills/start` — the harness-addressed
+  `POST /api/harnesses/:working_copy_id/skills/start` — the harness-addressed
   equivalent of `CodeMySpecLocalWeb.SkillController.start_skill/2`.
 
   `4396345b`: every `plugins/claude/skills/*/skill.md` posts to

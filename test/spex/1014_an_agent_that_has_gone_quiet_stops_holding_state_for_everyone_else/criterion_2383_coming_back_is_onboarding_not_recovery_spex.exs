@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2383Spex do
 
       given_ "the checkout goes quiet and its state is reclaimed", context do
         returning = context.scope
-        Fixtures.go_quiet(returning.active_harness_id, 96)
+        Fixtures.go_quiet(returning.active_working_copy_id, 96)
 
         live = Fixtures.live_agent_scope(context.scope)
 

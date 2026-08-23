@@ -22,14 +22,14 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   # Two working copies of one project, as two scopes differing only by harness.
   defp two_checkouts do
     scope = full_scope_fixture()
-    {:ok, other} = Harnesses.issue(scope, nil, label: "a second checkout")
+    {:ok, other} = WorkingCopies.issue(scope, nil, label: "a second checkout")
 
-    {scope, %{scope | active_harness_id: other.id}}
+    {scope, %{scope | active_working_copy_id: other.id}}
   end
 
   defp start(scope, source) do
@@ -93,7 +93,7 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
                "different causes; when the message could not tell them apart, a " <>
                "total failure read as an ordinary reconnect for a day: #{explanation}"
 
-      assert explanation =~ to_string(a.active_harness_id)
+      assert explanation =~ to_string(a.active_working_copy_id)
     end
 
     test "says when a run was swept, and as what" do

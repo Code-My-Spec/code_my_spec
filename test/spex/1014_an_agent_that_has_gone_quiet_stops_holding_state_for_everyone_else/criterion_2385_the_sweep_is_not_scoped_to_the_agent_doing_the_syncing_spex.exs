@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2385Spex do
       given_ "a different agent is the one still working", context do
         live = Fixtures.live_agent_scope(context.scope)
 
-        refute live.active_harness_id == context.scope.active_harness_id,
+        refute live.active_working_copy_id == context.scope.active_working_copy_id,
                "the premise failed: the live agent is the quiet one, so a " <>
                  "self-scoped sweep would pass by accident"
 

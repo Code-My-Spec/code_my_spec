@@ -53,7 +53,7 @@ defmodule CodeMySpec.McpServers.AwaitAnalysisTombstoneTest do
   test "it fills in the harness id when the scope has one" do
     scope = full_scope_fixture()
 
-    assert call(scope) =~ "/api/harnesses/#{scope.active_harness_id}"
+    assert call(scope) =~ "/api/harnesses/#{scope.active_working_copy_id}"
   end
 
   # And says what to do about the stale list itself, so the next call is not the

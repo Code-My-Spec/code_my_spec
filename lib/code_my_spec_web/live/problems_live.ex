@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
   """
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.Problems
 
@@ -55,7 +55,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
     {:noreply,
      assign(socket,
        scope: scope,
-       harnesses: Harnesses.list_harnesses(scope),
+       harnesses: WorkingCopies.list_harnesses(scope),
        page: page,
        filter: filter,
        result: result,
@@ -105,7 +105,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
 
       <.harness_picker
         harnesses={@harnesses}
-        active_id={@scope.active_harness_id}
+        active_id={@scope.active_working_copy_id}
         path_fun={&problems_path(@slug, page: 1, filter: @filter, harness: &1)}
       />
 

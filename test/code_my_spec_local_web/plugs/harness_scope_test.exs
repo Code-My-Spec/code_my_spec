@@ -19,7 +19,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
   import Plug.Conn
   import Plug.Test
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecLocalWeb.Plugs.HarnessScope
 
   setup do
@@ -38,12 +38,12 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
   defp harness(scope, root, opts \\ [])
 
   defp harness(scope, nil, opts) do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: opts[:label])
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: opts[:label])
     harness
   end
 
   defp harness(scope, root, opts) do
-    {:ok, harness} = scope |> harness(nil, opts) |> Harnesses.report_root(root)
+    {:ok, harness} = scope |> harness(nil, opts) |> WorkingCopies.report_root(root)
     harness
   end
 
@@ -64,7 +64,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
       conn = call([{"x-harness-id", h.id}])
 
       refute conn.halted
-      assert conn.assigns.current_scope.active_harness_id == h.id
+      assert conn.assigns.current_scope.active_working_copy_id == h.id
       assert conn.assigns.working_dir == root
     end
 
@@ -93,10 +93,10 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
       scope_a = call([{"x-harness-id", a.id}]).assigns.current_scope
       scope_b = call([{"x-harness-id", b.id}]).assigns.current_scope
 
-      assert scope_a.active_harness_id == a.id
-      assert scope_b.active_harness_id == b.id
+      assert scope_a.active_working_copy_id == a.id
+      assert scope_b.active_working_copy_id == b.id
 
-      refute scope_a.active_harness_id == scope_b.active_harness_id,
+      refute scope_a.active_working_copy_id == scope_b.active_working_copy_id,
              "same project, same path, two checkouts — this is the case no " <>
                "path-derived identity can tell apart"
     end
@@ -138,7 +138,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
                "to survive. The published plugin cannot — installed once for every " <>
                "checkout, it has no id until request time — so it interpolates a header."
 
-      assert conn.assigns.current_scope.active_harness_id == h.id
+      assert conn.assigns.current_scope.active_working_copy_id == h.id
     end
 
     test "the header wins when both are sent", %{scope: scope, root: root} do
@@ -150,7 +150,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
         |> put_req_header("x-harness-id", h.id)
         |> HarnessScope.call([])
 
-      assert conn.assigns.current_scope.active_harness_id == h.id
+      assert conn.assigns.current_scope.active_working_copy_id == h.id
     end
 
     test "a blank header falls to the parameter rather than refusing", %{
@@ -168,7 +168,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
              "an unset ${CMS_HARNESS_ID} arrives blank; a client sending a real " <>
                "parameter alongside it meant the parameter"
 
-      assert conn.assigns.current_scope.active_harness_id == h.id
+      assert conn.assigns.current_scope.active_working_copy_id == h.id
     end
 
     test "is refused, and the refusal carries the fix" do

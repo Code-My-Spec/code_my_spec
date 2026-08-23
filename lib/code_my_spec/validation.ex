@@ -39,7 +39,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
@@ -133,7 +133,7 @@ defmodule CodeMySpec.Validation do
     # that ran afterwards would find every row belonging to the live agent and
     # nothing left to reclaim — measured, and it is why placing this inside
     # `ComponentSync` reclaimed nothing while looking correct.
-    Harnesses.reclaim_quiet(scope)
+    WorkingCopies.reclaim_quiet(scope)
 
     case FileSync.sync_changed(scope, base_dir: cwd) do
       {:ok, sync_result} -> local_validate_stop(scope, task, opts, cwd, sync_result)
@@ -965,7 +965,7 @@ defmodule CodeMySpec.Validation do
       # most is the one case that never heard about the endpoint (5e9fa939:
       # three consecutive stops blocked on the same findings while a spex run
       # grew from 0s to 5m15s, each told to stop again).
-      harness_id: scope.active_harness_id
+      working_copy_id: scope.active_working_copy_id
     )
   end
 

@@ -97,7 +97,7 @@ defmodule CodeMySpec.Qa.EvidenceTest do
     # limit, and reading it as "git said nothing, so nothing is dirty" is the
     # exact shape this module exists to prevent, one level up.
     test "a harness environment is unknown, never ok" do
-      env = Environment.new(:harness, harness_id: Ecto.UUID.generate())
+      env = Environment.new(:harness, working_copy_id: Ecto.UUID.generate())
 
       assert {:unknown, _reason} = Evidence.committed?(env, 874)
     end

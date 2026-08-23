@@ -38,7 +38,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   defp sync(scope, path, role, errors \\ %{}) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       path: path,
       role: role,
       valid: errors == %{},
@@ -46,10 +46,10 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     })
   end
 
-  # A real second working copy. `harness_id` is a foreign key, so a generated
+  # A real second working copy. `working_copy_id` is a foreign key, so a generated
   # UUID is a constraint error rather than another checkout.
   defp second_harness(scope) do
-    {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: "the other checkout")
+    {:ok, harness} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "the other checkout")
     harness.id
   end
 
@@ -236,7 +236,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     test "a file synced by another checkout does not satisfy this one", %{scope: scope} do
       Repo.insert!(%FileRecord{
         project_id: scope.active_project_id,
-        harness_id: second_harness(scope),
+        working_copy_id: second_harness(scope),
         path: @decisions,
         role: :architecture,
         valid: true,
@@ -254,14 +254,14 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     test "a scope with no harness still sees it", %{scope: scope} do
       Repo.insert!(%FileRecord{
         project_id: scope.active_project_id,
-        harness_id: second_harness(scope),
+        working_copy_id: second_harness(scope),
         path: @decisions,
         role: :architecture,
         valid: true,
         validation_errors: %{"errors" => %{}, "data" => %{}}
       })
 
-      assert %{satisfied: true} = check(%{scope | active_harness_id: nil}, nil)
+      assert %{satisfied: true} = check(%{scope | active_working_copy_id: nil}, nil)
     end
 
     # The `Evaluator` path. Without the query clause this answered false for a

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.HarnessesReclaimTest do
+defmodule CodeMySpec.WorkingCopiesReclaimTest do
   @moduledoc """
   Story 892's reclaim, asserted against the data rather than a view.
 
@@ -15,7 +15,7 @@ defmodule CodeMySpec.HarnessesReclaimTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   setup do
     %{scope: full_scope_fixture()}
@@ -29,18 +29,20 @@ defmodule CodeMySpec.HarnessesReclaimTest do
 
     # Everything on this project has been quiet for days, and the caller is a
     # different agent entirely.
-    {:ok, live} = Harnesses.issue(scope, nil, label: "the agent still working")
+    {:ok, live} = WorkingCopies.issue(scope, nil, label: "the agent still working")
 
     from_h =
-      Ecto.Query.from(h in Harnesses.Harness, where: h.project_id == ^scope.active_project_id)
+      Ecto.Query.from(h in WorkingCopies.WorkingCopy,
+        where: h.project_id == ^scope.active_project_id
+      )
 
     CodeMySpec.Repo.update_all(from_h,
       set: [last_seen_at: DateTime.add(DateTime.utc_now(), -96 * 3600, :second)]
     )
 
-    {:ok, _} = Harnesses.issue(scope, live.id)
+    {:ok, _} = WorkingCopies.issue(scope, live.id)
 
-    Harnesses.reclaim_quiet(%{scope | active_harness_id: live.id})
+    WorkingCopies.reclaim_quiet(%{scope | active_working_copy_id: live.id})
 
     refute component.id in Enum.map(Components.list_components(scope), & &1.id),
            "the component survived the reclaim. It has no files and no story " <>

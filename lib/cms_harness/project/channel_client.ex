@@ -419,13 +419,13 @@ defmodule CmsHarness.Project.ChannelClient do
        # down so every later join presents the same one. A server that does not
        # yet know the field ignores it, which is why this can land ahead of the
        # half that reads it.
-       "harness_id" => project.harness_id,
+       "harness_id" => project.working_copy_id,
        # Where this copy is, as reported data rather than identity. The server
        # records it so an operator looking at two harnesses of one project can
        # tell which checkout each is; nothing resolves a harness by it.
        "root" => project.root,
        # Which OS process holds this socket. The server needs it to tell a
-       # rejoin apart from a rival: both present the same harness_id, because
+       # rejoin apart from a rival: both present the same working_copy_id, because
        # that id is the working copy and is read from a file in it. Same
        # instance means this process reconnecting, and the registration it is
        # colliding with is its own — so it may take it. A different instance is
@@ -509,19 +509,19 @@ defmodule CmsHarness.Project.ChannelClient do
   defp persist_issued_identity(socket, reply) do
     root = socket.assigns.project.root
 
-    case {socket.assigns.project.harness_id, issued_id(reply)} do
+    case {socket.assigns.project.working_copy_id, issued_id(reply)} do
       {_same, nil} ->
         socket
 
       {nil, issued} ->
         config = %{
-          harness_id: issued,
+          working_copy_id: issued,
           project_id: socket.assigns.project.id,
           root: root
         }
 
         case HarnessConfig.write(root, config) do
-          :ok -> put_in(socket.assigns.project.harness_id, issued)
+          :ok -> put_in(socket.assigns.project.working_copy_id, issued)
           {:error, _} -> socket
         end
 
@@ -985,11 +985,16 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
+
   defp apply_fs(env, "write_file", %{"path" => p, "content" => c}),
     do: CodeMySpec.Environments.write_file(env, p, c)
 
-  defp apply_fs(env, "delete_file", %{"path" => p}), do: CodeMySpec.Environments.delete_file(env, p)
-  defp apply_fs(env, "list_directory", %{"path" => p}), do: CodeMySpec.Environments.list_directory(env, p)
+  defp apply_fs(env, "delete_file", %{"path" => p}),
+    do: CodeMySpec.Environments.delete_file(env, p)
+
+  defp apply_fs(env, "list_directory", %{"path" => p}),
+    do: CodeMySpec.Environments.list_directory(env, p)
+
   defp apply_fs(env, "ensure_dir", %{"path" => p}), do: CodeMySpec.Environments.ensure_dir(env, p)
   defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.Environments.stat(env, p)
   defp apply_fs(env, "glob", %{"pattern" => p}), do: {:ok, CodeMySpec.Environments.glob(env, p)}
@@ -1186,7 +1191,13 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_call({:start_skill, params}, from, socket) do
-    case push(socket, socket.assigns.topic, "skill_start", %{"params" => params}, decision_timeout()) do
+    case push(
+           socket,
+           socket.assigns.topic,
+           "skill_start",
+           %{"params" => params},
+           decision_timeout()
+         ) do
       {:ok, ref} ->
         timer = Process.send_after(self(), {:reply_timeout, ref}, decision_timeout())
         {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
@@ -1358,7 +1369,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # --- Private ---
 
-  defp stamp_server_reply(socket), do: assign(socket, :last_server_reply_at, System.monotonic_time(:second))
+  defp stamp_server_reply(socket),
+    do: assign(socket, :last_server_reply_at, System.monotonic_time(:second))
 
   defp resume_watcher(socket) do
     Watcher.resume(socket.assigns.project.root)

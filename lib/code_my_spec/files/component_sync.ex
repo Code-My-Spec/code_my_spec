@@ -23,7 +23,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File}
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     # has nobody blocked; reclaiming exactly when someone needs the answer needs no
     # scheduler at all — and a scheduler would not have helped the case this comes
     # from, where every remaining harness was stale.
-    Harnesses.reclaim_quiet(scope)
+    WorkingCopies.reclaim_quiet(scope)
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
 

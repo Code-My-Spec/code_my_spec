@@ -447,7 +447,7 @@ defmodule CodeMySpec.Files.FileSync do
   # harness, so every line it logs should say which one — `cwd` when the scope
   # has it, the harness id otherwise, since a server-side scope has no path.
   defp working_copy(%Scope{cwd: cwd}) when is_binary(cwd), do: cwd
-  defp working_copy(%Scope{active_harness_id: id}) when is_binary(id), do: "harness #{id}"
+  defp working_copy(%Scope{active_working_copy_id: id}) when is_binary(id), do: "harness #{id}"
   defp working_copy(_scope), do: "an unnamed working copy"
 
   # Entries whose fingerprint differs from the existing DB row (or that
@@ -577,7 +577,11 @@ defmodule CodeMySpec.Files.FileSync do
 
   defp explain_changes(changed, existing_by_path, fields) do
     detail =
-      Enum.map_join(changed, "; ", &explain_change(&1, Map.get(existing_by_path, &1.path), fields))
+      Enum.map_join(
+        changed,
+        "; ",
+        &explain_change(&1, Map.get(existing_by_path, &1.path), fields)
+      )
 
     Logger.info("[FileSync] writing #{length(changed)} row(s) — #{detail}")
   end

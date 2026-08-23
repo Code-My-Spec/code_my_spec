@@ -99,7 +99,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     #
     # Components are project-level and their ids are stable — stories and
     # requirements link to them, so they must be. Presence is the per-checkout
-    # half, and `files` already carries it: `component_id` and `harness_id` on
+    # half, and `files` already carries it: `component_id` and `working_copy_id` on
     # the same row.
     #
     # Without this, a checkout that has not pulled re-projects components

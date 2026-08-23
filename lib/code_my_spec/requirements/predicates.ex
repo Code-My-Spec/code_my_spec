@@ -126,7 +126,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   registry still has no non-story field check, so adding one fails there rather
   than silently reading false forever.
 
-  ## `harness_id`
+  ## `working_copy_id`
 
   Every clause scopes its file subquery to one working copy, or blends them all
   when given `nil` — the same asymmetry `Preloader.load/1` applies, strict for
@@ -146,9 +146,9 @@ defmodule CodeMySpec.Requirements.Predicates do
           map(),
           Ecto.UUID.t() | nil
         ) :: Ecto.Query.t()
-  def satisfied(query, check, config, harness_id \\ nil)
+  def satisfied(query, check, config, working_copy_id \\ nil)
 
-  def satisfied(query, :file_exists, %{role: role}, harness_id) do
+  def satisfied(query, :file_exists, %{role: role}, working_copy_id) do
     where(
       query,
       [node: n],
@@ -158,7 +158,7 @@ defmodule CodeMySpec.Requirements.Predicates do
             (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
               (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
           where: f.role == ^role,
-          where: ^harness_filter(harness_id),
+          where: ^harness_filter(working_copy_id),
           select: 1
         )
       )
@@ -171,7 +171,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # which file answered depended on row order. With one working copy's files
   # there is exactly one file per `(component, role)`, verified across every
   # harness on this project, and first-found and any-valid are the same question.
-  def satisfied(query, :file_valid, %{role: role}, harness_id) do
+  def satisfied(query, :file_valid, %{role: role}, working_copy_id) do
     where(
       query,
       [node: n],
@@ -181,14 +181,14 @@ defmodule CodeMySpec.Requirements.Predicates do
             (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
               (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
           where: f.role == ^role and f.valid == true,
-          where: ^harness_filter(harness_id),
+          where: ^harness_filter(working_copy_id),
           select: 1
         )
       )
     )
   end
 
-  def satisfied(query, :path_exists, config, harness_id) do
+  def satisfied(query, :path_exists, config, working_copy_id) do
     case {config_value(config, :path), config_value(config, :path_prefix)} do
       {path, _} when is_binary(path) ->
         where(
@@ -198,7 +198,7 @@ defmodule CodeMySpec.Requirements.Predicates do
             from(f in File,
               where: f.project_id == parent_as(:node).project_id,
               where: f.path == ^path,
-              where: ^harness_filter(harness_id),
+              where: ^harness_filter(working_copy_id),
               select: 1
             )
           )
@@ -214,7 +214,7 @@ defmodule CodeMySpec.Requirements.Predicates do
             from(f in File,
               where: f.project_id == parent_as(:node).project_id,
               where: fragment("? LIKE ? ESCAPE '\\'", f.path, ^pattern),
-              where: ^harness_filter(harness_id),
+              where: ^harness_filter(working_copy_id),
               select: 1
             )
           )
@@ -248,7 +248,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # records "nine stories came to point at components that no longer existed",
   # and every one of them read as linked. Measured before this landed: 117
   # linked stories, 0 dangling — so nothing in the field changes today.
-  def satisfied(query, :component_exists, _config, _harness_id) do
+  def satisfied(query, :component_exists, _config, _working_copy_id) do
     where(
       query,
       [node: n],
@@ -263,7 +263,7 @@ defmodule CodeMySpec.Requirements.Predicates do
     )
   end
 
-  def satisfied(query, :field_present, config, _harness_id) do
+  def satisfied(query, :field_present, config, _working_copy_id) do
     field = field_name(config)
 
     where(
@@ -282,7 +282,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # Distinct from `:field_present` because `false` is a legitimate value that has
   # to read as unsatisfied. `specs_ready` defaults to `false`, so presence would
   # report every story's specs green the moment the row exists.
-  def satisfied(query, :field_true, config, _harness_id) do
+  def satisfied(query, :field_true, config, _working_copy_id) do
     field = field_name(config)
 
     where(
@@ -305,7 +305,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # the deploy step writes a row only on its success branch, after its own
   # probe passed, so a deploy that shipped and never answered does not satisfy
   # anything (criterion 1964).
-  def satisfied(query, :deployed, config, _harness_id) do
+  def satisfied(query, :deployed, config, _working_copy_id) do
     environment = environment_name(config)
 
     where(
@@ -332,7 +332,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # A project with no stories reads unsatisfied rather than vacuously true —
   # `exists` on the inner query means there has to be at least one story that
   # *is* deployed. Releasing nothing is not a release.
-  def satisfied(query, :all_deployed, config, _harness_id) do
+  def satisfied(query, :all_deployed, config, _working_copy_id) do
     environment = environment_name(config)
 
     where(
@@ -427,7 +427,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # sides saw identical rows. A test that asserts two implementations agree
   # proves nothing about the input that makes them differ.
   defp harness_filter(nil), do: dynamic(true)
-  defp harness_filter(harness_id), do: dynamic([f], f.harness_id == ^harness_id)
+  defp harness_filter(working_copy_id), do: dynamic([f], f.working_copy_id == ^working_copy_id)
 
   @doc """
   The base query these compose against, with the node binding named.

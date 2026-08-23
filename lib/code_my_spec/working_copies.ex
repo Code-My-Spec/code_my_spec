@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Harnesses do
+defmodule CodeMySpec.WorkingCopies do
   @moduledoc """
   The working copies serving a project.
 
@@ -25,7 +25,7 @@ defmodule CodeMySpec.Harnesses do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Harnesses.Harness
+  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -42,12 +42,12 @@ defmodule CodeMySpec.Harnesses do
   and the cost of the new id is a resync, which the harness does on join
   anyway.
   """
-  @spec issue(Scope.t(), String.t() | nil, keyword()) :: {:ok, Harness.t()} | {:error, term()}
-  def issue(%Scope{active_project_id: project_id}, harness_id, opts \\ [])
+  @spec issue(Scope.t(), String.t() | nil, keyword()) :: {:ok, WorkingCopy.t()} | {:error, term()}
+  def issue(%Scope{active_project_id: project_id}, working_copy_id, opts \\ [])
       when is_binary(project_id) do
     label = Keyword.get(opts, :label)
 
-    case existing(project_id, harness_id) do
+    case existing(project_id, working_copy_id) do
       nil -> create(project_id, label)
       harness -> touch(harness, label)
     end
@@ -84,7 +84,7 @@ defmodule CodeMySpec.Harnesses do
     # Through the schema, so Ecto casts the ids — `insert_all` only wants
     # pre-dumped binaries when it is given a raw table name.
     Repo.insert_all(
-      Harness,
+      WorkingCopy,
       [
         %{
           id: id,
@@ -120,14 +120,14 @@ defmodule CodeMySpec.Harnesses do
   header and a caller must be able to tell "you sent nonsense" from "the
   database is down".
   """
-  @spec fetch(String.t()) :: {:ok, Harness.t()} | {:error, :not_found | :invalid_id}
-  def fetch(harness_id) when is_binary(harness_id) do
-    case Ecto.UUID.cast(harness_id) do
+  @spec fetch(String.t()) :: {:ok, WorkingCopy.t()} | {:error, :not_found | :invalid_id}
+  def fetch(working_copy_id) when is_binary(working_copy_id) do
+    case Ecto.UUID.cast(working_copy_id) do
       :error ->
         {:error, :invalid_id}
 
       {:ok, id} ->
-        case Harness |> Repo.get(id) |> Repo.preload(:project) do
+        case WorkingCopy |> Repo.get(id) |> Repo.preload(:project) do
           nil -> {:error, :not_found}
           harness -> {:ok, harness}
         end
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Harnesses do
 
   All three, together, because the third is the one that gets forgotten.
   `HarnessProjectChannel` set every field and MCP requests set only
-  `active_harness_id` — so a tool invoked over `/mcp/harness` knew exactly which
+  `active_working_copy_id` — so a tool invoked over `/mcp/harness` knew exactly which
   working copy it was talking about and had no way to read or write a byte of
   it. `regenerate_proposal` surfaced it by trying: the transport is fine, the
   harness implements every op, and the call failed with `:no_environment`
@@ -151,11 +151,11 @@ defmodule CodeMySpec.Harnesses do
   said. A request that could name its own directory would be back to resolving
   a working copy by path, which is what addressing by id replaced.
   """
-  @spec put_scope(Scope.t(), Harness.t()) :: Scope.t()
-  def put_scope(%Scope{} = scope, %Harness{} = harness) do
+  @spec put_scope(Scope.t(), WorkingCopy.t()) :: Scope.t()
+  def put_scope(%Scope{} = scope, %WorkingCopy{} = harness) do
     %{
       scope
-      | active_harness_id: harness.id,
+      | active_working_copy_id: harness.id,
         cwd: harness.root || scope.cwd,
         environment: Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
     }
@@ -169,8 +169,8 @@ defmodule CodeMySpec.Harnesses do
   Called when a harness announces itself, so the root follows a checkout that
   moves without the id changing underneath its files.
   """
-  @spec report_root(Harness.t(), String.t()) :: {:ok, Harness.t()} | {:error, term()}
-  def report_root(%Harness{} = harness, root) when is_binary(root) do
+  @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
+  def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
     save(harness, %{root: Path.expand(root)})
   end
 
@@ -190,17 +190,17 @@ defmodule CodeMySpec.Harnesses do
   right default because it needs no configuration and stays correct for a
   checkout nobody thought to classify.
   """
-  @spec list_harnesses(Scope.t()) :: [Harness.t()]
+  @spec list_harnesses(Scope.t()) :: [WorkingCopy.t()]
   def list_harnesses(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.all(
-      from h in Harness,
+      from h in WorkingCopy,
         where: h.project_id == ^project_id,
         order_by: [desc_nulls_last: h.last_seen_at, desc: h.inserted_at]
     )
   end
 
   @doc "The harness the operator sees unless they ask for another, or `nil`."
-  @spec most_recent(Scope.t()) :: Harness.t() | nil
+  @spec most_recent(Scope.t()) :: WorkingCopy.t() | nil
   def most_recent(%Scope{} = scope), do: scope |> list_harnesses() |> List.first()
 
   @doc """
@@ -225,7 +225,7 @@ defmodule CodeMySpec.Harnesses do
   def viewing(%Scope{} = scope) do
     case most_recent(scope) do
       nil -> scope
-      harness -> %{scope | active_harness_id: harness.id}
+      harness -> %{scope | active_working_copy_id: harness.id}
     end
   end
 
@@ -234,16 +234,16 @@ defmodule CodeMySpec.Harnesses do
   # harness belonging to a project it has nothing to do with.
   defp existing(_project_id, nil), do: nil
 
-  defp existing(project_id, harness_id) do
-    case Ecto.UUID.cast(harness_id) do
-      {:ok, id} -> Repo.get_by(Harness, id: id, project_id: project_id)
+  defp existing(project_id, working_copy_id) do
+    case Ecto.UUID.cast(working_copy_id) do
+      {:ok, id} -> Repo.get_by(WorkingCopy, id: id, project_id: project_id)
       :error -> nil
     end
   end
 
   defp create(project_id, label) do
-    %Harness{}
-    |> Harness.changeset(%{project_id: project_id, label: label, last_seen_at: now()})
+    %WorkingCopy{}
+    |> WorkingCopy.changeset(%{project_id: project_id, label: label, last_seen_at: now()})
     |> Repo.insert()
   end
 
@@ -256,7 +256,7 @@ defmodule CodeMySpec.Harnesses do
 
   defp save(harness, attrs) do
     harness
-    |> Harness.changeset(attrs)
+    |> WorkingCopy.changeset(attrs)
     |> Repo.update()
   end
 
@@ -281,8 +281,8 @@ defmodule CodeMySpec.Harnesses do
   real work to do, and a harness that cannot be marked alive is not a reason to
   refuse its hook.
   """
-  @spec mark_alive(Harness.t() | Ecto.UUID.t() | nil) :: :ok
-  def mark_alive(%Harness{} = harness) do
+  @spec mark_alive(WorkingCopy.t() | Ecto.UUID.t() | nil) :: :ok
+  def mark_alive(%WorkingCopy{} = harness) do
     save(harness, %{last_seen_at: now()})
     :ok
   end
@@ -293,8 +293,8 @@ defmodule CodeMySpec.Harnesses do
   # able to fail the request.
   def mark_alive(nil), do: :ok
 
-  def mark_alive(harness_id) when is_binary(harness_id) do
-    case fetch(harness_id) do
+  def mark_alive(working_copy_id) when is_binary(working_copy_id) do
+    case fetch(working_copy_id) do
       {:ok, harness} -> mark_alive(harness)
       {:error, _} -> :ok
     end
@@ -312,19 +312,19 @@ defmodule CodeMySpec.Harnesses do
   Blank clears it rather than storing an empty string, so the display falls back
   to the root instead of showing nothing.
   """
-  @spec relabel(Scope.t(), Harness.t(), String.t()) ::
-          {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
+  @spec relabel(Scope.t(), WorkingCopy.t(), String.t()) ::
+          {:ok, WorkingCopy.t()} | {:error, Ecto.Changeset.t()}
   def relabel(
         %Scope{active_project_id: project_id},
-        %Harness{project_id: project_id} = harness,
+        %WorkingCopy{project_id: project_id} = harness,
         label
       ) do
     harness
-    |> Harness.changeset(%{label: normalize_label(label)})
+    |> WorkingCopy.changeset(%{label: normalize_label(label)})
     |> Repo.update()
   end
 
-  def relabel(%Scope{}, %Harness{}, _label), do: {:error, :cross_project}
+  def relabel(%Scope{}, %WorkingCopy{}, _label), do: {:error, :cross_project}
 
   @doc """
   The shortest thing that still identifies this copy.
@@ -342,8 +342,8 @@ defmodule CodeMySpec.Harnesses do
   Extracted from `HarnessPicker.short_label/1`, which had this logic to itself
   while every other surface rendered the full sentence.
   """
-  @spec display_name(Harness.t()) :: String.t()
-  def display_name(%Harness{label: label} = harness) when is_binary(label) and label != "" do
+  @spec display_name(WorkingCopy.t()) :: String.t()
+  def display_name(%WorkingCopy{label: label} = harness) when is_binary(label) and label != "" do
     case Regex.run(~r{^the harness at\s+(\S+)}, label) do
       [_, path] -> Path.basename(path)
       _ -> label
@@ -351,10 +351,10 @@ defmodule CodeMySpec.Harnesses do
     |> fallback(harness)
   end
 
-  def display_name(%Harness{root: root}) when is_binary(root) and root != "",
+  def display_name(%WorkingCopy{root: root}) when is_binary(root) and root != "",
     do: Path.basename(root)
 
-  def display_name(%Harness{}), do: "unnamed"
+  def display_name(%WorkingCopy{}), do: "unnamed"
 
   defp fallback("", harness), do: display_name(%{harness | label: nil})
   defp fallback(name, _harness), do: name
@@ -420,7 +420,7 @@ defmodule CodeMySpec.Harnesses do
 
     quiet_ids =
       Repo.all(
-        from h in Harness,
+        from h in WorkingCopy,
           where: h.project_id == ^project_id,
           # `nil` is never quiet. The project's default harness — the row
           # unnamed writers share — never joins, so its `last_seen_at` stays nil
@@ -428,7 +428,7 @@ defmodule CodeMySpec.Harnesses do
           # operator's list. Treating nil as "gone" reclaimed it on every sync,
           # in every project, and took ten other stories' spex down with it.
           where: not is_nil(h.last_seen_at) and h.last_seen_at < ^cutoff,
-          where: h.id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+          where: h.id != ^(scope.active_working_copy_id || Ecto.UUID.generate()),
           select: h.id
       )
 
@@ -443,10 +443,10 @@ defmodule CodeMySpec.Harnesses do
   #
   # `8c75e2df` recorded this as measured — "two harnesses existed and every file
   # belonged to a third id" — and that measurement cannot have meant what it
-  # appeared to. `files_harness_id_fkey` has referenced `harnesses(id)` since
+  # appeared to. `files_working_copy_id_fkey` has referenced `harnesses(id)` since
   # `20260807210000`, and `exqlite` defaults `foreign_keys: :on`, so the
   # constraint is enforced on both adapters. Checked on the live server: 0
-  # orphaned or cross-project rows out of 8,063 files carrying a harness_id.
+  # orphaned or cross-project rows out of 8,063 files carrying a working_copy_id.
   # The likeliest reading is the report's own wording — the id appeared in no
   # harness row *for that project*, which is a different claim, and spex
   # fixtures mint a harness per `full_scope_fixture` call.
@@ -460,7 +460,7 @@ defmodule CodeMySpec.Harnesses do
   # judgement is revisited.
   #
   # What it does *not* cover, deliberately, because SQL says so: a row whose
-  # `harness_id` is NULL. `NULL NOT IN (…)` is NULL, never true, so those rows
+  # `working_copy_id` is NULL. `NULL NOT IN (…)` is NULL, never true, so those rows
   # are invisible here. `20260807220000` deleted the existing ones and argues
   # every writer now names its working copy.
   #
@@ -470,10 +470,10 @@ defmodule CodeMySpec.Harnesses do
     Repo.all(
       from f in CodeMySpec.Files.File,
         where: f.project_id == ^project_id,
-        where: f.harness_id not in subquery(from h in Harness, select: h.id),
-        where: f.harness_id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+        where: f.working_copy_id not in subquery(from h in WorkingCopy, select: h.id),
+        where: f.working_copy_id != ^(scope.active_working_copy_id || Ecto.UUID.generate()),
         distinct: true,
-        select: f.harness_id
+        select: f.working_copy_id
     )
   end
 
@@ -483,12 +483,12 @@ defmodule CodeMySpec.Harnesses do
     Repo.transaction(fn ->
       Repo.delete_all(
         from f in CodeMySpec.Files.File,
-          where: f.project_id == ^project_id and f.harness_id in ^quiet_ids
+          where: f.project_id == ^project_id and f.working_copy_id in ^quiet_ids
       )
 
       Repo.delete_all(
         from p in CodeMySpec.Problems.Problem,
-          where: p.project_id == ^project_id and p.harness_id in ^quiet_ids
+          where: p.project_id == ^project_id and p.working_copy_id in ^quiet_ids
       )
 
       # Two plain subqueries rather than correlated `exists`. The component set is
@@ -532,7 +532,7 @@ defmodule CodeMySpec.Harnesses do
   defp idle_seconds(%Scope{} = scope) do
     hours =
       case CodeMySpec.Configurations.get(scope) do
-        %{harness_idle_hours: hours} when is_integer(hours) -> hours
+        %{working_copy_idle_hours: hours} when is_integer(hours) -> hours
         _ -> 2
       end
 

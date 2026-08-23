@@ -61,7 +61,7 @@ defmodule CmsHarness.CredentialsTest do
   defp onboard(root, opts) do
     :ok =
       HarnessConfig.write(root, %{
-        harness_id: Keyword.get(opts, :harness_id, Ecto.UUID.generate()),
+        working_copy_id: Keyword.get(opts, :working_copy_id, Ecto.UUID.generate()),
         project_id: Keyword.get(opts, :project_id, @project),
         deploy_key: Keyword.get(opts, :deploy_key),
         root: root
@@ -160,7 +160,7 @@ defmodule CmsHarness.CredentialsTest do
 
       :ok =
         HarnessConfig.write(ctx.root, %{
-          harness_id: Ecto.UUID.generate(),
+          working_copy_id: Ecto.UUID.generate(),
           project_id: @project,
           root: ctx.root
         })

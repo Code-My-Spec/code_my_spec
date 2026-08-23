@@ -242,7 +242,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       path: code_path,
       role: :implementation,
       project_id: project.id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       component_id: component.id,
       valid: true
     })
@@ -253,7 +253,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       path: test_path,
       role: :test,
       project_id: project.id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       component_id: component.id,
       valid: true
     })

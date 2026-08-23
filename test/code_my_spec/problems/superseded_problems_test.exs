@@ -41,7 +41,7 @@ defmodule CodeMySpec.Problems.SupersededProblemsTest do
   defp file_at(scope, fingerprint, mtime \\ @changed_at) do
     Repo.insert!(%CodeMySpec.Files.File{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       path: @path,
       role: :implementation,
       fingerprint: fingerprint,
@@ -56,7 +56,7 @@ defmodule CodeMySpec.Problems.SupersededProblemsTest do
   defp credo_run(scope, seconds) do
     Repo.insert!(%CodeMySpec.Analysis.Run{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       source: "credo",
       kind: :full,
       status: :completed,
@@ -68,7 +68,7 @@ defmodule CodeMySpec.Problems.SupersededProblemsTest do
   defp problem_at(scope, fingerprint) do
     Repo.insert!(%CodeMySpec.Problems.Problem{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       file_path: @path,
       file_fingerprint: fingerprint,
       line: 86,
@@ -121,7 +121,7 @@ defmodule CodeMySpec.Problems.SupersededProblemsTest do
 
     Repo.insert!(%CodeMySpec.Analysis.Run{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       source: "exunit",
       kind: :full,
       status: :completed,
@@ -140,7 +140,7 @@ defmodule CodeMySpec.Problems.SupersededProblemsTest do
 
     Repo.insert!(%CodeMySpec.Analysis.Run{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       source: "credo",
       kind: :full,
       status: :running,

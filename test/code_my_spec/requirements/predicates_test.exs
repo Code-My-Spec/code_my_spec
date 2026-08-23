@@ -35,7 +35,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   defp file!(scope, component, role, valid) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       component_id: component.id,
       path: "lib/demo/#{role}_#{System.unique_integer([:positive])}.ex",
       role: role,
@@ -43,12 +43,12 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     })
   end
 
-  # A real second working copy of the same project. `harness_id` is a foreign
+  # A real second working copy of the same project. `working_copy_id` is a foreign
   # key, so a generated UUID is not a second checkout — it is a constraint
   # error, and the difference matters because the thing under test is what
   # happens when two checkouts both file rows.
   defp second_harness(scope) do
-    {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: "the other checkout")
+    {:ok, harness} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "the other checkout")
     harness.id
   end
 
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   # What the interpreter says, from the same rows the graph would load.
   defp by_interpreter(scope, role, check) do
     FileRecord
-    |> where([f], f.harness_id == ^scope.active_harness_id and f.role == ^role)
+    |> where([f], f.working_copy_id == ^scope.active_working_copy_id and f.role == ^role)
     |> where([f], not is_nil(f.component_id))
     |> Repo.all()
     |> Enum.filter(fn f -> check == :file_exists or f.valid == true end)
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   # The input that makes the two implementations differ, which the agreement
   # tests above cannot produce because they build one harness.
   #
-  # `by_interpreter/3` filters on `harness_id`; the query did not. With a single
+  # `by_interpreter/3` filters on `working_copy_id`; the query did not. With a single
   # working copy both read the same rows and agreed perfectly, so the suite
   # asserted equality under exactly the condition where the difference cannot
   # appear. The moduledoc's argument — "scoped to one, first-found and any-valid
@@ -143,7 +143,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
       Repo.insert!(%FileRecord{
         project_id: scope.active_project_id,
-        harness_id: other_harness,
+        working_copy_id: other_harness,
         component_id: component.id,
         path: "lib/demo/written_elsewhere.ex",
         role: :spec,
@@ -155,7 +155,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       satisfied =
         Predicates.nodes()
         |> where([node: n], not is_nil(n.component_id))
-        |> Predicates.satisfied(:file_exists, %{role: :spec}, scope.active_harness_id)
+        |> Predicates.satisfied(:file_exists, %{role: :spec}, scope.active_working_copy_id)
         |> select([node: n], n.component_id)
         |> Repo.all()
         |> MapSet.new()
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
       Repo.insert!(%FileRecord{
         project_id: scope.active_project_id,
-        harness_id: second_harness(scope),
+        working_copy_id: second_harness(scope),
         component_id: component.id,
         path: "lib/demo/written_elsewhere.ex",
         role: :spec,
@@ -194,10 +194,10 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   end
 
   describe "path_exists" do
-    defp project_file!(scope, path, harness_id \\ nil) do
+    defp project_file!(scope, path, working_copy_id \\ nil) do
       Repo.insert!(%FileRecord{
         project_id: scope.active_project_id,
-        harness_id: harness_id || scope.active_harness_id,
+        working_copy_id: working_copy_id || scope.active_working_copy_id,
         path: path,
         role: :architecture,
         valid: true
@@ -207,7 +207,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     defp path_satisfied?(scope, config) do
       Predicates.nodes()
       |> where([node: n], n.name == "technical_strategy")
-      |> Predicates.satisfied(:path_exists, config, scope.active_harness_id)
+      |> Predicates.satisfied(:path_exists, config, scope.active_working_copy_id)
       |> Repo.exists?()
     end
 
@@ -336,7 +336,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     defp field_satisfied(scope, name, check, config) do
       Predicates.nodes()
       |> where([node: n], n.name == ^name)
-      |> Predicates.satisfied(check, config, scope.active_harness_id)
+      |> Predicates.satisfied(check, config, scope.active_working_copy_id)
       |> select([node: n], n.story_id)
       |> Repo.all()
       |> MapSet.new()

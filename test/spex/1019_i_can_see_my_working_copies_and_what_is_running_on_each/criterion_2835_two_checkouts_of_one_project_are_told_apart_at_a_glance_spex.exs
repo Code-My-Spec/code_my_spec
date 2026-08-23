@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2835Spex do
 
   Rule: A working copy is identifiable without reading a path.
 
-  `Harnesses.issue/3` already takes a label and nothing sets one, so today every
+  `WorkingCopies.issue/3` already takes a label and nothing sets one, so today every
   copy would render as its root. Two checkouts of one project differ in one
   directory somewhere deep in a path, and on this machine one of them lives under
   `/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/`. That is not a distinction

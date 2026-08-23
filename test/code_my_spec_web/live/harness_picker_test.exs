@@ -18,7 +18,7 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.Files
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account]
 
@@ -28,8 +28,8 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
   end
 
   defp checkout(scope, label, paths) do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
-    served = %{scope | active_harness_id: harness.id}
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
+    served = %{scope | active_working_copy_id: harness.id}
 
     Files.upsert_files(
       served,
@@ -159,7 +159,11 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
              "the active checkout was pushed into the overflow, so nothing on screen says which one you are reading"
     end
 
-    test "every checkout is still reachable", %{conn: conn, project: project, harnesses: harnesses} do
+    test "every checkout is still reachable", %{
+      conn: conn,
+      project: project,
+      harnesses: harnesses
+    } do
       {:ok, view, _html} = live(conn, files_path(project))
 
       for h <- harnesses do

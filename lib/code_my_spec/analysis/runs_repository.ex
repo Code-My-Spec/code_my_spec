@@ -26,7 +26,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Run.changeset(
       attrs
       |> Map.put(:project_id, project_id)
-      |> Map.put(:harness_id, scope.active_harness_id)
+      |> Map.put(:working_copy_id, scope.active_working_copy_id)
       |> Map.put_new(:status, :running)
       |> Map.put_new(:started_at, DateTime.utc_now())
     )
@@ -110,7 +110,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # forbids `== nil` and raises `ArgumentError` rather than matching nothing.
   # `fail_running/3` hit that on channel join during a restart storm — six
   # `%ArgumentError{}` crashes out of `Analysis.fail_in_flight/3`, from a query
-  # written as `r.harness_id == ^scope.active_harness_id` while this helper sat
+  # written as `r.working_copy_id == ^scope.active_working_copy_id` while this helper sat
   # two hundred lines above already handling it.
   #
   # Reading it as "no filter" is right for the queries that *report* — the UI
@@ -118,10 +118,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # closing every harness's runs because this scope names none would fail runs
   # belonging to working copies that are still going. So the two part here, and
   # `fail_running/3` says so at its own call site.
-  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+  defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
-  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
-    do: where(query, [r], r.harness_id == ^harness_id)
+  defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [r], r.working_copy_id == ^working_copy_id)
 
   @doc "Sources with a `:running` run for the project."
   @spec running_sources(Scope.t()) :: [String.t()]
@@ -171,7 +171,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def get_running_run(%Scope{active_project_id: project_id} = scope, run_id) do
     Run
     |> where([r], r.id == ^run_id and r.project_id == ^project_id and r.status == :running)
-    |> where([r], r.harness_id == ^scope.active_harness_id)
+    |> where([r], r.working_copy_id == ^scope.active_working_copy_id)
     |> Repo.one()
   end
 
@@ -226,7 +226,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # unfiltered clause would close every other checkout's in-flight runs — the
   # opposite of what the caller asked for, and invisible until an unrelated
   # agent's sweep came back as `:harness_disconnected`.
-  def fail_running(%Scope{active_harness_id: nil}, _reason, _claimed), do: {:ok, 0}
+  def fail_running(%Scope{active_working_copy_id: nil}, _reason, _claimed), do: {:ok, 0}
 
   def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
@@ -281,7 +281,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     stranded =
       Run
       |> where([r], r.status == :running)
-      |> select([r], {r.id, r.source, r.harness_id})
+      |> select([r], {r.id, r.source, r.working_copy_id})
       |> Repo.all()
 
     {count, _} =
@@ -297,7 +297,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp log_stranded([]), do: :ok
 
   defp log_stranded(stranded) do
-    {remote, local} = Enum.split_with(stranded, fn {_id, _source, harness_id} -> harness_id end)
+    {remote, local} =
+      Enum.split_with(stranded, fn {_id, _source, working_copy_id} -> working_copy_id end)
 
     Logger.warning(
       "[Analysis] boot closed #{length(stranded)} run(s) left open by the previous server: " <>

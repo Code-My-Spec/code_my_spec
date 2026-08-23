@@ -178,7 +178,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
     end
 
     defp join(root, held, reply) do
-      sock = socket(%{project: %{id: "p1", root: root, harness_id: held}})
+      sock = socket(%{project: %{id: "p1", root: root, working_copy_id: held}})
       {:ok, out} = ChannelClient.handle_join("harness_project:p1", reply, sock)
       out
     end
@@ -186,42 +186,42 @@ defmodule CmsHarness.ChannelClientTransportTest do
     test "a first join writes down the id it is given", %{root: root} do
       out = join(root, nil, %{"harness_id" => "h_issued"})
 
-      assert {:ok, %{harness_id: "h_issued"}} = HarnessConfig.read(root),
+      assert {:ok, %{working_copy_id: "h_issued"}} = HarnessConfig.read(root),
              "without this the next restart is issued a second id and orphans this one's rows"
 
-      assert out.assigns.project.harness_id == "h_issued"
+      assert out.assigns.project.working_copy_id == "h_issued"
     end
 
     test "a server that does not know the field changes nothing", %{root: root} do
       out = join(root, nil, %{})
 
       assert :none = HarnessConfig.read(root)
-      assert out.assigns.project.harness_id == nil
+      assert out.assigns.project.working_copy_id == nil
       assert out.assigns.joined, "the join still succeeds — this half can land first"
     end
 
     test "being re-issued the same id is a no-op", %{root: root} do
-      :ok = HarnessConfig.write(root, %{harness_id: "h_held", project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: "h_held", project_id: "p1", root: root})
       out = join(root, "h_held", %{"harness_id" => "h_held"})
 
-      assert {:ok, %{harness_id: "h_held"}} = HarnessConfig.read(root)
-      assert out.assigns.project.harness_id == "h_held"
+      assert {:ok, %{working_copy_id: "h_held"}} = HarnessConfig.read(root)
+      assert out.assigns.project.working_copy_id == "h_held"
     end
 
     test "a conflicting id is named, not adopted", %{root: root} do
-      :ok = HarnessConfig.write(root, %{harness_id: "h_held", project_id: "p1", root: root})
+      :ok = HarnessConfig.write(root, %{working_copy_id: "h_held", project_id: "p1", root: root})
 
       log =
         capture_log(fn ->
           out = join(root, "h_held", %{"harness_id" => "h_different"})
 
-          assert out.assigns.project.harness_id == "h_held",
+          assert out.assigns.project.working_copy_id == "h_held",
                  "this copy's rows are filed under h_held; adopting h_different " <>
                    "would orphan them while everything kept looking healthy"
         end)
 
       assert log =~ "already holds"
-      assert {:ok, %{harness_id: "h_held"}} = HarnessConfig.read(root)
+      assert {:ok, %{working_copy_id: "h_held"}} = HarnessConfig.read(root)
     end
   end
 

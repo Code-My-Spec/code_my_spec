@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2353"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2353"}, pretty: true)
           )
 
         :ok = Environments.write_file(context.environment, @tracked, "{}\n")
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
       end
 
       then_ "this machine's identity was written somewhere", context do
-        assert context.untracked =~ context.report.harness_id,
+        assert context.untracked =~ context.report.working_copy_id,
                "onboarding wrote this machine's harness id into neither file. The " <>
                  "refutes below would then hold because nothing was configured, " <>
                  "which is the one case this criterion is not about. Got " <>
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
       end
 
       then_ "this machine's harness id is nowhere in them", context do
-        refute context.tracked =~ context.report.harness_id,
+        refute context.tracked =~ context.report.working_copy_id,
                "this working copy's harness id is in #{@tracked}, which git tracks. " <>
                  "The next clone would inherit it, report its files and problems " <>
                  "against another machine's harness, and give no sign of doing so — " <>

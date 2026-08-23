@@ -285,7 +285,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   #
   # Same shape as `Hooks.Stop.wait_directive/1`, including the fallback: a scope
   # with no harness has no local address to offer, and no URL beats a wrong one.
-  defp wait_directive(%{active_harness_id: id}) when not is_nil(id) do
+  defp wait_directive(%{active_working_copy_id: id}) when not is_nil(id) do
     "Wait for the in-flight spex run with " <>
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
       "the background and you will be notified when it returns — then evaluate this " <>
@@ -295,7 +295,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   defp wait_directive(_scope) do
     "Wait for the analyzers to finish, then evaluate this requirement again. The wait " <>
       "endpoint is on the harness and names the working copy: " <>
-      "`POST localhost:4004/api/harnesses/<harness_id>/analysis/wait`, with the id from " <>
+      "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait`, with the id from " <>
       "`.cms_harness.json` in the working copy."
   end
 

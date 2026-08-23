@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
             "harness_project:#{context.project.id}",
             %{
               "contract_version" => @contract_version,
-              "harness_id" => context.scope.active_harness_id,
+              "harness_id" => context.scope.active_working_copy_id,
               "root" => context.scope.cwd,
               "label" => "the harness serving #{context.scope.cwd}"
             }
@@ -115,7 +115,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
       then_ "that agent's stop hook evaluates it like any other change", context do
         stop =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> Phoenix.ConnTest.dispatch(
             CodeMySpecLocalWeb.Endpoint,

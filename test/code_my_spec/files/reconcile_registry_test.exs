@@ -21,20 +21,20 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
   # waiting for an unregistration the Registry performs asynchronously with
   # respect to the DOWN message. Written as a recursion on what it matched, so
   # there is no branch to read as a decision.
-  defp cleared?(harness_id, attempts \\ 200)
+  defp cleared?(working_copy_id, attempts \\ 200)
 
-  defp cleared?(_harness_id, 0), do: false
+  defp cleared?(_working_copy_id, 0), do: false
 
-  defp cleared?(harness_id, attempts) do
-    ReconcileRegistry.in_flight(harness_id)
-    |> keep_waiting(harness_id, attempts)
+  defp cleared?(working_copy_id, attempts) do
+    ReconcileRegistry.in_flight(working_copy_id)
+    |> keep_waiting(working_copy_id, attempts)
   end
 
-  defp keep_waiting(nil, _harness_id, _attempts), do: true
+  defp keep_waiting(nil, _working_copy_id, _attempts), do: true
 
-  defp keep_waiting(_still_there, harness_id, attempts) do
+  defp keep_waiting(_still_there, working_copy_id, attempts) do
     Process.sleep(10)
-    cleared?(harness_id, attempts - 1)
+    cleared?(working_copy_id, attempts - 1)
   end
 
   test "a harness with nothing in flight reports nothing" do
@@ -47,12 +47,12 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
   end
 
   test "a marked harness reports what is landing" do
-    harness_id = Ecto.UUID.generate()
+    working_copy_id = Ecto.UUID.generate()
     test_pid = self()
 
     task =
       Task.async(fn ->
-        ReconcileRegistry.mark(harness_id, 3937)
+        ReconcileRegistry.mark(working_copy_id, 3937)
         send(test_pid, :marked)
         # Hold the registration open — it lives as long as this process.
         receive do: (:release -> :ok)
@@ -60,7 +60,7 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
 
     assert_receive :marked, 2_000
 
-    assert %{count: 3937, started_at: %DateTime{}} = ReconcileRegistry.in_flight(harness_id)
+    assert %{count: 3937, started_at: %DateTime{}} = ReconcileRegistry.in_flight(working_copy_id)
 
     send(task.pid, :release)
     Task.await(task)
@@ -71,18 +71,18 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
   # server that restarts mid-reconcile comes back with an empty table — which is
   # true, since nothing is reconciling any more.
   test "the marker dies with the task, including when it crashes" do
-    harness_id = Ecto.UUID.generate()
+    working_copy_id = Ecto.UUID.generate()
     test_pid = self()
 
     {:ok, pid} =
       Task.start(fn ->
-        ReconcileRegistry.mark(harness_id, 12)
+        ReconcileRegistry.mark(working_copy_id, 12)
         send(test_pid, :marked)
         receive do: (:boom -> exit(:crashed))
       end)
 
     assert_receive :marked, 2_000
-    assert ReconcileRegistry.in_flight(harness_id)
+    assert ReconcileRegistry.in_flight(working_copy_id)
 
     ref = Process.monitor(pid)
     send(pid, :boom)
@@ -92,7 +92,7 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
     # DOWN message, so a fixed sleep is a guess about scheduling that a loaded
     # machine wins — which is how this flaked in a full suite run while passing
     # forty times alone.
-    assert cleared?(harness_id),
+    assert cleared?(working_copy_id),
            "a crashed reconcile must not leave a marker claiming one is running"
   end
 end

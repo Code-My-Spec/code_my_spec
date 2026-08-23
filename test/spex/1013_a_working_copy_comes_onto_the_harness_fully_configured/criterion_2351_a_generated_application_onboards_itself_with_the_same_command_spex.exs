@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2351"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2351"}, pretty: true)
           )
 
         refute Environments.file_exists?(context.environment, ".code_my_spec/config.yml"),

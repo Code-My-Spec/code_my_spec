@@ -205,8 +205,8 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     """
   end
 
-  defp harness_label(%Scope{active_harness_id: nil}), do: "unnamed (no harness on the scope)"
-  defp harness_label(%Scope{active_harness_id: id}), do: id
+  defp harness_label(%Scope{active_working_copy_id: nil}), do: "unnamed (no harness on the scope)"
+  defp harness_label(%Scope{active_working_copy_id: id}), do: id
   defp harness_label(_scope), do: "unknown"
 
   # Custom evaluate/2 modules don't take opts; only the unified evaluator

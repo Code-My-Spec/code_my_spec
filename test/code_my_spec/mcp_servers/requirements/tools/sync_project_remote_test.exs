@@ -38,12 +38,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
 
   # A stand-in for the harness channel: the registry holds the channel process,
   # so registering one is what makes the harness addressable.
-  defp registered_channel(harness_id) do
+  defp registered_channel(working_copy_id) do
     test = self()
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(harness_id, "test:#{System.unique_integer()}")
+        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
         send(test, {:registered, self()})
 
         receive do
@@ -56,8 +56,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
   end
 
   setup do
-    harness_id = "harness-#{System.unique_integer([:positive])}"
-    %{scope: %{full_scope_fixture() | active_harness_id: harness_id}, harness_id: harness_id}
+    working_copy_id = "harness-#{System.unique_integer([:positive])}"
+
+    %{
+      scope: %{full_scope_fixture() | active_working_copy_id: working_copy_id},
+      working_copy_id: working_copy_id
+    }
   end
 
   describe "when the working copy is on a harness" do
@@ -65,7 +69,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
     # light-harness clause does not match, and the scan runs into an environment
     # that cannot walk.
     test "a cwd it cannot scan asks the harness rather than failing", ctx do
-      _pid = registered_channel(ctx.harness_id)
+      _pid = registered_channel(ctx.working_copy_id)
 
       scope = %{
         ctx.scope
@@ -84,7 +88,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
     end
 
     test "no cwd at all asks the harness too", ctx do
-      _pid = registered_channel(ctx.harness_id)
+      _pid = registered_channel(ctx.working_copy_id)
 
       {response, text} = run(%{ctx.scope | cwd: nil})
 
@@ -94,7 +98,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
     end
 
     test "it says the graph is not current on return", ctx do
-      _pid = registered_channel(ctx.harness_id)
+      _pid = registered_channel(ctx.working_copy_id)
 
       {_response, text} = run(%{ctx.scope | cwd: nil})
 

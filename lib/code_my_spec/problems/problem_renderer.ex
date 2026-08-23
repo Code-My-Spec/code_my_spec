@@ -197,7 +197,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       # The harness whose `analysis/wait` will block until the sweep lands, when
       # there is one to name. A scope with no harness gets the plain instruction
       # rather than a URL that would 404 — same rule as `Hooks.Stop`.
-      harness_id: Keyword.get(opts, :harness_id)
+      working_copy_id: Keyword.get(opts, :working_copy_id)
     }
 
     header = "Fix these problems before stopping:\n\n"
@@ -721,7 +721,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Run in the background: a sweep is 200-590s here and the agent is notified
   # when it returns, which is also why this is an HTTP endpoint rather than an
   # MCP tool (MCP caps a request at 30s).
-  defp wait_remedy(%{harness_id: id}) when is_binary(id) do
+  defp wait_remedy(%{working_copy_id: id}) when is_binary(id) do
     " Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait`" <>
       " — run that in the background and you will be notified when it returns — then" <>
       " stop again. Stopping again immediately lands inside the same run and returns this."

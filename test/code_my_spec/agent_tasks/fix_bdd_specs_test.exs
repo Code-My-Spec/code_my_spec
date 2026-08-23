@@ -267,12 +267,12 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
 
       # Set after the fixtures, which insert files carrying an FK to a real
       # harness row — the message only reads the field.
-      harness_id = scope.active_harness_id || Ecto.UUID.generate()
-      scope = %{scope | active_harness_id: harness_id}
+      working_copy_id = scope.active_working_copy_id || Ecto.UUID.generate()
+      scope = %{scope | active_working_copy_id: working_copy_id}
 
       assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
 
-      assert feedback =~ "/api/harnesses/#{harness_id}/analysis/wait"
+      assert feedback =~ "/api/harnesses/#{working_copy_id}/analysis/wait"
 
       # The failure this guards is quiet: every harness route names the working
       # copy, so the unaddressed URL 404s — and returns exit 0, which an agent
@@ -288,7 +288,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_bdd_spec_file(scope, story)
 
-      scope = %{scope | active_harness_id: nil}
+      scope = %{scope | active_working_copy_id: nil}
 
       assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
 

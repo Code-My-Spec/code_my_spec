@@ -46,7 +46,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.Files.Scanner
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Hooks.AskUserQuestion
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
@@ -66,7 +66,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with :ok <- check_contract(payload, project_id),
          {:ok, scope} <- authorize(socket, project_id),
-         {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
+         {:ok, harness} <- WorkingCopies.issue(scope, payload["harness_id"], label: label),
          {:ok, harness} <- report_root(harness, payload["root"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
@@ -87,7 +87,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # Carrying the harness on the scope is what makes that true by default,
       # rather than something each call site has to remember — and forgetting it
       # returns another checkout's files with no error to notice.
-      {:ok, %{harness_id: harness.id},
+      {:ok, %{working_copy_id: harness.id},
        socket
        |> assign(:scope, scope)
        |> assign(:harness, harness)
@@ -174,7 +174,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # A harness that predates the field. Allowed, because refusing it would make
   # this change require a coordinated rollout, and the same reasoning already
-  # governs `active_runs` and `harness_id` in the same payload. It is logged
+  # governs `active_runs` and `working_copy_id` in the same payload. It is logged
   # once per join rather than silently accepted: if skew is what is wrong, the
   # absence is itself the clue, and `unmatched topic` will be along shortly.
   defp check_contract(_payload, project_id) do
@@ -266,7 +266,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # hooks — the scanner runs on its own. Join alone was not enough: a stable
     # connection never re-joins, so `last_seen_at` aged past the reclaim window
     # while the harness was demonstrably working.
-    Harnesses.mark_alive(socket.assigns.scope.active_harness_id)
+    WorkingCopies.mark_alive(socket.assigns.scope.active_working_copy_id)
 
     case deserialize_observations(observations) do
       {:ok, entries} ->
@@ -747,16 +747,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # copy's rows are older than the manifest that just arrived. That is fine for
   # the seconds until the running one finishes and wrong to let pass unseen.
   defp maybe_start_reconcile(socket, entries) do
-    harness_id = socket.assigns.scope.active_harness_id
+    working_copy_id = socket.assigns.scope.active_working_copy_id
 
-    case ReconcileRegistry.in_flight(harness_id) do
+    case ReconcileRegistry.in_flight(working_copy_id) do
       nil ->
         assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
 
       %{count: count, started_at: started_at} ->
         Logger.warning(
           "[HarnessProject] skipped a reconcile of #{length(entries)} observations for " <>
-            "harness #{harness_id}: one of #{count} started at " <>
+            "harness #{working_copy_id}: one of #{count} started at " <>
             "#{DateTime.to_iso8601(started_at)} is still running and outlived the channel " <>
             "that spawned it. Running two at once is what exhausts the pool (1aed7edf). " <>
             "This copy's rows are behind until that one lands; the next manifest re-syncs."
@@ -778,7 +778,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # Marked by the task, not by this function, so the entry lives exactly as
       # long as the work and needs no cleanup — when the task exits, registered
       # or crashed, the marker goes with it.
-      ReconcileRegistry.mark(scope.active_harness_id, length(entries))
+      ReconcileRegistry.mark(scope.active_working_copy_id, length(entries))
       reconcile(scope, entries)
     end)
   end
@@ -899,7 +899,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Not `harness_label/1`, which already exists for join payloads. Same idea,
   # different input, and merging them would make one function that takes either
   # a socket or a payload.
-  defp closing_copy(%{assigns: %{scope: %Scope{active_harness_id: id}}}) when is_binary(id),
+  defp closing_copy(%{assigns: %{scope: %Scope{active_working_copy_id: id}}}) when is_binary(id),
     do: "harness #{id}"
 
   defp closing_copy(socket), do: socket.topic
@@ -1183,9 +1183,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Only the reads that have no manifest answer go over the wire — the scanner
   # parses on the device and ships the verdict, so this is the 25 that fell
   # through, not the 1,519 that did not.
-  # Shared with `ProjectScopeOverride`, which set only `active_harness_id` and
+  # Shared with `ProjectScopeOverride`, which set only `active_working_copy_id` and
   # left MCP tools able to name a working copy they could not read.
-  defp put_harness_scope(scope, harness), do: Harnesses.put_scope(scope, harness)
+  defp put_harness_scope(scope, harness), do: WorkingCopies.put_scope(scope, harness)
 
   # One harness serves a working copy at a time — and the refusal says which one.
   #
@@ -1234,7 +1234,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp id_collision(harness, joining_root, held_root) do
     %{
       reason: "harness_id_collision",
-      harness_id: harness.id,
+      working_copy_id: harness.id,
       root: joining_root,
       held_by_root: held_root,
       detail:
@@ -1256,7 +1256,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     %{
       reason: "working_copy_in_use",
-      harness_id: harness.id,
+      working_copy_id: harness.id,
       root: harness.root,
       held_by: holder,
       detail:
@@ -1275,7 +1275,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # way, because the root is recorded about the harness rather than used to
   # find it.
   defp report_root(harness, root) when is_binary(root) and root != "",
-    do: Harnesses.report_root(harness, root)
+    do: WorkingCopies.report_root(harness, root)
 
   defp report_root(harness, _), do: {:ok, harness}
 
@@ -1297,7 +1297,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp session_external_id(scope, payload) do
     case payload["session_id"] do
       id when is_binary(id) and id != "" -> id
-      _ -> Sessions.external_id_for_harness(scope.active_harness_id) || "sprite"
+      _ -> Sessions.external_id_for_harness(scope.active_working_copy_id) || "sprite"
     end
   end
 end

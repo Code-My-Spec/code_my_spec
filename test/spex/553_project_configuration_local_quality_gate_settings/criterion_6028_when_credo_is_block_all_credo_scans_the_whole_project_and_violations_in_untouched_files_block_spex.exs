@@ -60,8 +60,8 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
 
         _seed_response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{
             "test_output_files" => %{
@@ -92,8 +92,8 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
         response =
           use_cmd_cassette "credo_block_all_project_scan", record: :none do
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "test_output_files" => %{

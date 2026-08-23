@@ -47,11 +47,11 @@ defmodule CmsHarness.WorkingCopiesEnvOverrideTest do
 
     known = WorkingCopies.all()
 
-    assert Map.get(known, a.harness_id) == a.root,
+    assert Map.get(known, a.working_copy_id) == a.root,
            "root a answered with the env var's id instead of its own — " <>
              "got #{inspect(known)}"
 
-    assert Map.get(known, b.harness_id) == b.root,
+    assert Map.get(known, b.working_copy_id) == b.root,
            "root b answered with the env var's id instead of its own — " <>
              "got #{inspect(known)}"
   end

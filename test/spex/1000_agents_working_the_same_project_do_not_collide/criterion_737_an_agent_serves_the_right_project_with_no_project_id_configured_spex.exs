@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         # harness, which is what registering against a project produces. Joining
         # a channel here would register a *second* agent and change what the
         # scenario is about.
-        assert is_binary(context.scope.active_harness_id)
+        assert is_binary(context.scope.active_working_copy_id)
 
         {:ok, context}
       end
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
       when_ "it reconnects and a hook arrives", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => "spex-no-project-id"})
 
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
 
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => "spex-hijack-attempt"})
 

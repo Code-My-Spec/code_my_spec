@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion743Spex do
     end
   end
 
-  defp join_as(context, harness_id, hostname) do
+  defp join_as(context, working_copy_id, hostname) do
     UserSocket
     |> socket("sprite_#{hostname}", %{
       scope: context.scope,
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion743Spex do
     })
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
       "contract_version" => @contract_version,
-      "harness_id" => harness_id,
+      "harness_id" => working_copy_id,
       "root" => @volume,
       "label" => "the harness at #{@volume} on #{hostname}"
     })
@@ -114,7 +114,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion743Spex do
     :ok
   end
 
-  defp id_of(reply), do: reply["harness_id"] || reply[:harness_id]
+  defp id_of(reply), do: reply["harness_id"] || reply[:working_copy_id]
 
   defp observation(path) do
     %{

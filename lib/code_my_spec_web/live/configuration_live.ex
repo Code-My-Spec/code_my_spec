@@ -171,12 +171,12 @@ defmodule CodeMySpecWeb.ConfigurationLive do
             <div class="divider my-1"></div>
 
             <label class="flex items-center justify-between gap-4">
-              <span class="label-text">Harness idle hours</span>
+              <span class="label-text">Working copy idle hours</span>
               <input
                 type="number"
                 min="0"
-                name="configuration[harness_idle_hours]"
-                value={@configuration.harness_idle_hours}
+                name="configuration[working_copy_idle_hours]"
+                value={@configuration.working_copy_idle_hours}
                 class="input input-bordered input-sm w-24"
                 data-test="harness-idle-hours"
               />

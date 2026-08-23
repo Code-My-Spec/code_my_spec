@@ -48,11 +48,11 @@ defmodule CmsHarness.WorkingCopiesTest do
     end
 
     test "resolves by the id written in it", %{project: project} do
-      assert WorkingCopies.root(project.harness_id) == {:ok, project.root}
+      assert WorkingCopies.root(project.working_copy_id) == {:ok, project.root}
     end
 
     test "appears in the set this harness knows about", %{project: project} do
-      assert Map.get(WorkingCopies.all(), project.harness_id) == project.root
+      assert Map.get(WorkingCopies.all(), project.working_copy_id) == project.root
     end
 
     test "a different id does not resolve to it", %{project: project} do

@@ -53,28 +53,28 @@ defmodule CmsHarnessTest.ConnCase do
       # Takes the root for the call sites' convenience and reads the id out of
       # it, the way onboarding does when it generates a plugin.
       defp post_hook(conn, hook, working_dir, payload \\ %{}) do
-        post_hook_as(conn, hook, harness_id_at(working_dir), payload)
+        post_hook_as(conn, hook, working_copy_id_at(working_dir), payload)
       end
 
-      defp post_hook_as(conn, hook, harness_id, payload \\ %{}) do
+      defp post_hook_as(conn, hook, working_copy_id, payload \\ %{}) do
         conn
         |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/harnesses/#{harness_id}/hooks/#{hook}", payload)
+        |> post("/api/harnesses/#{working_copy_id}/hooks/#{hook}", payload)
       end
 
       defp post_skill(conn, working_dir, payload \\ %{}) do
-        post_skill_as(conn, harness_id_at(working_dir), payload)
+        post_skill_as(conn, working_copy_id_at(working_dir), payload)
       end
 
-      defp post_skill_as(conn, harness_id, payload \\ %{}) do
+      defp post_skill_as(conn, working_copy_id, payload \\ %{}) do
         conn
         |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/harnesses/#{harness_id}/skills/start", payload)
+        |> post("/api/harnesses/#{working_copy_id}/skills/start", payload)
       end
 
-      defp harness_id_at(root) do
+      defp working_copy_id_at(root) do
         case CmsHarness.HarnessConfig.read(root) do
-          {:ok, %{harness_id: id}} -> id
+          {:ok, %{working_copy_id: id}} -> id
           _ -> "no-harness-id-at-#{root}"
         end
       end

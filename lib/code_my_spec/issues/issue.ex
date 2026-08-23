@@ -84,7 +84,7 @@ defmodule CodeMySpec.Issues.Issue do
 
     # The working copy this was raised from. `nil` for issues raised before this
     # existed, and for anything filed through the web UI, which has no checkout.
-    field :harness_id, :binary_id
+    field :working_copy_id, :binary_id
     field :synced_from_server, :boolean, default: false
     # A list of attachment maps, e.g. a widget-reported screenshot copied into
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.

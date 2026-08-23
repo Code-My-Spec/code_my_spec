@@ -16,7 +16,7 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Harnesses
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems
 
   setup [:register_log_in_setup_account]
@@ -24,9 +24,9 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
   setup %{scope: scope, account: account} do
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, account_id: account.id)
     scope = %{scope | active_project_id: project.id, active_project: project}
-    {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /repo/main")
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /repo/main")
 
-    %{project: project, scope: %{scope | active_harness_id: harness.id}}
+    %{project: project, scope: %{scope | active_working_copy_id: harness.id}}
   end
 
   defp record(scope, message) do

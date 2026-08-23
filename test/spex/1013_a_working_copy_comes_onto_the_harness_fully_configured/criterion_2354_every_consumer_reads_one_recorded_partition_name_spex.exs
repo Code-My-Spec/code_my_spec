@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2354Spex do
           Environments.write_file(
             context.environment,
             ".cms_harness.json",
-            Jason.encode!(%{harness_id: "spex-harness-2354"}, pretty: true)
+            Jason.encode!(%{working_copy_id: "spex-harness-2354"}, pretty: true)
           )
 
         {:ok, context}

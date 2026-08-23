@@ -129,14 +129,14 @@ defmodule CodeMySpecLocalWeb.LaneReporter do
 
   # The shape `Agents.record_reported/2` reconciles against.
   #
-  # `harness_id` is the key — which working copy this is, by the id the server
+  # `working_copy_id` is the key — which working copy this is, by the id the server
   # issued and this device wrote to disk. `role` is what makes two lanes on one
   # checkout two rows instead of one that flickers. `working_copy` rides along
   # because the path is real and the conversation key is built from it, but
   # nothing joins on it.
   defp lane(meta) do
     %{
-      "harness_id" => meta.harness_id,
+      "harness_id" => meta.working_copy_id,
       "working_copy" => meta.working_copy,
       "role" => meta.role,
       "engine" => meta.engine,

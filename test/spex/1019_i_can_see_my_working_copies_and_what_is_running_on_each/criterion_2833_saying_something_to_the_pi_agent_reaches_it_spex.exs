@@ -54,8 +54,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
         other = join_working_copy(context, "/tmp/spex-1019-other", "the other checkout")
 
         report_agents(context, [
-          pi_agent(talkable.harness_id, "/tmp/spex-1019-talkable"),
-          pi_agent(other.harness_id, "/tmp/spex-1019-other")
+          pi_agent(talkable.working_copy_id, "/tmp/spex-1019-talkable"),
+          pi_agent(other.working_copy_id, "/tmp/spex-1019-other")
         ])
 
         # A line in each copy's own transcript, said the way a lane says it.

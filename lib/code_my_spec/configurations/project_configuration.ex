@@ -39,7 +39,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           qa_validation: analyzer_mode(),
           fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
-          harness_idle_hours: non_neg_integer(),
+          working_copy_idle_hours: non_neg_integer(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -106,7 +106,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # that already means "hours of tolerance" reaches zero honestly — no branch,
     # no second type, and the comparison that implements the window implements
     # this too.
-    field :harness_idle_hours, :integer, default: 2
+    field :working_copy_idle_hours, :integer, default: 2
 
     # Story 858 — one ordered level, not independent flags (prod requires
     # UAT requires deploy-enabled):
@@ -142,13 +142,13 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :qa_validation,
       :fix_issues_min_severity,
       :subagent_ttl_minutes,
-      :harness_idle_hours,
+      :working_copy_idle_hours,
       :devops
     ])
     |> validate_required([:project_id])
     |> validate_number(:subagent_ttl_minutes, greater_than: 0)
     # Zero is allowed and meaningful; negative is not a shorter window.
-    |> validate_number(:harness_idle_hours, greater_than_or_equal_to: 0)
+    |> validate_number(:working_copy_idle_hours, greater_than_or_equal_to: 0)
     |> unique_constraint(:project_id)
   end
 end

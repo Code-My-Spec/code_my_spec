@@ -33,7 +33,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
   defp unreadable_spec!(scope, path) do
     Repo.insert!(%CodeMySpec.Files.File{
       project_id: scope.active_project_id,
-      harness_id: scope.active_harness_id,
+      working_copy_id: scope.active_working_copy_id,
       path: path,
       role: :spec,
       fingerprint: "sha-#{System.unique_integer([:positive])}",

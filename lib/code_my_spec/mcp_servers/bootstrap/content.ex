@@ -200,8 +200,8 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     | Endpoint | Purpose |
     |---|---|
-    | `POST localhost:4004/api/harnesses/<harness_id>/analysis/run` | Run one analyzer (`compiler`/`credo`/`exunit`/`spex`). The PreToolUse hook rewrites your `mix test` into this, so you rarely call it yourself. |
-    | `POST localhost:4004/api/harnesses/<harness_id>/analysis/wait` | Block until the background analyzers are idle, then report each source's state and problem count. |
+    | `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/run` | Run one analyzer (`compiler`/`credo`/`exunit`/`spex`). The PreToolUse hook rewrites your `mix test` into this, so you rarely call it yourself. |
+    | `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` | Block until the background analyzers are idle, then report each source's state and problem count. |
 
     **Run the wait in the background.** A full sweep on a large project takes
     200-590 seconds; fire it as a background command and you will be notified
