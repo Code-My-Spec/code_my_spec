@@ -176,7 +176,13 @@ defmodule CodeMySpecWeb.WorkingCopiesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div data-test="working-copies" class="mx-auto w-full max-w-3xl">
         <h1 class="text-xl font-semibold">Working copies</h1>
         <p class="mt-1 text-sm opacity-70">

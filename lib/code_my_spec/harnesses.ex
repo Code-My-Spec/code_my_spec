@@ -282,37 +282,6 @@ defmodule CodeMySpec.Harnesses do
   refuse its hook.
   """
   @spec mark_alive(Harness.t() | Ecto.UUID.t() | nil) :: :ok
-  @doc """
-  Give a working copy a name a person chose.
-
-  `issue/3` has always accepted a label and nothing ever set one, so every copy
-  rendered as its root — and two checkouts of one project differ in a single
-  directory somewhere deep in a path. That is not a distinction anybody reads
-  correctly at speed, and it is the condition under which somebody acts on the
-  wrong row.
-
-  Blank clears it rather than storing an empty string, so the display falls back
-  to the root instead of showing nothing.
-  """
-  @spec relabel(Scope.t(), Harness.t(), String.t()) ::
-          {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
-  def relabel(%Scope{active_project_id: project_id}, %Harness{project_id: project_id} = harness, label) do
-    harness
-    |> Harness.changeset(%{label: normalize_label(label)})
-    |> Repo.update()
-  end
-
-  def relabel(%Scope{}, %Harness{}, _label), do: {:error, :cross_project}
-
-  defp normalize_label(label) when is_binary(label) do
-    case String.trim(label) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp normalize_label(_label), do: nil
-
   def mark_alive(%Harness{} = harness) do
     save(harness, %{last_seen_at: now()})
     :ok
@@ -330,6 +299,41 @@ defmodule CodeMySpec.Harnesses do
       {:error, _} -> :ok
     end
   end
+
+  @doc """
+  Give a working copy a name a person chose.
+
+  `issue/3` has always accepted a label and nothing ever set one, so every copy
+  rendered as its root — and two checkouts of one project differ in a single
+  directory somewhere deep in a path. That is not a distinction anybody reads
+  correctly at speed, and it is the condition under which somebody acts on the
+  wrong row.
+
+  Blank clears it rather than storing an empty string, so the display falls back
+  to the root instead of showing nothing.
+  """
+  @spec relabel(Scope.t(), Harness.t(), String.t()) ::
+          {:ok, Harness.t()} | {:error, Ecto.Changeset.t()}
+  def relabel(
+        %Scope{active_project_id: project_id},
+        %Harness{project_id: project_id} = harness,
+        label
+      ) do
+    harness
+    |> Harness.changeset(%{label: normalize_label(label)})
+    |> Repo.update()
+  end
+
+  def relabel(%Scope{}, %Harness{}, _label), do: {:error, :cross_project}
+
+  defp normalize_label(label) when is_binary(label) do
+    case String.trim(label) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_label(_label), do: nil
 
   @doc """
   Reclaim the derived state of every agent on this project that has gone quiet.

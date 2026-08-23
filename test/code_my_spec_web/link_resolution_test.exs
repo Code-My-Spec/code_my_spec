@@ -240,6 +240,38 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     """
   end
 
+  # A project-scoped page that wraps itself in `<Layouts.app>` has to hand the
+  # layout the project, because a function component only receives what it
+  # declares. Reach for `@project` without passing it and the sidebar renders
+  # its other branch — the project picker — so the page loads, looks fine, and
+  # is the only place in the app you cannot navigate out of. The previous test
+  # says the nav entry exists; this says the nav is still there once you use
+  # it. WorkingCopiesLive shipped with the entry and without the assign.
+  test "every project-scoped view that wraps itself passes the project to the layout" do
+    missing =
+      CodeMySpecWeb.Router.__routes__()
+      |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
+      |> Enum.filter(&(&1.path =~ ~r{^/app/projects/:project_id/}))
+      |> Enum.map(&elem(&1.metadata.phoenix_live_view, 0))
+      |> Enum.uniq()
+      |> Enum.map(&(&1.__info__(:compile)[:source] |> to_string() |> Path.relative_to_cwd()))
+      |> Enum.filter(&File.exists?/1)
+      |> Enum.filter(fn file ->
+        src = File.read!(file)
+        String.contains?(src, "<Layouts.app") and not String.contains?(src, "project={")
+      end)
+
+    assert missing == [], """
+    A project-scoped view renders <Layouts.app> without passing project=, so
+    its sidebar falls back to the project picker and the page becomes a dead
+    end:
+
+    #{Enum.map_join(missing, "\n", &("  " <> &1))}
+
+    Pass project={assigns[:project]} and projects={assigns[:projects] || []}.
+    """
+  end
+
   # Surfaces with no sidebar entry, and why. The first is by design; the rest
   # are findings this guard surfaced on its first run — mounted in both routers
   # and linked from nowhere in either app. They are listed to keep the guard
