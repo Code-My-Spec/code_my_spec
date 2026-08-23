@@ -101,6 +101,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
       )
 
     :sys.get_state(qa.channel_pid)
+    :ok = await_lane(scope, "qa")
 
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
@@ -132,6 +133,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
       )
 
     :sys.get_state(declared.channel_pid)
+    :ok = await_lane(scope, "product")
 
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
@@ -168,5 +170,45 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
 
     assert_receive {:to_lane, "user_message", payload}
     assert payload["text"] == "verify the story"
+  end
+
+  # Block until the lanes topic has actually recorded this lane.
+  #
+  # `:sys.get_state/1` on the channel proves `Presence.track/4` returned;
+  # `Presence.list/1` reads what Phoenix.Tracker has replicated, which is a
+  # separate step. The gap is invisible on an idle machine and wide enough to
+  # lose a report on a busy one — this passed alone 15 times and failed twice in
+  # the full suite.
+  #
+  # Bumping `assert_receive`'s timeout treated that as slowness. It is not: it
+  # is an unsynchronised read, and a bigger number only makes it rarer. The
+  # tracker broadcasts `presence_diff` once it has recorded the join, so this
+  # waits on the real signal.
+  defp await_lane(scope, role) do
+    topic = AgentHarness.lanes_topic(scope.active_account_id)
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
+    await_lane(topic, role, 40)
+  end
+
+  defp await_lane(topic, role, 0), do: flunk("#{role} never appeared on #{topic}")
+
+  defp await_lane(topic, role, attempts) do
+    present? =
+      topic
+      |> CodeMySpecLocalWeb.Presence.list()
+      |> Enum.flat_map(fn {_key, %{metas: metas}} -> metas end)
+      |> Enum.any?(&(&1.role == role))
+
+    if present? do
+      :ok
+    else
+      receive do
+        %Phoenix.Socket.Broadcast{event: "presence_diff"} -> :ok
+      after
+        50 -> :ok
+      end
+
+      await_lane(topic, role, attempts - 1)
+    end
   end
 end
