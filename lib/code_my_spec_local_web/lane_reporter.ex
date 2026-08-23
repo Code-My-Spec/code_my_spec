@@ -33,6 +33,23 @@ defmodule CodeMySpecLocalWeb.LaneReporter do
   Reads the list fresh on each diff rather than folding the diff into state: the
   diff says something changed, and the list is the answer. Folding means keeping
   a second copy of Presence's own state and being wrong when they disagree.
+
+  ## Why it also reports on a timer
+
+  A diff only fires when a lane joins or leaves, so a box where nothing happens
+  says nothing — and "nothing happened" is indistinguishable from "the report
+  was lost" or "the socket was down when it went out". Pushes are dropped rather
+  than queued while disconnected, so a single missed report is permanent until
+  something moves.
+
+  That is not hypothetical: an agent `start_agent/2` wrote and no lane ever came
+  up for sat claiming presence indefinitely, because no lane joining meant no
+  diff meant no reconcile meant nothing to reap the row. The heartbeat bounds
+  how long the server can believe something the device would contradict.
+
+  Cheap on purpose. The report is a `Presence.list/1` and a broadcast, and the
+  server side is one reconcile per project — the same work a lane joining
+  already causes.
   """
 
   use GenServer
@@ -51,9 +68,15 @@ defmodule CodeMySpecLocalWeb.LaneReporter do
   defp name(%Scope{active_account_id: account_id}),
     do: Module.concat(__MODULE__, "Account_#{account_id}")
 
+  # Long enough that a quiet box is not chattering, short enough that a row the
+  # device would contradict cannot sit there through a coffee break. The page
+  # renders elapsed time, so this is also the resolution of "last heard from".
+  @heartbeat :timer.seconds(30)
+
   @impl GenServer
   def init(%Scope{active_account_id: account_id} = scope) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, AgentHarness.lanes_topic(account_id))
+    schedule_heartbeat()
     {:ok, scope}
   end
 
@@ -70,7 +93,15 @@ defmodule CodeMySpecLocalWeb.LaneReporter do
     {:noreply, scope}
   end
 
+  def handle_info(:heartbeat, scope) do
+    report(scope)
+    schedule_heartbeat()
+    {:noreply, scope}
+  end
+
   def handle_info(_message, scope), do: {:noreply, scope}
+
+  defp schedule_heartbeat, do: Process.send_after(self(), :heartbeat, @heartbeat)
 
   defp report(%Scope{active_account_id: account_id}) do
     agents =

@@ -46,7 +46,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
          |> push_navigate(to: ~p"/app/projects")}
 
       project ->
-        if connected?(socket), do: Agents.subscribe(socket.assigns.current_scope)
+        if connected?(socket) do
+          Agents.subscribe(socket.assigns.current_scope)
+          schedule_tick()
+        end
+
         {:noreply, socket |> assign(:harness_id, id) |> load(project)}
     end
   end
@@ -57,7 +61,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     {:noreply, load(socket, socket.assigns.project)}
   end
 
+  # Re-render on a timer as well as on news. Every liveness line is elapsed
+  # time computed at render, so a page that only redraws when an agent moves
+  # shows "Running just now" for as long as nothing happens — the one reading
+  # that cannot be true after the first minute.
+  def handle_info(:tick, socket) do
+    schedule_tick()
+    {:noreply, load(socket, socket.assigns.project)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Matches `LaneReporter`'s heartbeat: redrawing faster than the facts arrive
+  # invents precision the page does not have.
+  defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
   defp load(socket, project) do
     now = DateTime.utc_now()

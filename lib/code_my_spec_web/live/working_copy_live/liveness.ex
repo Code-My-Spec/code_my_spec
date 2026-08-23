@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     * `basis` — *why*, one short clause naming the signal
     * `since` — when the signal last arrived, as elapsed time
 
-  ## The two signals
+  ## The three signals
 
   A **Pi lane** is tracked in Presence on the harness channel and joined for
   exactly as long as its process lives, so its liveness is a fact about now.
@@ -26,6 +26,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   hooks, so what is known is when it last did something. An agent that died five
   minutes ago and one mid-thought produce the same timestamp, and the label says
   so rather than calling either of them present.
+
+  An agent we **asked for** is neither. `start_agent/2` writes a row at
+  `:starting` and only `record_reported/2` moves it to `:running`, so a
+  `:starting` row is a request no device has confirmed — the config was minted,
+  and whether anything came up is exactly what is not known. That is why status
+  is checked before engine here: reading engine alone made an agent that never
+  became a lane claim "Running · present on the harness channel", forever,
+  which is the server reporting its own intention back to itself as though it
+  were evidence. Rule 5 exists to stop precisely that, and this was the one case
+  where the page said everything was fine.
 
   ## Elapsed, not absolute
 
@@ -40,6 +50,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   What one agent's liveness is, and on what evidence.
   """
   @spec agent(map(), DateTime.t()) :: summary()
+  def agent(%{status: :starting} = agent, now) do
+    %{
+      label: "Starting",
+      basis: "we asked for this one; no harness has confirmed it",
+      since: since(agent.updated_at, now)
+    }
+  end
+
   def agent(%{engine: :pi} = agent, now) do
     %{
       label: "Running",
@@ -68,26 +86,39 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   end
 
   def working_copy(agents, now) do
-    running = Enum.filter(agents, &(&1.engine == :pi))
-    summarize(running, agents, now)
+    confirmed = Enum.filter(agents, &(&1.status != :starting))
+    summarize(Enum.filter(confirmed, &(&1.engine == :pi)), confirmed, agents, now)
   end
 
-  defp summarize([], agents, now) do
-    latest = Enum.max_by(agents, & &1.updated_at, DateTime)
+  # A copy whose only agents are ones we asked for says so. Rolling them up as
+  # "Running" is the same lie one row at a time, and this is the summary most
+  # people read — it is what the list shows without opening anything.
+  defp summarize([], [], starting, now) do
+    latest = Enum.max_by(starting, & &1.updated_at, DateTime)
 
     %{
-      label: "Last heard from",
-      basis: label_for_count(length(agents)) <> ", reporting over hooks",
+      label: "Starting",
+      basis: label_for_count(length(starting)) <> " asked for, none confirmed yet",
       since: since(latest.updated_at, now)
     }
   end
 
-  defp summarize(running, _agents, now) do
-    latest = Enum.max_by(running, & &1.updated_at, DateTime)
+  defp summarize([], confirmed, _agents, now) do
+    latest = Enum.max_by(confirmed, & &1.updated_at, DateTime)
+
+    %{
+      label: "Last heard from",
+      basis: label_for_count(length(confirmed)) <> ", reporting over hooks",
+      since: since(latest.updated_at, now)
+    }
+  end
+
+  defp summarize(present, _confirmed, _agents, now) do
+    latest = Enum.max_by(present, & &1.updated_at, DateTime)
 
     %{
       label: "Running",
-      basis: label_for_count(length(running)) <> " present on the harness channel",
+      basis: label_for_count(length(present)) <> " present on the harness channel",
       since: since(latest.updated_at, now)
     }
   end
