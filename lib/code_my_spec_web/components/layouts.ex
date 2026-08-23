@@ -179,6 +179,7 @@ defmodule CodeMySpecWeb.Layouts do
                 left over from a project that no longer exists still bills.
               --%>
             <li><a href={~p"/app/servers"}>Servers</a></li>
+            <li><a href={~p"/app/devices"}>Devices</a></li>
             <li><a href={~p"/app/resources"}>Resources</a></li>
             <%!--
                 The path is the breadcrumb. Every surface below is addressed

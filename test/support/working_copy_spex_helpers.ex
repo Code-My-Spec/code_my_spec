@@ -28,18 +28,31 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   is why a checkout and a harness are the same thing. Returns the join reply,
   which carries the minted `working_copy_id`.
   """
-  @spec join_working_copy(map(), String.t(), String.t()) :: map()
-  def join_working_copy(context, root, label) do
+  @spec join_working_copy(map(), String.t(), String.t(), keyword()) :: map()
+  def join_working_copy(context, root, label, opts \\ []) do
     {:ok, reply, _socket} =
       UserSocket
       |> socket("spex-1019-#{label}", %{scope: context.scope})
       |> subscribe_and_join(
         HarnessProjectChannel,
         "harness_project:#{context.project.id}",
-        %{"harness_id" => nil, "root" => root, "label" => label}
+        join_payload(root, label, opts)
       )
 
     reply
+  end
+
+  # The device the harness is announcing from, when a criterion is about which
+  # machine a checkout is on. Omitted entirely otherwise, because a payload with
+  # no device is exactly what a harness built before devices sends — and "no
+  # device announced" has to stay distinguishable from "a new one, please".
+  defp join_payload(root, label, opts) do
+    base = %{"working_copy_id" => opts[:working_copy_id], "root" => root, "label" => label}
+
+    case Keyword.fetch(opts, :device_id) do
+      {:ok, device_id} -> Map.put(base, "device", %{"id" => device_id})
+      :error -> base
+    end
   end
 
   @doc """

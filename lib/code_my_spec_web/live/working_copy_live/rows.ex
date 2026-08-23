@@ -36,6 +36,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
@@ -45,6 +46,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
           agents: [struct()],
           conversation: struct() | nil,
           heading: String.t(),
+          device: struct() | nil,
+          device_name: String.t() | nil,
           message_count: non_neg_integer(),
           last_message_at: DateTime.t() | nil,
           liveness: Liveness.summary(),
@@ -92,6 +95,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
     %{
       harness: harness,
+      device: device(harness),
+      device_name: device_name(harness),
       label: harness.label || harness.root,
       heading: WorkingCopies.display_name(harness),
       agents: Enum.sort_by(on_this_copy, & &1.role),
@@ -101,5 +106,21 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       last_message: transcript && Liveness.since(transcript.last_message_at, now),
       liveness: Liveness.working_copy(on_this_copy, now)
     }
+  end
+
+  # The machine this copy is on, when we have been told.
+  #
+  # `nil` is a real answer with two histories behind it — never reported, or the
+  # machine was destroyed and `device_id` nullified — and they are
+  # indistinguishable from here. Neither is claimed: the row says it has no
+  # machine and stops there.
+  defp device(%{device: %Device{} = device}), do: device
+  defp device(_working_copy), do: nil
+
+  defp device_name(working_copy) do
+    case device(working_copy) do
+      nil -> nil
+      device -> Device.display_name(device)
+    end
   end
 end

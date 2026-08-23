@@ -245,6 +245,11 @@ defmodule CodeMySpecWeb.Router do
     # local record of working copies at all.
     get "/harnesses/:id", HarnessLookupController, :show
     post "/harnesses", HarnessLookupController, :create
+
+    # A machine announcing itself, which happens before it has any working copy
+    # — so it cannot ride `harness_project:<project_id>`, a channel per
+    # checkout. Here rather than there for the same reason the lookup above is.
+    post "/devices", DeviceController, :create
   end
 
   # VAPID public key (no auth needed — it's a public key)
@@ -406,6 +411,11 @@ defmodule CodeMySpecWeb.Router do
       # having picked a project first.
       live "/resources", ResourceLive.Index, :index
       live "/servers", ServerLive.Index, :index
+
+      # Account-scoped, not project-scoped: one machine serves checkouts of
+      # several projects, so nesting this under a project would either lie or
+      # repeat itself.
+      live "/devices", DeviceLive.Index, :index
       live "/servers/:name/edit", ServerLive.Index, :edit
       live "/servers/:name", ServerLive.Show, :show
     end

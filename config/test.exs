@@ -161,6 +161,24 @@ config :code_my_spec,
   harness_watch_debounce_ms: 200,
   remote_await_timeout: 500
 
+# A harness announcing its machine reaches `CodeMySpecWeb.Endpoint` in-process
+# rather than over the network — the real router, plug pipeline, controller and
+# sandbox, with only the socket removed.
+#
+# Pinned here rather than per-test because the default is a real `Req.post` to
+# `Config.server_url()`, and the harness holds a real credential. Written
+# unpinned, the boot-announce spec POSTed to https://dev.codemyspec.com with a
+# valid bearer token attached. That is not something each new test should have
+# to remember.
+config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
+
+# Belt and braces. The seam above means the HTTP client never runs in test, but
+# pinning its plug as well keeps that true even if something unsets the seam —
+# and an unset plug plus a real credential is a live request that logs nothing
+# when it works.
+config :code_my_spec, CmsHarness.Device.Client.Http,
+  plug: {Req.Test, CmsHarness.Device.Client.Http}
+
 # Provisioning's pollers back off between reads — waiting for a server to boot,
 # a bucket to appear, a firewall to release. Against stubs and cassettes there
 # is nothing to wait for, so the sleeps are pure wall-clock: `apex_repoint_test`
@@ -276,7 +294,6 @@ config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
   plug: {Req.Test, CodeMySpec.Workspaces.Runner.Local}
 
-
 # The platform deploy key, set once so tests that need one present do not have
 # to write it into application env themselves. `app_credential_test` and
 # `content_sync_controller_test` both did, with different values, which is
@@ -336,9 +353,14 @@ config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
 config :code_my_spec, CodeMySpec.Provisioning.Cloudflare,
   plug: {Req.Test, CodeMySpec.Provisioning.Cloudflare}
 
-config :code_my_spec, CodeMySpec.Provisioning.Deploy, plug: {Req.Test, CodeMySpec.Provisioning.Deploy}
-config :code_my_spec, CodeMySpec.Provisioning.Widget, plug: {Req.Test, CodeMySpec.Provisioning.Widget}
-config :code_my_spec, CodeMySpec.Provisioning.Resend, plug: {Req.Test, CodeMySpec.Provisioning.Resend}
+config :code_my_spec, CodeMySpec.Provisioning.Deploy,
+  plug: {Req.Test, CodeMySpec.Provisioning.Deploy}
+
+config :code_my_spec, CodeMySpec.Provisioning.Widget,
+  plug: {Req.Test, CodeMySpec.Provisioning.Widget}
+
+config :code_my_spec, CodeMySpec.Provisioning.Resend,
+  plug: {Req.Test, CodeMySpec.Provisioning.Resend}
 
 config :code_my_spec, CodeMySpec.Provisioning.Deploy.UptimeRobot,
   plug: {Req.Test, CodeMySpec.Provisioning.Deploy.UptimeRobot}
@@ -349,7 +371,9 @@ config :code_my_spec, CodeMySpec.Content.TriggerClient,
 config :code_my_spec, CodeMySpec.Content.CloudflareClient,
   plug: {Req.Test, CodeMySpec.Content.CloudflareClient}
 
-config :code_my_spec, CodeMySpec.Content.PullClient, plug: {Req.Test, CodeMySpec.Content.PullClient}
+config :code_my_spec, CodeMySpec.Content.PullClient,
+  plug: {Req.Test, CodeMySpec.Content.PullClient}
+
 config :code_my_spec, CodeMySpec.Content.S3Client, plug: {Req.Test, CodeMySpec.Content.S3Client}
 
 config :code_my_spec, CodeMySpec.AgentHarness.ConversationRecorder,

@@ -67,7 +67,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with :ok <- check_contract(payload, project_id),
          {:ok, scope} <- authorize(socket, project_id),
-         {:ok, device} <- announce_device(scope, payload),
+         device = resolve_device(scope, payload),
          {:ok, harness} <-
            WorkingCopies.issue(
              scope,
@@ -1276,33 +1276,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     }
   end
 
-  # The machine, from what it says about itself on join.
+  # Which machine this checkout is on — **looked up, never created**.
   #
-  # Optional the whole way down. A daemon that predates devices sends no
-  # `device` key at all, and `nil` here means "no device announced" rather than
-  # "a new one, please" — otherwise every join from an older harness would mint
-  # another machine and the list would fill with duplicates of one laptop.
+  # Creating a device here was the first cut of this and it is the wrong grain:
+  # one install serves many checkouts, so a per-join announce mints a machine
+  # per working copy. Eight worktrees on one laptop would be eight laptops, and
+  # the device list becomes a slower copy of the list it exists to summarise.
+  # Onboarding is `CmsHarness.Device.announce/0`, once, when the harness comes
+  # up — `POST /api/devices`, which needs no project and so can happen before
+  # any checkout exists. Criterion 2847 is that rule.
   #
-  # `hostname` and `kind` are taken on every announce rather than only at
-  # creation. A box that is re-imaged, renamed, or re-provisioned from a laptop
-  # into a sprite says so on its next connection, and a record that kept only
-  # the first answer would describe the machine as it was when it first
-  # appeared.
-  defp announce_device(scope, %{"device" => device}) when is_map(device) do
-    Devices.announce(scope, device["id"], %{
-      hostname: device["hostname"],
-      kind: device_kind(device["kind"])
-    })
+  # So the join only reports an association. An unknown id attaches nothing
+  # rather than inventing a machine, which keeps "this checkout is on a device
+  # we know about" from being something a checkout can assert into existence.
+  defp resolve_device(scope, %{"device" => %{"id" => id}}) when is_binary(id) do
+    Devices.get_device(scope, id)
   end
 
-  defp announce_device(_scope, _payload), do: {:ok, nil}
-
-  # Refused rather than coerced. An unrecognised kind is a client this server
-  # does not understand, and recording it as `:local` would make a sprite read
-  # as somebody's laptop — the one distinction the field exists for.
-  defp device_kind("local"), do: :local
-  defp device_kind("cloud"), do: :cloud
-  defp device_kind(_other), do: nil
+  defp resolve_device(_scope, _payload), do: nil
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"

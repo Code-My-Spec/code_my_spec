@@ -43,6 +43,11 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
         %{"role" => "coding"}
       )
 
+    # `:after_join` runs asynchronously, so the join returning does not mean
+    # `Presence.track` has. Draining the mailbox makes the lane's presence a
+    # fact before any test reads it.
+    :sys.get_state(channel.channel_pid)
+
     %{scope: scope, channel: channel}
   end
 
@@ -77,7 +82,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
 
   test "a second lane on one copy is reported beside the first, not instead of it",
        %{scope: scope} do
-    {:ok, _reply, _qa} =
+    {:ok, _reply, qa} =
       CodeMySpecLocalWeb.HarnessSocket
       |> socket("harness_socket:#{@external_id}-qa", %{
         scope: scope,
@@ -89,6 +94,8 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
         "harness:session:#{@external_id}",
         %{"role" => "qa"}
       )
+
+    :sys.get_state(qa.channel_pid)
 
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
@@ -106,7 +113,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
   end
 
   test "a lane declares its engine and provider, and they reach the report", %{scope: scope} do
-    {:ok, _reply, _lane} =
+    {:ok, _reply, declared} =
       CodeMySpecLocalWeb.HarnessSocket
       |> socket("harness_socket:#{@external_id}-declared", %{
         scope: scope,
@@ -118,6 +125,8 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
         "harness:session:#{@external_id}",
         %{"role" => "product", "engine" => "pi", "provider" => "anthropic"}
       )
+
+    :sys.get_state(declared.channel_pid)
 
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)

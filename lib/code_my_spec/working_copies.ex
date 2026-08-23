@@ -192,10 +192,16 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec list_harnesses(Scope.t()) :: [WorkingCopy.t()]
   def list_harnesses(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    # The device comes with it. Every caller that lists copies wants to say
+    # which machine each is on — a path is not identity precisely because two
+    # machines can share one — and preloading here rather than at each call site
+    # keeps one of them from quietly rendering `%Ecto.Association.NotLoaded{}`
+    # as "no machine", which is a different and wrong claim.
     Repo.all(
       from h in WorkingCopy,
         where: h.project_id == ^project_id,
-        order_by: [desc_nulls_last: h.last_seen_at, desc: h.inserted_at]
+        order_by: [desc_nulls_last: h.last_seen_at, desc: h.inserted_at],
+        preload: [:device]
     )
   end
 

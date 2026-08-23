@@ -123,6 +123,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
           <li
             :for={row <- @rows}
             data-test="working-copy"
+            data-working-copy-id={row.harness.id}
             data-root={row.harness.root}
             class="card card-compact border border-base-300 bg-base-100"
           >
@@ -141,6 +142,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                       {short_id(row.harness.id)}
                     </span>
                     {row.harness.root}
+                  </div>
+
+                  <div class="text-xs opacity-60 truncate">
+                    <span
+                      :if={row.device}
+                      data-test="working-copy-device"
+                      data-device-id={row.device.id}
+                    >
+                      on {row.device_name}
+                    </span>
+                    <span :if={is_nil(row.device)} data-test="working-copy-no-device">
+                      no machine — never reported one, or it may be orphaned
+                    </span>
                   </div>
                 </div>
 

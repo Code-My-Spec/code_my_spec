@@ -125,6 +125,24 @@ defmodule CodeMySpec.Devices do
   end
 
   @doc """
+  Remove a machine, leaving its working copies behind.
+
+  Destroying is a real act for a sprite, and uninstalling CMS from a laptop
+  amounts to the same thing: the machine stops existing as far as this system is
+  concerned. The checkouts it served do not — they happened, and were worked in.
+
+  So `working_copies.device_id` nullifies rather than cascading, and those rows
+  land in exactly the state of a copy that never reported a machine. The two
+  histories are indistinguishable from the row, which is correct: nothing can
+  tell them apart, so nothing should claim to.
+  """
+  @spec destroy(Scope.t(), Device.t()) :: {:ok, Device.t()} | {:error, :not_yours}
+  def destroy(%Scope{active_account_id: account_id}, %Device{account_id: account_id} = device),
+    do: Repo.delete(device)
+
+  def destroy(%Scope{}, %Device{}), do: {:error, :not_yours}
+
+  @doc """
   Give a device a name a person chose.
 
   Blank clears it rather than storing an empty string, so the display falls back
