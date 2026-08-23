@@ -1,0 +1,22 @@
+title = "CodeMySpec gitleaks config"
+
+# Extends gitleaks' own default ruleset (AWS/Hetzner-style access keys,
+# generic high-entropy secrets, age keys, etc.) — this file only adds a
+# project-specific allowlist on top, it does not replace the defaults.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe patterns for this repo"
+
+regexes = [
+  # `age` recipient (public) keys, always logged verbatim as
+  # "Public key: age1..." by `age-keygen`/`ensure_age_key` output captured
+  # in cmd cassettes (test/fixtures/cassettes/**). The public half is
+  # meant to be shared — it is how you encrypt *to* the corresponding
+  # private key, not a secret. gitleaks' generic-api-key/age-secret-key
+  # rules match the age1... prefix by shape and can't tell the two apart;
+  # anchoring on the "Public key: " prefix keeps this from also
+  # allowlisting a real AGE-SECRET-KEY-1... value if one is ever recorded.
+  '''Public key: age1[a-z0-9]+''',
+]

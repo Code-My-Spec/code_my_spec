@@ -1,0 +1,35 @@
+#!/bin/sh
+# Blocks a commit that would introduce a real secret — this repo's own
+# devops spex record live provider credentials into cmd/HTTP cassettes
+# (test/fixtures/cassettes/**, test/cassettes/**) as part of what they're
+# testing, and issue b1d87f01 is a live Hetzner S3 key that sat in two of
+# those files for weeks before anyone grepped for it by hand.
+#
+# `gitleaks protect --staged` only scans what's about to be committed, not
+# the whole tree, so it's fast enough to run on every commit rather than
+# something reserved for CI. `.gitleaks.toml` at the repo root allowlists
+# the one false-positive class this repo produces routinely (age public
+# keys, which are meant to be shared) on top of gitleaks' own default
+# ruleset — everything else it flags is worth a human's eyes before it
+# reaches history, where removing it is the expensive part.
+#
+# Enable this hook with: git config core.hooksPath .githooks
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (brew install gitleaks) — skipping secret scan." >&2
+  echo "pre-commit: this is not a pass, it's a gap. Install gitleaks before pushing anything sensitive." >&2
+  exit 0
+fi
+
+gitleaks protect --staged --no-banner --redact
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo "" >&2
+  echo "pre-commit: gitleaks found what looks like a real secret in your staged changes." >&2
+  echo "If this is a genuine false positive, add a narrow allowlist entry to .gitleaks.toml" >&2
+  echo "rather than committing past it — --no-verify skips this check entirely and should" >&2
+  echo "be a last resort, not a habit." >&2
+fi
+
+exit $status
