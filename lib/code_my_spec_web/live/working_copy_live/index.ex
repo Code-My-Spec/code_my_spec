@@ -31,11 +31,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   omission. A harness is installed and runs on its own machine; lifecycle
   belongs where the process is. `Agents.stop_agent/2` exists and is deliberately
   not wired to any surface here.
+
+  ## The one thing it does remove
+
+  Offboarding, and only when asked. A copy whose machine reports nothing at its
+  root is shown as gone and left completely alone — story 892 used to reclaim
+  that state automatically after a couple of quiet hours, and the signal it
+  trusted went stale while agents worked, so it came within one sync of deleting
+  two mid-session agents' files. Now the page says what it was told and waits
+  for somebody who knows.
+
+  Offboarding never touches the checkout on disk. It removes the row and what
+  was derived from it.
   """
 
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
   @impl true
@@ -84,6 +97,42 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   # Matches `LaneReporter`'s heartbeat: redrawing faster than the facts arrive
   # invents precision the page does not have.
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
+
+  @doc """
+  Remove a working copy and everything derived from it.
+
+  The one destructive act on this page, and the only thing that removes a
+  working copy at all — nothing does it on a timer any more.
+
+  Found through the project's own list rather than by a bare id lookup, because
+  the id arrives from the client. `Rows.get/4` answers only for copies on the
+  scope's project, so an id belonging to somebody else finds nothing and is
+  refused — the same shape every other action on this page uses.
+  """
+  @impl true
+  def handle_event("offboard", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+
+    with row when not is_nil(row) <-
+           Rows.get(scope, socket.assigns.project, id, DateTime.utc_now()),
+         {:ok, counts} <- WorkingCopies.offboard(scope, row.harness) do
+      {:noreply,
+       socket
+       |> put_flash(:info, offboarded(row, counts))
+       |> load()}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "That working copy is not on this project.")}
+    end
+  end
+
+  # Says what went, in counts. "Offboarded" alone leaves the reader wondering
+  # whether it did anything, and the numbers are the difference between a copy
+  # that was holding the project up and one that was already empty.
+  defp offboarded(row, %{files: files, problems: problems, components: components}) do
+    "Offboarded #{row.label} — #{files} files, #{problems} problems and " <>
+      "#{components} orphaned components removed."
+  end
 
   defp load(socket) do
     rows =
@@ -156,9 +205,28 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                       no machine — never reported one, or it may be orphaned
                     </span>
                   </div>
+
+                  <p
+                    :if={row.missing}
+                    data-test="path-missing-basis"
+                    class="text-xs text-warning/80"
+                  >
+                    Its machine reports nothing at this path. Nothing has been removed —
+                    offboard it when you are sure it is not coming back.
+                  </p>
                 </div>
 
                 <div data-test="liveness" class="shrink-0 text-right">
+                  <div
+                    :if={row.missing}
+                    data-test="path-missing"
+                    class="badge badge-warning badge-sm mb-1"
+                  >
+                    <.icon name="hero-exclamation-triangle" class="size-3" /> Checkout gone
+                    <span :if={row.missing.since} data-test="path-missing-since">
+                      &nbsp;{row.missing.since}
+                    </span>
+                  </div>
                   <div class="text-sm">
                     {row.liveness.label}
                     <span :if={row.liveness.since} data-test="liveness-since" class="opacity-70">
@@ -202,6 +270,27 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 >
                   <.icon name="hero-pencil-square" /> Rename
                 </.button>
+
+                <button
+                  type="button"
+                  data-test="offboard-working-copy"
+                  class="btn btn-sm btn-ghost text-error"
+                  phx-click={show_confirm("offboard-#{row.harness.id}")}
+                >
+                  <.icon name="hero-trash" /> Offboard
+                </button>
+
+                <.confirm_dialog
+                  id={"offboard-#{row.harness.id}"}
+                  title="Offboard this working copy?"
+                  message={
+                    "Removes #{row.label} and everything derived from it — its files, " <>
+                      "its problems, and any component left with nothing pointing at it. " <>
+                      "The checkout on disk is not touched."
+                  }
+                  confirm_label="Offboard"
+                  on_confirm={JS.push("offboard", value: %{id: row.harness.id})}
+                />
               </div>
             </div>
           </li>

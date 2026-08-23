@@ -50,11 +50,25 @@ defmodule CmsHarness.Device do
   Returns `{:ok, device_id}`, or `{:error, reason}` when the server could not be
   reached or refused. Safe to call on every boot: presenting the id we already
   hold is how the server recognises the machine rather than minting another.
+
+  Safe to call repeatedly, too, and `CmsHarness.WorkingCopyReporter` does. The
+  observation it passes — `%{working_copy_id => present?}` — rides along on the
+  same request, so re-announcing is how a removed worktree gets noticed and how
+  a machine with no checkout on it proves it is alive at all.
+
+  Identity is this module's job and observation is not, which is why that map is
+  an argument rather than something computed here. Working out which checkouts
+  are still on disk needs memory of the ones this harness has served: a copy
+  whose directory is gone took its config file with it and can no longer name
+  itself, so it simply stops appearing in `CmsHarness.WorkingCopies.all/0`.
+  Computing the answer from that map alone would make a removed worktree
+  *unreported* rather than reported missing — the one outcome the whole story
+  exists to avoid. The memory lives in the reporter.
   """
-  @spec announce() :: {:ok, String.t()} | {:error, term()}
-  def announce do
+  @spec announce(%{optional(String.t()) => boolean()}) :: {:ok, String.t()} | {:error, term()}
+  def announce(observations \\ %{}) do
     with {:ok, token} <- credential(),
-         {:ok, id} <- post(recorded_id(), token) do
+         {:ok, id} <- post(recorded_id(), token, observations) do
       write(id)
       Logger.info("[CmsHarness] this machine is device #{id}")
       {:ok, id}
@@ -121,8 +135,12 @@ defmodule CmsHarness.Device do
   # Through the seam rather than straight at `Req`. Writing this as a direct
   # call produced a spec that POSTed to the live server with a valid token
   # attached — an unpinned Req plus a credential is a live call, every time.
-  defp post(device_id, token) do
-    Client.impl().announce(device_id, token, %{hostname: hostname(), kind: kind()})
+  defp post(device_id, token, observations) do
+    Client.impl().announce(device_id, token, %{
+      hostname: hostname(),
+      kind: kind(),
+      working_copies: observations
+    })
   end
 
   # Merged over what is there rather than written fresh, so a field this version

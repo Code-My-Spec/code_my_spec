@@ -23,7 +23,6 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File}
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -52,17 +51,6 @@ defmodule CodeMySpec.Files.ComponentSync do
     incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
     env = scope.environment
-
-    # Story 892. Reclaim before projecting, so components are projected from what
-    # live agents actually hold rather than from the leavings of agents that are
-    # gone.
-    #
-    # Here rather than on a schedule because components are where the damage shows
-    # and this is where someone is asking about them. A project nobody is touching
-    # has nobody blocked; reclaiming exactly when someone needs the answer needs no
-    # scheduler at all — and a scheduler would not have helped the case this comes
-    # from, where every remaining harness was stale.
-    WorkingCopies.reclaim_quiet(scope)
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
 

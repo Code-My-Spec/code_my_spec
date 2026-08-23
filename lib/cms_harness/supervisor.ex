@@ -67,7 +67,15 @@ defmodule CmsHarness.Supervisor do
       CmsHarness.Token,
 
       # Claude Code POSTs its hooks to a fixed URL. This is that URL.
-      CmsHarness.Web.Endpoint
+      CmsHarness.Web.Endpoint,
+
+      # Keeps saying which of this machine's checkouts are still on disk. A
+      # worktree is removed by a command that tells us nothing, and the copy it
+      # held stops being scanned at that exact moment, so the only way to learn
+      # about it is to keep looking. Here rather than in the local web app
+      # because a light harness never starts that, and a light harness is the
+      # sprite — the machine whose checkouts actually get thrown away.
+      CmsHarness.WorkingCopyReporter
 
       # Last, because it needs both the registry and the dynamic supervisor.
       # `:temporary`, which is what `{Task, fun}` means, so a failure here does

@@ -24,6 +24,7 @@ defmodule CodeMySpec.WorkingCopies do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Repo
@@ -270,8 +271,8 @@ defmodule CodeMySpec.WorkingCopies do
   Record that this harness is alive, because something it did just proved it.
 
   Split from `issue/3`, which answers "who are you" and happens once per
-  connection. This answers "you are still here", and the difference is what
-  `reclaim_quiet/1` reads.
+  connection. This answers "you are still here", and the difference is what the
+  operator's list reads to say how long ago a copy was last heard from.
 
   Before this existed, `last_seen_at` was written only on channel join and on
   onboarding — so it recorded when a harness last *connected*, and a harness
@@ -279,9 +280,12 @@ defmodule CodeMySpec.WorkingCopies do
   longer an agent worked without interruption. Measured on this project: two
   harnesses whose agents were mid-session, scanning and answering hooks
   continuously, read 2:21 and 2:25 idle against a 2 hour window, having only
-  ever run down. The next sync from any third agent would have deleted both
-  agents' state underneath them — the exact failure the reclaim was written to
-  avoid, arriving through the liveness signal instead of through row age.
+  ever run down — and at the time that window decided what got deleted, so both
+  were one sync away from losing their state to a third agent.
+
+  Nothing is deleted on this signal any more; `offboard/2` is an act somebody
+  takes and `observe_paths/2` is what warns them. But the number is still shown
+  to a person who is deciding, so it still has to mean what it says.
 
   Best-effort on purpose. This is bookkeeping on the side of a request that has
   real work to do, and a harness that cannot be marked alive is not a reason to
@@ -386,174 +390,192 @@ defmodule CodeMySpec.WorkingCopies do
   defp normalize_label(_label), do: nil
 
   @doc """
-  Reclaim the derived state of every agent on this project that has gone quiet.
+  Record what a device can see of the copies attached to it.
 
-  Files and problems, unconditionally. Components only where they have no files
-  **and** no story link.
+  `observations` is `%{working_copy_id => present?}` — the harness's read of its
+  own filesystem, one entry per copy it knows about. A copy it reports present
+  has its warning cleared; one it reports missing is stamped, keeping whatever
+  `path_missing_since` it already had so "missing since" means since the first
+  time we were told, not since the last heartbeat.
 
-  ## Why derived state and not the row
+  ## Only about its own copies
 
-  Problems are properties of the codebase, not of the database: an agent that
-  comes back runs analysis and produces them again. Files are the same — the
-  working copy is the truth and the rows are a projection. Keeping either across
-  an absence preserves nothing and blocks other people's gates meanwhile.
+  Scoped to `device_id`, and that is the security boundary rather than a tidiness
+  one. The ids arrive from a machine, so they are input: without it, a device
+  could report somebody else's checkout missing by naming its id, and the
+  operator would be looking at a warning about a laptop that is perfectly fine.
 
-  The harness row survives, and that is what makes the rest simple. Identity lives
-  in `.cms_harness.json` in the checkout, so a returning agent presents the id it
-  always had and resumes. Deleting the row would leave the file naming something
-  that does not exist, and the adjacent case is already observable: re-onboarding a
-  root whose identity file was removed issues a *third* id rather than resuming, so
-  every offboard/return cycle would leak one.
+  It is also what makes two copies at the same path on two machines behave.
+  Paths collide constantly — every container at `/workspace/app` — and the
+  answer is that a device speaks only about rows that point at it.
 
-  ## Why liveness comes from the agent
+  ## A copy it does not mention is untouched
 
-  `last_seen_at`, never the age of the rows an agent produced. Rows update on
-  scans, and scans happen on hooks rather than on activity — this working copy went
-  unswept for three and a half hours while being actively worked, because the
-  harness was busy holding others. A rule keyed on row age reclaims someone
-  mid-session.
-
-  That only holds while `last_seen_at` means "last proof of life". It originally
-  meant "last connected", which is worse — see `mark_alive/1`, which is what
-  keeps the two the same thing.
-
-  `last_seen_at` is `utc_datetime_usec`, so comparing it against `DateTime.utc_now/0`
-  is correct without a workaround. `updated_at` is `timestamp without time zone`
-  holding UTC, and comparing *that* against `now()` renders one side local: every
-  live agent reads as hours idle, an expiry never fires here and fires wrongly
-  elsewhere.
-
-  ## Never the caller
-
-  The scope's own harness is excluded. It is live by definition — it is the one
-  asking — and a sweep that inherited the harness scoping every other operation
-  here uses would sweep only itself, find nothing, and reclaim nothing forever
-  while looking correct.
+  Not "absent, therefore gone". That is the whole inversion this replaced: the
+  old rule read silence as death and was one sync away from deleting two
+  mid-session agents' state, because the signal it trusted went stale while they
+  worked. A harness that has never been asked about a copy, or that is offline
+  entirely, says nothing about it, and nothing is what that means.
   """
-  @spec reclaim_quiet(Scope.t()) :: {:ok, %{harnesses: integer(), components: integer()}}
-  def reclaim_quiet(%Scope{active_project_id: project_id} = scope)
-      when is_binary(project_id) do
-    cutoff = DateTime.add(now(), -idle_seconds(scope), :second)
+  @spec observe_paths(Device.t() | Ecto.UUID.t(), %{optional(String.t()) => boolean()}) :: :ok
+  def observe_paths(%Device{id: device_id}, observations),
+    do: observe_paths(device_id, observations)
 
-    quiet_ids =
-      Repo.all(
-        from h in WorkingCopy,
-          where: h.project_id == ^project_id,
-          # `nil` is never quiet. The project's default harness — the row
-          # unnamed writers share — never joins, so its `last_seen_at` stays nil
-          # by design, and that is what distinguishes it from a checkout in the
-          # operator's list. Treating nil as "gone" reclaimed it on every sync,
-          # in every project, and took ten other stories' spex down with it.
-          where: not is_nil(h.last_seen_at) and h.last_seen_at < ^cutoff,
-          where: h.id != ^(scope.active_working_copy_id || Ecto.UUID.generate()),
-          select: h.id
-      )
+  def observe_paths(device_id, observations)
+      when is_binary(device_id) and map_size(observations) > 0 do
+    {missing, present} =
+      observations
+      |> Enum.split_with(fn {_id, present?} -> present? == false end)
+      |> then(fn {m, p} -> {ids(m), ids(p)} end)
 
-    reclaim_harnesses(scope, quiet_ids ++ abandoned_ids(scope))
-  end
-
-  def reclaim_quiet(_scope), do: {:ok, %{harnesses: 0, components: 0}}
-
-  # Defence in depth against a file row naming a harness that does not exist.
-  # It cannot currently fire, and the reason it was written is not the reason to
-  # keep it.
-  #
-  # `8c75e2df` recorded this as measured — "two harnesses existed and every file
-  # belonged to a third id" — and that measurement cannot have meant what it
-  # appeared to. `files_working_copy_id_fkey` has referenced `harnesses(id)` since
-  # `20260807210000`, and `exqlite` defaults `foreign_keys: :on`, so the
-  # constraint is enforced on both adapters. Checked on the live server: 0
-  # orphaned or cross-project rows out of 8,063 files carrying a working_copy_id.
-  # The likeliest reading is the report's own wording — the id appeared in no
-  # harness row *for that project*, which is a different claim, and spex
-  # fixtures mint a harness per `full_scope_fixture` call.
-  #
-  # Kept anyway, because the two schemas are not equally strong. On SQLite the
-  # NOT NULL and the `:delete_all` flip were never mirrored — `ALTER COLUMN`
-  # does not exist there, and rebuilding `files` was judged too expensive — so
-  # that deployment holds a nullable column with `on_delete: :nilify_all`. Its
-  # own migration says the constraint is "the application's rather than the
-  # database's". One cheap query is a reasonable price for the case where that
-  # judgement is revisited.
-  #
-  # What it does *not* cover, deliberately, because SQL says so: a row whose
-  # `working_copy_id` is NULL. `NULL NOT IN (…)` is NULL, never true, so those rows
-  # are invisible here. `20260807220000` deleted the existing ones and argues
-  # every writer now names its working copy.
-  #
-  # Excludes the caller, like the aged set: a live agent writing rows faster than
-  # its harness is created must not sweep its own work.
-  defp abandoned_ids(%Scope{active_project_id: project_id} = scope) do
-    Repo.all(
-      from f in CodeMySpec.Files.File,
-        where: f.project_id == ^project_id,
-        where: f.working_copy_id not in subquery(from h in WorkingCopy, select: h.id),
-        where: f.working_copy_id != ^(scope.active_working_copy_id || Ecto.UUID.generate()),
-        distinct: true,
-        select: f.working_copy_id
+    # Present clears unconditionally: a path that came back is back, and the
+    # warning is about right now rather than about what once happened.
+    Repo.update_all(
+      from(w in WorkingCopy,
+        where: w.device_id == ^device_id and w.id in ^present and not is_nil(w.path_missing_since)
+      ),
+      set: [path_missing_since: nil]
     )
+
+    # Missing stamps only the first time. Re-stamping on every heartbeat would
+    # make a copy that vanished last week read as "missing for 30 seconds", and
+    # how long it has been gone is the only thing that tells an operator whether
+    # this was them.
+    Repo.update_all(
+      from(w in WorkingCopy,
+        where: w.device_id == ^device_id and w.id in ^missing and is_nil(w.path_missing_since)
+      ),
+      set: [path_missing_since: now()]
+    )
+
+    :ok
   end
 
-  defp reclaim_harnesses(_scope, []), do: {:ok, %{harnesses: 0, components: 0}}
+  def observe_paths(_device_id, _observations), do: :ok
 
-  defp reclaim_harnesses(%Scope{active_project_id: project_id}, quiet_ids) do
+  defp ids(pairs) do
+    for {id, _present?} <- pairs, {:ok, uuid} = Ecto.UUID.cast(id), do: uuid
+  end
+
+  @doc """
+  Whether this copy's checkout has been reported gone.
+
+  A predicate rather than a field read at every call site, because the nil case
+  means two things and only one reading of it is ever right here.
+  """
+  @spec missing?(WorkingCopy.t()) :: boolean()
+  def missing?(%WorkingCopy{path_missing_since: nil}), do: false
+  def missing?(%WorkingCopy{}), do: true
+
+  @doc """
+  Remove a working copy and everything derived from it.
+
+  Files and problems unconditionally; components only where they have no files
+  **and** no story link. Then the row itself.
+
+  ## Why this is an act and not a sweep
+
+  It used to happen on its own, to any copy quiet longer than a configured
+  window, riding on whichever agent next synced components. That model is gone.
+  It could not tell a checkout that had been deleted from an agent that was
+  simply busy, because the only thing it had to go on was elapsed time — and it
+  got that wrong in the expensive direction, reading two mid-session harnesses
+  as 2:21 and 2:25 idle against a two hour window.
+
+  What replaced it: the harness says whether the path is still there, that shows
+  up as a warning, and a person decides. The cost is that an orphan blocks until
+  somebody clears it. That is the better failure — a visible thing waiting for a
+  click, rather than an invisible one deleting a working agent's state.
+
+  ## Why the row goes too
+
+  The old rule kept it, on the argument that identity lives in
+  `.cms_harness.json` so a returning agent presents the id it always had. A
+  removed checkout took that file with it, so there is nothing left to present
+  and nothing to come back to. A copy that reappears at the same path is
+  onboarded, which mints a new id — see 891.
+
+  ## What it never does
+
+  Touch the checkout. The row is ours and the directory is not, and a server
+  that deletes somebody's files because they clicked a button in a list is not a
+  trade anyone asked for. Offboarding a copy whose checkout still exists leaves
+  it exactly where it is, config file and all — it will simply not be recognised
+  until it onboards again.
+  """
+  @spec offboard(Scope.t(), WorkingCopy.t()) ::
+          {:ok, %{files: integer(), problems: integer(), components: integer()}}
+          | {:error, :not_yours}
+  def offboard(%Scope{active_project_id: project_id} = scope, %WorkingCopy{
+        project_id: project_id,
+        id: id
+      })
+      when is_binary(project_id) do
+    _ = scope
+
     Repo.transaction(fn ->
-      Repo.delete_all(
-        from f in CodeMySpec.Files.File,
-          where: f.project_id == ^project_id and f.working_copy_id in ^quiet_ids
-      )
-
-      Repo.delete_all(
-        from p in CodeMySpec.Problems.Problem,
-          where: p.project_id == ^project_id and p.working_copy_id in ^quiet_ids
-      )
-
-      # Two plain subqueries rather than correlated `exists`. The component set is
-      # small and this is legible: anything a file or a story points at is kept,
-      # everything else on the project goes.
-      referenced_by_files =
-        from f in CodeMySpec.Files.File,
-          where: f.project_id == ^project_id and not is_nil(f.component_id),
-          select: f.component_id
-
-      referenced_by_stories =
-        from s in CodeMySpec.Stories.Story,
-          where: s.project_id == ^project_id and not is_nil(s.component_id),
-          select: s.component_id
-
-      keep =
-        (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
-        |> Enum.uniq()
-
-      {components, _} =
+      {files, _} =
         Repo.delete_all(
-          from c in CodeMySpec.Components.Component,
-            where: c.project_id == ^project_id and c.id not in ^keep
+          from f in CodeMySpec.Files.File,
+            where: f.project_id == ^project_id and f.working_copy_id == ^id
         )
 
-      %{harnesses: length(quiet_ids), components: components}
+      {problems, _} =
+        Repo.delete_all(
+          from p in CodeMySpec.Problems.Problem,
+            where: p.project_id == ^project_id and p.working_copy_id == ^id
+        )
+
+      components = reclaim_orphan_components(project_id)
+
+      Repo.delete_all(from w in WorkingCopy, where: w.id == ^id)
+
+      %{files: files, problems: problems, components: components}
     end)
     |> case do
       {:ok, counts} ->
         {:ok, counts}
 
       {:error, reason} ->
-        # Loud, never swallowed. A reclaim that fails quietly leaves the orphan
-        # in place and reports success, which is indistinguishable from a project
-        # that had nothing to reclaim — and that is the failure this story exists
-        # to remove, reproduced inside its own fix.
-        raise "reclaim_quiet failed for project #{inspect(reason)}"
+        # Loud, never swallowed. An offboard that fails quietly leaves the orphan
+        # in place and reports success, which is indistinguishable from one that
+        # had nothing to remove — and that is the failure this story exists to
+        # remove, reproduced inside its own fix.
+        raise "offboard failed for working copy #{id}: #{inspect(reason)}"
     end
   end
 
-  defp idle_seconds(%Scope{} = scope) do
-    hours =
-      case CodeMySpec.Configurations.get(scope) do
-        %{working_copy_idle_hours: hours} when is_integer(hours) -> hours
-        _ -> 2
-      end
+  def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
 
-    hours * 3600
+  # Two plain subqueries rather than correlated `exists`. The component set is
+  # small and this is legible: anything a file or a story points at is kept,
+  # everything else on the project goes.
+  #
+  # The story link is the one that matters. A component somebody wrote a story
+  # against is authored work, and spending it to clear derived rows would make
+  # this destructive in a way no warning covers.
+  defp reclaim_orphan_components(project_id) do
+    referenced_by_files =
+      from f in CodeMySpec.Files.File,
+        where: f.project_id == ^project_id and not is_nil(f.component_id),
+        select: f.component_id
+
+    referenced_by_stories =
+      from s in CodeMySpec.Stories.Story,
+        where: s.project_id == ^project_id and not is_nil(s.component_id),
+        select: s.component_id
+
+    keep =
+      (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
+      |> Enum.uniq()
+
+    {components, _} =
+      Repo.delete_all(
+        from c in CodeMySpec.Components.Component,
+          where: c.project_id == ^project_id and c.id not in ^keep
+      )
+
+    components
   end
 
   defp now, do: DateTime.utc_now()

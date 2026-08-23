@@ -1129,8 +1129,14 @@ defmodule CodeMySpecSpex.Fixtures do
   the behaviour under test, and a spec built on it proves the bridge works and
   nothing else.
   """
-  @spec observe_files_as(Scope.t(), WorkingCopy.t(), [String.t()], keyword()) :: map()
-  def observe_files_as(%Scope{} = scope, %WorkingCopy{} = harness, paths, opts \\ []) do
+  @spec observe_files_as(Scope.t(), WorkingCopy.t() | String.t(), [String.t()], keyword()) ::
+          map()
+  def observe_files_as(scope, working_copy_id, paths, opts \\ [])
+
+  def observe_files_as(%Scope{} = scope, id, paths, opts) when is_binary(id),
+    do: observe_files_as(scope, %WorkingCopy{id: id}, paths, opts)
+
+  def observe_files_as(%Scope{} = scope, %WorkingCopy{} = harness, paths, opts) do
     role = Keyword.get(opts, :role, "implementation")
 
     observations =

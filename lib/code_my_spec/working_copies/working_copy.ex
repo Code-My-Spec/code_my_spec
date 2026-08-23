@@ -36,6 +36,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
           label: String.t() | nil,
           root: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
+          path_missing_since: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -46,6 +47,16 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :label, :string
     field :root, :string
     field :last_seen_at, :utc_datetime_usec
+
+    # When the harness serving this copy last reported that nothing is at its
+    # root any more — nil while the checkout is there, and nil before anybody
+    # has looked.
+    #
+    # Those two are deliberately one state. Neither is a reason to warn: a copy
+    # nobody has reported on has not gone anywhere, it has merely not been
+    # spoken about, and the whole point of keying on a path rather than on a
+    # clock is that silence stops meaning anything.
+    field :path_missing_since, :utc_datetime_usec
 
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
@@ -61,7 +72,14 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   @doc false
   def changeset(harness, attrs) do
     harness
-    |> cast(attrs, [:label, :last_seen_at, :project_id, :root, :device_id])
+    |> cast(attrs, [
+      :label,
+      :last_seen_at,
+      :path_missing_since,
+      :project_id,
+      :root,
+      :device_id
+    ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
   end

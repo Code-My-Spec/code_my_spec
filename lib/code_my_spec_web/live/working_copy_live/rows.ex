@@ -51,6 +51,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
           message_count: non_neg_integer(),
           last_message_at: DateTime.t() | nil,
           liveness: Liveness.summary(),
+          missing: %{since: String.t() | nil} | nil,
           last_message: String.t() | nil
         }
 
@@ -104,9 +105,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       message_count: (transcript && transcript.message_count) || 0,
       last_message_at: transcript && transcript.last_message_at,
       last_message: transcript && Liveness.since(transcript.last_message_at, now),
-      liveness: Liveness.working_copy(on_this_copy, now)
+      liveness: Liveness.working_copy(on_this_copy, now),
+      missing: missing(harness, now)
     }
   end
+
+  # Whether the checkout is still at its root, as its own machine last reported.
+  #
+  # Deliberately separate from `liveness`, which is about agents. A copy can be
+  # missing and have an agent that still looks alive — a lane whose process
+  # outlived the directory it was working in — and collapsing the two into one
+  # verdict would hide exactly the case worth showing.
+  #
+  # `nil` means nothing to say: either the path is there, or no harness has
+  # looked. Those are one state on purpose, because neither is a reason to warn
+  # anybody, and distinguishing them would put "we have not checked" on every
+  # row of a page that is mostly fine.
+  defp missing(%{path_missing_since: nil}, _now), do: nil
+  defp missing(%{path_missing_since: at}, now), do: %{since: Liveness.since(at, now)}
 
   # The machine this copy is on, when we have been told.
   #

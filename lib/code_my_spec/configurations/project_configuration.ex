@@ -39,7 +39,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           qa_validation: analyzer_mode(),
           fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
-          working_copy_idle_hours: non_neg_integer(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -94,20 +93,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # filters out registrations whose last_heartbeat_at exceeds this).
     field :subagent_ttl_minutes, :integer, default: 10
 
-    # Story 892 — how long an agent may be quiet before its derived state is
-    # reclaimed. Measured on this project rather than guessed: live agents were
-    # 0.12h, 0.16h and 0.23h since last seen, with one alive-but-idle at 2.89h;
-    # retired ones were 93.9h, 94.0h and 94.3h. The gap between working and gone
-    # is days, so the threshold is not delicate — 2h is safe and anything from 6h
-    # to 48h separates them unambiguously.
-    #
-    # `0` means immediately: any agent other than the one asking is reclaimable.
-    # An integer rather than a `nil`/`:immediate` special case, because a number
-    # that already means "hours of tolerance" reaches zero honestly — no branch,
-    # no second type, and the comparison that implements the window implements
-    # this too.
-    field :working_copy_idle_hours, :integer, default: 2
-
     # Story 858 — one ordered level, not independent flags (prod requires
     # UAT requires deploy-enabled):
     #   :off  — don't touch my infra; the graph never demands DevOps work
@@ -142,13 +127,10 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :qa_validation,
       :fix_issues_min_severity,
       :subagent_ttl_minutes,
-      :working_copy_idle_hours,
       :devops
     ])
     |> validate_required([:project_id])
     |> validate_number(:subagent_ttl_minutes, greater_than: 0)
-    # Zero is allowed and meaningful; negative is not a shorter window.
-    |> validate_number(:working_copy_idle_hours, greater_than_or_equal_to: 0)
     |> unique_constraint(:project_id)
   end
 end

@@ -157,33 +157,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
           </div>
         </section>
 
-        <section class="card bg-base-200 border border-base-300">
-          <div class="card-body">
-            <h2 class="card-title text-lg">Agents</h2>
-            <p class="text-sm opacity-70">
-              How long a working copy can go without reporting in before the
-              files, problems and orphaned components it left behind are
-              reclaimed. An agent that comes back rebuilds them on its next
-              sync — only derived state is taken, never its identity. 0
-              reclaims a checkout as soon as another agent syncs.
-            </p>
-
-            <div class="divider my-1"></div>
-
-            <label class="flex items-center justify-between gap-4">
-              <span class="label-text">Working copy idle hours</span>
-              <input
-                type="number"
-                min="0"
-                name="configuration[working_copy_idle_hours]"
-                value={@configuration.working_copy_idle_hours}
-                class="input input-bordered input-sm w-24"
-                data-test="harness-idle-hours"
-              />
-            </label>
-          </div>
-        </section>
-
         <div class="flex justify-end">
           <button type="submit" class="btn btn-primary" data-test="save-configuration">
             Save Configuration
