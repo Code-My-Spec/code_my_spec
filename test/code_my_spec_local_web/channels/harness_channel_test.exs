@@ -74,7 +74,12 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     # without racing the join that already happened in setup.
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    # Two hops, not one: the request broadcasts to `LaneReporter`, which reads
+    # Presence and broadcasts again. `assert_receive`'s 100ms default bounds the
+    # machine rather than the code — this failed only in the full suite and
+    # never in 20 isolated runs. A longer bound on genuinely async delivery is
+    # not a sleep waiting for something to become true.
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
 
     assert [%{"working_copy" => "/tmp/harness-test-proj", "role" => "coding", "engine" => "pi"}] =
              agents
@@ -100,7 +105,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
 
     assert Enum.sort(Enum.map(agents, & &1["role"])) == ["coding", "qa"],
            "one checkout runs one or more lanes. Reporting a single agent per " <>
@@ -131,7 +136,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
     declared = Enum.find(agents, &(&1["role"] == "product"))
 
     assert declared["provider"] == "anthropic",
@@ -147,7 +152,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     :ok = AgentHarness.subscribe_relay(scope.active_account_id)
     AgentHarness.request_report(scope.active_account_id)
 
-    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}
+    assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
     coding = Enum.find(agents, &(&1["role"] == "coding"))
 
     assert coding["engine"] == "pi" and coding["provider"] == "unknown",

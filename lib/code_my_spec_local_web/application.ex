@@ -74,6 +74,21 @@ defmodule CodeMySpecLocalWeb.Application do
         # is what every other line of this module assumes.
         CmsHarness.Projects.start_configured()
 
+        # This machine announces itself, once, because the harness came up.
+        #
+        # Here rather than on a working copy's channel join: one install serves
+        # many checkouts, so a per-copy announce would mint a machine per
+        # checkout — eight worktrees on this laptop would be eight laptops. And
+        # a machine with nothing checked out on it is still a machine, which a
+        # join-time announce can never represent.
+        #
+        # Deliberately not supervised and deliberately not fatal.
+        # `Device.announce/0` logs and returns an error if the server cannot be
+        # reached, and a harness that cannot announce still watches files, runs
+        # analyzers and answers hooks. Refusing to boot over it would trade the
+        # whole harness for a gap in a list.
+        _ = CmsHarness.Device.announce()
+
         print_harness_banner(harness_log)
         {:ok, pid}
 
