@@ -941,24 +941,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
 
-  # What the render proof will fetch back, and what has to be in it.
+  # What the render proof will fetch back, what has to be in it, and where to
+  # fetch it from. `verify_render/2` reads `:path`/`:expect` with `fetch!` —
+  # correctly, since it can prove nothing without them — and `:site_url` falls
+  # back to `published.site_url`, which nothing sets either. Every one of the
+  # three was missing here, and the step died with `key :path not found` on a
+  # run where every step before it had succeeded and the site was live.
+  # Supplying them is this adapter's job, the same argument the widget step
+  # below makes about its own two.
   #
-  # `ContentPublishing.verify_render/2` reads both with `fetch!` — correctly,
-  # since it can prove nothing without them — and nothing supplied them, so the
-  # step died with `key :path not found` on a run where every step before it had
-  # succeeded and the site was live. Supplying them is this adapter's job, the
-  # same argument the widget step below makes about its own two.
-  #
-  # Derived from the content itself rather than configured: the post that will
-  # be published is the post to ask the site for. `/<content_type>/<slug>` is
-  # what `cms_gen.content` routes, and the title is what a rendered post
-  # certainly contains — a 200 alone would pass on a styled 404.
+  # `:path` and `:expect` are derived from the content itself rather than
+  # configured: the post that will be published is the post to ask the site
+  # for. `/<content_type>/<slug>` is what `cms_gen.content` routes, and the
+  # title is what a rendered post certainly contains — a 200 alone would pass
+  # on a styled 404. `:site_url` is the same `client_api_url` the pull trigger
+  # already posts to — the deployed app answers the reader-facing routes on
+  # the same host it answers the publishing endpoints on.
   #
   # A project with no content is the ordinary state of a freshly generated
   # application, not a failure. There is nothing to publish and nothing to
   # prove, and saying so is the honest answer; erroring would make every new
   # project's first setup report a broken step it cannot fix by trying again.
-  defp content_proof_target(scope, opts) do
+  defp content_proof_target(%Scope{active_project: project} = scope, opts) do
     with :error <- proof_from_opts(opts),
          :ok <- ContentPublishing.ensure_publishable(scope),
          [_ | _] = rows <- publishable_content(scope) do
@@ -968,6 +972,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok,
        opts
        |> Keyword.put(:path, "/#{meta["content_type"] || "blog"}/#{meta["slug"]}")
+       |> Keyword.put(:site_url, project.client_api_url)
        |> Keyword.put(:expect, meta["title"] || meta["slug"])}
     else
       {:ok, _opts} = supplied -> supplied
