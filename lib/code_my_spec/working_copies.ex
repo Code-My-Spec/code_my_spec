@@ -290,6 +290,17 @@ defmodule CodeMySpec.WorkingCopies do
   @spec mark_alive(WorkingCopy.t() | Ecto.UUID.t() | nil) :: :ok
   def mark_alive(%WorkingCopy{} = harness) do
     save(harness, %{last_seen_at: now()})
+
+    # And the machine it is on. A checkout proving it is alive is also its box
+    # proving it is alive, and without this a device's `last_seen_at` is only
+    # ever its boot time — every machine reads "Last seen" two minutes in, with
+    # its harness connected and serving.
+    #
+    # A machine with no working copy at all still has no signal of its own.
+    # That gap is real and named rather than papered over: this covers the case
+    # that exists today, where a harness serves at least one checkout.
+    CodeMySpec.Devices.mark_alive(harness.device_id)
+
     :ok
   end
 

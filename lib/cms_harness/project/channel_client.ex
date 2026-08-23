@@ -424,6 +424,17 @@ defmodule CmsHarness.Project.ChannelClient do
        # records it so an operator looking at two harnesses of one project can
        # tell which checkout each is; nothing resolves a harness by it.
        "root" => project.root,
+       # Which machine this copy is on, by the id this install was issued when
+       # it came up. Reported, never created: the server looks it up and
+       # attaches, and an id it does not recognise attaches nothing rather than
+       # minting a machine. A checkout must not be able to assert a device into
+       # existence — one install serves many copies, so that would make a
+       # machine per checkout.
+       #
+       # `nil` on a machine that has not onboarded, and absent entirely from an
+       # older harness. Both mean "no device announced", which is a real state
+       # and not a failure.
+       "device" => %{"id" => CmsHarness.Device.recorded_id()},
        # Which OS process holds this socket. The server needs it to tell a
        # rejoin apart from a rival: both present the same working_copy_id, because
        # that id is the working copy and is read from a file in it. Same

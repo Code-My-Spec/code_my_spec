@@ -154,6 +154,41 @@ defmodule CodeMySpec.DevicesTest do
     end
   end
 
+  describe "staying alive" do
+    test "a copy proving it is alive proves its machine alive too", %{scope: scope} do
+      {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout")
+      {:ok, copy} = Devices.attach(copy, device)
+
+      # Back-date the machine so a touch is observable. Announcing stamped it a
+      # moment ago, and comparing two timestamps from the same millisecond
+      # proves nothing either way.
+      stale = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {:ok, _} =
+        device
+        |> Ecto.Changeset.change(last_seen_at: stale)
+        |> CodeMySpec.Repo.update()
+
+      :ok = WorkingCopies.mark_alive(copy)
+
+      refreshed = Devices.get_device(scope, device.id)
+
+      assert DateTime.compare(refreshed.last_seen_at, stale) == :gt,
+             "the machine's liveness was only ever its boot time, so every device " <>
+               "read 'Last seen' two minutes after starting — observed live with " <>
+               "the harness connected and serving at that moment"
+    end
+
+    test "a copy on no machine marks nothing and does not raise", %{scope: scope} do
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "an unattached checkout")
+
+      assert :ok = WorkingCopies.mark_alive(copy),
+             "bookkeeping alongside a request that has real work to do must not " <>
+               "be able to fail the request"
+    end
+  end
+
   describe "naming a machine" do
     test "a chosen name wins over the hostname", %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "Johns-Mac-mini", kind: :local})

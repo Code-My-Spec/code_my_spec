@@ -154,6 +154,38 @@ defmodule CodeMySpec.Devices do
   end
 
   @doc """
+  Record that this machine is alive, because something on it just proved it.
+
+  Split from `announce/3` for the reason `WorkingCopies.mark_alive/1` is split
+  from `issue/3`: announcing answers "who are you" and happens once when the
+  harness comes up, while this answers "you are still here". Conflating them
+  made `last_seen_at` mean "when did this box last reboot", so every machine
+  read as "Last seen" two minutes after starting — including one whose harness
+  was connected and serving at that moment.
+
+  Best-effort on purpose. This is bookkeeping alongside a request that has real
+  work to do, and a machine that cannot be marked alive is not a reason to
+  refuse a hook.
+  """
+  @spec mark_alive(Device.t() | Ecto.UUID.t() | nil) :: :ok
+  def mark_alive(%Device{} = device) do
+    device
+    |> Device.changeset(%{last_seen_at: DateTime.utc_now()})
+    |> Repo.update()
+
+    :ok
+  end
+
+  def mark_alive(nil), do: :ok
+
+  def mark_alive(device_id) when is_binary(device_id) do
+    case Ecto.UUID.cast(device_id) do
+      :error -> :ok
+      {:ok, id} -> id |> then(&Repo.get(Device, &1)) |> mark_alive()
+    end
+  end
+
+  @doc """
   Remove a machine, leaving its working copies behind.
 
   Destroying is a real act for a sprite, and uninstalling CMS from a laptop

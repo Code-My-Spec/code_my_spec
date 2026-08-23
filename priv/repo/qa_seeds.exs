@@ -180,9 +180,7 @@ account =
 
 # 3. Member — qa user joins the Code My Spec team account as :member (not
 #    owner; we don't want the QA fixture user to administer the real account).
-case Repo.one(
-       from m in Member, where: m.user_id == ^user.id and m.account_id == ^account.id
-     ) do
+case Repo.one(from m in Member, where: m.user_id == ^user.id and m.account_id == ^account.id) do
   nil ->
     %Member{}
     |> Member.changeset(%{user_id: user.id, account_id: account.id, role: :member})
@@ -238,6 +236,45 @@ project =
       end
   end
 
+# 4b. A deploy key on the QA project.
+#
+#     Devices authenticate as *machines*, not as people: a sprite has no
+#     signed-in user and holds only its project's deploy key. So QA cannot
+#     exercise device onboarding through the browser session at all — it needs
+#     this credential, and without it in the seed every session has to mint one
+#     before it can start.
+#
+#     Through `update_project/3` rather than `Ecto.Changeset.change/2`, because
+#     `put_deploy_key_hash/1` is what makes the key findable: the API looks a
+#     project up by hash, so a key written around the changeset authenticates
+#     nothing. That exact mistake is already recorded in the spex fixtures.
+qa_deploy_key = "dk_qa_codemyspec_local"
+
+project =
+  case CodeMySpec.Projects.update_project(
+         %CodeMySpec.Users.Scope{
+           user: user,
+           user_id: user.id,
+           active_account: account,
+           active_account_id: account.id,
+           active_project: project,
+           active_project_id: project.id
+         },
+         project,
+         %{deploy_key: qa_deploy_key}
+       ) do
+    {:ok, updated} ->
+      IO.puts("  deploy key: #{qa_deploy_key}  (authenticate as a machine with this)")
+      updated
+
+    {:error, reason} ->
+      IO.puts(
+        "  deploy key: NOT set (#{inspect(reason)}) — device QA will not be able to announce"
+      )
+
+      project
+  end
+
 # 5. QA stories. Dedicated stories under the QA project — anything QA mutates
 #    (rules, scenarios, questions, criteria) lands on these instead of dev
 #    project stories. Add new entries to qa_stories below as new feature areas
@@ -248,7 +285,10 @@ project =
 # the stories schema). If the table is absent we skip story seeding and
 # emit a note — the user/account/project seeds above still land cleanly.
 stories_table_exists? =
-  case Ecto.Adapters.SQL.query(Repo, "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'stories' LIMIT 1") do
+  case Ecto.Adapters.SQL.query(
+         Repo,
+         "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'stories' LIMIT 1"
+       ) do
     {:ok, %{num_rows: n}} -> n > 0
     _ -> false
   end
