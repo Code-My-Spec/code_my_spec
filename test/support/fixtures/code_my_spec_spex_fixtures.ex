@@ -868,6 +868,41 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def list_agents(%Scope{} = scope), do: CodeMySpec.Agents.list_agents(scope)
 
+  @doc """
+  The conversation an agent's turns land in.
+
+  Looked up the way the app writes it — keyed on the working copy, because one
+  conversation holds the whole team's transcript rather than one per agent.
+  """
+  def agent_conversation(%Scope{} = scope, agent) do
+    CodeMySpec.Repo.get_by(CodeMySpec.Conversations.Conversation,
+      account_id: scope.active_account_id,
+      project_id: scope.active_project_id,
+      session_external_id: "pi:#{agent.working_copy}"
+    )
+  end
+
+  @doc """
+  The agents this working copy is supposed to be running.
+
+  The desired state, which is what a harness is told on join — not what anything
+  last observed. A stopped agent is absent from it rather than filtered out of
+  it, which is the property the resume criteria are about.
+  """
+  def agents_to_restore(%Scope{} = scope) do
+    scope
+    |> CodeMySpec.Agents.list_running()
+    |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
+    |> Enum.map(
+      &%{
+        "agent_id" => &1.id,
+        "provider" => &1.provider,
+        "working_copy" => &1.working_copy,
+        "role" => &1.role
+      }
+    )
+  end
+
   def connect_provider(scope, provider, opts \\ []) do
     IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),

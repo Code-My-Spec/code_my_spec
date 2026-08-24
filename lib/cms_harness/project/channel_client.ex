@@ -502,10 +502,11 @@ defmodule CmsHarness.Project.ChannelClient do
     # no specs, so it would produce a manifest that is wrong rather than late.
     case transport().push(socket, topic, "read_model", %{}, decision_timeout()) do
       {:ok, ref} ->
-        {:ok, socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :join)}
+        socket = socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :join)
+        {:ok, ask_what_to_restore(socket, topic)}
 
       {:error, _} ->
-        {:ok, socket}
+        {:ok, ask_what_to_restore(socket, topic)}
     end
   end
 
@@ -700,6 +701,28 @@ defmodule CmsHarness.Project.ChannelClient do
         Without it the harness cannot resolve which component or story a file belongs
         to, so it is not scanning rather than scanning wrongly.
         """)
+
+        {:ok, socket}
+    end
+  end
+
+  def handle_reply(ref, reply, %{assigns: %{restore_ref: ref}} = socket) do
+    socket = socket |> stamp_server_reply() |> assign(:restore_ref, nil)
+
+    case reply do
+      {:ok, %{"agents" => agents}} when is_list(agents) ->
+        restore(agents)
+        {:ok, socket}
+
+      other ->
+        # Not fatal: nothing is running yet, so the worst case is a harness that
+        # holds no agents until somebody asks for one. Said out loud because the
+        # alternative is agents that silently never come back.
+        Logger.warning(
+          "[CmsHarness] could not learn which agents to restore for " <>
+            "#{socket.assigns.project.root}: #{inspect(other)}. None were started; " <>
+            "anything that should be running has to be started again by hand."
+        )
 
         {:ok, socket}
     end
@@ -1075,6 +1098,32 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def encode_start_result({:error, reason}),
     do: %{"status" => "error", "reason" => to_string(reason)}
+
+  defp ask_what_to_restore(socket, topic) do
+    case transport().push(socket, topic, "agents_to_restore", %{}, decision_timeout()) do
+      {:ok, ref} -> assign(socket, :restore_ref, ref)
+      {:error, _} -> socket
+    end
+  end
+
+  # One at a time. Ten agents resuming together is ten model conversations
+  # starting at once against one plan and one box — how to pace it properly is
+  # an open question, and sequential is the answer that cannot stampede while it
+  # is being decided.
+  defp restore(agents) do
+    Enum.each(agents, fn agent ->
+      case CmsHarness.Agents.launch(agent) do
+        {:ok, _} ->
+          Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
+
+        {:error, reason} ->
+          Logger.warning(
+            "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
+              "#{agent["working_copy"]}: #{inspect(reason)}"
+          )
+      end
+    end)
+  end
 
   defp encode_stop_result(:ok), do: %{"status" => "ok"}
 

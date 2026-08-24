@@ -39,6 +39,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices
@@ -446,6 +447,30 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # crashing the channel: it means the caller already gave up, and taking the
   # socket down over a late answer would disconnect every agent on that copy.
   @impl true
+  # Which agents this working copy is supposed to be running.
+  #
+  # Asked on join, because a harness that has just come up holds nothing and the
+  # record is the intent. Answering with the desired state — not with what
+  # anybody last observed — is what makes `running` a command rather than a
+  # guess, and it is why a stopped agent is simply absent from the answer
+  # instead of needing to be suppressed.
+  def handle_in("agents_to_restore", _payload, socket) do
+    agents =
+      socket.assigns.scope
+      |> Agents.list_running()
+      |> Enum.filter(&(&1.working_copy_id == socket.assigns.scope.active_working_copy_id))
+      |> Enum.map(
+        &%{
+          "agent_id" => &1.id,
+          "provider" => &1.provider,
+          "working_copy" => &1.working_copy,
+          "role" => &1.role
+        }
+      )
+
+    {:reply, {:ok, %{"agents" => agents}}, socket}
+  end
+
   def handle_in("agent_start_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_start_result(msg))

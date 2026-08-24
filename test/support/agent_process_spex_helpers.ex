@@ -46,6 +46,33 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     agent_id
   end
 
+  @doc """
+  Bring one agent back, the way a harness does after a restart.
+
+  The channel client loops over what the server sent and launches each through
+  the same call a fresh start uses. This is one entry of that loop, so the
+  refusals a restore inherits — a checkout that is gone, a provider nobody knows
+  — are the real ones rather than a second implementation of them.
+  """
+  @spec restore_agent(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def restore_agent(agent_id, working_copy) do
+    Machine.ensure_supervisor()
+    Machine.start_agent(agent_id, working_copy)
+  end
+
+  @doc """
+  End an agent's process without changing what the record says it should be.
+
+  What a harness restart does: the process goes, the intent does not. Not the
+  same as stopping an agent, which is a decision and changes the desired state
+  — and telling those two apart is the whole of criteria 2890 and 2891.
+  """
+  @spec stop_agent_process(String.t()) :: :ok
+  def stop_agent_process(agent_id) do
+    Machine.stop_agent(agent_id)
+    :ok
+  end
+
   @doc "Whether this machine is running that agent right now."
   @spec running?(String.t()) :: boolean()
   defdelegate running?(agent_id), to: Machine
