@@ -1056,10 +1056,27 @@ defmodule CmsHarness.Project.ChannelClient do
   # Same reason the unknown-event clause above logs rather than dropping.
   defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
 
-  defp encode_start_result({:ok, %{os_pid: pid, os_boot_id: boot}}),
-    do: %{"status" => "ok", "os_pid" => pid, "os_boot_id" => boot}
+  # `Runner.start/3` hands back its own handle — `pgid` and `boot_id` — and the
+  # wire carries `os_pid` and `os_boot_id`. Translating here is the whole job,
+  # and this clause used to match the wire names against the handle, so it
+  # matched nothing: every start raised `FunctionClauseError`, took the channel
+  # client down with it, and the server saw the socket close mid-call and
+  # reported `{:shutdown, :peer_closed}` — a transport failure, for a name
+  # mismatch two lines from the successful spawn.
+  #
+  # `handle_message("stop_agent", ...)` does the same translation in the other
+  # direction and got it right, which is why stopping worked and starting never
+  # did.
+  @doc false
+  # Public only so a test can feed it a handle `Runner.start/3` actually
+  # produced. Everything else here is private; this one is wire-format
+  # translation between two modules that were written against different names
+  # for the same two values, and the round-trip test hand-wrote the correct
+  # payload — so nothing ever fed the real encoder a real handle.
+  def encode_start_result({:ok, %{pgid: pgid, boot_id: boot_id}}),
+    do: %{"status" => "ok", "os_pid" => pgid, "os_boot_id" => boot_id}
 
-  defp encode_start_result({:error, reason}),
+  def encode_start_result({:error, reason}),
     do: %{"status" => "error", "reason" => to_string(reason)}
 
   defp encode_stop_result(:ok), do: %{"status" => "ok"}

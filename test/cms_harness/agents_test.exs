@@ -14,6 +14,7 @@ defmodule CmsHarness.AgentsTest do
 
   alias CmsHarness.Agents
   alias CmsHarness.Agents.Runner
+  alias CmsHarness.Project.ChannelClient
 
   setup do
     root = CodeMySpec.TempFile.dir("cms_harness_agent")
@@ -97,5 +98,33 @@ defmodule CmsHarness.AgentsTest do
     assert is_binary(boot_id) and boot_id != "",
            "a group id without the boot it belongs to cannot later be told from a " <>
              "recycled number, so the pair has to come back together"
+  end
+
+  test "the wire encoder accepts the handle a real launch produces", %{root: root} do
+    # The bug this exists for: `Runner.start/3` returns `%{pgid:, boot_id:}`
+    # and `encode_start_result/1` matched `%{os_pid:, os_boot_id:}` — the wire
+    # names, against the handle. It matched nothing. Every start raised
+    # `FunctionClauseError`, took the channel client down with it, and the
+    # server reported `{:shutdown, :peer_closed}`: a transport failure, two
+    # lines from a spawn that had already succeeded.
+    #
+    # Nothing caught it because the round-trip test hand-writes the wire
+    # payload, so the real encoder was never given a real handle. This gives it
+    # one.
+    handle = Runner.start("/bin/sh", ["-c", "sleep 30"], cd: root)
+    {:ok, %{pgid: pgid, boot_id: boot_id}} = handle
+    on_exit(fn -> Runner.stop(%{pgid: pgid, boot_id: boot_id}, grace_ms: 0) end)
+
+    encoded = ChannelClient.encode_start_result(handle)
+
+    assert encoded == %{"status" => "ok", "os_pid" => pgid, "os_boot_id" => boot_id},
+           "the encoder and the runner disagree about what a handle is called, " <>
+             "which crashes the channel rather than reporting anything. Got: " <>
+             inspect(encoded)
+  end
+
+  test "a launch that could not start encodes as an error, not a crash" do
+    assert %{"status" => "error", "reason" => "pi_not_installed"} =
+             ChannelClient.encode_start_result({:error, :pi_not_installed})
   end
 end
