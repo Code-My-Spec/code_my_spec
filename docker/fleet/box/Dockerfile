@@ -18,8 +18,13 @@ FROM docker:28-dind
 # git and tar are for `ssh_deliver/2` — it pipes `git archive` into `tar -x`
 # on the far side. iproute2/iputils/curl are for `where_am_i/2`, which only
 # runs when a push fails; a box that cannot answer those questions turns a
-# diagnostic into a second failure.
-RUN apk add --no-cache openssh bash git tar iproute2 iputils curl
+# diagnostic into a second failure. cronie is for `bin/backup schedule`:
+# it writes a Debian-style `/etc/cron.d` line with a user field
+# (`0 4 * * * $APP $ROOT/bin/backup dump …`), and Alpine's own busybox
+# crond does not parse that format — only a real cron.d-aware daemon does.
+# Verified directly against this base image: a cronie crond picks up and
+# runs a `/etc/cron.d` entry with a user field with no other config needed.
+RUN apk add --no-cache openssh bash git tar iproute2 iputils curl cronie
 
 RUN ssh-keygen -A \
  && mkdir -p /root/.ssh && chmod 700 /root/.ssh \

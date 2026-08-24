@@ -29,6 +29,11 @@ if [ ! -f /etc/docker/daemon.json ]; then
   printf '{"insecure-registries":["%s"]}\n' "$FLEET_INSECURE_REGISTRY" > /etc/docker/daemon.json
 fi
 
+# Daemonizes itself in the background, the same way sshd above does — neither
+# may hold PID 1's foreground slot, that belongs to dockerd via the exec below.
+mkdir -p /etc/cron.d
+/usr/sbin/crond
+
 /usr/sbin/sshd -e
 
 exec dockerd-entrypoint.sh "$@"
