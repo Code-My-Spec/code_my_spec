@@ -24,7 +24,16 @@ defmodule CmsHarness.Agents.Provider do
   so there is no OAuth path to build even if we wanted one.
   """
 
+  # The coding path, not the pay-as-you-go one. The same key works on both, and
+  # only this one spends subscription quota rather than credits — so the URL is
+  # what decides whether a month costs a flat fee or a bill.
   @zai_base "https://api.z.ai/api/coding/paas/v4"
+
+  # What the GLM Coding Plan sells today. Older names still resolve — z.ai
+  # routes them to 5.3 — so a stale default works while quietly never using what
+  # was paid for, which is the failure worth naming rather than the one that
+  # errors.
+  @zai_model "glm-5.3"
 
   @type credential :: map()
 
@@ -52,14 +61,19 @@ defmodule CmsHarness.Agents.Provider do
      ]}
   end
 
+  # `api_url` and `chat_path`, not `base_url`. `OpenAICompat` reads `:api_url`
+  # and appends `/v1/chat/completions` by default; z.ai's coding path already
+  # ends at `/v4/chat/completions`, so the default would ask for
+  # `.../paas/v4/v1/chat/completions`.
   def options("zai", credential, opts) do
     with {:ok, api_key} <- fetch(credential, :api_key) do
       {:ok,
        [
          provider: Alloy.Provider.OpenAICompat,
-         base_url: Keyword.get(opts, :base_url, @zai_base),
+         api_url: Keyword.get(opts, :base_url, @zai_base),
+         chat_path: "/chat/completions",
          api_key: api_key,
-         model: Keyword.get(opts, :model, "glm-4.6")
+         model: Keyword.get(opts, :model, @zai_model)
        ]}
     end
   end
