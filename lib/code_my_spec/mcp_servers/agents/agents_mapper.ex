@@ -56,7 +56,6 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Provider: #{agent.provider}
     Working copy: #{agent.working_copy}
     Status: #{agent.status}
-    OS pid: #{agent.os_pid}\
     """
   end
 
