@@ -32,6 +32,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   conversations never appear in `Conversations.list_conversations/1` or count
   toward `Conversations.unread_count/1`, so watching an agent never raises the
   support inbox's unread badge.
+
+  ## What an empty transcript means depends on who was writing it
+
+  "Turns were taken but not recorded" used to appear over any conversation with
+  no messages. It was written for story 984's sprite, whose turns are recorded
+  after the fact by a recorder that can fail — there, an empty transcript is
+  evidence of loss and saying so is the point (criterion 8175).
+
+  An agent conversation is not written that way. The agent streams its own
+  steps as it takes them, so empty means it has not done anything yet — the
+  ordinary state one second after starting one. Saying "turns were lost" there
+  is a warning about a real failure raised over a working system, and it
+  devalues the sentence for the case that needs it.
+
+  The conversation says which path it is on: an agent conversation names its
+  agent, a recorded lane names its session.
   """
 
   use CodeMySpecWeb, :live_view
@@ -85,13 +101,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:project, project)
     |> assign(:conversation, conversation)
     |> assign(:page_title, page_title(project, conversation))
-    |> assign(:recording_gap, conversation != nil and messages == [])
+    |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
   end
+
+  # Why this transcript is empty, when it is.
+  #
+  # `:gap` is story 984's claim — turns happened and the recorder lost them —
+  # and it belongs only to conversations written after the fact, which are the
+  # ones keyed by session rather than by agent. `:nothing_yet` is an agent that
+  # streams its own steps and has not taken one.
+  defp emptiness(nil, _messages), do: :none
+  defp emptiness(_conversation, [_ | _]), do: :none
+  defp emptiness(%{agent_id: agent_id}, []) when is_binary(agent_id), do: :nothing_yet
+  defp emptiness(_conversation, []), do: :gap
 
   # A conversation is answerable when its own agent is running.
   #
@@ -372,7 +399,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </p>
 
           <p
-            :if={@conversation != nil and @recording_gap}
+            :if={@emptiness == :nothing_yet}
+            data-test="nothing-recorded-yet"
+            class="rounded-box border border-base-300 p-3 text-sm opacity-70"
+          >
+            Nothing recorded yet. Steps appear here as the agent takes them.
+          </p>
+
+          <p
+            :if={@emptiness == :gap}
             data-test="recording-gap"
             class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
           >

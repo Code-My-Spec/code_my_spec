@@ -7,10 +7,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   The index can only summarise that ("2 agents present"); here each lane is its
   own row with its own engine, provider, process and evidence of life.
 
-  ## One chat link per agent
+  ## One chat link per agent, named so they can be told apart
 
   A conversation belongs to an agent, so a copy running five of them has five
-  transcripts and this lists five links. It used to be one link per copy,
+  transcripts and this lists five links.
+
+  Named by the conversation, not by the agent's role. The role was the obvious
+  handle and it is not unique: `start_agent` takes no role, so every agent
+  started that way is "main" and a copy running two of them showed two links
+  reading "Open main chat", one above the other. They went to different
+  conversations, which is worse than it sounds — an operator who picks the
+  wrong one has redirected the agent they were not watching, and nothing on
+  either page says so. A conversation's generated name is unique and already on
+  the page it leads to. It used to be one link per copy,
   keyed `pi:<root>`, from when a copy ran one lane — with several, their turns
   interleaved into one thread and a single link could only open the one nobody
   had asked for.
@@ -30,6 +39,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Conversations
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -241,10 +251,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               data-test="open-agent-chat"
               class="btn btn-sm btn-primary"
             >
-              Open {chat.agent.role} chat
+              Open {Conversations.display_name(chat.conversation)}
             </.button>
             <span class="text-xs opacity-60">
-              {chat.message_count} messages<span :if={chat.last_message_at}>, last {Liveness.since(chat.last_message_at, @now)}</span>
+              {chat.agent.role} · {chat.message_count} messages<span :if={chat.last_message_at}>, last {Liveness.since(chat.last_message_at, @now)}</span>
             </span>
           </div>
 

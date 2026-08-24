@@ -61,11 +61,21 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
 
         conversation = Fixtures.agent_conversation(context.scope, agent)
 
-        {:ok, live, _html} =
+        {:ok, live, html} =
           live(
             context.conn,
             ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
           )
+
+        # Nothing has happened yet, and the page must say that rather than
+        # warn. It used to announce "Turns were taken but not recorded" over
+        # any empty transcript — a warning about a real failure, raised over a
+        # working system, as the first thing anyone sees after starting an
+        # agent. Watching that cries wolf at rest is not watching.
+        refute html =~ "not recorded",
+               "the page claims this agent's turns were lost before it has taken " <>
+                 "one. An operator reading that goes looking for a defect that is " <>
+                 "not there, and stops believing the sentence when it is."
 
         {:ok,
          context
