@@ -55,7 +55,8 @@ defmodule CmsHarness.Agents.Engine do
           provider: String.t(),
           credential: map(),
           working_copy: String.t(),
-          model: String.t() | nil
+          model: String.t() | nil,
+          on_stop: (-> any()) | nil
         ]
 
   # ---------------------------------------------------------------- public API
@@ -153,11 +154,14 @@ defmodule CmsHarness.Agents.Engine do
 
     case Alloy.Agent.Server.start_link(alloy_opts) do
       {:ok, alloy} ->
+        Process.flag(:trap_exit, true)
+
         {:ok,
          %{
            agent_id: Keyword.fetch!(opts, :agent_id),
            working_copy: Keyword.fetch!(opts, :working_copy),
            provider: Keyword.fetch!(opts, :provider),
+           on_stop: Keyword.get(opts, :on_stop),
            alloy: alloy
          }}
 
@@ -171,11 +175,21 @@ defmodule CmsHarness.Agents.Engine do
     {:reply, Alloy.Agent.Server.chat(state.alloy, message, timeout: timeout), state}
   end
 
+  # Asked, not killed.
+  #
+  # A supervisor shutdown runs this; a brutal kill does not. That difference is
+  # the whole of "a stop asks the agent to finish what it is doing before it
+  # insists" — anything the agent was part-way through gets to land here rather
+  # than being lost with the process.
   @impl true
   def terminate(_reason, state) do
+    run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     :ok
   end
+
+  defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
+  defp run_on_stop(_), do: :ok
 
   # -------------------------------------------------------------------- private
 

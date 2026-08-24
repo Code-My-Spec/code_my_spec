@@ -36,15 +36,14 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
     scenario "Stopping an agent stops the thing that spends money" do
       given_ "an agent running on a working copy, with a process on the machine that serves it",
              context do
-        process = start_process()
+        agent = Fixtures.running_agent(context.scope)
+        start_agent(agent.id, working_copy: agent.working_copy)
 
-        agent = Fixtures.running_agent(context.scope, process)
-
-        assert in_group(process.os_pid) != [],
+        assert running?(agent.id),
                "the premise is an agent with a live process; without one this " <>
                  "criterion asserts nothing about spending"
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:process, process)}
+        {:ok, context |> Map.put(:agent, agent)}
       end
 
       when_ "I stop it", context do
@@ -56,7 +55,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
       end
 
       then_ "the process on that machine is gone", context do
-        assert in_group(context.process.os_pid) == [],
+        refute running?(context.agent.id),
                "the agent was reported stopped and its process is still running. " <>
                  "That is the whole failure: the row says stopped, the model keeps " <>
                  "being called, and the handle that could have reached it has just " <>

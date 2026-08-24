@@ -18,7 +18,7 @@ defmodule CmsHarnessTest.Machine do
   crossing, so the two are symmetric — app state through `Fixtures`, harness
   surfaces through here.
   """
-  alias CmsHarness.Agents.Runner
+  alias CmsHarness.Agents
   alias CmsHarness.Device
   alias CmsHarness.WorkingCopyReporter
 
@@ -61,15 +61,76 @@ defmodule CmsHarnessTest.Machine do
   def announce, do: Device.announce()
 
   @doc """
-  Start a real process group, and stop one.
+  Start a real agent on this machine, under the id the server knows it by.
 
   Story 1023's criteria are about whether an agent stops *spending*, which a
-  process that does not exist cannot demonstrate — three shipped instances of
-  that defect all passed tests with no process in them.
-  """
-  @spec start(String.t(), [String.t()]) :: {:ok, map()} | {:error, term()}
-  defdelegate start(command, args), to: Runner
+  thing that does not exist cannot demonstrate — three shipped instances of that
+  defect all passed tests with nothing running in them.
 
-  @spec stop(map(), keyword()) :: :ok | {:error, :still_running}
-  defdelegate stop(handle, opts), to: Runner
+  It used to start an OS process group. An agent is a supervised process now, so
+  this starts one of those: real, registered, and reachable by the same id the
+  server would use. No provider is contacted, because nothing here chats to it.
+  """
+  @spec start_agent(String.t(), String.t(), (-> any()) | nil) :: {:ok, map()} | {:error, term()}
+  def start_agent(agent_id, working_copy, on_stop \\ nil) do
+    ensure_supervisor()
+
+    Agents.launch(%{
+      "agent_id" => agent_id,
+      "provider" => "zai",
+      "api_key" => "unused-in-spex",
+      "working_copy" => working_copy,
+      "on_stop" => on_stop
+    })
+  end
+
+  @spec stop_agent(String.t()) :: :ok | {:error, :not_running}
+  def stop_agent(agent_id) do
+    ensure_supervisor()
+    Agents.halt(agent_id)
+  end
+
+  @doc "Whether this machine is running that agent right now."
+  @spec running?(String.t()) :: boolean()
+  def running?(agent_id) do
+    ensure_supervisor()
+    agent_id in Agents.running()
+  end
+
+  @doc """
+  Make sure the tree an agent lives in exists — both halves of it.
+
+  An agent is supervised by `CmsHarness.AgentSupervisor` and registered in
+  `CmsHarness.Registry`, and it needs both: without the registry, starting one
+  raises `unknown registry` from inside the `:via` tuple. The harness starts
+  both; a spex run starts neither.
+
+  Linked to the caller, so each scenario gets a clean tree and nothing leaks
+  into the next.
+  """
+  @spec ensure_supervisor() :: :ok
+  def ensure_supervisor do
+    ensure(CmsHarness.Registry, fn ->
+      Registry.start_link(keys: :unique, name: CmsHarness.Registry)
+    end)
+
+    ensure(CmsHarness.AgentSupervisor, fn ->
+      DynamicSupervisor.start_link(name: CmsHarness.AgentSupervisor, strategy: :one_for_one)
+    end)
+  end
+
+  defp ensure(name, start) do
+    case Process.whereis(name) do
+      nil ->
+        {:ok, pid} = start.()
+        # Unlinked on purpose: linked, it dies with whichever scenario happened
+        # to start it, and the next one either raises `unknown registry` or
+        # starts a second tree while agents live in the first.
+        Process.unlink(pid)
+        :ok
+
+      _pid ->
+        :ok
+    end
+  end
 end

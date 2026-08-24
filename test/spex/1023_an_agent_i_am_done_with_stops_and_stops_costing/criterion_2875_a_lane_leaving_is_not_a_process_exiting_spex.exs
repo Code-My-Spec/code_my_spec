@@ -49,8 +49,8 @@ defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
     scenario "A lane leaving is not a process exiting" do
       given_ "an agent whose lane has left the harness channel while its process is still alive",
              context do
-        process = start_process()
-        agent = Fixtures.running_agent(context.scope, process)
+        agent = Fixtures.running_agent(context.scope)
+        start_agent(agent.id, working_copy: agent.working_copy)
 
         # The machine cannot be reached to check, which is the case that forces
         # the question: with no answer available, is absence enough?
@@ -64,35 +64,44 @@ defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
         {:ok,
          context
          |> Map.put(:agent, agent)
-         |> Map.put(:process, process)
          |> Map.put(:socket, socket)}
       end
 
-      when_ "the page reports what is running", context do
-        {:ok, Map.put(context, :reply, report(context.socket, []))}
+      when_ "the harness says nothing at all — no report arrives", context do
+        # Deliberately not an empty report. An empty report is the machine
+        # saying "nothing is running here", which is evidence. Silence is the
+        # machine saying nothing, which is not — and conflating the two stops
+        # every agent on a harness that was merely restarting.
+        {:ok, context}
       end
 
-      then_ "that agent is not described as stopped on the strength of the lane going",
+      then_ "no agent is described as stopped on the strength of the silence",
             context do
-        assert in_group(context.process.os_pid) != [],
+        assert running?(context.agent.id),
                "the premise failed: the process died on its own, so this cannot " <>
                  "distinguish a checked stop from an assumed one"
 
         {:ok, agent} = Fixtures.fetch_agent(context.scope, context.agent.id)
 
         refute agent.status == :stopped,
-               "the lane went away, nothing could check the process, and the agent " <>
-                 "was recorded stopped anyway. It is still running and still " <>
-                 "spending, and now nothing is looking for it."
+               "the harness said nothing and the agent was recorded stopped anyway. " <>
+                 "It is still running and still consuming, and now nothing is " <>
+                 "looking for it — on a harness that may only have been restarting."
 
         {:ok, Map.put(context, :after_report, agent)}
       end
 
-      then_ "and the evidence named is the process, not the channel", context do
-        assert context.after_report.os_pid == context.process.os_pid,
-               "the group id was cleared while the process was still alive, which " <>
-                 "is what makes a survivor permanently unreachable — the handle " <>
-                 "that could have ended it is gone"
+      then_ "and the agent is still reachable, so the next attempt has something to act on",
+            context do
+        assert running?(context.agent.id),
+               "the report could not confirm anything and the agent is gone from " <>
+                 "the machine anyway — then the premise is wrong and this proves " <>
+                 "nothing about assuming versus checking"
+
+        assert context.after_report.id == context.agent.id,
+               "the row stopped naming the agent while it was still running, which " <>
+                 "is what makes a survivor permanently unreachable: the handle that " <>
+                 "could have ended it is gone and nothing is looking"
 
         {:ok, context}
       end

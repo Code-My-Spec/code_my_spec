@@ -992,11 +992,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # and a boot id and has to ask. The answer is what lets it record the stop, so
   # this always replies — silence would leave the caller waiting out its timeout
   # and then reporting a stop that never happened.
-  # Launch an agent here, because this is the machine that will hold it.
-  #
-  # The command is decided here rather than sent: what is installed is a fact
-  # only this machine has, and a box with no `pi` on its PATH should say so
-  # rather than have the server discover it from a failed spawn.
+  # Launch an agent here, because this is the machine that holds its working
+  # copy — and an agent session is hundreds of tool calls against that copy.
   def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
     result = CmsHarness.Agents.launch(msg)
 
@@ -1010,12 +1007,12 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # The agent id is the handle. It used to be a process group id paired with the
+  # boot it belonged to, because a group number outlives the group and gets
+  # reused — a supervised process has no such problem, and the server already
+  # knows the id it asked us to start.
   def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
-    result =
-      CmsHarness.Agents.Runner.stop(
-        %{pgid: msg["os_pid"], boot_id: msg["os_boot_id"]},
-        grace_ms: msg["grace_ms"] || 5_000
-      )
+    result = CmsHarness.Agents.halt(msg["agent_id"])
 
     push(
       socket,
@@ -1073,8 +1070,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # translation between two modules that were written against different names
   # for the same two values, and the round-trip test hand-wrote the correct
   # payload — so nothing ever fed the real encoder a real handle.
-  def encode_start_result({:ok, %{pgid: pgid, boot_id: boot_id}}),
-    do: %{"status" => "ok", "os_pid" => pgid, "os_boot_id" => boot_id}
+  def encode_start_result({:ok, %{agent_id: agent_id}}),
+    do: %{"status" => "ok", "agent_id" => agent_id}
 
   def encode_start_result({:error, reason}),
     do: %{"status" => "error", "reason" => to_string(reason)}

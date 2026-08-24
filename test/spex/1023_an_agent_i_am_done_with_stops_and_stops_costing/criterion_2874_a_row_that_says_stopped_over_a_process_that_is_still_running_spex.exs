@@ -31,12 +31,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2874Spex do
   spex "A stop that could not happen is not reported as one" do
     scenario "A row that says stopped over a process that is still running" do
       given_ "an agent whose process cannot be ended — its machine is unreachable", context do
-        process = start_process()
-        agent = Fixtures.running_agent(context.scope, process)
+        agent = Fixtures.running_agent(context.scope)
+        start_agent(agent.id, working_copy: agent.working_copy)
 
         machine_out_of_reach()
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:process, process)}
+        {:ok, context |> Map.put(:agent, agent)}
       end
 
       when_ "I stop it", context do

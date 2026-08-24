@@ -836,7 +836,14 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def fetch_agent(%Scope{} = scope, id), do: CodeMySpec.Agents.fetch_agent(scope, id)
 
-  def running_agent(%Scope{} = scope, %{os_pid: os_pid, os_boot_id: boot_id}, opts \\ []) do
+  @doc """
+  A row for an agent the server believes is running.
+
+  It used to take a process handle, because an agent was a detached OS process
+  and the row had to name one. The id is the handle now, so the row comes first
+  and the machine is asked to run *that* agent.
+  """
+  def running_agent(%Scope{} = scope, opts \\ []) do
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
         engine: Keyword.get(opts, :engine, :pi),
@@ -846,9 +853,7 @@ defmodule CodeMySpecSpex.Fixtures do
         working_copy_id: scope.active_working_copy_id,
         project_id: scope.active_project_id,
         account_id: scope.active_account_id,
-        status: :running,
-        os_pid: os_pid,
-        os_boot_id: boot_id
+        status: :running
       })
 
     agent
@@ -2558,7 +2563,8 @@ defmodule CodeMySpecSpex.Fixtures do
   agent wrote for itself (a46f3ec5) — "on UAT" is a row with
   `health_verified_at` set.
   """
-  @spec record_deploy(Scope.t(), integer(), String.t(), keyword()) :: CodeMySpec.Deploys.Deploy.t()
+  @spec record_deploy(Scope.t(), integer(), String.t(), keyword()) ::
+          CodeMySpec.Deploys.Deploy.t()
   def record_deploy(%Scope{} = scope, story_id, environment, opts \\ []) do
     opts = Keyword.put_new(opts, :health_verified_at, DateTime.utc_now())
     {:ok, deploy} = CodeMySpec.Deploys.record(scope, story_id, environment, opts)

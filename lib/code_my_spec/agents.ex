@@ -43,7 +43,6 @@ defmodule CodeMySpec.Agents do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
-  alias CodeMySpec.Agents.PiConfig
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
@@ -96,10 +95,10 @@ defmodule CodeMySpec.Agents do
   def start_agent(%Scope{} = scope, %{provider: provider} = attrs) do
     with {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
-         {:ok, config_dir} <- PiConfig.mint(agent, credential),
-         {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}),
          {:ok, _conversation} <- open_conversation(scope, agent) do
-      agent = launch(scope, agent)
+      # Carried on the struct rather than stored: the machine needs it, the row
+      # must not become a second place a subscription lives.
+      agent = launch(scope, %{agent | credential: credential})
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
@@ -344,55 +343,20 @@ defmodule CodeMySpec.Agents do
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
 
-  # No group id, so there is no process to end and nothing to lose by recording
-  # the stop. This is an agent that never came up, or one already ended.
-  defp reap_if_absent(scope, %Agent{os_pid: nil} = agent, false) do
-    {:ok, stopped} = record_stopped(scope, agent)
-    stopped
-  end
-
-  # A pid we did not record at launch, so there is no boot beside it and nothing
-  # can judge it: a pid without its boot cannot be told from a recycled number,
-  # and signalling one may reach a stranger.
+  # Absent from a report the machine actually sent.
   #
-  # This is an agent adopted from a report rather than started by us — a lane
-  # that appeared on its own. For those the lane's absence *is* the evidence, and
-  # good evidence: a lane is joined for exactly as long as its process lives, so
-  # a lane missing from Presence means that process is gone.
+  # This used to fork: an agent with no group id was recorded stopped, and one
+  # with a group id had its machine asked to end it first, because an OS process
+  # could outlive the lane that reported it. A supervised agent cannot — the
+  # harness reports what its own registry holds, so the lane and the process are
+  # the same fact and a report that arrives is the check.
   #
-  # The expensive case is the other one, and it is the one below.
-  defp reap_if_absent(scope, %Agent{os_boot_id: nil} = agent, false) do
-    {:ok, stopped} = record_stopped(scope, agent)
-    stopped
-  end
-
-  # A lane that is gone with a process that may not be.
-  #
-  # This used to write `:stopped` and clear `os_pid`, which is criterion 2828 on
-  # the hot path: the orphan keeps running, keeps spending, and the one handle
-  # that could have reached it has just been discarded — by the reconcile whose
-  # job was to notice it.
-  #
-  # So the machine is asked to end the group first, and the row is only recorded
-  # as stopped if it says the group is gone. When it cannot, the row keeps its
-  # group id and stays reachable for the next attempt. An agent that looks
-  # running for another cycle is a far better failure than one that looks
-  # stopped and is not.
+  # The distinction that still matters is upstream of here: no report is not a
+  # report of absence. A harness that went quiet says nothing about its agents,
+  # and nothing calls this without a report to reconcile against.
   defp reap_if_absent(scope, %Agent{} = agent, false) do
-    case Transport.impl().stop_agent(agent.working_copy_id, agent, @reap_timeout_ms) do
-      :ok ->
-        {:ok, stopped} = record_stopped(scope, agent)
-        stopped
-
-      {:error, reason} ->
-        Logger.warning(
-          "[Agents] agent #{agent.id} has no lane but its process group " <>
-            "#{inspect(agent.os_pid)} could not be ended (#{inspect(reason)}). Keeping the " <>
-            "group id: it is the only way to reach the process, and it may still be spending."
-        )
-
-        agent
-    end
+    {:ok, stopped} = record_stopped(scope, agent)
+    stopped
   end
 
   @doc """
@@ -422,14 +386,29 @@ defmodule CodeMySpec.Agents do
   # permanently unreachable, by the stop. That is criterion 2828 caused by its
   # own remedy.
   #
-  # An agent with no group id never came up, so there is no process to end and
+  # An agent still `:starting` never came up, so there is no process to end and
   # nothing to ask. That is a real state, not an error: it is the row for an
-  # agent we asked for and no device confirmed, and cancelling it has to work.
-  defp end_process(_scope, %Agent{os_pid: nil}), do: :ok
+  # agent we asked for and no machine confirmed, and cancelling it has to work.
+  #
+  # This used to key on `os_pid` being nil. An agent is a supervised process now
+  # and never has a group id, so that clause matched every stop: the row went to
+  # `:stopped` and nothing was ever asked to end anything. The defect this story
+  # exists for, reintroduced by deleting the field its guard happened to read.
+  defp end_process(_scope, %Agent{status: :starting}), do: :ok
 
   defp end_process(_scope, %Agent{} = agent) do
-    Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
+    agent.working_copy_id
+    |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
+    |> stopped?()
   end
+
+  # An agent the machine is not running is stopped — asking again is how a
+  # stop becomes idempotent. A machine that could not be *reached* is not, and
+  # collapsing the two is what makes a row say stopped over something still
+  # running.
+  defp stopped?(:ok), do: :ok
+  defp stopped?({:error, :not_running}), do: :ok
+  defp stopped?({:error, _reason} = error), do: error
 
   # Only after something confirmed the process is gone. `os_pid` and
   # `os_boot_id` are cleared here rather than before, because until the process

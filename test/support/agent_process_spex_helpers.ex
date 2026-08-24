@@ -1,68 +1,54 @@
 defmodule CodeMySpecSpex.AgentProcessHelpers do
   @moduledoc """
-  A real process for story 1023's criteria to stop.
+  A real agent for story 1023's criteria to stop.
 
   The criteria are about whether an agent stops spending, so an agent that is
-  not a process proves nothing about them. Three shipped instances of the same
-  defect on this project all passed tests that never involved one.
+  not really running proves nothing about them. Three shipped instances of the
+  same defect on this project all passed tests that never had one.
 
-  `sleep` is the agent. It is real, it spawns real children when asked, and it
-  costs nothing — which matters, because the alternative is starting an actual
-  coding agent and burning a subscription to assert a lifecycle rule.
+  ## What changed, and what did not
 
-  ## Why a helper rather than calling the runner from the spex
+  It used to start `sleep` in its own process group and assert against `ps`,
+  because an agent was a detached OS process and the only honest question was
+  whether that process was still there. An agent is a supervised process now, so
+  the question is whether *it* is still there — but the discipline is the same:
+  start a real one, stop it through the operator's own surface, and assert it is
+  gone rather than that a row says so.
 
-  `CodeMySpecSpex` may not reference `CmsHarness` — the boundary says so, and it
-  is right: a spex reaching into the harness is a spex that has stopped driving
-  the surface it is about. So the crossing happens once, here, where the other
-  bridges live.
+  No provider is ever contacted. `Alloy.Agent.Server` reaches one only when
+  something chats to it, and nothing here does, so these run for free and
+  without a network.
   """
 
   import ExUnit.Assertions
 
-  alias CmsHarnessTest.Machine, as: Runner
+  alias CmsHarnessTest.Machine
   alias CodeMySpecTest.UnreachableMachine
 
   @doc """
-  Start something that behaves like an agent, and hand back what the server
-  would have recorded for it.
+  Start a real agent on this machine under `agent_id`, in a scratch checkout.
 
-  `:children` spawns extra processes inside the same group — the shape a real
-  agent has when it is running a compiler or a test suite, and the shape
-  `pkill -TERM -P` gets wrong by walking only one level.
+  Returns the id, which is the whole handle — there is no process group id and
+  no boot id, because there is no foreign process to name.
   """
-  @spec start_process(keyword()) :: %{os_pid: pos_integer(), os_boot_id: String.t()}
-  def start_process(opts \\ []) do
-    script =
-      opts
-      |> Keyword.get(:children, 0)
-      |> body()
-      |> trap(Keyword.get(opts, :traps_term, false))
-      |> finish_on_term(Keyword.get(opts, :finishes_at))
+  @spec start_agent(String.t(), keyword()) :: String.t()
+  def start_agent(agent_id, opts \\ []) do
+    Machine.ensure_supervisor()
 
-    {:ok, %{pgid: pgid, boot_id: boot_id}} = Runner.start("/bin/sh", ["-c", script])
+    copy = Keyword.get_lazy(opts, :working_copy, &scratch_copy/0)
 
-    ExUnit.Callbacks.on_exit(fn -> Runner.stop(%{pgid: pgid, boot_id: boot_id}, grace_ms: 0) end)
+    assert {:ok, _} = Machine.start_agent(agent_id, copy, Keyword.get(opts, :on_stop)),
+           "the premise is an agent that is actually running; without one this " <>
+             "criterion asserts nothing about spending"
 
-    %{os_pid: pgid, os_boot_id: boot_id}
+    ExUnit.Callbacks.on_exit(fn -> Machine.stop_agent(agent_id) end)
+
+    agent_id
   end
 
-  defp body(0), do: "sleep 60"
-  defp body(n), do: Enum.map_join(1..n, "", fn _ -> "sleep 60 & " end) <> "sleep 60"
-
-  # An agent that will not go quietly. Not contrived: a wrapper with a swallowed
-  # trap, a handler that deadlocks on the work it is trying to finish, or a
-  # process blocked in a syscall all behave this way.
-  defp trap(script, false), do: script
-  defp trap(script, true), do: "trap '' TERM; " <> script
-
-  # An agent that uses the signal as its cue to finish. The marker file stands
-  # in for the commit: something that only exists if the agent got to complete
-  # the work it was part-way through rather than being cut off mid-write.
-  defp finish_on_term(script, nil), do: script
-
-  defp finish_on_term(script, path),
-    do: "trap 'echo done > #{path}; exit 0' TERM; " <> script
+  @doc "Whether this machine is running that agent right now."
+  @spec running?(String.t()) :: boolean()
+  defdelegate running?(agent_id), to: Machine
 
   @doc """
   Put the agent's machine out of reach for this scenario.
@@ -83,43 +69,12 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     :ok
   end
 
-  @doc "Everything currently in this process group."
-  @spec in_group(pos_integer()) :: [String.t()]
-  def in_group(pgid) do
-    {out, 0} = System.cmd("ps", ["-eo", "pid,pgid,command"])
-
-    out
-    |> String.split("\n")
-    |> Enum.filter(fn line ->
-      case String.split(String.trim(line), ~r/\s+/, parts: 3) do
-        [_pid, group, _cmd] -> group == to_string(pgid)
-        _ -> false
-      end
-    end)
-  end
-
-  @doc """
-  Wait until the group holds at least `count` processes.
-
-  Spawning is not instant, and counting before the children exist reads as a
-  group that never had them.
-  """
-  @spec await_group(pos_integer(), pos_integer()) :: [String.t()]
-  def await_group(pgid, count, attempts \\ 100)
-
-  def await_group(pgid, count, 0),
-    do: flunk("group #{pgid} never reached #{count} processes; got #{inspect(in_group(pgid))}")
-
-  def await_group(pgid, count, attempts) do
-    members = in_group(pgid)
-
-    case length(members) >= count do
-      true ->
-        members
-
-      false ->
-        Process.sleep(10)
-        await_group(pgid, count, attempts - 1)
-    end
+  # Somewhere disposable for the agent to be pointed at. It has to exist:
+  # starting an agent on a checkout that is not there is refused, which is its
+  # own criterion.
+  defp scratch_copy do
+    dir = CodeMySpec.TempFile.dir("spex_1023_agent")
+    File.mkdir_p!(dir)
+    dir
   end
 end

@@ -80,6 +80,13 @@ defmodule CodeMySpec.Agents.Agent do
     field :working_copy, :string
     field :role, :string, default: "main"
     field :config_dir, :string
+
+    # Held for the length of a start and never written down. The machine needs
+    # the credential to run the agent; the row must not become a second place a
+    # subscription lives. It used to reach the machine as a path to a directory
+    # the *server* had written, which was only ever correct when the two were
+    # the same box.
+    field :credential, :map, virtual: true, redact: true
     field :os_pid, :integer
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting

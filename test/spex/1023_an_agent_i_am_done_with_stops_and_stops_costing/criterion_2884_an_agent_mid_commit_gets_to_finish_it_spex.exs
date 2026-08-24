@@ -47,8 +47,16 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
         on_exit(fn -> File.rm_rf(dir) end)
 
         marker = Path.join(dir, "commit-finished")
-        process = start_process(finishes_at: marker)
-        agent = Fixtures.running_agent(context.scope, process)
+        agent = Fixtures.running_agent(context.scope, working_copy: dir)
+
+        # The marker stands in for the commit: something that exists only if the
+        # agent got to finish what it was part-way through. It is written on the
+        # way down, which a supervisor shutdown reaches and a brutal kill does
+        # not — that difference is the criterion.
+        start_agent(agent.id,
+          working_copy: dir,
+          on_stop: fn -> File.write!(marker, "done") end
+        )
 
         refute File.exists?(marker),
                "the premise is work that has not finished yet"
@@ -56,7 +64,6 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
         {:ok,
          context
          |> Map.put(:agent, agent)
-         |> Map.put(:process, process)
          |> Map.put(:marker, marker)}
       end
 
@@ -78,7 +85,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
       then_ "and the commit it was making is complete when its process ends", context do
         refute context.reply.isError
 
-        assert in_group(context.process.os_pid) == [],
+        refute running?(context.agent.id),
                "the agent finished its work and is still running, so the stop " <>
                  "never completed"
 

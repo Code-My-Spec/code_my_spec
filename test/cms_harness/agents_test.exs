@@ -2,34 +2,48 @@ defmodule CmsHarness.AgentsTest do
   @moduledoc """
   What this machine does when the server asks it to bring an agent up.
 
-  The command is decided here rather than sent, because what is installed is a
-  fact only this machine has. So the failures worth naming are this machine's
-  failures: no engine it knows, no binary on the PATH, no checkout to work in.
+  An agent is a supervised process now, not a detached OS one, so the failures
+  worth naming changed with it. There is no engine binary to be missing and no
+  process group to signal; what can go wrong is a checkout that is not there, a
+  provider nobody knows, and a credential that arrived without the field its
+  provider needs.
 
-  The launch itself is exercised against a real process — `CmsHarness.Agents.Runner`
-  has its own tests for the group mechanics, and this covers the decisions made
-  before it is called.
+  Starting an agent makes no model call — `Alloy.Agent.Server` only reaches a
+  provider when something chats to it — so the whole start/stop lifecycle is
+  exercised here for real, with a credential that is never used.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Agents
-  alias CmsHarness.Agents.Runner
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Agents.Engine
 
-  setup do
-    root = CodeMySpec.TempFile.dir("cms_harness_agent")
-    File.mkdir_p!(root)
-    on_exit(fn -> File.rm_rf(root) end)
-    %{root: root}
+  @moduletag :tmp_dir
+
+  setup %{tmp_dir: tmp_dir} do
+    # The registry is already up for the suite; the agent supervisor is part of
+    # the harness tree, which a test run does not start.
+    case Process.whereis(CmsHarness.AgentSupervisor) do
+      nil ->
+        start_supervised!(
+          {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one}
+        )
+
+      _pid ->
+        :ok
+    end
+
+    %{root: tmp_dir}
   end
 
   defp request(root, overrides \\ %{}) do
     Map.merge(
       %{
-        "agent_id" => "agent-1",
-        "engine" => "pi",
+        "agent_id" => "agent-#{System.unique_integer([:positive])}",
         "provider" => "zai",
-        "config_dir" => Path.join(root, "config"),
+        # Never used: nothing here chats to the agent, so no provider is
+        # reached. It is present because a provider that needs a key and does
+        # not get one is a different failure, tested separately.
+        "api_key" => "not-a-real-key",
         "working_copy" => root,
         "role" => "coding"
       },
@@ -37,94 +51,72 @@ defmodule CmsHarness.AgentsTest do
     )
   end
 
-  test "an engine this machine does not know is named, not attempted", %{root: root} do
-    assert {:error, :unknown_engine} = Agents.launch(request(root, %{"engine" => "cursor"}))
-  end
+  describe "refusing before starting" do
+    test "a request naming no agent is refused", %{root: root} do
+      assert {:error, :agent_id_required} =
+               Agents.launch(Map.delete(request(root), "agent_id"))
+    end
 
-  test "a request with no engine at all is refused", %{root: root} do
-    assert {:error, :no_engine} = Agents.launch(Map.delete(request(root), "engine"))
-  end
+    test "a checkout that is not there is named, not discovered mid-turn", %{root: root} do
+      gone = Path.join(root, "no-such-copy")
 
-  test "a checkout that is not there is caught before a process is spent on it", %{root: root} do
-    gone = Path.join(root, "no-such-copy")
+      assert {:error, :working_copy_missing} =
+               Agents.launch(request(root, %{"working_copy" => gone})),
+             "a missing checkout has to be refused here. Found inside a tool call " <>
+               "it arrives as a confusing message about a path instead of " <>
+               "'this copy is gone'."
+    end
 
-    assert {:error, :working_copy_missing} =
-             Agents.launch(request(root, %{"working_copy" => gone})),
-           "starting an agent with a missing cwd fails deep inside the spawn with a " <>
-             "message about the shell, which names neither the agent nor the copy"
-  end
+    test "a provider this harness does not know is named", %{root: root} do
+      assert {:error, :unknown_provider} =
+               Agents.launch(request(root, %{"provider" => "cursor"}))
+    end
 
-  test "a request naming no working copy is refused", %{root: root} do
-    assert {:error, :no_working_copy} =
-             Agents.launch(Map.delete(request(root), "working_copy"))
-  end
-
-  test "a known engine that is not installed says so rather than failing to spawn", %{root: root} do
-    # Whichever of the two is absent here tells us the same thing. If both
-    # happen to be installed this asserts nothing, so it says so instead of
-    # passing quietly.
-    missing =
-      Enum.find(["pi", "claude_code"], fn engine ->
-        binary = if engine == "pi", do: "pi", else: "claude"
-        System.find_executable(binary) == nil
-      end)
-
-    case missing do
-      nil ->
-        # Both installed on this machine. The branch is still covered by the
-        # unknown-engine case above, which takes the same path.
-        :ok
-
-      engine ->
-        assert {:error, reason} = Agents.launch(request(root, %{"engine" => engine}))
-
-        assert reason in [:pi_not_installed, :claude_not_installed],
-               "an engine that is not on this machine's PATH has to be named as such — " <>
-                 "'not installed' and 'started and died immediately' want completely " <>
-                 "different things from whoever reads it. Got: #{inspect(reason)}"
+    test "a credential missing the field its provider needs says which field", %{root: root} do
+      assert {:error, :credential_missing_api_key} =
+               Agents.launch(Map.delete(request(root), "api_key")),
+             "naming the missing field is the difference between reconnecting a " <>
+               "provider and hunting a config bug"
     end
   end
 
-  test "a launch that succeeds reports a group id and the boot it belongs to", %{root: root} do
-    # `sh` stands in for the engine binary: this is about what `launch/1`
-    # returns and what it points the process at, not about Pi.
-    handle = Runner.start("/bin/sh", ["-c", "sleep 30"], cd: root)
+  describe "the lifecycle" do
+    test "an agent starts, is listed, and stops", %{root: root} do
+      req = request(root)
+      id = req["agent_id"]
 
-    assert {:ok, %{pgid: pgid, boot_id: boot_id}} = handle
-    on_exit(fn -> Runner.stop(%{pgid: pgid, boot_id: boot_id}, grace_ms: 0) end)
+      assert {:ok, %{agent_id: ^id}} = Agents.launch(req)
+      assert id in Agents.running()
+      assert Engine.running?(id)
 
-    assert is_integer(pgid) and pgid > 0
+      assert :ok = Agents.halt(id)
+      refute id in Agents.running()
 
-    assert is_binary(boot_id) and boot_id != "",
-           "a group id without the boot it belongs to cannot later be told from a " <>
-             "recycled number, so the pair has to come back together"
-  end
+      refute Engine.running?(id),
+             "a stop that leaves the process running is the defect this whole " <>
+               "story exists for — the row said stopped and the thing kept going"
+    end
 
-  test "the wire encoder accepts the handle a real launch produces", %{root: root} do
-    # The bug this exists for: `Runner.start/3` returns `%{pgid:, boot_id:}`
-    # and `encode_start_result/1` matched `%{os_pid:, os_boot_id:}` — the wire
-    # names, against the handle. It matched nothing. Every start raised
-    # `FunctionClauseError`, took the channel client down with it, and the
-    # server reported `{:shutdown, :peer_closed}`: a transport failure, two
-    # lines from a spawn that had already succeeded.
-    #
-    # Nothing caught it because the round-trip test hand-writes the wire
-    # payload, so the real encoder was never given a real handle. This gives it
-    # one.
-    handle = Runner.start("/bin/sh", ["-c", "sleep 30"], cd: root)
-    {:ok, %{pgid: pgid, boot_id: boot_id}} = handle
-    on_exit(fn -> Runner.stop(%{pgid: pgid, boot_id: boot_id}, grace_ms: 0) end)
+    test "stopping one agent leaves the others running", %{root: root} do
+      a = request(root)
+      b = request(root)
 
-    encoded = ChannelClient.encode_start_result(handle)
+      {:ok, _} = Agents.launch(a)
+      {:ok, _} = Agents.launch(b)
 
-    assert encoded == %{"status" => "ok", "os_pid" => pgid, "os_boot_id" => boot_id},
-           "the encoder and the runner disagree about what a handle is called, " <>
-             "which crashes the channel rather than reporting anything. Got: " <>
-             inspect(encoded)
-  end
+      :ok = Agents.halt(a["agent_id"])
 
-  test "a launch that could not start encodes as an error, not a crash" do
-    assert %{"status" => "error", "reason" => "pi_not_installed"} =
-             ChannelClient.encode_start_result({:error, :pi_not_installed})
+      refute Engine.running?(a["agent_id"])
+
+      assert Engine.running?(b["agent_id"]),
+             "a stop that catches a sibling is indistinguishable from this one at " <>
+               "the call site and is worse than having no stop at all"
+
+      :ok = Agents.halt(b["agent_id"])
+    end
+
+    test "stopping an agent that is not running says so", %{root: _root} do
+      assert {:error, :not_running} = Agents.halt("never-started")
+    end
   end
 end

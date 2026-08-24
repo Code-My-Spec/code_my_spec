@@ -31,13 +31,13 @@ defmodule CodeMySpecSpex.Story1023.Criterion2885Spex do
     scenario "An agent that ignores the ask still stops" do
       given_ "an agent that answers neither the wind-down ask nor the signal that follows it",
              context do
-        process = start_process(traps_term: true)
-        agent = Fixtures.running_agent(context.scope, process)
+        agent = Fixtures.running_agent(context.scope)
+        start_agent(agent.id, working_copy: agent.working_copy)
 
-        assert in_group(process.os_pid) != [],
+        assert running?(agent.id),
                "the premise is a live agent that will refuse to go quietly"
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:process, process)}
+        {:ok, context |> Map.put(:agent, agent)}
       end
 
       when_ "I stop it", context do
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2885Spex do
       end
 
       then_ "it is ended anyway, within a bounded time", context do
-        assert in_group(context.process.os_pid) == [],
+        refute running?(context.agent.id),
                "an agent that ignored the polite signal is still running. A stop " <>
                  "that waits on an agent which was never going to answer is a stop " <>
                  "the meter outlives."

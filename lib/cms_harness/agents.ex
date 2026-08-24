@@ -1,101 +1,83 @@
 defmodule CmsHarness.Agents do
   @moduledoc """
-  Turning "start a Pi agent on this copy" into a process on this machine.
+  Agents running on this machine — start one, say which are running, stop one.
 
-  The server knows the engine, the provider, the config directory and the
-  working copy. It does not know what is installed here, and cannot — a box
-  with no `pi` on its PATH is a fact only that box has. So the command is
-  decided here and the failure is named here.
+  Harness-side because the working copy is here. An agent session is hundreds of
+  read, edit and bash calls; server-side each one would be a channel round-trip
+  whose failure mode is a broken turn rather than a deferred sync.
 
-  ## Why the config directory is passed rather than found
+  ## What this used to be
 
-  `PI_CODING_AGENT_DIR` overrides `~/.pi/agent` wholesale — auth, models,
-  settings, extensions. That is the seam story 956 chose for tenant isolation:
-  the cloud box is multi-tenant, so a machine-wide auth file would put one
-  tenant's subscription in reach of another. `Agents.PiConfig` mints one
-  directory per agent, outside the working copy, and this is what points the
-  process at it.
+  Starting `pi` as a detached OS process, in a process group of its own, with a
+  boot id recorded beside the group id so a recycled number could not be
+  mistaken for ours. That apparatus existed to make a foreign process reachable,
+  and it never worked end to end: the extension that was supposed to join the
+  harness and hold `pi` open was never published, so `pi` started, found nothing
+  to do, and exited zero — silently, which is why it produced no diagnosis.
 
-  ## Why the working copy is the cwd
-
-  An agent works in a checkout, and every tool it runs — `git`, `mix`, the
-  analyzers — resolves relative to where it started. Starting it anywhere else
-  produces an agent that reads the right instructions and edits the wrong tree.
+  `CmsHarness.Agents.Engine` replaces it with a supervised process. What is left
+  here is translation: the server sends a request, this turns it into engine
+  options, and the engine owns the loop.
   """
 
-  require Logger
-
-  alias CmsHarness.Agents.Runner
+  alias CmsHarness.Agents.Engine
 
   @doc """
-  Launch the agent this request describes, in its own process group.
+  Start the agent this request describes.
 
-  Answers `{:ok, %{pgid: group_id, boot_id: boot}}` — `Runner`'s handle, the
-  pair that has to travel together — or `{:error, reason}` naming what this
-  machine could not do.
-
-  It said `%{os_pid:, os_boot_id:}` here for as long as this function existed,
-  which are the names the *wire* uses, not the ones it returns.
-  `ChannelClient.encode_start_result/1` believed the docs and matched those
-  names against the handle, so it matched nothing and every start crashed the
-  channel. The translation belongs in the encoder; this says what it hands over.
+  Answers `{:ok, %{agent_id: id}}` — the id is the handle now. There is no
+  process group and no boot id, because there is no foreign process to reach:
+  the id resolves through the harness's registry while the harness is running,
+  which is the honest scope for it.
   """
-  @spec launch(map()) ::
-          {:ok, %{pgid: pos_integer(), boot_id: String.t()}} | {:error, atom()}
-  def launch(%{"engine" => engine} = request) do
-    with {:ok, command, args} <- command_for(engine),
-         :ok <- working_copy_exists(request["working_copy"]) do
-      Runner.start(command, args, cd: request["working_copy"], env: env_for(request))
+  @spec launch(map()) :: {:ok, %{agent_id: String.t()}} | {:error, atom()}
+  def launch(%{"agent_id" => agent_id} = request) do
+    with {:ok, %{agent_id: id}} <-
+           Engine.start(
+             agent_id: agent_id,
+             provider: request["provider"],
+             credential: credential(request),
+             working_copy: request["working_copy"],
+             model: request["model"],
+             # Where an agent finishes what it was part-way through before the
+             # process goes. Nothing on the wire sets it yet; the seam exists so
+             # a graceful stop is observable rather than merely intended.
+             on_stop: request["on_stop"]
+           ) do
+      {:ok, %{agent_id: id}}
     end
   end
 
-  def launch(_request), do: {:error, :no_engine}
+  def launch(_request), do: {:error, :agent_id_required}
 
-  # Named rather than discovered from a failed spawn. "pi is not installed on
-  # this machine" and "pi started and immediately died" want completely
-  # different things from whoever reads it, and a spawn failure alone cannot
-  # tell them apart.
-  defp command_for("pi") do
-    case System.find_executable("pi") do
-      nil -> {:error, :pi_not_installed}
-      pi -> {:ok, pi, ["--mode", "json"]}
-    end
+  @doc """
+  Stop one agent, and say whether it was there to stop.
+
+  One, and only one — a stop that reaps a tree, or matches by name and catches a
+  sibling, is indistinguishable from this at the call site and is worse than
+  having no stop at all.
+  """
+  @spec halt(String.t()) :: :ok | {:error, :not_running}
+  defdelegate halt(agent_id), to: Engine, as: :stop
+
+  @doc """
+  Agent ids running here, read from the registry rather than from anything we
+  were told — so it cannot disagree with what is actually alive.
+  """
+  @spec running() :: [String.t()]
+  defdelegate running(), to: Engine
+
+  # The server sends whatever the provider needs, and the shapes differ: a
+  # subscription path names a file `codex exec` reads, an API-key path carries
+  # the key. Passed through rather than interpreted, because deciding what a
+  # credential means is `Provider`'s job, and doing it in two places is how the
+  # two drift apart.
+  defp credential(request) do
+    %{}
+    |> put_if(:auth_path, request["auth_path"] || request["config_dir"])
+    |> put_if(:api_key, request["api_key"])
   end
 
-  defp command_for("claude_code") do
-    case System.find_executable("claude") do
-      nil -> {:error, :claude_not_installed}
-      claude -> {:ok, claude, []}
-    end
-  end
-
-  defp command_for(other) do
-    Logger.warning(
-      "[CmsHarness] asked to start engine #{inspect(other)}, which this harness " <>
-        "does not know how to run"
-    )
-
-    {:error, :unknown_engine}
-  end
-
-  # A checkout that is not there cannot be worked in, and starting an agent with
-  # a missing cwd fails deep inside the spawn with a message about the shell.
-  # This is the same question `WorkingCopyReporter` asks, answered before rather
-  # than after spending a process on it.
-  defp working_copy_exists(nil), do: {:error, :no_working_copy}
-
-  defp working_copy_exists(root) do
-    case File.dir?(root) do
-      true -> :ok
-      false -> {:error, :working_copy_missing}
-    end
-  end
-
-  # Only what the agent needs, and the config directory is the point of it.
-  # Inherited environment carries whatever the harness was started with, which
-  # on a multi-tenant box is somebody else's business.
-  defp env_for(request) do
-    [{"PI_CODING_AGENT_DIR", request["config_dir"]}]
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-  end
+  defp put_if(map, _key, nil), do: map
+  defp put_if(map, key, value), do: Map.put(map, key, value)
 end

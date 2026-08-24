@@ -31,36 +31,46 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  @shared_path "/workspace/app"
 
   spex "A stop ends the process on the machine it named" do
     scenario "The stop travels to the machine holding the process" do
       given_ "two machines each running an agent with the same role on a copy at the same path",
              context do
-        here = start_process()
-        elsewhere = start_process()
+        # Both agents name the same checkout — that is the premise. It has to
+        # exist because starting an agent on a missing one is refused, and it
+        # cannot be a plausible-looking constant: `/workspace/app` is not
+        # writable on the machine these run on.
+        shared_path = CodeMySpec.TempFile.dir("spex_2881_shared")
+        File.mkdir_p!(shared_path)
 
         on_this_machine =
-          Fixtures.running_agent(context.scope, here,
+          Fixtures.running_agent(context.scope,
             role: "coding",
-            working_copy: @shared_path
+            working_copy: shared_path
           )
 
         on_that_machine =
-          Fixtures.running_agent(context.scope, elsewhere,
+          Fixtures.running_agent(context.scope,
             role: "coding",
-            working_copy: @shared_path
+            working_copy: shared_path
           )
+
+        start_agent(on_this_machine.id, working_copy: shared_path)
+        start_agent(on_that_machine.id, working_copy: shared_path)
 
         assert on_this_machine.working_copy == on_that_machine.working_copy,
                "the premise is a shared path; with different paths a stop that " <>
                  "matched on the string would pass and prove nothing"
 
+        refute on_this_machine.id == on_that_machine.id,
+               "identity is the only thing that separates these two, which is " <>
+                 "exactly what the stop has to match on"
+
         {:ok,
          context
          |> Map.put(:target, on_this_machine)
-         |> Map.put(:here, here)
-         |> Map.put(:elsewhere, elsewhere)
+         |> Map.put(:here, on_this_machine)
+         |> Map.put(:elsewhere, on_that_machine)
          |> Map.put(:other, on_that_machine)}
       end
 
@@ -73,14 +83,14 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
       then_ "only that machine's process is ended", context do
         refute context.reply.isError
 
-        assert in_group(context.here.os_pid) == [],
+        refute running?(context.here.id),
                "the agent that was asked to stop is still running"
 
         {:ok, context}
       end
 
       then_ "and the other machine's agent is untouched", context do
-        assert in_group(context.elsewhere.os_pid) != [],
+        assert running?(context.elsewhere.id),
                "stopping one agent ended another that merely shares its path and " <>
                  "role. Every container sits at /workspace/app, so a stop resolving " <>
                  "its target by path ends somebody else's agent and reports success."

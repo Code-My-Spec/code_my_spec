@@ -1,19 +1,26 @@
 defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
   @moduledoc """
-  Story 1023 — An agent I am done with stops, and stops costing.
+  Story 1023 — An agent I am done with stops, and stops consuming.
   Criterion 2876 — The pid survives long enough to be used.
 
   Rule: The handle that can end a process is kept until the process is gone.
 
   `stop_agent/2` used to write `status: :stopped, os_pid: nil` in one update.
-  Clearing the group id is the part with no way back: if the process survived,
-  the only thing that could ever have reached it has just been thrown away, and
-  the row says the agent is stopped so nobody is looking.
+  Clearing the group id was the part with no way back: if the process survived,
+  the only thing that could ever have reached it had just been thrown away, and
+  the row said stopped so nobody was looking.
 
-  So the handle is cleared *after* something confirms the group is gone, and a
-  stop that could not happen leaves it exactly where it was. The next attempt
-  then has something to act on, which is the whole difference between a failure
-  and a permanent one.
+  ## The handle changed; the failure did not
+
+  There is no group id now — an agent is a supervised process and its id is the
+  handle. That does not make this criterion moot, it moves it. The irrecoverable
+  step was never "the number was deleted", it was **the record stopped pointing
+  at something that was still running**, so nothing tried again.
+
+  A stop that could not reach the machine must leave the agent exactly as it
+  found it: still running, still reachable, still asked-about. The next attempt
+  then has something to act on, which is the whole difference between a failed
+  stop and a permanent one.
   """
 
   use CodeMySpecSpex.Case
@@ -29,17 +36,18 @@ defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
 
   spex "The handle outlives a stop that did not work" do
     scenario "The pid survives long enough to be used" do
-      given_ "a running agent whose os_pid is recorded", context do
-        process = start_process()
-        agent = Fixtures.running_agent(context.scope, process)
+      given_ "a running agent the server can name", context do
+        agent = Fixtures.running_agent(context.scope)
+        start_agent(agent.id, working_copy: agent.working_copy)
 
-        assert agent.os_pid == process.os_pid
-        assert is_binary(agent.os_boot_id)
+        assert running?(agent.id),
+               "the premise is an agent that is really running; without one this " <>
+                 "criterion asserts nothing about reaching it again"
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:process, process)}
+        {:ok, Map.put(context, :agent, agent)}
       end
 
-      when_ "a stop is asked for and the process does not end", context do
+      when_ "a stop is asked for and the machine cannot be reached", context do
         machine_out_of_reach()
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
@@ -48,37 +56,26 @@ defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
         {:ok, Map.put(context, :reply, reply)}
       end
 
-      then_ "the os_pid is still recorded", context do
+      then_ "the agent is still recorded as running", context do
         {:ok, after_stop} = Fixtures.fetch_agent(context.scope, context.agent.id)
 
-        assert after_stop.os_pid == context.process.os_pid,
-               "the group id was cleared by a stop that ended nothing. The process " <>
-                 "is still running and nothing can reach it any more — that is not " <>
-                 "a failed stop, it is a permanent one."
+        refute after_stop.status == :stopped,
+               "the row says stopped over an agent that is still running. Nothing " <>
+                 "is looking for it any more, so nothing will try again — that is " <>
+                 "not a failed stop, it is a permanent one."
 
-        assert after_stop.os_boot_id == context.agent.os_boot_id,
-               "the boot went with it, so even a recovered group id could not be " <>
-                 "judged against a recycled number"
+        assert after_stop.id == context.agent.id,
+               "the id is the handle now; losing it would be losing the process"
 
-        {:ok, Map.put(context, :after_stop, after_stop)}
+        {:ok, context}
       end
 
-      then_ "and a second attempt has something to act on", context do
-        # The machine comes back. The same stop now works, because the handle
-        # was still there to use.
-        Application.put_env(
-          :code_my_spec,
-          :agent_transport,
-          CodeMySpecTest.InProcessAgentTransport
-        )
-
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, retry, _frame} = StopAgent.execute(%{"agent_id" => context.agent.id}, frame)
-
-        refute retry.isError
-
-        assert in_group(context.process.os_pid) == [],
-               "the retry had a handle and still did not end the process"
+      then_ "and the agent really is still running, so there is something to reach",
+            context do
+        assert running?(context.agent.id),
+               "the premise of keeping the handle is that the thing it names is " <>
+                 "still there. If the agent had actually stopped, keeping the row " <>
+                 "would be the bug instead."
 
         {:ok, context}
       end

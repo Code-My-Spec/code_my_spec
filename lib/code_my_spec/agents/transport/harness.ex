@@ -71,24 +71,32 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
   # What the far side needs to decide a command and where to run it. Not a
   # command: the machine knows what is installed on it and the server does not.
+  # `config_dir` used to be here: a path to a directory the *server* wrote,
+  # which the machine then read. That only worked when the two were the same
+  # box. The credential travels instead, and the machine materialises whatever
+  # its provider needs.
   defp launch_request(%Agent{} = agent) do
     %{
       "agent_id" => agent.id,
       "engine" => to_string(agent.engine),
       "provider" => agent.provider,
-      "config_dir" => agent.config_dir,
       "working_copy" => agent.working_copy,
       "role" => agent.role
     }
+    |> Map.merge(credential_fields(agent.credential))
   end
 
+  # Only the field the named provider actually uses. An api-key provider has no
+  # use for a token pair, and sending both would put a subscription on the wire
+  # for a request that did not need it.
+  defp credential_fields(%{"type" => "api_key", "key" => key}), do: %{"api_key" => key}
+  defp credential_fields(_credential), do: %{}
+
+  # The id is the whole handle. It used to carry a process group id and the boot
+  # it belonged to, because a group number outlives its group and gets reused —
+  # a supervised process has no such problem.
   defp stop_request(%Agent{} = agent, timeout) do
-    %{
-      "agent_id" => agent.id,
-      "os_pid" => agent.os_pid,
-      "os_boot_id" => agent.os_boot_id,
-      "grace_ms" => timeout
-    }
+    %{"agent_id" => agent.id, "grace_ms" => timeout}
   end
 
   # Nothing registered under that id. Deliberately not treated as "already
