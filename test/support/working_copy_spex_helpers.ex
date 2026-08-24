@@ -30,7 +30,23 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   """
   @spec join_working_copy(map(), String.t(), String.t(), keyword()) :: map()
   def join_working_copy(context, root, label, opts \\ []) do
-    {:ok, reply, _socket} =
+    {reply, _socket} = join_working_copy_socket(context, root, label, opts)
+    reply
+  end
+
+  @doc """
+  The same join, keeping the socket.
+
+  For criteria that go on to send on that channel — reporting an agent's steps,
+  say. Joining a second time for the same checkout is refused rather than
+  allowed, and correctly so: two harnesses on one copy share a `_build`. So the
+  socket has to come back from the join that made the copy, not from a second
+  one beside it.
+  """
+  @spec join_working_copy_socket(map(), String.t(), String.t(), keyword()) ::
+          {map(), Phoenix.Socket.t()}
+  def join_working_copy_socket(context, root, label, opts \\ []) do
+    {:ok, reply, socket} =
       UserSocket
       |> socket("spex-1019-#{label}", %{scope: context.scope})
       |> subscribe_and_join(
@@ -39,7 +55,7 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
         join_payload(root, label, opts)
       )
 
-    reply
+    {reply, socket}
   end
 
   # The device the harness is announcing from, when a criterion is about which

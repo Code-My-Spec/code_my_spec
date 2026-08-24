@@ -2,6 +2,12 @@ defmodule CmsHarness.Agents.Provider do
   @moduledoc """
   A provider name and a credential, as Alloy options.
 
+  `:provider` is `{module, config}`, and the config half is the only place a
+  provider's own settings survive. `Alloy.Agent.Config` keeps that half and
+  drops everything else it does not recognise, so a flat `api_key:` beside the
+  module is silently discarded and the first request raises about a missing key
+  from inside the provider.
+
   The engine holds the loop; this decides who answers it. Kept apart because
   the two change for unrelated reasons — a new provider is a clause here and
   nothing in the engine, and the loop's supervision has nothing to say about
@@ -54,10 +60,13 @@ defmodule CmsHarness.Agents.Provider do
   def options("openai-codex", credential, opts) do
     {:ok,
      [
-       provider: Alloy.Provider.Codex,
-       model: Keyword.get(opts, :model, "gpt-5.4"),
-       auth_path: auth_path(credential),
-       timeout_ms: Keyword.get(opts, :timeout_ms, 180_000)
+       provider:
+         {Alloy.Provider.Codex,
+          %{
+            model: Keyword.get(opts, :model) || "gpt-5.4",
+            auth_path: auth_path(credential),
+            timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
+          }}
      ]}
   end
 
@@ -69,11 +78,18 @@ defmodule CmsHarness.Agents.Provider do
     with {:ok, api_key} <- fetch(credential, :api_key) do
       {:ok,
        [
-         provider: Alloy.Provider.OpenAICompat,
-         api_url: Keyword.get(opts, :base_url, @zai_base),
-         chat_path: "/chat/completions",
-         api_key: api_key,
-         model: Keyword.get(opts, :model, @zai_model)
+         provider:
+           {Alloy.Provider.OpenAICompat,
+            %{
+              # `||`, not a `Keyword.get/3` default: the caller passes every
+              # option it knows about and most of them are nil, and a stored
+              # nil satisfies `Keyword.get/3` — so the default would be skipped
+              # and the request would go to `nil/chat/completions`.
+              api_url: Keyword.get(opts, :base_url) || @zai_base,
+              chat_path: "/chat/completions",
+              api_key: api_key,
+              model: Keyword.get(opts, :model) || @zai_model
+            }}
        ]}
     end
   end
@@ -82,9 +98,12 @@ defmodule CmsHarness.Agents.Provider do
     with {:ok, api_key} <- fetch(credential, :api_key) do
       {:ok,
        [
-         provider: Alloy.Provider.Anthropic,
-         api_key: api_key,
-         model: Keyword.get(opts, :model, "claude-sonnet-5")
+         provider:
+           {Alloy.Provider.Anthropic,
+            %{
+              api_key: api_key,
+              model: Keyword.get(opts, :model) || "claude-sonnet-5"
+            }}
        ]}
     end
   end

@@ -69,10 +69,14 @@ defmodule CmsHarnessTest.Machine do
 
   It used to start an OS process group. An agent is a supervised process now, so
   this starts one of those: real, registered, and reachable by the same id the
-  server would use. No provider is contacted, because nothing here chats to it.
+  server would use.
+
+  A provider is contacted only when something chats to it. Pass `:base_url` and
+  it is `CmsHarnessTest.HeldProvider` on localhost; leave it off and nothing
+  should ever run a turn on this agent, because the default is z.ai for real.
   """
-  @spec start_agent(String.t(), String.t(), (-> any()) | nil) :: {:ok, map()} | {:error, term()}
-  def start_agent(agent_id, working_copy, on_stop \\ nil) do
+  @spec start_agent(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def start_agent(agent_id, working_copy, opts \\ []) do
     ensure_supervisor()
 
     Agents.launch(%{
@@ -80,8 +84,84 @@ defmodule CmsHarnessTest.Machine do
       "provider" => "zai",
       "api_key" => "unused-in-spex",
       "working_copy" => working_copy,
-      "on_stop" => on_stop
+      "on_stop" => Keyword.get(opts, :on_stop),
+      # Where the model is. Without one the agent talks to z.ai for real, which
+      # is right in production and would be a live call from a criterion — so
+      # anything that actually runs a turn passes a local endpoint here.
+      "base_url" => Keyword.get(opts, :base_url),
+      "on_event" => Keyword.get(opts, :on_event)
     })
+  end
+
+  @doc """
+  One turn event, encoded the way the harness puts it on the wire.
+
+  Through the harness's own encoder rather than a second one written here: two
+  versions of a wire shape is one that drifts, and the one that drifts is the
+  one nothing is checking.
+  """
+  @spec encode_turn_event(map()) :: map()
+  defdelegate encode_turn_event(envelope), to: CmsHarness.Project.ChannelClient
+
+  @doc """
+  Give an agent something to do, without waiting for the turn.
+
+  The same call the server makes over the channel. `ref` is the handle a
+  withdrawal names it by.
+  """
+  @spec send_message(String.t(), String.t(), String.t()) ::
+          {:ok, :started | :queued} | {:error, term()}
+  def send_message(agent_id, ref, text) do
+    ensure_supervisor()
+    Agents.send_message(agent_id, ref, text)
+  end
+
+  @doc "Take back a message the agent has not picked up."
+  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
+  def withdraw(agent_id, ref) do
+    ensure_supervisor()
+    Agents.withdraw(agent_id, ref)
+  end
+
+  @doc "Whether this agent is mid-turn, and what is stacked behind it."
+  @spec status(String.t()) :: {:ok, map()} | {:error, term()}
+  def status(agent_id) do
+    ensure_supervisor()
+    Agents.status(agent_id)
+  end
+
+  @doc """
+  Wait until the agent has nothing in flight and nothing queued.
+
+  What makes a claim about delivery settleable. "The message was not delivered"
+  is only true of an agent that has finished deciding — asked a moment too
+  early it is true of every message, including one about to go out.
+
+  Polled rather than pushed because the engine has no seam to announce this on,
+  and inventing one for a test would be a worse trade than a bounded wait
+  against its own status call.
+  """
+  @spec await_idle(String.t(), timeout()) :: :ok
+  def await_idle(agent_id, timeout \\ 5_000) do
+    ensure_supervisor()
+    await_idle(agent_id, timeout, System.monotonic_time(:millisecond))
+  end
+
+  defp await_idle(agent_id, timeout, started) do
+    case Agents.status(agent_id) do
+      {:ok, %{busy?: false, queued: 0}} ->
+        :ok
+
+      _ ->
+        if System.monotonic_time(:millisecond) - started > timeout do
+          raise "agent #{agent_id} was still working after #{timeout}ms"
+        end
+
+        receive do
+        after
+          10 -> await_idle(agent_id, timeout, started)
+        end
+    end
   end
 
   @spec stop_agent(String.t()) :: :ok | {:error, :not_running}

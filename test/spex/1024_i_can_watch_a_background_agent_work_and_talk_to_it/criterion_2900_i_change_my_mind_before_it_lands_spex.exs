@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
   Taking it back has to be real rather than cosmetic: removing it from the view
   while the machine still holds it would be the worst version, because the
   operator now believes the agent will not see something it is about to act on.
+  So the assertion is against the provider — what the agent was actually sent —
+  and not against the page that cleared the row.
   """
 
   use CodeMySpecSpex.Case
@@ -21,11 +23,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "A queued message is not a commitment" do
     scenario "I change my mind before it lands" do
@@ -33,9 +43,20 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
         copy = CodeMySpec.TempFile.dir("spex_2900")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
-        start_agent(agent.id, working_copy: copy)
-        Fixtures.agent_begins_turn(context.scope, agent)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
+
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2900", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
+
+        start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
+        begin_turn(agent.id)
 
         conversation = Fixtures.agent_conversation(context.scope, agent)
 
@@ -57,15 +78,18 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
       end
 
       when_ "I take it back", context do
-        html = Fixtures.withdraw_pending(context.live)
+        html =
+          context.live
+          |> element("[data-test=agent-withdraw-message]")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end
 
       then_ "it is not delivered", context do
-        Fixtures.agent_finishes_turn(context.scope, context.agent)
+        finish_turn(context.agent.id)
 
-        refute Fixtures.agent_received?(context.scope, context.agent, "never mind this one"),
+        refute agent_received?(context.agent.id, "never mind this one"),
                "the withdrawn message reached the agent anyway. Taking it back that " <>
                  "only clears the view is the worst version: the operator believes " <>
                  "the agent will not see something it is about to act on."

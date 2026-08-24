@@ -56,6 +56,7 @@ defmodule CmsHarness.Agents.Engine do
           credential: map(),
           working_copy: String.t(),
           model: String.t() | nil,
+          base_url: String.t() | nil,
           on_stop: (-> any()) | nil,
           on_event: (map() -> any()) | nil
         ]
@@ -137,6 +138,22 @@ defmodule CmsHarness.Agents.Engine do
   def withdraw(agent_id, ref) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:withdraw, ref})
+    end
+  end
+
+  @doc """
+  What this agent is doing right now.
+
+  `busy?` is whether a turn is in flight and `queued` is what is stacked behind
+  it. The row cannot answer either: it says an agent is running, which is true
+  of one thinking and one waiting, and those are the two states somebody
+  watching wants told apart.
+  """
+  @spec status(String.t()) ::
+          {:ok, %{busy?: boolean(), queued: non_neg_integer()}} | {:error, :not_running}
+  def status(agent_id) do
+    with {:ok, pid} <- whereis(agent_id) do
+      GenServer.call(pid, :status)
     end
   end
 
@@ -243,6 +260,10 @@ defmodule CmsHarness.Agents.Engine do
   # Only what is still waiting can be taken back. Anything else the agent
   # already has, and there is no unsaying it — so this says so instead of
   # clearing a queue entry that is not there and reporting success.
+  def handle_call(:status, _from, state) do
+    {:reply, {:ok, %{busy?: state.turn != nil, queued: length(state.queue)}}, state}
+  end
+
   def handle_call({:withdraw, ref}, _from, state) do
     case Enum.split_with(state.queue, &(&1.ref == ref)) do
       {[], _keep} -> {:reply, {:error, :already_delivered}, state}
@@ -411,7 +432,10 @@ defmodule CmsHarness.Agents.Engine do
          {:ok, working_copy} <- require_opt(opts, :working_copy),
          credential = Keyword.get(opts, :credential, %{}),
          {:ok, provider_opts} <-
-           Provider.options(provider, credential, model: Keyword.get(opts, :model)) do
+           Provider.options(provider, credential,
+             model: Keyword.get(opts, :model),
+             base_url: Keyword.get(opts, :base_url)
+           ) do
       {:ok,
        provider_opts
        |> Keyword.put(:tools, [

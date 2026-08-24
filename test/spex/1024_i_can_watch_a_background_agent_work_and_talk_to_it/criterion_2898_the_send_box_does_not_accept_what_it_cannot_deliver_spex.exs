@@ -5,9 +5,10 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
 
   Rule: A control that cannot do the thing does not offer to.
 
-  Not a hypothetical failure — the one this build already has. The send box is
-  gated on a running agent for the working copy, accepts what you type, records
-  it with `Conversations.add_message(:operator, ...)`, and delivers nothing.
+  Not a hypothetical failure — the one this build already had. The send box was
+  gated on a running agent for the working copy, accepted what you typed,
+  recorded it with `Conversations.add_message(:operator, ...)`, and delivered
+  nothing.
 
   A control that silently does nothing is worse than a missing one. Missing,
   you go and find another way. Present and quiet, you believe the agent was
@@ -20,8 +21,11 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -35,11 +39,14 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
         copy = CodeMySpec.TempFile.dir("spex_2898")
         File.mkdir_p!(copy)
 
-        # Started through the real surface so the conversation is opened the way
-        # the app opens it, then stopped — which is the ordinary state of any
-        # agent that has finished.
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
-        {:ok, _stopped} = Fixtures.stop_agent(context.scope, agent)
+        # Started for real and stopped through the operator's own surface, which
+        # is the ordinary state of any agent that has finished.
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
+        start_agent(agent.id, working_copy: copy)
+
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => agent.id}, frame)
+        refute reply.isError, "the premise is an agent that stopped, and stopping errored"
 
         {:ok, context |> Map.put(:agent, agent)}
       end
@@ -70,16 +77,18 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
       end
 
       then_ "and nothing I do records a message as though it had been sent", context do
-        before_count = length(Fixtures.conversation_messages(context.scope, context.conversation))
-
         # The event a submit would raise, sent directly — because a control that
         # is merely hidden is still reachable, and "no button" is not the same
         # promise as "no effect".
-        Fixtures.attempt_send(context.live, "are you there")
+        render_submit(context.live, "send_message", %{"message" => "are you there"})
 
-        after_count = length(Fixtures.conversation_messages(context.scope, context.conversation))
+        {:ok, _reloaded, html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+          )
 
-        assert after_count == before_count,
+        refute html =~ "are you there",
                "the message was recorded even though no agent could receive it. " <>
                  "Hiding the control is not enough: the transcript now claims " <>
                  "something was said to an agent that was not there to hear it."

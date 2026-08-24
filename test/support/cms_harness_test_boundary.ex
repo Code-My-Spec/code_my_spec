@@ -5,11 +5,17 @@ defmodule CmsHarnessTest do
   # one thing here reaching outside the harness; when the harness moves to its
   # own repo this module goes with it, and a dozen lines of token generation
   # come along rather than the dependency.
-  # `Machine` is the only thing spex may reach: they drive a real harness
-  # through it rather than referencing `CmsHarness` themselves, which they may
-  # not do. Everything else here stays internal to the harness's own tests.
+  # `Machine` and `HeldProvider` are the only things spex may reach: they drive
+  # a real harness through them rather than referencing `CmsHarness` themselves,
+  # which they may not do. Everything else here stays internal to the harness's
+  # own tests.
+  #
+  # `HeldProvider` is exported for the same reason `Machine` is. An agent
+  # mid-turn is a premise three of story 1024's criteria share, and there is no
+  # way to establish it except by holding a provider's response — so a criterion
+  # has to be able to say when to hold and when to let go.
   use Boundary,
     top_level?: true,
     deps: [CmsHarness, CodeMySpec.TempFile],
-    exports: [Machine]
+    exports: [Machine, HeldProvider]
 end

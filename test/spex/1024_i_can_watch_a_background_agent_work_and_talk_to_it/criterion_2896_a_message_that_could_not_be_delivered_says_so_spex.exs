@@ -10,10 +10,11 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
   coming — and the agent carries on spending on the thing they were trying to
   stop.
 
-  This is not hypothetical. The send box records a message and reports nothing,
-  which is indistinguishable from delivery at the call site. The same shape has
-  now been found twice on the agent wire: a stop that reported success while
-  the process ran, and a start that reported failure while the agent ran.
+  This is not hypothetical. The send box recorded a message and reported
+  nothing, which is indistinguishable from delivery at the call site. The same
+  shape has now been found twice on the agent wire: a stop that reported
+  success while the process ran, and a start that reported failure while the
+  agent ran.
   """
 
   use CodeMySpecSpex.Case
@@ -34,7 +35,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
         copy = CodeMySpec.TempFile.dir("spex_2896")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)
 
         machine_out_of_reach()
@@ -70,11 +71,15 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
       end
 
       then_ "and the message is not shown as though the agent had received it", context do
-        messages = Fixtures.conversation_messages(context.scope, context.conversation)
+        {:ok, _reloaded, html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+          )
 
-        refute Enum.any?(messages, &(Fixtures.message_text(&1) =~ "stop what you are doing" and Fixtures.delivered?(&1))),
-               "the message is recorded as delivered over a machine that never got " <>
-                 "it, so the transcript itself is now wrong about what the agent knows"
+        refute html =~ "stop what you are doing",
+               "the message is in the transcript over a machine that never got it, " <>
+                 "so the record itself is now wrong about what the agent knows"
 
         {:ok, context}
       end

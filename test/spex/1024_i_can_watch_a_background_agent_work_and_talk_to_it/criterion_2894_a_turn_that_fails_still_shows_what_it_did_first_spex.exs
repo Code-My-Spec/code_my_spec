@@ -21,11 +21,22 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.AgentProcessHelpers
+  import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
+
+  @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "What already happened is not undone by what happens next" do
     scenario "A turn that fails still shows what it did first" do
@@ -33,48 +44,70 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
         copy = CodeMySpec.TempFile.dir("spex_2894")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)
 
-        Fixtures.agent_reports_step(context.scope, agent, %{
-          "type" => "tool_use",
-          "name" => "write",
-          "input" => %{"file_path" => "lib/half_done.ex"}
-        })
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2894", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:copy, copy)}
+        report(socket, agent, %{"kind" => "tool_use", "text" => "write lib/half_done.ex"})
+
+        {:ok, context |> Map.put(:agent, agent) |> Map.put(:socket, socket)}
       end
 
       when_ "the turn then fails", context do
-        Fixtures.agent_reports_failure(
-          context.scope,
-          context.agent,
-          "codex exec failed with status 1"
-        )
+        report(context.socket, context.agent, %{
+          "kind" => "turn_failed",
+          "text" => "codex exec failed with status 1"
+        })
 
         {:ok, context}
       end
 
       then_ "the steps it completed before failing are there", context do
         conversation = Fixtures.agent_conversation(context.scope, context.agent)
-        messages = Fixtures.conversation_messages(context.scope, conversation)
 
-        assert Enum.any?(messages, &(Fixtures.message_text(&1) =~ "half_done")),
+        {:ok, _live, html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+          )
+
+        assert html =~ "half_done",
                "the work the agent did before the turn failed is gone. That is the " <>
                  "buffered implementation: hold the turn, write it on success, lose " <>
                  "it on failure — which loses exactly the turns worth watching."
 
-        {:ok, Map.put(context, :messages, messages)}
+        {:ok, Map.put(context, :html, html)}
       end
 
       then_ "and the failure is shown rather than the work disappearing with it",
             context do
-        assert Enum.any?(context.messages, &(Fixtures.message_text(&1) =~ "failed")),
+        assert context.html =~ "failed",
                "the turn failed and the conversation does not say so, which leaves " <>
                  "an operator watching a transcript that simply stops"
 
         {:ok, context}
       end
     end
+  end
+
+  # One step, on the channel the machine sends it on, waited out before anything
+  # is asked of the record — otherwise a green run only means the push was fast.
+  defp report(socket, agent, event) do
+    ref =
+      Phoenix.ChannelTest.push(socket, "agent_turn_event", %{
+        "agent_id" => agent.id,
+        "event" => event
+      })
+
+    Phoenix.ChannelTest.assert_reply(ref, :ok)
   end
 end

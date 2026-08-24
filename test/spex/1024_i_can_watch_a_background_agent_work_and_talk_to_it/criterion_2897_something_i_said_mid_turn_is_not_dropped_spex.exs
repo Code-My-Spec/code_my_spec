@@ -14,6 +14,10 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
   refusing the easy implementation and losing the message the easy accident.
   The PM's decision is that it waits: accepted, visibly pending, delivered when
   the turn ends.
+
+  The premise is a turn genuinely in flight — a real agent waiting on a real
+  provider that this criterion is holding open. An agent told it is busy would
+  prove nothing about an agent that is.
   """
 
   use CodeMySpecSpex.Case
@@ -22,11 +26,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "Busy is not a reason to lose it" do
     scenario "Something I said mid-turn is not dropped" do
@@ -34,10 +46,20 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
         copy = CodeMySpec.TempFile.dir("spex_2897")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
-        start_agent(agent.id, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
 
-        Fixtures.agent_begins_turn(context.scope, agent)
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2897", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
+
+        start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
+        begin_turn(agent.id)
 
         {:ok, context |> Map.put(:agent, agent)}
       end
@@ -69,9 +91,9 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
       end
 
       then_ "and the agent acts on it once the current turn finishes", context do
-        Fixtures.agent_finishes_turn(context.scope, context.agent)
+        finish_turn(context.agent.id)
 
-        assert Fixtures.agent_received?(context.scope, context.agent, "also update the README"),
+        assert agent_received?(context.agent.id, "also update the README"),
                "the turn ended and the queued message was never delivered. Refusing " <>
                  "while busy and forgetting are indistinguishable to whoever sent it, " <>
                  "and this is the moment an operator is most likely to be redirecting " <>

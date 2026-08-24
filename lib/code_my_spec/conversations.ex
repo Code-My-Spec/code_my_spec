@@ -660,7 +660,10 @@ defmodule CodeMySpec.Conversations do
   def get_agent_conversation(%Scope{} = scope, project_id) do
     Conversation
     |> where([c], c.account_id == ^scope.active_account_id and c.project_id == ^project_id)
-    |> where([c], not is_nil(c.session_external_id))
+    # Either key. An agent's own thread names the agent; a Claude Code lane's
+    # names the session. What both mean is "this belongs to something that was
+    # running", which is what separates it from a support thread.
+    |> where([c], not is_nil(c.agent_id) or not is_nil(c.session_external_id))
     |> order_by([c], desc: c.updated_at)
     |> limit(1)
     |> Repo.one()
@@ -694,7 +697,8 @@ defmodule CodeMySpec.Conversations do
       left_join: n in subquery(counts),
       on: n.conversation_id == c.id,
       where: c.account_id == ^scope.active_account_id and c.project_id == ^project_id,
-      where: c.type == :agent and not is_nil(c.session_external_id),
+      where: c.type == :agent,
+      where: not is_nil(c.agent_id) or not is_nil(c.session_external_id),
       order_by: [desc: c.updated_at],
       select: %{
         conversation: c,

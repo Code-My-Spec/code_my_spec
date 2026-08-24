@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
-  @contract_version 1
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @root "/workspace/forgetful"
 
   setup :register_log_in_setup_account

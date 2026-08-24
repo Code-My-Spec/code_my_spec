@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
   an agent going the wrong way while there is still something to do about it.
 
   The decision on how: a channel push per turn event, on the existing project
-  channel.
+  channel. So the `when_` is that push — the message a machine actually sends,
+  on the channel it actually sends it on.
   """
 
   use CodeMySpecSpex.Case
@@ -25,11 +26,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "Watching is live, not retrospective" do
     scenario "I watch the work arrive" do
@@ -37,8 +46,18 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
         copy = CodeMySpec.TempFile.dir("spex_2893")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)
+
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2893", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
 
         conversation = Fixtures.agent_conversation(context.scope, agent)
 
@@ -51,6 +70,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
         {:ok,
          context
          |> Map.put(:agent, agent)
+         |> Map.put(:socket, socket)
          |> Map.put(:live, live)
          |> Map.put(:conversation, conversation)}
       end
@@ -59,11 +79,16 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
         # One step of a turn, reported the way the machine reports one — not the
         # finished turn. If only completed turns are carried, nothing arrives
         # here and the criterion fails, which is the point.
-        Fixtures.agent_reports_step(context.scope, context.agent, %{
-          "type" => "tool_use",
-          "name" => "read",
-          "input" => %{"file_path" => "mix.exs"}
-        })
+        ref =
+          Phoenix.ChannelTest.push(context.socket, "agent_turn_event", %{
+            "agent_id" => context.agent.id,
+            "event" => %{"kind" => "tool_use", "text" => "read lib/mix.exs"}
+          })
+
+        # Replied to before anything is asked of the page, so what follows is a
+        # claim about what the server did with the step rather than a race with
+        # it still arriving.
+        Phoenix.ChannelTest.assert_reply(ref, :ok)
 
         {:ok, context}
       end
@@ -71,7 +96,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
       then_ "its steps appear while it is still working", context do
         html = render(context.live)
 
-        assert html =~ "read",
+        assert html =~ "read lib/mix.exs",
                "the step did not reach the page while the agent was mid-turn. " <>
                  "Watching that only updates when a turn finishes is watching that " <>
                  "shows you an agent went wrong after it has finished going wrong."
@@ -80,11 +105,16 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
       end
 
       then_ "and I do not have to reload to see them", context do
-        refute context.html == "",
-               "the page rendered nothing, so this cannot distinguish a live update " <>
-                 "from an empty page"
+        # The other half: live is not enough on its own, because a page that
+        # renders what it was handed and stores nothing loses it on refresh.
+        # This is the same page, opened again from scratch.
+        {:ok, _reloaded, html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+          )
 
-        assert Fixtures.conversation_messages(context.scope, context.conversation) != [],
+        assert html =~ "read lib/mix.exs",
                "the step reached the page but was not recorded, so a reload would " <>
                  "lose it — live and durable are both required, and this is the " <>
                  "durable half"

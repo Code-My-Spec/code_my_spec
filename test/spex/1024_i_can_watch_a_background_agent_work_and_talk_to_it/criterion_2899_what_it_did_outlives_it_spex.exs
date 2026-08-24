@@ -22,12 +22,22 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
   import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "The record outlives the agent" do
     scenario "What it did outlives it" do
@@ -35,20 +45,36 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
         copy = CodeMySpec.TempFile.dir("spex_2899")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)
 
-        Fixtures.agent_reports_step(context.scope, agent, %{
-          "type" => "tool_use",
-          "name" => "write",
-          "input" => %{"file_path" => "lib/it_did_this.ex"}
-        })
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2899", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
+
+        ref =
+          Phoenix.ChannelTest.push(socket, "agent_turn_event", %{
+            "agent_id" => agent.id,
+            "event" => %{"kind" => "tool_use", "text" => "write lib/it_did_this.ex"}
+          })
+
+        Phoenix.ChannelTest.assert_reply(ref, :ok)
 
         {:ok, context |> Map.put(:agent, agent)}
       end
 
       when_ "it has since been stopped", context do
-        {:ok, _stopped} = Fixtures.stop_agent(context.scope, context.agent)
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => context.agent.id}, frame)
+
+        refute reply.isError, "the premise is an agent that stopped, and stopping errored"
 
         {:ok, context}
       end

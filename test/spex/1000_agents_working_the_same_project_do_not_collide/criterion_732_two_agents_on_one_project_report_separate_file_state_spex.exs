@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @contract_version 1
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"

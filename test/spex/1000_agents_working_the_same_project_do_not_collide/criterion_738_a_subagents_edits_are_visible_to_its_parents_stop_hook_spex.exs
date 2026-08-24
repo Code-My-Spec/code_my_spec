@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
-  @contract_version 1
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @path "lib/written_by_the_subagent.ex"
 
   setup :register_log_in_setup_account

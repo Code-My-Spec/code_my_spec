@@ -39,11 +39,18 @@ defmodule CmsHarness.Agents do
              credential: credential(request),
              working_copy: request["working_copy"],
              model: request["model"],
+             # An OpenAI-compatible endpoint that is not the provider's own:
+             # a self-hosted gateway, a proxy, a company's own deployment. The
+             # provider has always read this and nothing has ever sent one.
+             base_url: request["base_url"],
              # Where an agent finishes what it was part-way through before the
              # process goes. Nothing on the wire sets it yet; the seam exists so
              # a graceful stop is observable rather than merely intended.
              on_stop: request["on_stop"],
-             on_event: &report_step/2
+             # Every project this harness serves, unless the caller names
+             # somewhere else. Settable for the same reason `on_stop` is: the
+             # default is right for the harness and it is not the only caller.
+             on_event: request["on_event"] || (&report_step/2)
            ) do
       {:ok, %{agent_id: id}}
     end
@@ -97,6 +104,13 @@ defmodule CmsHarness.Agents do
   """
   @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
   defdelegate withdraw(agent_id, ref), to: Engine
+
+  @doc """
+  What one agent is doing right now — mid-turn, and how much is behind it.
+  """
+  @spec status(String.t()) ::
+          {:ok, %{busy?: boolean(), queued: non_neg_integer()}} | {:error, :not_running}
+  defdelegate status(agent_id), to: Engine
 
   # What the agent said, out of what Alloy hands back.
   #

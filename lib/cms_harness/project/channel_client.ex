@@ -1208,10 +1208,19 @@ defmodule CmsHarness.Project.ChannelClient do
   defp reason_text(%{error: error}) when is_binary(error), do: error
   defp reason_text(reason), do: inspect(reason)
 
-  # Only what a watcher needs, and only things that survive JSON. An Alloy
-  # envelope carries atoms, pids and the whole turn state; sending it whole
-  # would put an agent's entire context on the wire once per step.
-  defp encode_turn_event(envelope) do
+  @doc """
+  One Alloy turn event, as it goes on the wire.
+
+  Only what a watcher needs, and only things that survive JSON. An envelope
+  carries atoms, pids and the whole turn state; sending it whole would put an
+  agent's entire context on the wire once per step.
+
+  Public because it is the wire shape, and anything else that has to produce
+  one — a criterion driving the whole path with no socket in between — must
+  produce this one rather than a second version of it that drifts.
+  """
+  @spec encode_turn_event(map()) :: map()
+  def encode_turn_event(envelope) do
     %{
       "kind" => to_string(Map.get(envelope, :event, "step")),
       "seq" => Map.get(envelope, :seq),

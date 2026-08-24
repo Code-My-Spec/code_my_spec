@@ -6,8 +6,8 @@ defmodule CodeMySpecSpex.Story1024.Criterion2892Spex do
   Rule: Every agent has its own conversation.
 
   This replaces a deliberate design rather than correcting a mistake.
-  `Conversations.find_or_create_agent_conversation/3` keys on the working copy
-  and says so: "the shared id for the whole Pi team — the whole team's
+  `Conversations.find_or_create_agent_conversation/3` keyed on the working copy
+  and said so: "the shared id for the whole Pi team — the whole team's
   transcript lands here."
 
   That was reasonable when a copy ran one lane and the transcript was the
@@ -39,8 +39,8 @@ defmodule CodeMySpecSpex.Story1024.Criterion2892Spex do
       end
 
       when_ "two agents are started on it", context do
-        coding = Fixtures.start_agent_for(context.scope, role: "coding", working_copy: context.copy)
-        qa = Fixtures.start_agent_for(context.scope, role: "qa", working_copy: context.copy)
+        coding = Fixtures.running_agent(context.scope, role: "coding", working_copy: context.copy)
+        qa = Fixtures.running_agent(context.scope, role: "qa", working_copy: context.copy)
 
         start_agent(coding.id, working_copy: context.copy)
         start_agent(qa.id, working_copy: context.copy)
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2892Spex do
       then_ "and what one did is not mixed into the other's", context do
         coding_conversation = Fixtures.agent_conversation(context.scope, context.coding)
 
-        assert Fixtures.conversation_agent_id(coding_conversation) == context.coding.id,
+        assert coding_conversation.agent_id == context.coding.id,
                "the conversation does not name the agent it belongs to, so nothing " <>
                  "downstream can tell whose work it is holding"
 

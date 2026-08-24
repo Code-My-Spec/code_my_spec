@@ -856,6 +856,16 @@ defmodule CodeMySpecSpex.Fixtures do
         status: :running
       })
 
+    # The thread that agent talks in. `Agents.start_agent/2` opens one, so an
+    # agent recorded as running without it is a state the app never produces —
+    # and the page that watches it would 404.
+    {:ok, _conversation} =
+      CodeMySpec.Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent.id
+      )
+
     agent
   end
 
@@ -871,14 +881,16 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   The conversation an agent's turns land in.
 
-  Looked up the way the app writes it — keyed on the working copy, because one
-  conversation holds the whole team's transcript rather than one per agent.
+  Keyed on the agent, which is what a conversation belongs to. It used to be
+  keyed on the working copy — one thread for the whole team — and with several
+  agents on a copy their turns interleaved into it and a reply could not say
+  who it was for.
   """
   def agent_conversation(%Scope{} = scope, agent) do
     CodeMySpec.Repo.get_by(CodeMySpec.Conversations.Conversation,
       account_id: scope.active_account_id,
       project_id: scope.active_project_id,
-      session_external_id: "pi:#{agent.working_copy}"
+      agent_id: agent.id
     )
   end
 

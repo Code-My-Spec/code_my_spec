@@ -5,18 +5,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
 
   Rule: A message I send reaches the agent.
 
-  The half that is missing outright. The view has a send box already, gated on
-  a running agent for the copy, and submitting it calls
-  `Conversations.add_message(:operator, ...)` and stops there. The message is
+  The half that was missing outright. The view had a send box already, gated on
+  a running agent for the copy, and submitting it called
+  `Conversations.add_message(:operator, ...)` and stopped there. The message was
   recorded and never delivered.
 
   That was correct under the previous design — a Pi lane collected operator
   messages when it settled, through the stop hook. Nothing does that now, so
-  the box is live and goes nowhere.
+  the box was live and went nowhere.
 
-  `Agents.message_agent/4` is the delivery: server to harness to
-  `Engine.chat/3`, verified against a real agent that wrote a file and
-  answered. What this criterion asks for is the view using it.
+  Asked of the provider rather than of the transcript. A conversation row only
+  proves the server wrote something down; the claim is that the text reached
+  the loop that acts on it, and those two came apart in exactly the way this
+  criterion exists to catch.
   """
 
   use CodeMySpecSpex.Case
@@ -25,11 +26,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   spex "Talking to an agent from where you watch it" do
     scenario "I redirect an agent without a terminal" do
@@ -37,8 +46,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
         copy = CodeMySpec.TempFile.dir("spex_2895")
         File.mkdir_p!(copy)
 
-        agent = Fixtures.start_agent_for(context.scope, working_copy: copy)
-        start_agent(agent.id, working_copy: copy)
+        agent = Fixtures.running_agent(context.scope, working_copy: copy)
+
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2895", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
+
+        start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
 
         {:ok, context |> Map.put(:agent, agent) |> Map.put(:copy, copy)}
       end
@@ -57,11 +77,15 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
           |> form("form[phx-submit=send_message]", %{"message" => "say READY and nothing else"})
           |> render_submit()
 
-        {:ok, context |> Map.put(:html, html) |> Map.put(:conversation, conversation)}
+        {:ok,
+         context
+         |> Map.put(:html, html)
+         |> Map.put(:live, live)
+         |> Map.put(:conversation, conversation)}
       end
 
       then_ "the agent receives it and acts on it", context do
-        assert Fixtures.agent_received?(context.scope, context.agent, "say READY"),
+        assert agent_received?(context.agent.id, "say READY"),
                "the message was recorded in the conversation and never delivered. " <>
                  "That is the failure this criterion exists for: the send box looks " <>
                  "like it worked, the operator believes the agent was told, and the " <>
@@ -71,11 +95,21 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
       end
 
       then_ "and its answer appears in the same conversation", context do
-        messages = Fixtures.conversation_messages(context.scope, context.conversation)
+        eventually(fn ->
+          {:ok, _reloaded, html} =
+            live(
+              context.conn,
+              ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+            )
 
-        assert Enum.any?(messages, &(&1.role == :agent)),
-               "the agent's answer went somewhere other than the conversation the " <>
-                 "operator is watching, so the exchange reads as one-sided"
+          assert html =~ "say READY",
+                 "the operator's own message is not in the transcript they are " <>
+                   "reading, so the exchange has no record of what was asked"
+
+          assert html =~ "ok",
+                 "the agent's answer went somewhere other than the conversation the " <>
+                   "operator is watching, so the exchange reads as one-sided"
+        end)
 
         {:ok, context}
       end
