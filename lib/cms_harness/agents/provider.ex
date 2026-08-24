@@ -1,0 +1,95 @@
+defmodule CmsHarness.Agents.Provider do
+  @moduledoc """
+  A provider name and a credential, as Alloy options.
+
+  The engine holds the loop; this decides who answers it. Kept apart because
+  the two change for unrelated reasons — a new provider is a clause here and
+  nothing in the engine, and the loop's supervision has nothing to say about
+  which subscription is paying.
+
+  ## The two cost models, which are not the two auth kinds
+
+  It is tempting to read "API key" as metered and "OAuth" as flat-rate. That is
+  wrong and the mistake is expensive when choosing what to run agents on:
+
+    * `openai-codex` — the ChatGPT plan. Flat. `codex exec` handles the
+      credential itself, so there is no key here at all. Reports **no token
+      counts**, so anything metering agent spend is blind on this path.
+    * `zai` — a coding plan, flat, reached with an API key over an
+      OpenAI-compatible endpoint. Flat *and* counted.
+    * `anthropic` — metered, per token, API key.
+
+  Anthropic is deliberately here as an API key rather than a subscription:
+  Anthropic does not permit subscription credentials in third-party harnesses,
+  so there is no OAuth path to build even if we wanted one.
+  """
+
+  @zai_base "https://api.z.ai/api/coding/paas/v4"
+
+  @type credential :: map()
+
+  @doc """
+  Alloy options for `provider`, or `{:error, :unknown_provider}`.
+
+  `model` is passed rather than defaulted per provider: a default answers
+  correctly right up until two callers want different models, and then quietly
+  spends the wrong one's budget.
+  """
+  @spec options(String.t(), credential(), keyword()) :: {:ok, keyword()} | {:error, atom()}
+  def options(provider, credential, opts \\ [])
+
+  # `codex exec` reads its own `auth.json`; Alloy copies the one named here into
+  # an isolated `CODEX_HOME` so an agent never inherits the machine's MCP or
+  # plugin configuration — the same isolation the Pi config directory gave us,
+  # and the reason a shared home is not an option on a multi-tenant box.
+  def options("openai-codex", credential, opts) do
+    with {:ok, auth_path} <- fetch(credential, :auth_path) do
+      {:ok,
+       [
+         provider: Alloy.Provider.Codex,
+         model: Keyword.get(opts, :model, "gpt-5.4"),
+         auth_path: auth_path,
+         timeout_ms: Keyword.get(opts, :timeout_ms, 180_000)
+       ]}
+    end
+  end
+
+  def options("zai", credential, opts) do
+    with {:ok, api_key} <- fetch(credential, :api_key) do
+      {:ok,
+       [
+         provider: Alloy.Provider.OpenAICompat,
+         base_url: Keyword.get(opts, :base_url, @zai_base),
+         api_key: api_key,
+         model: Keyword.get(opts, :model, "glm-4.6")
+       ]}
+    end
+  end
+
+  def options("anthropic", credential, opts) do
+    with {:ok, api_key} <- fetch(credential, :api_key) do
+      {:ok,
+       [
+         provider: Alloy.Provider.Anthropic,
+         api_key: api_key,
+         model: Keyword.get(opts, :model, "claude-sonnet-5")
+       ]}
+    end
+  end
+
+  def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
+
+  @doc "Every provider this harness can run an agent on."
+  @spec names() :: [String.t()]
+  def names, do: ["anthropic", "openai-codex", "zai"]
+
+  # Named rather than pattern-matched into the clause head so the failure says
+  # which piece was missing. A credential that arrived without its key and one
+  # for a provider we do not know are different problems for whoever reads it.
+  defp fetch(credential, key) do
+    case Map.get(credential, key) || Map.get(credential, to_string(key)) do
+      nil -> {:error, :"credential_missing_#{key}"}
+      value -> {:ok, value}
+    end
+  end
+end

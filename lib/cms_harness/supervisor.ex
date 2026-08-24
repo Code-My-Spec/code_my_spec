@@ -60,6 +60,11 @@ defmodule CmsHarness.Supervisor do
       # watching for all of them. A subtree each means a wedged project
       # restarts alone.
       {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one},
+      # Agents, not projects. Separate because their lifetimes are unrelated:
+      # a project subtree follows a checkout being served, an agent follows
+      # somebody asking for one, and stopping either must not disturb the
+      # other.
+      {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one},
 
       # Holds the short-lived token the deploy key buys, and serialises buying
       # it: several hooks and an MCP call arrive at once on a cold start, and N

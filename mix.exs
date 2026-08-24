@@ -62,6 +62,12 @@ defmodule CodeMySpec.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      # The agent loop, in the BEAM. Replaces running `pi` as a detached OS
+      # process: an agent is a supervised GenServer, so sending it a message is
+      # a call rather than a held stdin pipe, and stopping it is termination
+      # rather than signalling a process group across a reboot.
+      {:alloy, "~> 0.12"},
+
       # Phoenix default deps
       {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.8.1", override: true},
@@ -105,7 +111,10 @@ defmodule CodeMySpec.MixProject do
 
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},
-      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
+      {:sexy_spex,
+       git: "https://github.com/Code-My-Spec/spex.git",
+       branch: "feature/reusable-givens",
+       only: [:dev, :dev_cli, :test]},
       # git rather than hex, so the harness and the library it shares a contract
       # with move together. `Onboarding.databases/2` lists the partitions and
       # `TestDatabase.partition_for/2` uses them; a release boundary between the
@@ -269,7 +278,12 @@ defmodule CodeMySpec.MixProject do
       # that changes how every spex run boots, in a fork shared by two repos,
       # and the ordering against its own `ExUnit.start/1` wants care. This is
       # one query in front of a task that was already an alias.
-      spex: ["ecto.create --quiet", "ecto.migrate --quiet", "cms.check_test_migrations", "spex --quiet"],
+      spex: [
+        "ecto.create --quiet",
+        "ecto.migrate --quiet",
+        "cms.check_test_migrations",
+        "spex --quiet"
+      ],
       # Same shape as `spex` above: a refusal in front of a task that was already
       # an alias. `mix ecto.migrate` runs `priv/repo/migrations` whatever MIX_ENV
       # says, so under a SQLite environment it points the Postgres set at a
