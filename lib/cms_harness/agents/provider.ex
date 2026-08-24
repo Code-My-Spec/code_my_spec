@@ -57,13 +57,22 @@ defmodule CmsHarness.Agents.Provider do
   # an isolated `CODEX_HOME` so an agent never inherits the machine's MCP or
   # plugin configuration — the same isolation the Pi config directory gave us,
   # and the reason a shared home is not an option on a multi-tenant box.
+  #
+  # No model unless one was asked for, and that is the opposite of the other two
+  # clauses on purpose. A ChatGPT plan decides which models it serves, and
+  # naming one here is a guess about somebody else's subscription: this shipped
+  # defaulting to `gpt-5.4`, and every codex agent on a ChatGPT account failed
+  # its first turn with *"The 'gpt-5.4' model is not supported when using Codex
+  # with a ChatGPT account"*. Omitting the flag makes `codex exec` use whatever
+  # that account actually has, which is always a valid answer and never goes
+  # stale.
   def options("openai-codex", credential, opts) do
     {:ok,
      [
        provider:
          {Alloy.Provider.Codex,
           %{
-            model: Keyword.get(opts, :model) || "gpt-5.4",
+            model: Keyword.get(opts, :model),
             auth_path: auth_path(credential),
             timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
           }}
