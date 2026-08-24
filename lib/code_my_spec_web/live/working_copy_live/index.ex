@@ -130,9 +130,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   # whether it did anything, and the numbers are the difference between a copy
   # that was holding the project up and one that was already empty.
   defp offboarded(row, %{files: files, problems: problems, components: components}) do
-    "Offboarded #{row.label} — #{files} files, #{problems} problems and " <>
-      "#{components} orphaned components removed."
+    "Offboarded #{row.label} — #{count(files, "file")}, #{count(problems, "problem")} " <>
+      "and #{count(components, "orphaned component")} removed."
   end
+
+  # Counted nouns agree with their count. A real offboard printed "1 orphaned
+  # components removed", which reads as a template rather than a report of what
+  # just happened to this copy.
+  defp count(1, noun), do: "1 #{noun}"
+  defp count(n, noun), do: "#{n} #{noun}s"
 
   defp load(socket) do
     rows =
