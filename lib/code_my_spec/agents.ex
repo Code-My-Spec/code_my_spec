@@ -41,6 +41,13 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
 
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Credential
+  alias CodeMySpec.Agents.PiConfig
+  alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Users.Scope
+
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
   @stop_timeout_ms 10_000
@@ -48,12 +55,11 @@ defmodule CodeMySpec.Agents do
   # Long enough for a cold start on a loaded box, short enough that a machine
   # that is never going to answer does not hold the caller.
   @start_timeout_ms 15_000
-  alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Credential
-  alias CodeMySpec.Agents.PiConfig
-  alias CodeMySpec.Agents.Providers
-  alias CodeMySpec.Conversations
-  alias CodeMySpec.Users.Scope
+
+  # Shorter than an operator's stop. This runs inside a reconcile that fires on
+  # every lane diff, so a machine that is slow to answer must not hold it —
+  # the next report tries again, and the row stays reachable meanwhile.
+  @reap_timeout_ms 3_000
 
   @type start_error ::
           :missing_active_project
@@ -277,11 +283,26 @@ defmodule CodeMySpec.Agents do
       AgentsRepository.update_agent(scope, agent, %{
         engine: engine(report),
         status: :running,
-        os_pid: report["os_pid"] || agent.os_pid
+        os_pid: recorded_group_or_reported(agent, report)
       })
 
     updated
   end
+
+  # What we recorded at launch wins over what a lane reports about itself.
+  #
+  # They are different things. The launcher records a process *group* id, so one
+  # signal takes the agent and every tool it spawned; a lane reports its own pid,
+  # which is one member of that group. Letting the report overwrite it would
+  # quietly downgrade every stop to killing a single process and leaving the
+  # tree — the exact failure the group exists to prevent — and it would strand
+  # `os_boot_id`, which was written to go with the group id and nothing else.
+  defp recorded_group_or_reported(%Agent{os_pid: pid, os_boot_id: boot}, _report)
+       when is_integer(pid) and is_binary(boot),
+       do: pid
+
+  defp recorded_group_or_reported(%Agent{} = agent, report),
+    do: report["os_pid"] || agent.os_pid
 
   # The harness says which engine it is running, and it matters downstream: the
   # engine decides whether an agent has presence or only a timestamp, and whether
@@ -323,9 +344,55 @@ defmodule CodeMySpec.Agents do
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
 
-  defp reap_if_absent(scope, %Agent{} = agent, false) do
-    {:ok, stopped} = AgentsRepository.update_agent(scope, agent, %{status: :stopped, os_pid: nil})
+  # No group id, so there is no process to end and nothing to lose by recording
+  # the stop. This is an agent that never came up, or one already ended.
+  defp reap_if_absent(scope, %Agent{os_pid: nil} = agent, false) do
+    {:ok, stopped} = record_stopped(scope, agent)
     stopped
+  end
+
+  # A pid we did not record at launch, so there is no boot beside it and nothing
+  # can judge it: a pid without its boot cannot be told from a recycled number,
+  # and signalling one may reach a stranger.
+  #
+  # This is an agent adopted from a report rather than started by us — a lane
+  # that appeared on its own. For those the lane's absence *is* the evidence, and
+  # good evidence: a lane is joined for exactly as long as its process lives, so
+  # a lane missing from Presence means that process is gone.
+  #
+  # The expensive case is the other one, and it is the one below.
+  defp reap_if_absent(scope, %Agent{os_boot_id: nil} = agent, false) do
+    {:ok, stopped} = record_stopped(scope, agent)
+    stopped
+  end
+
+  # A lane that is gone with a process that may not be.
+  #
+  # This used to write `:stopped` and clear `os_pid`, which is criterion 2828 on
+  # the hot path: the orphan keeps running, keeps spending, and the one handle
+  # that could have reached it has just been discarded — by the reconcile whose
+  # job was to notice it.
+  #
+  # So the machine is asked to end the group first, and the row is only recorded
+  # as stopped if it says the group is gone. When it cannot, the row keeps its
+  # group id and stays reachable for the next attempt. An agent that looks
+  # running for another cycle is a far better failure than one that looks
+  # stopped and is not.
+  defp reap_if_absent(scope, %Agent{} = agent, false) do
+    case Transport.impl().stop_agent(agent.working_copy_id, agent, @reap_timeout_ms) do
+      :ok ->
+        {:ok, stopped} = record_stopped(scope, agent)
+        stopped
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Agents] agent #{agent.id} has no lane but its process group " <>
+            "#{inspect(agent.os_pid)} could not be ended (#{inspect(reason)}). Keeping the " <>
+            "group id: it is the only way to reach the process, and it may still be spending."
+        )
+
+        agent
+    end
   end
 
   @doc """

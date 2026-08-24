@@ -172,6 +172,19 @@ config :code_my_spec,
 # to remember.
 config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 
+# The machine an agent's process is on, without a socket in between.
+#
+# Pinned here because the default reaches `HarnessRegistry` for a channel to a
+# real device, which no test has — so every stop and every reap would answer
+# `:harness_not_connected` and nothing about process lifecycle would ever be
+# exercised. Criterion 2828 has shipped as a bug three times on this project,
+# each time under tests that never involved a process.
+#
+# A group id naming nothing answers `:ok`, so a test carrying an invented
+# `os_pid` needs no process arranged for it, and one that spawns something real
+# gets it genuinely signalled.
+config :code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport
+
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —
 # and an unset plug plus a real credential is a live request that logs nothing
