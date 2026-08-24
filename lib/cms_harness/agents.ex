@@ -66,10 +66,28 @@ defmodule CmsHarness.Agents do
   The whole of what a held stdin pipe was for. `Engine.chat/3` is the call; this
   is the name the wire uses for it.
   """
-  @spec message(String.t(), String.t(), timeout()) :: {:ok, term()} | {:error, term()}
+  @spec message(String.t(), String.t(), timeout()) :: {:ok, String.t()} | {:error, term()}
   def message(agent_id, text, timeout \\ 180_000) when is_binary(text) do
-    Engine.chat(agent_id, text, timeout)
+    case Engine.chat(agent_id, text, timeout) do
+      {:ok, result} -> {:ok, said(result)}
+      {:error, reason} -> {:error, reason}
+    end
   end
+
+  # What the agent said, out of what Alloy hands back.
+  #
+  # The result carries the whole turn — every message, the tool manifest, the
+  # prompt that went to the provider. Passed through whole it reached the
+  # operator as four thousand tokens of scaffolding with the actual answer
+  # somewhere inside, so the reply is narrowed here, where the wire contract
+  # already says it is a string.
+  defp said(%{text: text}) when is_binary(text) and text != "", do: text
+
+  defp said(%{tool_calls: calls}) when is_list(calls) and calls != [] do
+    "(no message — the turn ended in #{length(calls)} tool call(s))"
+  end
+
+  defp said(_result), do: "(no message)"
 
   @doc """
   Agent ids running here, read from the registry rather than from anything we
