@@ -459,13 +459,39 @@ refresh-harness port="4004":
     # The fallback is not a failure: a harness that is up and has not joined is
     # a real state, the message names where to look, and exit 0 keeps this out
     # of the caller's error path.
+    # And `connected` cannot appear on its own.
+    #
+    # A harness serves no copy until something contacts it — `ensure_started/1`
+    # picks each one up from its first hook request — so `/health` reports an
+    # empty `projects` list, and this loop was really waiting for some *other*
+    # agent to happen to run a tool. On a quiet machine nobody does. Measured on
+    # this restart: boot at 03:38:35, first pickup at 03:40:41, join at
+    # 03:40:42 — 126s, six seconds past the window, and the ✓ told the operator
+    # to go check a credential that `/health` reports as `true`.
+    #
+    # So poke it, with the checkout this recipe launches from and whose
+    # `.cms_harness.json` names it. That drives the same resolve → serve → join
+    # path the ✓ claims, which turns the check into a check instead of a race,
+    # and the hook itself is a no-op either way.
     for _ in $(seq 1 90); do
         if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
             for _ in $(seq 1 60); do
+                curl -sS --max-time 3 -X POST \
+                     "http://localhost:{{port}}/api/hooks/session-start" \
+                     -H 'content-type: application/json' \
+                     -d "{\"cwd\": \"$main\", \"hook_event_name\": \"SessionStart\"}" \
+                     >/dev/null 2>&1 || true
+
                 if curl -sS --max-time 3 "http://localhost:{{port}}/health" 2>/dev/null \
                      | grep -q '"connected":true'; then
                     echo "✓ harness is listening on {{port}} and joined the server"
                     echo
+                    echo "  That is one working copy joined, not all of them. The harness"
+                    echo "  just killed still holds a lease on the others for up to a"
+                    echo "  minute — \"already served by <host>:<pid> — retrying\" in"
+                    echo "  harness.log — and until it lapses their hooks are refused"
+                    echo "  with advice to check the credential. Measured here: 47s."
+                    echo "  Nothing is wrong; give it a minute before diagnosing."
                     echo "  If this restart shipped a NEW MCP tool, every already-running"
                     echo "  agent still has the old tool list and will get \"No such tool"
                     echo "  available\" until it reconnects (/mcp in Claude Code). The"
@@ -476,8 +502,9 @@ refresh-harness port="4004":
             done
 
             echo "✓ harness is listening on {{port}}, but has not joined the server in 120s"
-            echo "  A stop will refuse until it does. Check the credential and the"
-            echo "  reconnect attempts in ~/.codemyspec/harness.log."
+            echo "  A stop will refuse until it does. /health reports the credential"
+            echo "  and the roots it is serving — read that before assuming the"
+            echo "  credential, then the reconnect attempts in ~/.codemyspec/harness.log."
             exit 0
         fi
         sleep 2
