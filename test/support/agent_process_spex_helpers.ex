@@ -44,7 +44,8 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     assert {:ok, _} =
              Machine.start_agent(agent_id, copy,
                on_stop: Keyword.get(opts, :on_stop),
-               base_url: Keyword.get(opts, :base_url)
+               base_url: Keyword.get(opts, :base_url),
+               on_event: Keyword.get(opts, :on_event)
              ),
            "the premise is an agent that is actually running; without one this " <>
              "criterion asserts nothing about spending"
@@ -126,6 +127,17 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     HeldProvider.release()
     Machine.await_idle(agent_id)
   end
+
+  @doc """
+  Wait until the agent has finished deciding — nothing in flight, nothing
+  queued.
+
+  What makes a claim about a turn settleable. A turn that is about to fail and
+  a turn that has failed look the same from outside for as long as it is still
+  running, so an assertion made a moment early is true of both.
+  """
+  @spec await_idle(String.t()) :: :ok
+  defdelegate await_idle(agent_id), to: Machine
 
   @doc """
   Whether that text reached the loop that acts on it.

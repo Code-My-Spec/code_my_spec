@@ -125,6 +125,11 @@ defmodule CmsHarness.Agents do
   # sends it again.
   defp said({:queued, _ref}), do: "(queued — the agent is mid-turn and will get this next)"
 
+  # A turn that failed comes back as an `:ok` result carrying an error, and a
+  # clause that only looks at `text` reports that as "(no message)" — the agent
+  # ignoring you, rather than the agent's provider refusing.
+  defp said(%{status: :error, error: reason}), do: "(the turn failed: #{inspect(reason)})"
+
   defp said(%{text: text}) when is_binary(text) and text != "", do: text
 
   defp said(%{tool_calls: calls}) when is_list(calls) and calls != [] do

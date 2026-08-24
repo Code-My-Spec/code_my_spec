@@ -14,8 +14,18 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
   if the record of what it did evaporates the moment it fails, you get the
   worst of both — no live view of the mistake, and no history of it either.
 
-  So a step that happened is a step that stays, whatever the turn does
-  afterwards.
+  ## Why a real refusal and not a reported one
+
+  This drives a real turn against a provider this criterion makes refuse,
+  because the shipped bug was on exactly that path and a pushed
+  `turn_failed` event would have sailed straight past it.
+
+  What QA found: the page does not wait for a turn, deliberately — the answer
+  arrives as events — so when `send_message/4`'s turn came back `{:error, …}`
+  there was nowhere for the error to go and it was dropped. The operator's
+  message was recorded as delivered and the conversation went quiet, forever.
+  Quiet is what an agent thinking looks like, which is the one thing a failure
+  must never be indistinguishable from.
   """
 
   use CodeMySpecSpex.Case
@@ -23,6 +33,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
   import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
+  alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
@@ -40,12 +51,11 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
 
   spex "What already happened is not undone by what happens next" do
     scenario "A turn that fails still shows what it did first" do
-      given_ "an agent part-way through a turn", context do
+      given_ "an agent that has already done something", context do
         copy = CodeMySpec.TempFile.dir("spex_2894")
         File.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
-        start_agent(agent.id, working_copy: copy)
 
         {:ok, _reply, socket} =
           UserSocket
@@ -57,27 +67,48 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
             "label" => "the machine running this agent"
           })
 
-        report(socket, agent, %{"kind" => "tool_use", "text" => "write lib/half_done.ex"})
+        start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:socket, socket)}
+        conversation = Fixtures.agent_conversation(context.scope, agent)
+
+        {:ok, live, _html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+          )
+
+        live
+        |> form("form[phx-submit=send_message]", %{"message" => "write lib/half_done.ex"})
+        |> render_submit()
+
+        assert agent_received?(agent.id, "half_done"),
+               "the premise is an agent that got as far as doing something; " <>
+                 "without that there is nothing for a later failure to lose"
+
+        {:ok,
+         context
+         |> Map.put(:agent, agent)
+         |> Map.put(:live, live)
+         |> Map.put(:conversation, conversation)}
       end
 
-      when_ "the turn then fails", context do
-        report(context.socket, context.agent, %{
-          "kind" => "turn_failed",
-          "text" => "codex exec failed with status 1"
-        })
+      when_ "its next turn fails outright", context do
+        HeldProvider.refuse()
+
+        context.live
+        |> form("form[phx-submit=send_message]", %{"message" => "now do the other thing"})
+        |> render_submit()
+
+        await_idle(context.agent.id)
 
         {:ok, context}
       end
 
-      then_ "the steps it completed before failing are there", context do
-        conversation = Fixtures.agent_conversation(context.scope, context.agent)
-
-        {:ok, _live, html} =
+      then_ "the work it did before failing is still there", context do
+        {:ok, _reloaded, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
           )
 
         assert html =~ "half_done",
@@ -90,24 +121,29 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
 
       then_ "and the failure is shown rather than the work disappearing with it",
             context do
-        assert context.html =~ "failed",
-               "the turn failed and the conversation does not say so, which leaves " <>
-                 "an operator watching a transcript that simply stops"
+        # The provider's own words, not a generic "error". The page is full of
+        # the word error — flash containers, form markup — and an assertion
+        # matching those passes over a transcript that says nothing.
+        #
+        # Retried because the failure travels: engine to channel to database.
+        # `await_idle/1` proves the agent has stopped deciding, which is a
+        # weaker claim than "everything it said has landed".
+        eventually(fn ->
+          {:ok, _reloaded, html} =
+            live(
+              context.conn,
+              ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+            )
+
+          assert html =~ "refused this request",
+                 "the turn failed and the conversation does not say so, which leaves " <>
+                   "an operator watching a transcript that simply stops — " <>
+                   "indistinguishable from an agent still thinking. Got: " <>
+                   String.slice(html, 0, 400)
+        end)
 
         {:ok, context}
       end
     end
-  end
-
-  # One step, on the channel the machine sends it on, waited out before anything
-  # is asked of the record — otherwise a green run only means the push was fast.
-  defp report(socket, agent, event) do
-    ref =
-      Phoenix.ChannelTest.push(socket, "agent_turn_event", %{
-        "agent_id" => agent.id,
-        "event" => event
-      })
-
-    Phoenix.ChannelTest.assert_reply(ref, :ok)
   end
 end

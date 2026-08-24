@@ -342,9 +342,61 @@ defmodule CmsHarness.Agents.Engine do
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   defp settle(state, result) do
+    announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
     drain(%{state | turn: nil})
   end
+
+  # A turn that failed, said out loud.
+  #
+  # `chat/3` hands the error back to whoever called it, so that path is
+  # covered. Nothing calls `send_message/4` and waits, on purpose — the answer
+  # arrives as turn events — so on that path an error had nowhere to go, and a
+  # provider refusing left the conversation quiet forever. Quiet is what an
+  # agent thinking looks like, which is the one thing it must not be
+  # indistinguishable from.
+  defp announce_outcome(%{on_event: nil}, _result), do: :ok
+
+  # Both shapes a failed turn arrives in, because Alloy uses both. A turn that
+  # never started answers `{:error, reason}`; a turn whose provider refused
+  # mid-run answers `{:ok, %Alloy.Result{status: :error}}` — an ok tuple
+  # carrying a failure, which is exactly the shape that gets read as success by
+  # a clause matching only the first.
+  defp announce_outcome(state, {:error, reason}), do: report_failure(state, reason)
+
+  defp announce_outcome(state, {:ok, %{status: :error, error: reason}}),
+    do: report_failure(state, reason)
+
+  # What the agent actually said, once it has finished saying it.
+  #
+  # The providers emit `:text_delta` per fragment and nothing at all when a
+  # message is complete, so without this the answer exists only as tokens this
+  # engine drops — and a turn that ran perfectly left a transcript holding the
+  # question and no reply.
+  defp announce_outcome(state, {:ok, %{text: text}}) when is_binary(text) and text != "" do
+    state.on_event.(state.agent_id, %{event: :message, text: text})
+  end
+
+  defp announce_outcome(_state, _result), do: :ok
+
+  defp report_failure(state, reason) do
+    state.on_event.(state.agent_id, %{event: :turn_failed, text: failure_text(reason)})
+  end
+
+  # A provider's refusal is prose — several lines of it, with the whole prompt
+  # quoted back. The first line is the sentence that says what went wrong;
+  # everything after it belongs in a log rather than in a transcript somebody
+  # is reading.
+  defp failure_text(reason) when is_binary(reason) do
+    reason |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 500)
+  end
+
+  # A failed turn arrives carrying the whole run — every message, the tools,
+  # the prompt. The sentence that says what went wrong is one field of it, and
+  # inspecting the rest into a transcript buries it.
+  defp failure_text(%{error: reason}) when reason != nil, do: failure_text(reason)
+
+  defp failure_text(reason), do: reason |> inspect() |> String.slice(0, 500)
 
   defp drain(%{queue: []} = state), do: {:noreply, state}
 
@@ -392,14 +444,21 @@ defmodule CmsHarness.Agents.Engine do
     Alloy.Agent.Server.stream_chat(
       state.alloy,
       message,
-      # Text deltas are not reported: a step is a thing that happened — a tool
-      # call, a message — and a token is not. Batching them into the channel
-      # would be a lot of pushes to say one sentence.
       fn _chunk -> :ok end,
       timeout: timeout,
-      on_event: fn envelope -> report.(agent_id, envelope) end
+      on_event: fn envelope -> report_step(report, agent_id, envelope) end
     )
   end
+
+  # A step is a thing that happened — a tool call, a message, a turn ending.
+  # A token is not.
+  #
+  # Alloy emits `:text_delta` per fragment, and forwarding those puts a channel
+  # push and a database row behind every few characters an agent says. Dropping
+  # the `on_chunk` callback was not enough: the same fragments arrive again as
+  # envelopes, which is how a sentence became forty rows in a transcript.
+  defp report_step(_report, _agent_id, %{event: :text_delta}), do: :ok
+  defp report_step(report, agent_id, envelope), do: report.(agent_id, envelope)
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
 

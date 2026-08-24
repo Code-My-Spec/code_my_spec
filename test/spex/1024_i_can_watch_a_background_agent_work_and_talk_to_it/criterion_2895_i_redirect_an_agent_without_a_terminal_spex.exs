@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
   import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
+  alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
@@ -106,7 +107,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
                  "the operator's own message is not in the transcript they are " <>
                    "reading, so the exchange has no record of what was asked"
 
-          assert html =~ "ok",
+          assert html =~ HeldProvider.answer(),
                  "the agent's answer went somewhere other than the conversation the " <>
                    "operator is watching, so the exchange reads as one-sided"
         end)

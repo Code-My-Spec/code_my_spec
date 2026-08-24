@@ -137,7 +137,11 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   def error(:missing_active_project, _provider),
     do: refuse("No active project, so there is nothing to start an agent on.")
 
-  def error(reason, _provider), do: refuse("Could not start the agent: #{inspect(reason)}")
+  # Neutral about which verb failed. Four tools share this clause — start, stop,
+  # message and list — and naming one of them sends a reader who was doing
+  # another to look in the wrong place. QA hit exactly that: a message whose
+  # provider refused was reported as "could not start the agent".
+  def error(reason, _provider), do: refuse("That agent call failed: #{inspect(reason)}")
 
   defp refuse(text) do
     Response.tool()

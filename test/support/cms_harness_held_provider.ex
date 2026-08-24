@@ -24,8 +24,9 @@ defmodule CmsHarnessTest.HeldProvider do
   ## Modes
 
   Flowing by default — a request is answered as it arrives, so an ordinary turn
-  runs and finishes. `hold/0` makes the next requests wait; `release/0` answers
-  everything waiting and every request after it. Release is deliberately sticky:
+  runs and finishes. `hold/0` makes the next requests wait; `refuse/0` makes
+  them fail; `release/0` answers everything waiting and every request after it.
+  Release is deliberately sticky:
   a turn that ends drains the agent's queue and starts the next one, and a
   release that only covered requests already in flight would leave that one
   held forever with `await_idle/1` waiting on it.
@@ -35,14 +36,26 @@ defmodule CmsHarnessTest.HeldProvider do
 
   alias CmsHarnessTest.HeldProvider.Store
 
+  # What the agent says back, and it is deliberately not a word like "ok".
+  #
+  # A page is full of short common words — markup, class names, the CSP nonce —
+  # so `html =~ "ok"` passes over a transcript that recorded nothing. An
+  # assertion that cannot fail is worse than no assertion, and one of these
+  # criteria was passing that way before this string was distinctive.
+  @answer "PROVIDER-ANSWERED"
+
   # One text delta, then a stop. Enough for a turn to complete: Alloy loops
   # until the provider says `finish_reason`, so a response without one is an
   # agent that calls the endpoint forever.
   @sse [
-    ~s(data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"ok"}}]}\n\n),
+    ~s(data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"#{@answer}"}}]}\n\n),
     ~s(data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n),
     "data: [DONE]\n\n"
   ]
+
+  @doc "What this provider answers with — the needle a criterion looks for."
+  @spec answer() :: String.t()
+  def answer, do: @answer
 
   @doc """
   Start the endpoint and answer with the base URL to point an agent at.
@@ -77,6 +90,17 @@ defmodule CmsHarnessTest.HeldProvider do
   @spec hold() :: :ok
   defdelegate hold(), to: Store
 
+  @doc """
+  Make the next turn fail, the way a provider that will not answer fails.
+
+  A 500 with a body, which is what `OpenAICompat` turns into `{:error, …}` —
+  the same shape a refused credential or an exhausted plan produces. Nothing
+  here simulates the failure at the engine's edge; the engine sees exactly what
+  it sees in production.
+  """
+  @spec refuse() :: :ok
+  defdelegate refuse(), to: Store
+
   @doc "Let every waiting turn finish, and every one after it."
   @spec release() :: :ok
   defdelegate release(), to: Store
@@ -104,12 +128,32 @@ defmodule CmsHarnessTest.HeldProvider do
 
     # Blocks here while held, which is the whole point: the agent's turn is
     # waiting on this response the way it waits on a slow model.
-    :ok = Store.arrived(body)
+    case Store.arrived(body) do
+      :ok -> answer(conn)
+      :refuse -> refusal(conn)
+    end
+  end
 
+  defp answer(conn) do
     conn
     |> Plug.Conn.put_resp_content_type("text/event-stream")
     |> Plug.Conn.send_chunked(200)
     |> stream_response()
+  end
+
+  # What a provider that will not answer looks like from the harness's side.
+  #
+  # 401, not 500. `Alloy.Provider.Retry` treats 5xx as transient and retries it
+  # with backoff, so a criterion refusing with one is waiting out a retry
+  # schedule rather than watching a turn fail. A refused credential is both
+  # terminal and the failure operators actually meet.
+  defp refusal(conn) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(
+      401,
+      ~s({"error":{"message":"the model backend refused this request","type":"invalid_request_error"}})
+    )
   end
 
   defp stream_response(conn) do
@@ -147,6 +191,12 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(__MODULE__, :hold)
     end
 
+    @spec refuse() :: :ok
+    def refuse do
+      ensure_started()
+      GenServer.call(__MODULE__, :refuse)
+    end
+
     @spec release() :: :ok
     def release do
       ensure_started()
@@ -159,7 +209,7 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(__MODULE__, :seen)
     end
 
-    @spec arrived(String.t()) :: :ok
+    @spec arrived(String.t()) :: :ok | :refuse
     def arrived(body) do
       ensure_started()
       GenServer.call(__MODULE__, {:arrived, body}, :infinity)
@@ -197,6 +247,8 @@ defmodule CmsHarnessTest.HeldProvider do
 
     def handle_call(:hold, _from, state), do: {:reply, :ok, %{state | mode: :holding}}
 
+    def handle_call(:refuse, _from, state), do: {:reply, :ok, %{state | mode: :refusing}}
+
     def handle_call(:release, _from, state) do
       Enum.each(state.held, &GenServer.reply(&1, :ok))
       {:reply, :ok, %{state | mode: :flowing, held: []}}
@@ -212,6 +264,7 @@ defmodule CmsHarnessTest.HeldProvider do
 
       case state.mode do
         :flowing -> {:reply, :ok, state}
+        :refusing -> {:reply, :refuse, state}
         :holding -> {:noreply, hold_request(state, from)}
       end
     end
