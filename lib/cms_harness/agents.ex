@@ -47,10 +47,11 @@ defmodule CmsHarness.Agents do
              # process goes. Nothing on the wire sets it yet; the seam exists so
              # a graceful stop is observable rather than merely intended.
              on_stop: request["on_stop"],
-             # Every project this harness serves, unless the caller names
-             # somewhere else. Settable for the same reason `on_stop` is: the
-             # default is right for the harness and it is not the only caller.
-             on_event: request["on_event"] || (&report_step/2)
+             # The channel for the copy this agent runs in, unless the caller
+             # names somewhere else. Settable for the same reason `on_stop` is:
+             # the default is right for the harness and it is not the only
+             # caller.
+             on_event: request["on_event"] || reporter_for(request["working_copy"])
            ) do
       {:ok, %{agent_id: id}}
     end
@@ -153,9 +154,23 @@ defmodule CmsHarness.Agents do
   #
   # Fire and forget: an agent's work does not stop because nobody is watching,
   # and a reporting failure must not become a turn failure.
-  defp report_step(agent_id, envelope) do
-    CmsHarness.Projects.list()
-    |> Enum.each(&CmsHarness.Project.ChannelClient.report_turn_event(&1, agent_id, envelope))
+  #
+  # ## One channel, not every channel
+  #
+  # This looped over `Projects.list()` and pushed each step down every copy the
+  # harness serves. One harness serves several checkouts, and several of those
+  # are usually worktrees of the same project — so every channel on that
+  # project recorded the same step, and a transcript held each line once per
+  # sibling checkout. Two here; ten on a busy box.
+  #
+  # An agent runs in one working copy. That copy's channel is the one that
+  # should hear about it, and a copy this harness does not serve is a cast that
+  # finds no registry entry and stops — which is the right answer, because
+  # there is nowhere to report to.
+  defp reporter_for(working_copy) do
+    fn agent_id, envelope ->
+      CmsHarness.Project.ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+    end
   end
 
   # The server sends whatever the provider needs, and the shapes differ: a
