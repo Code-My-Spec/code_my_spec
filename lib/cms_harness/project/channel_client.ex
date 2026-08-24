@@ -1123,6 +1123,20 @@ defmodule CmsHarness.Project.ChannelClient do
   def encode_start_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
+  @doc """
+  Tell the server about one step an agent took.
+
+  Cast rather than called: the agent is mid-turn and waiting on nothing here,
+  and a server that is slow to take a step must not slow the work down.
+  """
+  @spec report_turn_event(String.t(), String.t(), map()) :: :ok
+  def report_turn_event(root, agent_id, envelope) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:turn_event, agent_id, envelope})
+      [] -> :ok
+    end
+  end
+
   defp ask_what_to_restore(socket, topic) do
     case transport().push(socket, topic, "agents_to_restore", %{}, decision_timeout()) do
       {:ok, ref} -> assign(socket, :restore_ref, ref)
@@ -1156,6 +1170,27 @@ defmodule CmsHarness.Project.ChannelClient do
   defp reason_text(reason) when is_atom(reason), do: to_string(reason)
   defp reason_text(%{error: error}) when is_binary(error), do: error
   defp reason_text(reason), do: inspect(reason)
+
+  # Only what a watcher needs, and only things that survive JSON. An Alloy
+  # envelope carries atoms, pids and the whole turn state; sending it whole
+  # would put an agent's entire context on the wire once per step.
+  defp encode_turn_event(envelope) do
+    %{
+      "kind" => to_string(Map.get(envelope, :event, "step")),
+      "seq" => Map.get(envelope, :seq),
+      "turn" => Map.get(envelope, :turn),
+      "text" => turn_event_text(envelope)
+    }
+  end
+
+  defp turn_event_text(envelope) do
+    case envelope do
+      %{name: name} when is_binary(name) -> name
+      %{text: text} when is_binary(text) -> text
+      %{content: content} when is_binary(content) -> content
+      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect()
+    end
+  end
 
   defp encode_message_result({:ok, reply}) when is_binary(reply),
     do: %{"status" => "ok", "reply" => reply}
@@ -1430,6 +1465,28 @@ defmodule CmsHarness.Project.ChannelClient do
         {:reply, {:error, :not_connected}, socket}
     end
   end
+
+  # One step of a turn, on its way to whoever is watching.
+  #
+  # Not `record_turn` above, though they share a wire. That carries a finished
+  # request/response pair for a Claude Code lane, keyed by session id, recorded
+  # after the fact. This carries a single step, keyed by the agent, while the
+  # turn is still running — which is what makes watching possible and what a
+  # completed-turn recording cannot do for a turn that never completes.
+  @impl Slipstream
+  def handle_cast({:turn_event, agent_id, envelope}, %{assigns: %{joined: true}} = socket) do
+    push(socket, socket.assigns.topic, "agent_turn_event", %{
+      "agent_id" => agent_id,
+      "event" => encode_turn_event(envelope)
+    })
+
+    {:noreply, socket}
+  end
+
+  # Not joined, so there is nowhere to send it. Dropped rather than queued, for
+  # the same reason as `record_turn`: a backlog of steps replayed after a
+  # reconnect reads as the agent doing them now.
+  def handle_cast({:turn_event, _agent_id, _envelope}, socket), do: {:noreply, socket}
 
   @impl Slipstream
   # Dropped rather than queued when the channel is not joined. A recording that

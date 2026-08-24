@@ -42,7 +42,8 @@ defmodule CmsHarness.Agents do
              # Where an agent finishes what it was part-way through before the
              # process goes. Nothing on the wire sets it yet; the seam exists so
              # a graceful stop is observable rather than merely intended.
-             on_stop: request["on_stop"]
+             on_stop: request["on_stop"],
+             on_event: &report_step/2
            ) do
       {:ok, %{agent_id: id}}
     end
@@ -95,6 +96,19 @@ defmodule CmsHarness.Agents do
   """
   @spec running() :: [String.t()]
   defdelegate running(), to: Engine
+
+  # A step, on its way to whoever is watching.
+  #
+  # Sent per event rather than accumulated, because the point of watching is
+  # seeing an agent go wrong while it is going wrong. A batch that arrives when
+  # the turn ends is a report, not a view — and a turn that fails never ends.
+  #
+  # Fire and forget: an agent's work does not stop because nobody is watching,
+  # and a reporting failure must not become a turn failure.
+  defp report_step(agent_id, envelope) do
+    CmsHarness.Projects.list()
+    |> Enum.each(&CmsHarness.Project.ChannelClient.report_turn_event(&1, agent_id, envelope))
+  end
 
   # The server sends whatever the provider needs, and the shapes differ: a
   # subscription path names a file `codex exec` reads, an API-key path carries

@@ -56,7 +56,8 @@ defmodule CmsHarness.Agents.Engine do
           credential: map(),
           working_copy: String.t(),
           model: String.t() | nil,
-          on_stop: (-> any()) | nil
+          on_stop: (-> any()) | nil,
+          on_event: (map() -> any()) | nil
         ]
 
   # ---------------------------------------------------------------- public API
@@ -165,6 +166,7 @@ defmodule CmsHarness.Agents.Engine do
            working_copy: Keyword.fetch!(opts, :working_copy),
            provider: Keyword.fetch!(opts, :provider),
            on_stop: Keyword.get(opts, :on_stop),
+           on_event: Keyword.get(opts, :on_event),
            alloy: alloy
          }}
 
@@ -175,7 +177,7 @@ defmodule CmsHarness.Agents.Engine do
 
   @impl true
   def handle_call({:chat, message, timeout}, _from, state) do
-    {:reply, Alloy.Agent.Server.chat(state.alloy, message, timeout: timeout), state}
+    {:reply, run_turn(state, message, timeout), state}
   end
 
   # Asked, not killed.
@@ -195,6 +197,38 @@ defmodule CmsHarness.Agents.Engine do
   defp run_on_stop(_), do: :ok
 
   # -------------------------------------------------------------------- private
+
+  # A turn that reports itself as it goes.
+  #
+  # `chat/3` answers when the turn is over, which is enough to reply to whoever
+  # asked and useless for watching. `stream_chat/4` takes an `on_event` and
+  # calls it per step, so every step leaves here the moment it happens.
+  #
+  # Deliberately not the Server's PubSub: that broadcasts a result when a turn
+  # *completes*, so a turn that fails broadcasts nothing and everything it did
+  # first is lost. Watching exists to catch an agent going wrong, which is
+  # exactly the turn that does not complete.
+  defp run_turn(%{on_event: nil} = state, message, timeout) do
+    # Nobody is listening, so there is nothing to stream to. Answering the
+    # caller is still the job.
+    Alloy.Agent.Server.chat(state.alloy, message, timeout: timeout)
+  end
+
+  defp run_turn(state, message, timeout) do
+    report = state.on_event
+    agent_id = state.agent_id
+
+    Alloy.Agent.Server.stream_chat(
+      state.alloy,
+      message,
+      # Text deltas are not reported: a step is a thing that happened — a tool
+      # call, a message — and a token is not. Batching them into the channel
+      # would be a lot of pushes to say one sentence.
+      fn _chunk -> :ok end,
+      timeout: timeout,
+      on_event: fn envelope -> report.(agent_id, envelope) end
+    )
+  end
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
 
