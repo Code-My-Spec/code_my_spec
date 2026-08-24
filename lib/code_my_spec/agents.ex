@@ -39,6 +39,11 @@ defmodule CodeMySpec.Agents do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Transport
+
+  # How long the machine is given to wind the agent down before it insists.
+  # Bounded on purpose: an unbounded stop is one the meter outlives.
+  @stop_timeout_ms 10_000
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.PiConfig
@@ -297,20 +302,63 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, :not_found | :cross_project | Ecto.Changeset.t()}
   def stop_agent(%Scope{} = scope, id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
-         {:ok, stopped} <-
-           AgentsRepository.update_agent(scope, agent, %{status: :stopped, os_pid: nil}) do
+         :ok <- end_process(scope, agent),
+         {:ok, stopped} <- record_stopped(scope, agent) do
       broadcast(scope, {:agent_stopped, stopped})
       {:ok, stopped}
     end
   end
 
+  # Ask the machine holding the process to end it, and let its answer decide
+  # whether this is a stop at all.
+  #
+  # This used to write `status: :stopped, os_pid: nil` and broadcast, which
+  # ended nothing. Worse, clearing `os_pid` threw away the only handle anything
+  # could have acted on — so an agent that survived the "stop" became
+  # permanently unreachable, by the stop. That is criterion 2828 caused by its
+  # own remedy.
+  #
+  # An agent with no group id never came up, so there is no process to end and
+  # nothing to ask. That is a real state, not an error: it is the row for an
+  # agent we asked for and no device confirmed, and cancelling it has to work.
+  defp end_process(_scope, %Agent{os_pid: nil}), do: :ok
+
+  defp end_process(_scope, %Agent{} = agent) do
+    Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
+  end
+
+  # Only after something confirmed the process is gone. `os_pid` and
+  # `os_boot_id` are cleared here rather than before, because until the process
+  # is actually gone they are the only way to reach it again.
+  defp record_stopped(scope, agent) do
+    AgentsRepository.update_agent(scope, agent, %{
+      status: :stopped,
+      os_pid: nil,
+      os_boot_id: nil
+    })
+  end
+
   @doc """
   Records what the device reported back about an agent it was asked to start.
+
+  `os_pid` is a process **group** id and `os_boot_id` says which boot it belongs
+  to. They are written together and must stay together: a group id without its
+  boot cannot be told from a recycled number naming a stranger's process, and
+  the only safe thing to do with one is nothing.
+
+  This had no callers for as long as it existed. Nothing launched an agent, so
+  nothing ever had a pid to report — `start_agent/2` minted a config directory
+  and left a row at `:starting` that no device was ever told about.
+  `CmsHarness.Agents.Runner` is the producer that closes it.
   """
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
-  def record_started(%Scope{} = scope, %Agent{} = agent, %{os_pid: os_pid}) do
-    AgentsRepository.update_agent(scope, agent, %{status: :running, os_pid: os_pid})
+  def record_started(%Scope{} = scope, %Agent{} = agent, %{os_pid: os_pid} = report) do
+    AgentsRepository.update_agent(scope, agent, %{
+      status: :running,
+      os_pid: os_pid,
+      os_boot_id: Map.get(report, :os_boot_id)
+    })
   end
 
   defp base_attrs(%Scope{} = scope, attrs) do

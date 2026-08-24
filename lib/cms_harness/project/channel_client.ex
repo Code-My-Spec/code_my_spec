@@ -986,6 +986,29 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # End an agent's process group, because this is the machine it is on.
+  #
+  # The server owns the record and cannot signal anything; it knows a group id
+  # and a boot id and has to ask. The answer is what lets it record the stop, so
+  # this always replies — silence would leave the caller waiting out its timeout
+  # and then reporting a stop that never happened.
+  def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
+    result =
+      CmsHarness.Agents.Runner.stop(
+        %{pgid: msg["os_pid"], boot_id: msg["os_boot_id"]},
+        grace_ms: msg["grace_ms"] || 5_000
+      )
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "agent_stop_result",
+      Map.put(encode_stop_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, event, _payload, socket) do
     Logger.warning(
       "[CmsHarness] the server sent #{inspect(event)}, which this harness does not " <>
@@ -1014,6 +1037,11 @@ defmodule CmsHarness.Project.ChannelClient do
   # server is waiting on a reply and would otherwise sit out its full timeout.
   # Same reason the unknown-event clause above logs rather than dropping.
   defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
+
+  defp encode_stop_result(:ok), do: %{"status" => "ok"}
+
+  defp encode_stop_result({:error, reason}),
+    do: %{"status" => "error", "reason" => to_string(reason)}
 
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}

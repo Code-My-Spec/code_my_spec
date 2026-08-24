@@ -436,6 +436,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   # The harness's answer to a filesystem request. See `handle_call/3` below.
+  # What the machine did about the stop. An unknown ref is dropped rather than
+  # crashing the channel: it means the caller already gave up, and taking the
+  # socket down over a late answer would disconnect every agent on that copy.
+  @impl true
+  def handle_in("agent_stop_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_stop_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
   def handle_in("fs_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(socket.assigns[:pending_fs] || %{}, ref)
     if from, do: GenServer.reply(from, decode_fs_result(msg))
@@ -476,7 +486,35 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, assign(socket, :pending_fs, Map.put(pending_fs(socket), ref, from))}
   end
 
+  # Ending an agent's process group, on the machine that has it.
+  #
+  # Same shape as `fs_request` and for the same reason: the far side has to do
+  # real work — signal, wait out a grace period, escalate — and the answer is
+  # the whole point. `Agents.stop_agent/2` records `:stopped` only if this comes
+  # back `:ok`, so a reply that never arrives must not read as success.
+  @impl true
+  def handle_call({:stop_agent, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "stop_agent", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
+
+  defp pending_agent_stop(socket), do: socket.assigns[:pending_agent_stop] || %{}
+
+  defp decode_stop_result(%{"status" => "ok"}), do: :ok
+
+  defp decode_stop_result(%{"status" => "error", "reason" => reason}),
+    do: {:error, String.to_atom(reason)}
+
+  # A shape this server does not understand is not a stop. Reporting one would
+  # clear `os_pid` on a process that is still running, which is the state
+  # nothing can recover from.
+  defp decode_stop_result(other), do: {:error, {:unexpected_stop_result, other}}
 
   # Always answers, including when the decision raises.
   #

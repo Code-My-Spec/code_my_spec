@@ -100,9 +100,23 @@ defmodule CmsHarness.Agents.Runner do
     grace = Keyword.get(opts, :grace_ms, @term_grace_ms)
 
     handle
-    |> alive?()
+    |> knowable()
     |> do_stop(handle, grace)
   end
+
+  # A group id with no boot beside it cannot be judged, and both available
+  # answers are wrong: signalling it may TERM a stranger's process, and
+  # reporting `:ok` says a stop happened over something that may still be
+  # running and spending. So it says neither.
+  #
+  # Reachable whenever something records `os_pid` without `os_boot_id`. The two
+  # are written together by `record_started/3` precisely so this stays
+  # unreachable — and a silent `:ok` is what would hide it if that ever stopped
+  # being true.
+  defp knowable(%{pgid: pgid, boot_id: boot_id}) when is_integer(pgid) and is_binary(boot_id),
+    do: alive?(%{pgid: pgid, boot_id: boot_id})
+
+  defp knowable(_handle), do: :unknowable
 
   # Nothing of ours is running, so there is nothing to stop and nothing to
   # report as failed. That covers an agent already gone *and* a handle from a
@@ -112,6 +126,16 @@ defmodule CmsHarness.Agents.Runner do
   # that retries and escalates, and escalating against a recycled group id means
   # KILLing a stranger's process — with our own boot check standing between the
   # two and being overruled by a report it did not make.
+  defp do_stop(:unknowable, handle, _grace) do
+    Logger.warning(
+      "[CmsHarness] refusing to stop #{inspect(handle)}: a process group id without the " <>
+        "boot it belongs to cannot be told from a recycled number. Nothing was signalled " <>
+        "and nothing is being reported as stopped."
+    )
+
+    {:error, :no_boot_id}
+  end
+
   defp do_stop(false, _handle, _grace), do: :ok
 
   defp do_stop(true, handle, grace) do
@@ -142,7 +166,7 @@ defmodule CmsHarness.Agents.Runner do
   process belonging to somebody else.
   """
   @spec alive?(handle()) :: boolean()
-  def alive?(%{boot_id: boot_id} = handle) do
+  def alive?(%{boot_id: boot_id} = handle) when is_binary(boot_id) do
     boot_id == boot_id() and group_exists?(handle)
   end
 

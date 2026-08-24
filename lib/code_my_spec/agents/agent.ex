@@ -32,6 +32,17 @@ defmodule CodeMySpec.Agents.Agent do
   and the harness answering, and it stays null for an agent that failed to
   start — which is a different state from one that started and exited, and the
   two must not collapse into each other.
+
+  It is a process **group** id rather than a bare pid: the harness starts each
+  agent as its own group leader, so one signal takes the agent and every tool it
+  spawned. `Workspaces.Runner.Local` reaps a bare pid with `pkill -TERM -P` and
+  its own comment concedes that does not walk past one level of children.
+
+  `os_boot_id` is what makes that number safe to act on. Group ids are reused,
+  so one recorded before a reboot can name a stranger's process afterwards —
+  and TERMing that is a failure nobody would ever trace back here. The pair is
+  written together by `record_started/3` and read together: same boot **and**
+  the group exists, or the agent is not ours to signal.
   """
 
   use Ecto.Schema
@@ -51,6 +62,7 @@ defmodule CodeMySpec.Agents.Agent do
           role: String.t() | nil,
           config_dir: String.t() | nil,
           os_pid: integer() | nil,
+          os_boot_id: String.t() | nil,
           status: atom() | nil,
           working_copy_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
@@ -69,6 +81,7 @@ defmodule CodeMySpec.Agents.Agent do
     field :role, :string, default: "main"
     field :config_dir, :string
     field :os_pid, :integer
+    field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
@@ -94,6 +107,7 @@ defmodule CodeMySpec.Agents.Agent do
       :role,
       :config_dir,
       :os_pid,
+      :os_boot_id,
       :status,
       :working_copy_id,
       :project_id,

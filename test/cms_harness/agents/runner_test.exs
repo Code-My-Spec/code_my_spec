@@ -137,6 +137,18 @@ defmodule CmsHarness.Agents.RunnerTest do
              "would ever trace it back here."
   end
 
+  test "a group id with no boot beside it is refused, not reported stopped" do
+    handle = start_agent()
+
+    assert {:error, :no_boot_id} = Runner.stop(%{pgid: handle.pgid, boot_id: nil}, grace_ms: 0),
+           "a group id nothing can judge was reported stopped. Both answers are " <>
+             "wrong here — signalling may TERM a stranger, and `:ok` says a stop " <>
+             "happened over a process that is still spending."
+
+    assert Runner.alive?(handle),
+           "the refusal signalled the group anyway"
+  end
+
   test "stopping something already gone is not an error" do
     handle = start_agent()
     assert :ok = Runner.stop(handle)
