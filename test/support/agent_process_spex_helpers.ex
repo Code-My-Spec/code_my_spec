@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
       |> Keyword.get(:children, 0)
       |> body()
       |> trap(Keyword.get(opts, :traps_term, false))
+      |> finish_on_term(Keyword.get(opts, :finishes_at))
 
     {:ok, %{pgid: pgid, boot_id: boot_id}} = Runner.start("/bin/sh", ["-c", script])
 
@@ -53,6 +54,14 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   # process blocked in a syscall all behave this way.
   defp trap(script, false), do: script
   defp trap(script, true), do: "trap '' TERM; " <> script
+
+  # An agent that uses the signal as its cue to finish. The marker file stands
+  # in for the commit: something that only exists if the agent got to complete
+  # the work it was part-way through rather than being cut off mid-write.
+  defp finish_on_term(script, nil), do: script
+
+  defp finish_on_term(script, path),
+    do: "trap 'echo done > #{path}; exit 0' TERM; " <> script
 
   defmodule UnreachableMachine do
     @moduledoc """
