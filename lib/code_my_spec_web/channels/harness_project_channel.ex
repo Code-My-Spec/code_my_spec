@@ -440,6 +440,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # crashing the channel: it means the caller already gave up, and taking the
   # socket down over a late answer would disconnect every agent on that copy.
   @impl true
+  def handle_in("agent_start_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_start_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
   def handle_in("agent_stop_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_stop_result(msg))
@@ -492,6 +498,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # real work — signal, wait out a grace period, escalate — and the answer is
   # the whole point. `Agents.stop_agent/2` records `:stopped` only if this comes
   # back `:ok`, so a reply that never arrives must not read as success.
+  # Launching an agent, on the machine that will hold the process.
+  #
+  # The reply carries the process group id and the boot it belongs to, which
+  # `Agents.record_started/3` writes together. Until this existed that function
+  # had no callers at all: `start_agent/2` minted a config directory and left a
+  # row at `:starting` that no machine was ever told about.
+  @impl true
+  def handle_call({:start_agent, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "start_agent", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   @impl true
   def handle_call({:stop_agent, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
@@ -505,6 +527,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 
   defp pending_agent_stop(socket), do: socket.assigns[:pending_agent_stop] || %{}
+
+  # Both halves of the pair or neither. A group id recorded without its boot
+  # cannot later be told from a recycled number, and the only safe thing to do
+  # with one of those is nothing — so a reply carrying only half is not a start.
+  defp decode_start_result(%{"status" => "ok", "os_pid" => pid, "os_boot_id" => boot})
+       when is_integer(pid) and is_binary(boot),
+       do: {:ok, %{os_pid: pid, os_boot_id: boot}}
+
+  defp decode_start_result(%{"status" => "error", "reason" => reason}),
+    do: {:error, String.to_atom(reason)}
+
+  defp decode_start_result(other), do: {:error, {:unexpected_start_result, other}}
 
   defp decode_stop_result(%{"status" => "ok"}), do: :ok
 

@@ -80,6 +80,67 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     assert Task.await(task, 3_000) == :ok
   end
 
+  test "a launch travels to the machine and its group id comes back", %{socket: socket} do
+    caller = self()
+
+    task =
+      Task.async(fn ->
+        send(caller, :asking)
+
+        GenServer.call(
+          socket.channel_pid,
+          {:start_agent,
+           %{
+             "agent_id" => "agent-1",
+             "engine" => "pi",
+             "config_dir" => "/tmp/cfg",
+             "working_copy" => "/tmp/copy"
+           }},
+          5_000
+        )
+      end)
+
+    assert_receive :asking, 1_000
+    assert_push "start_agent", pushed, 2_000
+
+    assert pushed["engine"] == "pi" and pushed["config_dir"] == "/tmp/cfg",
+           "the machine decides the command from the engine and points it at the " <>
+             "config directory, so both have to arrive"
+
+    push(socket, "agent_start_result", %{
+      "ref" => pushed["ref"],
+      "status" => "ok",
+      "os_pid" => 4242,
+      "os_boot_id" => "boot-abc"
+    })
+
+    assert Task.await(task, 3_000) == {:ok, %{os_pid: 4242, os_boot_id: "boot-abc"}}
+  end
+
+  test "a launch reporting a group id without its boot is not a start", %{socket: socket} do
+    caller = self()
+
+    task =
+      Task.async(fn ->
+        send(caller, :asking)
+        GenServer.call(socket.channel_pid, {:start_agent, %{"engine" => "pi"}}, 5_000)
+      end)
+
+    assert_receive :asking, 1_000
+    assert_push "start_agent", pushed, 2_000
+
+    push(socket, "agent_start_result", %{
+      "ref" => pushed["ref"],
+      "status" => "ok",
+      "os_pid" => 4242
+    })
+
+    assert {:error, {:unexpected_start_result, _}} = Task.await(task, 3_000),
+           "recording a group id with no boot beside it produces an agent that can " <>
+             "never be judged: signalling it may reach a stranger, and reporting it " <>
+             "stopped claims a stop that did not happen"
+  end
+
   test "a machine that could not end the group does not report a stop", %{socket: socket} do
     task = ask_to_stop(socket, %{"agent_id" => "a", "os_pid" => 1, "os_boot_id" => "b"})
 

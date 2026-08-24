@@ -29,6 +29,21 @@ defmodule CodeMySpec.Agents.Transport do
   alias CodeMySpec.Agents.Agent
 
   @doc """
+  Ask the machine serving `working_copy_id` to launch this agent.
+
+  Answers `{:ok, %{os_pid: group_id, os_boot_id: boot}}` — the pair
+  `Agents.record_started/3` writes together, because a group id without its boot
+  cannot later be told from a recycled number.
+
+  What to run is decided on the far side. The server knows the engine, the
+  config directory and the working copy; the machine knows what is installed on
+  it, and a machine with no `pi` on its PATH is a fact only that machine has. It
+  says so rather than the server assuming.
+  """
+  @callback start_agent(working_copy_id :: String.t(), agent :: Agent.t(), timeout()) ::
+              {:ok, %{os_pid: pos_integer(), os_boot_id: String.t()}} | {:error, term()}
+
+  @doc """
   Ask the machine serving `working_copy_id` to end this agent's process group.
 
   `:ok` means the group is gone and the caller may record the stop.

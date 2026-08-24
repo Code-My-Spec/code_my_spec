@@ -44,6 +44,10 @@ defmodule CodeMySpec.Agents do
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
   @stop_timeout_ms 10_000
+
+  # Long enough for a cold start on a loaded box, short enough that a machine
+  # that is never going to answer does not hold the caller.
+  @start_timeout_ms 15_000
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.PiConfig
@@ -89,9 +93,42 @@ defmodule CodeMySpec.Agents do
          {:ok, config_dir} <- PiConfig.mint(agent, credential),
          {:ok, agent} <- AgentsRepository.update_agent(scope, agent, %{config_dir: config_dir}),
          {:ok, _conversation} <- open_conversation(scope, agent) do
+      agent = launch(scope, agent)
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
+  end
+
+  # Ask the machine to bring it up, and record what it reports.
+  #
+  # Best-effort on purpose, and the row already has a word for the outcome.
+  # `:starting` means "we asked and no machine has confirmed", which is exactly
+  # true when the copy's harness is not connected — and the working copies page
+  # already renders it as "Starting · we asked for this one; no harness has
+  # confirmed it". Failing the whole call instead would make an agent
+  # unstartable whenever its machine happened to be offline, and would discard
+  # the config directory that was just minted for it.
+  defp launch(scope, %Agent{} = agent) do
+    case Transport.impl().start_agent(agent.working_copy_id, agent, @start_timeout_ms) do
+      {:ok, report} -> record_or_keep(scope, agent, report)
+      {:error, reason} -> keep_starting(agent, reason)
+    end
+  end
+
+  defp record_or_keep(scope, agent, report) do
+    case record_started(scope, agent, report) do
+      {:ok, running} -> running
+      {:error, _reason} -> agent
+    end
+  end
+
+  defp keep_starting(agent, reason) do
+    Logger.info(
+      "[Agents] agent #{agent.id} was not started on its machine (#{inspect(reason)}); " <>
+        "it stays :starting, which is what the page shows as asked-for and unconfirmed"
+    )
+
+    agent
   end
 
   # An agent that cannot be watched is indistinguishable from one that never

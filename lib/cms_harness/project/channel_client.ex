@@ -992,6 +992,24 @@ defmodule CmsHarness.Project.ChannelClient do
   # and a boot id and has to ask. The answer is what lets it record the stop, so
   # this always replies — silence would leave the caller waiting out its timeout
   # and then reporting a stop that never happened.
+  # Launch an agent here, because this is the machine that will hold it.
+  #
+  # The command is decided here rather than sent: what is installed is a fact
+  # only this machine has, and a box with no `pi` on its PATH should say so
+  # rather than have the server discover it from a failed spawn.
+  def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
+    result = CmsHarness.Agents.launch(msg)
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "agent_start_result",
+      Map.put(encode_start_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
     result =
       CmsHarness.Agents.Runner.stop(
@@ -1037,6 +1055,12 @@ defmodule CmsHarness.Project.ChannelClient do
   # server is waiting on a reply and would otherwise sit out its full timeout.
   # Same reason the unknown-event clause above logs rather than dropping.
   defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
+
+  defp encode_start_result({:ok, %{os_pid: pid, os_boot_id: boot}}),
+    do: %{"status" => "ok", "os_pid" => pid, "os_boot_id" => boot}
+
+  defp encode_start_result({:error, reason}),
+    do: %{"status" => "error", "reason" => to_string(reason)}
 
   defp encode_stop_result(:ok), do: %{"status" => "ok"}
 

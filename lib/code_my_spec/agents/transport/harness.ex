@@ -16,24 +16,64 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   alias CodeMySpecWeb.HarnessRegistry
 
   @impl true
-  def stop_agent(working_copy_id, %Agent{} = agent, timeout) do
-    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
-      [{pid, _}] -> call(pid, agent, timeout)
-      [] -> unreachable(working_copy_id, agent)
+  def start_agent(working_copy_id, %Agent{} = agent, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} -> call(pid, {:start_agent, launch_request(agent)}, timeout, :start_timed_out)
+      :none -> unreachable(working_copy_id, agent, "start")
     end
   end
 
-  defp call(pid, agent, timeout) do
-    GenServer.call(pid, {:stop_agent, request(agent, timeout)}, timeout + 5_000)
+  @impl true
+  def stop_agent(working_copy_id, %Agent{} = agent, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(pid, {:stop_agent, stop_request(agent, timeout)}, timeout, :stop_timed_out)
+
+      :none ->
+        unreachable(working_copy_id, agent, "stop")
+    end
+  end
+
+  # The channel holding this copy, or nothing.
+  #
+  # `Registry.lookup/2` raises when the registry itself is not running, and that
+  # is not an error the caller can act on differently: "no harness registered"
+  # and "no registry to ask" are the same answer — nobody is reachable. Anything
+  # that boots without the data plane is in the second case, which is every spex
+  # run and the light harness itself.
+  defp holder(working_copy_id) do
+    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
+      [{pid, _}] -> {:ok, pid}
+      [] -> :none
+    end
+  rescue
+    ArgumentError -> :none
+  end
+
+  defp call(pid, message, timeout, timeout_reason) do
+    GenServer.call(pid, message, timeout + 5_000)
   catch
     :exit, {:timeout, _} ->
       # Distinct from "no harness". The machine is there and did not finish, so
-      # the process may well still be running — and reporting a stop here would
-      # be the lie the whole story is about.
-      {:error, :stop_timed_out}
+      # for a stop the process may well still be running — and reporting one
+      # here would be the lie the whole story is about.
+      {:error, timeout_reason}
   end
 
-  defp request(%Agent{} = agent, timeout) do
+  # What the far side needs to decide a command and where to run it. Not a
+  # command: the machine knows what is installed on it and the server does not.
+  defp launch_request(%Agent{} = agent) do
+    %{
+      "agent_id" => agent.id,
+      "engine" => to_string(agent.engine),
+      "provider" => agent.provider,
+      "config_dir" => agent.config_dir,
+      "working_copy" => agent.working_copy,
+      "role" => agent.role
+    }
+  end
+
+  defp stop_request(%Agent{} = agent, timeout) do
     %{
       "agent_id" => agent.id,
       "os_pid" => agent.os_pid,
@@ -46,11 +86,12 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   # stopped": the process is on a machine we cannot currently reach, so it is
   # very likely still running and still spending. The operator is told which of
   # the two it is, because the remedies differ entirely.
-  defp unreachable(working_copy_id, agent) do
+  defp unreachable(working_copy_id, agent, verb) do
     Logger.warning(
-      "[Agents] cannot stop agent #{agent.id}: nothing registered for working copy " <>
-        "#{working_copy_id}. Its process group #{inspect(agent.os_pid)} is on a machine " <>
-        "this server cannot reach, so it has not been stopped and may still be running."
+      "[Agents] cannot #{verb} agent #{agent.id}: nothing registered for working copy " <>
+        "#{working_copy_id}. That machine is not reachable from this server, so nothing " <>
+        "was asked of it — for a stop, the process group #{inspect(agent.os_pid)} may " <>
+        "still be running."
     )
 
     {:error, :harness_not_connected}
