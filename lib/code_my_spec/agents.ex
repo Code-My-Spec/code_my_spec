@@ -49,6 +49,10 @@ defmodule CodeMySpec.Agents do
 
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
+  # A turn is a model call. Long enough for real work, short enough that a
+  # wedged agent does not hold a caller forever.
+  @message_timeout_ms 180_000
+
   @stop_timeout_ms 10_000
 
   # Long enough for a cold start on a loaded box, short enough that a machine
@@ -162,6 +166,27 @@ defmodule CodeMySpec.Agents do
       scope.active_project_id,
       "pi:#{agent.working_copy}"
     )
+  end
+
+  @doc """
+  Give a running agent something to do.
+
+  The capability the engine change was chosen for, and the one that was missing
+  after it: an agent could be started, listed and stopped, and never asked to do
+  anything, so it idled until somebody stopped it.
+
+  Answers with whatever the agent said. An agent that is not running, or whose
+  machine cannot be reached, is an error rather than a silent nothing — an
+  instruction that went nowhere and reported success is worse than one that
+  failed.
+  """
+  @spec message_agent(Scope.t(), Ecto.UUID.t(), String.t(), timeout()) ::
+          {:ok, String.t()} | {:error, term()}
+  def message_agent(%Scope{} = scope, id, text, timeout \\ @message_timeout_ms)
+      when is_binary(text) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id) do
+      Transport.impl().message_agent(agent.working_copy_id, agent, text, timeout)
+    end
   end
 
   @doc """

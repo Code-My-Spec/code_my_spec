@@ -477,6 +477,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
+  def handle_in("agent_message_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_message_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
   def handle_in("agent_stop_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_stop_result(msg))
@@ -546,6 +552,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   @impl true
+  def handle_call({:message_agent, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "message_agent", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   def handle_call({:stop_agent, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -573,6 +588,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     do: {:error, String.to_atom(reason)}
 
   defp decode_start_result(other), do: {:error, {:unexpected_start_result, other}}
+
+  defp decode_message_result(%{"status" => "ok", "reply" => reply}) when is_binary(reply),
+    do: {:ok, reply}
+
+  defp decode_message_result(%{"status" => "error", "reason" => reason}),
+    do: {:error, String.to_atom(reason)}
+
+  # A shape this server does not understand is not an answer. Reporting one as
+  # success would tell an operator their instruction landed when nothing knows
+  # whether it did.
+  defp decode_message_result(other), do: {:error, {:unexpected_message_result, other}}
 
   defp decode_stop_result(%{"status" => "ok"}), do: :ok
 

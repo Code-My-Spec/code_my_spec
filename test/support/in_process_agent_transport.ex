@@ -38,4 +38,10 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     Machine.ensure_supervisor()
     Agents.halt(agent.id)
   end
+
+  @impl true
+  def message_agent(_working_copy_id, agent, message, timeout) do
+    Machine.ensure_supervisor()
+    Agents.message(agent.id, message, timeout)
+  end
 end

@@ -24,6 +24,22 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   @impl true
+  def message_agent(working_copy_id, %Agent{} = agent, message, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(
+          pid,
+          {:message_agent, %{"agent_id" => agent.id, "message" => message, "timeout" => timeout}},
+          timeout,
+          :message_timed_out
+        )
+
+      :none ->
+        unreachable(working_copy_id, agent, "message")
+    end
+  end
+
+  @impl true
   def stop_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} ->

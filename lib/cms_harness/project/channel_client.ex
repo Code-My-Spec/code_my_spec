@@ -1034,6 +1034,30 @@ defmodule CmsHarness.Project.ChannelClient do
   # boot it belonged to, because a group number outlives the group and gets
   # reused — a supervised process has no such problem, and the server already
   # knows the id it asked us to start.
+  # Give a running agent something to do.
+  #
+  # Answered from a task, not from here: a turn is a model call and can take
+  # minutes, and holding the channel for it would stall every other thing this
+  # copy needs to say — its reports, its manifests, its next stop — behind one
+  # agent thinking.
+  def handle_message(_topic, "message_agent", %{"ref" => ref} = msg, socket) do
+    topic = socket.assigns.topic
+    parent = self()
+
+    Task.start(fn ->
+      result =
+        CmsHarness.Agents.message(
+          msg["agent_id"],
+          msg["message"],
+          msg["timeout"] || 180_000
+        )
+
+      send(parent, {:agent_message_result, topic, ref, result})
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
     result = CmsHarness.Agents.halt(msg["agent_id"])
 
@@ -1125,6 +1149,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
   end
 
+  defp encode_message_result({:ok, reply}) when is_binary(reply),
+    do: %{"status" => "ok", "reply" => reply}
+
+  defp encode_message_result({:ok, other}),
+    do: %{"status" => "ok", "reply" => inspect(other)}
+
+  defp encode_message_result({:error, reason}),
+    do: %{"status" => "error", "reason" => to_string(reason)}
+
   defp encode_stop_result(:ok), do: %{"status" => "ok"}
 
   defp encode_stop_result({:error, reason}),
@@ -1133,6 +1166,18 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
+
+  @impl Slipstream
+  def handle_info({:agent_message_result, topic, ref, result}, socket) do
+    push(
+      socket,
+      topic,
+      "agent_message_result",
+      Map.put(encode_message_result(result), "ref", ref)
+    )
+
+    {:noreply, socket}
+  end
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do

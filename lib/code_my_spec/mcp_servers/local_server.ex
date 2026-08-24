@@ -122,6 +122,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
   component(CodeMySpec.McpServers.Agents.Tools.StopAgent)
+  component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
 
   # AwaitAnalysis is a tombstone, not a tool. Waiting for the analyzers is
   # `POST /api/analysis/wait` — MCP caps a request at 30s and a sweep runs

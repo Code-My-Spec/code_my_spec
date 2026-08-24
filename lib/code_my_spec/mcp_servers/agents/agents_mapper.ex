@@ -36,6 +36,22 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  @doc """
+  What the agent said back.
+
+  The id is repeated because a reply with no agent on it is unattributable the
+  moment more than one is running, which is the normal case on a working copy.
+  """
+  @spec replied(String.t(), String.t()) :: Response.t()
+  def replied(agent_id, reply) do
+    Response.tool()
+    |> Response.text("""
+    Agent: #{agent_id}
+
+    #{reply}
+    """)
+  end
+
   @spec listing([Agent.t()]) :: Response.t()
   def listing([]) do
     Response.tool()

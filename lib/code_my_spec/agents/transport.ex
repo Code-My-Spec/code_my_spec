@@ -44,6 +44,26 @@ defmodule CodeMySpec.Agents.Transport do
               {:ok, %{os_pid: pos_integer(), os_boot_id: String.t()}} | {:error, term()}
 
   @doc """
+  Give a running agent something to do, and wait for the turn.
+
+  The capability the whole engine change was for. Delivering a message used to
+  mean a held stdin pipe — a FIFO with a writer inside the agent's own process
+  group so it never saw EOF, plus a protocol nobody had written down. It is a
+  call now, and this is the seam it crosses.
+
+  Answers `{:ok, text}` with whatever the agent said, or `{:error, reason}`. A
+  turn can take minutes: the timeout is the caller's choice rather than a
+  constant here, because "send a one-line instruction" and "work on this story"
+  are the same call with very different patience.
+  """
+  @callback message_agent(
+              working_copy_id :: String.t(),
+              agent :: Agent.t(),
+              message :: String.t(),
+              timeout()
+            ) :: {:ok, String.t()} | {:error, term()}
+
+  @doc """
   Ask the machine serving `working_copy_id` to end this agent's process group.
 
   `:ok` means the group is gone and the caller may record the stop.

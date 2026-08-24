@@ -61,6 +61,17 @@ defmodule CmsHarness.Agents do
   defdelegate halt(agent_id), to: Engine, as: :stop
 
   @doc """
+  Give a running agent something to do, and wait for the turn.
+
+  The whole of what a held stdin pipe was for. `Engine.chat/3` is the call; this
+  is the name the wire uses for it.
+  """
+  @spec message(String.t(), String.t(), timeout()) :: {:ok, term()} | {:error, term()}
+  def message(agent_id, text, timeout \\ 180_000) when is_binary(text) do
+    Engine.chat(agent_id, text, timeout)
+  end
+
+  @doc """
   Agent ids running here, read from the registry rather than from anything we
   were told — so it cannot disagree with what is actually alive.
   """
