@@ -64,6 +64,42 @@ defmodule CodeMySpec.Agents.Transport do
             ) :: {:ok, String.t()} | {:error, term()}
 
   @doc """
+  Hand a running agent a message without waiting for the turn.
+
+  The same delivery as `message_agent/4` and a different promise. That one is
+  for a caller who wants the answer and can wait minutes for it; this is for a
+  person at a page, who cannot. What the agent says comes back the way
+  everything else it does comes back — as turn events, in the transcript they
+  are already reading.
+
+  Answers `{:ok, :started}` or `{:ok, :queued}`. The difference is the only
+  thing the sender can still act on: a queued message can be taken back, and a
+  started one is already the agent's.
+  """
+  @callback dispatch_message(
+              working_copy_id :: String.t(),
+              agent :: Agent.t(),
+              ref :: String.t(),
+              message :: String.t(),
+              timeout()
+            ) :: {:ok, :started | :queued} | {:error, term()}
+
+  @doc """
+  Take back a message the agent has not picked up yet.
+
+  `{:error, :already_delivered}` is a real answer rather than a failure: the
+  turn ended while the operator was reaching for the control. Reporting success
+  there would leave them believing the agent was stopped while it acts on the
+  thing they thought they took back.
+  """
+  @callback withdraw_message(
+              working_copy_id :: String.t(),
+              agent :: Agent.t(),
+              ref :: String.t(),
+              timeout()
+            ) :: :ok | {:error, term()}
+
+  @doc """
   Ask the machine serving `working_copy_id` to end this agent's process group.
 
   `:ok` means the group is gone and the caller may record the stop.

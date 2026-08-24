@@ -17,5 +17,15 @@ defmodule CodeMySpecTest.UnreachableMachine do
   def start_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
 
   @impl true
+  def message_agent(_copy, _agent, _message, _timeout), do: {:error, :harness_not_connected}
+
+  @impl true
+  def dispatch_message(_copy, _agent, _ref, _message, _timeout),
+    do: {:error, :harness_not_connected}
+
+  @impl true
+  def withdraw_message(_copy, _agent, _ref, _timeout), do: {:error, :harness_not_connected}
+
+  @impl true
   def stop_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
 end

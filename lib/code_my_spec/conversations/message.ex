@@ -53,6 +53,15 @@ defmodule CodeMySpec.Conversations.Message do
     # proves the widget works if it arrived from the deployed site rather than
     # from someone's laptop.
     field :origin, :string
+    # Whether the agent this was sent at has it. nil for everything that is not
+    # an operator message at an agent — a widget message has no delivery
+    # question, it is already where it was going.
+    field :delivery, Ecto.Enum, values: [:delivered, :pending, :withdrawn]
+    # The sender's handle on it while it can still be taken back. Minted before
+    # the message leaves and carried by the machine, so a withdrawal names the
+    # message rather than describing it: two identical messages are
+    # indistinguishable by text at exactly the moment it matters.
+    field :delivery_ref, :string
 
     belongs_to :conversation, Conversation
 
@@ -80,6 +89,17 @@ defmodule CodeMySpec.Conversations.Message do
     |> Enum.map(&get(&1, "file"))
   end
 
+  @doc """
+  Whether the agent this was sent at actually has it.
+
+  False while it waits and false once it is taken back, so a caller asking "did
+  this reach the agent" cannot get a yes out of a message the agent has never
+  seen. A message with no delivery question — anything that is not aimed at an
+  agent — is not delivered to one either.
+  """
+  @spec delivered?(t()) :: boolean()
+  def delivered?(%__MODULE__{delivery: delivery}), do: delivery == :delivered
+
   @doc "Builds a single text part — the shape of an ordinary human message."
   @spec text_part(String.t()) :: map()
   def text_part(text), do: %{"type" => "text", "text" => text}
@@ -87,7 +107,15 @@ defmodule CodeMySpec.Conversations.Message do
   @doc false
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:content, :role, :sender_id, :conversation_id, :origin])
+    |> cast(attrs, [
+      :content,
+      :role,
+      :sender_id,
+      :conversation_id,
+      :origin,
+      :delivery,
+      :delivery_ref
+    ])
     |> validate_required([:role, :conversation_id])
     |> validate_parts()
     |> validate_carries_something()

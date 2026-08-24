@@ -75,6 +75,29 @@ defmodule CmsHarness.Agents do
     end
   end
 
+  @doc """
+  Hand a running agent a message without waiting for the turn.
+
+  `ref` is the operator's handle on it. Answers `:started` or `:queued` — the
+  difference is whether it can still be taken back, which is the only thing the
+  sender can act on before the turn ends.
+  """
+  @spec send_message(String.t(), String.t(), String.t(), timeout()) ::
+          {:ok, :started | :queued} | {:error, term()}
+  def send_message(agent_id, ref, text, timeout \\ 180_000) when is_binary(text) do
+    Engine.send_message(agent_id, ref, text, timeout)
+  end
+
+  @doc """
+  Take back a message the agent has not picked up.
+
+  `{:error, :already_delivered}` when it has, which is a real outcome rather
+  than a failure to handle: the window is small and it is exactly the window in
+  which people click.
+  """
+  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
+  defdelegate withdraw(agent_id, ref), to: Engine
+
   # What the agent said, out of what Alloy hands back.
   #
   # The result carries the whole turn — every message, the tool manifest, the
@@ -82,6 +105,12 @@ defmodule CmsHarness.Agents do
   # operator as four thousand tokens of scaffolding with the actual answer
   # somewhere inside, so the reply is narrowed here, where the wire contract
   # already says it is a string.
+  #
+  # Busy is one of the answers. Reported as what it is rather than as an empty
+  # turn: an operator told "(no message)" concludes the agent ignored them, and
+  # sends it again.
+  defp said({:queued, _ref}), do: "(queued — the agent is mid-turn and will get this next)"
+
   defp said(%{text: text}) when is_binary(text) and text != "", do: text
 
   defp said(%{tool_calls: calls}) when is_list(calls) and calls != [] do

@@ -328,6 +328,11 @@ defmodule CodeMySpec.Conversations do
       conversation_id: conversation.id,
       role: role,
       origin: Keyword.get(opts, :origin),
+      # Only an operator message aimed at an agent carries these; everything
+      # else leaves them nil, which is the honest answer to a question that
+      # does not apply.
+      delivery: Keyword.get(opts, :delivery),
+      delivery_ref: Keyword.get(opts, :delivery_ref),
       # Text and files are both parts now. Callers still pass them separately
       # because that is how the widget and the operator form send them; the
       # split stops at this boundary.
@@ -350,6 +355,62 @@ defmodule CodeMySpec.Conversations do
   # end-user (or assistant) message marks it unread so the inbox surfaces it.
   defp read_after(:operator), do: true
   defp read_after(_role), do: false
+
+  @doc """
+  Move a message from waiting to settled, and say so on the topic.
+
+  Broadcast rather than left for the next render: a page still offering to take
+  back something the agent is already acting on is the failure the ref exists
+  to prevent, and it cannot know without being told.
+  """
+  @spec set_delivery(Message.t(), :delivered | :withdrawn) ::
+          {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
+  def set_delivery(%Message{} = message, delivery)
+      when delivery in [:delivered, :withdrawn] do
+    message
+    |> Ecto.Changeset.change(delivery: delivery)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        Phoenix.PubSub.broadcast(
+          CodeMySpec.PubSub,
+          conversation_topic(updated.conversation_id),
+          {:message_updated, updated}
+        )
+
+        {:ok, updated}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  The message waiting on `ref`, if it is still waiting.
+
+  Scoped to `:pending` deliberately. A ref that names a message the agent
+  already has must not be findable here, or a withdrawal would clear a row the
+  agent is acting on and the transcript would disagree with the agent.
+  """
+  @spec pending_message_by_ref(String.t()) :: Message.t() | nil
+  def pending_message_by_ref(ref) when is_binary(ref) do
+    Repo.get_by(Message, delivery_ref: ref, delivery: :pending)
+  end
+
+  @doc """
+  What this conversation is still waiting to deliver, oldest first.
+
+  Read rather than held in a view's assigns: a person who reloads the page has
+  not stopped waiting, and a pending message that vanished on refresh reads as
+  one that was never accepted.
+  """
+  @spec pending_messages(Conversation.t()) :: [Message.t()]
+  def pending_messages(%Conversation{} = conversation) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id and m.delivery == :pending)
+    |> order_by([m], asc: m.inserted_at)
+    |> Repo.all()
+  end
 
   @doc """
   A page of messages for a conversation, oldest-first (ready to render).

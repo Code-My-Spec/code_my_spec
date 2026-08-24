@@ -40,6 +40,39 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   @impl true
+  def dispatch_message(working_copy_id, %Agent{} = agent, ref, message, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(
+          pid,
+          {:dispatch_message,
+           %{"agent_id" => agent.id, "message_ref" => ref, "message" => message}},
+          timeout,
+          :message_timed_out
+        )
+
+      :none ->
+        unreachable(working_copy_id, agent, "message")
+    end
+  end
+
+  @impl true
+  def withdraw_message(working_copy_id, %Agent{} = agent, ref, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(
+          pid,
+          {:withdraw_message, %{"agent_id" => agent.id, "message_ref" => ref}},
+          timeout,
+          :withdraw_timed_out
+        )
+
+      :none ->
+        unreachable(working_copy_id, agent, "withdraw a message from")
+    end
+  end
+
+  @impl true
   def stop_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} ->

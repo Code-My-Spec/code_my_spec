@@ -205,6 +205,147 @@ defmodule CodeMySpec.Agents do
   defp delivered_or_working(result), do: result
 
   @doc """
+  Send an operator's message at a running agent, without waiting for the turn.
+
+  `message_agent/4` waits and answers with what the agent said, which is right
+  for an MCP caller and wrong for a person at a page: a turn is minutes. Here
+  the answer arrives the way everything else an agent does arrives — as turn
+  events, in the transcript they are already reading.
+
+  ## Recorded after the machine answers, never before
+
+  The message goes on the conversation only once the machine has said what
+  became of it, and with that outcome on the row. Written first, a transcript
+  claims the agent was told every time the machine could not be reached — and
+  an operator reading it has no way to tell that from an agent ignoring them.
+
+  `{:ok, :started}` means the agent has it. `{:ok, :queued}` means it will when
+  the turn ends, and until then it can be taken back.
+  """
+  @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
+  def dispatch_message(%Scope{} = scope, id, text) when is_binary(text) do
+    ref = Ecto.UUID.generate()
+
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         {:ok, disposition} <-
+           Transport.impl().dispatch_message(
+             agent.working_copy_id,
+             agent,
+             ref,
+             text,
+             @message_timeout_ms
+           ),
+         {:ok, conversation} <- open_conversation(scope, agent),
+         {:ok, message} <- record_sent(conversation, text, ref, disposition) do
+      {:ok, disposition, message}
+    end
+  end
+
+  # Started or queued, on the row. The difference is the only thing the sender
+  # can still act on, so it is not something the view infers from a timestamp.
+  defp record_sent(conversation, text, ref, disposition) do
+    Conversations.add_message(conversation, :operator, text, "operator", [],
+      delivery: delivery_of(disposition),
+      delivery_ref: ref
+    )
+  end
+
+  defp delivery_of(:started), do: :delivered
+  defp delivery_of(:queued), do: :pending
+
+  @doc """
+  Take back a message the agent has not picked up yet.
+
+  Asked of the machine first and recorded second, for the same reason as
+  sending: the agent's process is the only thing that knows whether the turn
+  ended a moment ago, and a withdrawal that only cleared the record would leave
+  the operator believing the agent will not see something it is about to act
+  on.
+
+  `{:error, :already_delivered}` is the honest answer to a click that lost the
+  race — which is most of them, because people click when a turn is about to
+  end.
+  """
+  @spec withdraw_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, Conversations.Message.t()} | {:error, term()}
+  def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <-
+           Transport.impl().withdraw_message(
+             agent.working_copy_id,
+             agent,
+             ref,
+             @message_timeout_ms
+           ),
+         %Conversations.Message{} = message <- Conversations.pending_message_by_ref(ref) do
+      Conversations.set_delivery(message, :withdrawn)
+    else
+      # The machine took it back and the row is already gone or already
+      # settled. Nothing to correct, and nothing worth failing over.
+      nil -> {:error, :not_pending}
+      error -> error
+    end
+  end
+
+  @doc """
+  Write one step an agent took to the conversation it belongs to.
+
+  Written on arrival rather than accumulated until the turn completes. A turn
+  that fails has already left everything it did behind it, which is the whole
+  point of watching one — an agent going wrong is exactly the turn that does
+  not finish cleanly.
+
+  Here rather than in the channel because the channel is the wire, not the
+  decision. A spex driving "the machine reported a step" has to drive this, and
+  a private function inside a channel handler cannot be driven at all.
+  """
+  @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  def record_turn_event(%Scope{} = scope, agent_id, event) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      write_turn_event(conversation, agent, event)
+    else
+      # An agent that is not ours, or a step for one nobody can find. Dropped
+      # rather than written somewhere plausible: a transcript under the wrong
+      # agent is worse than a missing one, because it reads as that agent's
+      # work.
+      _ -> :ok
+    end
+  end
+
+  # A message the agent has just picked up is not a step of a turn — it is the
+  # end of the operator's ability to take it back, and the only thing to record
+  # is that.
+  defp write_turn_event(_conversation, _agent, %{"kind" => "message_delivered", "ref" => ref})
+       when is_binary(ref) do
+    case Conversations.pending_message_by_ref(ref) do
+      nil -> :ok
+      message -> with {:ok, _} <- Conversations.set_delivery(message, :delivered), do: :ok
+    end
+  end
+
+  defp write_turn_event(conversation, agent, event) do
+    Conversations.add_agent_message(
+      conversation,
+      agent.role || "main",
+      turn_event_kind(event),
+      turn_event_text(event)
+    )
+
+    :ok
+  end
+
+  # The kinds a conversation already renders. An event this server does not
+  # know is still worth keeping — it is something the agent did — so it lands
+  # as a message rather than being discarded for not matching a list.
+  defp turn_event_kind(%{"kind" => kind}) when is_binary(kind), do: kind
+  defp turn_event_kind(_event), do: "step"
+
+  defp turn_event_text(%{"text" => text}) when is_binary(text), do: text
+  defp turn_event_text(event), do: inspect(event)
+
+  @doc """
   Record what a harness reports it is actually running.
 
   `list_running/1` answers from the database — the agents we asked for. This is

@@ -78,7 +78,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # those carry. Not for ordinary changes on either side: a version that moves
   # for everything means a refusal on every deploy, which trains people to
   # ignore it.
-  @contract_version 1
+  @contract_version 2
 
   @doc """
   The channel contract version this harness speaks.
@@ -1058,6 +1058,43 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # Hand an agent a message and say what became of it, without waiting for the
+  # turn.
+  #
+  # Answered from here rather than from a task, unlike `message_agent` above:
+  # the engine decides started-or-queued without running anything, so there is
+  # no turn to hold the channel behind.
+  def handle_message(_topic, "send_message", %{"ref" => ref} = msg, socket) do
+    result =
+      CmsHarness.Agents.send_message(
+        msg["agent_id"],
+        msg["message_ref"],
+        msg["message"]
+      )
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "agent_send_result",
+      Map.put(encode_send_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
+  def handle_message(_topic, "withdraw_message", %{"ref" => ref} = msg, socket) do
+    result = CmsHarness.Agents.withdraw(msg["agent_id"], msg["message_ref"])
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "agent_withdraw_result",
+      Map.put(encode_withdraw_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
     result = CmsHarness.Agents.halt(msg["agent_id"])
 
@@ -1179,6 +1216,9 @@ defmodule CmsHarness.Project.ChannelClient do
       "kind" => to_string(Map.get(envelope, :event, "step")),
       "seq" => Map.get(envelope, :seq),
       "turn" => Map.get(envelope, :turn),
+      # Only a delivery event has one, and for that event it is the whole
+      # message: this named thing is no longer withdrawable.
+      "ref" => Map.get(envelope, :ref),
       "text" => turn_event_text(envelope)
     }
   end
@@ -1191,6 +1231,26 @@ defmodule CmsHarness.Project.ChannelClient do
       other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect()
     end
   end
+
+  # Started or queued, which is the whole answer: the difference is whether the
+  # sender can still take it back.
+  defp encode_send_result({:ok, disposition}) when disposition in [:started, :queued],
+    do: %{"status" => "ok", "disposition" => to_string(disposition)}
+
+  defp encode_send_result({:error, reason}),
+    do: %{"status" => "error", "reason" => reason_text(reason)}
+
+  # `already_delivered` travels as its own status rather than as an error
+  # string. It is not a failure — the agent has the message — and whoever asked
+  # has to be able to tell it from "the machine could not be reached", because
+  # one means the agent is acting on it and the other means nobody knows.
+  defp encode_withdraw_result(:ok), do: %{"status" => "ok"}
+
+  defp encode_withdraw_result({:error, :already_delivered}),
+    do: %{"status" => "already_delivered"}
+
+  defp encode_withdraw_result({:error, reason}),
+    do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp encode_message_result({:ok, reply}) when is_binary(reply),
     do: %{"status" => "ok", "reply" => reply}

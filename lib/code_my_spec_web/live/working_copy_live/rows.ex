@@ -12,10 +12,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   A **harness is a working copy** — `WorkingCopies.issue/3` mints one id per
   checkout. A copy runs **one or more agents**, told apart by the lane's role.
-  The copy's turns land in **one conversation**, keyed `pi:<root>`, because that
-  is how the harness keys itself: every lane on a copy joins
-  `harness:session:pi:<cwd>` and the team's transcript lands together. So the
-  chat link belongs to the copy, and the liveness belongs to each agent.
+  Each agent has **its own conversation**, so a copy running two of them has two
+  threads and `chats` has two entries.
+
+  That is a change. The turns used to land in one conversation keyed
+  `pi:<root>`, because a copy ran one lane and the transcript was the copy's
+  story. With several, their turns interleaved into a single thread, following
+  either was impossible, and a reply could not say who it was for.
 
   Reading, not writing. The conversation is looked up and never created here:
   these run on mount and on every broadcast, and a read that writes makes the
@@ -44,7 +47,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
           harness: struct(),
           label: String.t(),
           agents: [struct()],
-          conversation: struct() | nil,
+          chats: [%{agent: struct(), conversation: struct(), message_count: non_neg_integer()}],
           heading: String.t(),
           device: struct() | nil,
           device_name: String.t() | nil,
@@ -82,17 +85,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> Enum.find(&(&1.harness.id == working_copy_id))
   end
 
-  # Keyed the way a lane keys itself, so the transcript a copy's agents write to
-  # is the one the page links at.
+  # Keyed by the agent, which is what a conversation belongs to now.
   defp transcripts(scope, project) do
     scope
     |> Conversations.list_agent_conversations(project.id)
-    |> Map.new(&{&1.conversation.session_external_id, &1})
+    |> Map.new(&{&1.conversation.agent_id, &1})
   end
 
   defp build(harness, agents, transcripts, now) do
-    on_this_copy = Enum.filter(agents, &(&1.working_copy_id == harness.id))
-    transcript = Map.get(transcripts, "pi:#{harness.root}")
+    on_this_copy =
+      agents |> Enum.filter(&(&1.working_copy_id == harness.id)) |> Enum.sort_by(& &1.role)
+
+    chats = Enum.flat_map(on_this_copy, &chat(&1, transcripts))
+    latest = latest_message_at(chats)
 
     %{
       harness: harness,
@@ -100,14 +105,47 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       device_name: device_name(harness),
       label: harness.label || harness.root,
       heading: WorkingCopies.display_name(harness),
-      agents: Enum.sort_by(on_this_copy, & &1.role),
-      conversation: transcript && transcript.conversation,
-      message_count: (transcript && transcript.message_count) || 0,
-      last_message_at: transcript && transcript.last_message_at,
-      last_message: transcript && Liveness.since(transcript.last_message_at, now),
+      agents: on_this_copy,
+      chats: chats,
+      # The copy's totals, summed across its agents. A list row has space for
+      # one number and the question it answers — has anything been said here
+      # lately — is about the copy, not about which thread it was said in.
+      message_count: Enum.sum(Enum.map(chats, & &1.message_count)),
+      last_message_at: latest,
+      last_message: latest && Liveness.since(latest, now),
       liveness: Liveness.working_copy(on_this_copy, now),
       missing: missing(harness, now)
     }
+  end
+
+  # An agent with no conversation yet contributes nothing rather than an empty
+  # one: a link to a transcript that does not exist is a page that 404s, and
+  # this runs on every broadcast, so creating one here would mint a row every
+  # time somebody opens the list.
+  defp chat(agent, transcripts) do
+    case Map.get(transcripts, agent.id) do
+      nil ->
+        []
+
+      transcript ->
+        [
+          %{
+            agent: agent,
+            conversation: transcript.conversation,
+            message_count: transcript.message_count,
+            last_message_at: transcript.last_message_at
+          }
+        ]
+    end
+  end
+
+  defp latest_message_at([]), do: nil
+
+  defp latest_message_at(chats) do
+    chats
+    |> Enum.map(& &1.last_message_at)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
   end
 
   # Whether the checkout is still at its root, as its own machine last reported.

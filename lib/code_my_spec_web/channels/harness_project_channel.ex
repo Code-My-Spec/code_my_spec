@@ -40,7 +40,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents
-  alias CodeMySpec.Conversations
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices
@@ -140,7 +139,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `CmsHarness.Project.ChannelClient`'s copy — the two *are* the contract, so
   # they are the two places that have to agree. Bump on a change to the join
   # payload, the `handle_in` set, or the shapes those carry.
-  @contract_version 1
+  @contract_version 2
 
   @doc """
   The channel contract version this server speaks.
@@ -482,7 +481,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Replied to rather than ignored so the machine knows the step landed, but the
   # machine does not wait on it: it casts.
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
-    record_turn_event(socket.assigns.scope, agent_id, event)
+    Agents.record_turn_event(socket.assigns.scope, agent_id, event)
     {:reply, :ok, socket}
   end
 
@@ -495,6 +494,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in("agent_message_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_message_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
+  def handle_in("agent_send_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_send_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
+  def handle_in("agent_withdraw_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_withdraw_result(msg))
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
@@ -576,6 +587,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  def handle_call({:dispatch_message, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "send_message", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
+  def handle_call({:withdraw_message, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "withdraw_message", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   def handle_call({:stop_agent, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -627,43 +656,33 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     start_timed_out
     stop_timed_out
     message_timed_out
+    withdraw_timed_out
+    already_delivered
   )
 
   defp decode_reason(reason) when reason in @machine_reasons, do: String.to_atom(reason)
   defp decode_reason(reason), do: reason
 
-  # An agent that is not ours, or a step for one nobody can find, is dropped
-  # rather than written somewhere plausible. A transcript under the wrong agent
-  # is worse than a missing one: it reads as that agent's work.
-  defp record_turn_event(scope, agent_id, event) do
-    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
-         {:ok, conversation} <-
-           Conversations.find_or_create_agent_conversation(
-             scope.active_account_id,
-             scope.active_project_id,
-             agent.id
-           ) do
-      Conversations.add_agent_message(
-        conversation,
-        agent.role || "main",
-        turn_event_kind(event),
-        turn_event_text(event)
-      )
+  # What became of a message the operator sent. Anything this server cannot
+  # read is an error rather than a default disposition: reporting "delivered"
+  # for an answer we did not understand is the failure this story is about.
+  defp decode_send_result(%{"status" => "ok", "disposition" => "started"}), do: {:ok, :started}
+  defp decode_send_result(%{"status" => "ok", "disposition" => "queued"}), do: {:ok, :queued}
 
-      :ok
-    else
-      _ -> :ok
-    end
-  end
+  defp decode_send_result(%{"reason" => reason}) when is_binary(reason),
+    do: {:error, decode_reason(reason)}
 
-  # The kinds a conversation already renders. An event this server does not know
-  # is still worth keeping — it is something the agent did — so it lands as a
-  # message rather than being discarded for not matching a list.
-  defp turn_event_kind(%{"kind" => kind}) when is_binary(kind), do: kind
-  defp turn_event_kind(_event), do: "step"
+  defp decode_send_result(_msg), do: {:error, :unreadable_send_result}
 
-  defp turn_event_text(%{"text" => text}) when is_binary(text), do: text
-  defp turn_event_text(event), do: inspect(event)
+  defp decode_withdraw_result(%{"status" => "ok"}), do: :ok
+
+  defp decode_withdraw_result(%{"status" => "already_delivered"}),
+    do: {:error, :already_delivered}
+
+  defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
+    do: {:error, decode_reason(reason)}
+
+  defp decode_withdraw_result(_msg), do: {:error, :unreadable_withdraw_result}
 
   defp decode_message_result(%{"status" => "ok", "reply" => reply}) when is_binary(reply),
     do: {:ok, reply}

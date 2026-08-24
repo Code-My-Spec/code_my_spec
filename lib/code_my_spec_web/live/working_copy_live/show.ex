@@ -7,18 +7,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   The index can only summarise that ("2 agents present"); here each lane is its
   own row with its own engine, provider, process and evidence of life.
 
-  ## The chat link belongs to the copy, not to the lane
+  ## One chat link per agent
 
-  Every lane on a copy joins `harness:session:pi:<cwd>`, so one conversation
-  holds the whole team's turns — `Agents.start_agent/2` and a Pi lane pushing
-  `agent_message` both key on `pi:<root>`. Splitting the link per agent would
-  promise five transcripts and open the same one five times.
+  A conversation belongs to an agent, so a copy running five of them has five
+  transcripts and this lists five links. It used to be one link per copy,
+  keyed `pi:<root>`, from when a copy ran one lane — with several, their turns
+  interleaved into one thread and a single link could only open the one nobody
+  had asked for.
 
-  It appears only when a conversation exists and only for a copy with a Pi
-  agent on it. A Claude Code agent has no lane to route a `user_message` to, so
-  offering the chat would accept text and drop it — worse than offering
-  nothing, because the person believes they redirected an agent and finds out
-  when the work comes back wrong.
+  A link appears only where a conversation exists. A Claude Code agent has no
+  lane to route a message to, so offering its chat would accept text and drop
+  it — worse than offering nothing, because the person believes they redirected
+  an agent and finds out when the work comes back wrong.
 
   ## Still nothing that ends anything
 
@@ -105,10 +105,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # it" and then invited you to message it. The moduledoc above is the argument:
   # a box with no lane behind it accepts text and drops it, which is worse than
   # no box, and an *offer* to open one is the same promise one click earlier.
-  defp chattable?(%{conversation: nil}), do: false
+  defp chattable?(%{chats: []}), do: false
 
-  defp chattable?(%{agents: agents}),
-    do: Enum.any?(agents, &(&1.engine == :pi and &1.status == :running))
+  defp chattable?(%{chats: chats}),
+    do: Enum.any?(chats, &(&1.agent.engine == :pi and &1.agent.status == :running))
 
   # Why there is nothing to talk to, in the terms of this copy rather than in
   # general. "A Claude Code agent reports over hooks" is a true sentence and the
@@ -227,20 +227,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         <section class="mt-8">
           <h2 class="text-lg font-semibold">Transcript</h2>
           <p class="mt-1 text-sm opacity-70">
-            Every lane on this copy writes to one conversation, which is where you talk
-            back to them.
+            Each agent on this copy has its own transcript, which is where you watch it
+            work and talk back to it.
           </p>
 
-          <div :if={chattable?(@row)} class="mt-3 flex items-center gap-3">
+          <div
+            :for={chat <- @row.chats}
+            class="mt-3 flex items-center gap-3"
+            data-test="agent-chat"
+          >
             <.button
-              navigate={~p"/app/projects/#{@project.id}/agent-conversation/#{@row.conversation.id}"}
+              navigate={~p"/app/projects/#{@project.id}/agent-conversation/#{chat.conversation.id}"}
               data-test="open-agent-chat"
               class="btn btn-sm btn-primary"
             >
-              Open agent chat
+              Open {chat.agent.role} chat
             </.button>
             <span class="text-xs opacity-60">
-              {@row.message_count} messages<span :if={@row.last_message}>, last {@row.last_message}</span>
+              {chat.message_count} messages<span :if={chat.last_message_at}>, last {Liveness.since(chat.last_message_at, @now)}</span>
             </span>
           </div>
 

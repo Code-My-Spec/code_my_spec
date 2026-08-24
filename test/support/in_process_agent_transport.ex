@@ -44,4 +44,16 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     Machine.ensure_supervisor()
     Agents.message(agent.id, message, timeout)
   end
+
+  @impl true
+  def dispatch_message(_working_copy_id, agent, ref, message, timeout) do
+    Machine.ensure_supervisor()
+    Agents.send_message(agent.id, ref, message, timeout)
+  end
+
+  @impl true
+  def withdraw_message(_working_copy_id, agent, ref, _timeout) do
+    Machine.ensure_supervisor()
+    Agents.withdraw(agent.id, ref)
+  end
 end

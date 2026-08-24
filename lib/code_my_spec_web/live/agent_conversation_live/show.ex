@@ -11,12 +11,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   is a person answering something they cannot read. `WorkingCopyLive.Show`
   links in rather than growing a second, worse transcript of its own.
 
-  The box appears only where there is a lane on the other end — a `pi:<root>`
-  session with a Pi agent the harness is currently reporting on that copy. A
-  Claude Code agent has no channel to receive a `user_message` on, so a box
-  offered against one would take the text and drop it: worse than no box,
-  because the person believes they redirected an agent and finds out when the
-  work comes back wrong.
+  The box appears only where there is an agent on the other end — this
+  conversation's own agent, running now. A conversation with no agent, or whose
+  agent has stopped, has nowhere to put what you type, and a box offered over
+  one would take the text and drop it: worse than no box, because the person
+  believes they redirected an agent and finds out when the work comes back
+  wrong.
+
+  It used to be gated on `pi:<root>`: any Pi lane the harness reported on that
+  *copy*. That key outlived the agent that opened it, so the box appeared over
+  finished sessions, and a copy running two agents had one answer for both.
 
   One page is one **session**, taken from the URL. It used to be "whichever
   conversation for this project moved most recently", which reads as *the*
@@ -84,23 +88,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:recording_gap, conversation != nil and messages == [])
     |> assign(:questions, questions_for(conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
+    |> assign(:pending, pending_for(conversation))
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
   end
 
-  # A conversation is answerable when a Pi lane is running on the copy it is
-  # keyed to. Checked against what the harness is reporting rather than against
-  # the key alone: `pi:<root>` outlives the agent that opened it, and a box on a
-  # dead session is the same broken promise as a box on a Claude Code one.
+  # A conversation is answerable when its own agent is running.
+  #
+  # Its own, not any agent on the copy. The old test was "a Pi lane the harness
+  # reports on `pi:<root>`", and that key outlives the agent that opened it —
+  # so the box appeared over sessions that had finished, which is the same
+  # broken promise as a box over something that never had a lane.
   defp talkable?(_scope, nil), do: false
 
-  defp talkable?(scope, %{session_external_id: "pi:" <> root}) do
+  defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     scope
     |> Agents.list_running()
-    |> Enum.any?(&(&1.working_copy == root and &1.engine == :pi))
+    |> Enum.any?(&(&1.id == agent_id))
   end
 
   defp talkable?(_scope, _conversation), do: false
+
+  # What this conversation is still waiting to hand over. Read from the record
+  # rather than kept in assigns: a person who reloads has not stopped waiting,
+  # and a pending message that vanished on refresh reads as one that was never
+  # accepted.
+  defp pending_for(nil), do: []
+  defp pending_for(conversation), do: Conversations.pending_messages(conversation)
 
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
@@ -124,22 +138,41 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp with_active_project(scope, project),
     do: %{scope | active_project: project, active_project_id: project.id}
 
-  # The turn goes onto the conversation as an operator message; `HarnessChannel`
-  # is subscribed to the topic and pushes it down to the lane as `user_message`.
-  # Nothing is pushed at the harness from here directly — the conversation is
-  # the record, and a send that bypassed it would reach the agent without ever
-  # appearing in the transcript the operator is reading.
+  # Delivered to the agent, and recorded from what the machine answered.
   #
-  # `add_message/4` with role `:operator`, **not** `add_agent_message/4`. The
-  # latter maps every kind but "tool"/"user" to `:assistant`, and the channel
-  # matches `%Message{role: :operator}` to decide what goes down the wire — so a
-  # reply written that way lands in the transcript looking sent and is never
-  # pushed to the lane. It reads as delivered from both ends and reaches nobody.
+  # This used to be `Conversations.add_message(:operator, ...)` and nothing
+  # else: the message was written into the transcript and never sent anywhere.
+  # It read as delivered from both ends and reached nobody.
+  #
+  # Nothing is written here either, for the opposite reason — `dispatch_message`
+  # records it, once the machine has said what became of it, with that outcome
+  # on the row. Written first, the transcript claims the agent was told every
+  # time the machine could not be reached.
   @impl true
+  def handle_event("send_message", _params, %{assigns: %{talkable?: false}} = socket) do
+    # A control that is merely hidden is still reachable, and "no button" is a
+    # weaker promise than "no effect". Nothing is recorded, because a
+    # transcript claiming something was said to an agent that was not there to
+    # hear it is worse than an unanswered click.
+    {:noreply, put_flash(socket, :error, "That agent is not running, so nothing was sent.")}
+  end
+
   def handle_event("send_message", %{"message" => message}, socket) do
-    socket.assigns.conversation
-    |> Conversations.add_message(:operator, message, "operator")
+    socket.assigns.current_scope
+    |> Agents.dispatch_message(socket.assigns.conversation.agent_id, message)
     |> sent(socket)
+  end
+
+  # Taking one back, while it is still only waiting.
+  #
+  # Asked of the machine rather than cleared here: a withdrawal that only
+  # cleared the view would leave the operator believing the agent will not see
+  # something it is about to act on, which is the worst of the three possible
+  # outcomes.
+  def handle_event("withdraw_message", %{"ref" => ref}, socket) do
+    socket.assigns.current_scope
+    |> Agents.withdraw_message(socket.assigns.conversation.agent_id, ref)
+    |> withdrawn(socket)
   end
 
   # The questions this session asked. They belong here rather than only on a
@@ -228,14 +261,58 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # conversation topic, so the message it just wrote arrives back through
   # `handle_info/2` like any other turn. Appending as well would render it
   # twice.
-  defp sent({:ok, _message}, socket), do: {:noreply, socket}
+  defp sent({:ok, :started, _message}, socket), do: {:noreply, socket}
 
-  defp sent({:error, _reason}, socket),
-    do: {:noreply, put_flash(socket, :error, "That message could not be sent.")}
+  defp sent({:ok, :queued, message}, socket),
+    do: {:noreply, assign(socket, :pending, socket.assigns.pending ++ [message])}
+
+  # Named, not generic. "Could not be sent" over a machine that is not
+  # reachable and over an agent that has stopped send a person to different
+  # places, and the second is something they can act on immediately.
+  defp sent({:error, reason}, socket),
+    do: {:noreply, put_flash(socket, :error, undelivered(reason))}
+
+  defp undelivered(:harness_not_connected),
+    do:
+      "That message could not be delivered: the machine holding this working copy " <>
+        "is not reachable from here, so the agent has not been told."
+
+  defp undelivered(:not_running),
+    do: "That message could not be delivered: the agent is no longer running."
+
+  defp undelivered(reason),
+    do: "That message could not be delivered (#{inspect(reason)})."
+
+  defp withdrawn({:ok, message}, socket),
+    do: {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
+
+  # The race this exists for: the turn ended while the operator was reaching
+  # for the control. Told rather than reported as a success, because they are
+  # about to watch the agent act on something they believe was taken back.
+  defp withdrawn({:error, :already_delivered}, socket),
+    do:
+      {:noreply,
+       socket
+       |> put_flash(:info, "Too late — the agent has already been given that message.")
+       |> assign(:pending, pending_for(socket.assigns.conversation))}
+
+  defp withdrawn({:error, reason}, socket),
+    do:
+      {:noreply,
+       put_flash(socket, :error, "That message could not be taken back (#{inspect(reason)}).")}
+
+  defp drop_ref(socket, ref), do: Enum.reject(socket.assigns.pending, &(&1.delivery_ref == ref))
 
   @impl true
   def handle_info({:new_message, message}, socket) do
     {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
+  end
+
+  # A waiting message settled — the agent picked it up, or it was taken back.
+  # Either way it is no longer something the operator can change, and a control
+  # still offering to change it is the failure the ref exists to prevent.
+  def handle_info({:message_updated, message}, socket) do
+    {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -334,6 +411,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </div>
         </div>
 
+        <div
+          :for={message <- @pending}
+          data-test="agent-pending-message"
+          class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
+        >
+          <span class="opacity-60">
+            waiting for the agent to finish its turn: {Conversations.Message.text(message)}
+          </span>
+          <button
+            type="button"
+            phx-click="withdraw_message"
+            phx-value-ref={message.delivery_ref}
+            data-test="agent-withdraw-message"
+            class="btn btn-xs btn-ghost"
+          >
+            Take it back
+          </button>
+        </div>
+
         <form
           :if={@talkable?}
           data-test="agent-message-form"
@@ -356,8 +452,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           data-test="agent-not-talkable"
           class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
         >
-          Nothing is listening on this session. Only a Pi lane the harness is
-          currently reporting can be answered.
+          This agent is not running, so there is nothing to send a message to.
         </p>
       </div>
     </Layouts.app>

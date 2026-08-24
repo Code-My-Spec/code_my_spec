@@ -95,10 +95,48 @@ defmodule CmsHarness.Agents.Engine do
 
   This is the whole of what a held stdin pipe was for.
   """
-  @spec chat(String.t(), String.t(), timeout()) :: {:ok, term()} | {:error, term()}
+  @spec chat(String.t(), String.t(), timeout()) ::
+          {:ok, term()} | {:ok, {:queued, String.t()}} | {:error, term()}
   def chat(agent_id, message, timeout \\ 180_000) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:chat, message, timeout}, timeout + 5_000)
+    end
+  end
+
+  @doc """
+  Give a running agent something to do without waiting for the turn.
+
+  `chat/3` answers when the turn is over, which is what a caller at an MCP tool
+  wants and the wrong shape for a person at a page: a turn is minutes, and a
+  page that waited one out looks broken. The answer arrives the same way
+  everything else the agent does arrives — as turn events, in the transcript
+  they are already reading.
+
+  `ref` names the message, which is what makes it withdrawable: without one,
+  taking something back means describing it, and two identical messages become
+  indistinguishable at the moment it matters.
+  """
+  @spec send_message(String.t(), String.t(), String.t(), timeout()) ::
+          {:ok, :started | :queued} | {:error, term()}
+  def send_message(agent_id, ref, message, timeout \\ 180_000) do
+    with {:ok, pid} <- whereis(agent_id) do
+      GenServer.call(pid, {:send, ref, message, timeout})
+    end
+  end
+
+  @doc """
+  Take back a message the agent has not picked up yet.
+
+  `{:error, :already_delivered}` when it has. That refusal is the point: a turn
+  ends while somebody is reaching for the control, and reporting success there
+  leaves them believing the agent was stopped while it acts on the thing they
+  thought they took back.
+  """
+  @spec withdraw(String.t(), String.t()) ::
+          :ok | {:error, :already_delivered | :not_running}
+  def withdraw(agent_id, ref) do
+    with {:ok, pid} <- whereis(agent_id) do
+      GenServer.call(pid, {:withdraw, ref})
     end
   end
 
@@ -167,7 +205,12 @@ defmodule CmsHarness.Agents.Engine do
            provider: Keyword.fetch!(opts, :provider),
            on_stop: Keyword.get(opts, :on_stop),
            on_event: Keyword.get(opts, :on_event),
-           alloy: alloy
+           alloy: alloy,
+           # The turn in flight, or nil. One at a time — an agent working two
+           # turns at once in one checkout is two agents editing one tree.
+           turn: nil,
+           # What is waiting for it, oldest first.
+           queue: []
          }}
 
       {:error, reason} ->
@@ -175,10 +218,66 @@ defmodule CmsHarness.Agents.Engine do
     end
   end
 
+  # Idle, so the turn starts now and this caller waits it out.
   @impl true
-  def handle_call({:chat, message, timeout}, _from, state) do
-    {:reply, run_turn(state, message, timeout), state}
+  def handle_call({:chat, message, timeout}, from, %{turn: nil} = state) do
+    {:noreply, %{state | turn: start_turn(state, new_ref(), message, timeout, from)}}
   end
+
+  # Busy. Waiting is the answer rather than blocking: holding the caller would
+  # make them wait two turns for one, and the ref is what lets them change
+  # their mind in the meantime.
+  def handle_call({:chat, message, timeout}, _from, state) do
+    ref = new_ref()
+    {:reply, {:ok, {:queued, ref}}, enqueue(state, ref, message, timeout)}
+  end
+
+  def handle_call({:send, ref, message, timeout}, _from, %{turn: nil} = state) do
+    {:reply, {:ok, :started}, %{state | turn: start_turn(state, ref, message, timeout, nil)}}
+  end
+
+  def handle_call({:send, ref, message, timeout}, _from, state) do
+    {:reply, {:ok, :queued}, enqueue(state, ref, message, timeout)}
+  end
+
+  # Only what is still waiting can be taken back. Anything else the agent
+  # already has, and there is no unsaying it — so this says so instead of
+  # clearing a queue entry that is not there and reporting success.
+  def handle_call({:withdraw, ref}, _from, state) do
+    case Enum.split_with(state.queue, &(&1.ref == ref)) do
+      {[], _keep} -> {:reply, {:error, :already_delivered}, state}
+      {_taken, keep} -> {:reply, :ok, %{state | queue: keep}}
+    end
+  end
+
+  # The turn answered.
+  @impl true
+  def handle_info({task_ref, result}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
+    Process.demonitor(task_ref, [:flush])
+    settle(state, result)
+  end
+
+  # The turn died. Whoever was waiting hears why rather than waiting out a
+  # timeout, and the agent stays up: one turn failing is not the agent failing,
+  # and killing it here would lose everything queued behind it.
+  def handle_info(
+        {:DOWN, task_ref, :process, _pid, reason},
+        %{turn: %{task: %Task{ref: task_ref}}} = state
+      ) do
+    settle(state, {:error, reason})
+  end
+
+  # The loop this agent *is* went away. Nothing is left to be an agent with, so
+  # this goes too rather than staying registered as something that will accept
+  # a message and can never answer it.
+  def handle_info({:EXIT, alloy, reason}, %{alloy: alloy} = state) do
+    {:stop, reason, state}
+  end
+
+  # A task exiting, arriving here because this process traps exits. The `DOWN`
+  # above is what acts on it; this keeps a normal completion from being logged
+  # as something unexpected.
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   # Asked, not killed.
   #
@@ -197,6 +296,57 @@ defmodule CmsHarness.Agents.Engine do
   defp run_on_stop(_), do: :ok
 
   # -------------------------------------------------------------------- private
+
+  # A turn, running where it cannot make the agent unreachable.
+  #
+  # In a task rather than in `handle_call` because an agent that cannot answer
+  # while it works cannot be sent anything while it works — and mid-turn is
+  # when an operator most wants to. Linked, and this process traps exits, so a
+  # turn that crashes arrives as a message instead of taking the agent with it.
+  defp start_turn(state, ref, message, timeout, awaiting) do
+    announce_delivery(state, ref)
+
+    %{
+      task: Task.async(fn -> run_turn(state, message, timeout) end),
+      awaiting: awaiting,
+      ref: ref
+    }
+  end
+
+  defp enqueue(state, ref, message, timeout) do
+    %{state | queue: state.queue ++ [%{ref: ref, message: message, timeout: timeout}]}
+  end
+
+  # A turn ended: whoever was waiting hears about it, and whatever was waiting
+  # goes next. In the order it was sent, because the second thing an operator
+  # says usually assumes the first.
+  defp settle(state, result) do
+    reply_to(state.turn.awaiting, result)
+    drain(%{state | turn: nil})
+  end
+
+  defp drain(%{queue: []} = state), do: {:noreply, state}
+
+  defp drain(%{queue: [next | rest]} = state) do
+    turn = start_turn(state, next.ref, next.message, next.timeout, nil)
+    {:noreply, %{state | queue: rest, turn: turn}}
+  end
+
+  defp reply_to(nil, _result), do: :ok
+  defp reply_to(from, result), do: GenServer.reply(from, result)
+
+  # The moment a message stops being withdrawable, said out loud. A view still
+  # offering to take back something the agent is already acting on is the
+  # failure this exists to prevent, and it cannot know without being told.
+  defp announce_delivery(%{on_event: nil}, _ref), do: :ok
+
+  defp announce_delivery(state, ref) do
+    state.on_event.(state.agent_id, %{event: :message_delivered, ref: ref})
+  end
+
+  # Short and random rather than sequential: a ref is a handle on the wire, and
+  # a guessable one names another operator's message.
+  defp new_ref, do: Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
   # A turn that reports itself as it goes.
   #
