@@ -161,11 +161,14 @@ defmodule CodeMySpec.Agents do
   # One conversation per working copy matches the harness's own model, where
   # every lane on a copy joins `harness:session:pi:<cwd>` and the whole team's
   # transcript lands together.
+  # The agent's own thread. It was `pi:<working_copy>`, so every agent on a copy
+  # opened the same one and their turns interleaved with nothing saying who
+  # spoke.
   defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
       scope.active_project_id,
-      "pi:#{agent.working_copy}"
+      agent.id
     )
   end
 
@@ -370,7 +373,7 @@ defmodule CodeMySpec.Agents do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
       scope.active_project_id,
-      "pi:#{agent.working_copy}"
+      agent.id
     )
   end
 

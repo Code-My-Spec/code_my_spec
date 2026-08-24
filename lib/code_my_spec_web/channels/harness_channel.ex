@@ -50,7 +50,11 @@ defmodule CodeMySpecWeb.HarnessChannel do
         socket
       ) do
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(socket.assigns.account_id, project_id, ext)
+      Conversations.find_or_create_session_conversation(
+        socket.assigns.account_id,
+        project_id,
+        ext
+      )
 
     Conversations.add_agent_message(conversation, role, kind, text)
     {:noreply, ensure_subscribed(socket, conversation)}

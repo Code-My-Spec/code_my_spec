@@ -1324,7 +1324,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defp spex_agent_conversation(%Scope{} = scope) do
-    Conversations.find_or_create_agent_conversation(
+    Conversations.find_or_create_session_conversation(
       scope.active_account_id,
       scope.active_project_id,
       "sprite"

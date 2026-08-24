@@ -99,11 +99,17 @@ defmodule CodeMySpec.Conversations do
   # ---- Background-agent side (harness session, no end user) ----
 
   @doc """
-  Finds the conversation for a background-agent session — keyed by the harness
-  `session_external_id` (the shared id for the whole Pi team) — or creates it.
-  Agent conversations have no end user; the whole team's transcript lands here.
+  Finds a conversation keyed by an external session id, or creates it.
+
+  For the threads under `type: :agent` that have no agent: a Claude Code lane
+  pushing under its own id before anything adopted it, and the story interview,
+  which is not an agent in any sense and only borrowed the shape.
+
+  This is what `find_or_create_agent_conversation/3` used to be for everything.
+  Splitting them is the point — one caller has an agent and the other does not,
+  and a single function had to pretend they were the same question.
   """
-  def find_or_create_agent_conversation(account_id, project_id, session_external_id) do
+  def find_or_create_session_conversation(account_id, project_id, session_external_id) do
     case Repo.get_by(Conversation,
            account_id: account_id,
            project_id: project_id,
@@ -122,7 +128,6 @@ defmodule CodeMySpec.Conversations do
           {:ok, conversation} ->
             {:ok, conversation}
 
-          # Lost an insert race — fetch the now-existing row.
           {:error, _changeset} ->
             {:ok,
              Repo.get_by!(Conversation,
@@ -130,6 +135,44 @@ defmodule CodeMySpec.Conversations do
                project_id: project_id,
                session_external_id: session_external_id
              )}
+        end
+
+      conversation ->
+        {:ok, conversation}
+    end
+  end
+
+  @doc """
+  Finds an agent's conversation, or creates it.
+
+  Keyed on the agent. It was keyed on `session_external_id` — `pi:<root>` — so
+  every agent on one working copy found the same row and the whole team's
+  transcript landed there. That was deliberate and it stopped serving: a copy
+  runs several lanes, their turns interleave into one thread, and a reply cannot
+  say which of them spoke.
+
+  A Claude Code lane arrives with an external id and no agent row of its own, so
+  `find_or_create_session_conversation/3` still answers that question under its
+  own name. Two callers, two questions, neither pretending to be the other.
+  """
+  def find_or_create_agent_conversation(account_id, project_id, agent_id) do
+    case Repo.get_by(Conversation, agent_id: agent_id) do
+      nil ->
+        %Conversation{}
+        |> Conversation.agent_changeset(%{
+          account_id: account_id,
+          project_id: project_id,
+          agent_id: agent_id,
+          name: generated_name()
+        })
+        |> Repo.insert()
+        |> case do
+          {:ok, conversation} ->
+            {:ok, conversation}
+
+          # Lost an insert race — fetch the now-existing row.
+          {:error, _changeset} ->
+            {:ok, Repo.get_by!(Conversation, agent_id: agent_id)}
         end
 
       conversation ->
@@ -174,7 +217,13 @@ defmodule CodeMySpec.Conversations do
   a sub-agent's call showing as the parent's is a wrong attribution and there
   is a criterion about it (8172).
   """
-  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments, agent_role \\ "product") do
+  def add_tool_call(
+        %Conversation{} = conversation,
+        call_id,
+        name,
+        arguments,
+        agent_role \\ "product"
+      ) do
     agent_turn(conversation, %{
       role: :assistant,
       agent_role: agent_role,
@@ -573,7 +622,11 @@ defmodule CodeMySpec.Conversations do
     counts =
       from(m in Message,
         group_by: m.conversation_id,
-        select: %{conversation_id: m.conversation_id, count: count(m.id), last_at: max(m.inserted_at)}
+        select: %{
+          conversation_id: m.conversation_id,
+          count: count(m.id),
+          last_at: max(m.inserted_at)
+        }
       )
 
     from(c in Conversation,

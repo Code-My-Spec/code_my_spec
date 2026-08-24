@@ -36,7 +36,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         scope.active_account_id,
         project.id,
         external_id

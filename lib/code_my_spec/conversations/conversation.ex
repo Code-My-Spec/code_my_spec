@@ -37,6 +37,13 @@ defmodule CodeMySpec.Conversations.Conversation do
     # so watching a sprite never raised the support inbox's unread badge.
     field :type, Ecto.Enum, values: [:support, :agent], default: :support
 
+    # Whose thread this is. An agent thread was keyed on the working copy and
+    # held the whole team's transcript — deliberate, and it stopped serving once
+    # a copy ran several lanes: their turns interleaved and a reply could not say
+    # who spoke. The agent has an id, can be started and stopped, and is the
+    # thing doing the talking, so it is the identity.
+    field :agent_id, :binary_id
+
     has_many :messages, Message, preload_order: [asc: :inserted_at]
 
     timestamps(type: :utc_datetime)
@@ -52,17 +59,49 @@ defmodule CodeMySpec.Conversations.Conversation do
   end
 
   @doc """
-  Changeset for a background-agent-session conversation: keyed by
-  `session_external_id` instead of an end-user email (agents have no end user).
+  Changeset for an agent's conversation, keyed by the agent (agents have no end
+  user).
+
+  `session_external_id` is still cast because a Claude Code lane reports itself
+  by external id and is found that way; it is no longer what identifies the
+  thread. An agent thread without an `agent_id` is the shape this replaced.
   """
   def agent_changeset(conversation, attrs) do
     conversation
-    |> cast(attrs, [:account_id, :project_id, :session_external_id, :read, :status, :name])
+    |> cast(attrs, [
+      :account_id,
+      :project_id,
+      :agent_id,
+      :session_external_id,
+      :read,
+      :status,
+      :name
+    ])
     |> put_change(:type, :agent)
-    |> validate_required([:account_id, :project_id, :session_external_id])
+    |> validate_required([:account_id, :project_id])
+    |> validate_keyed()
+    |> unique_constraint(:agent_id, name: :conversations_agent_index)
     |> unique_constraint([:account_id, :project_id, :session_external_id],
       name: :conversations_account_project_session_index
     )
+  end
+
+  # An agent thread is found by its agent, or — for the threads that have no
+  # agent, like a Claude Code lane before adoption or a story interview — by its
+  # external id. With neither it is a row nothing can find again, so that fails
+  # here rather than becoming a duplicate on the next lookup.
+  defp validate_keyed(changeset) do
+    case {get_field(changeset, :agent_id), get_field(changeset, :session_external_id)} do
+      {nil, nil} ->
+        add_error(
+          changeset,
+          :agent_id,
+          "an agent conversation needs an agent, or a session id for the threads that have no agent"
+        )
+
+      _ ->
+        changeset
+    end
   end
 
   @doc """

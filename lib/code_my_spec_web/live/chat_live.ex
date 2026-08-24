@@ -45,8 +45,10 @@ defmodule CodeMySpecWeb.ChatLive do
   defp mount_project(socket, project) do
     scope = socket.assigns.scope
 
+    # A story interview is not an agent in any sense — it borrowed the agent
+    # thread's shape and is keyed by its own external id.
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         scope.active_account_id || project.account_id,
         project.id,
         "story-interview:#{project.id}"

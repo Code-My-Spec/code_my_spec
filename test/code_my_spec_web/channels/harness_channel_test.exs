@@ -149,7 +149,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     _ = :sys.get_state(channel.channel_pid)
 
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         scope.active_account_id,
         scope.active_project_id,
         @external_id
@@ -180,7 +180,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     _ = :sys.get_state(channel.channel_pid)
 
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         scope.active_account_id,
         scope.active_project_id,
         @external_id

@@ -40,7 +40,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderTest do
 
   defp messages(ctx) do
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         ctx.account_id,
         ctx.project_id,
         ctx.session

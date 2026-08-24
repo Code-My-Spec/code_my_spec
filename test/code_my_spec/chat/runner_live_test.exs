@@ -112,7 +112,7 @@ defmodule CodeMySpec.Chat.RunnerLiveTest do
     scope = full_scope_fixture()
 
     {:ok, conversation} =
-      Conversations.find_or_create_agent_conversation(
+      Conversations.find_or_create_session_conversation(
         scope.active_account.id,
         scope.active_project.id,
         "live-runner-test"
