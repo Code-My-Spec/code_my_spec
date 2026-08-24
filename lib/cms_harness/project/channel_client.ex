@@ -1237,9 +1237,54 @@ defmodule CmsHarness.Project.ChannelClient do
       %{name: name} when is_binary(name) -> name
       %{text: text} when is_binary(text) -> text
       %{content: content} when is_binary(content) -> content
+      %{payload: %{name: name} = payload} when is_binary(name) -> tool_text(name, payload)
       other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect()
     end
   end
+
+  # A tool call, as a person would say it: `read mix.exs`.
+  #
+  # The envelope keeps the tool's name and arguments one level down under
+  # `:payload`, so the clauses above miss it and the fallback inspects the whole
+  # map — which is what a watching operator saw: `%{payload: %{error: nil, id:
+  # "call_1", input: %{"file_path" => "mix.exs"}, …}, ts_ms: 1787598792387}`.
+  # Watching an agent work is the feature; debug output is not it.
+  defp tool_text(name, payload) do
+    case primary_argument(Map.get(payload, :input)) do
+      nil -> name
+      argument -> "#{name} #{argument}"
+    end
+  end
+
+  # The one argument worth putting beside the tool's name. A tool call has
+  # several and only one of them says what the call is about — the path being
+  # read, the command being run. Anything else is left off rather than
+  # flattened into the line, because a whole argument map is the thing this
+  # exists to stop printing.
+  # String and atom keys both, because a tool's arguments arrive decoded from
+  # JSON on one path and built in memory on another. The pairs are written out
+  # rather than derived with `String.to_existing_atom/1`: that raises on a name
+  # nothing has interned yet, and raising inside a reporter would turn a
+  # cosmetic problem into a lost step.
+  @naming_arguments [
+    {"file_path", :file_path},
+    {"path", :path},
+    {"command", :command},
+    {"pattern", :pattern},
+    {"query", :query},
+    {"url", :url}
+  ]
+
+  defp primary_argument(input) when is_map(input) do
+    Enum.find_value(@naming_arguments, fn {string_key, atom_key} ->
+      case Map.get(input, string_key) || Map.get(input, atom_key) do
+        value when is_binary(value) -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  defp primary_argument(_input), do: nil
 
   # Started or queued, which is the whole answer: the difference is whether the
   # sender can still take it back.
