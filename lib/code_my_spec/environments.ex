@@ -284,13 +284,25 @@ defmodule CodeMySpec.Environments do
   """
   @spec lookup_registered(any()) :: Environment.t() | nil
   def lookup_registered(project_id) do
+    case running?(@registry) do
+      false -> nil
+      true -> registered(project_id)
+    end
+  end
+
+  defp registered(project_id) do
     case Registry.lookup(@registry, project_id) do
       [{_pid, env}] -> env
       [] -> nil
     end
-  rescue
-    ArgumentError -> nil
   end
+
+  # Asked, not rescued. `Registry.lookup/2` raises when the registry is not
+  # started, and catching that cannot tell "not running" from any other
+  # `ArgumentError` the lookup might raise — including a genuinely wrong module
+  # name, which is how a transport spent a day reporting every machine
+  # unreachable while a rescue quietly agreed with it.
+  defp running?(registry), do: is_pid(Process.whereis(registry))
 
   @doc """
   Create a new execution context and return an opaque Environment struct.

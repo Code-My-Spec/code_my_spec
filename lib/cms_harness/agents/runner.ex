@@ -288,16 +288,25 @@ defmodule CmsHarness.Agents.Runner do
     end
   end
 
+  # A machine that will not say when it booted gets a constant, which makes the
+  # boot check a no-op rather than making every handle read dead — failing the
+  # other way would make `stop/2` refuse to signal anything at all.
+  #
+  # `System.cmd/3` raises when the executable is missing, so the executable is
+  # looked up first. Rescuing instead would also swallow a real failure in the
+  # command itself and report it as the same "unknown".
   defp read_boot_id(command, args) do
-    case System.cmd(command, args, stderr_to_stdout: true) do
+    case System.find_executable(command) do
+      nil -> "unknown"
+      path -> run_boot_id(path, args)
+    end
+  end
+
+  defp run_boot_id(path, args) do
+    case System.cmd(path, args, stderr_to_stdout: true) do
       {out, 0} -> String.trim(out)
       _ -> "unknown"
     end
-  rescue
-    # A machine that will not say when it booted gets a constant, which makes
-    # the boot check a no-op rather than making every handle read dead. Failing
-    # the other way would make `stop/2` refuse to signal anything at all.
-    _ -> "unknown"
   end
 
   # Single-quote everything and escape embedded quotes the POSIX way: close,

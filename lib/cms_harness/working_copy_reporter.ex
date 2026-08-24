@@ -198,18 +198,19 @@ defmodule CmsHarness.WorkingCopyReporter do
   defp gone(missing),
     do: " and #{length(missing)} gone: #{Enum.map_join(missing, ", ", &elem(&1, 0))}"
 
+  # The copies this harness is serving, or none when it is not serving anything.
+  #
+  # `CmsHarness.WorkingCopies.all/0` reads `CmsHarness.Registry`, which does not
+  # exist in a process that never started the harness supervisor — every test
+  # run, and anything embedding these modules. Asked rather than rescued: a
+  # rescue here would also swallow a real fault in the config reader and report
+  # it as "no copies", which is indistinguishable from a harness with nothing to
+  # say.
   defp current_roots do
-    CmsHarness.WorkingCopies.all()
-  rescue
-    # Bookkeeping riding along with an announce that has a real job. A machine
-    # whose filesystem answered badly still gets to keep its identity, and still
-    # reports on the copies it already knew about.
-    error ->
-      Logger.warning(
-        "[CmsHarness] could not read the checkouts this harness serves: #{inspect(error)}"
-      )
-
-      %{}
+    case Process.whereis(CmsHarness.Registry) do
+      nil -> %{}
+      _pid -> CmsHarness.WorkingCopies.all()
+    end
   end
 
   defp schedule(delay), do: Process.send_after(self(), :report, delay)

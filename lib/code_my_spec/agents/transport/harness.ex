@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpecWeb.HarnessRegistry
+  alias CodeMySpec.Analysis
 
   @impl true
   def start_agent(working_copy_id, %Agent{} = agent, timeout) do
@@ -36,18 +36,27 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
   # The channel holding this copy, or nothing.
   #
-  # `Registry.lookup/2` raises when the registry itself is not running, and that
-  # is not an error the caller can act on differently: "no harness registered"
-  # and "no registry to ask" are the same answer — nobody is reachable. Anything
-  # that boots without the data plane is in the second case, which is every spex
-  # run and the light harness itself.
+  # Through `Analysis.executor_holder/1` rather than a `Registry.lookup/2` of
+  # its own, so there is one definition of "which process holds this copy".
+  #
+  # The second definition was wrong and could not be seen to be. It aliased
+  # `CodeMySpecWeb.HarnessRegistry`, which is not a module anywhere — the real
+  # one is `CodeMySpec.Analysis.HarnessRegistry` — so the lookup raised on every
+  # call, and a `rescue ArgumentError -> :none` I had added turned that into
+  # `:harness_not_connected`. Every start and every stop reported the machine
+  # unreachable in every environment, including with a harness connected and
+  # reconciling that exact copy a second earlier.
+  #
+  # The rescue was added to quiet eleven spex failing with "unknown registry",
+  # diagnosed as "the registry is not running in test" without checking that the
+  # module existed. It converted a loud, correct error into a silent wrong
+  # answer, and the suite stayed green because every spex here swaps the
+  # transport for an in-process one — so this module was never exercised.
   defp holder(working_copy_id) do
-    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
-      [{pid, _}] -> {:ok, pid}
-      [] -> :none
+    case Analysis.executor_holder(working_copy_id) do
+      {:ok, pid, _instance} -> {:ok, pid}
+      :error -> :none
     end
-  rescue
-    ArgumentError -> :none
   end
 
   defp call(pid, message, timeout, timeout_reason) do
