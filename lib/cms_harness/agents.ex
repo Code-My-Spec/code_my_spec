@@ -30,12 +30,18 @@ defmodule CmsHarness.Agents do
   @doc """
   Launch the agent this request describes, in its own process group.
 
-  Answers `{:ok, %{os_pid: group_id, os_boot_id: boot}}` — the pair the server
-  records together — or `{:error, reason}` naming what this machine could not
-  do.
+  Answers `{:ok, %{pgid: group_id, boot_id: boot}}` — `Runner`'s handle, the
+  pair that has to travel together — or `{:error, reason}` naming what this
+  machine could not do.
+
+  It said `%{os_pid:, os_boot_id:}` here for as long as this function existed,
+  which are the names the *wire* uses, not the ones it returns.
+  `ChannelClient.encode_start_result/1` believed the docs and matched those
+  names against the handle, so it matched nothing and every start crashed the
+  channel. The translation belongs in the encoder; this says what it hands over.
   """
   @spec launch(map()) ::
-          {:ok, %{os_pid: pos_integer(), os_boot_id: String.t()}} | {:error, atom()}
+          {:ok, %{pgid: pos_integer(), boot_id: String.t()}} | {:error, atom()}
   def launch(%{"engine" => engine} = request) do
     with {:ok, command, args} <- command_for(engine),
          :ok <- working_copy_exists(request["working_copy"]) do
