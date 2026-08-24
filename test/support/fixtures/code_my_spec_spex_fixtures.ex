@@ -813,6 +813,36 @@ defmodule CodeMySpecSpex.Fixtures do
   a real token here would be a secret in the repository for no benefit.
   """
   @spec connect_provider(Scope.t(), atom(), keyword()) :: {:ok, term()}
+  @doc """
+  An agent already running, with a process group the server has recorded.
+
+  The pair — group id and the boot it belongs to — is what `record_started/3`
+  writes, and they are written together because a group id without its boot
+  cannot be told from a recycled number. A fixture setting only one would
+  produce an agent nothing can judge, which the code refuses rather than a state
+  worth testing from.
+
+  Here rather than in a spex because a spex may not reference `CodeMySpec` — the
+  boundary says so, and the crossing belongs in the bridge.
+  """
+  def running_agent(%Scope{} = scope, %{os_pid: os_pid, os_boot_id: boot_id}, opts \\ []) do
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        engine: Keyword.get(opts, :engine, :pi),
+        provider: Keyword.get(opts, :provider, "zai"),
+        working_copy: Keyword.get(opts, :working_copy, scope.cwd || "/tmp/a-copy"),
+        role: Keyword.get(opts, :role, "coding"),
+        working_copy_id: scope.active_working_copy_id,
+        project_id: scope.active_project_id,
+        account_id: scope.active_account_id,
+        status: :running,
+        os_pid: os_pid,
+        os_boot_id: boot_id
+      })
+
+    agent
+  end
+
   def connect_provider(scope, provider, opts \\ []) do
     IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
