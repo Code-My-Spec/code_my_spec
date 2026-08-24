@@ -825,6 +825,17 @@ defmodule CodeMySpecSpex.Fixtures do
   Here rather than in a spex because a spex may not reference `CodeMySpec` — the
   boundary says so, and the crossing belongs in the bridge.
   """
+  @doc """
+  Read one agent back, for criteria whose claim is about what the row now says.
+
+  Here rather than in a spex for the same reason `running_agent/3` is: the
+  boundary refuses `CodeMySpecSpex` reaching into `CodeMySpec`, and it is right
+  to — a spex that queries the database directly has stopped driving the surface
+  it is about. This is the narrow exception where the claim *is* about the
+  record.
+  """
+  def fetch_agent(%Scope{} = scope, id), do: CodeMySpec.Agents.fetch_agent(scope, id)
+
   def running_agent(%Scope{} = scope, %{os_pid: os_pid, os_boot_id: boot_id}, opts \\ []) do
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{

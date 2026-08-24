@@ -33,16 +33,62 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   @spec start_process(keyword()) :: %{os_pid: pos_integer(), os_boot_id: String.t()}
   def start_process(opts \\ []) do
     script =
-      case Keyword.get(opts, :children, 0) do
-        0 -> "sleep 60"
-        n -> Enum.map_join(1..n, "", fn _ -> "sleep 60 & " end) <> "sleep 60"
-      end
+      opts
+      |> Keyword.get(:children, 0)
+      |> body()
+      |> trap(Keyword.get(opts, :traps_term, false))
 
     {:ok, %{pgid: pgid, boot_id: boot_id}} = Runner.start("/bin/sh", ["-c", script])
 
     ExUnit.Callbacks.on_exit(fn -> Runner.stop(%{pgid: pgid, boot_id: boot_id}, grace_ms: 0) end)
 
     %{os_pid: pgid, os_boot_id: boot_id}
+  end
+
+  defp body(0), do: "sleep 60"
+  defp body(n), do: Enum.map_join(1..n, "", fn _ -> "sleep 60 & " end) <> "sleep 60"
+
+  # An agent that will not go quietly. Not contrived: a wrapper with a swallowed
+  # trap, a handler that deadlocks on the work it is trying to finish, or a
+  # process blocked in a syscall all behave this way.
+  defp trap(script, false), do: script
+  defp trap(script, true), do: "trap '' TERM; " <> script
+
+  defmodule UnreachableMachine do
+    @moduledoc """
+    A machine this server cannot reach.
+
+    Not the same as a machine that says the agent is gone. The process is on a
+    box we cannot currently talk to, so it is very likely still running and
+    still spending — and the two want completely different things from whoever
+    is reading.
+    """
+    @behaviour CodeMySpec.Agents.Transport
+
+    @impl true
+    def start_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
+
+    @impl true
+    def stop_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
+  end
+
+  @doc """
+  Put the agent's machine out of reach for this scenario.
+
+  Restored afterwards, because the transport is application-wide: leaving it
+  swapped would make every later spex in the run talk to a machine that refuses
+  everything, and they would fail for a reason that has nothing to do with them.
+  """
+  @spec machine_out_of_reach() :: :ok
+  def machine_out_of_reach do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :agent_transport, previous)
+    end)
+
+    :ok
   end
 
   @doc "Everything currently in this process group."
