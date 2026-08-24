@@ -1,27 +1,36 @@
 defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   @moduledoc """
-  Story 1018 — A Pi agent starts in a minted working copy on my own subscription.
-  Criterion 2823 — The credential lands beside the copy, never inside it.
+  Story 1018 — An agent starts in a minted working copy on my own subscription.
+  Criterion 2823 — The credential is never written down.
 
   Rule: Starting an agent never writes a credential into the working copy.
 
-  A working copy is a git repository whose whole purpose is to be committed and
-  pushed. Anything written into it is a thing that can be committed by an agent
-  that was told to commit its work — and `agent.sh` does exactly that on a clean
-  exit, with `git add -A`. A credential inside the tree is therefore not a risk of
-  leaking; it is a scheduled leak with a supervisor to carry it out.
+  ## Why this stopped being about a directory
 
-  The per-copy configuration directory makes this sharper rather than softer. We
-  now mint a credential file per working copy on purpose, so "outside the tree" is
-  the only thing standing between one and the other.
+  It used to assert that the config directory sat *outside* the checkout. That
+  was the right question when `pi` read `auth.json` off disk: the credential had
+  to live somewhere, so the only thing to get right was where.
+
+  It does not live anywhere now. The credential travels on the wire to the
+  machine and into the engine's memory, and `Agent.credential` is a virtual,
+  redacted field precisely so it cannot be persisted by accident. So the honest
+  assertion is the stronger one the rule always meant: nothing is written down
+  at all.
+
+  That also makes this a real guard rather than a restatement. A checkout that
+  never receives a credential is easy to regress — someone adds `config_dir:`
+  back to a changeset for convenience, or a provider decides to materialise an
+  `auth.json` next to the tree, and nothing else would notice.
+
+  `git add -A` on a clean exit is what makes it expensive: a credential inside
+  the tree is a credential in a commit.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
 
@@ -29,23 +38,14 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   setup :setup_active_project
 
   spex "The tree stays clean" do
-    scenario "The credential lands beside the copy, never inside it" do
-      given_ "a minted working copy", context do
-        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
-        :ok = Environments.register(context.project.id, context.environment)
+    scenario "The credential is never written down" do
+      given_ "a tenant with a connected subscription and a minted working copy", context do
+        {:ok, integration} = Fixtures.connect_provider(context.scope, :openai)
 
-        # A minted copy is a project, not an empty directory. It also has to
-        # contain *something* for the tree to be listable at all — and a copy
-        # with no files could not carry a credential either, which would make
-        # this criterion pass for the wrong reason.
-        :ok = Environments.write_file(context.environment, "mix.exs", "defmodule App.MixProject do
-end
-")
-
-        {:ok, context}
+        {:ok, Map.put(context, :integration, integration)}
       end
 
-      when_ "a Pi agent is started on it with its own config directory", context do
+      when_ "an agent starts on that copy", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
@@ -54,38 +54,64 @@ end
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "no auth file was written anywhere inside the copy", context do
-        {:ok, listing} = Environments.list_directory(context.environment, context.scope.cwd)
+      then_ "the checkout holds no credential", context do
+        refute context.response.isError, response_text(context.response)
 
-        refute Enum.any?(listing, &(&1 =~ "auth.json")),
-               "an auth file landed inside the working copy. That copy gets " <>
-                 "committed — `agent.sh` runs `git add -A` on a clean exit — so a " <>
-                 "credential in the tree is not a risk of leaking but a scheduled " <>
-                 "one. Found: #{inspect(listing)}"
+        copy = context.scope.cwd
 
-        refute Enum.any?(listing, &(&1 == ".pi")),
-               "Pi's configuration directory was placed inside the working copy. " <>
-                 "It holds auth.json. Found: #{inspect(listing)}"
+        assert is_binary(copy) and File.dir?(copy),
+               "the premise is a real checkout to look inside; without one this " <>
+                 "asserts nothing about what was written into it"
 
-        {:ok, context}
-      end
-
-      then_ "the config directory the agent runs against sits outside the copy", context do
-        config_dir = response_field(context.response, "Config dir")
-
-        assert is_binary(config_dir),
-               "the response does not say where the agent's config directory is, so " <>
-                 "nothing can check that it is outside the tree. " <>
-                 "Got: #{response_text(context.response)}"
-
-        refute String.starts_with?(config_dir, context.scope.cwd),
-               "the per-copy config directory is inside the working copy. Per-copy " <>
-                 "is required — the cloud host is multi-tenant and one shared auth " <>
-                 "file would put a tenant's subscription in reach of another — but " <>
-                 "per-copy must mean beside the copy, not in it. Got: #{config_dir}"
+        assert files_naming_a_credential(copy) == [],
+               "a credential was written into the working copy. `git add -A` on a " <>
+                 "clean exit puts it in a commit, and the agent that wrote it is " <>
+                 "the same one that will push."
 
         {:ok, context}
       end
+
+      then_ "and the record does not carry it either", context do
+        agents = Fixtures.list_agents(context.scope)
+
+        assert length(agents) > 0,
+               "no agent was recorded, so there is no record to check"
+
+        for agent <- agents do
+          refute Map.get(agent, :config_dir),
+                 "the row names a directory the credential was written to. There " <>
+                   "should be no such directory — the machine is handed the " <>
+                   "credential and keeps it in memory."
+
+          refute persisted_credential(agent),
+                 "the credential is on the row. It is a virtual, redacted field " <>
+                   "for exactly this reason: a row is a second place a " <>
+                   "subscription lives, and it is the place that gets dumped, " <>
+                   "logged and backed up."
+        end
+
+        {:ok, context}
+      end
+    end
+  end
+
+  # Anything under the checkout that looks like a stored credential. Named by
+  # shape rather than by exact path, because the failure this guards is somebody
+  # choosing a *new* path.
+  defp files_naming_a_credential(copy) do
+    [copy, "**", "{auth.json,credentials.json,.pi,.codex}"]
+    |> Path.join()
+    |> Path.wildcard(match_dot: true)
+  end
+
+  defp persisted_credential(agent) do
+    # Reloaded rather than taken from the struct in hand: a virtual field is
+    # populated in memory on the way through, and the question is what survives
+    # to the database.
+    case Map.get(agent, :credential) do
+      nil -> nil
+      %{} = credential when map_size(credential) == 0 -> nil
+      other -> other
     end
   end
 end

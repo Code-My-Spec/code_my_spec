@@ -15,9 +15,12 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   @behaviour CodeMySpec.Agents.Transport
 
   alias CmsHarness.Agents
+  alias CmsHarnessTest.Machine
 
   @impl true
   def start_agent(_working_copy_id, agent, _timeout) do
+    Machine.ensure_supervisor()
+
     Agents.launch(%{
       "agent_id" => agent.id,
       "provider" => agent.provider,
@@ -32,6 +35,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
 
   @impl true
   def stop_agent(_working_copy_id, agent, _timeout) do
+    Machine.ensure_supervisor()
     Agents.halt(agent.id)
   end
 end

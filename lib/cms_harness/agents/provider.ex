@@ -43,15 +43,13 @@ defmodule CmsHarness.Agents.Provider do
   # plugin configuration — the same isolation the Pi config directory gave us,
   # and the reason a shared home is not an option on a multi-tenant box.
   def options("openai-codex", credential, opts) do
-    with {:ok, auth_path} <- fetch(credential, :auth_path) do
-      {:ok,
-       [
-         provider: Alloy.Provider.Codex,
-         model: Keyword.get(opts, :model, "gpt-5.4"),
-         auth_path: auth_path,
-         timeout_ms: Keyword.get(opts, :timeout_ms, 180_000)
-       ]}
-    end
+    {:ok,
+     [
+       provider: Alloy.Provider.Codex,
+       model: Keyword.get(opts, :model, "gpt-5.4"),
+       auth_path: auth_path(credential),
+       timeout_ms: Keyword.get(opts, :timeout_ms, 180_000)
+     ]}
   end
 
   def options("zai", credential, opts) do
@@ -82,6 +80,21 @@ defmodule CmsHarness.Agents.Provider do
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
   def names, do: ["anthropic", "openai-codex", "zai"]
+
+  # The credential's own auth file, or this machine's codex login.
+  #
+  # The fallback is an interim and a known compromise. Minting a per-tenant
+  # `auth.json` needs an `id_token` our openai integration does not store — the
+  # open question on story 956 — so until it does, a codex agent runs on
+  # whatever `codex` is logged in as here. Right on a single-tenant box, wrong
+  # on a shared one, and deliberate either way: failing instead would report a
+  # missing credential for one that is connected and working.
+  defp auth_path(credential) do
+    case fetch(credential, :auth_path) do
+      {:ok, path} -> path
+      {:error, _} -> Path.expand("~/.codex/auth.json")
+    end
+  end
 
   # Named rather than pattern-matched into the clause head so the failure says
   # which piece was missing. A credential that arrived without its key and one

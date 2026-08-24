@@ -859,6 +859,15 @@ defmodule CodeMySpecSpex.Fixtures do
     agent
   end
 
+  @doc """
+  Every agent recorded on this project, read back from the database.
+
+  Read back rather than taken from the struct a call returned: `credential` is a
+  virtual field populated in memory on the way through, and what these criteria
+  ask is what survives to the row.
+  """
+  def list_agents(%Scope{} = scope), do: CodeMySpec.Agents.list_agents(scope)
+
   def connect_provider(scope, provider, opts \\ []) do
     IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),

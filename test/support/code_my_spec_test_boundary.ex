@@ -23,6 +23,10 @@ defmodule CodeMySpecTest do
   # alternative is a socket in the middle of every test that has one.
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CmsHarness],
+    # `CmsHarnessTest.Machine` owns "make sure the agent tree exists". The
+    # in-process transport starts real agents through it, and a second copy of
+    # that setup is how one test's supervisor ended up holding another test's
+    # agents.
+    deps: [CodeMySpec, CmsHarness, CmsHarnessTest],
     exports: [FakeWorkspaceRunner, PreviewWsClient, WorkspaceWatchers]
 end

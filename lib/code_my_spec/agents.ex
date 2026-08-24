@@ -424,24 +424,21 @@ defmodule CodeMySpec.Agents do
   @doc """
   Records what the device reported back about an agent it was asked to start.
 
-  `os_pid` is a process **group** id and `os_boot_id` says which boot it belongs
-  to. They are written together and must stay together: a group id without its
-  boot cannot be told from a recycled number naming a stranger's process, and
-  the only safe thing to do with one is nothing.
+  The machine confirms the id it was asked to run, and that is the whole report.
 
-  This had no callers for as long as it existed. Nothing launched an agent, so
-  nothing ever had a pid to report — `start_agent/2` minted a config directory
-  and left a row at `:starting` that no device was ever told about.
-  `CmsHarness.Agents.Runner` is the producer that closes it.
+  It used to be a process **group** id and the boot it belonged to, written
+  together because a group id without its boot cannot be told from a recycled
+  number naming a stranger's process. A supervised agent needs neither: the id
+  was already on the row, and it resolves through the harness's registry for
+  exactly as long as the agent is alive.
+
+  So `:running` here means a machine said so, which is the only thing that ever
+  made this status trustworthy.
   """
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
-  def record_started(%Scope{} = scope, %Agent{} = agent, %{os_pid: os_pid} = report) do
-    AgentsRepository.update_agent(scope, agent, %{
-      status: :running,
-      os_pid: os_pid,
-      os_boot_id: Map.get(report, :os_boot_id)
-    })
+  def record_started(%Scope{} = scope, %Agent{} = agent, %{agent_id: _id}) do
+    AgentsRepository.update_agent(scope, agent, %{status: :running})
   end
 
   defp base_attrs(%Scope{} = scope, attrs) do

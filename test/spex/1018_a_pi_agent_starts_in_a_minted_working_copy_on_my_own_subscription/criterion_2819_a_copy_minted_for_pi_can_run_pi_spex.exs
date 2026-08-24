@@ -60,18 +60,27 @@ defmodule CodeMySpecSpex.Story1018.Criterion2819Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the copy is configured to be seen, not just to authenticate", context do
+      then_ "the copy has an agent actually running on it, not just a row", context do
         text = response_text(context.response)
 
-        assert text =~ "mcp.json",
-               "the mint wrote no MCP configuration, so the agent has no way to " <>
-                 "reach this harness. Pi ships no MCP of its own; without it the " <>
-                 "agent runs perfectly and never joins, never appears in Presence, " <>
-                 "never relays a turn. Got: #{text}"
+        # This used to assert the mint wrote `mcp.json` and `settings.json`.
+        # That was the right question when the agent was a separate `pi`
+        # process: it ships no MCP of its own, so without them it would run
+        # perfectly and never join the harness — never appear, never relay a
+        # turn.
+        #
+        # The agent is in the harness now. Same BEAM, same supervision tree,
+        # tools called in-process. There is nothing to reach and no
+        # configuration that could fail to be written, so the assertion is the
+        # thing that still tells a working copy from a recorded one.
+        assert text =~ "Status: running",
+               "the start left the agent unconfirmed. A row at `:starting` is " <>
+                 "what a copy that needed finishing by hand looks like, which is " <>
+                 "the rule. Got: #{text}"
 
-        assert text =~ "settings.json",
-               "the mint wrote no settings, so the adapter extension that gives Pi " <>
-                 "any MCP at all is not loaded. Got: #{text}"
+        assert text =~ context.scope.cwd,
+               "the agent is not running on the copy that was just minted. " <>
+                 "Got: #{text}"
 
         {:ok, context}
       end

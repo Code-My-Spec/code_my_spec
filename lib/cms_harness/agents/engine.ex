@@ -125,7 +125,10 @@ defmodule CmsHarness.Agents.Engine do
   """
   @spec running() :: [String.t()]
   def running do
-    Registry.select(@registry, [{{{:agent, :"$1"}, :_, :_}, [], [:"$1"]}])
+    @registry
+    |> Registry.select([{{{:agent, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.filter(fn {_id, pid} -> Process.alive?(pid) end)
+    |> Enum.map(fn {id, _pid} -> id end)
   end
 
   @doc "Whether this agent is running here."
@@ -195,10 +198,21 @@ defmodule CmsHarness.Agents.Engine do
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
 
+  # Liveness, not registration. The registry unregisters on a `DOWN`, so there is
+  # a window after a process exits where its entry survives — and answering
+  # "running" from that window is the one wrong answer this whole story is
+  # about.
   defp whereis(agent_id) do
     case Registry.lookup(@registry, {:agent, agent_id}) do
-      [{pid, _}] -> {:ok, pid}
+      [{pid, _}] -> alive_or_gone(pid)
       [] -> {:error, :not_running}
+    end
+  end
+
+  defp alive_or_gone(pid) do
+    case Process.alive?(pid) do
+      true -> {:ok, pid}
+      false -> {:error, :not_running}
     end
   end
 

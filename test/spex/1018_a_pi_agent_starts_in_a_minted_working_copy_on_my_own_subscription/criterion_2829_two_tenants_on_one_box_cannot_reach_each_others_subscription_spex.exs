@@ -75,16 +75,28 @@ defmodule CodeMySpecSpex.Story1018.Criterion2829Spex do
         {:ok, context}
       end
 
-      then_ "nothing it can read names the other tenant's credential", context do
-        config_dir = response_field(context.response, "Config dir")
+      then_ "and nothing left on the box names the credential at all", context do
+        # This used to check that the config directory path contained the
+        # account id — a reasonable proxy when the credential was a file, since
+        # where you put it was the only defence. There is no file: the
+        # credential goes over the wire into the engine's memory, so the defence
+        # is that there is nothing on the box to read.
+        #
+        # Which matters here more than anywhere: an agent is a process that
+        # reads files for a living and can be asked to read one.
+        refute response_field(context.response, "Config dir"),
+               "the start named a directory the credential was written to. On a " <>
+                 "shared host that is a path another tenant's agent can be asked " <>
+                 "to read."
 
-        assert config_dir =~ to_string(context.account.id) or
-                 config_dir =~ to_string(context.project.id),
-               "the agent's configuration directory is not scoped to this tenant. " <>
-                 "Pi reads auth.json from that directory, and on a multi-tenant host " <>
-                 "a shared one puts a subscription in a path another tenant's agent " <>
-                 "can read — and an agent is a process that reads files for a living " <>
-                 "and can be asked to read one. Got: #{config_dir}"
+        for agent <- Fixtures.list_agents(context.scope) do
+          refute Map.get(agent, :config_dir),
+                 "the row names a credential directory on a multi-tenant box"
+
+          refute Map.get(agent, :credential),
+                 "the credential survived to the row, which is a second place a " <>
+                   "subscription lives and the one that gets dumped and backed up"
+        end
 
         {:ok, context}
       end

@@ -20,17 +20,11 @@ defmodule CmsHarness.AgentsTest do
   @moduletag :tmp_dir
 
   setup %{tmp_dir: tmp_dir} do
-    # The registry is already up for the suite; the agent supervisor is part of
-    # the harness tree, which a test run does not start.
-    case Process.whereis(CmsHarness.AgentSupervisor) do
-      nil ->
-        start_supervised!(
-          {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one}
-        )
-
-      _pid ->
-        :ok
-    end
+    # Through `Machine`, not `start_supervised!`. A supervisor linked to this
+    # test dies with it, and anything that started an agent under it is then
+    # looking in a tree that no longer exists — which only shows up in a full
+    # run, and passes twenty times in isolation.
+    CmsHarnessTest.Machine.ensure_supervisor()
 
     %{root: tmp_dir}
   end
