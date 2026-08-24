@@ -34,6 +34,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
 
@@ -68,14 +69,16 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       given_ "every story on UAT is covered by a release that already shipped", context do
         env = context.environment
 
-        :ok =
-          Environments.write_file(
-            env,
-            ".code_my_spec/devops/deploys/story_9005.md",
-            "# Deploy\n\nstory 9005 to uat — verified\n"
-          )
+        # Deploy tracking reads and writes the deploys table now, not a file
+        # the agent wrote for itself (a46f3ec5) — "on UAT" is a row with
+        # health_verified_at set, and `story_id` is a real FK, so this needs
+        # an actual story rather than the literal id 9005.
+        already_shipped =
+          Fixtures.story_fixture(context.scope, %{title: "Story 842 already shipped thing"})
 
-        notes = "# #{@already_shipped_tag}\n\n## Stories\n\n- story_9005\n"
+        Fixtures.record_deploy(context.scope, already_shipped.id, "uat")
+
+        notes = "# #{@already_shipped_tag}\n\n## Stories\n\n- story_#{already_shipped.id}\n"
 
         # `story_<id>`, the format the release prompt specifies and
         # `released?/2` matches on a word boundary. Written with a space it
@@ -113,18 +116,16 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
         {_, 0} = Environments.cmd(env, "git", ["commit", "-q", "-m", "the code already shipped"])
         {_, 0} = Environments.cmd(env, "git", ["tag", "-a", @already_shipped_tag, "-m", notes])
 
-        {:ok, context}
+        {:ok, Map.put(context, :already_shipped, already_shipped)}
       end
 
       given_ "a new story is then deployed to UAT", context do
-        :ok =
-          Environments.write_file(
-            context.environment,
-            ".code_my_spec/devops/deploys/story_9006.md",
-            "# Deploy\n\nstory 9006 to uat — verified\n"
-          )
+        new_story =
+          Fixtures.story_fixture(context.scope, %{title: "Story 842 new shipped thing"})
 
-        {:ok, context}
+        Fixtures.record_deploy(context.scope, new_story.id, "uat")
+
+        {:ok, Map.put(context, :new_story, new_story)}
       end
 
       when_ "the agent asks what release work is outstanding", context do
@@ -161,10 +162,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       then_ "it is the uncovered story that reopened it", context do
-        assert context.prompt =~ "9006",
+        assert context.prompt =~ to_string(context.new_story.id),
                "expected the release to be reopened by the story no release covers, got: #{context.prompt}"
 
-        refute context.prompt =~ "9005",
+        refute context.prompt =~ to_string(context.already_shipped.id),
                "expected an already-shipped story to stay shipped rather than being released twice"
 
         {:ok, context}

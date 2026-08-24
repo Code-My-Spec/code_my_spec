@@ -2548,6 +2548,23 @@ defmodule CodeMySpecSpex.Fixtures do
     story
   end
 
+  @doc """
+  Records a health-verified deploy for a story on an environment, for spex
+  that need "this story is on UAT" to be true.
+
+  Here rather than in a spex for the same reason `running_agent/3` is: the
+  boundary refuses `CodeMySpecSpex` reaching into `CodeMySpec` directly, and
+  deploy tracking reads and writes `CodeMySpec.Deploys` now, not a file the
+  agent wrote for itself (a46f3ec5) — "on UAT" is a row with
+  `health_verified_at` set.
+  """
+  @spec record_deploy(Scope.t(), integer(), String.t(), keyword()) :: CodeMySpec.Deploys.Deploy.t()
+  def record_deploy(%Scope{} = scope, story_id, environment, opts \\ []) do
+    opts = Keyword.put_new(opts, :health_verified_at, DateTime.utc_now())
+    {:ok, deploy} = CodeMySpec.Deploys.record(scope, story_id, environment, opts)
+    deploy
+  end
+
   # -- Sessions (timeline spex fixture setup, Story 813) --
   @doc """
   Creates a session (with optional embedded tasks and controllable

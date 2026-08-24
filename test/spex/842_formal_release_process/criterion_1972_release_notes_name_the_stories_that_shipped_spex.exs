@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
 
@@ -39,23 +40,16 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
 
       given_ "two named stories have been deployed to UAT and not released", context do
         first =
-          CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{
-            title: "Story 842 first shipped thing"
-          })
+          Fixtures.story_fixture(context.scope, %{title: "Story 842 first shipped thing"})
 
         second =
-          CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{
-            title: "Story 842 second shipped thing"
-          })
+          Fixtures.story_fixture(context.scope, %{title: "Story 842 second shipped thing"})
 
-        for story <- [first, second] do
-          :ok =
-            Environments.write_file(
-              context.environment,
-              ".code_my_spec/devops/deploys/story_#{story.id}.md",
-              "# Deploy\n\nstory #{story.id} to uat — verified\n"
-            )
-        end
+        # Deploy tracking reads and writes the deploys table now, not a file
+        # the agent wrote for itself (a46f3ec5) — "on UAT" is a row with
+        # health_verified_at set, not a markdown file with the word
+        # "verified" in it.
+        for story <- [first, second], do: Fixtures.record_deploy(context.scope, story.id, "uat")
 
         {:ok, context |> Map.put(:first, first) |> Map.put(:second, second)}
       end
