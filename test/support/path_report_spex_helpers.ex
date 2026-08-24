@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.PathReportHelpers do
 
   import ExUnit.Assertions
 
-  alias CmsHarness.WorkingCopyReporter
+  alias CmsHarnessTest.Machine
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.Fixtures
 
@@ -81,12 +81,9 @@ defmodule CodeMySpecSpex.PathReportHelpers do
     file = device_file(device_id)
     put_credential(context)
 
-    name = Module.concat(WorkingCopyReporter, "Spex#{System.unique_integer([:positive])}")
+    {spec, _name} = Machine.reporter(copies)
 
-    {:ok, pid} =
-      ExUnit.Callbacks.start_supervised(
-        Supervisor.child_spec({WorkingCopyReporter, name: name, known: copies}, id: name)
-      )
+    {:ok, pid} = ExUnit.Callbacks.start_supervised(spec)
 
     %{device_id: device_id, reporter: pid, device_file: file}
   end
@@ -106,8 +103,7 @@ defmodule CodeMySpecSpex.PathReportHelpers do
   """
   @spec report(map()) :: %{optional(String.t()) => boolean()}
   def report(%{reporter: reporter, device_file: file}) do
-    Application.put_env(:code_my_spec, :device_config_path, file)
-    WorkingCopyReporter.report(reporter)
+    Machine.report(reporter, file)
   end
 
   # Where this machine's identity is kept, somewhere disposable — the same seam

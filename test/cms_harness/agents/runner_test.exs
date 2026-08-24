@@ -154,4 +154,48 @@ defmodule CmsHarness.Agents.RunnerTest do
     assert :ok = Runner.stop(handle)
     assert :ok = Runner.stop(handle)
   end
+
+  describe "boot_id/0" do
+    @tag :tmp_dir
+    test "carries no field that a clock step can move" do
+      id = Runner.boot_id()
+
+      # On Darwin the raw source is `{ sec = 1785496564, usec = 600843 } Fri Jul
+      # 31 07:16:04 2026`, and this used to store it whole. `usec` and the date
+      # are derived from the current clock — Darwin computes boottime rather
+      # than recording it — so a clock step moves them while the machine has
+      # plainly not rebooted.
+      #
+      # That is not cosmetic. `alive?/1` compares this token to a fresh read, so
+      # a moved token reports a *live* agent dead, and `stop/2` then declines to
+      # signal it. The agent keeps running and keeps costing, which is the exact
+      # failure story 1023 exists to prevent — reached by the mechanism meant to
+      # make stopping safe.
+      refute id =~ "usec",
+             "the boot id carries usec, which a clock step moves. Every handle " <>
+               "on this machine would read dead and no agent could be stopped. Got: #{id}"
+
+      refute id =~ ~r/\s/,
+             "the boot id carries whitespace, so it is the whole sysctl line — " <>
+               "including the formatted date, which moves with the clock. Got: #{id}"
+    end
+
+    test "is stable across reads within one boot" do
+      assert Runner.boot_id() == Runner.boot_id()
+    end
+
+    test "matches the boot the machine reports" do
+      case :os.type() do
+        {:unix, :darwin} ->
+          {raw, 0} = System.cmd("sysctl", ["-n", "kern.boottime"])
+          [_, seconds] = Regex.run(~r/sec\s*=\s*(\d+)/, raw)
+
+          assert Runner.boot_id() == seconds,
+                 "the boot id is not the boot second this machine reports"
+
+        _ ->
+          assert is_binary(Runner.boot_id())
+      end
+    end
+  end
 end

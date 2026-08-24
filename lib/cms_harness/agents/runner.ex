@@ -282,9 +282,38 @@ defmodule CmsHarness.Agents.Runner do
   @spec boot_id() :: String.t()
   def boot_id do
     case :os.type() do
-      {:unix, :darwin} -> read_boot_id("sysctl", ["-n", "kern.boottime"])
+      {:unix, :darwin} -> darwin_boot_id()
       {:unix, _} -> read_boot_id("cat", ["/proc/sys/kernel/random/boot_id"])
       _ -> "unknown"
+    end
+  end
+
+  # Darwin has no `boot_id` file; `kern.boottime` is the substitute, and only
+  # its `sec` field may be kept.
+  #
+  # The whole line is `{ sec = 1785496564, usec = 600843 } Fri Jul 31 07:16:04
+  # 2026`, and storing it whole — which is what this did — makes the token
+  # depend on `usec` and on a formatted date. Darwin derives boottime from the
+  # current clock rather than recording it, so any clock step moves those. A
+  # moved token makes `alive?/1` say a live agent is dead, and `stop/2` then
+  # declines to signal a group that is still running: an agent nobody can stop,
+  # still spending, which is the one failure this whole story exists to prevent.
+  #
+  # `sec` alone survives that. It is what identifies the boot; the rest is
+  # precision this comparison cannot use and jitter it cannot absorb.
+  defp darwin_boot_id do
+    case read_boot_id("sysctl", ["-n", "kern.boottime"]) do
+      "unknown" -> "unknown"
+      line -> boot_seconds(line)
+    end
+  end
+
+  defp boot_seconds(line) do
+    case Regex.run(~r/sec\s*=\s*(\d+)/, line) do
+      [_, seconds] -> seconds
+      # A Darwin that words it differently keeps the whole line: still stable
+      # within a boot, still changes across one. Only the jitter is lost.
+      nil -> line
     end
   end
 

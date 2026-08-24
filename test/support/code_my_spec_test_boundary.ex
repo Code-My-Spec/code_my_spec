@@ -16,8 +16,13 @@ defmodule CodeMySpecTest do
   # `WorkspaceWatchers` is the teardown for the tasks `Workspaces.boot/1`
   # leaves polling. The bridge has to order that teardown against the fake
   # runner it starts, so it needs to name it; a criterion never does.
+  # `CmsHarness` is here for the in-process doubles and nothing else.
+  # `InProcessDeviceClient` implements a harness behaviour and
+  # `InProcessAgentTransport` implements a server one while calling the
+  # harness — standing in the seam is what an in-process double *is*, and the
+  # alternative is a socket in the middle of every test that has one.
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec],
+    deps: [CodeMySpec, CmsHarness],
     exports: [FakeWorkspaceRunner, PreviewWsClient, WorkspaceWatchers]
 end

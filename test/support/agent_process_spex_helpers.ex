@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
 
   import ExUnit.Assertions
 
-  alias CmsHarness.Agents.Runner
+  alias CmsHarnessTest.Machine, as: Runner
+  alias CodeMySpecTest.UnreachableMachine
 
   @doc """
   Start something that behaves like an agent, and hand back what the server
@@ -62,24 +63,6 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
 
   defp finish_on_term(script, path),
     do: "trap 'echo done > #{path}; exit 0' TERM; " <> script
-
-  defmodule UnreachableMachine do
-    @moduledoc """
-    A machine this server cannot reach.
-
-    Not the same as a machine that says the agent is gone. The process is on a
-    box we cannot currently talk to, so it is very likely still running and
-    still spending — and the two want completely different things from whoever
-    is reading.
-    """
-    @behaviour CodeMySpec.Agents.Transport
-
-    @impl true
-    def start_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
-
-    @impl true
-    def stop_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
-  end
 
   @doc """
   Put the agent's machine out of reach for this scenario.

@@ -5,5 +5,11 @@ defmodule CmsHarnessTest do
   # one thing here reaching outside the harness; when the harness moves to its
   # own repo this module goes with it, and a dozen lines of token generation
   # come along rather than the dependency.
-  use Boundary, top_level?: true, deps: [CmsHarness, CodeMySpec.TempFile]
+  # `Machine` is the only thing spex may reach: they drive a real harness
+  # through it rather than referencing `CmsHarness` themselves, which they may
+  # not do. Everything else here stays internal to the harness's own tests.
+  use Boundary,
+    top_level?: true,
+    deps: [CmsHarness, CodeMySpec.TempFile],
+    exports: [Machine]
 end

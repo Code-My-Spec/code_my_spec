@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
       end
 
       when_ "the harness starts", context do
-        result = CmsHarness.Device.announce()
+        result = CmsHarnessTest.Machine.announce()
 
         {:ok, Map.put(context, :result, result)}
       end
