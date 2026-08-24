@@ -42,7 +42,18 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   The id is repeated because a reply with no agent on it is unattributable the
   moment more than one is running, which is the normal case on a working copy.
   """
-  @spec replied(String.t(), String.t()) :: Response.t()
+  @spec replied(String.t(), String.t() | :still_working) :: Response.t()
+  def replied(agent_id, :still_working) do
+    Response.tool()
+    |> Response.text("""
+    Agent: #{agent_id}
+
+    Delivered. The agent is still working on it — turns can outlast the wait,
+    and this one has. It was not interrupted, and there is no need to send the
+    instruction again: doing so would put two of them on the same checkout.
+    """)
+  end
+
   def replied(agent_id, reply) do
     Response.tool()
     |> Response.text("""

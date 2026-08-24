@@ -49,9 +49,11 @@ defmodule CodeMySpec.Agents do
 
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
-  # A turn is a model call. Long enough for real work, short enough that a
-  # wedged agent does not hold a caller forever.
-  @message_timeout_ms 180_000
+  # Bounded *below* the MCP transport's own 30s request timeout, so a slow turn
+  # is reported by us as still working rather than by the transport as an
+  # internal error. The agent is not interrupted — this is how long we wait for
+  # it, not how long it has.
+  @message_timeout_ms 25_000
 
   @stop_timeout_ms 10_000
 
@@ -184,9 +186,20 @@ defmodule CodeMySpec.Agents do
   def message_agent(%Scope{} = scope, id, text, timeout \\ @message_timeout_ms)
       when is_binary(text) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id) do
-      Transport.impl().message_agent(agent.working_copy_id, agent, text, timeout)
+      agent.working_copy_id
+      |> Transport.impl().message_agent(agent, text, timeout)
+      |> delivered_or_working()
     end
   end
+
+  # Running out of our own patience is not the message failing. The machine took
+  # it — it answers `harness_not_connected` immediately when it did not — so the
+  # honest report is that the agent has it and is still working.
+  #
+  # Telling an operator it failed is the expensive direction: they send it
+  # again, and two agents work the same checkout.
+  defp delivered_or_working({:error, :message_timed_out}), do: {:ok, :still_working}
+  defp delivered_or_working(result), do: result
 
   @doc """
   Record what a harness reports it is actually running.
