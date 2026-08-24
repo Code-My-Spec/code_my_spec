@@ -62,7 +62,6 @@ defmodule CodeMySpec.Agents do
   # Shorter than an operator's stop. This runs inside a reconcile that fires on
   # every lane diff, so a machine that is slow to answer must not hold it —
   # the next report tries again, and the row stays reachable meanwhile.
-  @reap_timeout_ms 3_000
 
   @type start_error ::
           :missing_active_project

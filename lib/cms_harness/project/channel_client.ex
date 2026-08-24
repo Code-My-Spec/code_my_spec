@@ -1121,7 +1121,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: %{"status" => "ok", "agent_id" => agent_id}
 
   def encode_start_result({:error, reason}),
-    do: %{"status" => "error", "reason" => to_string(reason)}
+    do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp ask_what_to_restore(socket, topic) do
     case transport().push(socket, topic, "agents_to_restore", %{}, decision_timeout()) do
@@ -1149,6 +1149,14 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
   end
 
+  # Whatever the far side called the failure, rendered without assuming it is a
+  # word. Atoms and strings keep their shape; a provider's struct is inspected
+  # rather than crashing the channel that was trying to report it.
+  defp reason_text(reason) when is_binary(reason), do: reason
+  defp reason_text(reason) when is_atom(reason), do: to_string(reason)
+  defp reason_text(%{error: error}) when is_binary(error), do: error
+  defp reason_text(reason), do: inspect(reason)
+
   defp encode_message_result({:ok, reply}) when is_binary(reply),
     do: %{"status" => "ok", "reply" => reply}
 
@@ -1156,28 +1164,16 @@ defmodule CmsHarness.Project.ChannelClient do
     do: %{"status" => "ok", "reply" => inspect(other)}
 
   defp encode_message_result({:error, reason}),
-    do: %{"status" => "error", "reason" => to_string(reason)}
+    do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp encode_stop_result(:ok), do: %{"status" => "ok"}
 
   defp encode_stop_result({:error, reason}),
-    do: %{"status" => "error", "reason" => to_string(reason)}
+    do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
-
-  @impl Slipstream
-  def handle_info({:agent_message_result, topic, ref, result}, socket) do
-    push(
-      socket,
-      topic,
-      "agent_message_result",
-      Map.put(encode_message_result(result), "ref", ref)
-    )
-
-    {:noreply, socket}
-  end
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do
@@ -1211,6 +1207,20 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
+  # The answer to a `message_agent`, handed back by the task that ran the turn.
+  # Pushed from here rather than from that task, because this process owns the
+  # socket.
+  def handle_info({:agent_message_result, topic, ref, result}, socket) do
+    push(
+      socket,
+      topic,
+      "agent_message_result",
+      Map.put(encode_message_result(result), "ref", ref)
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info(:refresh_read_model, %{assigns: %{joined: true, topic: topic}} = socket) do
     schedule_read_model_refresh()
 

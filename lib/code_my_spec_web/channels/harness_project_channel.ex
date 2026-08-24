@@ -585,15 +585,43 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        do: {:ok, %{agent_id: agent_id}}
 
   defp decode_start_result(%{"status" => "error", "reason" => reason}),
-    do: {:error, String.to_atom(reason)}
+    do: {:error, decode_reason(reason)}
 
   defp decode_start_result(other), do: {:error, {:unexpected_start_result, other}}
+
+  # The failures a machine can name, and nothing else.
+  #
+  # `String.to_atom/1` here would mint an atom per distinct message, and atoms
+  # are never collected. Harmless while every reason was one of ours; not
+  # harmless now that a provider's error — prose, with a timestamp and a quoted
+  # upstream body in it — reaches this decoder.
+  #
+  # Callers match on these; anything else is for a human to read, so it stays a
+  # string rather than becoming a permanent entry in a finite table.
+  @machine_reasons ~w(
+    agent_id_required
+    working_copy_missing
+    not_running
+    still_running
+    unknown_provider
+    unknown_engine
+    no_engine
+    credential_missing_api_key
+    credential_missing_auth_path
+    harness_not_connected
+    start_timed_out
+    stop_timed_out
+    message_timed_out
+  )
+
+  defp decode_reason(reason) when reason in @machine_reasons, do: String.to_atom(reason)
+  defp decode_reason(reason), do: reason
 
   defp decode_message_result(%{"status" => "ok", "reply" => reply}) when is_binary(reply),
     do: {:ok, reply}
 
   defp decode_message_result(%{"status" => "error", "reason" => reason}),
-    do: {:error, String.to_atom(reason)}
+    do: {:error, decode_reason(reason)}
 
   # A shape this server does not understand is not an answer. Reporting one as
   # success would tell an operator their instruction landed when nothing knows
@@ -603,7 +631,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decode_stop_result(%{"status" => "ok"}), do: :ok
 
   defp decode_stop_result(%{"status" => "error", "reason" => reason}),
-    do: {:error, String.to_atom(reason)}
+    do: {:error, decode_reason(reason)}
 
   # A shape this server does not understand is not a stop. Reporting one would
   # clear `os_pid` on a process that is still running, which is the state
@@ -690,7 +718,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # has to put the shape back together. An `error` is kept as an atom because
   # callers match on `:enoent` and friends.
   defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
-    do: {:error, String.to_atom(reason)}
+    do: {:error, decode_reason(reason)}
 
   defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
   defp decode_fs_result(%{"ok" => true}), do: :ok
