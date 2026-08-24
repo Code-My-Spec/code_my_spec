@@ -35,10 +35,6 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   # Most recent sessions shown on the timeline.
   @session_cap 10
 
-  # A session reads as "active" if its last activity is within this window.
-  # The PostToolUse hook touches updated_at on every tool call.
-  @active_window_seconds 300
-
   # Past this many tasks, collapse the middle of a session's timeline to
   # the newest two + oldest two with an expandable "… N more" in between.
   @task_collapse_threshold 10
@@ -223,7 +219,7 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   defp active_session_id([]), do: nil
 
   defp within_window?(%DateTime{} = at),
-    do: DateTime.diff(DateTime.utc_now(), at) <= @active_window_seconds
+    do: DateTime.diff(DateTime.utc_now(), at) <= Sessions.active_window_seconds()
 
   defp within_window?(_at), do: false
 

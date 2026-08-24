@@ -15,6 +15,18 @@ defmodule CodeMySpec.Sessions do
   alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Users.Scope
 
+  # A session reads as "active" if it was touched within this window — status
+  # alone never goes stale on its own (nothing flips a session back to
+  # inactive when it ends), so recency is what keeps "active" meaning "right
+  # now" rather than "at some point". Shared with AgentProgressLive, whose own
+  # timeline derives liveness the same way; one constant so the two
+  # definitions of "active" can't drift apart.
+  @active_window_seconds 300
+
+  @doc "The recency window (seconds) a session must be touched within to read as active."
+  @spec active_window_seconds() :: pos_integer()
+  def active_window_seconds, do: @active_window_seconds
+
   # ============================================================================
   # PubSub — session/task lifecycle broadcasts (story 813)
   # ============================================================================
@@ -461,15 +473,28 @@ defmodule CodeMySpec.Sessions do
   Detection only. Refusing outright is a policy call — a desktop user and a
   sprite on one project may be legitimate — and silently proceeding was the
   thing that hurt, not the concurrency itself.
+
+  `status == :active` alone is not enough — nothing transitions a session
+  away from it when the agent finishes, so on a project with real history
+  every session that ever ran reads as still "active" forever. Measured on
+  this project: 44 rows matched status alone, most of them days to weeks
+  stale; under 10 had been touched in the last two hours. That inflated
+  count is what the warning this function drives actually said, on every
+  call, regardless of how much real concurrency existed — so it's also
+  filtered to sessions touched within `active_window_seconds/0`, the same
+  recency window `AgentProgressLive` already uses to mean the same thing.
   """
   @spec concurrent_sessions(Scope.t(), String.t()) :: [Session.t()]
   def concurrent_sessions(%Scope{active_project_id: project_id}, external_id)
       when is_binary(project_id) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@active_window_seconds, :second)
+
     from(s in Session,
       where:
         s.project_id == ^project_id and s.status == :active and
           s.external_conversation_id != ^external_id and
-          not is_nil(s.external_conversation_id)
+          not is_nil(s.external_conversation_id) and
+          s.updated_at > ^cutoff
     )
     |> Repo.all()
   end

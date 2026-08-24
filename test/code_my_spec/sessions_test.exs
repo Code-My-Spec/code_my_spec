@@ -101,4 +101,46 @@ defmodule CodeMySpec.SessionsTest do
       assert Sessions.list_active_sessions(scope) == []
     end
   end
+
+  describe "concurrent_sessions/2" do
+    # Nothing transitions a session away from :active when the agent
+    # finishes, so on a project with real history most :active rows are
+    # stale — status alone would read every session that ever ran as
+    # still concurrent, forever.
+    test "a session untouched past the active window does not count as concurrent", %{
+      scope: scope
+    } do
+      stale_cutoff =
+        DateTime.utc_now()
+        |> DateTime.add(-(Sessions.active_window_seconds() + 60), :second)
+        |> DateTime.truncate(:second)
+
+      session_fixture(scope, %{
+        external_conversation_id: "old-agent",
+        updated_at: stale_cutoff
+      })
+
+      assert Sessions.concurrent_sessions(scope, "this-agent") == []
+    end
+
+    test "a session touched within the active window counts as concurrent", %{scope: scope} do
+      recent =
+        session_fixture(scope, %{
+          external_conversation_id: "live-agent",
+          updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        })
+
+      assert [%{id: id}] = Sessions.concurrent_sessions(scope, "this-agent")
+      assert id == recent.id
+    end
+
+    test "the caller's own session never counts as concurrent with itself", %{scope: scope} do
+      session_fixture(scope, %{
+        external_conversation_id: "this-agent",
+        updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      assert Sessions.concurrent_sessions(scope, "this-agent") == []
+    end
+  end
 end
