@@ -49,10 +49,58 @@ defmodule CodeMySpec.WorkingCopies do
     label = Keyword.get(opts, :label)
 
     case existing(project_id, working_copy_id) do
+      nil -> recognise_or_create(project_id, label, opts)
+      harness -> touch(harness, label)
+    end
+  end
+
+  # Before minting, ask whether this checkout is already known.
+  #
+  # A copy that presents no id — or one this project does not recognise — used
+  # to become a new row every time, and a checkout does that on every join where
+  # its `.cms_harness.json` could not be read. Measured on this project: 52 rows
+  # for one worktree, five of them minted inside a single second, and only one
+  # of the 52 carrying any files. Everything keyed on the working copy then
+  # splits across identities that describe the same directory.
+  #
+  # `device_id` and `root` together, never root alone. Two machines share a path
+  # constantly — every container at `/workspace/app` — which is why root is
+  # recorded as reported rather than identifying, and why story 1020's criterion
+  # 2843 exists. The device is what that criterion established as the
+  # disambiguator, and one directory on one machine is one checkout.
+  #
+  # Both or neither: without a device this cannot tell two machines apart, and
+  # guessing would merge somebody else's checkout into this one. A join that
+  # carries no device still mints, which is the pre-device behaviour and is
+  # correct for a harness too old to say.
+  defp recognise_or_create(project_id, label, opts) do
+    case recognised(project_id, opts[:device], opts[:root]) do
       nil -> create(project_id, label)
       harness -> touch(harness, label)
     end
   end
+
+  defp recognised(_project_id, nil, _root), do: nil
+  defp recognised(_project_id, _device, nil), do: nil
+  defp recognised(_project_id, _device, ""), do: nil
+
+  defp recognised(project_id, %Device{id: device_id}, root),
+    do: recognised(project_id, device_id, root)
+
+  defp recognised(project_id, device_id, root) when is_binary(device_id) do
+    Repo.one(
+      from w in WorkingCopy,
+        where: w.project_id == ^project_id and w.device_id == ^device_id and w.root == ^root,
+        # The oldest is the one everything else already points at. A newer
+        # duplicate exists precisely because this lookup was missing, so
+        # adopting it would strand the files, problems and verdicts written
+        # under the original.
+        order_by: [asc: w.inserted_at],
+        limit: 1
+    )
+  end
+
+  defp recognised(_project_id, _device, _root), do: nil
 
   # Namespaces the derived id so it cannot collide with a minted one and so the
   # same project always resolves to the same row.

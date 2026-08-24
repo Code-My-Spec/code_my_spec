@@ -72,7 +72,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            WorkingCopies.issue(
              scope,
              payload["working_copy_id"] || payload["harness_id"],
-             label: label
+             # The device and root are what let a rejoining checkout be
+             # recognised rather than minted again. Both were already resolved
+             # here and neither was passed, so a join that could not present an
+             # id became a new working copy every time.
+             label: label,
+             device: device,
+             root: payload["root"]
            ),
          {:ok, harness} <- report_root(harness, payload["root"]),
          {:ok, harness} <- Devices.attach(harness, device),
