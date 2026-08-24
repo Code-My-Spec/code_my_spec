@@ -537,9 +537,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Both halves of the pair or neither. A group id recorded without its boot
   # cannot later be told from a recycled number, and the only safe thing to do
   # with one of those is nothing — so a reply carrying only half is not a start.
-  defp decode_start_result(%{"status" => "ok", "os_pid" => pid, "os_boot_id" => boot})
-       when is_integer(pid) and is_binary(boot),
-       do: {:ok, %{os_pid: pid, os_boot_id: boot}}
+  # The id the machine confirms it is running. It used to be a process group id
+  # and the boot it belonged to; a supervised agent needs neither, and the id
+  # was already on the row.
+  defp decode_start_result(%{"status" => "ok", "agent_id" => agent_id})
+       when is_binary(agent_id),
+       do: {:ok, %{agent_id: agent_id}}
 
   defp decode_start_result(%{"status" => "error", "reason" => reason}),
     do: {:error, String.to_atom(reason)}

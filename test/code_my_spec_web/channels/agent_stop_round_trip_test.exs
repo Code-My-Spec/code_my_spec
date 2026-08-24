@@ -103,21 +103,30 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     assert_receive :asking, 1_000
     assert_push "start_agent", pushed, 2_000
 
-    assert pushed["engine"] == "pi" and pushed["config_dir"] == "/tmp/cfg",
-           "the machine decides the command from the engine and points it at the " <>
-             "config directory, so both have to arrive"
+    assert pushed["working_copy"] == "/tmp/copy",
+           "the machine runs the agent in a checkout, so which one has to arrive"
 
-    push(socket, "agent_start_result", %{
-      "ref" => pushed["ref"],
-      "status" => "ok",
-      "os_pid" => 4242,
-      "os_boot_id" => "boot-abc"
-    })
+    # Built by the encoder the machine actually uses, not written out here.
+    # Hand-written, this asserted the decoder agreed with a literal in this file
+    # — and both halves of this contract broke separately in one day without it
+    # noticing.
+    reply =
+      Map.put(
+        CmsHarness.Project.ChannelClient.encode_start_result({:ok, %{agent_id: "agent-99"}}),
+        "ref",
+        pushed["ref"]
+      )
 
-    assert Task.await(task, 3_000) == {:ok, %{os_pid: 4242, os_boot_id: "boot-abc"}}
+    push(socket, "agent_start_result", reply)
+
+    assert Task.await(task, 3_000) == {:ok, %{agent_id: "agent-99"}},
+           "the encoder and the decoder disagree about what a started agent is " <>
+             "called. Nothing else compares them: every spex swaps in an " <>
+             "in-process transport that encodes nothing."
   end
 
-  test "a launch reporting a group id without its boot is not a start", %{socket: socket} do
+  test "a launch reporting a shape this server does not understand is not a start",
+       %{socket: socket} do
     caller = self()
 
     task =
@@ -129,11 +138,9 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     assert_receive :asking, 1_000
     assert_push "start_agent", pushed, 2_000
 
-    push(socket, "agent_start_result", %{
-      "ref" => pushed["ref"],
-      "status" => "ok",
-      "os_pid" => 4242
-    })
+    # A success with nothing naming the agent. Recording it would leave a row
+    # claiming to be running with no way to say which agent that is.
+    push(socket, "agent_start_result", %{"ref" => pushed["ref"], "status" => "ok"})
 
     assert {:error, {:unexpected_start_result, _}} = Task.await(task, 3_000),
            "recording a group id with no boot beside it produces an agent that can " <>
