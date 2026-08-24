@@ -155,6 +155,51 @@ defmodule CmsHarness.HookDecisionTest do
       refute reason =~ "the server, not the harness"
     end
 
+    # The case that was missing, and the one that actually kept happening.
+    #
+    # A project is started lazily, on first contact, so the first hook in a
+    # freshly onboarded copy always arrives while its channel is still joining
+    # — and after a harness restart, the copies the killed process still holds
+    # a lease on are refused until it lapses (measured at 47s). Both fell into
+    # the clause above and were told to go check a credential that /health
+    # reports as `true` on the same request.
+    #
+    # A harness holding a joined channel for something else disproves "cannot
+    # hold a socket" outright, so that is the discriminator.
+    test "another copy being connected rules out the socket and the credential" do
+      hold_a_channel("/some/other/copy")
+
+      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+
+      refute reason =~ "cannot hold a socket",
+             "the harness is holding a channel for another copy right now, so " <>
+               "the socket plainly works. Sending the reader to the credential " <>
+               "is the one thing that cannot be the answer. Got: #{reason}"
+
+      assert reason =~ "has not come up yet"
+      assert reason =~ @dir
+    end
+
+    test "with nothing joined, the credential is still the right place to look" do
+      # Nothing registered: the suite's `CmsHarness.Registry` is up but empty,
+      # which is the state this assertion depends on.
+      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+
+      assert reason =~ "cannot hold a socket",
+             "no channel is held anywhere, so the socket really is the suspect"
+    end
+
+    test "the log line agrees with the message the agent got" do
+      hold_a_channel("/some/other/copy")
+
+      # `summarize/1` and `explain/2` are documented as sharing one
+      # discriminator precisely so the log and the agent cannot disagree about
+      # which end is broken. Adding a case to one and not the other would
+      # reintroduce that.
+      refute HookDecision.summarize({:not_connected, {:http, 200}}) =~ "cannot hold a socket"
+      assert HookDecision.summarize({:not_connected, {:http, 200}}) =~ "not up yet"
+    end
+
     test "a server that is not there at all says so" do
       reason =
         HookDecision.unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
@@ -390,5 +435,34 @@ defmodule CmsHarness.HookDecisionTest do
 
       assert message =~ "boom"
     end
+  end
+
+  # Registers a process under `{:channel, root}` that answers `:connected?` —
+  # which is exactly what `ChannelClient.connected?/1` looks up and calls, so
+  # this exercises the real path rather than standing in for it.
+  defp hold_a_channel(root) do
+    test = self()
+
+    spawn_link(fn ->
+      {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+      {:ok, _} = Registry.register(CmsHarness.Registry, {:project, root}, nil)
+      send(test, :held)
+      loop()
+    end)
+
+    receive do
+      :held -> :ok
+    after
+      2_000 -> flunk("the channel never registered")
+    end
+  end
+
+  defp loop do
+    receive do
+      {:"$gen_call", from, :connected?} -> GenServer.reply(from, true)
+      _ -> :ok
+    end
+
+    loop()
   end
 end

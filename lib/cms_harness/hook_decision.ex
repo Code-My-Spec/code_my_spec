@@ -96,8 +96,12 @@ defmodule CmsHarness.HookDecision do
   end
 
   def summarize({:not_connected, {:http, status}}) do
-    "channel down, server answering #{status} — this harness cannot hold a socket; " <>
-      "check the credential and the reconnect attempts, not the server"
+    if holds_a_channel?() do
+      "this copy's channel is not up yet — the harness holds one for another " <>
+        "copy, so the socket and the credential are both fine"
+    else
+      summarize_disconnected(status)
+    end
   end
 
   def summarize({:not_connected, {:error, reason}}) do
@@ -180,20 +184,38 @@ defmodule CmsHarness.HookDecision do
   # refusal can name which end is broken instead of hedging. It used to say
   # "the server itself may well be healthy"; the day that mattered, the server
   # was returning 500 and the hedge sent the reader to the harness.
+  # A harness that holds a joined channel for *something* has a working socket
+  # and a working credential, so neither can be what is wrong here — this copy's
+  # own channel has not come up yet.
+  #
+  # That is a routine state, not a fault. Projects start lazily, on first
+  # contact, so the very first hook in a freshly onboarded copy always arrives
+  # while its channel is still joining; and after a harness restart the copies
+  # the killed process still holds a lease on are refused until it lapses,
+  # measured at 47s. Both landed in the clause below, which told the reader to
+  # go check a credential that /health reports as `true` on the same request.
+  #
+  # Ordered before it so the specific case wins, and only when something is
+  # demonstrably connected — with nothing joined, "cannot hold a socket" is
+  # still the right reading.
+  # A 5xx stays server-side whatever else is joined: an unhealthy server is the
+  # stronger signal, and the channel really will rejoin on its own once it
+  # recovers.
   defp explain({:not_connected, {:http, status}}, working_dir) when status >= 500 do
-    """
-    The harness's channel to the CodeMySpec server is down, and the server is answering #{status}. This is the server, not the harness — the channel will rejoin on its own once the server is healthy. A dev server usually needs restarting rather than fixing: Phoenix cannot hot-reload a config or dependency change.
-    Working directory: #{working_dir}
-    """
-    |> String.trim()
+    explain_disconnected({:not_connected, {:http, status}}, working_dir)
   end
 
   defp explain({:not_connected, {:http, status}}, working_dir) do
-    """
-    The harness's channel to the CodeMySpec server is down, but the server is answering (#{status}). So the server is up and this harness cannot hold a socket to it — look at the credential and the reconnect attempts in the harness log, not at the server.
-    Working directory: #{working_dir}
-    """
-    |> String.trim()
+    if holds_a_channel?() do
+      """
+      This working copy's channel to the CodeMySpec server has not come up yet. The harness is connected and holding a channel for another working copy, so the socket and the credential are both fine — neither is what to look at.
+      A copy is picked up on its first contact, and a harness that was just restarted keeps a lease on the others for up to a minute. Try again shortly; if it persists, `/health` on the harness lists which roots it is serving.
+      Working directory: #{working_dir}
+      """
+      |> String.trim()
+    else
+      explain_disconnected({:not_connected, {:http, status}}, working_dir)
+    end
   end
 
   # "Start it" was the whole of this, and starting it is not always enough.
@@ -468,5 +490,40 @@ defmodule CmsHarness.HookDecision do
     " Whether that range touched the harness or the channel modules could not " <>
       "be read (a rebase can leave the booted commit unreachable). If in doubt, " <>
       "restart with `just refresh-harness`."
+  end
+
+  defp summarize_disconnected(status) do
+    "channel down, server answering #{status} — this harness cannot hold a socket; " <>
+      "check the credential and the reconnect attempts, not the server"
+  end
+
+  # Does this harness hold a joined channel for anything at all?
+  #
+  # Asked of the registry rather than inferred, and asked defensively: the
+  # registry does not exist in a process that never started the harness
+  # supervisor, and `Registry.select/2` raises there rather than returning
+  # nothing. A raise here would turn a refusal into a crash, in the code whose
+  # entire job is explaining a refusal.
+  defp holds_a_channel? do
+    case Process.whereis(CmsHarness.Registry) do
+      nil -> false
+      _pid -> Enum.any?(CmsHarness.Projects.list(), &CmsHarness.Projects.connected?/1)
+    end
+  end
+
+  defp explain_disconnected({:not_connected, {:http, status}}, working_dir) when status >= 500 do
+    """
+    The harness's channel to the CodeMySpec server is down, and the server is answering #{status}. This is the server, not the harness — the channel will rejoin on its own once the server is healthy. A dev server usually needs restarting rather than fixing: Phoenix cannot hot-reload a config or dependency change.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
+  end
+
+  defp explain_disconnected({:not_connected, {:http, status}}, working_dir) do
+    """
+    The harness's channel to the CodeMySpec server is down, but the server is answering (#{status}). So the server is up and this harness cannot hold a socket to it — look at the credential and the reconnect attempts in the harness log, not at the server.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
   end
 end
