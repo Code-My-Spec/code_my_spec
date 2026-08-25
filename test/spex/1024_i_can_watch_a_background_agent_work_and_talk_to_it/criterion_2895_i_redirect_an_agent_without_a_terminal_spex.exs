@@ -95,6 +95,19 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
         {:ok, context}
       end
 
+      then_ "and the box does not still hold what I just sent", context do
+        # Found in use, not here: the input had no rendered `value`, so the DOM
+        # patch had nothing to set and the typed text survived the submit. It
+        # sits there looking unsent, and the next thing anyone does is send it
+        # again — two turns, two answers, and a transcript that reads as though
+        # the page duplicated everything. It had.
+        assert render(context.live) =~ ~s(name="message" value=""),
+               "the send box renders no empty value, so what was typed outlives " <>
+                 "the submit and invites a second send of the same message"
+
+        {:ok, context}
+      end
+
       then_ "and its answer appears in the same conversation", context do
         eventually(fn ->
           {:ok, _reloaded, html} =

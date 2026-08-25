@@ -451,8 +451,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           data-test="agent-pending-message"
           class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
         >
+          <%!-- The text is not repeated here. It is already in the transcript above,
+          as the message it is — printing it again put the same sentence on the
+          page twice and read as the message having been sent twice, which is a
+          thing that can genuinely happen and must not be imitated by a status
+          line. This says what is true of it and offers the one action. --%>
           <span class="opacity-60">
-            waiting for the agent to finish its turn: {Conversations.Message.text(message)}
+            waiting for the agent to finish its turn
           </span>
           <button
             type="button"
@@ -471,15 +476,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           phx-submit="send_message"
           class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
         >
+          <%!-- `value=""` is load-bearing, which is not obvious and cost a duplicate
+          send in real use. Without a rendered value the DOM patch has nothing to
+          set, so what you typed survives the submit and sits in the box looking
+          unsent — and the next thing anyone does is send it again. `InboxLive`'s
+          message form has carried this attribute all along. --%>
           <input
             type="text"
             name="message"
+            value=""
             autocomplete="off"
             placeholder="say something to this agent"
             data-test="agent-message"
             class="input input-sm input-bordered min-w-0 flex-1"
           />
-          <button type="submit" class="btn btn-sm btn-primary">Send</button>
+          <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
+          machine — up to the transport's patience if that machine is slow — and
+          a button that stays live through that invites the second click, which
+          is a second turn and a second answer rather than a wasted one. --%>
+          <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
+            Send
+          </button>
         </form>
 
         <p
