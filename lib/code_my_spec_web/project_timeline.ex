@@ -76,15 +76,34 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             data-step={step.name}
             data-state={step.state}
           >
-            <.link navigate={step.path} class="block" data-step={step.name}>
-              <span class={[
-                "block rounded-selector px-2 py-1 text-xs",
-                step.state == "current" && "bg-primary text-primary-content font-semibold",
-                step.state == "done" && "opacity-70",
-                step.state == "todo" && "opacity-50"
-              ]}>
+            <.link navigate={step.path} class="block" title={step.title}>
+              <%!-- Expanded: the step's name. Collapsed: a dot, so a phase
+              zoomed out still reads as a run of marks with some filled. It
+              rendered nothing at all before unless the step was done, which
+              made three of five phases bare words — zoomed out, not absent, is
+              the whole point of showing the neighbours. --%>
+              <span
+                :if={phase.expanded?}
+                class={[
+                  "block rounded-selector px-2 py-1 text-xs",
+                  step.state == "current" && "bg-primary text-primary-content font-semibold",
+                  step.state == "done" && "opacity-70",
+                  step.state == "todo" && "opacity-50"
+                ]}
+              >
                 <.icon :if={step.state == "done"} name="hero-check" class="size-3" />
-                <span class={not phase.expanded? && "sr-only"}>{step.title}</span>
+                {step.title}
+              </span>
+
+              <span :if={not phase.expanded?} class="flex items-center px-0.5 py-1">
+                <span class={[
+                  "size-2 rounded-full",
+                  step.state == "current" && "bg-primary",
+                  step.state == "done" && "bg-base-content/50",
+                  step.state == "todo" && "bg-base-content/20"
+                ]}>
+                </span>
+                <span class="sr-only">{step.title}</span>
               </span>
             </.link>
           </span>

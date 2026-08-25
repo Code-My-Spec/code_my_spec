@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
 
       when_ "I click that step", context do
         context.live
-        |> element("[data-test=timeline-step][data-step=story_work] a, a[data-step=story_work]")
+        |> element("[data-test=timeline-step][data-step=story_work] a")
         |> render_click()
 
         {:ok, context}
