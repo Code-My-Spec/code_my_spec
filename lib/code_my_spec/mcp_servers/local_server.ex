@@ -68,6 +68,11 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Epics — organizational grouping of stories, plus the one-shot bulk
   # release that controls how fast work enters the development graph.
   component(CodeMySpec.McpServers.Stories.Tools.CreateEpic)
+  # The main agent's half of the hand-off. `EpicDispatch.propose/2` existed with
+  # nothing exposing it, so the agent could group stories into an epic and had
+  # no way to send it — the epic stayed draft forever and the approve control
+  # never appeared.
+  component(CodeMySpec.McpServers.Stories.Tools.ProposeEpic)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
   component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
