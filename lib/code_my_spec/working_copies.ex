@@ -308,7 +308,7 @@ defmodule CodeMySpec.WorkingCopies do
     # back would clear the main copy on its own reconnect.
     save(harness, %{
       root: Path.expand(root),
-      main: harness.main or first_copy?(harness.project_id)
+      main: harness.main or only_checkout?(harness.project_id, harness.id)
     })
   end
 
@@ -395,7 +395,7 @@ defmodule CodeMySpec.WorkingCopies do
     |> Repo.insert()
   end
 
-  # A project's first *checkout* is its main one.
+  # A project's *only* checkout is its main one.
   #
   # Not the inference `designate_main/2` exists to rule out: that rule is about
   # six checkouts of one repository, where a path, a label and a last-seen time
@@ -404,10 +404,23 @@ defmodule CodeMySpec.WorkingCopies do
   # with a checkout, no main copy and no agent — a state nobody can act on and
   # nothing asked for.
   #
-  # Asked rather than assumed, so a project that already has a main copy keeps
-  # it and a second checkout joining never quietly takes over.
-  defp first_copy?(project_id) do
-    not Repo.exists?(from w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+  # "Only" and not "first", because the two differ precisely where it matters.
+  # Keying on "no main copy yet" designates whatever reports a root while that
+  # is true — which on a project that already has six checkouts is whichever
+  # harness reconnects first, and that is the guess this rule was written to
+  # avoid. It is not hypothetical: this project has six, and turning the
+  # feature on would have designated one of them at random.
+  #
+  # So where there is a choice to make, nothing makes it. `designate_main/2` is
+  # how a person does, and the page offers it on every copy that is not already
+  # the main one.
+  defp only_checkout?(project_id, working_copy_id) do
+    not Repo.exists?(
+      from w in WorkingCopy,
+        where:
+          w.project_id == ^project_id and w.id != ^working_copy_id and
+            (w.main or not is_nil(w.root))
+    )
   end
 
   # The label is refreshed on every join because it can legitimately change —

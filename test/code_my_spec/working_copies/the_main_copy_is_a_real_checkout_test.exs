@@ -24,7 +24,11 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Devices
+  alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
+
+  defp reload(%WorkingCopy{id: id}), do: Repo.get!(WorkingCopy, id)
 
   defp device(scope, hostname) do
     {:ok, device} = Devices.announce(scope, nil, %{hostname: hostname, kind: :local})
@@ -78,6 +82,34 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
              "not the one the work belongs in."
   end
 
+  test "a project that already has checkouts and no main copy designates none" do
+    scope = full_scope_fixture()
+
+    first = checkout(scope, "/workspace/app", "a-laptop")
+    _second = checkout(scope, "/workspace/worktree-a", "a-laptop")
+    _third = checkout(scope, "/workspace/worktree-b", "a-desktop")
+
+    # What the database holds on a project whose checkouts predate the column —
+    # roots everywhere, nothing designated. Written directly because that is
+    # history rather than something the app can still produce, which is the
+    # whole point of the rule this checks.
+    Repo.update_all(WorkingCopy, set: [main: false])
+
+    # A reconnect must change nothing. On this project that reconnect is a
+    # worktree nobody is working in, waking on a timer — and it would become the
+    # project's main checkout without anybody choosing it.
+    {:ok, rejoined} = WorkingCopies.report_root(reload(first), "/workspace/app")
+
+    refute rejoined.main,
+           "a reconnect designated a checkout on a project that has several. That is " <>
+             "the guess `designate_main/2` exists to rule out — a path, a label and a " <>
+             "last-seen time each pick a different wrong one — and it would be made " <>
+             "silently, by whichever harness happened to wake up first."
+
+    refute WorkingCopies.main(scope),
+           "the project has a main checkout nobody designated"
+  end
+
   test "the main copy keeps the designation when its harness rejoins" do
     scope = full_scope_fixture()
     copy = checkout(scope, "/workspace/app")
@@ -85,9 +117,9 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
     {:ok, rejoined} = WorkingCopies.report_root(copy, "/workspace/app")
 
     assert rejoined.main,
-           "the copy cleared its own designation by reconnecting. `first_copy?/1` is " <>
-             "false precisely because this copy already holds it, so writing that " <>
-             "result back is how a project loses its main copy on a laptop waking up."
+           "the copy cleared its own designation by reconnecting. `only_checkout?/2` is " <>
+             "false once this copy holds the designation, so writing that result back " <>
+             "is how a project loses its main checkout on a laptop waking up."
 
     assert WorkingCopies.main(scope).id == copy.id
   end
