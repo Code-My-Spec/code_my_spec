@@ -502,6 +502,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
       <ul class="space-y-1.5">
         <li
           :for={item <- @page.items}
+          data-test="requirement"
+          data-requirement={item.name}
+          data-satisfied={to_string(item.satisfied)}
+          data-basis={item[:basis]}
           class="flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3"
         >
           <.status_icon satisfied={item.satisfied} />
@@ -573,6 +577,9 @@ defmodule CodeMySpecWeb.RequirementsLive do
       <ul class="space-y-1.5">
         <li
           :for={item <- @page.req_items}
+          data-test="requirement"
+          data-requirement={item.name}
+          data-satisfied={to_string(item.satisfied)}
           class="flex items-start gap-3 rounded-box border border-base-300 bg-base-200 p-3"
         >
           <.status_icon satisfied={item.satisfied} />

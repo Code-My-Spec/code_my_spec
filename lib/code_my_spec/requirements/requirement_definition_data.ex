@@ -953,6 +953,27 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
           "BDD spec boundary protections installed — framework Credo checks + fixtures bridge + project BDD spec plan",
         prerequisites: [5]
       }),
+      # The node that keeps work moving. Placed after the boundary gate and
+      # before issue triage because it is what puts story work in flight, and
+      # there are no issues to triage until something has been built.
+      #
+      # Unsatisfied only when nothing is in progress and unassigned work exists
+      # — the one state that wants the main agent to act. It never assigns
+      # anything itself: John kept sending and approving as two acts.
+      new!(%{
+        id: 17,
+        name: "work_dispatched",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{
+          module: CodeMySpec.Requirements.DispatchChecker,
+          function: :dispatched?
+        },
+        artifact_type: :review,
+        description:
+          "Ready stories are grouped into epics and sent for approval when nothing is being built",
+        prerequisites: [16]
+      }),
       new!(%{
         id: 6,
         name: "issues_triaged",

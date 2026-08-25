@@ -13,11 +13,20 @@ defmodule CodeMySpec.Epics.Epic do
           description: String.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
+          status: atom() | nil,
+          working_copy_id: Ecto.UUID.t() | nil,
+          failure_reason: String.t() | nil,
+          dispatched_at: DateTime.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           stories: [Story.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
+
+  # draft → proposed → dispatched, with `failed` for work that stopped without
+  # finishing. The two transitions are two acts: the main agent proposes, a
+  # person approves. Collapsing them removes the gate story 964 is built on.
+  @statuses [:draft, :proposed, :dispatched, :failed]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "epics" do
@@ -25,6 +34,13 @@ defmodule CodeMySpec.Epics.Epic do
     field :slug, :string
     field :description, :string
     field :account_id, Ecto.UUID
+    field :status, Ecto.Enum, values: @statuses, default: :draft
+    # Where it went, recorded at dispatch rather than derived. Which copy an
+    # epic runs on is the agent's choice at that moment, and asking again later
+    # would answer with today's idle copy instead of the one holding the work.
+    field :working_copy_id, Ecto.UUID
+    field :failure_reason, :string
+    field :dispatched_at, :utc_datetime
 
     belongs_to :project, Project, type: :binary_id
     has_many :stories, Story
@@ -32,10 +48,22 @@ defmodule CodeMySpec.Epics.Epic do
     timestamps(type: :utc_datetime)
   end
 
+  @spec statuses() :: [atom()]
+  def statuses, do: @statuses
+
   @doc false
   def changeset(epic, attrs) do
     epic
-    |> cast(attrs, [:project_id, :account_id, :name, :description])
+    |> cast(attrs, [
+      :project_id,
+      :account_id,
+      :name,
+      :description,
+      :status,
+      :working_copy_id,
+      :failure_reason,
+      :dispatched_at
+    ])
     |> put_slug()
     |> validate_required([:project_id, :name, :slug])
     |> validate_length(:name, min: 1, max: 255)

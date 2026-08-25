@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.EpicHelpers do
     count = Keyword.get(opts, :stories, 1)
 
     {:reply, response, _frame} =
-      CreateEpic.execute(%{title: title, description: "Proposed for approval"}, frame)
+      CreateEpic.execute(%{name: title, description: "Proposed for approval"}, frame)
 
     epic_id = extract_id(response)
 
@@ -96,7 +96,9 @@ defmodule CodeMySpecSpex.EpicHelpers do
     {:ok, live, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
 
     live
-    |> element("[data-test=approve-epic][data-epic-id=#{epic_id}]")
+    # Quoted: a uuid beginning with a digit is not a valid unquoted CSS
+    # attribute value, and the selector raises rather than matching nothing.
+    |> element(~s([data-test=approve-epic][data-epic-id="#{epic_id}"]))
     |> render_click()
 
     Map.put(context, :epic, epic_id)
@@ -131,7 +133,10 @@ defmodule CodeMySpecSpex.EpicHelpers do
   defp extract_id(response) do
     text = response_text(response)
 
-    case Regex.run(~r/\(ID: ([^)]+)\)/, text) do
+    # The reply reads `(ID: <uuid>, slug: <slug>)`, so stop at the id rather
+    # than at the closing bracket — `[^)]+` swallowed the slug too and the uuid
+    # came back with prose attached.
+    case Regex.run(~r/\(ID: ([0-9a-f-]{36})/, text) do
       [_, id] ->
         id
 

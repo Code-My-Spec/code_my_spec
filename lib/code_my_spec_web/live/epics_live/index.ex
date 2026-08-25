@@ -17,6 +17,7 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   """
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Stories
@@ -94,6 +95,23 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
          socket
          |> put_flash(:error, "Could not move story: #{inspect(reason)}")
          |> load_board(scope)}
+    end
+  end
+
+  # Agreeing is the act that starts work. `EpicDispatch.approve/2` refuses
+  # anything that was not proposed first, so this cannot become a second route
+  # that bypasses the gate.
+  def handle_event("approve_epic", %{"id" => id}, socket) do
+    case EpicDispatch.approve(socket.assigns.scope, id) do
+      {:ok, _epic} ->
+        {:noreply, socket |> put_flash(:info, "Building it.") |> load_board(socket.assigns.scope)}
+
+      {:error, :not_proposed} ->
+        {:noreply,
+         put_flash(socket, :error, "That epic has not been put forward for building yet.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That epic could not be started.")}
     end
   end
 
@@ -282,8 +300,14 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
 
             <div
               :for={epic <- @epics}
-              class="card bg-base-100 border border-base-300"
-              data-test={"epic-#{epic.slug}"}
+              class={[
+                "card bg-base-100 border",
+                epic.status == :proposed && "border-primary",
+                epic.status != :proposed && "border-base-300"
+              ]}
+              data-test="epic"
+              data-epic-id={epic.id}
+              data-epic-status={epic.status}
             >
               <div class="card-body p-4 gap-3">
                 <div class="flex items-start justify-between gap-2">
@@ -291,6 +315,31 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                     <h3 class="font-semibold truncate">{epic.name}</h3>
                     <p class="text-xs opacity-70">
                       {length(epic_stories(epic))} stories · {ready_count(epic)} ready
+                    </p>
+
+                    <%!-- Where the work is happening. An epic dispatched with
+                    nowhere to go says so rather than looking finished: the
+                    decision was the user's and it stands, but the work has not
+                    started. --%>
+                    <p
+                      :if={epic.status in [:dispatched, :failed]}
+                      data-test="epic-working-copy"
+                      data-working-copy-id={epic.working_copy_id}
+                      class="text-xs opacity-70"
+                    >
+                      <%= if epic.working_copy_id do %>
+                        Being built on your project's checkout
+                      <% else %>
+                        Agreed, and waiting for a checkout to build it on
+                      <% end %>
+                    </p>
+
+                    <p
+                      :if={epic.status == :failed && epic.failure_reason}
+                      data-test="epic-failure"
+                      class="text-xs text-warning"
+                    >
+                      It stopped: {epic.failure_reason}
                     </p>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
@@ -300,6 +349,21 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                     >
                       Edit
                     </.button>
+                    <%!-- Agreeing is what starts work, and it is the only
+                    thing that does. Offered only on an epic the agent has
+                    actually put forward: a control on a draft would let work
+                    start before anybody proposed it. --%>
+                    <button
+                      :if={epic.status == :proposed}
+                      type="button"
+                      phx-click="approve_epic"
+                      phx-value-id={epic.id}
+                      data-test="approve-epic"
+                      data-epic-id={epic.id}
+                      class="btn btn-primary btn-xs"
+                    >
+                      Build this
+                    </button>
                     <button
                       type="button"
                       phx-click="release_epic"
