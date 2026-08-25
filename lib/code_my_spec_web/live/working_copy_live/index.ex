@@ -180,9 +180,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
             data-test="working-copy"
             data-working-copy-id={row.harness.id}
             data-root={row.harness.root}
-            class="card card-compact border border-base-300 bg-base-100"
+            class={[
+              "card card-compact",
+              if(row.harness.main,
+                do: "border-2 border-primary bg-primary/5",
+                else: "border border-base-300 bg-base-100"
+              )
+            ]}
           >
             <div class="card-body gap-3">
+              <%!-- Said in words, above the name, rather than as a badge among
+              the badges. "Main" at the end of a row that also says `coding · pi`
+              is one more piece of jargon to somebody who does not know what a
+              working copy is — and they are who needs to know which of these
+              their project actually lives in. --%>
+              <div
+                :if={row.harness.main}
+                data-test="main-copy"
+                class="flex items-center gap-2 text-sm font-semibold text-primary"
+              >
+                <.icon name="hero-star-solid" class="size-4" />
+                Your project's main checkout — its agent runs here
+              </div>
+
               <div class="flex items-start gap-3">
                 <div class="min-w-0 flex-1">
                   <.link
@@ -256,13 +276,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   {agent.role} · {engine_name(agent.engine)}
                 </span>
 
-                <span
-                  :if={row.harness.main}
-                  data-test="main-copy"
-                  class="badge badge-primary badge-xs"
-                >
-                  Main
-                </span>
                 <span :if={row.last_message} data-test="last-message" class="opacity-60">
                   last message {row.last_message}
                 </span>

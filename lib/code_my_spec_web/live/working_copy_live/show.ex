@@ -208,9 +208,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             <span
               :if={@row.harness.main}
               data-test="main-copy"
-              class="badge badge-primary badge-sm"
+              class="badge badge-primary gap-1"
             >
-              Main copy
+              <.icon name="hero-star-solid" class="size-3" /> Main checkout
             </span>
           </:actions>
         </.header>

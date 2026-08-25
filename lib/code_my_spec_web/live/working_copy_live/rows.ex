@@ -69,6 +69,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     scope
     |> WorkingCopies.list_harnesses()
     |> Enum.map(&build(&1, agents, transcripts, now))
+    |> Enum.sort_by(&(not &1.harness.main))
   end
 
   @doc """
