@@ -37,6 +37,29 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
 
   Recording spends real money, a fraction of a cent per turn. That is the price
   of a recording that is evidence rather than a guess about a wire format.
+
+  ## What these prove about streaming, and what they do not
+
+  These turns stream: the engine calls `stream_chat/4` whenever an `on_event` is
+  set, because `chat/3` answers only when a turn is over and watching exists to
+  catch an agent going wrong — which is exactly the turn that never completes.
+  So the recorded bodies are SSE.
+
+  ReqCassette replays with `send_resp` rather than `send_chunked`
+  (`req_cassette/plug.ex:613`), so a recorded stream comes back as **one chunk**.
+  Every event is still produced with the right content — the accumulator splits
+  on the blank line either way, and the assertions below check tool name,
+  arguments, ordering and the answer's text. What no cassette here can exercise
+  is an event split across a chunk boundary, because the boundaries a live
+  provider produced are not recorded. A bug in partial-event handling would be
+  invisible to these.
+
+  Turning streaming off in test would trade that gap for a worse one: the replay
+  would exercise `chat/3`, which is the path the transcript does not use, and
+  these two cassettes exist to prove that turn events reach the transcript at
+  all. The cloud app's own model calls never stream — `Chat.Provider` and the
+  `Intake` shapers use `ReqLLM.generate_text/3` and `generate_object/4` — so this
+  is the only streaming path there is.
   """
   use ExUnit.Case, async: false
 
@@ -47,6 +70,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
   @moduletag :tmp_dir
 
   @cassette_dir "test/cassettes/alloy"
+  @cassettes ~w(alloy_turn_answer alloy_turn_reads_a_file)
 
   # What the agent is asked, and a word only the answer can contain. Recorded
   # deliberately: an assertion on "ok" or on a word the prompt already uses
@@ -145,6 +169,13 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
     key = anthropic_key()
     events = record_events()
 
+    # From empty, every time. Record mode appends, so a second run over an
+    # existing cassette writes a second copy of the same turn after the first —
+    # and replay never reaches it, because request N matches interaction N. The
+    # file grows, the suite stays green, and what gets committed is two
+    # recordings pretending to be one.
+    for name <- @cassettes, do: File.rm(Path.join(@cassette_dir, name <> ".json"))
+
     with_session(fn session ->
       with_cassette "alloy_turn_answer", record_opts(session), fn plug ->
         agent = start_agent(root, plug, events, api_key: key)
@@ -168,7 +199,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
       end
     end)
 
-    for name <- ~w(alloy_turn_answer alloy_turn_reads_a_file) do
+    for name <- @cassettes do
       path = Path.join(@cassette_dir, name <> ".json")
 
       assert File.exists?(path), "#{name} was not written"
@@ -185,17 +216,43 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
     # tool, and the follow-up request carrying the result matched the first by
     # method and uri and was replayed instead of recorded. A cassette that stops
     # at `tool_use` answers "call a tool" to every request forever.
-    interactions =
-      @cassette_dir
-      |> Path.join("alloy_turn_reads_a_file.json")
-      |> File.read!()
-      |> Jason.decode!()
-      |> Map.fetch!("interactions")
+    # Exact, not a floor. A doubled cassette satisfies "at least two" and is
+    # exactly what this run is meant to catch.
+    plain = recorded_interactions("alloy_turn_answer")
 
-    assert length(interactions) >= 2,
+    assert length(plain) == 1,
+           "a question with no tool in it is one request. #{length(plain)} means either " <>
+             "the model did something unexpected, or this recording was appended to an " <>
+             "existing one."
+
+    interactions = recorded_interactions("alloy_turn_reads_a_file")
+
+    assert length(interactions) == 2,
            "the tool-using recording holds #{length(interactions)} interaction(s). A " <>
-             "turn that calls a tool makes at least two requests: the one that decides " <>
-             "to call it, and the one carrying its result."
+             "turn that calls a tool once makes two requests: the one that decides to " <>
+             "call it, and the one carrying its result."
+
+    # Every recorded stream has to be a whole one.
+    #
+    # A body truncated mid-stream replays as a turn that starts and never
+    # finishes, which is a hang with no visible cause — and since replay hands
+    # the body over in one piece, nothing downstream would notice the end was
+    # missing. `message_stop` is Anthropic's last event.
+    for name <- @cassettes do
+      for {interaction, index} <- Enum.with_index(recorded_interactions(name)) do
+        assert interaction["response"]["body"] =~ "message_stop",
+               "#{name} interaction #{index} was recorded without the end of its " <>
+                 "stream. Replayed, the turn would start and never complete."
+      end
+    end
+  end
+
+  defp recorded_interactions(name) do
+    @cassette_dir
+    |> Path.join(name <> ".json")
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.fetch!("interactions")
   end
 
   # -- the agent ------------------------------------------------------------
