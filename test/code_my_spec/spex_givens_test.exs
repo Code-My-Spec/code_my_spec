@@ -91,6 +91,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # 812's session-stitching criteria have no other way to say "a visitor
   # arriving with these GA cookies". The helper's whole body is
   # `Plug.Test.put_req_cookie/3` twice.
+  #   * `EpicHelpers.` — story 964's premises. It drives `CreateEpic` and
+  #     `AssignStoryToEpic` through their MCP tools and approves through the
+  #     control on the epics screen, so a block calling it has established a
+  #     real epic on a real working copy. The calls it makes into
+  #     `EpicDispatch` are remote by name because that module is not written
+  #     yet; that is what makes 964's specs red rather than what makes them
+  #     establish nothing.
+  #
   # `join_working_copy/3` and `report_agents/2` are `CodeMySpecSpex.WorkingCopyHelpers`
   # — both join a real channel and drive it the way the harness does. A working
   # copy exists *because* a harness joined for it, so joining is the establishing
@@ -115,6 +123,7 @@ defmodule CodeMySpec.SpexGivensTest do
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
     join_working_copy report_agents
+    EpicHelpers.
   )
 
   # The failure message has always offered a second remedy — "if the
