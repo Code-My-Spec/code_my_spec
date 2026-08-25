@@ -1,0 +1,469 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-25T11:59:32.440097Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Read pricing.txt in the working directory and tell me what it says.",
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "stream": true,
+          "tools": [
+            {
+              "description": "Read a file from the filesystem. Returns contents with line numbers.",
+              "input_schema": {
+                "properties": {
+                  "file_path": {
+                    "description": "Path to the file to read",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "Maximum number of lines to return",
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "description": "Line number to start reading from (1-based)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "file_path"
+                ],
+                "type": "object"
+              },
+              "name": "read"
+            },
+            {
+              "description": "Write content to a file. Creates parent directories if needed.",
+              "input_schema": {
+                "properties": {
+                  "content": {
+                    "description": "Content to write to the file",
+                    "type": "string"
+                  },
+                  "file_path": {
+                    "description": "Path to the file to write",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file_path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "name": "write"
+            },
+            {
+              "description": "Search and replace text in a file.",
+              "input_schema": {
+                "properties": {
+                  "file_path": {
+                    "description": "Path to the file to edit",
+                    "type": "string"
+                  },
+                  "new_string": {
+                    "description": "The replacement text",
+                    "type": "string"
+                  },
+                  "old_string": {
+                    "description": "The text to find and replace",
+                    "type": "string"
+                  },
+                  "replace_all": {
+                    "default": false,
+                    "description": "Replace all occurrences (default: false)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "file_path",
+                  "old_string",
+                  "new_string"
+                ],
+                "type": "object"
+              },
+              "name": "edit"
+            },
+            {
+              "description": "Execute a shell command and return its output.",
+              "input_schema": {
+                "properties": {
+                  "command": {
+                    "description": "The shell command to execute",
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "default": 10000,
+                    "description": "Timeout in milliseconds (default: 10000)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "type": "object"
+              },
+              "name": "bash"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-sonnet-5\",\"id\":\"msg_011CePRpZRjLADEanXjBLcDG\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":974,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":5,\"service_tier\":\"standard\",\"inference_geo\":\"global\"}} }\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}               }\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\"}               }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"EogCCpABCBEYAipAO/9/b1qulHfhlpttR5/mQb3e8Ga92pSfw7Hq6V91bTDGvPbBpYBskyY4Ef/AIcn6Tl5C7LjPzie1FP5+WZMgXjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAaSHttQGEgztPdchy4iazF7kiLIaDJQWXtQd249dcm60aiIwMheY+OkHuY+lsDfXucEZDYvK1/rPjCh+ssx+pO1VGuaoIkwOTRNlmIpyo927emf4KiVHStstInJw/6l+egVDbWemzK6IDv0M2QwMZwm7Q/RYAG3HsyOAGAE=\"}   }\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0      }\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01WBGncVhY8zs53g7fQbMiqi\",\"name\":\"read\",\"input\":{},\"caller\":{\"type\":\"direct\"}}          }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}     }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"f\"}               }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"ile_pat\"}       }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"h\\\": \\\"pricing\"}   }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\".txt\\\"}\"}        }\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1       }\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":974,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":62,\"output_tokens_details\":{\"thinking_tokens\":9}}   }\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"       }\n\n",
+        "body_type": "text",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-08-25T11:59:30Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-08-25T11:59:30Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-08-25T11:59:30Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-08-25T11:59:30Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cache-control": [
+            "no-cache"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a30a6e593912c521-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "text/event-stream; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 25 Aug 2026 11:59:32 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-82f6a55732903ef1715cf036496952ef-6ff21e601aa8b28d-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-25T11:59:34.339129Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Read pricing.txt in the working directory and tell me what it says.",
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "signature": "EogCCpABCBEYAipAO/9/b1qulHfhlpttR5/mQb3e8Ga92pSfw7Hq6V91bTDGvPbBpYBskyY4Ef/AIcn6Tl5C7LjPzie1FP5+WZMgXjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAaSHttQGEgztPdchy4iazF7kiLIaDJQWXtQd249dcm60aiIwMheY+OkHuY+lsDfXucEZDYvK1/rPjCh+ssx+pO1VGuaoIkwOTRNlmIpyo927emf4KiVHStstInJw/6l+egVDbWemzK6IDv0M2QwMZwm7Q/RYAG3HsyOAGAE=",
+                  "thinking": "",
+                  "type": "thinking"
+                },
+                {
+                  "id": "toolu_01WBGncVhY8zs53g7fQbMiqi",
+                  "input": {
+                    "file_path": "pricing.txt"
+                  },
+                  "name": "read",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": "     1\tthe plan charges per seat\n",
+                  "tool_use_id": "toolu_01WBGncVhY8zs53g7fQbMiqi",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "stream": true,
+          "tools": [
+            {
+              "description": "Read a file from the filesystem. Returns contents with line numbers.",
+              "input_schema": {
+                "properties": {
+                  "file_path": {
+                    "description": "Path to the file to read",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "Maximum number of lines to return",
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "description": "Line number to start reading from (1-based)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "file_path"
+                ],
+                "type": "object"
+              },
+              "name": "read"
+            },
+            {
+              "description": "Write content to a file. Creates parent directories if needed.",
+              "input_schema": {
+                "properties": {
+                  "content": {
+                    "description": "Content to write to the file",
+                    "type": "string"
+                  },
+                  "file_path": {
+                    "description": "Path to the file to write",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file_path",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "name": "write"
+            },
+            {
+              "description": "Search and replace text in a file.",
+              "input_schema": {
+                "properties": {
+                  "file_path": {
+                    "description": "Path to the file to edit",
+                    "type": "string"
+                  },
+                  "new_string": {
+                    "description": "The replacement text",
+                    "type": "string"
+                  },
+                  "old_string": {
+                    "description": "The text to find and replace",
+                    "type": "string"
+                  },
+                  "replace_all": {
+                    "default": false,
+                    "description": "Replace all occurrences (default: false)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "file_path",
+                  "old_string",
+                  "new_string"
+                ],
+                "type": "object"
+              },
+              "name": "edit"
+            },
+            {
+              "description": "Execute a shell command and return its output.",
+              "input_schema": {
+                "properties": {
+                  "command": {
+                    "description": "The shell command to execute",
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "default": 10000,
+                    "description": "Timeout in milliseconds (default: 10000)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "type": "object"
+              },
+              "name": "bash"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-sonnet-5\",\"id\":\"msg_011CePRph6M8Ny7bJjrbtnRz\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":1053,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":1,\"service_tier\":\"standard\",\"inference_geo\":\"global\"}}   }\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}     }\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"The\"}            }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" file **pricing.txt** contains a single line:\\n\\n```\\nthe plan charges per seat\\n```\\n\\nIn short, it states that the plan's pricing is based on a per-seat charge (i.e., you\"}               }\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" pay for each user/seat rather than a flat fee).\"}    }\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0             }\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":1053,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":78,\"output_tokens_details\":{\"thinking_tokens\":0}}          }\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"     }\n\n",
+        "body_type": "text",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-08-25T11:59:32Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-08-25T11:59:32Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-08-25T11:59:32Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-08-25T11:59:32Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cache-control": [
+            "no-cache"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a30a6e63ed71c521-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "text/event-stream; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 25 Aug 2026 11:59:33 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-c3658660243ae52bdc072a02fa0eaa8c-36c391d1933ed7ce-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

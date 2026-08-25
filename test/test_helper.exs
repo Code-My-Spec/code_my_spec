@@ -45,7 +45,10 @@ ExUnit.start(
       :record_google_login_shape,
       :record_github_login_shape,
       # Waiting on a ChatGPT grant to record from — see the test's own note.
-      :record_openai_refresh_shape
+      :record_openai_refresh_shape,
+      # Spends real money and reaches a real provider. The cassettes it writes
+      # are replayed by the rest of the suite, which runs by default.
+      :record_alloy_turn
     ] ++ sops_exclusions
 )
 

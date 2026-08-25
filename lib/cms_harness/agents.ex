@@ -48,6 +48,10 @@ defmodule CmsHarness.Agents do
              # a self-hosted gateway, a proxy, a company's own deployment. The
              # provider has always read this and nothing has ever sent one.
              base_url: request["base_url"],
+             # In front of the provider's HTTP client. A function, so only an
+             # in-process caller can set it — which is what a recording of a
+             # real turn needs and what nothing on the wire can carry.
+             req_options: request["req_options"],
              # Where an agent finishes what it was part-way through before the
              # process goes. Nothing on the wire sets it yet; the seam exists so
              # a graceful stop is observable rather than merely intended.

@@ -53,6 +53,15 @@ defmodule CmsHarness.Agents.Provider do
   @spec options(String.t(), credential(), keyword()) :: {:ok, keyword()} | {:error, atom()}
   def options(provider, credential, opts \\ [])
 
+  # `req_options` reaches Req itself, in `complete/3` and `stream/4` alike. It
+  # exists so a recorder can sit in front of the provider's HTTP client and
+  # capture a turn this engine actually ran — a recording made by calling Alloy
+  # directly would be a recording of Alloy.
+  #
+  # Only on the two providers that speak HTTP. `codex exec` is a subprocess, so
+  # there is no Req client to put anything in front of, and accepting the option
+  # there would look like it worked.
+
   # `codex exec` reads its own `auth.json`; Alloy copies the one named here into
   # an isolated `CODEX_HOME` so an agent never inherits the machine's MCP or
   # plugin configuration — the same isolation the Pi config directory gave us,
@@ -97,7 +106,8 @@ defmodule CmsHarness.Agents.Provider do
               api_url: Keyword.get(opts, :base_url) || @zai_base,
               chat_path: "/chat/completions",
               api_key: api_key,
-              model: Keyword.get(opts, :model) || @zai_model
+              model: Keyword.get(opts, :model) || @zai_model,
+              req_options: Keyword.get(opts, :req_options) || []
             }}
        ]}
     end
@@ -111,7 +121,8 @@ defmodule CmsHarness.Agents.Provider do
            {Alloy.Provider.Anthropic,
             %{
               api_key: api_key,
-              model: Keyword.get(opts, :model) || "claude-sonnet-5"
+              model: Keyword.get(opts, :model) || "claude-sonnet-5",
+              req_options: Keyword.get(opts, :req_options) || []
             }}
        ]}
     end

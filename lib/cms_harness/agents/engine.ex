@@ -59,6 +59,7 @@ defmodule CmsHarness.Agents.Engine do
           model: String.t() | nil,
           base_url: String.t() | nil,
           messages: [map()] | nil,
+          req_options: keyword() | nil,
           on_stop: (-> any()) | nil,
           on_event: (map() -> any()) | nil
         ]
@@ -496,7 +497,16 @@ defmodule CmsHarness.Agents.Engine do
   # push and a database row behind every few characters an agent says. Dropping
   # the `on_chunk` callback was not enough: the same fragments arrive again as
   # envelopes, which is how a sentence became forty rows in a transcript.
-  defp report_step(_report, _agent_id, %{event: :text_delta}), do: :ok
+  #
+  # `:thinking_delta` is the same fragment through the other door, and it was
+  # not being dropped. A recorded turn against a real provider showed one
+  # arriving; a turn with extended thinking on emits them at the same rate as
+  # text, so the transcript would fill with reasoning fragments nobody asked to
+  # see. Found by recording a real turn, which is what recording is for.
+  defp report_step(_report, _agent_id, %{event: event})
+       when event in [:text_delta, :thinking_delta],
+       do: :ok
+
   defp report_step(report, agent_id, envelope), do: report.(agent_id, envelope)
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
@@ -532,7 +542,10 @@ defmodule CmsHarness.Agents.Engine do
          {:ok, provider_opts} <-
            Provider.options(provider, credential,
              model: Keyword.get(opts, :model),
-             base_url: Keyword.get(opts, :base_url)
+             base_url: Keyword.get(opts, :base_url),
+             # Machine-local, like `on_stop` and `on_event`: it is a function,
+             # so it cannot cross the wire and nothing on the wire sets it.
+             req_options: Keyword.get(opts, :req_options)
            ) do
       {:ok,
        provider_opts

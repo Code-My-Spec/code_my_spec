@@ -81,15 +81,18 @@ defmodule CmsHarnessTest.Machine do
 
     Agents.launch(%{
       "agent_id" => agent_id,
-      "provider" => "zai",
-      "api_key" => "unused-in-spex",
+      "api_key" => Keyword.get(opts, :api_key, "unused-in-spex"),
       "working_copy" => working_copy,
       "on_stop" => Keyword.get(opts, :on_stop),
       # Where the model is. Without one the agent talks to z.ai for real, which
       # is right in production and would be a live call from a criterion — so
       # anything that actually runs a turn passes a local endpoint here.
       "base_url" => Keyword.get(opts, :base_url),
-      "on_event" => Keyword.get(opts, :on_event)
+      "on_event" => Keyword.get(opts, :on_event),
+      # In front of the provider's HTTP client, for the one test that records a
+      # real turn. Everything else leaves it off and never reaches a provider.
+      "req_options" => Keyword.get(opts, :req_options),
+      "provider" => Keyword.get(opts, :provider, "zai")
     })
   end
 
