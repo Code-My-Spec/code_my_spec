@@ -290,7 +290,26 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
-    save(harness, %{root: Path.expand(root)})
+    # And designated, if this is the project's first checkout.
+    #
+    # Here rather than at insert, because a row is not a checkout until it says
+    # where it is: `issue/3` mints before any root is known, and fixtures,
+    # `ensure_default/1`'s nil-object row and a join that has not announced yet
+    # are all rows that will never have one.
+    #
+    # Designating one of those is the quiet failure criterion 2906 is named
+    # after. The project reports somewhere for its agent to run, an agent is
+    # started there with `working_copy: nil`, the machine refuses it, and the
+    # page says "getting ready" about a checkout that does not exist — with no
+    # error anywhere for anybody to act on.
+    #
+    # `harness.main or …` rather than the check alone: a copy that already holds
+    # the designation makes `first_copy?/1` false, so writing the bare result
+    # back would clear the main copy on its own reconnect.
+    save(harness, %{
+      root: Path.expand(root),
+      main: harness.main or first_copy?(harness.project_id)
+    })
   end
 
   @doc "The id `ensure_default/1` resolves to, without touching the database."
@@ -371,23 +390,22 @@ defmodule CodeMySpec.WorkingCopies do
     |> WorkingCopy.changeset(%{
       project_id: project_id,
       label: label,
-      last_seen_at: now(),
-      main: first_copy?(project_id)
+      last_seen_at: now()
     })
     |> Repo.insert()
   end
 
-  # A project's first checkout is its main one.
+  # A project's first *checkout* is its main one.
   #
   # Not the inference `designate_main/2` exists to rule out: that rule is about
   # six checkouts of one repository, where a path, a label and a last-seen time
-  # each pick a different wrong one. With one copy there is nothing to choose
+  # each pick a different wrong one. With one there is nothing to choose
   # between, and leaving it undesignated leaves a project made by `cms.new`
   # with a checkout, no main copy and no agent — a state nobody can act on and
   # nothing asked for.
   #
-  # Asked rather than assumed on every insert: a project that already has a
-  # main copy keeps it, so a second checkout joining never quietly takes over.
+  # Asked rather than assumed, so a project that already has a main copy keeps
+  # it and a second checkout joining never quietly takes over.
   defp first_copy?(project_id) do
     not Repo.exists?(from w in WorkingCopy, where: w.project_id == ^project_id and w.main)
   end

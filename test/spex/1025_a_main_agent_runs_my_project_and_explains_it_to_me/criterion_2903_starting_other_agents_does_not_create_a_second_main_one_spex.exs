@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2903Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
@@ -46,13 +47,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2903Spex do
         File.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
-        {:ok, designate, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        designate |> element("[data-test=designate-main-copy]") |> render_click()
+        designate_main_copy(context, joined.working_copy_id)
 
         {:ok, live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")

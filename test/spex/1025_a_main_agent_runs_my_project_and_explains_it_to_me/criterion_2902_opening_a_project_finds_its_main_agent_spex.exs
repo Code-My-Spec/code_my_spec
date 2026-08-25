@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
@@ -48,13 +49,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
         File.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
-        {:ok, designate, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        designate |> element("[data-test=designate-main-copy]") |> render_click()
+        designate_main_copy(context, joined.working_copy_id)
 
         {:ok, context}
       end
@@ -82,7 +77,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
         assert html =~ "data-test=\"main-agent\"",
                "the main agent is gone on the second visit"
 
-        assert main_agent_id(html) == main_agent_id(context.html),
+        assert agent_id_in(html) == agent_id_in(context.html),
                "opening the project twice found two different agents. An agent that " <>
                  "is a different agent each time cannot hold the project's history, " <>
                  "which is the whole reason this one exists."
@@ -92,12 +87,4 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
     end
   end
 
-  # The agent behind the marker, so "the same one" is a claim about identity
-  # rather than about the marker being present twice.
-  defp main_agent_id(html) do
-    case Regex.run(~r/data-test="main-agent"[^>]*data-agent-id="([^"]+)"/, html) do
-      [_, id] -> id
-      nil -> nil
-    end
-  end
 end

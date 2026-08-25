@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
         ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
       )
 
-    live |> element("[data-test=designate-main-copy]") |> render_click()
+    designate_main_copy(context, joined.working_copy_id)
 
     # The socket is kept because a restart is driven over it. Joining a second
     # time for the same checkout is refused, correctly — two harnesses on one
@@ -71,9 +71,54 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
     {:ok, _live, html} =
       live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
+    agent_id_in(html) ||
+      flunk("the project presents no main agent, so there is nothing to ask")
+  end
+
+  @doc """
+  The agent behind the marker, in html a criterion already has.
+
+  So that "the same one" is a claim about identity rather than about the marker
+  being present twice. `nil` when there is none, because several criteria are
+  about exactly that.
+  """
+  @spec agent_id_in(String.t()) :: String.t() | nil
+  def agent_id_in(html) do
     case Regex.run(~r/data-test="main-agent"[^>]*data-agent-id="([^"]+)"/, html) do
       [_, id] -> id
-      nil -> flunk("the project presents no main agent, so there is nothing to ask")
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Make that checkout the project's main one, through the control that does it.
+
+  Does nothing when it already is, which is the ordinary case for a project's
+  only checkout: the first one to report a root is designated, so the control is
+  not offered and there is nothing to click. Asserted rather than assumed either
+  way — a scenario whose premise is a main copy must not carry on without one.
+  """
+  @spec designate_main_copy(map(), String.t()) :: :ok
+  def designate_main_copy(context, working_copy_id) do
+    {:ok, live, html} =
+      live(
+        context.conn,
+        ~p"/app/projects/#{context.project.id}/working-copies/#{working_copy_id}"
+      )
+
+    cond do
+      html =~ "data-test=\"designate-main-copy\"" ->
+        live |> element("[data-test=designate-main-copy]") |> render_click()
+        :ok
+
+      html =~ "data-test=\"main-copy\"" ->
+        :ok
+
+      true ->
+        flunk(
+          "this checkout is neither the main working copy nor offering to become one, " <>
+            "so the premise cannot be established"
+        )
     end
   end
 

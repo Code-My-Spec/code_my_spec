@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
       end
 
       when_ "the machine running it restarts", context do
-        id = agent_id(context.before)
+        id = agent_id_in(context.before)
 
         assert id, "the premise is a running main agent; the page names none"
 
@@ -100,13 +100,6 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
 
         {:ok, context}
       end
-    end
-  end
-
-  defp agent_id(html) do
-    case Regex.run(~r/data-test="main-agent"[^>]*data-agent-id="([^"]+)"/, html) do
-      [_, id] -> id
-      nil -> nil
     end
   end
 

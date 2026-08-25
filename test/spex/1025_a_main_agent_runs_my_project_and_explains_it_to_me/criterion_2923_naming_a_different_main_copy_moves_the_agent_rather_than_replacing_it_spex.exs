@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
 
   import Phoenix.LiveViewTest
 
+  import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
@@ -49,13 +50,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
         File.mkdir_p!(first)
         joined = join_working_copy(context, first, "where it started")
 
-        {:ok, live, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        live |> element("[data-test=designate-main-copy]") |> render_click()
+        designate_main_copy(context, joined.working_copy_id)
 
         {:ok, _live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
@@ -68,13 +63,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
         File.mkdir_p!(second)
         joined = join_working_copy(context, second, "where it moves to")
 
-        {:ok, live, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        live |> element("[data-test=designate-main-copy]") |> render_click()
+        designate_main_copy(context, joined.working_copy_id)
 
         {:ok, context |> Map.put(:moved_to, joined.working_copy_id)}
       end
@@ -86,7 +75,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
         assert html =~ context.moved_to,
                "the main agent did not follow the designation"
 
-        assert agent_id(html) == agent_id(context.before),
+        assert agent_id_in(html) == agent_id_in(context.before),
                "re-designating the main copy replaced the agent instead of moving it. " <>
                  "A conversation belongs to an agent, so a new agent means the weeks " <>
                  "of conversation before it are somebody else's."
@@ -104,14 +93,6 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
     end
   end
 
-  # Identity, not presence. "The same agent" and "the same conversation" are
-  # claims a marker being rendered twice does not support.
-  defp agent_id(html) do
-    case Regex.run(~r/data-test="main-agent"[^>]*data-agent-id="([^"]+)"/, html) do
-      [_, id] -> id
-      nil -> nil
-    end
-  end
 
   defp conversation_id(html) do
     case Regex.run(~r"/agent-conversation/([0-9a-f-]{36})", html) do
