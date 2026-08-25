@@ -30,9 +30,17 @@ defmodule CodeMySpecSpex.Story965.Criterion2925Spex do
   spex "Exactly one step is marked as where the project is now" do
     scenario "The indicator names one step, not a range" do
       given_ "a project part-way through its requirements", context do
-        # Established by the project existing at all. A fresh project has
-        # satisfied some of its own requirements and not others, which is what
-        # part-way means here — the steps are those requirements.
+        # Established rather than assumed. "Part-way" means some of the
+        # project's own requirements are met and some are not; on a project
+        # where everything is satisfied the timeline is a different picture and
+        # a block that only says so would not notice.
+        {:ok, _live, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+
+        assert html =~ "requirement",
+               "the requirements page shows nothing, so there is no project state for " <>
+                 "the timeline to be part-way through"
+
         {:ok, context}
       end
 

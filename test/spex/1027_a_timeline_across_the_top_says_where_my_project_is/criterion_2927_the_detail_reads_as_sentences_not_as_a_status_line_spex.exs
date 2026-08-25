@@ -35,6 +35,17 @@ defmodule CodeMySpecSpex.Story965.Criterion2927Spex do
   spex "The current step says what is happening in about two sentences, in language that assumes no code" do
     scenario "The detail reads as sentences, not as a status line" do
       given_ "a project part-way through its requirements", context do
+        # Established rather than assumed. "Part-way" means some of the
+        # project's own requirements are met and some are not; on a project
+        # where everything is satisfied the timeline is a different picture and
+        # a block that only says so would not notice.
+        {:ok, _live, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+
+        assert html =~ "requirement",
+               "the requirements page shows nothing, so there is no project state for " <>
+                 "the timeline to be part-way through"
+
         {:ok, context}
       end
 

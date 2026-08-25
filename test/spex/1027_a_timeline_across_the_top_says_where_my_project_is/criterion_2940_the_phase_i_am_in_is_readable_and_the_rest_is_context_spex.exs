@@ -37,6 +37,17 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
   spex "The phase the project is in is shown in detail; the phases either side are collapsed" do
     scenario "The phase I am in is readable and the rest is context" do
       given_ "a project part-way through its requirements", context do
+        # Established rather than assumed. "Part-way" means some of the
+        # project's own requirements are met and some are not; on a project
+        # where everything is satisfied the timeline is a different picture and
+        # a block that only says so would not notice.
+        {:ok, _live, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+
+        assert html =~ "requirement",
+               "the requirements page shows nothing, so there is no project state for " <>
+                 "the timeline to be part-way through"
+
         {:ok, context}
       end
 
