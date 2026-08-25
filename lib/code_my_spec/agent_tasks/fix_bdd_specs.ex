@@ -285,17 +285,31 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   #
   # Same shape as `Hooks.Stop.wait_directive/1`, including the fallback: a scope
   # with no harness has no local address to offer, and no URL beats a wrong one.
+  #
+  # It also names `analysis/run`, because waiting only works when something is
+  # running. With nothing in flight the wait returns immediately with the same
+  # stale results, the next evaluation says pending again, and that is the same
+  # loop by the other door — no failing step anywhere in it. A harness restart
+  # is the ordinary way to get here: `just refresh` kills every in-flight sweep
+  # and says so.
   defp wait_directive(%{active_working_copy_id: id}) when not is_nil(id) do
-    "Wait for the in-flight spex run with " <>
+    "Wait for the spex run with " <>
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
       "the background and you will be notified when it returns — then evaluate this " <>
-      "requirement again."
+      "requirement again.\n\n" <>
+      "If that returns straight away and still says `spex: stale`, nothing was running: " <>
+      "start one with " <>
+      "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/run " <>
+      "-H 'content-type: application/json' -d '{\"source\":\"spex\"}'`, in the " <>
+      "background — a sweep takes several minutes."
   end
 
   defp wait_directive(_scope) do
-    "Wait for the analyzers to finish, then evaluate this requirement again. The wait " <>
-      "endpoint is on the harness and names the working copy: " <>
-      "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait`, with the id from " <>
+    "Wait for the analyzers to finish, then evaluate this requirement again. Both " <>
+      "endpoints are on the harness and name the working copy — " <>
+      "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` to wait for a " <>
+      "run, and `.../analysis/run` with `{\"source\":\"spex\"}` to start one when the " <>
+      "wait returns immediately and nothing has changed. The id is in " <>
       "`.cms_harness.json` in the working copy."
   end
 
