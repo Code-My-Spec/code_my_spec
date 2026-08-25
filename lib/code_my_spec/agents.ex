@@ -122,12 +122,22 @@ defmodule CodeMySpec.Agents do
   # somebody wants, which is what story 1023's "stop one and leave its siblings
   # running" is about.
   defp main_copy_is_free(scope, attrs) do
-    requested = attrs[:working_copy_id] || attrs["working_copy_id"]
-
     case WorkingCopies.main(scope) do
-      %{id: ^requested} = copy -> refuse_if_occupied(scope, copy)
-      _ -> :ok
+      nil -> :ok
+      copy -> if names?(attrs, copy), do: refuse_if_occupied(scope, copy), else: :ok
     end
+  end
+
+  # By id or by root, because callers name a checkout both ways and a guard
+  # that only understands one of them does not fire on the other. `StartAgent`
+  # passes a root and no id at all — the id is filled in from scope afterwards
+  # — so reading only the id would leave the one surface that starts agents
+  # unguarded.
+  defp names?(attrs, copy) do
+    id = attrs[:working_copy_id] || attrs["working_copy_id"]
+    root = attrs[:working_copy] || attrs["working_copy"]
+
+    id == copy.id or (is_binary(root) and root != "" and Path.expand(root) == copy.root)
   end
 
   defp refuse_if_occupied(scope, copy) do
