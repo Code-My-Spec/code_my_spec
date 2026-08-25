@@ -18,7 +18,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
-  import CodeMySpecSpex.WorkingCopyHelpers
+  import CodeMySpecSpex.AgentProcessHelpers
+  import CodeMySpecSpex.MainAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -44,31 +45,20 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
   spex "The main agent picks up the same conversation every time, however long it has been" do
     scenario "Yesterday's conversation is still there today" do
       given_ "I talked to the main agent yesterday about my project", context do
-        copy = CodeMySpec.TempFile.dir("spex_2916")
-        File.mkdir_p!(copy)
-        joined = join_working_copy(context, copy, "the main checkout")
+        context = given_a_main_checkout(context, "spex_2916")
+        path = say_to_main_agent(context, "remember the pricing rule")
 
-        {:ok, live, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        live |> element("[data-test=designate-main-copy]") |> render_click()
-
-        {:ok, chat, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
-
-        chat
-        |> form("form[phx-submit=send_message]", %{"message" => "remember the pricing rule"})
-        |> render_submit()
-
-        {:ok, Map.put(context, :copy, copy)}
+        {:ok, Map.put(context, :path, path)}
       end
 
       when_ "I open the project today", context do
-        {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+        # Today's agent is a new process on a harness that has restarted since,
+        # which is the ordinary case rather than the exceptional one: laptops
+        # close. Brought back through the same restore the harness drives, so
+        # what is asserted below is what a real morning produces.
+        restart_harness(context.harness_socket)
+
+        {:ok, _live, html} = live(context.conn, context.path)
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -85,6 +75,15 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
       then_ "and I can carry on without repeating myself", context do
         assert context.html =~ "phx-submit=\"send_message\"",
                "there is nowhere to carry on from"
+
+        # The page holding the history is not the agent holding it. A transcript
+        # somebody can scroll and an agent that has to be told again are exactly
+        # the state this criterion exists to rule out, and they look identical
+        # from the page.
+        assert agent_knows?(main_agent_id(context), "remember the pricing rule"),
+               "the transcript came back and the agent did not. What I said is on the " <>
+                 "screen and not in the agent, so carrying on means saying it again — " <>
+                 "which is the user being the memory, with a page that hides it."
 
         {:ok, context}
       end

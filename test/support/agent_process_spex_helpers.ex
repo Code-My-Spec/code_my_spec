@@ -154,17 +154,77 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   end
 
   @doc """
-  Bring one agent back, the way a harness does after a restart.
+  Launch one agent by id, the way the last step of a restore does.
 
-  The channel client loops over what the server sent and launches each through
-  the same call a fresh start uses. This is one entry of that loop, so the
-  refusals a restore inherits — a checkout that is gone, a provider nobody knows
-  — are the real ones rather than a second implementation of them.
+  The refusals it inherits are the real ones — a checkout that is gone, a
+  provider nobody knows — which is what the criteria about coming back to a
+  missing copy need.
+
+  Not a whole restore. What the server would have *sent* is missing: no
+  credential and no conversation, because nothing here asked the server. Use
+  `restart_harness/1` for a criterion whose claim is about what survives a
+  restart; this one is for claims about what refuses one.
   """
   @spec restore_agent(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def restore_agent(agent_id, working_copy) do
     Machine.ensure_supervisor()
     Machine.start_agent(agent_id, working_copy)
+  end
+
+  @doc """
+  Restart the machine, and let every agent on it come back.
+
+  Not one agent: a harness restart takes all of them, and each comes back the
+  same way — the harness asks the server what it should be running, and launches
+  each answer. `ChannelClient` drives exactly that loop on reconnect, so this is
+  the same exchange with the socket a criterion already holds.
+
+  Driven this way rather than by starting agents here on purpose. What a restore
+  *carries* is usually the thing under test — an agent brought back with no
+  credential, or with none of its conversation, looks identical from every page
+  to one brought back whole — and a helper that assembled its own request would
+  be asserting about the helper.
+  """
+  @spec restart_harness(Phoenix.Socket.t()) :: :ok
+  def restart_harness(socket) do
+    Enum.each(Machine.running(), &Machine.stop_agent/1)
+
+    socket
+    |> agents_to_restore()
+    |> Enum.each(fn request ->
+      assert {:ok, _} = Machine.launch(request),
+             "the harness could not bring an agent back, so what follows is about a " <>
+               "machine with no agents rather than about a restart"
+    end)
+  end
+
+  @doc """
+  Whether that agent is actually holding that text, as a turn it will run
+  against.
+
+  Asked of the loop rather than of the transcript. The page shows the rows
+  either way — an agent that came back with its history and one that came back
+  empty render the same conversation — and the difference only appears when
+  somebody relies on it remembering.
+  """
+  @spec agent_knows?(String.t(), String.t()) :: boolean()
+  def agent_knows?(agent_id, text) do
+    case Machine.history(agent_id) do
+      {:ok, messages} -> Enum.any?(messages, &String.contains?(Alloy.Message.text(&1), text))
+      {:error, reason} -> flunk("agent #{agent_id} could not say what it knows: #{reason}")
+    end
+  end
+
+  # What the server says this checkout should be running, over the harness's own
+  # channel. The reply is the launch request, credential and history included.
+  defp agents_to_restore(socket) do
+    ref = Phoenix.ChannelTest.push(socket, "agents_to_restore", %{})
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^ref, payload: %{"agents" => agents}} -> agents
+    after
+      2_000 -> flunk("the server never said which agents this checkout should be running")
+    end
   end
 
   @doc """

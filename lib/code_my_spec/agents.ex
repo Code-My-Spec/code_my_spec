@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
+  alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
@@ -103,9 +104,15 @@ defmodule CodeMySpec.Agents do
          {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
-      # Carried on the struct rather than stored: the machine needs it, the row
-      # must not become a second place a subscription lives.
-      agent = launch(scope, %{agent | credential: credential})
+      # Carried on the struct rather than stored: the machine needs both, and
+      # the row must not become a second place a subscription lives or a second
+      # copy of a transcript that already has a table.
+      #
+      # Hydrated after the conversation is opened, because that is what the
+      # history is read from — an agent that has spoken before is being resumed
+      # here even on a call named `start`, which is the whole of "it picks up
+      # the same conversation every time".
+      agent = launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential}))
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
@@ -472,6 +479,27 @@ defmodule CodeMySpec.Agents do
       # agent is worse than a missing one, because it reads as that agent's
       # work.
       _ -> :ok
+    end
+  end
+
+  # A compaction is not a step either. It is what the agent will resume from,
+  # and it goes in its own table: a row in the transcript would have to be
+  # skipped by every renderer, every preview and every `role` clause, and the
+  # one that forgot would show a user a summary of their own conversation as
+  # though the agent had said it.
+  defp write_turn_event(conversation, _agent, %{"kind" => "compacted"} = event) do
+    case Conversations.record_checkpoint(conversation, event["messages"] || [],
+           turn: event["turn"]
+         ) do
+      {:ok, _checkpoint} ->
+        :ok
+
+      {:error, _changeset} ->
+        # A checkpoint that will not save costs a longer resume, and nothing
+        # else: the transcript is untouched and the agent is still running on
+        # the summary it just made.
+        Logger.info("[Agents] a compaction checkpoint for #{conversation.id} was not saved")
+        :ok
     end
   end
 

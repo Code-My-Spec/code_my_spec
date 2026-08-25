@@ -1220,6 +1220,18 @@ defmodule CmsHarness.Project.ChannelClient do
   produce this one rather than a second version of it that drifts.
   """
   @spec encode_turn_event(map()) :: map()
+  def encode_turn_event(%{event: :compacted} = envelope) do
+    # Not a step, and not text. What survived a compaction is the thing the
+    # server has to keep, and flattening it into a `"text"` field the way every
+    # other event is flattened would leave a checkpoint that reads back as
+    # `inspect/1` output.
+    %{
+      "kind" => "compacted",
+      "turn" => Map.get(envelope, :turn),
+      "messages" => Map.get(envelope, :messages, [])
+    }
+  end
+
   def encode_turn_event(envelope) do
     %{
       "kind" => to_string(Map.get(envelope, :event, "step")),

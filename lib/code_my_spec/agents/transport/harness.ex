@@ -13,12 +13,13 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Analysis
 
   @impl true
   def start_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
-      {:ok, pid} -> call(pid, {:start_agent, launch_request(agent)}, timeout, :start_timed_out)
+      {:ok, pid} -> call(pid, {:start_agent, LaunchRequest.for(agent)}, timeout, :start_timed_out)
       :none -> unreachable(working_copy_id, agent, "start")
     end
   end
@@ -117,29 +118,6 @@ defmodule CodeMySpec.Agents.Transport.Harness do
       # here would be the lie the whole story is about.
       {:error, timeout_reason}
   end
-
-  # What the far side needs to decide a command and where to run it. Not a
-  # command: the machine knows what is installed on it and the server does not.
-  # `config_dir` used to be here: a path to a directory the *server* wrote,
-  # which the machine then read. That only worked when the two were the same
-  # box. The credential travels instead, and the machine materialises whatever
-  # its provider needs.
-  defp launch_request(%Agent{} = agent) do
-    %{
-      "agent_id" => agent.id,
-      "engine" => to_string(agent.engine),
-      "provider" => agent.provider,
-      "working_copy" => agent.working_copy,
-      "role" => agent.role
-    }
-    |> Map.merge(credential_fields(agent.credential))
-  end
-
-  # Only the field the named provider actually uses. An api-key provider has no
-  # use for a token pair, and sending both would put a subscription on the wire
-  # for a request that did not need it.
-  defp credential_fields(%{"type" => "api_key", "key" => key}), do: %{"api_key" => key}
-  defp credential_fields(_credential), do: %{}
 
   # The id is the whole handle. It used to carry a process group id and the boot
   # it belonged to, because a group number outlives its group and gets reused —

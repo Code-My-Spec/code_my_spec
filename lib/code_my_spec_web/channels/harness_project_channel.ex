@@ -40,6 +40,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices
@@ -455,18 +456,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # guess, and it is why a stopped agent is simply absent from the answer
   # instead of needing to be suppressed.
   def handle_in("agents_to_restore", _payload, socket) do
+    scope = socket.assigns.scope
+
+    # The same request a fresh start sends. This built its own map, and the map
+    # it built carried neither the credential nor the conversation — so an agent
+    # restored after a harness restart came back with nothing to authenticate
+    # with and no memory of anything it had been told.
     agents =
-      socket.assigns.scope
+      scope
       |> Agents.list_running()
-      |> Enum.filter(&(&1.working_copy_id == socket.assigns.scope.active_working_copy_id))
-      |> Enum.map(
-        &%{
-          "agent_id" => &1.id,
-          "provider" => &1.provider,
-          "working_copy" => &1.working_copy,
-          "role" => &1.role
-        }
-      )
+      |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
+      |> Enum.map(&(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
 
     {:reply, {:ok, %{"agents" => agents}}, socket}
   end

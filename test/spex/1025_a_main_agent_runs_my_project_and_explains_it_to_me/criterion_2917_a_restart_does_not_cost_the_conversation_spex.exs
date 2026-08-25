@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
-  import CodeMySpecSpex.WorkingCopyHelpers
+  import CodeMySpecSpex.MainAgentHelpers
 
   import CodeMySpecSpex.AgentProcessHelpers
 
@@ -45,29 +45,13 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
   spex "The main agent picks up the same conversation every time, however long it has been" do
     scenario "A restart does not cost the conversation" do
       given_ "a conversation with the main agent", context do
-        copy = CodeMySpec.TempFile.dir("spex_2917")
-        File.mkdir_p!(copy)
-        joined = join_working_copy(context, copy, "the main checkout")
-
-        {:ok, live, _html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
-          )
-
-        live |> element("[data-test=designate-main-copy]") |> render_click()
-
-        {:ok, chat, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
-
-        chat
-        |> form("form[phx-submit=send_message]", %{"message" => "the thing we agreed"})
-        |> render_submit()
+        context = given_a_main_checkout(context, "spex_2917")
+        path = say_to_main_agent(context, "the thing we agreed")
 
         {:ok, _live, before} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
-        {:ok, context |> Map.put(:copy, copy) |> Map.put(:before, before)}
+        {:ok, context |> Map.put(:path, path) |> Map.put(:before, before)}
       end
 
       when_ "the machine running it restarts", context do
@@ -75,8 +59,12 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
 
         assert id, "the premise is a running main agent; the page names none"
 
+        # Through the harness's own restore rather than a start built here. The
+        # refusals a restore inherits — a checkout that is gone, a credential
+        # nobody can resolve, a history that never travelled — are only real if
+        # the same code path produces them.
         stop_agent_process(id)
-        restore_agent(id, context.copy)
+        restart_harness(context.harness_socket)
 
         {:ok, Map.put(context, :agent, id)}
       end
@@ -89,8 +77,15 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
                "the restart landed on a different conversation, so the history is in " <>
                  "the one nobody is reading"
 
-        assert html =~ "the thing we agreed",
+        {:ok, _live, transcript} = live(context.conn, context.path)
+
+        assert transcript =~ "the thing we agreed",
                "the conversation came back empty"
+
+        assert agent_knows?(main_agent_id(context), "the thing we agreed"),
+               "the agent came back to the conversation without coming back to what is " <>
+                 "in it. It will be read the transcript by the person who already knows " <>
+                 "what it says, which is the cost the restart was supposed not to have."
 
         {:ok, Map.put(context, :html, html)}
       end

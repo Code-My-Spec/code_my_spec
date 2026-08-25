@@ -25,6 +25,7 @@ defmodule CodeMySpec.Conversations do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Conversations.Checkpoint
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Mail
@@ -461,6 +462,122 @@ defmodule CodeMySpec.Conversations do
       message -> Message.text(message)
     end
   end
+
+  @doc """
+  Everything a restarted agent needs to carry on, in the order it was said.
+
+  The whole conversation while it is short enough, and from the last checkpoint
+  onward once it is not: the summary compaction wrote, plus every message since,
+  verbatim. That is the same shape a running agent holds after it compacts, so
+  coming back lands it where it was rather than at the top.
+
+  ## Said, not done
+
+  Text turns only. An assistant's tool calls and their results are its working,
+  and replaying those is worse than dropping them: a result describes a file at
+  a path, and by the time an agent is being resumed the checkout may be a
+  different one — story 963 moves the main agent between checkouts on purpose.
+  Alloy's own compaction clears old tool results for the same reason.
+  """
+  @spec resume_messages(Conversation.t()) :: [map()]
+  def resume_messages(%Conversation{} = conversation) do
+    case latest_checkpoint(conversation) do
+      nil -> conversation |> all_messages() |> Enum.flat_map(&as_turn/1)
+      checkpoint -> checkpoint.messages ++ tail_after(conversation, checkpoint)
+    end
+  end
+
+  @doc """
+  Write down what an agent's compaction decided to keep.
+
+  Called when the machine reports a compaction, so the summary the agent is now
+  running on is the summary a restart resumes from. Deriving a second one here
+  would be a different reading of the same conversation, and the one nobody read
+  is the one that would survive.
+  """
+  @spec record_checkpoint(Conversation.t(), [map()], keyword()) ::
+          {:ok, Checkpoint.t()} | {:error, Ecto.Changeset.t()}
+  def record_checkpoint(%Conversation{} = conversation, messages, opts \\ []) do
+    %Checkpoint{}
+    |> Checkpoint.changeset(%{
+      conversation_id: conversation.id,
+      messages: messages,
+      turn: Keyword.get(opts, :turn),
+      through_message_id: Keyword.get(opts, :through_message_id) || last_message_id(conversation)
+    })
+    |> Repo.insert()
+  end
+
+  @doc "The most recent checkpoint on this conversation, or nil."
+  @spec latest_checkpoint(Conversation.t()) :: Checkpoint.t() | nil
+  def latest_checkpoint(%Conversation{} = conversation) do
+    Checkpoint
+    |> where([c], c.conversation_id == ^conversation.id)
+    |> order_by([c], desc: c.inserted_at, desc: c.id)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  # Everything after the row the checkpoint stopped at.
+  #
+  # By the anchor row's timestamp when there is one. When there is not — the row
+  # was deleted, and the reference nullifies rather than cascades — the
+  # checkpoint's own `inserted_at` is the cut. Not "replay everything": that
+  # would hand the model the summary *and* the conversation it summarises, which
+  # is the one outcome worse than losing the anchor.
+  defp tail_after(conversation, %Checkpoint{} = checkpoint) do
+    cutoff =
+      case checkpoint.through_message_id && Repo.get(Message, checkpoint.through_message_id) do
+        %Message{inserted_at: at} -> at
+        _ -> checkpoint.inserted_at
+      end
+
+    Message
+    |> where([m], m.conversation_id == ^conversation.id and m.inserted_at > ^cutoff)
+    |> order_by([m], asc: m.inserted_at, asc: m.id)
+    |> Repo.all()
+    |> Enum.flat_map(&as_turn/1)
+  end
+
+  # Unpaginated on purpose. `list_messages/2` answers what a page renders and
+  # caps at a page size; this answers what an agent knows, and a cap
+  # here would silently be the difference between an agent that remembers
+  # yesterday and one that does not.
+  defp all_messages(%Conversation{} = conversation) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id)
+    |> order_by([m], asc: m.inserted_at, asc: m.id)
+    |> Repo.all()
+  end
+
+  defp last_message_id(%Conversation{} = conversation) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id)
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(1)
+    |> select([m], m.id)
+    |> Repo.one()
+  end
+
+  # One transcript row as one turn, or nothing.
+  #
+  # A list rather than a value so a row with no text drops out instead of
+  # becoming an empty turn: providers reject empty content, and an agent that
+  # cannot be resumed because somebody sent a blank line is a failure with no
+  # visible cause.
+  defp as_turn(%Message{} = message) do
+    case {turn_role(message.role), Message.text(message)} do
+      {nil, _text} -> []
+      {_role, ""} -> []
+      {role, text} -> [%{"role" => role, "content" => text}]
+    end
+  end
+
+  # Alloy speaks two roles. An operator and an end user are both "the human" to
+  # a model, and a `:tool` row is the working this deliberately leaves out.
+  defp turn_role(:assistant), do: "assistant"
+  defp turn_role(role) when role in [:user, :operator], do: "user"
+  defp turn_role(_role), do: nil
 
   defp before_cursor(query, nil), do: query
 

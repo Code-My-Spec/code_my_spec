@@ -45,6 +45,57 @@ defmodule CmsHarness.AgentsTest do
     )
   end
 
+  describe "resuming" do
+    test "an agent starts holding what it was already told", %{root: root} do
+      request =
+        request(root, %{
+          "messages" => [
+            %{"role" => "user", "content" => "remember the pricing rule"},
+            %{"role" => "assistant", "content" => "noted"}
+          ]
+        })
+
+      assert {:ok, %{agent_id: id}} = Agents.launch(request)
+      on_exit(fn -> Agents.halt(id) end)
+
+      assert {:ok, messages} = Agents.history(id)
+
+      assert Enum.map(messages, &Alloy.Message.text/1) == [
+               "remember the pricing rule",
+               "noted"
+             ],
+             "the agent came back empty. An agent dies with its harness and that is " <>
+               "only an acceptable cost while the transcript is the state — which is " <>
+               "false the moment the transcript stops travelling."
+    end
+
+    test "a request with no history starts a fresh agent", %{root: root} do
+      assert {:ok, %{agent_id: id}} = Agents.launch(request(root))
+      on_exit(fn -> Agents.halt(id) end)
+
+      assert {:ok, []} = Agents.history(id)
+    end
+
+    test "a turn that is not one is dropped rather than guessed at", %{root: root} do
+      request =
+        request(root, %{
+          "messages" => [
+            %{"role" => "user", "content" => "the real one"},
+            # No role. Not a user message with a default: inventing one puts
+            # words in somebody's mouth, in a history the model treats as fact.
+            %{"content" => "who said this?"},
+            %{"role" => "system", "content" => "not a turn Alloy holds"}
+          ]
+        })
+
+      assert {:ok, %{agent_id: id}} = Agents.launch(request)
+      on_exit(fn -> Agents.halt(id) end)
+
+      assert {:ok, messages} = Agents.history(id)
+      assert Enum.map(messages, &Alloy.Message.text/1) == ["the real one"]
+    end
+  end
+
   describe "refusing before starting" do
     test "a request naming no agent is refused", %{root: root} do
       assert {:error, :agent_id_required} =

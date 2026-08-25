@@ -45,6 +45,7 @@ defmodule CmsHarness.Agents.Engine do
 
   require Logger
 
+  alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Provider
 
   @registry CmsHarness.Registry
@@ -57,6 +58,7 @@ defmodule CmsHarness.Agents.Engine do
           working_copy: String.t(),
           model: String.t() | nil,
           base_url: String.t() | nil,
+          messages: [map()] | nil,
           on_stop: (-> any()) | nil,
           on_event: (map() -> any()) | nil
         ]
@@ -155,6 +157,39 @@ defmodule CmsHarness.Agents.Engine do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, :status)
     end
+  end
+
+  @doc """
+  What this agent knows — every turn it is holding, oldest first.
+
+  Not the transcript. The server's transcript is what was *written down*, and
+  an agent brought back without its history reads exactly the same on that page
+  as one that has it: the rows are there either way, and the difference only
+  appears when somebody asks the agent about something it was told yesterday
+  and has to say it again.
+
+  So this asks the loop. `Alloy.Agent.Server` holds the messages a turn will
+  actually be run against, which is the thing "it picks up the same
+  conversation" is a claim about.
+
+  `{:error, :busy}` while a turn is running. The loop holds its own process for
+  the length of a turn, and the snapshot it would answer with is the one from
+  before that turn started — so waiting minutes for an answer that is already
+  stale is worse than saying which of the two states this is.
+  """
+  @spec history(String.t()) ::
+          {:ok, [Alloy.Message.t()]} | {:error, :not_running | :busy}
+  def history(agent_id) do
+    with {:ok, pid} <- whereis(agent_id),
+         {:ok, alloy} <- GenServer.call(pid, :alloy) do
+      # Asked of the loop directly rather than proxied through the engine. A
+      # proxy would park the engine on a call that can take a whole turn, and an
+      # agent that cannot be sent anything while somebody reads its history is
+      # the failure the turn-in-a-task shape exists to avoid.
+      {:ok, Alloy.Agent.Server.messages(alloy)}
+    end
+  catch
+    :exit, {:timeout, _} -> {:error, :busy}
   end
 
   @doc """
@@ -260,6 +295,10 @@ defmodule CmsHarness.Agents.Engine do
   # Only what is still waiting can be taken back. Anything else the agent
   # already has, and there is no unsaying it — so this says so instead of
   # clearing a queue entry that is not there and reporting success.
+  def handle_call(:alloy, _from, state) do
+    {:reply, {:ok, state.alloy}, state}
+  end
+
   def handle_call(:status, _from, state) do
     {:reply, {:ok, %{busy?: state.turn != nil, queued: length(state.queue)}}, state}
   end
@@ -504,11 +543,62 @@ defmodule CmsHarness.Agents.Engine do
          Alloy.Tool.Core.Bash
        ])
        |> Keyword.put(:working_directory, working_copy)
+       |> Keyword.put(:middleware, [Compaction])
        |> Keyword.put(:context, %{
          working_directory: working_copy,
          allowed_paths: [working_copy],
-         bash_restricted: true
-       })}
+         bash_restricted: true,
+         # How the compaction middleware reaches the agent it is running
+         # inside. Middleware is a module rather than a closure, and the thing
+         # it has to report to is per-agent.
+         on_compaction: compaction_reporter(opts)
+       })
+       |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
+    end
+  end
+
+  # What this agent already said, and was said to it.
+  #
+  # `Alloy.Agent.Server` takes `:messages` at start, so resuming is starting
+  # with the history it had — which is the whole reason dying with the harness
+  # is an acceptable cost rather than a lost conversation. Nothing else had to
+  # be built for it; the history simply had to arrive.
+  #
+  # Anything that is not a turn is dropped rather than guessed at. A message
+  # with no role is not a user message with a default, and inventing one puts
+  # words in somebody's mouth in a transcript the model will treat as fact.
+  defp resumed(nil), do: []
+
+  defp resumed(messages) when is_list(messages), do: Enum.flat_map(messages, &to_message/1)
+
+  defp resumed(_messages), do: []
+
+  defp to_message(%Alloy.Message{} = message), do: [message]
+
+  defp to_message(%{"role" => "assistant", "content" => content}) when is_binary(content),
+    do: [Alloy.Message.assistant(content)]
+
+  defp to_message(%{"role" => "user", "content" => content}) when is_binary(content),
+    do: [Alloy.Message.user(content)]
+
+  defp to_message(%{role: role, content: content}),
+    do: to_message(%{"role" => to_string(role), "content" => content})
+
+  defp to_message(_other), do: []
+
+  # A compaction, on its way to whoever keeps this agent's transcript.
+  #
+  # The same `on_event` every step goes through, so a checkpoint travels the
+  # route that is already known to work rather than a second one beside it.
+  # Nothing to report to means nothing to report — an agent nobody is keeping
+  # the transcript of has nothing to resume from either.
+  defp compaction_reporter(opts) do
+    case {Keyword.get(opts, :on_event), Keyword.get(opts, :agent_id)} do
+      {report, agent_id} when is_function(report, 2) and is_binary(agent_id) ->
+        fn envelope -> report.(agent_id, envelope) end
+
+      _ ->
+        nil
     end
   end
 

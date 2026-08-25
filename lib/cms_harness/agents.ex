@@ -39,6 +39,11 @@ defmodule CmsHarness.Agents do
              credential: credential(request),
              working_copy: request["working_copy"],
              model: request["model"],
+             # What this agent already knows. An agent dies with its harness
+             # and the transcript is the state — which is only true if the
+             # transcript actually arrives, and until it did, a restarted agent
+             # came back with no memory of anything it had been told.
+             messages: request["messages"],
              # An OpenAI-compatible endpoint that is not the provider's own:
              # a self-hosted gateway, a proxy, a company's own deployment. The
              # provider has always read this and nothing has ever sent one.
@@ -112,6 +117,17 @@ defmodule CmsHarness.Agents do
   @spec status(String.t()) ::
           {:ok, %{busy?: boolean(), queued: non_neg_integer()}} | {:error, :not_running}
   defdelegate status(agent_id), to: Engine
+
+  @doc """
+  What one agent knows — the turns its loop is actually holding.
+
+  Distinct from its transcript, which is what was written down. The two come
+  apart exactly when an agent has been restarted, which is the case worth being
+  able to ask about.
+  """
+  @spec history(String.t()) ::
+          {:ok, [Alloy.Message.t()]} | {:error, :not_running | :busy}
+  defdelegate history(agent_id), to: Engine
 
   # What the agent said, out of what Alloy hands back.
   #

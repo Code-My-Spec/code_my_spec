@@ -61,6 +61,7 @@ defmodule CodeMySpec.Agents.Agent do
           working_copy: String.t() | nil,
           role: String.t() | nil,
           config_dir: String.t() | nil,
+          history: [map()],
           os_pid: integer() | nil,
           os_boot_id: String.t() | nil,
           status: atom() | nil,
@@ -87,6 +88,12 @@ defmodule CodeMySpec.Agents.Agent do
     # the *server* had written, which was only ever correct when the two were
     # the same box.
     field :credential, :map, virtual: true, redact: true
+
+    # The conversation so far, for the length of a launch. Beside the
+    # credential because it is the same kind of thing: the machine needs it to
+    # run the agent, and the row must not become a second copy of a transcript
+    # that already has a table.
+    field :history, {:array, :map}, virtual: true, default: []
     field :os_pid, :integer
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting

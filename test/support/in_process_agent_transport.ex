@@ -15,22 +15,27 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   @behaviour CodeMySpec.Agents.Transport
 
   alias CmsHarness.Agents
+  alias CodeMySpec.Agents.LaunchRequest
   alias CmsHarnessTest.Machine
 
   @impl true
   def start_agent(_working_copy_id, agent, _timeout) do
     Machine.ensure_supervisor()
 
-    Agents.launch(%{
-      "agent_id" => agent.id,
-      "provider" => agent.provider,
-      "working_copy" => agent.working_copy,
-      "role" => agent.role,
-      # Never used: nothing here chats to the agent, so no provider is reached.
-      # It is present because a provider that needs a key and does not get one
-      # is a different failure with its own criterion.
-      "api_key" => "unused-in-process"
-    })
+    # The same map the channel would carry, built the same way. Assembling a
+    # second one here is what made this double agree with itself and with
+    # nothing else — a field added to the wire reached the socket and not the
+    # suite, so a criterion driving this proved nothing about production.
+    #
+    # A key is put on top for providers that need one: nothing here chats to
+    # the agent, so none is ever spent, and a provider that needs a key and
+    # does not get one is a different failure with its own criterion.
+    request =
+      agent
+      |> LaunchRequest.for()
+      |> Map.put_new("api_key", "unused-in-process")
+
+    Agents.launch(request)
   end
 
   @impl true

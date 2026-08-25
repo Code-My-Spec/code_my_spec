@@ -164,6 +164,45 @@ defmodule CmsHarnessTest.Machine do
     end
   end
 
+  @doc """
+  Bring an agent up from a request the server built.
+
+  `start_agent/3` assembles one here, which is right for a criterion that only
+  needs *an* agent running. This takes the map the server actually sent — with
+  its credential and the conversation so far — for criteria whose claim is about
+  what a launch carries rather than that one happened.
+  """
+  @spec launch(map()) :: {:ok, map()} | {:error, term()}
+  def launch(request) do
+    ensure_supervisor()
+    Agents.launch(request)
+  end
+
+  @doc """
+  Every agent this machine is running right now, by id.
+
+  Read from the registry rather than from anything we were told, so it cannot
+  disagree with what is actually alive.
+  """
+  @spec running() :: [String.t()]
+  def running do
+    ensure_supervisor()
+    Agents.running()
+  end
+
+  @doc """
+  What one agent knows — the turns its loop is holding.
+
+  Distinct from its transcript, which is what was written down. The two come
+  apart exactly when an agent has been restarted, which is the case worth being
+  able to ask about.
+  """
+  @spec history(String.t()) :: {:ok, [Alloy.Message.t()]} | {:error, :not_running | :busy}
+  def history(agent_id) do
+    ensure_supervisor()
+    Agents.history(agent_id)
+  end
+
   @spec stop_agent(String.t()) :: :ok | {:error, :not_running}
   def stop_agent(agent_id) do
     ensure_supervisor()
