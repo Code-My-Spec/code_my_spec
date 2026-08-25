@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.EpicHelpers do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
+  alias CodeMySpecSpex.MainAgentHelpers
   alias CodeMySpecSpex.StoryHelpers
 
   use CodeMySpecWeb, :verified_routes
@@ -97,6 +98,10 @@ defmodule CodeMySpecSpex.EpicHelpers do
   """
   @spec dispatch_one(map(), String.t(), keyword()) :: map()
   def dispatch_one(context, title, opts \\ []) do
+    # Somewhere for the work to go. An epic dispatched with no checkout is a
+    # real state and the page says so, but it is not this premise — "an epic
+    # being built on a working copy" needs the working copy.
+    context = with_checkout(context)
     epic_id = propose(context, title, opts)
 
     {:ok, live, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
@@ -110,6 +115,15 @@ defmodule CodeMySpecSpex.EpicHelpers do
     context
     |> Map.put(:epic, epic_id)
     |> Map.put(:story_ids, Process.get({__MODULE__, :story_ids, epic_id}, []))
+  end
+
+  # The project's main checkout, made once per scenario. Through the harness
+  # join and the designation control, which is how a checkout becomes the main
+  # one everywhere else.
+  defp with_checkout(%{copy_id: _} = context), do: context
+
+  defp with_checkout(context) do
+    MainAgentHelpers.given_a_main_checkout(context, "spex_964_epic")
   end
 
   @doc "A dispatched agent asking the user something."

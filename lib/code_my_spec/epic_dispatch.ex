@@ -112,17 +112,21 @@ defmodule CodeMySpec.EpicDispatch do
     })
   end
 
-  # The project's main checkout when it has one, and its default copy otherwise.
+  # A checkout, or nothing.
   #
-  # `ensure_default/1` is the row that already exists for writers with no
-  # checkout of their own, so an epic agreed to before any harness has ever
-  # joined still lands somewhere nameable rather than nowhere. The alternative —
-  # refusing to dispatch — would make the approval fail for a reason the user
-  # cannot act on, and the decision was theirs.
+  # The project's main copy when it has one. Not `ensure_default/1`: that mints
+  # a rootless nil-object row for writers with no checkout, and sending an epic
+  # there made the page say "Being built on your project's checkout" about a
+  # directory that does not exist — story 963's defect, reintroduced here after
+  # being fixed there. A row is not a checkout until it reports a root.
+  #
+  # `nil` rather than a refusal, because the user agreed and that stands. The
+  # epic is dispatched and waiting for somewhere to be built, which the page
+  # says in those words.
   defp destination(scope) do
     case WorkingCopies.main(scope) do
-      nil -> WorkingCopies.ensure_default(scope)
-      copy -> copy.id
+      %{root: root} = copy when is_binary(root) and root != "" -> copy.id
+      _ -> nil
     end
   end
 
