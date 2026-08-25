@@ -60,20 +60,26 @@ defmodule CodeMySpecSpex.EpicHelpers do
 
     epic_id = extract_id(response)
 
-    for n <- 1..count do
-      story =
-        StoryHelpers.create_and_link(context.scope, context.component.module_name,
-          title: "#{title} — part #{n}",
-          description: "One of the things in this epic",
-          acceptance_criteria: ["It works"]
-        )
+    story_ids =
+      for n <- 1..count do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "#{title} — part #{n}",
+            description: "One of the things in this epic",
+            acceptance_criteria: ["It works"]
+          )
 
-      {:reply, _resp, _frame} =
-        AssignStoryToEpic.execute(
-          %{story_id: to_string(story.id), epic_name: title},
-          frame
-        )
-    end
+        {:reply, _resp, _frame} =
+          AssignStoryToEpic.execute(
+            %{story_id: to_string(story.id), epic_name: title},
+            frame
+          )
+
+        story.id
+      end
+
+    # Kept for the criteria that ask what is still owed on the epic's stories.
+    Process.put({__MODULE__, :story_ids, epic_id}, story_ids)
 
     # The half that does not exist yet. Named rather than worked around: this is
     # the call the implementation has to satisfy.
@@ -101,7 +107,9 @@ defmodule CodeMySpecSpex.EpicHelpers do
     |> element(~s([data-test=approve-epic][data-epic-id="#{epic_id}"]))
     |> render_click()
 
-    Map.put(context, :epic, epic_id)
+    context
+    |> Map.put(:epic, epic_id)
+    |> Map.put(:story_ids, Process.get({__MODULE__, :story_ids, epic_id}, []))
   end
 
   @doc "A dispatched agent asking the user something."

@@ -32,7 +32,8 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
        page_title: "Epics",
        epics: [],
        unassigned: [],
-       epic: nil
+       epic: nil,
+       watching_epics: false
      )}
   end
 
@@ -40,11 +41,25 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   def handle_params(params, _url, %{assigns: %{scope: %{} = scope}} = socket) do
     {:noreply,
      socket
+     |> watch_epics(scope)
      |> load_board(scope)
      |> apply_action(socket.assigns.live_action, params, scope)}
   end
 
   def handle_params(_params, _url, socket), do: {:noreply, socket}
+
+  # Subscribed here rather than at mount, because the topic is keyed on the
+  # active project and that arrives with the params. Once per socket: a
+  # `handle_params` runs again on every patch, and subscribing each time would
+  # redraw the board once per copy of the subscription.
+  defp watch_epics(socket, scope) do
+    if connected?(socket) and not socket.assigns[:watching_epics] do
+      Epics.subscribe(scope)
+      assign(socket, :watching_epics, true)
+    else
+      socket
+    end
+  end
 
   defp apply_action(socket, :new, _params, _scope) do
     socket
@@ -73,6 +88,19 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   end
 
   @impl true
+  # The main agent works while somebody is looking at this page. Every change it
+  # makes to an epic arrives here and redraws the board, which is what "watch it
+  # take shape" means — without it the screen is a snapshot from whenever it was
+  # last loaded.
+  #
+  # Above the catch-all below, which is where this first went and where it was
+  # dead code: `handle_info(_msg, socket)` matches everything, so a clause after
+  # it never runs.
+  def handle_info({event, _epic}, socket)
+      when event in [:epic_created, :epic_updated, :epic_deleted] do
+    {:noreply, load_board(socket, socket.assigns.scope)}
+  end
+
   def handle_info({:epic_saved, _epic}, socket) do
     {:noreply, load_board(socket, socket.assigns.scope)}
   end

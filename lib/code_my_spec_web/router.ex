@@ -513,6 +513,13 @@ defmodule CodeMySpecWeb.Router do
            RequirementsLive,
            :component_req_prompt
 
+      # `:story_show` had a `handle_params` clause and no route to reach it by,
+      # so a story's own requirements were unreachable while every component's
+      # were one click away.
+      live "/projects/:project_id/stories/:story_id/requirements",
+           RequirementsLive,
+           :story_show
+
       live "/projects/:project_id/stories/:story_id/requirements/:name",
            RequirementsLive,
            :story_req_show

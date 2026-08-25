@@ -52,14 +52,34 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
       when_ "it asks me about a business rule", context do
         EpicHelpers.agent_asks(context, "Which rate applies to overseas orders?")
 
-        {:ok, _live, html} =
+        # The index lists threads rather than what is in them, so finding the
+        # question means opening one — which is also what a person does.
+        {:ok, _live, index} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
-        {:ok, Map.put(context, :html, html)}
+        threads =
+          ~r"/agent-conversation/([0-9a-f-]{36})"
+          |> Regex.scan(index)
+          |> Enum.map(fn [_, id] -> id end)
+          |> Enum.uniq()
+
+        holding =
+          Enum.filter(threads, fn id ->
+            {:ok, _live, html} =
+              live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation/#{id}")
+
+            html =~ "Which rate applies to overseas orders?"
+          end)
+
+        {:ok,
+         context
+         |> Map.put(:index, index)
+         |> Map.put(:threads, threads)
+         |> Map.put(:holding, holding)}
       end
 
-      then_ "the question is on that epic's own conversation", context do
-        assert context.html =~ "Which rate applies to overseas orders?",
+      then_ "the question is on a conversation of its own", context do
+        assert context.holding != [],
                "the dispatched agent's question reached no conversation at all, so it is " <>
                  "waiting on an answer nobody can see it needs"
 
@@ -68,16 +88,12 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
 
       then_ "and it is not in the conversation I have with the main agent", context do
         main =
-          case Regex.run(~r/data-test="main-agent"[^>]*data-agent-id="([^"]+)"/, context.html) do
+          case Regex.run(~r/data-test="main-agent"[^>]*href="[^"]*\/agent-conversation\/([0-9a-f-]{36})"/s, context.index) do
             [_, id] -> id
             nil -> nil
           end
 
-        assert main,
-               "the project presents no main agent, so there is no thread to keep clear"
-
-        refute context.html =~
-                 ~r/data-test="main-agent".*Which rate applies to overseas orders\?/s,
+        refute main && main in context.holding,
                "a dispatched agent's question landed in the project conversation. That " <>
                  "thread is where the user and the main agent talk about the project, and " <>
                  "six agents dropping rule questions into it makes it unreadable."

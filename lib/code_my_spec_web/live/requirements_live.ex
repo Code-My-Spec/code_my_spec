@@ -713,6 +713,16 @@ defmodule CodeMySpecWeb.RequirementsLive do
     """
   end
 
+  # The checker's own sentence, whichever key it used. `details` is `%{status:
+  # …}` when satisfied and `%{reason: …}` when not, and it comes back
+  # string-keyed from the database and atom-keyed in memory — see
+  # `Requirement.normalize_details/1` for why both shapes exist.
+  defp basis(node) do
+    details = node.details || %{}
+
+    details["status"] || details["reason"] || details[:status] || details[:reason]
+  end
+
   defp entity_req_items(nodes, entity_type, entity_id, to_fun) do
     entity_nodes = entity_nodes(nodes, entity_type, entity_id)
     actionable = MapSet.new(actionable_nodes(entity_nodes), & &1.name)
@@ -722,6 +732,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
         name: n.name,
         description: n.description,
         satisfied: n.satisfied,
+        # Why, from the checker. A satisfied node can mean opposite things —
+        # `work_dispatched` is satisfied both when a project is finished and
+        # when it is merely busy — and without the basis the page cannot tell
+        # them apart any better than a bare tick can.
+        basis: basis(n),
         actionable: MapSet.member?(actionable, n.name),
         to: to_fun.(n)
       }
@@ -855,6 +870,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
         name: n.name,
         description: n.description,
         satisfied: n.satisfied,
+        basis: basis(n),
         actionable: MapSet.member?(actionable_names, n.name),
         to: "/app/projects/#{slug}/requirements/#{n.name}"
       }

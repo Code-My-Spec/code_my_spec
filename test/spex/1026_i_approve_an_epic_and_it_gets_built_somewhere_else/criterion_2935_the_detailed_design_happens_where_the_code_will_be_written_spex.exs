@@ -51,8 +51,15 @@ defmodule CodeMySpecSpex.Story964.Criterion2935Spex do
       end
 
       when_ "I look at what the agent on that copy has to do", context do
+        # A story in the epic, not the project's own requirements — the Three
+        # Amigos is owed on stories, and the project page shows project nodes.
+        story_id = hd(context.story_ids)
+
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/stories/#{story_id}/requirements"
+          )
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -40,6 +40,8 @@ defmodule CodeMySpec.EpicDispatch do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
@@ -62,7 +64,7 @@ defmodule CodeMySpec.EpicDispatch do
   def propose(%Scope{} = scope, epic_id) do
     with {:ok, epic} <- fetch(scope, epic_id) do
       case epic.status do
-        :draft -> save(epic, %{status: :proposed})
+        :draft -> save(scope, epic, %{status: :proposed})
         _other -> {:error, :not_draft}
       end
     end
@@ -103,7 +105,7 @@ defmodule CodeMySpec.EpicDispatch do
   # decision was the user's and it stands. `working_copy_id` is nil until a
   # checkout exists, which the page reports as waiting rather than as an error.
   defp dispatch(scope, epic) do
-    save(epic, %{
+    save(scope, epic, %{
       status: :dispatched,
       working_copy_id: destination(scope),
       dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
@@ -125,6 +127,38 @@ defmodule CodeMySpec.EpicDispatch do
   end
 
   @doc """
+  Record a question a dispatched agent needs the user to answer.
+
+  On the epic's own conversation, not the project's. John: *"these other agents
+  can come back and ask us questions about business rules and stuff and that'll
+  all go into those other sub conversations."*
+
+  The main conversation stays at the level of the project. An agent three layers
+  down asking which rate applies is a real question and it belongs beside the
+  work that raised it — dropped into the project thread it buries the
+  conversation the user and the main agent are actually having, and six agents
+  doing it makes that thread unreadable.
+
+  Keyed `epic:<id>`, so the thread belongs to the work rather than to whichever
+  agent happens to be holding it. An epic outlives the agent building it —
+  that is the whole of story 962's "the record outlives the agent", and a
+  question keyed to a process would be lost with it.
+  """
+  @spec record_question(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, term()} | {:error, term()}
+  def record_question(%Scope{} = scope, epic_id, text) when is_binary(text) do
+    with {:ok, epic} <- fetch(scope, epic_id),
+         {:ok, conversation} <-
+           Conversations.find_or_create_session_conversation(
+             scope.active_account_id,
+             scope.active_project_id,
+             "epic:#{epic.id}"
+           ) do
+      Conversations.add_agent_message(conversation, "coding", "assistant", text)
+    end
+  end
+
+  @doc """
   Record that a dispatched agent stopped without finishing.
 
   A status of its own, because silence is what an agent thinking looks like. Any
@@ -134,7 +168,7 @@ defmodule CodeMySpec.EpicDispatch do
   @spec record_failure(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, Epic.t()} | {:error, term()}
   def record_failure(%Scope{} = scope, epic_id, reason) when is_binary(reason) do
     with {:ok, epic} <- fetch(scope, epic_id) do
-      save(epic, %{status: :failed, failure_reason: reason})
+      save(scope, epic, %{status: :failed, failure_reason: reason})
     end
   end
 
@@ -216,7 +250,11 @@ defmodule CodeMySpec.EpicDispatch do
     end
   end
 
-  defp save(epic, attrs) do
-    epic |> Epic.changeset(attrs) |> Repo.update()
+  # Through `Epics` rather than straight to the repo, so every transition
+  # broadcasts the way an edit does. The epics screen is where the user watches
+  # the main agent work — an epic that only appears on reload is a report
+  # rather than something being watched.
+  defp save(scope, epic, attrs) do
+    Epics.update_epic(scope, epic, attrs)
   end
 end
