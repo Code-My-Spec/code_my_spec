@@ -883,3 +883,79 @@ sync-main root="/Users/johndavenport/Documents/github/code_my_spec":
       echo "Phoenix reloads changed modules on the next request. A new dependency"
       echo "or a config change still needs the server restarted."
     fi
+
+# Start a background agent on this working copy, and say where to talk to it.
+#
+# The working copy page has no start button on purpose — story 957 keeps a
+# criterion about it — so the surface is the `start_agent` MCP tool. This is
+# that call with the JSON-RPC envelope and the harness id filled in, because
+# retyping them is friction in front of the feature rather than a decision.
+#
+# The provider must be one the account has a credential for; `openai-codex`
+# runs on the ChatGPT plan and needs no key here. A provider that is not
+# connected is refused up front rather than failing on the first model call.
+agent provider="openai-codex" harness_port="4004" app="http://127.0.0.1:4000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    config="$(git rev-parse --show-toplevel)/.cms_harness.json"
+    [ -f "$config" ] || { echo "no .cms_harness.json here — this checkout is not onboarded" >&2; exit 1; }
+
+    field() { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$config" | head -1 | cut -d'"' -f4; }
+    id="$(field harness_id)"
+    project="$(field project_id)"
+
+    reply=$(curl -sS -X POST "http://localhost:{{harness_port}}/mcp" \
+      -H 'content-type: application/json' \
+      -H 'accept: application/json, text/event-stream' \
+      -H "x-harness-id: $id" --max-time 120 \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"start_agent\",\"arguments\":{\"provider\":\"{{provider}}\"}}}")
+
+    # The tool reports a refusal in the body with `isError`, not as a non-2xx,
+    # so a shell that only checks curl's exit status calls every refusal a
+    # success — including "no credential for that provider".
+    case "$reply" in
+      *'"isError":true'*)
+        echo "✗ the agent was not started:" >&2
+        echo "$reply" | sed -n 's/.*"text":"\(.*\)","type".*/\1/p' | sed 's/\\n/\n/g' >&2
+        exit 1
+        ;;
+    esac
+
+    agent=$(echo "$reply" | sed -n 's/.*Agent: \([0-9a-f-]*\).*/\1/p')
+    echo "✓ agent $agent running in $(dirname "$config")"
+    echo
+    echo "  Talk to it: {{app}}/app/projects/$project/working-copies/$id"
+    echo "  Its transcript is the chat link named after the conversation."
+    echo
+    echo "  Stop it:    just agent-stop $agent"
+
+# Stop one agent. One, and only one.
+agent-stop agent_id harness_port="4004":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    config="$(git rev-parse --show-toplevel)/.cms_harness.json"
+    id="$(grep -o '"harness_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$config" | head -1 | cut -d'"' -f4)"
+
+    curl -sS -X POST "http://localhost:{{harness_port}}/mcp" \
+      -H 'content-type: application/json' \
+      -H 'accept: application/json, text/event-stream' \
+      -H "x-harness-id: $id" --max-time 60 \
+      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"stop_agent\",\"arguments\":{\"agent_id\":\"{{agent_id}}\"}}}" \
+      | sed -n 's/.*"text":"\(.*\)","type".*/\1/p' | sed 's/\\n/\n/g'
+
+# Every agent this project is running.
+agents harness_port="4004":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    config="$(git rev-parse --show-toplevel)/.cms_harness.json"
+    id="$(grep -o '"harness_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$config" | head -1 | cut -d'"' -f4)"
+
+    curl -sS -X POST "http://localhost:{{harness_port}}/mcp" \
+      -H 'content-type: application/json' \
+      -H 'accept: application/json, text/event-stream' \
+      -H "x-harness-id: $id" --max-time 60 \
+      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_agents","arguments":{}}}' \
+      | sed -n 's/.*"text":"\(.*\)","type".*/\1/p' | sed 's/\\n/\n/g'
