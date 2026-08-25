@@ -18,7 +18,9 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -31,9 +33,29 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
     :ok
   end
 
+  # The agent runs on a provider, and refusing without one is deliberate — an
+  # agent started on a credential that does not resolve fails on its first
+  # model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "Every project has exactly one main agent" do
     scenario "Opening a project finds its main agent" do
       given_ "a project I own", context do
+        copy = CodeMySpec.TempFile.dir("spex_2902")
+        File.mkdir_p!(copy)
+        joined = join_working_copy(context, copy, "the main checkout")
+
+        {:ok, designate, _html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"
+          )
+
+        designate |> element("[data-test=designate-main-copy]") |> render_click()
+
         {:ok, context}
       end
 

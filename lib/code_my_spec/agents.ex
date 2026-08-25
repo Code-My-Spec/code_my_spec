@@ -46,6 +46,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
@@ -98,7 +99,8 @@ defmodule CodeMySpec.Agents do
   """
   @spec start_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, start_error()}
   def start_agent(%Scope{} = scope, %{provider: provider} = attrs) do
-    with {:ok, credential} <- Credential.fetch(scope, provider),
+    with :ok <- main_copy_is_free(scope, attrs),
+         {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
       # Carried on the struct rather than stored: the machine needs it, the row
@@ -106,6 +108,32 @@ defmodule CodeMySpec.Agents do
       agent = launch(scope, %{agent | credential: credential})
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
+    end
+  end
+
+  # The main working copy holds one agent, and it is the project's own.
+  #
+  # Two agents in one checkout are two processes editing one tree — the failure
+  # the working-copy grain exists to prevent — and in this checkout it is worse
+  # than that: the user is told there is one thing to talk to, and a second
+  # conversation appears on the copy that is supposed to have exactly one.
+  #
+  # Only the main copy is protected. Every other checkout may run as many as
+  # somebody wants, which is what story 1023's "stop one and leave its siblings
+  # running" is about.
+  defp main_copy_is_free(scope, attrs) do
+    requested = attrs[:working_copy_id] || attrs["working_copy_id"]
+
+    case WorkingCopies.main(scope) do
+      %{id: ^requested} = copy -> refuse_if_occupied(scope, copy)
+      _ -> :ok
+    end
+  end
+
+  defp refuse_if_occupied(scope, copy) do
+    case main_agent(scope) do
+      nil -> :ok
+      %Agent{} -> {:error, {:main_copy_occupied, copy.root}}
     end
   end
 
@@ -203,6 +231,129 @@ defmodule CodeMySpec.Agents do
   # again, and two agents work the same checkout.
   defp delivered_or_working({:error, :message_timed_out}), do: {:ok, :still_working}
   defp delivered_or_working(result), do: result
+
+  @doc """
+  The project's own agent — the one in its main working copy.
+
+  A position, not a label. `agents.role` defaults to "main", so every agent
+  ever started carries that word and a project running three of them has three
+  claiming to be the one you talk to. What makes this one unique is where it
+  is: the checkout the project designated, which no other agent may run in.
+
+  `nil` when the project has no main working copy, or has one and nothing is
+  running there yet. Both are ordinary states with different remedies, which is
+  why `ensure_main_agent/1` reports them apart.
+  """
+  @spec main_agent(Scope.t()) :: Agent.t() | nil
+  def main_agent(%Scope{} = scope) do
+    case WorkingCopies.main(scope) do
+      nil -> nil
+      copy -> AgentsRepository.list_agents(scope) |> Enum.find(&on_copy?(&1, copy))
+    end
+  end
+
+  defp on_copy?(%Agent{working_copy_id: id}, %{id: id}), do: true
+  defp on_copy?(_agent, _copy), do: false
+
+  @doc """
+  The project's own agent, started if it does not exist yet.
+
+  What "there without anybody starting it" means from the server's side:
+  opening a project asks for its agent, and asking is enough. A non-technical
+  user has no way to supply a provider, a checkout and a role, and should not
+  have to know those are the things standing between them and a conversation.
+
+  The two failures are kept apart because their remedies are nothing alike.
+  `:no_main_working_copy` means run `mix cms.new`, or designate one of the
+  checkouts you have. `:not_connected` means connect a provider — the agent has
+  somewhere to run and nothing to run on.
+
+  Starting is still best-effort underneath: `start_agent/2` records `:starting`
+  and the machine confirms. A project whose laptop is closed has a main agent
+  that is asked-for and unconfirmed, which is the honest state rather than an
+  error.
+  """
+  @spec ensure_main_agent(Scope.t()) ::
+          {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
+  def ensure_main_agent(%Scope{} = scope) do
+    case {WorkingCopies.main(scope), main_agent(scope)} do
+      {nil, _} -> {:error, :no_main_working_copy}
+      {_copy, %Agent{} = agent} -> {:ok, agent}
+      {copy, nil} -> start_main_agent(scope, copy)
+    end
+  end
+
+  defp start_main_agent(scope, copy) do
+    with {:ok, provider} <- connected_provider(scope) do
+      start_agent(scope, %{
+        provider: provider,
+        working_copy: copy.root,
+        working_copy_id: copy.id,
+        role: "main"
+      })
+    end
+  end
+
+  # The first connected provider, in an order somebody chose.
+  #
+  # Flat-rate before metered, and that is the whole point of writing the list
+  # out. `Providers.names/0` is alphabetical, so taking its head would put
+  # every main agent on `anthropic` — the one that bills per token — for a user
+  # who has a subscription connected and never asked to spend credits on an
+  # agent that is always on.
+  #
+  # `:not_connected` when none of them is, which is a different problem from
+  # having nowhere to run and gets a different remedy in front of the user.
+  @provider_preference ["openai-codex", "zai", "anthropic"]
+
+  defp connected_provider(scope) do
+    Enum.find_value(@provider_preference, {:error, :not_connected}, fn provider ->
+      case Credential.fetch(scope, provider) do
+        {:ok, _credential} -> {:ok, provider}
+        {:error, _reason} -> nil
+      end
+    end)
+  end
+
+  @doc """
+  Move the project's own agent to a different checkout.
+
+  Called when the main working copy is re-designated. The agent keeps its id,
+  so it keeps its conversation — the whole reason this is a move rather than a
+  replacement.
+
+  The machine is asked to run it in the new place, and best-effort for the same
+  reason starting is: a copy whose harness is not connected leaves the row
+  `:starting`, which is the honest state rather than a failure to re-designate.
+  """
+  @spec move_main_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, term()} | :none
+  def move_main_agent(%Scope{} = scope, copy) do
+    case main_agent_anywhere(scope) do
+      nil ->
+        :none
+
+      %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
+        :none
+
+      %Agent{} = agent ->
+        with {:ok, moved} <-
+               AgentsRepository.update_agent(scope, agent, %{
+                 working_copy_id: copy.id,
+                 working_copy: copy.root
+               }) do
+          broadcast(scope, {:agent_started, moved})
+          {:ok, moved}
+        end
+    end
+  end
+
+  # The project's agent wherever it currently is, which during a move is not
+  # the main copy — that is the point of moving it.
+  defp main_agent_anywhere(%Scope{} = scope) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.find(&(&1.role == "main" and &1.status in [:starting, :running]))
+  end
 
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.

@@ -34,6 +34,18 @@ defmodule CodeMySpecSpex.Story963.Criterion2906Spex do
   spex "The main agent runs in the project's main working copy" do
     scenario "A project with no main working copy says so instead of failing quietly" do
       given_ "a project that has no main working copy yet", context do
+        # Established rather than assumed. A project's first checkout becomes
+        # its main one, so the premise is that it has none — and a block that
+        # only says so would pass on a project with six, testing something
+        # else entirely without anybody noticing.
+        {:ok, _copies, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+
+        refute html =~ "data-test=\"main-copy\"",
+               "the premise is a project with no main working copy, and this one has " <>
+                 "one — so what follows would be about a different project than the " <>
+                 "criterion describes"
+
         {:ok, context}
       end
 

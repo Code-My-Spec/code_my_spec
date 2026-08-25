@@ -256,6 +256,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   {agent.role} · {engine_name(agent.engine)}
                 </span>
 
+                <span
+                  :if={row.harness.main}
+                  data-test="main-copy"
+                  class="badge badge-primary badge-xs"
+                >
+                  Main
+                </span>
                 <span :if={row.last_message} data-test="last-message" class="opacity-60">
                   last message {row.last_message}
                 </span>

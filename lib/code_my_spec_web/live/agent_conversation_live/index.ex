@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
 
   @impl true
@@ -35,6 +36,50 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
     end
   end
 
+  # The project's own agent, and its conversation, or why there is not one.
+  #
+  # The conversation is fetched here rather than in the template because a main
+  # agent with no conversation is a state the page must not render a link for —
+  # it would go to a transcript that does not exist.
+  defp ensure_main(scope) do
+    with {:ok, agent} <- Agents.ensure_main_agent(scope),
+         {:ok, conversation} <-
+           Conversations.find_or_create_agent_conversation(
+             scope.active_account_id,
+             scope.active_project_id,
+             agent.id
+           ) do
+      {:ok, agent, conversation}
+    end
+  end
+
+  defp main_agent_id({:ok, agent, _conversation}), do: agent.id
+  defp main_agent_id(_), do: nil
+
+  # Which checkout it is in. On the page rather than inferred from elsewhere,
+  # because "the agent runs in the copy you designated" is a claim a reader
+  # should be able to check without going and looking somewhere else.
+  defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
+  defp main_copy_id(_), do: nil
+
+  defp main_path(project, {:ok, _agent, conversation}),
+    do: ~p"/app/projects/#{project.id}/agent-conversation/#{conversation.id}"
+
+  defp main_path(project, _), do: ~p"/app/projects/#{project.id}/agent-conversation"
+
+  # Two sentences about where the project is, in the words somebody who does not
+  # read code would use. A placeholder for now, and deliberately not a status
+  # line assembled from row counts — the agent is what will write this, and a
+  # summary built out of numbers here would have to be unbuilt when it does.
+  defp main_summary({:ok, agent, _conversation}) do
+    case agent.status do
+      :running -> "Working on your project. Open the conversation to see what it is doing."
+      _ -> "Getting ready. It will start work as soon as its machine picks it up."
+    end
+  end
+
+  defp main_summary(_), do: ""
+
   defp load(socket, project) do
     scope = %{
       socket.assigns.current_scope
@@ -43,6 +88,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
     }
 
     socket
+    |> assign(:main, ensure_main(scope))
     |> assign(:current_scope, scope)
     |> assign(:project, project)
     |> assign(:page_title, "#{project.name} · Agents")
@@ -88,7 +134,59 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
           <:subtitle>Every session that has recorded work on {@project.name}</:subtitle>
         </.header>
 
-        <p :if={@rows == []} data-test="agent-conversations-empty" class="py-16 text-center opacity-60">
+        <%!-- The one thing to talk to, above the list of everything that has
+        ever recorded a turn. Those are different questions and answering the
+        second where the first was asked is how a non-technical user ends up
+        choosing a checkout. --%>
+        <div
+          :if={match?({:ok, _, _}, @main)}
+          data-test="main-agent"
+          data-agent-id={main_agent_id(@main)}
+          data-working-copy-id={main_copy_id(@main)}
+          class="mt-6 rounded-box border border-primary/40 bg-primary/5 p-4"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="font-semibold">Your project's agent</div>
+              <div data-test="project-summary" class="text-sm opacity-70">
+                {main_summary(@main)}
+              </div>
+            </div>
+            <.button navigate={main_path(@project, @main)} class="btn btn-sm btn-primary">
+              Open
+            </.button>
+          </div>
+        </div>
+
+        <%!-- Two failures, two remedies, and telling them apart is the whole
+        value of saying anything. Nowhere to run is `mix cms.new` or designating
+        a checkout you already have; nothing to run on is connecting a provider.
+        A single "unavailable" would send half of the people who read it to the
+        wrong place. --%>
+        <p
+          :if={match?({:error, :no_main_working_copy}, @main)}
+          data-test="no-main-working-copy"
+          class="mt-6 rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          This project has no main working copy yet, so there is nowhere for its
+          agent to run. Run <code>mix cms.new</code> to make one, or open a
+          checkout you already have and make it the main copy.
+        </p>
+
+        <p
+          :if={match?({:error, :not_connected}, @main)}
+          data-test="no-provider"
+          class="mt-6 rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          This project has a main working copy but no provider connected, so its
+          agent has nothing to run on. Connect one and it will come up.
+        </p>
+
+        <p
+          :if={@rows == []}
+          data-test="agent-conversations-empty"
+          class="py-16 text-center opacity-60"
+        >
           <.icon name="hero-cpu-chip" class="mx-auto mb-3 size-10" />
           No agent has recorded a turn on this project yet.
         </p>

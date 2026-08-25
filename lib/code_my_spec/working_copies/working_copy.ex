@@ -34,6 +34,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           label: String.t() | nil,
+          main: boolean(),
           root: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
           path_missing_since: DateTime.t() | nil,
@@ -58,6 +59,14 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # clock is that silence stops meaning anything.
     field :path_missing_since, :utc_datetime_usec
 
+    # Whether this is the checkout the project's own agent runs in.
+    #
+    # Designated, never inferred — six checkouts of one repository, several of
+    # them worktrees of each other, and nothing about a path or a timestamp
+    # picks the one the work belongs to. At most one per project, held by a
+    # partial unique index rather than by whoever remembers to clear the others.
+    field :main, :boolean, default: false
+
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
     # says which machine it is announcing from. That is a real state — "we have
@@ -78,10 +87,15 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :path_missing_since,
       :project_id,
       :root,
-      :device_id
+      :device_id,
+      :main
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
+    |> unique_constraint(:main,
+      name: :working_copies_one_main_per_project_index,
+      message: "this project already has a main working copy"
+    )
     |> unique_constraint([:project_id, :device_id, :root],
       name: :working_copies_project_device_root_index,
       message: "this machine already has a checkout at that path on this project"

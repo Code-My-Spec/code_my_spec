@@ -38,6 +38,14 @@ defmodule CodeMySpecSpex.Story963.Criterion2919Spex do
     :ok
   end
 
+  # The agent runs on a provider, and refusing without one is deliberate — an
+  # agent started on a credential that does not resolve fails on its first
+  # model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "Work the main agent delegates does not become a second conversation with the user" do
     scenario "A subagent's work reports back through the main agent" do
       given_ "the main agent has delegated something like persona research", context do

@@ -40,6 +40,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -107,6 +108,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     |> assign(:page_title, row.heading)
   end
 
+  # Designating this checkout as the one the project's own agent runs in.
+  #
+  # Re-reads the row rather than patching the one in assigns: designating
+  # clears whichever copy held it before, so the page's own idea of the project
+  # is stale the moment this returns.
+  @impl true
+  def handle_event("designate_main", _params, socket) do
+    case WorkingCopies.designate_main(
+           socket.assigns.current_scope,
+           socket.assigns.working_copy_id
+         ) do
+      {:ok, _copy} ->
+        {:noreply, load(socket, socket.assigns.project)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "That working copy is not on this project.")}
+
+      {:error, _changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "That copy could not be made the main one. Try again.")}
+    end
+  end
+
   # The chat is only an offer where there is something on the other end of it.
   #
   # `:running`, not merely `:pi` — the same mistake `Liveness` made, one panel
@@ -170,6 +194,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             >
               <.icon name="hero-pencil-square" /> Rename
             </.button>
+            <%!-- Shown only where it would do something. A control that says
+            "make this the main copy" over the copy that already is reads as
+            though the designation had not taken. --%>
+            <.button
+              :if={not @row.harness.main}
+              phx-click="designate_main"
+              data-test="designate-main-copy"
+              class="btn btn-sm"
+            >
+              <.icon name="hero-star" /> Make this the main copy
+            </.button>
+            <span
+              :if={@row.harness.main}
+              data-test="main-copy"
+              class="badge badge-primary badge-sm"
+            >
+              Main copy
+            </span>
           </:actions>
         </.header>
 

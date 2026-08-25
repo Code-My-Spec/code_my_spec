@@ -211,6 +211,76 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
+  The checkout this project's own agent runs in, or nil.
+
+  Nil is an ordinary answer rather than a fault: a project nobody has onboarded
+  a checkout for has no main copy, and the surfaces that need one say so rather
+  than inventing one. Guessing is the thing this whole idea exists to avoid.
+  """
+  @spec main(Scope.t()) :: WorkingCopy.t() | nil
+  def main(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.one(from w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+  end
+
+  def main(%Scope{}), do: nil
+
+  @doc """
+  Make this checkout the project's main working copy.
+
+  Clears whichever copy held it first, because "at most one" is a database
+  constraint here and setting the new one without clearing the old would be
+  refused rather than silently producing two. In one transaction, so a failure
+  leaves the project with the main copy it started with rather than none.
+
+  Answers `{:error, :not_found}` for a copy on another project — the id arrives
+  from a URL, and without the check any id would designate any project's copy.
+  """
+  @spec designate_main(Scope.t(), Ecto.UUID.t()) ::
+          {:ok, WorkingCopy.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def designate_main(%Scope{active_project_id: project_id} = scope, working_copy_id)
+      when is_binary(project_id) do
+    Repo.transaction(fn ->
+      case Repo.get_by(WorkingCopy, id: working_copy_id, project_id: project_id) do
+        nil ->
+          Repo.rollback(:not_found)
+
+        copy ->
+          # Cleared first. The index permits one row per project with `main`
+          # true, so writing the new one while the old still holds it is a
+          # constraint violation rather than a replacement.
+          from(w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+          |> Repo.update_all(set: [main: false])
+
+          case copy |> WorkingCopy.changeset(%{main: true}) |> Repo.update() do
+            {:ok, designated} -> designated
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+      end
+    end)
+    |> case do
+      {:ok, copy} ->
+        # The agent goes where the designation goes. A project whose main copy
+        # is one checkout and whose main agent is running in another satisfies
+        # nobody: the page names one place and the work happens in the other.
+        _ = CodeMySpec.Agents.move_main_agent(scope, copy)
+        broadcast_designated(scope, copy)
+        {:ok, copy}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The page that designated it is not the only one showing which copy is main.
+  defp broadcast_designated(%Scope{active_project_id: project_id}, copy) do
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "project:#{project_id}:working_copies",
+      {:main_working_copy_designated, copy}
+    )
+  end
+
+  @doc """
   Record where a harness says its working copy is.
 
   Separate from `issue/3` because it is a different claim: `issue/3` answers
@@ -298,8 +368,28 @@ defmodule CodeMySpec.WorkingCopies do
 
   defp create(project_id, label) do
     %WorkingCopy{}
-    |> WorkingCopy.changeset(%{project_id: project_id, label: label, last_seen_at: now()})
+    |> WorkingCopy.changeset(%{
+      project_id: project_id,
+      label: label,
+      last_seen_at: now(),
+      main: first_copy?(project_id)
+    })
     |> Repo.insert()
+  end
+
+  # A project's first checkout is its main one.
+  #
+  # Not the inference `designate_main/2` exists to rule out: that rule is about
+  # six checkouts of one repository, where a path, a label and a last-seen time
+  # each pick a different wrong one. With one copy there is nothing to choose
+  # between, and leaving it undesignated leaves a project made by `cms.new`
+  # with a checkout, no main copy and no agent — a state nobody can act on and
+  # nothing asked for.
+  #
+  # Asked rather than assumed on every insert: a project that already has a
+  # main copy keeps it, so a second checkout joining never quietly takes over.
+  defp first_copy?(project_id) do
+    not Repo.exists?(from w in WorkingCopy, where: w.project_id == ^project_id and w.main)
   end
 
   # The label is refreshed on every join because it can legitimately change —

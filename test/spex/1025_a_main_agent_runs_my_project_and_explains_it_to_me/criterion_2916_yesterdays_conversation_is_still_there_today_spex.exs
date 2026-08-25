@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -29,6 +30,14 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  # The agent runs on a provider, and refusing without one is deliberate — an
+  # agent started on a credential that does not resolve fails on its first
+  # model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
     :ok
   end
 
