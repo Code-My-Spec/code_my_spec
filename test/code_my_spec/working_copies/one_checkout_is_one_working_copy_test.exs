@@ -102,4 +102,65 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
            "a checkout presenting an id it was issued has to be recognised by it — " <>
              "the id is the identity and the root is a report about where it sits"
   end
+
+  describe "the database holds the same rule" do
+    test "a second row for one directory on one machine is refused, as a changeset" do
+      scope = full_scope_fixture()
+      laptop = device(scope, "a-laptop")
+
+      {:ok, first} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
+      {:ok, _} = WorkingCopies.report_root(first, @root)
+      {:ok, _} = Devices.attach(first, laptop)
+
+      # A row minted around the lookup — which is what a regression in
+      # `recognise_or_create/3` looks like, and what produced 52 rows for one
+      # worktree before that lookup existed.
+      {:ok, second} = WorkingCopies.issue(scope, nil, label: "minted around the lookup")
+      {:ok, second} = Devices.attach(second, laptop)
+
+      assert {:error, %Ecto.Changeset{} = changeset} = WorkingCopies.report_root(second, @root)
+
+      refute changeset.valid?
+
+      assert errors_on(changeset)[:project_id] == [
+               "this machine already has a checkout at that path on this project"
+             ],
+             "the refusal has to arrive as a changeset a caller can render. Raised, " <>
+               "it 500s a harness join; swallowed, the duplicate is back. Got: " <>
+               inspect(errors_on(changeset))
+    end
+
+    test "two machines at one path are still two rows, at the database level" do
+      scope = full_scope_fixture()
+      laptop = device(scope, "a-laptop")
+      sprite = device(scope, "a-sprite")
+
+      {:ok, on_laptop} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
+      {:ok, _} = WorkingCopies.report_root(on_laptop, @root)
+      {:ok, _} = Devices.attach(on_laptop, laptop)
+
+      {:ok, on_sprite} = WorkingCopies.issue(scope, nil, device: sprite, root: @root)
+      {:ok, on_sprite} = Devices.attach(on_sprite, sprite)
+
+      assert {:ok, _} = WorkingCopies.report_root(on_sprite, @root),
+             "the index folded two machines into one checkout because they share a " <>
+               "path. Every container sits at /workspace/app — a guard that cannot " <>
+               "tell them apart is worse than the duplicate it prevents."
+    end
+
+    test "two device-less joins at one path are left alone" do
+      scope = full_scope_fixture()
+
+      {:ok, first} = WorkingCopies.issue(scope, nil, root: @root)
+      {:ok, _} = WorkingCopies.report_root(first, @root)
+
+      {:ok, second} = WorkingCopies.issue(scope, nil, root: @root)
+
+      assert {:ok, _} = WorkingCopies.report_root(second, @root),
+             "the index deduped two rows that nothing can prove are the same " <>
+               "checkout. `NULLS NOT DISTINCT` would do this, and it reverses a " <>
+               "decision with its own test above: without a device, merging on root " <>
+               "alone folds somebody else's checkout into yours."
+    end
+  end
 end

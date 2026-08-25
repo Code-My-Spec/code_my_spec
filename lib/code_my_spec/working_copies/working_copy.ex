@@ -82,5 +82,9 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
+    |> unique_constraint([:project_id, :device_id, :root],
+      name: :working_copies_project_device_root_index,
+      message: "this machine already has a checkout at that path on this project"
+    )
   end
 end
