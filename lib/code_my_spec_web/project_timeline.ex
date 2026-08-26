@@ -142,9 +142,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
               spends words, and it spends them on the only thing a glance is
               looking for. The phase name is gone entirely — "DESIGN" beside a
               pill reading "arch" is the same fact at lower resolution. --%>
+              <%!-- `h-4` and `leading-none`, matching the pies exactly. Sized
+              by its text the pill came out a pixel or two taller than a
+              `size-4` pie, which is enough to make the row look like it is
+              sagging where the pill sits. Everything on the strip is 16px tall
+              and the font is chosen to fit that, rather than the other way
+              round. --%>
               <span
                 :if={phase.expanded? and step.state == "current"}
-                class="block rounded-full bg-primary px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-primary-content"
+                class="flex h-4 items-center rounded-full bg-primary px-1.5 text-[0.6rem] font-semibold uppercase leading-none tracking-wide text-primary-content"
               >
                 {step.abbrev}
               </span>
