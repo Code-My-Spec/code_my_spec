@@ -553,9 +553,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         phx-hook="Viewport"
         data-test="conversation-layout"
         data-layout={to_string(@screen)}
-        style="height: calc(100dvh - 7rem)"
         class={[
-          "mx-auto flex w-full gap-4",
+          "mx-auto flex min-h-0 w-full flex-1 gap-4",
           @screen == :wide && "max-w-7xl flex-row",
           @screen == :narrow && "max-w-3xl flex-col"
         ]}
@@ -572,7 +571,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <div
           data-test="agent-conversation"
           data-project-id={@project.id}
-          class="flex min-w-0 flex-1 flex-col"
+          class="flex min-h-0 min-w-0 flex-1 flex-col"
         >
           <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
             <.link
@@ -762,11 +761,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     ~H"""
     <div
       data-test="conversation-panels"
-      class={[
-        "flex flex-col gap-2 overflow-y-auto",
-        @screen == :wide && "w-96 shrink-0",
-        @screen == :narrow && "w-full"
-      ]}
+      class={
+        [
+          "flex flex-col gap-2 overflow-y-auto",
+          @screen == :wide && "w-96 shrink-0",
+          # Capped rather than flexible on a phone. The panels take their natural
+          # height so the conversation gets the rest, but an open panel with a lot
+          # in it must not eat the screen — past this it scrolls inside itself,
+          # which is the whole reason the chat is still reachable below.
+          @screen == :narrow && "max-h-[45dvh] w-full shrink-0"
+        ]
+      }
     >
       <div data-test="panel-preview" data-panel-open={to_string(:preview in @open)}>
         <button

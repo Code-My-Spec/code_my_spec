@@ -99,13 +99,16 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
         {:ok, context}
       end
 
-      then_ "and a collapsed phase still draws a mark for every step it has", context do
-        # The claim this block exists for is visual, and the counting blocks
-        # above pass either way — which is how a collapsed phase came to render
-        # its name and nothing else. A step used to draw only a tick, and only
-        # when it was done, so three of five phases were bare words and the one
-        # with a single done step read as "one thing here" rather than "one of
-        # five done".
+      then_ "and every collapsed phase is drawn, never left blank", context do
+        # The claim is visual and the counting blocks above pass either way,
+        # which is how a collapsed phase once came to render its name and
+        # nothing else.
+        #
+        # What "drawn" means changed with the design and the guarantee did not.
+        # A collapsed phase used to be a mark per step; it is now one pie
+        # carrying `data-done` and `data-total`. Either way the test is that a
+        # phase you are not in is still *there* and still says how far through
+        # it is — zoomed out is not absent.
         #
         # Bounded to the timeline's own list: the conversation below it is not
         # part of this claim and must not be counted.
@@ -120,26 +123,36 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
         assert collapsed != [], "no collapsed phase to check"
 
         for phase <- collapsed do
-          steps = Regex.scan(~r/data-test="timeline-step"/, phase) |> length()
-          marks = Regex.scan(~r/size-2 rounded-full/, phase) |> length()
+          pies = Regex.scan(~r/data-test="phase-pie"[^>]*data-total="(\d+)"/, phase)
 
-          assert marks == steps,
-                 "a collapsed phase has #{steps} step(s) and draws #{marks} mark(s). " <>
-                   "Zoomed out is not absent — a phase you cannot count the steps of " <>
-                   "answers none of the questions the neighbouring phases are there for."
+          assert [[_, total]] = pies,
+                 "a collapsed phase draws #{length(pies)} pies. One phase is one pie — " <>
+                   "none means the phase is invisible, which is the failure this block " <>
+                   "exists for."
+
+          assert String.to_integer(total) > 0,
+                 "a collapsed phase says it holds zero steps, so it is drawn but reads " <>
+                   "as nothing. A phase with no steps should not be on the line at all."
         end
 
         {:ok, context}
       end
 
-      then_ "and the whole graph is still on the line", context do
-        steps = Regex.scan(~r/data-test="timeline-step"/, context.html) |> length()
+      then_ "and the whole graph is still accounted for", context do
+        totals =
+          ~r/data-test="phase-pie"[^>]*data-total="(\d+)"/
+          |> Regex.scan(context.html)
+          |> Enum.map(fn [_, n] -> String.to_integer(n) end)
 
-        assert steps >= 13,
-               "only #{steps} steps are on the timeline. The project has thirteen " <>
-                 "requirements of its own and the point of zoom rather than a cut list is " <>
-                 "that none of them is dropped — a cut list cannot answer about a step it " <>
-                 "left out."
+        # Through the pies rather than through rendered dots, because the dots
+        # are now drawn only for the phase you are in. The guarantee is
+        # unchanged and is the whole reason this is zoom rather than a shorter
+        # list: a pie can answer a question about a step because it counted it,
+        # and a cut list cannot answer about one it left out.
+        assert Enum.sum(totals) >= 13,
+               "the phases account for #{Enum.sum(totals)} steps across #{length(totals)} " <>
+                 "pies. The project has thirteen requirements of its own, and aggregating " <>
+                 "them is only honest while every one is still counted somewhere."
 
         {:ok, context}
       end

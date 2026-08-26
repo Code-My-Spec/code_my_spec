@@ -452,7 +452,11 @@ defmodule CodeMySpecWeb.CoreComponents do
           </tr>
         </thead>
         <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-          <tr :for={row <- @rows} id={@row_id && @row_id.(row)} {(@row_attrs && @row_attrs.(row)) || %{}}>
+          <tr
+            :for={row <- @rows}
+            id={@row_id && @row_id.(row)}
+            {(@row_attrs && @row_attrs.(row)) || %{}}
+          >
             <td
               :for={col <- @col}
               phx-click={@row_click && @row_click.(row)}
@@ -525,6 +529,42 @@ defmodule CodeMySpecWeb.CoreComponents do
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} />
+    """
+  end
+
+  @doc """
+  A filesystem path, elided at the start so its tail survives.
+
+  `truncate` keeps the beginning, which for a path is the part every row has in
+  common: `/Users/someone/Documents/github/…` is identical on every line and
+  pushes the segment that actually identifies this one off the edge. What tells
+  two checkouts apart is their last few segments, so those are what stay.
+
+  `dir="rtl"` with `unicode-bidi: plaintext` is the standard way to move an
+  ellipsis to the other end. `plaintext` takes direction from the first strong
+  character, so the path still reads left to right — only the overflow moves.
+  The whole path stays in `title` for anyone who wants it.
+
+  ## Examples
+
+      <.path_tail path={@harness.root} />
+      <.path_tail path={@env.working_dir} class="opacity-60" />
+  """
+  attr :path, :string, default: nil
+  attr :class, :string, default: nil
+
+  def path_tail(assigns) do
+    ~H"""
+    <span
+      :if={@path not in [nil, ""]}
+      title={@path}
+      dir="rtl"
+      data-test="path-tail"
+      style="unicode-bidi: plaintext"
+      class={["block min-w-0 truncate text-left font-mono", @class]}
+    >
+      {@path}
+    </span>
     """
   end
 

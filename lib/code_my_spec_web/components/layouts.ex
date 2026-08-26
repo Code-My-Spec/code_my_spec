@@ -156,7 +156,14 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
         </div>
 
-        <main class="flex-1 p-6">
+        <%!-- `min-h-0` and a column, so a page that wants to own the viewport
+        can. Without it a full-height child grows the document instead of
+        scrolling inside itself, the whole page scrolls, and a chat's
+        composer-at-the-bottom ends up below the fold.
+
+        `p-4` on a phone: 24px of padding each side costs a eighth of a 390px
+        screen before anything is drawn. --%>
+        <main class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
           {render_slot(@inner_block)}
         </main>
       </div>

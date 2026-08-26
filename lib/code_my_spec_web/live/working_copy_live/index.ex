@@ -189,18 +189,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
             ]}
           >
             <div class="card-body gap-3">
-              <%!-- Said in words, above the name, rather than as a badge among
-              the badges. "Main" at the end of a row that also says `coding · pi`
-              is one more piece of jargon to somebody who does not know what a
-              working copy is — and they are who needs to know which of these
-              their project actually lives in. --%>
+              <%!-- The star, and nothing else. It used to be followed by "Your
+              project's main checkout — its agent runs here", which is a
+              sentence explaining a mark that already reads. Hover and assistive
+              text still carry the full meaning for anyone who wants it. --%>
               <div
                 :if={row.harness.main}
                 data-test="main-copy"
-                class="flex items-center gap-2 text-sm font-semibold text-primary"
+                title="Your project's main checkout — its agent runs here"
+                class="flex items-center gap-2 text-primary"
               >
                 <.icon name="hero-star-solid" class="size-4" />
-                Your project's main checkout — its agent runs here
+                <span class="sr-only">Your project's main checkout — its agent runs here</span>
               </div>
 
               <div class="flex items-start gap-3">
@@ -212,11 +212,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   >
                     {row.label}
                   </.link>
-                  <div class="text-xs opacity-60 truncate">
-                    <span data-test="working-copy-id" class="font-mono">
+                  <div class="flex items-baseline gap-2 text-xs opacity-60">
+                    <span data-test="working-copy-id" class="shrink-0 font-mono">
                       {short_id(row.harness.id)}
                     </span>
-                    {row.harness.root}
+                    <.path_tail path={row.harness.root} />
                   </div>
 
                   <div class="text-xs opacity-60 truncate">

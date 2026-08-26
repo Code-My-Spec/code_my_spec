@@ -75,40 +75,63 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             not phase.expanded? && "text-base-content/40"
           ]}
         >
-          <span
-            data-test="phase-pie"
-            data-done={phase_done(phase)}
-            data-total={length(phase.steps)}
-            title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)}"}
-            style={pie_style(phase)}
-            class={[
-              "size-4 shrink-0 rounded-full ring-1",
-              phase.expanded? && "ring-primary",
-              not phase.expanded? && "ring-base-content/25"
-            ]}
+          <%!-- The pie is the phase's visible mark and its way in. Hovering
+          names it and says how far through it is, which is what the phase name
+          used to cost a line of text to say. --%>
+          <.link
+            navigate={phase_path(phase)}
+            title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done"}
+            class="flex shrink-0 items-center gap-1"
           >
-          </span>
+            <span
+              data-test="phase-pie"
+              data-done={phase_done(phase)}
+              data-total={length(phase.steps)}
+              style={pie_style(phase)}
+              class={[
+                "size-4 shrink-0 rounded-full ring-1",
+                phase.expanded? && "ring-primary",
+                not phase.expanded? && "ring-base-content/25"
+              ]}
+            >
+            </span>
 
-          <span
-            :if={phase.expanded?}
-            class="text-xs font-semibold uppercase tracking-wide"
-          >
-            {phase.label}
-          </span>
+            <span :if={phase.expanded?} class="text-xs font-semibold uppercase tracking-wide">
+              {phase.label}
+            </span>
 
+            <span class="sr-only">{phase.label}</span>
+          </.link>
+
+          <%!-- Dots are drawn only for the phase you are in. A collapsed phase
+          is its pie, which already carries how many steps it holds and how many
+          are done — aggregating, not cutting, which is why a pie can still
+          answer a question about a step while a shortened list cannot.
+
+          Every step keeps its link either way. Drawing nothing is a visual
+          decision and must not become an unreachable one: a step outside the
+          current phase is still a way in rather than a dead end, still named,
+          and still keyboard-reachable. What changes is whether it takes space. --%>
           <span
             :for={step <- phase.steps}
             data-test="timeline-step"
             data-step={step.name}
             data-state={step.state}
           >
-            <.link navigate={step.path} class="block px-0.5 py-1" title={step.title}>
-              <span class={[
-                "block size-2 rounded-full",
-                step.state == "current" && "bg-primary ring-2 ring-primary/40",
-                step.state == "done" && "bg-base-content/50",
-                step.state == "todo" && "bg-base-content/20"
-              ]}>
+            <.link
+              navigate={step.path}
+              title={step.title}
+              class={[phase.expanded? && "block px-0.5 py-1", not phase.expanded? && "sr-only"]}
+            >
+              <span
+                :if={phase.expanded?}
+                class={[
+                  "block size-2 rounded-full",
+                  step.state == "current" && "bg-primary ring-2 ring-primary/40",
+                  step.state == "done" && "bg-base-content/50",
+                  step.state == "todo" && "bg-base-content/20"
+                ]}
+              >
               </span>
               <span class="sr-only">{step.title}</span>
             </.link>
@@ -144,6 +167,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   defp phase_done(phase), do: Enum.count(phase.steps, &(&1.state == "done"))
+
+  # Where clicking a phase goes: the step it is on, or its first if it has not
+  # started. A pie that names a phase on hover and does nothing on click is an
+  # affordance that lies.
+  defp phase_path(phase) do
+    current = Enum.find(phase.steps, &(&1.state == "current"))
+    (current || hd(phase.steps)).path
+  end
 
   # A phase as a wedge. `currentColor` so the pie takes the phase's own colour —
   # primary for the one you are in, muted for the rest — and the ring around it
