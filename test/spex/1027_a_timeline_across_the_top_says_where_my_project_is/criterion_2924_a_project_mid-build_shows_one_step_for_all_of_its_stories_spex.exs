@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
 
       then_ "the story work is one step, not one per story", context do
         steps =
-          Regex.scan(~r/data-test="timeline-step"[^>]*data-step="story_work"/, context.html)
+          Regex.scan(~r/data-test="timeline-step"[^>]*data-step="work_dispatched"/, context.html)
 
         assert length(steps) == 1,
                "the timeline draws #{length(steps)} story-work steps for a project with " <>

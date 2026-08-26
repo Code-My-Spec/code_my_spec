@@ -85,7 +85,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
         "We are setting up the machinery that proves your software does what you asked " <>
           "for. Without it, working and looking like it works are the same thing."
     },
-    "story_work" => %{
+    "work_dispatched" => %{
       phase: :building,
       title: "Building it",
       abbrev: "build",
@@ -155,7 +155,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     qa_integration_plan
     architecture_designed
     spex_boundary_ready
-    story_work
+    work_dispatched
     issues_triaged
     issues_resolved
     qa_setup
@@ -187,6 +187,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
   a step with none, because it reads as though somebody wrote it about this
   project.
   """
-  @spec fetch(String.t()) :: %{phase: atom(), title: String.t(), abbrev: String.t(), detail: String.t()} | nil
+  @spec fetch(String.t()) ::
+          %{phase: atom(), title: String.t(), abbrev: String.t(), detail: String.t()} | nil
   def fetch(name), do: Map.get(@steps, name)
 end

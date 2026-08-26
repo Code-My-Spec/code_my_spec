@@ -268,7 +268,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # for it. Every one of these exists.
   defp path_for("personas_complete", project), do: ~p"/app/projects/#{project.id}/personas"
   defp path_for("stories_exist", project), do: ~p"/app/projects/#{project.id}/stories"
-  defp path_for("story_work", project), do: ~p"/app/projects/#{project.id}/stories"
+  defp path_for("work_dispatched", project), do: ~p"/app/projects/#{project.id}/stories"
 
   defp path_for("architecture_designed", project),
     do: ~p"/app/projects/#{project.id}/architecture"

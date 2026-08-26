@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
       given_ "a timeline with a step for the project's stories", context do
         {:ok, live, html} = live(context.conn, main_conversation_path(context))
 
-        assert html =~ "data-step=\"story_work\"",
+        assert html =~ "data-step=\"work_dispatched\"",
                "the timeline has no story-work step, so there is nothing to click"
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
 
       when_ "I click that step", context do
         context.live
-        |> element("[data-test=timeline-step][data-step=story_work] a")
+        |> element("[data-test=timeline-step][data-step=work_dispatched] a")
         |> render_click()
 
         {:ok, context}
