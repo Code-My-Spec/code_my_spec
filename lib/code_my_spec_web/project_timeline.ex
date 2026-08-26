@@ -52,40 +52,35 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       aria-label="Where this project stands"
       class="border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
     >
-      <%!-- Five phases and thirteen steps have to be legible at 390px without
-      scrolling, and the thing that did not fit was the words. Every phase used
-      to print its name, so `BUILDING`, `CHECKING` and `PROVING` fell off the
-      right-hand edge of a phone with no scrollbar to say they were there — a
-      strip that looks complete and does not contain your own phase.
+      <%!-- Five phases and thirteen steps, legible at 390px without scrolling.
+      What did not fit was the words: every phase printed its name, so BUILDING,
+      CHECKING and PROVING fell off the right-hand edge of a phone with no
+      scrollbar to say they were there — a strip that looks complete and does
+      not contain your own phase.
 
-      So the names go and the shapes stay. A phase is a pie: how much of it is
-      done, readable without reading. Its steps stay as dots beside it, because
-      the whole graph on the line is the point — a cut list cannot answer a
-      question about a step it left out. Only the phase you are in keeps its
-      name, and the step you are on is named once, underneath. --%>
-      <%!-- One colour language, used by pies and dots alike: green is done,
-      primary is where you are, grey is not yet. Before this, done and not-yet
-      were both grey and only the current step had colour, so a finished phase
-      and an untouched one looked identical — the pie was full and said nothing
-      about it. --%>
+      So the names went and the shapes stayed. A phase you are not in is one
+      pie: how much of it is done, readable without reading. The phase you are
+      in is its steps instead — dots, with the one you are on as a pill carrying
+      its short name. Aggregate where you are not, itemise where you are; a pie
+      beside its own dots is the same fact twice at lower resolution.
+
+      One colour language throughout: green is done, primary is where you are,
+      grey is not yet. Done and not-yet used to both be grey, which made a
+      finished phase and an untouched one identical.
+
+      Everything on the line is 16px tall, and the pill's font is chosen to fit
+      that rather than the height falling out of the font. --%>
       <ol class="flex flex-wrap items-center gap-x-4 gap-y-1">
         <li
           :for={phase <- @steps}
           data-test="timeline-phase"
           data-phase={phase.key}
           data-expanded={to_string(phase.expanded?)}
-          class={
-            [
-              "flex shrink-0 items-center gap-1.5",
-              # Bounded, so the name belongs to a group rather than floating
-              # between two of them. Without it "DESIGN" sits between one pie and
-              # another and labels neither.
-              phase.expanded? &&
-                "rounded-full bg-base-100 px-2 py-0.5 text-primary ring-1 ring-primary/30",
-              not phase.expanded? && phase_complete?(phase) && "text-success",
-              not phase.expanded? && not phase_complete?(phase) && "text-base-content/30"
-            ]
-          }
+          class={[
+            "flex shrink-0 items-center gap-1.5",
+            phase_complete?(phase) && "text-success",
+            not phase_complete?(phase) && "text-base-content/30"
+          ]}
         >
           <%!-- The pie is the phase's visible mark and its way in. Hovering
           names it and says how far through it is, which is what the phase name
@@ -131,12 +126,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             data-test="timeline-step"
             data-step={step.name}
             data-state={step.state}
+            class={[not phase.expanded? && "sr-only"]}
           >
-            <.link
-              navigate={step.path}
-              title={step.title}
-              class={[phase.expanded? && "block px-0.5 py-1", not phase.expanded? && "sr-only"]}
-            >
+            <.link navigate={step.path} title={step.title} class="flex h-4 items-center">
               <%!-- The step you are on is a pill with its short name inside;
               the rest of the phase is dots. That is the one place the strip
               spends words, and it spends them on the only thing a glance is
@@ -149,14 +141,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
               and the font is chosen to fit that, rather than the other way
               round. --%>
               <span
-                :if={phase.expanded? and step.state == "current"}
+                :if={step.state == "current"}
+                data-test="current-step"
                 class="flex h-4 items-center rounded-full bg-primary px-1.5 text-[0.6rem] font-semibold uppercase leading-none tracking-wide text-primary-content"
               >
                 {step.abbrev}
               </span>
 
               <span
-                :if={phase.expanded? and step.state != "current"}
+                :if={step.state != "current"}
                 class={[
                   "block size-2 rounded-full",
                   step.state == "done" && "bg-success",
@@ -170,25 +163,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         </li>
       </ol>
 
-      <%!-- The step you are on, and nothing about it. The two explanatory
-      sentences that used to sit here were the bulk of the header on every
-      screen, and the header exists to be glanced at. John: "remove on both".
-      Criterion 2927, which held those sentences to plain language, is retired
-      with them — there is no longer any prose for it to govern. --%>
-      <p :if={current_title(@steps)} data-test="step-title" class="mt-1 text-sm font-semibold">
-        {current_title(@steps)}
-      </p>
+      <%!-- Nothing under the strip. The two explanatory sentences went first,
+      then the step's title — the pill already names the step, and a line
+      repeating it in full is a third telling of one fact. The full name is on
+      the pill's own link for hover and assistive text.
+
+      Criterion 2927, which held the sentences to plain language, is retired
+      with them: there is no prose left for it to govern. --%>
     </nav>
     """
-  end
-
-  # The step you are on, named once. It used to be named by being the only
-  # step whose title was printed in the strip, which cost five phase names and
-  # thirteen step titles across the top to say one thing.
-  defp current_title(phases) do
-    phases
-    |> Enum.flat_map(& &1.steps)
-    |> Enum.find_value(fn step -> step.state == "current" && step.title end)
   end
 
   defp phase_done(phase), do: Enum.count(phase.steps, &(&1.state == "done"))

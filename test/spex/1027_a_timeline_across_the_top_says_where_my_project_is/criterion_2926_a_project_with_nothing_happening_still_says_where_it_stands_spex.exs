@@ -83,12 +83,12 @@ defmodule CodeMySpecSpex.Story965.Criterion2926Spex do
                "an idle project is reported as an error"
 
         # The anchor beside the refute, so an empty page cannot pass this block.
-        # It used to be `step-detail`, the two explanatory sentences — those are
-        # gone (they were the bulk of the header on a screen meant to be
-        # glanced at), and the step's own name is what still says where the
-        # project is.
-        assert context.html =~ "data-test=\"step-title\"",
-               "the timeline names no current step, so the screen says nothing about " <>
+        # It has followed the header down as prose was cut: the two explanatory
+        # sentences first, then the step's full title, and now the pill — which
+        # is the last thing left that names where the project is, and the only
+        # one that survives a glance.
+        assert context.html =~ "data-test=\"current-step\"",
+               "the timeline marks no current step, so the screen says nothing about " <>
                  "where the project is — which is indistinguishable from one that failed " <>
                  "to load"
 

@@ -147,19 +147,16 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
         # The guarantee is unchanged and is the whole reason this is zoom rather
         # than a shorter list: a pie can answer a question about a step because
         # it counted it, and a cut list cannot answer about one it left out.
-        aggregated =
-          ~r/data-test="phase-pie"[^>]*data-total="(\d+)"/
+        named =
+          ~r/data-test="timeline-step"[^>]*data-step="([a-z_]+)"/
           |> Regex.scan(context.html)
-          |> Enum.map(fn [_, n] -> String.to_integer(n) end)
-          |> Enum.sum()
+          |> Enum.map(fn [_, name] -> name end)
+          |> Enum.uniq()
 
-        itemised = Regex.scan(~r/data-test="timeline-step"/, context.html) |> length()
-
-        assert aggregated + itemised >= 13,
-               "the timeline accounts for #{aggregated} steps in pies and #{itemised} as " <>
-                 "dots. The project has thirteen requirements of its own, and aggregating " <>
-                 "the phases you are not in is only honest while every step is still " <>
-                 "counted somewhere."
+        assert length(named) >= 13,
+               "the timeline names #{length(named)} distinct steps. The project has " <>
+                 "thirteen requirements of its own, and aggregating the phases you are " <>
+                 "not in is only honest while every step is still on the page."
 
         {:ok, context}
       end
