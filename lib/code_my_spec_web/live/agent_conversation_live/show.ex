@@ -55,6 +55,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Agents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpec.Conversations
+  alias CodeMySpec.ScreenState
   alias CodeMySpec.Stories
   alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
@@ -119,6 +120,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         user_id ->
           Notifications.subscribe_notifications_list(user_id)
       end
+
+      # This person's screen for this project. Its own topic rather than the
+      # project's: two people looking at one project have two screens, and a
+      # broadcast that reached both would move one its owner never touched.
+      ScreenState.subscribe(scope)
     end
 
     socket
@@ -146,9 +152,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # conversation on a 390px screen, which overlaps and runs off the edge.
     # Caught by screenshotting the frame before the round trip landed.
     |> assign_new(:screen, fn -> :narrow end)
-    |> assign_new(:open_panels, fn -> [] end)
-    |> assign_new(:dynamic_view, fn -> "stories" end)
-    |> assign_new(:dynamic_story_id, fn -> nil end)
+    # Seeded from the stored screen and kept in the socket after that. The
+    # `assign_new` matters twice over here: this function re-runs on every
+    # PubSub update, and re-reading the row each time would undo a panel the
+    # person opened a moment ago from a write that has not landed yet.
+    |> assign_new(:open_panels, fn -> stored_panels(scope) end)
+    |> assign_new(:dynamic_view, fn -> ScreenState.get(scope).dynamic_view end)
+    |> assign_new(:dynamic_story_id, fn -> ScreenState.get(scope).dynamic_story_id end)
+    |> assign_new(:offer, fn -> offer_of(ScreenState.get(scope)) end)
     |> assign_new(:activity, fn -> [] end)
     |> assign_new(:draft, fn -> "" end)
     |> assign_more_above(messages, @page)
@@ -162,6 +173,51 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Loaded even while the tab is shut, because the alternative is a panel that
   # is empty for one frame every time it opens, and the query is a list of the
   # project's own stories rather than anything expensive.
+  # Panels come back as strings and are atoms in the socket, because everything
+  # that reasons about them — the phone rule, the render — matches on atoms.
+  defp stored_panels(scope) do
+    scope
+    |> ScreenState.get()
+    |> Map.get(:open_panels, [])
+    |> Enum.map(&to_panel/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp to_panel("preview"), do: :preview
+  defp to_panel("dynamic"), do: :dynamic
+  defp to_panel("activity"), do: :activity
+  defp to_panel(_other), do: nil
+
+  # What the agent is asking for, or nothing. A view with no offer is the
+  # ordinary state of a screen nobody is steering.
+  defp offer_of(%{offered_view: nil}), do: nil
+  defp offer_of(%{offered_view: view, offered_story_id: id}), do: %{view: view, story_id: id}
+  defp offer_of(_screen), do: nil
+
+  # Written on every change the person makes, so the screen they leave is the
+  # screen they come back to. Failure is deliberately silent: a layout that
+  # could not be saved is worth less than the conversation it sits beside, and
+  # raising here would take both.
+  defp remember(socket) do
+    ScreenState.put(socket.assigns.current_scope, %{
+      open_panels: Enum.map(socket.assigns.open_panels, &to_string/1),
+      dynamic_view: socket.assigns.dynamic_view,
+      dynamic_story_id: socket.assigns.dynamic_story_id
+    })
+
+    socket
+  end
+
+  defp take_offer(%{assigns: %{offer: nil}} = socket), do: socket
+
+  defp take_offer(%{assigns: %{offer: offer}} = socket) do
+    socket
+    |> assign(:dynamic_view, offer.view)
+    |> assign(:dynamic_story_id, offer.story_id)
+    |> assign(:offer, nil)
+    |> assign_dynamic()
+  end
+
   defp assign_dynamic(socket) do
     scope = socket.assigns.current_scope
 
@@ -357,7 +413,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         end
       end
 
-    {:noreply, assign(socket, :open_panels, open)}
+    socket = assign(socket, :open_panels, open)
+
+    # Opening the dynamic tab is also how a person accepts what the agent is
+    # offering — the offer lives on that tab, so taking it is the same gesture
+    # as looking at it.
+    socket =
+      if panel == :dynamic and socket.assigns.offer do
+        ScreenState.take(socket.assigns.current_scope)
+        take_offer(socket)
+      else
+        socket
+      end
+
+    {:noreply, remember(socket)}
   end
 
   # The dynamic tab shows a different thing. It does not become another tab —
@@ -368,7 +437,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      socket
      |> assign(:dynamic_view, view)
      |> assign(:dynamic_story_id, params["story_id"])
-     |> assign_dynamic()}
+     |> assign_dynamic()
+     |> remember()}
   end
 
   # Progress is ambient: it lands in activity and raises nothing. That is the
@@ -556,6 +626,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Above the catch-all deliberately. A clause added below it is dead code that
   # compiles, and the screen simply never updates — which is how this same file
   # lost a handler earlier and looked like a rendering bug for a while.
+  # The agent asked for something. Whether it lands now is a property of the
+  # screen rather than of the change: a wide one holds every panel, so taking it
+  # costs nothing and asking would be ceremony. A phone holds one, so taking it
+  # would evict whatever is open — possibly mid sentence in the composer — and
+  # it waits behind a mark instead.
+  def handle_info({:screen_changed, screen}, socket) do
+    socket = assign(socket, :offer, offer_of(screen))
+
+    case {socket.assigns.screen, socket.assigns.offer} do
+      {_screen, nil} ->
+        {:noreply, socket}
+
+      {:wide, _offer} ->
+        ScreenState.take(socket.assigns.current_scope)
+        {:noreply, take_offer(socket)}
+
+      {:narrow, _offer} ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_info({:notifications_changed}, socket) do
     {:noreply,
      assign(
@@ -614,6 +705,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
+          offer={@offer}
           activity={@activity}
           waiting={@waiting}
         />
@@ -784,6 +876,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
+          offer={@offer}
           activity={@activity}
           waiting={@waiting}
         />
@@ -808,6 +901,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
+  attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
 
@@ -849,6 +943,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           >
             <span class="truncate">{label}</span>
             <.panel_attention :if={key == :activity} waiting={@waiting} />
+            <.panel_offer :if={key == :dynamic} offer={@offer} />
           </button>
         </div>
       </div>
@@ -865,6 +960,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
+          offer={@offer}
           activity={@activity}
           waiting={@waiting}
         />
@@ -892,6 +988,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           {label}
           <.panel_attention :if={key == :activity} waiting={@waiting} />
+          <.panel_offer :if={key == :dynamic} offer={@offer} />
         </button>
 
         <div :if={key in @open} class="rounded-box border border-base-300 p-3 text-sm">
@@ -912,6 +1009,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # On the tab header, so a shut tab can still raise it. On a phone the other
   # panels are not merely collapsed but absent, and a question nobody sees is an
   # agent stopped for as long as nobody looks.
+  # The agent has something for this tab and has not been given the screen.
+  # Only ever rendered on a phone in practice — a wide screen takes the offer
+  # the moment it arrives, so there is nothing left to mark.
+  attr :offer, :any, default: nil
+
+  defp panel_offer(assigns) do
+    ~H"""
+    <span :if={@offer} data-test="panel-offer" class="badge badge-xs badge-primary">
+      new
+    </span>
+    """
+  end
+
   attr :waiting, :list, required: true
 
   defp panel_attention(assigns) do
@@ -926,6 +1036,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
+  attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
 

@@ -51,8 +51,14 @@ defmodule CodeMySpecSpex.Story967.Criterion2956Spex do
         {:ok, Map.put(context, :story, story)}
       end
 
-      given_ "the dynamic tab open", context do
+      given_ "the dynamic tab open on a screen with room for it", context do
+        # On a desk, deliberately. Whether the agent's change lands immediately
+        # or waits behind a mark is what 2957 and 2958 are each about; this
+        # criterion is the plainer claim underneath both — that the agent can
+        # reach the tab at all. Testing it on the screen where the change is
+        # free keeps it from restating 2958 with the opposite answer.
         {:ok, live, _html} = live(context.conn, main_conversation_path(context))
+        render_hook(live, "viewport", %{"width" => 1440})
         live |> element(~s([data-test="panel-tab-dynamic"])) |> render_click()
 
         {:ok, Map.put(context, :live, live)}

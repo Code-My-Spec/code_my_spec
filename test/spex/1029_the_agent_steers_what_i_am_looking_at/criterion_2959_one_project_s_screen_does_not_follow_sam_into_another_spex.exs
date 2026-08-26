@@ -67,8 +67,22 @@ defmodule CodeMySpecSpex.Story967.Criterion2959Spex do
       end
 
       when_ "I open the other project's agent conversation", context do
-        other_scope = %{context.scope | active_project_id: context.other_project.id}
-        other = given_a_main_checkout(%{context | scope: other_scope}, "spex_967_other")
+        # Both halves of "which project". The id alone is not enough — the
+        # scope carries a loaded `active_project` that the story listing reads,
+        # and `main_conversation_path/1` builds from `context.project`. Setting
+        # one and not the others points this back at the first project and the
+        # spec passes or fails for the wrong reason.
+        other_scope = %{
+          context.scope
+          | active_project_id: context.other_project.id,
+            active_project: context.other_project
+        }
+
+        other =
+          given_a_main_checkout(
+            %{context | scope: other_scope, project: context.other_project},
+            "spex_967_other"
+          )
 
         {:ok, _live, html} = live(context.conn, main_conversation_path(other))
 
