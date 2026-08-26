@@ -604,6 +604,35 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # while `bdd_specs_exist` read the harness's file report in the same second
   # and correctly reported the same specs present. Two halves of one system
   # disagreeing about one fact, because only one of them was looking.
+  # Across every checkout of the project, not just the one asking.
+  #
+  # A spec file is a fact about the story. Whether it exists does not depend on
+  # which copy you happen to be sitting in, and scoping it to the requesting one
+  # made `bdd_specs_exist` gate on *have you pushed* rather than on *have you
+  # written the spec*: an agent working in a worktree wrote six specs, was told
+  # all six were missing, and then told they were fine — with no change to any
+  # of them — because a `just refresh` had pulled them into a second checkout in
+  # between. Measured on story 967.
+  #
+  # Deliberately unlike problems and analyzer results, which `DeployKeyOrOAuth`
+  # narrows to the asking copy for good reason: those *are* per-checkout facts,
+  # and showing an agent 1138 credo problems from a worktree it cannot fix is
+  # the failure that scoping exists to prevent. A file's existence is not that.
+  #
+  # The best verdict wins where copies disagree — one that has scanned and
+  # approved the file outranks one that has not caught up, because a spec that
+  # is valid somewhere is written.
+  defp best_report(scope, spec_path) do
+    %{scope | active_working_copy_id: nil}
+    |> Files.get_by_paths([spec_path])
+    |> Enum.sort_by(fn
+      %{valid: true} -> 0
+      %{valid: false} -> 1
+      _ -> 2
+    end)
+    |> List.first()
+  end
+
   # "Not found" is also what this says when the file is present and the lookup
   # could not see it — wrong project, wrong working copy, or a scope carrying
   # neither. Three separate defects have now hidden behind that one sentence
@@ -665,7 +694,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # The manifest is the whole truth — a path absent from it is a deletion, not
   # an omission — so no row here really is "not found", and says so.
   defp from_file_report(scope, spec_path) do
-    case Files.get_by_path(scope, spec_path) do
+    case best_report(scope, spec_path) do
       nil -> {:error, :file_not_found}
       %{valid: true} -> :ok
       %{valid: false} = file -> {:error, reported_reason(file)}
