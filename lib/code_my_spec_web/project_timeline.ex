@@ -63,17 +63,29 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       the whole graph on the line is the point — a cut list cannot answer a
       question about a step it left out. Only the phase you are in keeps its
       name, and the step you are on is named once, underneath. --%>
-      <ol class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <%!-- One colour language, used by pies and dots alike: green is done,
+      primary is where you are, grey is not yet. Before this, done and not-yet
+      were both grey and only the current step had colour, so a finished phase
+      and an untouched one looked identical — the pie was full and said nothing
+      about it. --%>
+      <ol class="flex flex-wrap items-center gap-x-4 gap-y-1">
         <li
           :for={phase <- @steps}
           data-test="timeline-phase"
           data-phase={phase.key}
           data-expanded={to_string(phase.expanded?)}
-          class={[
-            "flex shrink-0 items-center gap-1",
-            phase.expanded? && "text-primary",
-            not phase.expanded? && "text-base-content/40"
-          ]}
+          class={
+            [
+              "flex shrink-0 items-center gap-1.5",
+              # Bounded, so the name belongs to a group rather than floating
+              # between two of them. Without it "DESIGN" sits between one pie and
+              # another and labels neither.
+              phase.expanded? &&
+                "rounded-full bg-base-100 px-2 py-0.5 text-primary ring-1 ring-primary/30",
+              not phase.expanded? && phase_complete?(phase) && "text-success",
+              not phase.expanded? && not phase_complete?(phase) && "text-base-content/30"
+            ]
+          }
         >
           <%!-- The pie is the phase's visible mark and its way in. Hovering
           names it and says how far through it is, which is what the phase name
@@ -91,7 +103,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
               class={[
                 "size-4 shrink-0 rounded-full ring-1",
                 phase.expanded? && "ring-primary",
-                not phase.expanded? && "ring-base-content/25"
+                not phase.expanded? && phase_complete?(phase) && "ring-success/60",
+                not phase.expanded? && not phase_complete?(phase) && "ring-base-content/25"
               ]}
             >
             </span>
@@ -128,7 +141,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
                 class={[
                   "block size-2 rounded-full",
                   step.state == "current" && "bg-primary ring-2 ring-primary/40",
-                  step.state == "done" && "bg-base-content/50",
+                  step.state == "done" && "bg-success",
                   step.state == "todo" && "bg-base-content/20"
                 ]}
               >
@@ -167,6 +180,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   defp phase_done(phase), do: Enum.count(phase.steps, &(&1.state == "done"))
+
+  defp phase_complete?(phase),
+    do: phase.steps != [] and phase_done(phase) == length(phase.steps)
 
   # Where clicking a phase goes: the step it is on, or its first if it has not
   # started. A pie that names a phase on hover and does nothing on click is an
