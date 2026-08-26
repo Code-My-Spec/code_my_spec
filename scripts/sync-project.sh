@@ -1,10 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-# Sync account data between environments
-# Usage: ./scripts/sync-accounts.sh <account-id> <source-env> <dest-env> [--dry-run]
-# Example: ./scripts/sync-accounts.sh 4 dev prod
-# Example: ./scripts/sync-accounts.sh 4 prod uat --dry-run
+# Sync a single project's data between environments — the project row, its
+# components, and its stories/versions. Never the account, its members, its
+# users, or any other project the account owns: see
+# CodeMySpec.Utils.Data's moduledoc for why this used to sync whole accounts
+# and why that broke.
+# Usage: ./scripts/sync-project.sh <project-id> <source-env> <dest-env> [--dry-run]
+# Example: ./scripts/sync-project.sh 49d80233-5e7f-4590-8fff-e6af922ce70d dev prod
+# Example: ./scripts/sync-project.sh 49d80233-5e7f-4590-8fff-e6af922ce70d prod uat --dry-run
 
 # Color output
 RED='\033[0;31m'
@@ -27,10 +31,10 @@ warn() {
 
 # Validate arguments
 if [ $# -lt 3 ]; then
-    error "Usage: ./scripts/sync-accounts.sh <account-id> <source-env> <dest-env> [--dry-run]"
+    error "Usage: ./scripts/sync-project.sh <project-id> <source-env> <dest-env> [--dry-run]"
 fi
 
-ACCOUNT_ID=$1
+PROJECT_ID=$1
 SOURCE_ENV=$2
 DEST_ENV=$3
 DRY_RUN=""
@@ -53,7 +57,7 @@ if [ "$SOURCE_ENV" = "$DEST_ENV" ]; then
     error "Source and destination environments cannot be the same"
 fi
 
-EXPORT_FILE="/tmp/account_${ACCOUNT_ID}_${SOURCE_ENV}_to_${DEST_ENV}.json"
+EXPORT_FILE="/tmp/project_${PROJECT_ID}_${SOURCE_ENV}_to_${DEST_ENV}.json"
 
 # Get app name for Fly environments
 get_app_name() {
@@ -69,29 +73,29 @@ SOURCE_APP=$(get_app_name "$SOURCE_ENV")
 DEST_APP=$(get_app_name "$DEST_ENV")
 
 # Step 1: Export from source
-info "Step 1: Exporting account ${ACCOUNT_ID} from ${SOURCE_ENV}..."
+info "Step 1: Exporting project ${PROJECT_ID} from ${SOURCE_ENV}..."
 
 if [ "$SOURCE_ENV" = "dev" ]; then
     # Export from local dev
-    mix sync.data export --account-id "${ACCOUNT_ID}" --output "${EXPORT_FILE}"
+    mix sync.data export --project-id "${PROJECT_ID}" --output "${EXPORT_FILE}"
 else
     # Export from remote environment
-    fly ssh console -a "${SOURCE_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.export_data(${ACCOUNT_ID}, \"/tmp/account_${ACCOUNT_ID}.json\")'"
-    fly ssh sftp get "/tmp/account_${ACCOUNT_ID}.json" "${EXPORT_FILE}" -a "${SOURCE_APP}"
+    fly ssh console -a "${SOURCE_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.export_project(\"${PROJECT_ID}\", \"/tmp/project_${PROJECT_ID}.json\")'"
+    fly ssh sftp get "/tmp/project_${PROJECT_ID}.json" "${EXPORT_FILE}" -a "${SOURCE_APP}"
 fi
 
 if [ ! -f "${EXPORT_FILE}" ]; then
     error "Export failed - ${EXPORT_FILE} not found"
 fi
 
-info " Export complete: ${EXPORT_FILE}"
+info " Export complete: ${EXPORT_FILE}"
 
 # Step 2: Upload to destination (if not dev)
 if [ "$DEST_ENV" != "dev" ]; then
     if [ -z "${DRY_RUN}" ]; then
         info "Step 2: Uploading to ${DEST_ENV}..."
-        fly ssh console -a "${DEST_APP}" -C "sh -c 'cat > /tmp/account_${ACCOUNT_ID}.json'" < "${EXPORT_FILE}"
-        info " Upload complete"
+        fly ssh console -a "${DEST_APP}" -C "sh -c 'cat > /tmp/project_${PROJECT_ID}.json'" < "${EXPORT_FILE}"
+        info " Upload complete"
     else
         info "Step 2: [DRY RUN] Skipping upload to ${DEST_ENV}"
     fi
@@ -103,17 +107,17 @@ if [ -z "${DRY_RUN}" ]; then
     if [ "$DEST_ENV" = "dev" ]; then
         mix sync.data import --file "${EXPORT_FILE}"
     else
-        fly ssh console -a "${DEST_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.import_data(\"/tmp/account_${ACCOUNT_ID}.json\")'"
+        fly ssh console -a "${DEST_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.import_project(\"/tmp/project_${PROJECT_ID}.json\")'"
     fi
-    info " Import complete"
+    info " Import complete"
 else
     info "Step 3: Running dry-run import on ${DEST_ENV}..."
     if [ "$DEST_ENV" = "dev" ]; then
         mix sync.data import --file "${EXPORT_FILE}" --dry-run
     else
-        fly ssh console -a "${DEST_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.import_data(\"/tmp/account_${ACCOUNT_ID}.json\", dry_run: true)'"
+        fly ssh console -a "${DEST_APP}" -C "/app/bin/code_my_spec rpc 'CodeMySpec.Release.import_project(\"/tmp/project_${PROJECT_ID}.json\", dry_run: true)'"
     fi
-    info " Dry-run complete"
+    info " Dry-run complete"
 fi
 
-info "Done! Account ${ACCOUNT_ID} synced from ${SOURCE_ENV} to ${DEST_ENV}."
+info "Done! Project ${PROJECT_ID} synced from ${SOURCE_ENV} to ${DEST_ENV}."
