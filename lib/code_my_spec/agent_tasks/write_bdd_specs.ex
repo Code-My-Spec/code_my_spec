@@ -586,7 +586,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       end)
       |> Enum.reject(fn {_, _, result} -> result == :ok end)
       |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{ContentCheck.describe(reason, spec_path)}\n  Expected: `#{spec_path}`"
+        "Criterion #{criterion.id} (#{criterion.description}): #{ContentCheck.describe(reason, spec_path)}\n  Expected: `#{spec_path}`#{where(reason, scope)}"
       end)
 
     if Enum.empty?(errors) do
@@ -604,6 +604,21 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # while `bdd_specs_exist` read the harness's file report in the same second
   # and correctly reported the same specs present. Two halves of one system
   # disagreeing about one fact, because only one of them was looking.
+  # "Not found" is also what this says when the file is present and the lookup
+  # could not see it — wrong project, wrong working copy, or a scope carrying
+  # neither. Three separate defects have now hidden behind that one sentence
+  # (dca0bea9, d5fd302e, 6b2810a8), and each cost a diagnosis because the
+  # message named the file, which is the one thing that was never wrong.
+  #
+  # So it says where it looked. A refusal that names its own scope can be
+  # checked against the row in one step instead of five.
+  defp where(:file_not_found, scope) do
+    "\n  Looked in: project #{inspect(scope.active_project_id)}" <>
+      ", working copy #{inspect(scope.active_working_copy_id)}"
+  end
+
+  defp where(_reason, _scope), do: ""
+
   # The harness's verdict wins wherever it exists, and the disk is the fallback
   # rather than the other way round.
   #
