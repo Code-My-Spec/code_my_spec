@@ -60,6 +60,33 @@ let Hooks = {
       this.wasAtBottom = scrollHeight - (scrollTop + clientHeight) < 32;
     },
   },
+  // Tells the server how wide the screen is, because it cannot see one and the
+  // difference is behavioural rather than cosmetic. "A phone shows one panel" is
+  // state — closing a panel is a decision the server makes — so a media query
+  // alone cannot express it.
+  //
+  // `matchMedia` rather than a resize listener: it fires when the breakpoint is
+  // crossed instead of on every pixel, so dragging a window edge is two events
+  // rather than two hundred round trips.
+  //
+  // The 768 here is only a *trigger*. `handle_event("viewport", ...)` owns the
+  // actual threshold, and it is deliberately not shared: if the two ever drift,
+  // the layout is still whatever the server decides — this just gets chattier or
+  // slower to notice. A shared constant would trade that for a broken layout.
+  Viewport: {
+    mounted() {
+      this.query = window.matchMedia("(min-width: 768px)");
+      this.report = () => this.pushEvent("viewport", { width: window.innerWidth });
+      this.query.addEventListener("change", this.report);
+      // Once on mount, so the first paint is right rather than right after the
+      // first resize. A phone that is never resized would otherwise sit in the
+      // desktop layout for the whole session.
+      this.report();
+    },
+    destroyed() {
+      this.query.removeEventListener("change", this.report);
+    },
+  },
   Copy: {
     mounted() {
       let { to } = this.el.dataset;

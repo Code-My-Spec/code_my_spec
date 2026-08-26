@@ -270,7 +270,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # difference here is behavioural rather than cosmetic. "A phone shows one
   # panel" is state, not a media query — closing a panel is something the server
   # decides — so the width has to reach it.
-  def handle_event("viewport", %{"width" => width}, socket) when is_integer(width) do
+  # `is_number`, not `is_integer`: `window.innerWidth` is fractional under browser
+  # zoom, and an integer-only guard would leave no matching clause and crash the
+  # view for anyone not at 100%.
+  def handle_event("viewport", %{"width" => width}, socket) when is_number(width) do
     screen = if width < 768, do: :narrow, else: :wide
 
     {:noreply,
@@ -519,6 +522,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       the chat first in the document — which is a different thing for anyone
       reading the page rather than looking at it. --%>
       <div
+        id="conversation-layout"
+        phx-hook="Viewport"
         data-test="conversation-layout"
         data-layout={to_string(@screen)}
         style="height: calc(100dvh - 7rem)"
