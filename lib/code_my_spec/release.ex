@@ -20,16 +20,16 @@ defmodule CodeMySpec.Release do
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
-  def import_data(file_path, opts \\ []) do
+  def import_project(file_path, opts \\ []) do
     load_app()
     Application.ensure_all_started(@app)
-    Data.import_account(file_path, opts)
+    Data.import_project(file_path, opts)
   end
 
-  def export_data(account_id, file_path) do
+  def export_project(project_id, file_path) do
     load_app()
     Application.ensure_all_started(@app)
-    Data.export_account(account_id, file_path)
+    Data.export_project(project_id, file_path)
   end
 
   defp repos do

@@ -1,153 +1,114 @@
 defmodule CodeMySpec.Utils.Data do
   @moduledoc """
-  Data import/export utilities for syncing data between environments.
-  Used by both Mix tasks and release commands.
+  Moves a single project — and only that project — between environments.
+
+  This used to sync a whole account: every project it owned, wiped and
+  reinserted together. That meant migrating one project dragged along
+  whatever else lived on the account (other real projects, throwaway
+  fixtures), and its wipe resolved "which accounts does this touch" by
+  walking from the target account to its members' user ids and back out to
+  every account those users belong to — deleting all of them, including ones
+  nobody meant to touch, whenever a user happened to hold membership in more
+  than one. Scoped to a project id instead, neither failure mode has
+  anywhere to occur: a project belongs to exactly one account, never several.
+
+  Assumes the destination account already exists — a project cannot be
+  created under an account that isn't there, and this makes no attempt to
+  create one.
   """
 
   require Logger
 
-  alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Users.User
   alias PaperTrail.Version
 
   import Ecto.Query
 
-  def import_account(file_path, opts \\ []) do
+  @doc """
+  Imports exactly one project's data — the project row, its components, and
+  its stories/versions. Never touches the account, its members, its users, or
+  any other project under that account.
+  """
+  def import_project(file_path, opts \\ []) do
     dry_run = Keyword.get(opts, :dry_run, false)
 
-    Logger.info("Importing account from #{file_path}...")
+    Logger.info("Importing project from #{file_path}...")
 
     json = File.read!(file_path)
     data = Jason.decode!(json, keys: :atoms)
 
     if dry_run do
       Logger.info("[DRY RUN] Would import:")
-      Logger.info("  - Account: #{data.account.name}")
-      Logger.info("  - #{length(data.users)} users")
-      Logger.info("  - #{length(data.projects)} projects")
+      Logger.info("  - Project: #{data.project.name}")
       Logger.info("  - #{length(data.components)} components")
       Logger.info("  - #{length(data.stories || [])} stories")
       Logger.info("  - #{length(data.versions || [])} versions")
-      Logger.info("  - #{length(data.sessions)} sessions")
     else
       Repo.transaction(fn ->
-        account_id = Map.get(data.account, :id)
-        maybe_wipe_account_data(account_id)
+        project_id = data.project.id
+        wipe_project_data(project_id)
 
-        # Insert fresh data in dependency order
-        Logger.info("Inserting account data...")
-        inserted_account = insert_account(data.account)
-        account_id = inserted_account.id
-        insert_users(data.users)
-        insert_members(data.members)
-        insert_projects(data.projects)
+        Logger.info("Inserting project data...")
+        insert_projects([data.project])
         insert_components(data.components)
-
-        # Insert versions before stories (stories reference versions via first_version_id/current_version_id)
+        # Versions before stories: stories reference versions via
+        # first_version_id/current_version_id.
         insert_versions(data[:versions] || [])
         insert_stories(data[:stories] || [])
-        # Skip sessions - they're environment-specific and complex to sync
-        # insert_sessions(data.sessions)
-        Logger.info("Skipped #{length(data.sessions || [])} sessions (environment-specific)")
 
-        # Reset sequences after manually setting IDs to prevent conflicts
         reset_sequences()
 
-        Logger.info("✓ Imported account #{data.account.name} (ID: #{account_id})")
+        Logger.info("✓ Imported project #{data.project.name} (ID: #{project_id})")
       end)
     end
   end
 
-  # Reset all table sequences after manual ID insertion
-  defp reset_sequences do
-    # Exclude tables that use UUID primary keys (no sequence): components, projects
-    tables = ~w(accounts users members versions stories sessions)
+  @doc """
+  Exports exactly one project — its own row, components, stories, and the
+  stories' versions. See `import_project/2`.
+  """
+  def export_project(project_id, output_path) do
+    Logger.info("Exporting project #{project_id}...")
 
-    Enum.each(tables, fn table ->
-      Repo.query!("""
-        SELECT setval(pg_get_serial_sequence('#{table}', 'id'),
-                      COALESCE((SELECT MAX(id) FROM #{table}), 1),
-                      true)
-      """)
-    end)
-  end
-
-  def export_account(account_id, output_path) do
-    Logger.info("Exporting account #{account_id}...")
-
-    account = Repo.get!(Account, account_id) |> Repo.preload([:members, :users])
+    project = Repo.get!(Project, project_id)
 
     data = %{
-      account: serialize_account(account),
-      users: serialize_users(account),
-      members: serialize_members(account),
-      projects: serialize_projects(account_id),
-      components: serialize_components(account_id),
-      versions: serialize_versions(account_id),
-      stories: serialize_stories(account_id),
-      sessions: serialize_sessions(account_id)
+      project:
+        Map.take(project, [
+          :id,
+          :name,
+          :description,
+          :module_name,
+          :code_repo,
+          :docs_repo,
+          :client_api_url,
+          :account_id,
+          :status,
+          :inserted_at,
+          :updated_at
+        ]),
+      components: serialize_components(project_id),
+      versions: serialize_versions(project_id),
+      stories: serialize_stories(project_id)
     }
 
     json = Jason.encode!(data, pretty: true)
     File.write!(output_path, json)
 
-    Logger.info("✓ Exported account #{account_id} to #{output_path}")
-    Logger.info("  - #{length(data.users)} users")
-    Logger.info("  - #{length(data.projects)} projects")
+    Logger.info("✓ Exported project #{project_id} to #{output_path}")
     Logger.info("  - #{length(data.components)} components")
     Logger.info("  - #{length(data.stories)} stories")
     Logger.info("  - #{length(data.versions)} versions")
-    Logger.info("  - #{length(data.sessions)} sessions")
   end
 
   # Serialization functions
 
-  defp serialize_account(account) do
-    Map.take(account, [:id, :name, :slug, :type])
-  end
-
-  defp serialize_users(account) do
-    Enum.map(account.users, fn user ->
-      Map.take(user, [:id, :email, :hashed_password, :confirmed_at, :inserted_at, :updated_at])
-    end)
-  end
-
-  defp serialize_members(account) do
-    Enum.map(account.members, fn member ->
-      Map.take(member, [:id, :user_id, :account_id, :role, :inserted_at, :updated_at])
-    end)
-  end
-
-  defp serialize_projects(account_id) do
-    Project
-    |> where([p], p.account_id == ^account_id)
-    |> Repo.all()
-    |> Enum.map(fn project ->
-      Map.take(project, [
-        :id,
-        :name,
-        :description,
-        :module_name,
-        :code_repo,
-        :docs_repo,
-        :client_api_url,
-        :account_id,
-        :status,
-        :inserted_at,
-        :updated_at
-      ])
-    end)
-  end
-
-  defp serialize_components(account_id) do
+  defp serialize_components(project_id) do
     Component
-    |> where([c], c.account_id == ^account_id)
+    |> where([c], c.project_id == ^project_id)
     |> Repo.all()
     |> Enum.map(fn component ->
       Map.take(component, [
@@ -166,9 +127,9 @@ defmodule CodeMySpec.Utils.Data do
     end)
   end
 
-  defp serialize_stories(account_id) do
+  defp serialize_stories(project_id) do
     Story
-    |> where([s], s.account_id == ^account_id)
+    |> where([s], s.project_id == ^project_id)
     |> Repo.all()
     |> Enum.map(fn story ->
       Map.take(story, [
@@ -191,15 +152,13 @@ defmodule CodeMySpec.Utils.Data do
     end)
   end
 
-  defp serialize_versions(account_id) do
-    # Get all story IDs for this account
+  defp serialize_versions(project_id) do
     story_ids =
       Story
-      |> where([s], s.account_id == ^account_id)
+      |> where([s], s.project_id == ^project_id)
       |> select([s], s.id)
       |> Repo.all()
 
-    # Get all versions for those stories
     Version
     |> where([v], v.item_type == "Story" and v.item_id in ^story_ids)
     |> Repo.all()
@@ -218,34 +177,6 @@ defmodule CodeMySpec.Utils.Data do
     end)
   end
 
-  defp serialize_sessions(account_id) do
-    Session
-    |> where([s], s.account_id == ^account_id)
-    |> Repo.all()
-    |> Enum.map(fn session ->
-      # Convert session to map, ensuring types are serialized as strings
-      session_map =
-        Map.take(session, [
-          :id,
-          :type,
-          :status,
-          :state,
-          :account_id,
-          :project_id,
-          :component_id,
-          :user_id,
-          :session_id,
-          :inserted_at,
-          :updated_at
-        ])
-
-      # Convert atom/enum types to strings for JSON serialization
-      session_map
-      |> Map.update(:type, nil, &to_string/1)
-      |> Map.update(:status, nil, &to_string/1)
-    end)
-  end
-
   # Helper to parse datetime strings from JSON
   defp parse_datetime(nil), do: nil
   defp parse_datetime(%DateTime{} = dt), do: dt
@@ -257,79 +188,23 @@ defmodule CodeMySpec.Utils.Data do
     end
   end
 
-  defp maybe_wipe_account_data(nil) do
-    Logger.info("Creating new account...")
-  end
-
-  defp maybe_wipe_account_data(account_id) do
-    Logger.info("Wiping existing data for account #{account_id}...")
-    wipe_account_data(account_id)
-  end
-
-  # Wipe all data for an account
-  defp wipe_account_data(account_id) do
-    # Get user IDs for this account before deleting anything
-    user_ids =
-      from(m in Member, where: m.account_id == ^account_id, select: m.user_id) |> Repo.all()
-
-    # Get all account IDs for these users (including personal accounts)
-    all_account_ids =
-      from(m in Member, where: m.user_id in ^user_ids, select: m.account_id, distinct: true)
-      |> Repo.all()
-
-    # Get story IDs for ALL these accounts (not just the target account)
+  # Wipe exactly this project's own rows — its stories (and their versions),
+  # its components, and the project row itself. The account, its members and
+  # users, and every other project it owns are untouched.
+  defp wipe_project_data(project_id) do
     story_ids =
-      from(st in Story, where: st.account_id in ^all_account_ids, select: st.id) |> Repo.all()
+      from(st in Story, where: st.project_id == ^project_id, select: st.id) |> Repo.all()
 
-    # Delete in reverse dependency order for ALL accounts owned by these users
-    from(s in Session, where: s.account_id in ^all_account_ids) |> Repo.delete_all()
-    from(st in Story, where: st.account_id in ^all_account_ids) |> Repo.delete_all()
+    from(st in Story, where: st.project_id == ^project_id) |> Repo.delete_all()
 
     from(v in Version, where: v.item_type == "Story" and v.item_id in ^story_ids)
     |> Repo.delete_all()
 
-    from(c in Component, where: c.account_id in ^all_account_ids) |> Repo.delete_all()
-    from(p in Project, where: p.account_id in ^all_account_ids) |> Repo.delete_all()
-    from(m in Member, where: m.user_id in ^user_ids) |> Repo.delete_all()
-    from(u in User, where: u.id in ^user_ids) |> Repo.delete_all()
-    from(a in Account, where: a.id in ^all_account_ids) |> Repo.delete_all()
+    from(c in Component, where: c.project_id == ^project_id) |> Repo.delete_all()
+    from(p in Project, where: p.id == ^project_id) |> Repo.delete_all()
   end
 
   # Insert functions - preserve IDs to maintain consistency across environments
-  # This is important because account_id=4 should be the same account in all environments
-  defp insert_account(account_data) do
-    account_struct =
-      if Map.has_key?(account_data, :id) and not is_nil(account_data.id) do
-        %Account{id: account_data.id}
-      else
-        %Account{}
-      end
-
-    account_struct
-    |> Account.changeset(account_data)
-    |> Repo.insert!()
-  end
-
-  defp insert_users(users_data) do
-    Enum.each(users_data, fn user_data ->
-      confirmed_at = parse_datetime(user_data[:confirmed_at])
-
-      %User{id: user_data.id}
-      |> User.email_changeset(user_data, validate_unique: false)
-      |> Ecto.Changeset.put_change(:hashed_password, user_data.hashed_password)
-      |> Ecto.Changeset.put_change(:confirmed_at, confirmed_at)
-      |> Repo.insert!()
-    end)
-  end
-
-  defp insert_members(members_data) do
-    Enum.each(members_data, fn member_data ->
-      %Member{id: member_data.id}
-      |> Member.changeset(member_data)
-      |> Repo.insert!()
-    end)
-  end
-
   defp insert_projects(projects_data) do
     Enum.each(projects_data, fn project_data ->
       scope = %{active_account_id: project_data.account_id}
@@ -364,7 +239,7 @@ defmodule CodeMySpec.Utils.Data do
     # Topological sort: repeatedly insert components with no parent or whose parent is already inserted
     {sorted, _remaining} =
       Enum.reduce_while(1..length(components)//1, {[], components}, fn _iteration,
-                                                                       {sorted, remaining} ->
+                                                                        {sorted, remaining} ->
         # Find components that can be inserted (no parent or parent already sorted)
         sorted_ids = MapSet.new(sorted, & &1.id)
 
@@ -414,19 +289,21 @@ defmodule CodeMySpec.Utils.Data do
     end)
   end
 
-  # defp insert_sessions(sessions_data) do
-  #   Enum.each(sessions_data, fn session_data ->
-  #     scope = %CodeMySpec.Users.Scope{
-  #       user: %{id: session_data.user_id},
-  #       active_account_id: session_data.account_id,
-  #       active_account: %{id: session_data.account_id},
-  #       active_project_id: session_data.project_id,
-  #       active_project: %{id: session_data.project_id}
-  #     }
+  # Reset all table sequences after manual ID insertion
+  defp reset_sequences do
+    # Only tables with an actual integer/serial :id. accounts and sessions
+    # both moved to `@primary_key {:id, :binary_id, ...}` — components and
+    # projects always were — so pg_get_serial_sequence has nothing to reset
+    # for either, and MAX(id) on a uuid column fails outright rather than
+    # returning something merely wrong.
+    tables = ~w(versions stories)
 
-  #     %Session{id: session_data.id}
-  #     |> Session.changeset(session_data, scope)
-  #     |> Repo.insert!()
-  #   end)
-  # end
+    Enum.each(tables, fn table ->
+      Repo.query!("""
+        SELECT setval(pg_get_serial_sequence('#{table}', 'id'),
+                      COALESCE((SELECT MAX(id) FROM #{table}), 1),
+                      true)
+      """)
+    end)
+  end
 end
