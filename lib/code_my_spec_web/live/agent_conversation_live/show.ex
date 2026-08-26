@@ -138,7 +138,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # `:screen`, not `:layout`. Phoenix reserves `:layout` for the render layout
     # and `prepare_assigns/4` case-matches it, so assigning a viewport atom there
     # crashes every request with `CaseClauseError: :wide`.
-    |> assign_new(:screen, fn -> :wide end)
+    # Narrow until the client says otherwise, because the two failure modes are
+    # not symmetrical. The first paint happens before the viewport hook can
+    # report, and a stacked layout on a desk is merely narrow — while a
+    # side-by-side layout on a phone puts a 384px panel column next to the
+    # conversation on a 390px screen, which overlaps and runs off the edge.
+    # Caught by screenshotting the frame before the round trip landed.
+    |> assign_new(:screen, fn -> :narrow end)
     |> assign_new(:open_panels, fn -> [] end)
     |> assign_new(:dynamic_view, fn -> "stories" end)
     |> assign_new(:activity, fn -> [] end)
