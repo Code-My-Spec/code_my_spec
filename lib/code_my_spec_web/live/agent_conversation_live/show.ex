@@ -55,6 +55,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Agents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Stories
   alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
 
@@ -147,10 +148,47 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_new(:screen, fn -> :narrow end)
     |> assign_new(:open_panels, fn -> [] end)
     |> assign_new(:dynamic_view, fn -> "stories" end)
+    |> assign_new(:dynamic_story_id, fn -> nil end)
     |> assign_new(:activity, fn -> [] end)
     |> assign_new(:draft, fn -> "" end)
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
+    |> assign_dynamic()
+  end
+
+  # What the dynamic tab is showing, loaded once per change rather than per
+  # render. The tab is one tab whose contents swap — this is the swap.
+  #
+  # Loaded even while the tab is shut, because the alternative is a panel that
+  # is empty for one frame every time it opens, and the query is a list of the
+  # project's own stories rather than anything expensive.
+  defp assign_dynamic(socket) do
+    scope = socket.assigns.current_scope
+
+    case socket.assigns.dynamic_view do
+      "story" ->
+        story =
+          socket.assigns.dynamic_story_id &&
+            Stories.get_story(scope, socket.assigns.dynamic_story_id)
+
+        socket
+        |> assign(:dynamic_stories, [])
+        |> assign(:dynamic_story, story)
+
+      _ ->
+        socket
+        |> assign(:dynamic_stories, safe_stories(scope))
+        |> assign(:dynamic_story, nil)
+    end
+  end
+
+  # A panel that cannot list stories should say so and leave the rest of the
+  # screen alone. This one rides the conversation, and a raise here takes the
+  # transcript and the composer with it.
+  defp safe_stories(scope) do
+    Stories.list_stories(scope)
+  rescue
+    _ -> []
   end
 
   # Why this transcript is empty, when it is.
@@ -325,8 +363,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The dynamic tab shows a different thing. It does not become another tab —
   # that would make the accordion a navigation menu, and empty the one-slot rule
   # on a phone of any meaning.
-  def handle_event("dynamic_view", %{"view" => view}, socket) do
-    {:noreply, assign(socket, :dynamic_view, view)}
+  def handle_event("dynamic_view", %{"view" => view} = params, socket) do
+    {:noreply,
+     socket
+     |> assign(:dynamic_view, view)
+     |> assign(:dynamic_story_id, params["story_id"])
+     |> assign_dynamic()}
   end
 
   # Progress is ambient: it lands in activity and raises nothing. That is the
@@ -570,6 +612,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           screen={@screen}
           open={@open_panels}
           dynamic_view={@dynamic_view}
+          dynamic_stories={@dynamic_stories}
+          dynamic_story={@dynamic_story}
           activity={@activity}
           waiting={@waiting}
         />
@@ -738,6 +782,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           screen={@screen}
           open={@open_panels}
           dynamic_view={@dynamic_view}
+          dynamic_stories={@dynamic_stories}
+          dynamic_story={@dynamic_story}
           activity={@activity}
           waiting={@waiting}
         />
@@ -760,6 +806,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :screen, :atom, required: true
   attr :open, :list, required: true
   attr :dynamic_view, :string, required: true
+  attr :dynamic_stories, :list, required: true
+  attr :dynamic_story, :any, required: true
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
 
@@ -815,6 +863,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <.panel_body
           which={hd(@open)}
           dynamic_view={@dynamic_view}
+          dynamic_stories={@dynamic_stories}
+          dynamic_story={@dynamic_story}
           activity={@activity}
           waiting={@waiting}
         />
@@ -828,7 +878,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     ~H"""
     <div data-test="conversation-panels" class="flex w-96 shrink-0 flex-col gap-2 overflow-y-auto">
-      <div :for={{key, label} <- @tabs} data-test={"panel-#{key}"} data-panel-open={to_string(key in @open)}>
+      <div
+        :for={{key, label} <- @tabs}
+        data-test={"panel-#{key}"}
+        data-panel-open={to_string(key in @open)}
+      >
         <button
           type="button"
           data-test={"panel-tab-#{key}"}
@@ -844,6 +898,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <.panel_body
             which={key}
             dynamic_view={@dynamic_view}
+            dynamic_stories={@dynamic_stories}
+            dynamic_story={@dynamic_story}
             activity={@activity}
             waiting={@waiting}
           />
@@ -868,6 +924,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   attr :which, :atom, required: true
   attr :dynamic_view, :string, required: true
+  attr :dynamic_stories, :list, required: true
+  attr :dynamic_story, :any, required: true
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
 
@@ -885,7 +943,65 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp panel_body(%{which: :dynamic} = assigns) do
     ~H"""
     <div data-dynamic-view={@dynamic_view}>
-      <p class="opacity-70">Showing: {@dynamic_view}</p>
+      <%!-- One story, when the agent has put one in front of you. Its criteria
+      rather than its prose: what the story promises is the part you are being
+      asked about. --%>
+      <div :if={@dynamic_view == "story" and @dynamic_story}>
+        <.link
+          navigate={~p"/app/projects/#{@dynamic_story.project_id}/stories/#{@dynamic_story.id}"}
+          class="font-semibold link link-hover"
+        >
+          {@dynamic_story.title}
+        </.link>
+
+        <ul class="mt-2 space-y-1">
+          <li
+            :for={criterion <- @dynamic_story.acceptance_criteria || []}
+            data-test="dynamic-criterion"
+            class="flex gap-2 text-xs opacity-80"
+          >
+            <span class={[
+              "mt-1 block size-2 shrink-0 rounded-full",
+              criterion.verified && "bg-success",
+              not criterion.verified && "bg-base-content/20"
+            ]} />
+            <span>{criterion.description}</span>
+          </li>
+        </ul>
+
+        <p :if={(@dynamic_story.acceptance_criteria || []) == []} class="mt-2 text-xs opacity-60">
+          No criteria yet — this story has not been through Three Amigos.
+        </p>
+      </div>
+
+      <p :if={@dynamic_view == "story" and is_nil(@dynamic_story)} class="opacity-70">
+        That story is not on this project, or has been deleted.
+      </p>
+
+      <%!-- Otherwise the project's stories, most recent first. The list is the
+      default because it is the one view that is useful before anybody has asked
+      for anything in particular. --%>
+      <div :if={@dynamic_view != "story"}>
+        <p :if={@dynamic_stories == []} class="opacity-70">
+          No stories yet. Ask the agent for one.
+        </p>
+
+        <ul class="space-y-1">
+          <li :for={story <- @dynamic_stories} data-test="dynamic-story">
+            <.link
+              navigate={~p"/app/projects/#{story.project_id}/stories/#{story.id}"}
+              class="flex items-baseline gap-2 link link-hover"
+            >
+              <span class={[
+                "block size-2 shrink-0 rounded-full",
+                story.ready_for_dev && "bg-success",
+                not story.ready_for_dev && "bg-base-content/20"
+              ]} />
+              <span class="truncate">{story.title}</span>
+            </.link>
+          </li>
+        </ul>
+      </div>
     </div>
     """
   end
