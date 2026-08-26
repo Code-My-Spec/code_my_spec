@@ -251,19 +251,50 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   #
   # No flag, nothing recorded. A checkout with no preview is the ordinary state
   # and the panel says so; guessing an address would point a frame at nowhere.
-  defp record_preview_url(_env, _root, _id, nil), do: :ok
+  @doc false
+  def record_preview_url(_env, _root, _id, nil), do: :ok
 
-  defp record_preview_url(env, root, id, url) do
-    Environments.write_file(
-      env,
-      @harness_config_file,
-      Jason.encode!(%{working_copy_id: id, harness_id: id, root: root, preview_url: url},
-        pretty: true
-      )
-    )
+  # Merged over what the file already says, never written from scratch. By the
+  # time this runs `identity/3` has recorded `project_id` there, and possibly a
+  # `deploy_key` beside it, and a fresh map would take both with it — leaving a
+  # copy that can no longer say which project it serves and has lost its
+  # credential. `HarnessConfig.write/2` merges for exactly this reason; this
+  # path cannot call it because the copy may be on another machine, so it does
+  # the same thing through `Environments`.
+  #
+  # Public only so it can be tested directly, for the same reason
+  # `address_model_turns/4` is: it writes over a file that already holds this
+  # copy's identity, and "keeps what was already there" has to be checkable
+  # rather than asserted in a comment.
+  @doc false
+  def record_preview_url(env, root, id, url) do
+    body =
+      env
+      |> recorded_config()
+      |> Map.merge(%{
+        "working_copy_id" => id,
+        "harness_id" => id,
+        "root" => root,
+        "preview_url" => url
+      })
+      |> Jason.encode!(pretty: true)
+
+    Environments.write_file(env, @harness_config_file, body)
 
     Mix.shell().info("      preview:    #{url}")
     :ok
+  end
+
+  # An unreadable or malformed config answers empty rather than raising. The
+  # caller is about to write the id back either way, and refusing to record an
+  # address because the file needs repairing helps nobody.
+  defp recorded_config(env) do
+    with {:ok, contents} <- Environments.read_file(env, @harness_config_file),
+         {:ok, map} when is_map(map) <- Jason.decode(contents) do
+      map
+    else
+      _ -> %{}
+    end
   end
 
   # `address_model_turns/4` is opt-in, not the default: its proxy only

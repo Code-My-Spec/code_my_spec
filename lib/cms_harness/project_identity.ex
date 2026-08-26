@@ -93,7 +93,12 @@ defmodule CmsHarness.ProjectIdentity do
 
   @config_path ".code_my_spec/config.yml"
 
-  @type t :: %{id: String.t(), root: String.t(), working_copy_id: String.t() | nil}
+  @type t :: %{
+          id: String.t(),
+          root: String.t(),
+          working_copy_id: String.t() | nil,
+          preview_url: String.t() | nil
+        }
 
   @doc """
   Resolve the project id for a working directory.
@@ -107,7 +112,23 @@ defmodule CmsHarness.ProjectIdentity do
     root = Path.expand(root)
 
     with {:ok, source, project} <- resolve_project(root) do
-      {:ok, Map.put(project, :working_copy_id, working_copy_id(source, root))}
+      {:ok,
+       project
+       |> Map.put(:working_copy_id, working_copy_id(source, root))
+       |> Map.put(:preview_url, preview_url(root))}
+    end
+  end
+
+  # Always out of `.cms_harness.json`, whichever file named the project. It is
+  # the only one onboarding writes it to, and a copy that names its project in
+  # `config.yml` can still be the main checkout.
+  #
+  # Reported from here rather than looked up on the server, so what the server
+  # holds is what this checkout says — the same arrangement as `root`.
+  defp preview_url(root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{preview_url: url}} when is_binary(url) and url != "" -> url
+      _ -> nil
     end
   end
 

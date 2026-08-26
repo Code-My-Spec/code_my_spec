@@ -139,4 +139,42 @@ defmodule CmsHarness.HarnessConfigTest do
       assert {:ok, %{working_copy_id: @id}} = HarnessConfig.read(root)
     end
   end
+
+  # Story 968. The main checkout is where the preview runs, so the address it
+  # answers on is recorded in the same file as the rest of what that copy knows
+  # about itself — written at onboarding, read here, reported on join the way
+  # `root` already is.
+  describe "preview_url" do
+    test "round-trips", %{root: root} do
+      :ok =
+        HarnessConfig.write(root, %{
+          working_copy_id: @id,
+          root: root,
+          preview_url: "https://preview.example.test"
+        })
+
+      assert {:ok, %{preview_url: "https://preview.example.test"}} = HarnessConfig.read(root)
+    end
+
+    test "survives a write that does not mention it", %{root: root} do
+      :ok =
+        HarnessConfig.write(root, %{
+          working_copy_id: @id,
+          root: root,
+          preview_url: "https://preview.example.test"
+        })
+
+      # A later mint knows the id and the project and nothing about a preview.
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "p1", root: root})
+
+      assert {:ok, %{preview_url: "https://preview.example.test", project_id: "p1"}} =
+               HarnessConfig.read(root)
+    end
+
+    test "is nil on a copy that has none", %{root: root} do
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, root: root})
+
+      assert {:ok, %{preview_url: nil}} = HarnessConfig.read(root)
+    end
+  end
 end

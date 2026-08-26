@@ -424,6 +424,13 @@ defmodule CmsHarness.Project.ChannelClient do
        # records it so an operator looking at two harnesses of one project can
        # tell which checkout each is; nothing resolves a harness by it.
        "root" => project.root,
+       # Where this project's preview answers, for the copy that is its main
+       # checkout. Reported for the same reason `root` is: the address is
+       # written in the checkout's own config at onboarding, and the server
+       # holds a copy so the web app — which has no disk — can render a frame
+       # at it. `nil` from every other copy, and from a main checkout that has
+       # no preview yet, which is the ordinary state.
+       "preview_url" => project[:preview_url],
        # Which machine this copy is on, by the id this install was issued when
        # it came up. Reported, never created: the server looks it up and
        # attaches, and an id it does not recognise attaches nothing rather than

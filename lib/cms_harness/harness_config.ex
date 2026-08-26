@@ -6,6 +6,10 @@ defmodule CmsHarness.HarnessConfig do
 
       {"working_copy_id": "…", "harness_id": "…", "project_id": "…", "root": "/abs/path"}
 
+  Plus `deploy_key` once the copy has one, and `preview_url` on the copy that is
+  the project's main checkout — the address its preview answers on, written at
+  onboarding and reported to the server on join, the same way `root` is.
+
   There used to be two. `HarnessIdentity` wrote an id-only `.cms_working_copy_id`
   when the server issued one, this wrote `.cms_harness.json` at onboarding, and
   a working copy that had been through both carried two files naming two
@@ -49,6 +53,7 @@ defmodule CmsHarness.HarnessConfig do
           working_copy_id: String.t(),
           project_id: String.t() | nil,
           deploy_key: String.t() | nil,
+          preview_url: String.t() | nil,
           root: String.t()
         }
 
@@ -103,8 +108,12 @@ defmodule CmsHarness.HarnessConfig do
 
   defp from_env_config(root) do
     case from_env() do
-      {:ok, id} -> {:ok, %{working_copy_id: id, project_id: nil, deploy_key: nil, root: root}}
-      :none -> :none
+      {:ok, id} ->
+        {:ok,
+         %{working_copy_id: id, project_id: nil, deploy_key: nil, preview_url: nil, root: root}}
+
+      :none ->
+        :none
     end
   end
 
@@ -157,6 +166,7 @@ defmodule CmsHarness.HarnessConfig do
       |> Map.merge(%{working_copy_id: id, harness_id: id, root: root})
       |> merge_present(:project_id, config[:project_id])
       |> merge_present(:deploy_key, config[:deploy_key])
+      |> merge_present(:preview_url, config[:preview_url])
       |> Jason.encode!(pretty: true)
 
     with :ok <- refuse_to_clobber(root, file),
@@ -215,8 +225,11 @@ defmodule CmsHarness.HarnessConfig do
   # file may be replaced.
   defp recorded(root) do
     case from_file(root) do
-      {:ok, config} -> Map.take(config, [:working_copy_id, :project_id, :deploy_key, :root])
-      _ -> %{}
+      {:ok, config} ->
+        Map.take(config, [:working_copy_id, :project_id, :deploy_key, :preview_url, :root])
+
+      _ ->
+        %{}
     end
   end
 
@@ -269,6 +282,7 @@ defmodule CmsHarness.HarnessConfig do
        working_copy_id: id,
        project_id: map["project_id"],
        deploy_key: map["deploy_key"],
+       preview_url: map["preview_url"],
        root: map["root"] || root
      }}
   end

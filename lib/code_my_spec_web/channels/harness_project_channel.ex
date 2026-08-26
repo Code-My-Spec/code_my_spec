@@ -83,6 +83,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
              root: payload["root"]
            ),
          {:ok, harness} <- report_root(harness, payload["root"]),
+         {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
@@ -1533,6 +1534,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     do: WorkingCopies.report_root(harness, root)
 
   defp report_root(harness, _), do: {:ok, harness}
+
+  # Story 968. The checkout's config is the source; this is the server's copy of
+  # it, kept the way `root` is, so the web app can render a frame at an address
+  # without reading anybody's disk.
+  #
+  # A refusal is not a join failure. `record_preview_url/2` rejects a copy that
+  # is not the main one, and a worktree presenting an address is a
+  # misconfiguration in *its* config — dropping the join over it would take a
+  # working checkout off the harness to punish a field nothing depends on. The
+  # address simply is not recorded, which is what the rule asks for.
+  defp report_preview_url(harness, url) when is_binary(url) and url != "" do
+    case WorkingCopies.record_preview_url(harness, url) do
+      {:ok, harness} -> {:ok, harness}
+      _ -> {:ok, harness}
+    end
+  end
+
+  defp report_preview_url(harness, _), do: {:ok, harness}
 
   # Linked, deliberately. This process dying is what releases the lock, so the
   # holder must not outlive the channel — and a holder that cannot start must
