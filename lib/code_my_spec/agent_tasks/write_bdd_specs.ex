@@ -604,8 +604,48 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # while `bdd_specs_exist` read the harness's file report in the same second
   # and correctly reported the same specs present. Two halves of one system
   # disagreeing about one fact, because only one of them was looking.
-  defp spec_checker(%{environment: nil} = scope), do: &from_file_report(scope, &1)
-  defp spec_checker(%{environment: env}), do: &validate_single_spec(env, &1)
+  # The harness's verdict wins wherever it exists, and the disk is the fallback
+  # rather than the other way round.
+  #
+  # Keying on `environment: nil` was the wrong test. It asks whether a scope has
+  # an environment, when the question is whether *this server* can read one — and
+  # those differ exactly when a scope carries an environment that lives on
+  # another machine. There `Environments.read_file/2` fails, the catch-all below
+  # turns that into `:file_not_found`, and every criterion is reported missing
+  # for specs that are on disk and that the harness has already scanned and
+  # approved.
+  #
+  # Measured on story 966: eleven criteria reported "Spec file not found" while
+  # `files` held all eleven at exactly those paths with `valid: true`, and
+  # `bdd_specs_exist` was satisfied by the same rows in the same second. The
+  # agent could not clear it by any edit, because the answer never depended on
+  # the file's contents.
+  #
+  # Inverting the order fixes that and keeps the older-scanner case: a harness
+  # that sends no verdict (`:no_verdict`) or has no row yet falls through to the
+  # disk, which is what the environment branch is actually for.
+  defp spec_checker(scope) do
+    fn spec_path ->
+      case from_file_report(scope, spec_path) do
+        {:error, reason} when reason in [:file_not_found, :no_verdict] ->
+          from_disk(scope, spec_path, reason)
+
+        result ->
+          result
+      end
+    end
+  end
+
+  defp from_disk(%{environment: nil}, _spec_path, reported), do: {:error, reported}
+
+  defp from_disk(%{environment: env}, spec_path, reported) do
+    case validate_single_spec(env, spec_path) do
+      # No disk here either. The file report's answer is the better of the two,
+      # because it at least describes a machine that has one.
+      {:error, :no_environment} -> {:error, reported}
+      result -> result
+    end
+  end
 
   # The manifest is the whole truth — a path absent from it is a deletion, not
   # an omission — so no row here really is "not found", and says so.

@@ -96,6 +96,13 @@ defmodule CodeMySpec.SpexGivensTest do
   #     designates it, so a block calling it has made a real checkout and made
   #     it the project's main one.
   #
+  #   * `say_to_main_agent` — `CodeMySpecSpex.MainAgentHelpers`. It submits the
+  #     composer on the conversation and waits for the turn, so a block calling
+  #     it has put real messages in a real conversation. Story 966's "a
+  #     conversation with more messages than fit on screen" has no other way to
+  #     be true: the point of that premise is that the transcript is long, and
+  #     the only thing that lengthens a transcript is talking to the agent.
+  #
   #   * `EpicHelpers.` — story 964's premises. It drives `CreateEpic` and
   #     `AssignStoryToEpic` through their MCP tools and approves through the
   #     control on the epics screen, so a block calling it has established a
@@ -128,7 +135,7 @@ defmodule CodeMySpec.SpexGivensTest do
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
     join_working_copy report_agents
-    EpicHelpers. given_a_main_checkout
+    EpicHelpers. given_a_main_checkout say_to_main_agent
   )
 
   # The failure message has always offered a second remedy — "if the
