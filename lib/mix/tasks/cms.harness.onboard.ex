@@ -407,6 +407,47 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # another project's build file to print a database name is far more than the
   # question deserves, and `app:` is a literal atom in every generated app.
   @doc false
+  # Onboarding a checkout that is not under the one this build came from.
+  #
+  # The id is minted against `Config.server_url()`, which resolves from *this*
+  # build's env and app config — `@default_server_url` is a `compile_env`, so a
+  # dev build says localhost and the packaged release says production. Nothing
+  # about the target root is consulted, and a checkout has no way to name the
+  # server it belongs to.
+  #
+  # So a sibling repo can be onboarded against the wrong server and every
+  # artifact looks right: a plausible `.cms_harness.json`, a real harness id, a
+  # successful-looking run. It only surfaces later as "No harness with id …"
+  # from the daemon that actually serves that checkout, which reads like a
+  # deleted row rather than two servers that never shared data.
+  #
+  # Not fixed here — which server is right is a design question. Said out loud,
+  # because silence is what made it cost a diagnosis.
+  defp warn_if_foreign_root(root) do
+    here = File.cwd!() |> Path.expand()
+    root = Path.expand(root)
+
+    unless String.starts_with?(root, here <> "/") or root == here do
+      Mix.shell().info([
+        :yellow,
+        """
+        warning: #{root} is not inside #{here}.
+
+        The harness id above was minted against #{Config.server_url()}, which
+        comes from *this* build rather than from that checkout — a checkout
+        cannot name its own server. If #{Path.basename(root)} is served by a
+        different CodeMySpec (a packaged release on another port, or the hosted
+        one), the id is unknown there and its hooks will fail with
+        "No harness with id ...".
+
+        Check by asking the daemon that actually serves it, and re-run onboard
+        from a build pointed at that server if they disagree.
+        """,
+        :reset
+      ])
+    end
+  end
+
   def target_app(root) do
     case Mix.Project.config()[:app] do
       app when is_atom(app) and not is_nil(app) ->
@@ -447,11 +488,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     onboarded: #{root}
       harness id: #{id}
+      server:     #{Config.server_url()}
       partition:  #{partition}
       submodules: #{if git, do: "recursing", else: "not configured"}
       databases:  #{Enum.map_join(databases, ", ", & &1.name)}
                   made on the first `mix test` / `mix spex` that needs them
     """)
+
+    warn_if_foreign_root(root)
 
     %{
       working_copy_id: id,
