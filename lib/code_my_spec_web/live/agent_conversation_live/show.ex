@@ -98,17 +98,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
 
     # The activity tab is about agents this conversation is not. A question
-    # asked from another working copy arrives on the user's notification topic
-    # and on no topic this thread would otherwise hear, so without this the
+    # asked from another working copy arrives on the user's notification topics
+    # and on none this thread would otherwise hear, so without this the
     # attention mark only appears on the next full page load — by which time the
     # agent has been stopped for however long that took.
+    #
+    # The *list* topic, not the badge topic. `NotificationsHook` attaches a
+    # `:handle_info` hook that `:halt`s `{:pending_notifications_changed}` on
+    # purpose, so every LiveView gets a live navbar badge without writing a
+    # clause of its own. A clause here for that message is therefore
+    # unreachable — it compiles, it sits above the catch-all, and it never runs.
+    # The hook's own moduledoc names the way through: the list topic is passed
+    # on with `:cont`.
     if connected?(socket) do
       case user_id_of(scope) do
         nil ->
           :ok
 
         user_id ->
-          Notifications.subscribe_notifications(user_id)
+          Notifications.subscribe_notifications_list(user_id)
       end
     end
 
@@ -500,7 +508,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Above the catch-all deliberately. A clause added below it is dead code that
   # compiles, and the screen simply never updates — which is how this same file
   # lost a handler earlier and looked like a rendering bug for a while.
-  def handle_info({:pending_notifications_changed}, socket) do
+  def handle_info({:notifications_changed}, socket) do
     {:noreply,
      assign(
        socket,
