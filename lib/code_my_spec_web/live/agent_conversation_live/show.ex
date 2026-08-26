@@ -97,6 +97,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       )
     end
 
+    # The activity tab is about agents this conversation is not. A question
+    # asked from another working copy arrives on the user's notification topic
+    # and on no topic this thread would otherwise hear, so without this the
+    # attention mark only appears on the next full page load — by which time the
+    # agent has been stopped for however long that took.
+    if connected?(socket) && scope.user do
+      Notifications.subscribe_notifications(scope.user.id)
+    end
+
     socket
     |> assign(:current_scope, scope)
     |> assign(:project, project)
@@ -107,6 +116,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
+    |> assign(:waiting, waiting_for(scope, conversation))
+    # `assign_new`, because this is the screen's own state rather than the
+    # conversation's. This function runs again on every PubSub update, and
+    # `assign/3` here would slam a panel shut under someone's hand every time
+    # an agent said anything.
+    # `:screen`, not `:layout`. Phoenix reserves `:layout` for the render layout
+    # and `prepare_assigns/4` case-matches it, so assigning a viewport atom there
+    # crashes every request with `CaseClauseError: :wide`.
+    |> assign_new(:screen, fn -> :wide end)
+    |> assign_new(:open_panels, fn -> [] end)
+    |> assign_new(:dynamic_view, fn -> "stories" end)
+    |> assign_new(:activity, fn -> [] end)
+    |> assign_new(:draft, fn -> "" end)
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
   end
@@ -202,6 +224,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   def handle_event("send_message", %{"message" => message}, socket) do
+    # Cleared here rather than by rendering an empty value, now that `@draft`
+    # keeps the box across unrelated patches. Sent is the one moment the message
+    # should leave the box, and saying so explicitly is what keeps a panel
+    # toggle from doing it by accident.
+    socket = assign(socket, :draft, "")
+
     socket.assigns.current_scope
     |> Agents.dispatch_message(socket.assigns.conversation.agent_id, message)
     |> sent(socket)
@@ -238,6 +266,67 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # The client reports its own width, because the server cannot see one and the
+  # difference here is behavioural rather than cosmetic. "A phone shows one
+  # panel" is state, not a media query — closing a panel is something the server
+  # decides — so the width has to reach it.
+  def handle_event("viewport", %{"width" => width}, socket) when is_integer(width) do
+    screen = if width < 768, do: :narrow, else: :wide
+
+    {:noreply,
+     socket
+     |> assign(:screen, screen)
+     |> assign(:open_panels, fit(socket.assigns.open_panels, screen))}
+  end
+
+  def handle_event("toggle_panel", %{"panel" => name}, socket) do
+    panel = String.to_existing_atom(name)
+    open = socket.assigns.open_panels
+
+    open =
+      if panel in open do
+        List.delete(open, panel)
+      else
+        # On a narrow screen the panel being opened is the only one. Two open
+        # panels there push the conversation off the bottom of the screen, which
+        # costs the founder the half they came for.
+        case socket.assigns.screen do
+          :narrow -> [panel]
+          :wide -> open ++ [panel]
+        end
+      end
+
+    {:noreply, assign(socket, :open_panels, open)}
+  end
+
+  # The dynamic tab shows a different thing. It does not become another tab —
+  # that would make the accordion a navigation menu, and empty the one-slot rule
+  # on a phone of any meaning.
+  def handle_event("dynamic_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, :dynamic_view, view)}
+  end
+
+  # Progress is ambient: it lands in activity and raises nothing. That is the
+  # half that keeps the attention mark worth looking at — a mark that lights up
+  # for everything is a mark nobody reads, and the blocked agent it exists for
+  # is lost with it.
+  def handle_event("agent_progress", %{"message" => message} = params, socket) do
+    entry = %{
+      source: Map.get(params, "working_copy", "somewhere on this project"),
+      message: message
+    }
+
+    {:noreply, assign(socket, :activity, socket.assigns.activity ++ [entry])}
+  end
+
+  # Kept so the box survives a re-render it did not cause. The form renders
+  # `value=""` deliberately — see the comment on it — and every panel toggle is
+  # a patch, so without somewhere to keep it, opening a panel throws away
+  # whatever was being written.
+  def handle_event("draft", %{"message" => message}, socket) do
+    {:noreply, assign(socket, :draft, message)}
+  end
+
   # Older turns, when the operator reaches the top.
   #
   # A transcript is 1,572 messages on a session that has run all day, and the
@@ -268,6 +357,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
          |> assign_turns(older ++ socket.assigns.messages)}
     end
   end
+
+  # A narrow screen holds one panel. A stored layout with several open has to
+  # resolve to one, and to a decided one — whichever happens to render first is
+  # not an answer anybody can predict or explain.
+  defp fit(open, :wide), do: open
+  defp fit([], :narrow), do: []
+  defp fit(open, :narrow), do: [if(:preview in open, do: :preview, else: hd(open))]
+
+  # What is waiting on this person anywhere on the project, minus what this
+  # thread already shows inline. An agent in a worktree nobody is watching is
+  # precisely the one whose question goes unnoticed.
+  defp waiting_for(%{user: %{id: user_id}}, conversation) do
+    mine = conversation && conversation.session_external_id
+
+    user_id
+    |> Notifications.list_pending_question_requests_for_user()
+    |> Enum.reject(&elsewhere?(&1, mine))
+  end
+
+  defp waiting_for(_scope, _conversation), do: []
+
+  # Excluded only when this thread genuinely owns the question. A conversation
+  # with no session id owns nothing, and `nil == nil` would quietly hide every
+  # question on the project behind an equality that reads as a match.
+  defp elsewhere?(_request, nil), do: false
+  defp elsewhere?(%{session_external_id: same}, same), do: true
+  defp elsewhere?(_request, _mine), do: false
 
   defp questions_for(nil), do: []
 
@@ -359,6 +475,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
   end
 
+  # Above the catch-all deliberately. A clause added below it is dead code that
+  # compiles, and the screen simply never updates — which is how this same file
+  # lost a handler earlier and looked like a rendering bug for a while.
+  def handle_info({:pending_notifications_changed}, socket) do
+    {:noreply,
+     assign(
+       socket,
+       :waiting,
+       waiting_for(socket.assigns.current_scope, socket.assigns.conversation)
+     )}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # -- Render -----------------------------------------------------------------
@@ -385,158 +513,313 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         project={@project}
       />
 
+      <%!-- Order in the markup, not only in CSS. "Beside, with the conversation
+      on the left" and "above the conversation" are the same two elements in two
+      orders, and `flex-col-reverse` would put the panels on top while leaving
+      the chat first in the document — which is a different thing for anyone
+      reading the page rather than looking at it. --%>
       <div
-        data-test="agent-conversation"
-        data-project-id={@project.id}
+        data-test="conversation-layout"
+        data-layout={to_string(@screen)}
         style="height: calc(100dvh - 7rem)"
-        class="mx-auto flex w-full max-w-3xl flex-col"
+        class={[
+          "mx-auto flex w-full gap-4",
+          @screen == :wide && "max-w-7xl flex-row",
+          @screen == :narrow && "max-w-3xl flex-col"
+        ]}
       >
-        <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
-          <.link
-            navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
-            class="btn btn-ghost btn-sm btn-square"
-            title="All agents"
-          >
-            <.icon name="hero-arrow-left" class="size-4" />
-          </.link>
-          <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
-          <h1 class="min-w-0 truncate text-lg font-semibold">
-            {@conversation && Conversations.display_name(@conversation)}
-          </h1>
-          <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
-            {short_session(@conversation)}
-          </span>
-        </header>
+        <.panels
+          :if={@screen == :narrow}
+          screen={@screen}
+          open={@open_panels}
+          dynamic_view={@dynamic_view}
+          activity={@activity}
+          waiting={@waiting}
+        />
 
-        <%!-- `overflow-anchor` is what keeps your place when older turns are
+        <div
+          data-test="agent-conversation"
+          data-project-id={@project.id}
+          class="flex min-w-0 flex-1 flex-col"
+        >
+          <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
+            <.link
+              navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
+              class="btn btn-ghost btn-sm btn-square"
+              title="All agents"
+            >
+              <.icon name="hero-arrow-left" class="size-4" />
+            </.link>
+            <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
+            <h1 class="min-w-0 truncate text-lg font-semibold">
+              {@conversation && Conversations.display_name(@conversation)}
+            </h1>
+            <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
+              {short_session(@conversation)}
+            </span>
+          </header>
+
+          <%!-- `overflow-anchor` is what keeps your place when older turns are
               prepended: without it the browser holds the scroll *offset*, so
               inserting above jumps you backwards by exactly the height added.
               `StickToBottom` opens at the newest turn and follows it only while
               you are already down there. --%>
-        <div
-          id="agent-scroll"
-          phx-hook="StickToBottom"
-          class="min-h-0 flex-1 overflow-y-auto py-4"
-          style="overflow-anchor: auto"
-        >
-          <p
-            :if={@conversation == nil}
-            data-test="agent-conversation-empty"
-            class="py-8 text-center opacity-60"
+          <div
+            id="agent-scroll"
+            data-test="conversation-scroll"
+            phx-hook="StickToBottom"
+            class="min-h-0 flex-1 overflow-y-auto py-4"
+            style="overflow-anchor: auto"
           >
-            No agent activity recorded for this project yet.
-          </p>
+            <p
+              :if={@conversation == nil}
+              data-test="agent-conversation-empty"
+              class="py-8 text-center opacity-60"
+            >
+              No agent activity recorded for this project yet.
+            </p>
 
-          <p
-            :if={@emptiness == :nothing_yet}
-            data-test="nothing-recorded-yet"
-            class="rounded-box border border-base-300 p-3 text-sm opacity-70"
-          >
-            Nothing recorded yet. Steps appear here as the agent takes them.
-          </p>
+            <p
+              :if={@emptiness == :nothing_yet}
+              data-test="nothing-recorded-yet"
+              class="rounded-box border border-base-300 p-3 text-sm opacity-70"
+            >
+              Nothing recorded yet. Steps appear here as the agent takes them.
+            </p>
 
-          <p
-            :if={@emptiness == :gap}
-            data-test="recording-gap"
-            class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
-          >
-            Turns were taken but not recorded. What follows is incomplete —
-            treat gaps as missing evidence, not as an idle sprite.
-          </p>
+            <p
+              :if={@emptiness == :gap}
+              data-test="recording-gap"
+              class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+            >
+              Turns were taken but not recorded. What follows is incomplete —
+              treat gaps as missing evidence, not as an idle sprite.
+            </p>
 
-          <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
-            <ChatComponents.question
-              :for={request <- @questions}
-              id={"question-#{request.id}"}
-              request={request}
-              on_submit="answer_question"
-            />
+            <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
+              <ChatComponents.question
+                :for={request <- @questions}
+                id={"question-#{request.id}"}
+                request={request}
+                on_submit="answer_question"
+              />
+            </div>
+
+            <div
+              id="agent-turns"
+              class="space-y-2"
+              phx-viewport-top={@more_above? && "load_older"}
+              data-more-above={to_string(@more_above?)}
+            >
+              <p
+                :if={@more_above?}
+                data-test="loading-older"
+                class="py-2 text-center text-xs opacity-40"
+              >
+                loading earlier turns…
+              </p>
+              <ChatComponents.turn_item
+                :for={item <- @items}
+                id={"turn-#{item.id}"}
+                item={item}
+                results={@results}
+              />
+            </div>
           </div>
 
           <div
-            id="agent-turns"
-            class="space-y-2"
-            phx-viewport-top={@more_above? && "load_older"}
-            data-more-above={to_string(@more_above?)}
+            :for={message <- @pending}
+            data-test="agent-pending-message"
+            class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
           >
-            <p
-              :if={@more_above?}
-              data-test="loading-older"
-              class="py-2 text-center text-xs opacity-40"
-            >
-              loading earlier turns…
-            </p>
-            <ChatComponents.turn_item
-              :for={item <- @items}
-              id={"turn-#{item.id}"}
-              item={item}
-              results={@results}
-            />
-          </div>
-        </div>
-
-        <div
-          :for={message <- @pending}
-          data-test="agent-pending-message"
-          class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
-        >
-          <%!-- The text is not repeated here. It is already in the transcript above,
+            <%!-- The text is not repeated here. It is already in the transcript above,
           as the message it is — printing it again put the same sentence on the
           page twice and read as the message having been sent twice, which is a
           thing that can genuinely happen and must not be imitated by a status
           line. This says what is true of it and offers the one action. --%>
-          <span class="opacity-60">
-            waiting for the agent to finish its turn
-          </span>
-          <button
-            type="button"
-            phx-click="withdraw_message"
-            phx-value-ref={message.delivery_ref}
-            data-test="agent-withdraw-message"
-            class="btn btn-xs btn-ghost"
-          >
-            Take it back
-          </button>
-        </div>
+            <span class="opacity-60">
+              waiting for the agent to finish its turn
+            </span>
+            <button
+              type="button"
+              phx-click="withdraw_message"
+              phx-value-ref={message.delivery_ref}
+              data-test="agent-withdraw-message"
+              class="btn btn-xs btn-ghost"
+            >
+              Take it back
+            </button>
+          </div>
 
-        <form
-          :if={@talkable?}
-          data-test="agent-message-form"
-          phx-submit="send_message"
-          class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
-        >
-          <%!-- `value=""` is load-bearing, which is not obvious and cost a duplicate
-          send in real use. Without a rendered value the DOM patch has nothing to
+          <form
+            :if={@talkable?}
+            data-test="agent-message-form"
+            phx-submit="send_message"
+            phx-change="draft"
+            class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
+          >
+            <%!-- A rendered value is load-bearing, which is not obvious and cost a
+          duplicate send in real use. Without one the DOM patch has nothing to
           set, so what you typed survives the submit and sits in the box looking
           unsent — and the next thing anyone does is send it again. `InboxLive`'s
-          message form has carried this attribute all along. --%>
-          <input
-            type="text"
-            name="message"
-            value=""
-            autocomplete="off"
-            placeholder="say something to this agent"
-            data-test="agent-message"
-            class="input input-sm input-bordered min-w-0 flex-1"
-          />
-          <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
+          message form has carried this attribute all along.
+
+          It is `@draft` rather than `""` because the panels made every toggle a
+          patch, and a hardcoded empty value threw away a half-written message
+          every time someone opened one. `send_message` clears `@draft` itself,
+          so the duplicate-send fix is still explicit rather than a side effect
+          of rendering nothing. --%>
+            <input
+              type="text"
+              name="message"
+              value={@draft}
+              autocomplete="off"
+              placeholder="say something to this agent"
+              data-test="agent-message"
+              class="input input-sm input-bordered min-w-0 flex-1"
+            />
+            <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
           machine — up to the transport's patience if that machine is slow — and
           a button that stays live through that invites the second click, which
           is a second turn and a second answer rather than a wasted one. --%>
-          <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
-            Send
-          </button>
-        </form>
+            <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
+              Send
+            </button>
+          </form>
 
-        <p
-          :if={@conversation != nil and not @talkable?}
-          data-test="agent-not-talkable"
-          class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
-        >
-          This agent is not running, so there is nothing to send a message to.
-        </p>
+          <p
+            :if={@conversation != nil and not @talkable?}
+            data-test="agent-not-talkable"
+            class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
+          >
+            This agent is not running, so there is nothing to send a message to.
+          </p>
+        </div>
+
+        <.panels
+          :if={@screen == :wide}
+          screen={@screen}
+          open={@open_panels}
+          dynamic_view={@dynamic_view}
+          activity={@activity}
+          waiting={@waiting}
+        />
       </div>
     </Layouts.app>
+    """
+  end
+
+  @doc false
+  # Three tabs along one axis — the artifact, the intent, the work.
+  #
+  #   * preview  — the running instance. What the thing is right now.
+  #   * dynamic  — CodeMySpec's own UI for authoring. Its contents swap; it does
+  #                not become more tabs.
+  #   * activity — what is happening elsewhere on the project.
+  #
+  # The attention mark is deliberately not a count of everything in a panel. It
+  # means something is *waiting on you*, which is a different claim from
+  # something happened, and conflating them is how a badge stops being read.
+  attr :screen, :atom, required: true
+  attr :open, :list, required: true
+  attr :dynamic_view, :string, required: true
+  attr :activity, :list, required: true
+  attr :waiting, :list, required: true
+
+  defp panels(assigns) do
+    ~H"""
+    <div
+      data-test="conversation-panels"
+      class={[
+        "flex flex-col gap-2 overflow-y-auto",
+        @screen == :wide && "w-96 shrink-0",
+        @screen == :narrow && "w-full"
+      ]}
+    >
+      <div data-test="panel-preview" data-panel-open={to_string(:preview in @open)}>
+        <button
+          type="button"
+          data-test="panel-tab-preview"
+          phx-click="toggle_panel"
+          phx-value-panel="preview"
+          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
+        >
+          Preview
+        </button>
+
+        <div :if={:preview in @open} class="rounded-box border border-base-300 p-3 text-sm">
+          <p data-test="panel-preview-empty" class="opacity-70">
+            No preview is running for this project yet.
+          </p>
+          <p data-test="panel-preview-remedy" class="mt-1 opacity-70">
+            Ask the agent to deploy this project, and the running app appears here.
+          </p>
+        </div>
+      </div>
+
+      <div data-test="panel-dynamic" data-panel-open={to_string(:dynamic in @open)}>
+        <button
+          type="button"
+          data-test="panel-tab-dynamic"
+          phx-click="toggle_panel"
+          phx-value-panel="dynamic"
+          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
+        >
+          Project
+        </button>
+
+        <div
+          :if={:dynamic in @open}
+          data-dynamic-view={@dynamic_view}
+          class="rounded-box border border-base-300 p-3 text-sm"
+        >
+          <p class="opacity-70">Showing: {@dynamic_view}</p>
+        </div>
+      </div>
+
+      <div data-test="panel-activity" data-panel-open={to_string(:activity in @open)}>
+        <button
+          type="button"
+          data-test="panel-tab-activity"
+          phx-click="toggle_panel"
+          phx-value-panel="activity"
+          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
+        >
+          Activity
+          <%!-- On the header, so a closed tab can still say it. On a phone the
+          other two panels are not merely collapsed, they are absent from view,
+          and a question nobody sees is an agent stopped for as long as nobody
+          looks. --%>
+          <span
+            :if={@waiting != []}
+            data-test="panel-attention"
+            class="badge badge-sm badge-warning"
+          >
+            {length(@waiting)}
+          </span>
+        </button>
+
+        <div :if={:activity in @open} class="rounded-box border border-base-300 p-3 text-sm">
+          <p :if={@waiting == [] and @activity == []} class="opacity-70">
+            Nothing from the rest of the project yet.
+          </p>
+
+          <div :for={request <- @waiting} class="mb-3">
+            <p data-test="activity-source" class="text-xs opacity-60">
+              {request.session_external_id || "another working copy"}
+            </p>
+            <p :for={question <- request.questions} class="text-sm">
+              {question["question"] || question[:question]}
+            </p>
+          </div>
+
+          <div :for={entry <- @activity} class="mb-2">
+            <p data-test="activity-source" class="text-xs opacity-60">{entry.source}</p>
+            <p class="text-sm opacity-80">{entry.message}</p>
+          </div>
+        </div>
+      </div>
+    </div>
     """
   end
 end

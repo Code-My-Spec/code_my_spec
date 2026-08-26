@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story966.Criterion2947Spex do
         {:ok, live, _html} = live(context.conn, main_conversation_path(context))
 
         live
-        |> form(~s([data-test="conversation-composer"]), %{"message" => "half a thought"})
+        |> form(~s([data-test="agent-message-form"]), %{"message" => "half a thought"})
         |> render_change()
 
         {:ok, Map.put(context, :live, live)}

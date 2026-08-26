@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
 
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.MainAgentHelpers
+  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -52,17 +53,32 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
         alias Anubis.Server.Frame
         alias CodeMySpec.McpServers.Tasks.Tools.AskUser
 
-        frame = %Frame{assigns: %{current_scope: context.scope}}
+        # Genuinely another copy, not this one wearing a different name. The
+        # criterion is about a thread that is *not* the one being read, and
+        # asking from `context.scope` would ask from the main checkout — whose
+        # questions this conversation already shows inline, and which the
+        # activity tab therefore excludes on purpose.
+        other =
+          join_working_copy(context, "/tmp/spex_966_other_copy", "other copy")
 
-        {:reply, _response, _frame} =
-          AskUser.execute(
-            %{
-              questions: [
-                %{question: "Which deploy key should I use?", header: "Key", options: []}
-              ]
-            },
-            frame
-          )
+        frame = %Frame{
+          assigns: %{
+            current_scope: %{
+              context.scope
+              | active_working_copy_id: other["working_copy_id"]
+            }
+          }
+        }
+
+        {:reply, response, _frame} =
+          AskUser.execute(%{message: "Which deploy key should I use?"}, frame)
+
+        # Checked, because the tool answers a bad call with an error *response*
+        # rather than a raise. Ignoring it means the question was never asked and
+        # the assertions below fail against a screen that is behaving correctly.
+        refute response.isError,
+               "the agent's question was refused, so nothing was ever waiting: " <>
+                 inspect(response)
 
         {:ok, Map.put(context, :html, render(context.live))}
       end

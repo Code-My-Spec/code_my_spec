@@ -311,6 +311,26 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
+  Every question this user has waiting, whichever session asked it.
+
+  Separate from `list_question_requests_for_session/1` because the two answer
+  different questions and only one of them is about a conversation. A thread
+  shows what *that* agent asked; the project's own screen has to show what any
+  agent asked, because an agent in a worktree nobody is watching is exactly the
+  one whose question goes unnoticed.
+
+  Pending only. An answered request is history, and history does not block
+  anybody.
+  """
+  @spec list_pending_question_requests_for_user(integer()) :: [QuestionRequest.t()]
+  def list_pending_question_requests_for_user(user_id) when is_integer(user_id) do
+    QuestionRequest
+    |> where([q], q.user_id == ^user_id and q.status == "pending")
+    |> order_by([q], asc: q.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc """
   Turn a submitted form into `%{question text => answer}`.
 
   Lives here rather than in a LiveView because two of them submit this shape

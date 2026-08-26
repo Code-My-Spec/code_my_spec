@@ -43,10 +43,11 @@ defmodule CodeMySpecSpex.Story966.Criterion2943Spex do
       end
 
       given_ "a conversation with more messages than fit on screen", context do
-        context =
-          Enum.reduce(1..12, context, fn n, acc ->
-            say_to_main_agent(acc, "message number #{n}")
-          end)
+        # `say_to_main_agent/2` returns the path it posted to, not the context —
+        # so this iterates for the side effect and keeps the context it was
+        # given. Threading the return value through a reduce hands a string to
+        # the next call as though it were the context.
+        Enum.each(1..12, &say_to_main_agent(context, "message number #{&1}"))
 
         {:ok, context}
       end
