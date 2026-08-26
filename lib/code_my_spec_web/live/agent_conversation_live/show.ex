@@ -763,104 +763,152 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
 
-  defp panels(assigns) do
+  # Three tabs on a phone, an accordion on a desk.
+  #
+  # Stacked headers cost three full-width rows to say nothing when every panel
+  # is shut, which on a 390px screen is most of what is above the conversation.
+  # John: "the accordion takes up too much space when nothing is selected." A
+  # tab strip says the same three words in one row, and the phone already only
+  # ever shows one panel — so the accordion was paying for a choice it does not
+  # have.
+  #
+  # A desk keeps the accordion, where the room exists and more than one panel
+  # can be open at once.
+  @panel_tabs [{:preview, "Preview"}, {:dynamic, "Project"}, {:activity, "Activity"}]
+
+  defp panels(%{screen: :narrow} = assigns) do
+    assigns = assign(assigns, :tabs, @panel_tabs)
+
     ~H"""
-    <div
-      data-test="conversation-panels"
-      class={
-        [
-          "flex flex-col gap-2 overflow-y-auto",
-          @screen == :wide && "w-96 shrink-0",
-          # Capped rather than flexible on a phone. The panels take their natural
-          # height so the conversation gets the rest, but an open panel with a lot
-          # in it must not eat the screen — past this it scrolls inside itself,
-          # which is the whole reason the chat is still reachable below.
-          @screen == :narrow && "max-h-[45dvh] w-full shrink-0"
-        ]
-      }
-    >
-      <div data-test="panel-preview" data-panel-open={to_string(:preview in @open)}>
-        <button
-          type="button"
-          data-test="panel-tab-preview"
-          phx-click="toggle_panel"
-          phx-value-panel="preview"
-          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
-        >
-          Preview
-        </button>
-
-        <div :if={:preview in @open} class="rounded-box border border-base-300 p-3 text-sm">
-          <p data-test="panel-preview-empty" class="opacity-70">
-            No preview is running for this project yet.
-          </p>
-          <p data-test="panel-preview-remedy" class="mt-1 opacity-70">
-            Ask the agent to deploy this project, and the running app appears here.
-          </p>
-        </div>
-      </div>
-
-      <div data-test="panel-dynamic" data-panel-open={to_string(:dynamic in @open)}>
-        <button
-          type="button"
-          data-test="panel-tab-dynamic"
-          phx-click="toggle_panel"
-          phx-value-panel="dynamic"
-          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
-        >
-          Project
-        </button>
-
+    <div data-test="conversation-panels" class="flex w-full shrink-0 flex-col gap-2">
+      <div role="tablist" class="flex gap-1">
         <div
-          :if={:dynamic in @open}
-          data-dynamic-view={@dynamic_view}
-          class="rounded-box border border-base-300 p-3 text-sm"
+          :for={{key, label} <- @tabs}
+          data-test={"panel-#{key}"}
+          data-panel-open={to_string(key in @open)}
+          class="min-w-0 flex-1"
         >
-          <p class="opacity-70">Showing: {@dynamic_view}</p>
+          <button
+            type="button"
+            data-test={"panel-tab-#{key}"}
+            phx-click="toggle_panel"
+            phx-value-panel={key}
+            class={[
+              "flex w-full items-center justify-center gap-1 rounded-box border px-2 py-1.5 text-xs",
+              key in @open && "border-primary bg-primary/10 font-semibold text-primary",
+              key not in @open && "border-base-300"
+            ]}
+          >
+            <span class="truncate">{label}</span>
+            <.panel_attention :if={key == :activity} waiting={@waiting} />
+          </button>
         </div>
       </div>
 
-      <div data-test="panel-activity" data-panel-open={to_string(:activity in @open)}>
+      <%!-- One body, below the strip, for whichever tab is open. Capped so a
+      full panel scrolls inside itself rather than pushing the conversation off
+      the bottom. --%>
+      <div
+        :if={@open != []}
+        class="max-h-[40dvh] overflow-y-auto rounded-box border border-base-300 p-3 text-sm"
+      >
+        <.panel_body
+          which={hd(@open)}
+          dynamic_view={@dynamic_view}
+          activity={@activity}
+          waiting={@waiting}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  defp panels(assigns) do
+    assigns = assign(assigns, :tabs, @panel_tabs)
+
+    ~H"""
+    <div data-test="conversation-panels" class="flex w-96 shrink-0 flex-col gap-2 overflow-y-auto">
+      <div :for={{key, label} <- @tabs} data-test={"panel-#{key}"} data-panel-open={to_string(key in @open)}>
         <button
           type="button"
-          data-test="panel-tab-activity"
+          data-test={"panel-tab-#{key}"}
           phx-click="toggle_panel"
-          phx-value-panel="activity"
+          phx-value-panel={key}
           class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
         >
-          Activity
-          <%!-- On the header, so a closed tab can still say it. On a phone the
-          other two panels are not merely collapsed, they are absent from view,
-          and a question nobody sees is an agent stopped for as long as nobody
-          looks. --%>
-          <span
-            :if={@waiting != []}
-            data-test="panel-attention"
-            class="badge badge-sm badge-warning"
-          >
-            {length(@waiting)}
-          </span>
+          {label}
+          <.panel_attention :if={key == :activity} waiting={@waiting} />
         </button>
 
-        <div :if={:activity in @open} class="rounded-box border border-base-300 p-3 text-sm">
-          <p :if={@waiting == [] and @activity == []} class="opacity-70">
-            Nothing from the rest of the project yet.
-          </p>
-
-          <div :for={request <- @waiting} class="mb-3">
-            <p data-test="activity-source" class="text-xs opacity-60">
-              {request.session_external_id || "another working copy"}
-            </p>
-            <p :for={question <- request.questions} class="text-sm">
-              {question["question"] || question[:question]}
-            </p>
-          </div>
-
-          <div :for={entry <- @activity} class="mb-2">
-            <p data-test="activity-source" class="text-xs opacity-60">{entry.source}</p>
-            <p class="text-sm opacity-80">{entry.message}</p>
-          </div>
+        <div :if={key in @open} class="rounded-box border border-base-300 p-3 text-sm">
+          <.panel_body
+            which={key}
+            dynamic_view={@dynamic_view}
+            activity={@activity}
+            waiting={@waiting}
+          />
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  # On the tab header, so a shut tab can still raise it. On a phone the other
+  # panels are not merely collapsed but absent, and a question nobody sees is an
+  # agent stopped for as long as nobody looks.
+  attr :waiting, :list, required: true
+
+  defp panel_attention(assigns) do
+    ~H"""
+    <span :if={@waiting != []} data-test="panel-attention" class="badge badge-xs badge-warning">
+      {length(@waiting)}
+    </span>
+    """
+  end
+
+  attr :which, :atom, required: true
+  attr :dynamic_view, :string, required: true
+  attr :activity, :list, required: true
+  attr :waiting, :list, required: true
+
+  defp panel_body(%{which: :preview} = assigns) do
+    ~H"""
+    <p data-test="panel-preview-empty" class="opacity-70">
+      No preview is running for this project yet.
+    </p>
+    <p data-test="panel-preview-remedy" class="mt-1 opacity-70">
+      Ask the agent to deploy this project, and the running app appears here.
+    </p>
+    """
+  end
+
+  defp panel_body(%{which: :dynamic} = assigns) do
+    ~H"""
+    <div data-dynamic-view={@dynamic_view}>
+      <p class="opacity-70">Showing: {@dynamic_view}</p>
+    </div>
+    """
+  end
+
+  defp panel_body(%{which: :activity} = assigns) do
+    ~H"""
+    <div>
+      <p :if={@waiting == [] and @activity == []} class="opacity-70">
+        Nothing from the rest of the project yet.
+      </p>
+
+      <div :for={request <- @waiting} class="mb-3">
+        <p data-test="activity-source" class="text-xs opacity-60">
+          {request.session_external_id || "another working copy"}
+        </p>
+        <p :for={question <- request.questions} class="text-sm">
+          {question["question"] || question[:question]}
+        </p>
+      </div>
+
+      <div :for={entry <- @activity} class="mb-2">
+        <p data-test="activity-source" class="text-xs opacity-60">{entry.source}</p>
+        <p class="text-sm opacity-80">{entry.message}</p>
       </div>
     </div>
     """

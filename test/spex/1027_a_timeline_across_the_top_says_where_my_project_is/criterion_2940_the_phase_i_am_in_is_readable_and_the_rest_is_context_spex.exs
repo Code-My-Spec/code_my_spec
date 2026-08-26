@@ -139,20 +139,27 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
       end
 
       then_ "and the whole graph is still accounted for", context do
-        totals =
+        # Counted two ways, because a phase is drawn one of two ways: the phase
+        # you are in itemises its steps as dots and has no pie, and every other
+        # phase is a pie carrying its total and draws no dots. Summing only one
+        # of them undercounts by exactly the phase you are looking at.
+        #
+        # The guarantee is unchanged and is the whole reason this is zoom rather
+        # than a shorter list: a pie can answer a question about a step because
+        # it counted it, and a cut list cannot answer about one it left out.
+        aggregated =
           ~r/data-test="phase-pie"[^>]*data-total="(\d+)"/
           |> Regex.scan(context.html)
           |> Enum.map(fn [_, n] -> String.to_integer(n) end)
+          |> Enum.sum()
 
-        # Through the pies rather than through rendered dots, because the dots
-        # are now drawn only for the phase you are in. The guarantee is
-        # unchanged and is the whole reason this is zoom rather than a shorter
-        # list: a pie can answer a question about a step because it counted it,
-        # and a cut list cannot answer about one it left out.
-        assert Enum.sum(totals) >= 13,
-               "the phases account for #{Enum.sum(totals)} steps across #{length(totals)} " <>
-                 "pies. The project has thirteen requirements of its own, and aggregating " <>
-                 "them is only honest while every one is still counted somewhere."
+        itemised = Regex.scan(~r/data-test="timeline-step"/, context.html) |> length()
+
+        assert aggregated + itemised >= 13,
+               "the timeline accounts for #{aggregated} steps in pies and #{itemised} as " <>
+                 "dots. The project has thirteen requirements of its own, and aggregating " <>
+                 "the phases you are not in is only honest while every step is still " <>
+                 "counted somewhere."
 
         {:ok, context}
       end

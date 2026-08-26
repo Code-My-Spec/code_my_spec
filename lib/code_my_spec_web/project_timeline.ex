@@ -95,22 +95,23 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done"}
             class="flex shrink-0 items-center gap-1"
           >
+            <%!-- No pie on the phase you are in. Its dots already say which
+            steps are done and which one you are on, one mark per step, so a pie
+            beside them is the same fact drawn twice and the less precise of the
+            two. A phase is a pie *or* its dots — aggregate where you are not,
+            itemise where you are. --%>
             <span
+              :if={not phase.expanded?}
               data-test="phase-pie"
               data-done={phase_done(phase)}
               data-total={length(phase.steps)}
               style={pie_style(phase)}
               class={[
                 "size-4 shrink-0 rounded-full ring-1",
-                phase.expanded? && "ring-primary",
-                not phase.expanded? && phase_complete?(phase) && "ring-success/60",
-                not phase.expanded? && not phase_complete?(phase) && "ring-base-content/25"
+                phase_complete?(phase) && "ring-success/60",
+                not phase_complete?(phase) && "ring-base-content/25"
               ]}
             >
-            </span>
-
-            <span :if={phase.expanded?} class="text-xs font-semibold uppercase tracking-wide">
-              {phase.label}
             </span>
 
             <span class="sr-only">{phase.label}</span>
@@ -136,11 +137,22 @@ defmodule CodeMySpecWeb.ProjectTimeline do
               title={step.title}
               class={[phase.expanded? && "block px-0.5 py-1", not phase.expanded? && "sr-only"]}
             >
+              <%!-- The step you are on is a pill with its short name inside;
+              the rest of the phase is dots. That is the one place the strip
+              spends words, and it spends them on the only thing a glance is
+              looking for. The phase name is gone entirely — "DESIGN" beside a
+              pill reading "arch" is the same fact at lower resolution. --%>
               <span
-                :if={phase.expanded?}
+                :if={phase.expanded? and step.state == "current"}
+                class="block rounded-full bg-primary px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-primary-content"
+              >
+                {step.abbrev}
+              </span>
+
+              <span
+                :if={phase.expanded? and step.state != "current"}
                 class={[
                   "block size-2 rounded-full",
-                  step.state == "current" && "bg-primary ring-2 ring-primary/40",
                   step.state == "done" && "bg-success",
                   step.state == "todo" && "bg-base-content/20"
                 ]}
@@ -231,6 +243,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       %{
         name: name,
         title: meaning.title,
+        abbrev: meaning.abbrev,
         detail: meaning.detail,
         state: state_of(name, satisfied, current),
         path: path_for(name, project)

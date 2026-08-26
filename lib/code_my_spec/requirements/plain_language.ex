@@ -32,6 +32,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "personas_complete" => %{
       phase: :shaping,
       title: "Who it is for",
+      abbrev: "who",
       detail:
         "We are working out who will use your software and what they need from it. " <>
           "Everything after this is built around those people."
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "stories_exist" => %{
       phase: :shaping,
       title: "What it should do",
+      abbrev: "stories",
       detail:
         "Your ideas are being turned into a list of things the software should do. " <>
           "You can read every one of them in your own words."
@@ -46,6 +48,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "technical_strategy" => %{
       phase: :design,
       title: "How it will be built",
+      abbrev: "strategy",
       detail:
         "We are deciding the big technical choices once, up front, so they do not get " <>
           "made differently in ten places later."
@@ -53,6 +56,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "code_generation" => %{
       phase: :design,
       title: "The starting shape",
+      abbrev: "scaffold",
       detail:
         "The skeleton of your application is being laid down. It does nothing useful " <>
           "yet, but everything else is built on top of it."
@@ -60,6 +64,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "qa_integration_plan" => %{
       phase: :design,
       title: "Talking to other services",
+      abbrev: "services",
       detail:
         "We are working out which outside services your software needs, and how we will " <>
           "check each one really works."
@@ -67,6 +72,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "architecture_designed" => %{
       phase: :design,
       title: "How the pieces fit",
+      abbrev: "arch",
       detail:
         "Your list of things to do is being organised into parts that fit together. " <>
           "This is what stops the software becoming a tangle as it grows."
@@ -74,6 +80,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "spex_boundary_ready" => %{
       phase: :design,
       title: "Ready to be checked",
+      abbrev: "specs",
       detail:
         "We are setting up the machinery that proves your software does what you asked " <>
           "for. Without it, working and looking like it works are the same thing."
@@ -81,6 +88,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "story_work" => %{
       phase: :building,
       title: "Building it",
+      abbrev: "build",
       detail:
         "Your software is being written, one piece of what you asked for at a time. " <>
           "Several pieces can be underway at once, which is why this is a single step."
@@ -88,6 +96,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "issues_triaged" => %{
       phase: :checking,
       title: "Looking at what turned up",
+      abbrev: "triage",
       detail:
         "Everything testing found is being read and sorted. Nothing gets quietly " <>
           "dropped, and you decide what matters."
@@ -95,6 +104,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "issues_resolved" => %{
       phase: :checking,
       title: "Fixing what mattered",
+      abbrev: "fixes",
       detail:
         "The problems worth fixing are being fixed. The ones you decided to live with " <>
           "stay written down rather than forgotten."
@@ -102,6 +112,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "qa_setup" => %{
       phase: :proving,
       title: "Getting ready to test",
+      abbrev: "qa setup",
       detail:
         "We are working out how to test your software the way a real person would use " <>
           "it, rather than only in pieces."
@@ -109,6 +120,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "qa_journey_plan" => %{
       phase: :proving,
       title: "Planning the walkthrough",
+      abbrev: "plan",
       detail:
         "We are writing down the journeys a real user takes through your software, so " <>
           "each one can be walked start to finish."
@@ -116,6 +128,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "qa_journey_execute" => %{
       phase: :proving,
       title: "Walking it through",
+      abbrev: "walk",
       detail:
         "Somebody is going through your software the way your users will, and writing " <>
           "down what actually happens."
@@ -123,6 +136,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     "qa_journey_wallaby" => %{
       phase: :proving,
       title: "Keeping it working",
+      abbrev: "keep",
       detail:
         "Those journeys are being turned into checks that run on their own, so a change " <>
           "later cannot quietly break what already worked."
@@ -173,6 +187,6 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
   a step with none, because it reads as though somebody wrote it about this
   project.
   """
-  @spec fetch(String.t()) :: %{phase: atom(), title: String.t(), detail: String.t()} | nil
+  @spec fetch(String.t()) :: %{phase: atom(), title: String.t(), abbrev: String.t(), detail: String.t()} | nil
   def fetch(name), do: Map.get(@steps, name)
 end
