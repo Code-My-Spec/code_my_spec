@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Sync.Data do
   `fly ssh`, where Mix isn't installed.
 
       mix sync.data export --project-id <id> --output <path>
-      mix sync.data import --file <path> [--dry-run]
+      mix sync.data import --file <path> [--dry-run] [--force]
 
   Moves exactly one project: its own row, its components, and its
   stories/versions. Never the account, its members, its users, or any other
@@ -36,19 +36,26 @@ defmodule Mix.Tasks.Sync.Data do
     start_repo()
 
     {opts, _rest, _invalid} =
-      OptionParser.parse(rest, strict: [file: :string, dry_run: :boolean])
+      OptionParser.parse(rest, strict: [file: :string, dry_run: :boolean, force: :boolean])
 
     file = Keyword.fetch!(opts, :file)
     dry_run = Keyword.get(opts, :dry_run, false)
+    force = Keyword.get(opts, :force, false)
 
-    Data.import_project(file, dry_run: dry_run)
+    # `Mix.raise` rather than the tuple, for the same reason `Release` raises:
+    # the caller here is a person at a shell, and a refusal returned quietly
+    # reads as a completed import.
+    case Data.import_project(file, dry_run: dry_run, force: force) do
+      {:error, reason} -> Mix.raise(Data.explain(reason))
+      result -> result
+    end
   end
 
   def run(_args) do
     Mix.shell().info("""
     Usage:
       mix sync.data export --project-id <id> --output <path>
-      mix sync.data import --file <path> [--dry-run]
+      mix sync.data import --file <path> [--dry-run] [--force]
     """)
   end
 

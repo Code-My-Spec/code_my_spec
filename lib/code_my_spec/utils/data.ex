@@ -14,7 +14,29 @@ defmodule CodeMySpec.Utils.Data do
 
   Assumes the destination account already exists — a project cannot be
   created under an account that isn't there, and this makes no attempt to
-  create one.
+  create one. `import_project/2` checks for it and says so, because the raw
+  foreign key error names a constraint rather than the thing to fix.
+
+  ## What an import can and cannot put back
+
+  The export carries the project row, its components, its stories and those
+  stories' versions. The wipe deletes the project row, and almost every table
+  referencing `projects` cascades from it — measured, thirty-one of thirty-two.
+  So a wipe reaches epics, issues, conversations, agents, working copies,
+  requirement graphs, personas, criteria, BDD rules, secrets and provisioning
+  records, and the file has nothing to restore any of them with.
+
+  Nearly ran for real: dev's MarketMySpec (no stories) was about to be imported
+  over production's (27 stories, 180 criteria, 17 issues). Two accidents stopped
+  it — the ids differed so the wipe matched nothing, and the source account was
+  absent so the insert would have failed. Aligning the ids, the obvious response
+  to "the import did nothing", is what would have armed it.
+
+  So `import_project/2` counts what it would destroy and refuses. The list comes
+  from the database's own foreign keys rather than a list kept here, because a
+  list kept here is exactly what drifted: every table added since would be
+  missing from it, and missing means silently destroyed. `force: true` proceeds
+  anyway, for a caller that has read the refusal and means it.
   """
 
   require Logger
@@ -34,11 +56,13 @@ defmodule CodeMySpec.Utils.Data do
   """
   def import_project(file_path, opts \\ []) do
     dry_run = Keyword.get(opts, :dry_run, false)
+    force = Keyword.get(opts, :force, false)
 
     Logger.info("Importing project from #{file_path}...")
 
     json = File.read!(file_path)
     data = Jason.decode!(json, keys: :atoms)
+    project_id = data.project.id
 
     if dry_run do
       Logger.info("[DRY RUN] Would import:")
@@ -46,24 +70,34 @@ defmodule CodeMySpec.Utils.Data do
       Logger.info("  - #{length(data.components)} components")
       Logger.info("  - #{length(data.stories || [])} stories")
       Logger.info("  - #{length(data.versions || [])} versions")
+
+      # Reported rather than refused: a dry run changes nothing, and this is
+      # the place someone is actually looking before they commit to it.
+      log_hazards(data.project.account_id, project_id)
     else
-      Repo.transaction(fn ->
-        project_id = data.project.id
-        wipe_project_data(project_id)
-
-        Logger.info("Inserting project data...")
-        insert_projects([data.project])
-        insert_components(data.components)
-        # Versions before stories: stories reference versions via
-        # first_version_id/current_version_id.
-        insert_versions(data[:versions] || [])
-        insert_stories(data[:stories] || [])
-
-        reset_sequences()
-
-        Logger.info("✓ Imported project #{data.project.name} (ID: #{project_id})")
-      end)
+      with :ok <- account_present(data.project.account_id, data.project.name),
+           :ok <- nothing_unrestorable(project_id, force) do
+        import_transaction(data, project_id)
+      end
     end
+  end
+
+  defp import_transaction(data, project_id) do
+    Repo.transaction(fn ->
+      wipe_project_data(project_id)
+
+      Logger.info("Inserting project data...")
+      insert_projects([data.project])
+      insert_components(data.components)
+      # Versions before stories: stories reference versions via
+      # first_version_id/current_version_id.
+      insert_versions(data[:versions] || [])
+      insert_stories(data[:stories] || [])
+
+      reset_sequences()
+
+      Logger.info("✓ Imported project #{data.project.name} (ID: #{project_id})")
+    end)
   end
 
   @doc """
@@ -188,6 +222,131 @@ defmodule CodeMySpec.Utils.Data do
     end
   end
 
+  # What the export file can actually put back after the wipe.
+  #
+  # `versions` is absent deliberately: PaperTrail keys on item_type/item_id and
+  # holds no project_id, so it is not a cascading child and never appears in the
+  # list this is subtracted from.
+  @restorable ~w(components stories)
+
+  # Everything the wipe destroys that the file cannot restore.
+  #
+  # Read out of `pg_constraint` rather than listed here. A list here is the bug:
+  # it was accurate when written, the schema kept growing, and a table missing
+  # from it is destroyed in silence rather than refused out loud. The database
+  # already knows which foreign keys cascade, so ask it.
+  defp unrestorable_children(project_id) do
+    cascading_children()
+    |> Enum.reject(fn {table, _column} -> table in @restorable end)
+    |> Enum.map(fn {table, column} ->
+      {table, count_children(table, column, project_id)}
+    end)
+    |> Enum.reject(fn {_table, count} -> count == 0 end)
+    |> Enum.sort_by(fn {table, count} -> {-count, table} end)
+  end
+
+  defp count_children(table, column, project_id) do
+    field = String.to_atom(column)
+
+    Repo.aggregate(
+      from(x in table, where: field(x, ^field) == type(^project_id, Ecto.UUID)),
+      :count
+    )
+  end
+
+  defp cascading_children do
+    %{rows: rows} =
+      Repo.query!("""
+      select c.conrelid::regclass::text, a.attname
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+      where c.confrelid = 'projects'::regclass
+        and c.contype = 'f'
+        and c.confdeltype = 'c'
+      """)
+
+    Enum.map(rows, fn [table, column] -> {table, column} end)
+  end
+
+  defp nothing_unrestorable(_project_id, true), do: :ok
+
+  defp nothing_unrestorable(project_id, false) do
+    case unrestorable_children(project_id) do
+      [] -> :ok
+      losses -> {:error, {:would_destroy, project_id, losses}}
+    end
+  end
+
+  # The insert fails on this anyway. It fails as a foreign key violation naming
+  # a constraint, which says nothing about which account is missing from which
+  # environment — and by then the wipe has already run inside the same
+  # transaction, so the rollback is what saves the data rather than the check.
+  defp account_present(account_id, project_name) do
+    if Repo.exists?(from a in "accounts", where: a.id == type(^account_id, Ecto.UUID)) do
+      :ok
+    else
+      {:error, {:missing_account, account_id, project_name}}
+    end
+  end
+
+  defp log_hazards(account_id, project_id) do
+    case account_present(account_id, nil) do
+      :ok -> :ok
+      {:error, _} -> Logger.warning("[DRY RUN] destination account #{account_id} does not exist")
+    end
+
+    case unrestorable_children(project_id) do
+      [] ->
+        :ok
+
+      losses ->
+        Logger.warning("[DRY RUN] this import would destroy, with nothing to restore them:")
+        Enum.each(losses, fn {table, count} -> Logger.warning("  - #{count} #{table}") end)
+    end
+  end
+
+  @doc """
+  A refusal from `import_project/2`, as something a person can act on.
+
+  Separate from the tuple because the tuple is for a caller that wants to
+  branch and this is for the human the shell script is standing in front of.
+  """
+  def explain({:missing_account, account_id, project_name}) do
+    """
+    Refusing to import #{project_name || "this project"}.
+
+    Its account #{account_id} does not exist in the destination database. A
+    project cannot be created under an account that is not there, and importing
+    one does not create it.
+
+    Either the export came from an environment whose accounts were never synced,
+    or the destination already holds this project under a different account. It
+    is worth checking for the latter by name before creating anything: importing
+    against a fresh account id makes a second copy of the project rather than
+    updating the one already there.
+    """
+  end
+
+  def explain({:would_destroy, project_id, losses}) do
+    lines = Enum.map_join(losses, "\n", fn {table, count} -> "      #{count} #{table}" end)
+
+    """
+    Refusing to import over project #{project_id}.
+
+    The wipe deletes the project row, and these rows cascade away with it:
+
+    #{lines}
+
+    The export file carries the project, its components, its stories and their
+    versions — and nothing else. Everything above would be destroyed with no way
+    to put it back.
+
+    If the destination is the one holding the real data, the import is pointed
+    the wrong way round. If you have read this list and mean it, pass
+    `force: true`.
+    """
+  end
+
   # Wipe exactly this project's own rows — its stories (and their versions),
   # its components, and the project row itself. The account, its members and
   # users, and every other project it owns are untouched.
@@ -239,7 +398,7 @@ defmodule CodeMySpec.Utils.Data do
     # Topological sort: repeatedly insert components with no parent or whose parent is already inserted
     {sorted, _remaining} =
       Enum.reduce_while(1..length(components)//1, {[], components}, fn _iteration,
-                                                                        {sorted, remaining} ->
+                                                                       {sorted, remaining} ->
         # Find components that can be inserted (no parent or parent already sorted)
         sorted_ids = MapSet.new(sorted, & &1.id)
 

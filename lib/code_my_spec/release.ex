@@ -23,7 +23,15 @@ defmodule CodeMySpec.Release do
   def import_project(file_path, opts \\ []) do
     load_app()
     Application.ensure_all_started(@app)
-    Data.import_project(file_path, opts)
+
+    # Raised rather than returned, because this is the boundary a shell script
+    # calls through `bin/code_my_spec eval`. A refusal handed back as a tuple
+    # exits 0, and sync-project.sh reports a successful migration over an import
+    # that declined to run.
+    case Data.import_project(file_path, opts) do
+      {:error, reason} -> raise Data.explain(reason)
+      result -> result
+    end
   end
 
   def export_project(project_id, file_path) do
