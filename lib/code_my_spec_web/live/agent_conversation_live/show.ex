@@ -102,8 +102,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # and on no topic this thread would otherwise hear, so without this the
     # attention mark only appears on the next full page load — by which time the
     # agent has been stopped for however long that took.
-    if connected?(socket) && scope.user do
-      Notifications.subscribe_notifications(scope.user.id)
+    if connected?(socket) do
+      case user_id_of(scope) do
+        nil ->
+          :ok
+
+        user_id ->
+          Notifications.subscribe_notifications(user_id)
+      end
     end
 
     socket
@@ -371,15 +377,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # What is waiting on this person anywhere on the project, minus what this
   # thread already shows inline. An agent in a worktree nobody is watching is
   # precisely the one whose question goes unnoticed.
-  defp waiting_for(%{user: %{id: user_id}}, conversation) do
-    mine = conversation && conversation.session_external_id
+  defp waiting_for(scope, conversation) do
+    case user_id_of(scope) do
+      nil ->
+        []
 
-    user_id
-    |> Notifications.list_pending_question_requests_for_user()
-    |> Enum.reject(&elsewhere?(&1, mine))
+      user_id ->
+        mine = conversation && conversation.session_external_id
+
+        user_id
+        |> Notifications.list_pending_question_requests_for_user()
+        |> Enum.reject(&elsewhere?(&1, mine))
+    end
   end
 
-  defp waiting_for(_scope, _conversation), do: []
+  # `Scope` carries both `user` and `user_id`, and which one is populated depends
+  # on how the scope was built. Matching only on a loaded `user` returned an
+  # empty list on a scope that had the id and not the struct — so the activity
+  # tab was permanently empty, and nothing said why, because "no questions" and
+  # "I could not tell who you are" render identically.
+  defp user_id_of(%{user: %{id: id}}) when not is_nil(id), do: id
+  defp user_id_of(%{user_id: id}) when not is_nil(id), do: id
+  defp user_id_of(_scope), do: nil
 
   # Excluded only when this thread genuinely owns the question. A conversation
   # with no session id owns nothing, and `nil == nil` would quietly hide every
