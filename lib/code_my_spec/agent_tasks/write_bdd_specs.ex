@@ -368,10 +368,23 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       Enum.map_join(criteria, "\n\n", fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
 
+        # "Suggested", not "expected", and it says why. A criterion that has no
+        # file yet gets a path derived from its description; once a file exists
+        # the criterion adopts *that* path and this line reports it back.
+        #
+        # Calling it "expected" reads as a requirement, and it costs a rename:
+        # a spec written at a slightly different slug is already correct and
+        # already adopted, and renaming it to match this line is what makes the
+        # evaluator report it missing. That happened on story 967 — the
+        # description held an apostrophe, the derived slug dropped it, the
+        # written file kept it as an underscore, and following this line broke
+        # a file that was fine.
         """
         ### Criterion #{criterion.id}: #{criterion.description}
 
-        **Expected file path**: `#{spec_path}`\
+        **Suggested file path**: `#{spec_path}`
+        Any path under the story's directory works — whatever you write is
+        adopted, and this line reports it back once it exists.\
         #{criterion_surface_line(criterion)}\
         """
       end)
