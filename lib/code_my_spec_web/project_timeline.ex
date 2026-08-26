@@ -52,21 +52,47 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       aria-label="Where this project stands"
       class="border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
     >
-      <ol class="flex items-stretch gap-1 overflow-x-auto">
+      <%!-- Five phases and thirteen steps have to be legible at 390px without
+      scrolling, and the thing that did not fit was the words. Every phase used
+      to print its name, so `BUILDING`, `CHECKING` and `PROVING` fell off the
+      right-hand edge of a phone with no scrollbar to say they were there — a
+      strip that looks complete and does not contain your own phase.
+
+      So the names go and the shapes stay. A phase is a pie: how much of it is
+      done, readable without reading. Its steps stay as dots beside it, because
+      the whole graph on the line is the point — a cut list cannot answer a
+      question about a step it left out. Only the phase you are in keeps its
+      name, and the step you are on is named once, underneath. --%>
+      <ol class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <li
           :for={phase <- @steps}
           data-test="timeline-phase"
           data-phase={phase.key}
           data-expanded={to_string(phase.expanded?)}
           class={[
-            "flex shrink-0 items-center gap-1 rounded-box px-2 py-1",
-            phase.expanded? && "bg-base-100 ring-1 ring-primary/30",
-            not phase.expanded? && "opacity-60"
+            "flex shrink-0 items-center gap-1",
+            phase.expanded? && "text-primary",
+            not phase.expanded? && "text-base-content/40"
           ]}
         >
-          <%!-- The phase's own name, so a collapsed phase is still a word
-          rather than an unlabelled mark. --%>
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-70">
+          <span
+            data-test="phase-pie"
+            data-done={phase_done(phase)}
+            data-total={length(phase.steps)}
+            title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)}"}
+            style={pie_style(phase)}
+            class={[
+              "size-4 shrink-0 rounded-full ring-1",
+              phase.expanded? && "ring-primary",
+              not phase.expanded? && "ring-base-content/25"
+            ]}
+          >
+          </span>
+
+          <span
+            :if={phase.expanded?}
+            class="text-xs font-semibold uppercase tracking-wide"
+          >
             {phase.label}
           </span>
 
@@ -76,41 +102,25 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             data-step={step.name}
             data-state={step.state}
           >
-            <.link navigate={step.path} class="block" title={step.title}>
-              <%!-- Expanded: the step's name. Collapsed: a dot, so a phase
-              zoomed out still reads as a run of marks with some filled. It
-              rendered nothing at all before unless the step was done, which
-              made three of five phases bare words — zoomed out, not absent, is
-              the whole point of showing the neighbours. --%>
-              <span
-                :if={phase.expanded?}
-                class={[
-                  "block rounded-selector px-2 py-1 text-xs",
-                  step.state == "current" && "bg-primary text-primary-content font-semibold",
-                  step.state == "done" && "opacity-70",
-                  step.state == "todo" && "opacity-50"
-                ]}
-              >
-                <.icon :if={step.state == "done"} name="hero-check" class="size-3" />
-                {step.title}
+            <.link navigate={step.path} class="block px-0.5 py-1" title={step.title}>
+              <span class={[
+                "block size-2 rounded-full",
+                step.state == "current" && "bg-primary ring-2 ring-primary/40",
+                step.state == "done" && "bg-base-content/50",
+                step.state == "todo" && "bg-base-content/20"
+              ]}>
               </span>
-
-              <span :if={not phase.expanded?} class="flex items-center px-0.5 py-1">
-                <span class={[
-                  "size-2 rounded-full",
-                  step.state == "current" && "bg-primary",
-                  step.state == "done" && "bg-base-content/50",
-                  step.state == "todo" && "bg-base-content/20"
-                ]}>
-                </span>
-                <span class="sr-only">{step.title}</span>
-              </span>
+              <span class="sr-only">{step.title}</span>
             </.link>
           </span>
         </li>
       </ol>
 
-      <p :if={current_detail(@steps)} data-test="step-detail" class="mt-1 text-sm opacity-80">
+      <p :if={current_title(@steps)} class="mt-1 text-sm font-semibold">
+        {current_title(@steps)}
+      </p>
+
+      <p :if={current_detail(@steps)} data-test="step-detail" class="text-sm opacity-80">
         {current_detail(@steps)}
       </p>
     </nav>
@@ -122,6 +132,29 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     phases
     |> Enum.flat_map(& &1.steps)
     |> Enum.find_value(fn step -> step.state == "current" && step.detail end)
+  end
+
+  # The step you are on, named once. It used to be named by being the only
+  # step whose title was printed in the strip, which cost five phase names and
+  # thirteen step titles across the top to say one thing.
+  defp current_title(phases) do
+    phases
+    |> Enum.flat_map(& &1.steps)
+    |> Enum.find_value(fn step -> step.state == "current" && step.title end)
+  end
+
+  defp phase_done(phase), do: Enum.count(phase.steps, &(&1.state == "done"))
+
+  # A phase as a wedge. `currentColor` so the pie takes the phase's own colour —
+  # primary for the one you are in, muted for the rest — and the ring around it
+  # draws the whole, so an empty phase still reads as a phase rather than as
+  # nothing.
+  defp pie_style(phase) do
+    total = length(phase.steps)
+    done = phase_done(phase)
+    pct = if total == 0, do: 0, else: round(done / total * 100)
+
+    "background: conic-gradient(currentColor #{pct}%, transparent 0)"
   end
 
   defp steps_for(nil, _scope), do: []
@@ -193,7 +226,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp path_for("personas_complete", project), do: ~p"/app/projects/#{project.id}/personas"
   defp path_for("stories_exist", project), do: ~p"/app/projects/#{project.id}/stories"
   defp path_for("story_work", project), do: ~p"/app/projects/#{project.id}/stories"
-  defp path_for("architecture_designed", project), do: ~p"/app/projects/#{project.id}/architecture"
+
+  defp path_for("architecture_designed", project),
+    do: ~p"/app/projects/#{project.id}/architecture"
+
   defp path_for("issues_triaged", project), do: ~p"/app/projects/#{project.id}/issues"
   defp path_for("issues_resolved", project), do: ~p"/app/projects/#{project.id}/issues"
   defp path_for("qa_" <> _, project), do: ~p"/app/projects/#{project.id}/qa"
