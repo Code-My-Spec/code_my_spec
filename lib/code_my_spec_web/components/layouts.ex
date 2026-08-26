@@ -5,8 +5,6 @@ defmodule CodeMySpecWeb.Layouts do
   """
   use CodeMySpecWeb, :html
 
-  alias CodeMySpecWeb.ProjectTimeline
-
   import CodeMySpecWeb.AccountLive.Components.AccountsBreadcrumb
   import CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb
 
@@ -157,15 +155,6 @@ defmodule CodeMySpecWeb.Layouts do
             </button>
           </div>
         </div>
-
-        <%!-- Across the top of every project page, so where a project stands
-        is there without being navigated to. On a page of its own it would be
-        one more page somebody has to know exists. --%>
-        <ProjectTimeline.project_timeline
-          :if={assigns[:project]}
-          scope={@current_scope}
-          project={@project}
-        />
 
         <main class="flex-1 p-6">
           {render_slot(@inner_block)}

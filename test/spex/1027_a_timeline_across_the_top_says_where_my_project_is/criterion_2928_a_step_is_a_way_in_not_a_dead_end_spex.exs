@@ -18,7 +18,9 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -31,10 +33,22 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
     :ok
   end
 
+  # The timeline rides the main agent's conversation, and there is no main agent
+  # without somewhere to run it — `ensure_main_agent/1` refuses with
+  # `:not_connected`. Same reason story 963's criteria connect one.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "Clicking a step opens the page that already answers for it" do
     scenario "A step is a way in, not a dead end" do
+      given_ "a project with its own agent", context do
+        {:ok, given_a_main_checkout(context, "spex_2928")}
+      end
+
       given_ "a timeline with a step for the project's stories", context do
-        {:ok, live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+        {:ok, live, html} = live(context.conn, main_conversation_path(context))
 
         assert html =~ "data-step=\"story_work\"",
                "the timeline has no story-work step, so there is nothing to click"

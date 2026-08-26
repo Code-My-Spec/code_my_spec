@@ -53,6 +53,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
@@ -104,6 +105,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
+    |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
@@ -127,6 +129,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # so the box appeared over sessions that had finished, which is the same
   # broken promise as a box over something that never had a lane.
   defp talkable?(_scope, nil), do: false
+
+  # Whether this thread is the project's own agent.
+  #
+  # By identity, not by role: `agents.role` defaults to "main", so every agent
+  # ever started carries the word. What makes one the project's is where it is —
+  # the checkout the project designated — which is what `Agents.main_agent/1`
+  # answers.
+  defp main_agent?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    case Agents.main_agent(scope) do
+      %{id: ^agent_id} -> true
+      _ -> false
+    end
+  end
+
+  defp main_agent?(_scope, _conversation), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     scope
@@ -356,6 +373,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
+      <%!-- Only here, and only for the project's own agent.
+      John, seeing it on every page: "it should only show up on the chat for
+      the main agent on the main checkout." The timeline describes the whole
+      project, and this is the one conversation that is about the whole project
+      — on a working-copy agent's thread it would be describing something that
+      agent is not doing. --%>
+      <ProjectTimeline.project_timeline
+        :if={@main_agent?}
+        scope={@current_scope}
+        project={@project}
+      />
+
       <div
         data-test="agent-conversation"
         data-project-id={@project.id}

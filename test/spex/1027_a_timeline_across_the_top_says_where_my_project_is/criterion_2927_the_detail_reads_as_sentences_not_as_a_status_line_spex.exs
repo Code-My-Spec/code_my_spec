@@ -19,7 +19,9 @@ defmodule CodeMySpecSpex.Story965.Criterion2927Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -32,8 +34,20 @@ defmodule CodeMySpecSpex.Story965.Criterion2927Spex do
     :ok
   end
 
+  # The timeline rides the main agent's conversation, and there is no main agent
+  # without somewhere to run it — `ensure_main_agent/1` refuses with
+  # `:not_connected`. Same reason story 963's criteria connect one.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "The current step says what is happening in about two sentences, in language that assumes no code" do
     scenario "The detail reads as sentences, not as a status line" do
+      given_ "a project with its own agent", context do
+        {:ok, given_a_main_checkout(context, "spex_timeline")}
+      end
+
       given_ "a project part-way through its requirements", context do
         # Established rather than assumed. "Part-way" means some of the
         # project's own requirements are met and some are not; on a project
@@ -50,7 +64,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2927Spex do
       end
 
       when_ "I read the detail on the current step", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
 
         detail =
           case Regex.run(~r/data-test="step-detail"[^>]*>(.*?)<\/[a-z]+>/s, html) do

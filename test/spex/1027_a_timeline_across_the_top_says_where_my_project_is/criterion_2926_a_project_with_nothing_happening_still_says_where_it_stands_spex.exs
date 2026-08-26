@@ -18,7 +18,9 @@ defmodule CodeMySpecSpex.Story965.Criterion2926Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -31,8 +33,20 @@ defmodule CodeMySpecSpex.Story965.Criterion2926Spex do
     :ok
   end
 
+  # The timeline rides the main agent's conversation, and there is no main agent
+  # without somewhere to run it — `ensure_main_agent/1` refuses with
+  # `:not_connected`. Same reason story 963's criteria connect one.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "Exactly one step is marked as where the project is now" do
     scenario "A project with nothing happening still says where it stands" do
+      given_ "a project with its own agent", context do
+        {:ok, given_a_main_checkout(context, "spex_timeline")}
+      end
+
       given_ "a project where no work is in flight", context do
         # Nothing is started on a fresh project, which is the state. Asserted
         # rather than assumed, because a project with an agent running would be
@@ -48,7 +62,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2926Spex do
       end
 
       when_ "I look at the timeline", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
 
         {:ok, Map.put(context, :html, html)}
       end

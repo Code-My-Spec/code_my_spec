@@ -91,6 +91,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # 812's session-stitching criteria have no other way to say "a visitor
   # arriving with these GA cookies". The helper's whole body is
   # `Plug.Test.put_req_cookie/3` twice.
+  #   * `given_a_main_checkout` — `CodeMySpecSpex.MainAgentHelpers`. It joins a
+  #     working copy over the harness channel and clicks the control that
+  #     designates it, so a block calling it has made a real checkout and made
+  #     it the project's main one.
+  #
   #   * `EpicHelpers.` — story 964's premises. It drives `CreateEpic` and
   #     `AssignStoryToEpic` through their MCP tools and approves through the
   #     control on the epics screen, so a block calling it has established a
@@ -123,7 +128,7 @@ defmodule CodeMySpec.SpexGivensTest do
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
     join_working_copy report_agents
-    EpicHelpers.
+    EpicHelpers. given_a_main_checkout
   )
 
   # The failure message has always offered a second remedy — "if the

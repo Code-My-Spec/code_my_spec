@@ -20,9 +20,11 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
+  import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -35,8 +37,20 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
     :ok
   end
 
+  # The timeline rides the main agent's conversation, and there is no main agent
+  # without somewhere to run it — `ensure_main_agent/1` refuses with
+  # `:not_connected`. Same reason story 963's criteria connect one.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
+
   spex "The steps are the project's own requirements, and all of the story work is one of them" do
     scenario "A project mid-build shows one step for all of its stories" do
+      given_ "a project with its own agent", context do
+        {:ok, given_a_main_checkout(context, "spex_timeline")}
+      end
+
       given_ :synced_context_component
       given_ :story_linked_to_component
 
@@ -55,7 +69,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
       end
 
       when_ "I look at the timeline", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
 
         {:ok, Map.put(context, :html, html)}
       end
