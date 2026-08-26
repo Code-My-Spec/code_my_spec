@@ -82,9 +82,15 @@ defmodule CodeMySpecSpex.Story965.Criterion2926Spex do
         refute context.html =~ ~r/data-test="project-timeline"[^>]*data-state="error"/,
                "an idle project is reported as an error"
 
-        assert context.html =~ "data-test=\"step-detail\"",
-               "the current step carries no detail, so the screen says where the project " <>
-                 "is without saying what that means"
+        # The anchor beside the refute, so an empty page cannot pass this block.
+        # It used to be `step-detail`, the two explanatory sentences — those are
+        # gone (they were the bulk of the header on a screen meant to be
+        # glanced at), and the step's own name is what still says where the
+        # project is.
+        assert context.html =~ "data-test=\"step-title\"",
+               "the timeline names no current step, so the screen says nothing about " <>
+                 "where the project is — which is indistinguishable from one that failed " <>
+                 "to load"
 
         {:ok, context}
       end

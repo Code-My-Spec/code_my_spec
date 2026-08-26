@@ -152,35 +152,16 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         </li>
       </ol>
 
-      <p :if={current_title(@steps)} class="mt-1 text-sm font-semibold">
+      <%!-- The step you are on, and nothing about it. The two explanatory
+      sentences that used to sit here were the bulk of the header on every
+      screen, and the header exists to be glanced at. John: "remove on both".
+      Criterion 2927, which held those sentences to plain language, is retired
+      with them — there is no longer any prose for it to govern. --%>
+      <p :if={current_title(@steps)} data-test="step-title" class="mt-1 text-sm font-semibold">
         {current_title(@steps)}
-      </p>
-
-      <%!-- Desktop only. Two sentences explaining the step are worth the room
-      on a desk and are the bulk of the header on a phone, where the point is to
-      glance and know. Hidden rather than dropped: the sentences are still the
-      thing that makes a step mean something to somebody who does not know the
-      graph, and criterion 2927 still holds them to plain language with no
-      module names, file paths or counts of internals.
-
-      `md:` is 768px, the same threshold `handle_event("viewport", ...)` uses to
-      decide narrow from wide — one number, two places that must agree. --%>
-      <p
-        :if={current_detail(@steps)}
-        data-test="step-detail"
-        class="hidden text-sm opacity-80 md:block"
-      >
-        {current_detail(@steps)}
       </p>
     </nav>
     """
-  end
-
-  # The two static sentences, from the one step that is current.
-  defp current_detail(phases) do
-    phases
-    |> Enum.flat_map(& &1.steps)
-    |> Enum.find_value(fn step -> step.state == "current" && step.detail end)
   end
 
   # The step you are on, named once. It used to be named by being the only
