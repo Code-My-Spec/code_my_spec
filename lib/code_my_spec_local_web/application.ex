@@ -2,10 +2,11 @@ defmodule CodeMySpecLocalWeb.Application do
   @moduledoc """
   CLI/local application.
 
-  Boots with SQLite, local web endpoint, and MCP server.
-  No main web endpoint.
-
-  A quick Cloudflare tunnel boots in `:dev_cli` — see `config/dev_cli.exs`.
+  Boots the light harness: no Repo of its own, no local MCP server, no local
+  web UI. It watches whichever working copies it is handed, runs analyzers
+  against them, and answers hooks — the model and the data both live on the
+  server, reached through CmsHarness.Web's proxy. This is the only thing
+  `cms start` boots; there is no flag or env var that reaches anything else.
   """
   use Application
 
@@ -20,35 +21,41 @@ defmodule CodeMySpecLocalWeb.Application do
   @impl true
   def start(_type, _args) do
     argv = cli_argv()
+    remaining = apply_harness_flags(argv)
+    handle_cli_args(remaining)
 
     cond do
-      mcp_relay_command?(argv) -> start_mcp_relay()
-      migrate_command?(argv) -> start_migrate(argv)
-      harness_command?(argv) -> start_harness()
-      true -> start_full(argv)
+      mcp_relay_command?(remaining) -> start_mcp_relay()
+      migrate_command?(remaining) -> start_migrate(remaining)
+      true -> start_harness()
     end
   end
 
-  # `cms harness` (or CMS_HARNESS=1) boots the light harness instead of the
-  # heavy one: no Repo, no MCP server, no local web UI. It watches a working
-  # copy, runs analyzers against it and reports up a channel; the model lives on
-  # the server.
+  # The only thing this binary boots, `mcp`/`migrate` aside. There is no
+  # standalone mode to opt into any more and deliberately no flag that
+  # reaches one — a machine either runs the harness or it runs nothing,
+  # which is the whole point of shipping one thing. The heavy app's modules
+  # (CodeMySpecLocalWeb.Endpoint, its own SQLite Repo, the in-BEAM MCP
+  # server) are still compiled into this release — splitting them into a
+  # separate OTP app so they stop shipping at all is real, separate work —
+  # but nothing in this module calls start_full/1 any more, so nothing here
+  # can reach them.
   #
-  # One binary that can boot either, deliberately, so switching a machine over
-  # is a launchd argument rather than an install. Env-var fallback for the same
-  # reason `cms mcp` and `cms migrate` have one: the release launcher validates
-  # subcommands against a fixed list and never threads an unknown one through.
-  defp harness_command?(argv) do
-    "harness" in Enum.reject(argv, &(&1 in ["--", ""])) or
-      System.get_env("CMS_HARNESS") in ["1", "true"]
-  end
-
+  # --deploy-key/--server-url/--port/--node-name (see apply_harness_flags/1)
+  # are CLI-arg spellings of CMS_DEPLOY_KEY/CMS_SERVER_URL/CMS_HARNESS_PORT/
+  # CMS_NODE_NAME — a config file per working copy is the real answer for
+  # "which project uses which key" (a checkout's own .cms_harness.json can
+  # carry its own deploy_key, read per-project at join time), and these
+  # exist for the one thing a config file can't do: aim an entire machine's
+  # otherwise-unconfigured harness at somewhere other than the compiled
+  # default, from the one place — the command that starts it — that both a
+  # human and a launchd plist already have to name.
   defp start_harness do
     ensure_server_path()
     ensure_directories()
     harness_log = install_harness_file_logger()
 
-    halt_without_credential()
+    warn_if_no_credential()
 
     # The endpoint is configured `server: false` so that every *other* way this
     # application boots compiles the harness modules without opening its port.
@@ -97,22 +104,26 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  # A harness with no credential is connected to nothing, and there is nothing
-  # about binding a port that changes that. It used to bind anyway: `serving
-  # project <id> at <path>` one line after "connected to nothing", every hook
-  # refused, and every check an agent runs to see whether the harness is alive
-  # answering yes. The one before this cost a boot that came up clean and
-  # refused everything, and the fix chosen then was to make `just harness`
-  # careful — which leaves every other way of starting it reproducing the trap.
+  # One machine, many working copies, and credentials are per-project now:
+  # a checkout's own .cms_harness.json can carry its own deploy_key (see
+  # CmsHarness.Credentials.for_working_copy/1), read fresh at that project's
+  # own join attempt. A machine-wide credential (config, CMS_TOKEN,
+  # CMS_DEPLOY_KEY, or --deploy-key below) is one way to bootstrap a project
+  # that has not been given its own yet, not a precondition for the harness
+  # existing at all — a fresh install with nothing checked out on it yet, or
+  # serving only projects that already carry their own key, has no
+  # machine-wide credential to offer and nothing wrong with that.
   #
-  # So it is fatal, and fatal *before* the endpoint opens: "it did not start" is
-  # a far better answer than a listening port that refuses.
-  #
-  # Both sources are named because the config file is the one that should be
-  # used — `envs/.env` loads into the process dictionary for `env!/2` and never
-  # into the OS environment, so a credential sitting plainly in that file is
-  # invisible to `System.get_env/1` and reads as "I set it and it ignored me".
-  defp halt_without_credential do
+  # So this warns and continues rather than halting. The old rationale for
+  # halting — "connected to nothing" reads as alive while refusing every
+  # hook, which is worse than not starting — still holds for a project that
+  # tries to join and has no credential anywhere, and that failure is still
+  # loud: see CmsHarness.Project.ChannelClient.unauthorized/2, which names
+  # the project and prints the exact `mix cms.harness.onboard` fix. What
+  # changed is only the boot-time check, because boot time is machine-wide
+  # and the question it used to ask ("is there a credential") stopped having
+  # one true answer per machine.
+  defp warn_if_no_credential do
     case CmsHarness.Config.credential() do
       {:ok, _} ->
         :ok
@@ -120,24 +131,60 @@ defmodule CodeMySpecLocalWeb.Application do
       {:error, :no_credential} ->
         IO.puts(:stderr, """
 
-        cms harness: no credential, so this harness would be connected to nothing.
+        cms harness: no machine-wide credential. Starting anyway — any
+        project whose own .cms_harness.json carries its own deploy_key will
+        still connect. A project with neither fails loudly at join time,
+        naming itself and the fix.
 
-        Not starting. A listening port that refuses every hook is harder to
-        diagnose than a process that did not come up.
-
-        Set one of, in preference order:
+        To give the whole machine a bootstrap credential instead, set one of:
 
           config :code_my_spec, harness_token: "…"       # config file
           config :code_my_spec, harness_deploy_key: "…"  # sprite or container
-          CMS_TOKEN=…  /  CMS_DEPLOY_KEY=…               # environment
+          CMS_TOKEN=…  /  CMS_DEPLOY_KEY=…  / --deploy-key …
 
         Note that a value in `envs/.env` is NOT enough on its own: Dotenvy loads
         it for `env!/2`, not into the OS environment, so it has to be exported or
         put in config for `System.get_env/1` to see it.
         """)
 
-        System.halt(1)
+        :ok
     end
+  end
+
+  # CLI-arg spellings of the env vars a machine-wide harness invocation reads.
+  # Set the env var and let every existing System.get_env/1 call sites (
+  # Config.deploy_key/0, Config.server_url/0, the CMS_HARNESS_PORT read in
+  # config/runtime.exs) answer exactly as they already do — a second config
+  # surface duplicating that logic is exactly the kind of drift that made
+  # tonight's launchd plist edit silently do nothing.
+  #
+  # runtime.exs's CMS_HARNESS_PORT read already ran by the time this executes
+  # (config loads before Application.start/2), so --port takes the config
+  # this sets directly rather than through the env var it did not exist in
+  # time to be read from.
+  # Returns the leftover argv (subcommand words, unrecognized flags) so
+  # handle_cli_args/1 still sees exactly what it used to — a flag consumed
+  # here must not also fall through to `unknown_command/1`.
+  defp apply_harness_flags(argv) do
+    {opts, rest, _invalid} =
+      OptionParser.parse(argv,
+        strict: [deploy_key: :string, server_url: :string, port: :string, node_name: :string]
+      )
+
+    if key = opts[:deploy_key], do: System.put_env("CMS_DEPLOY_KEY", key)
+    if url = opts[:server_url], do: System.put_env("CMS_SERVER_URL", url)
+    if node = opts[:node_name], do: System.put_env("CMS_NODE_NAME", node)
+
+    if port = opts[:port] do
+      Application.put_env(
+        :code_my_spec,
+        CmsHarness.Web.Endpoint,
+        Application.get_env(:code_my_spec, CmsHarness.Web.Endpoint, [])
+        |> Keyword.put(:http, ip: {127, 0, 0, 1}, port: String.to_integer(port))
+      )
+    end
+
+    rest
   end
 
   # Always, and alongside stderr rather than instead of it.
@@ -319,89 +366,31 @@ defmodule CodeMySpecLocalWeb.Application do
     Supervisor.start_link(children, strategy: :one_for_one, name: CodeMySpec.Supervisor)
   end
 
-  defp start_full(argv) do
-    handle_cli_args(argv)
-
-    ensure_server_path()
-    ensure_directories()
-    maybe_install_file_logger()
-
-    children =
-      [
-        CodeMySpec.Vault,
-        CodeMySpec.Repo,
-        CodeMySpec.Environments.registry_child_spec(),
-        CodeMySpecLocalWeb.Migrator,
-        {Phoenix.PubSub, name: CodeMySpec.PubSub},
-        {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
-        # Analysis run service — background analyzers + run ledger. Local-only:
-        # the web build compiles the schemas but never runs analyzers.
-        CodeMySpec.Analysis.Supervisor,
-        CodeMySpec.Auth.AuthState,
-        CodeMySpec.Embeddings.Serving,
-        # session_idle_timeout: 4h — agent workflow has long gaps between MCP
-        # calls (writing code, running tests, browser automation). The Anubis
-        # default of 30 min was dropping the session ~8-10 times per multi-hour
-        # session, forcing manual `/mcp` reconnects (-32603 "No active session").
-        # 4h covers a normal working block; supervisor restarts re-arm the timer.
-        {CodeMySpec.McpServers.LocalServer,
-         transport: {:streamable_http, start: true}, session_idle_timeout: to_timeout(hour: 4)},
-        # Harness data plane: Presence = lane heartbeat, WorkSource resolves the
-        # next requirement for a parked lane. The per-account Slipstream proxy to
-        # the server's user plane is started by SocketSupervisor.
-        CodeMySpecLocalWeb.Presence,
-        CodeMySpec.AgentHarness.WorkSource,
-        CodeMySpecLocalWeb.Endpoint,
-        # Before the watcher, because the watcher claims a project lease as it
-        # starts watching and that claim is a call into this process. Its being
-        # alive is what holds this harness's leases, so it outliving the watcher
-        # is also what keeps them held.
-        CodeMySpec.ProjectSync.FileWatcherServer,
-        CodeMySpecLocalWeb.SocketSupervisor,
-        CodeMySpecCli.PresenceClient
-      ] ++ tunnel_children()
-
-    opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
-
-    case Supervisor.start_link(children, opts) do
-      {:ok, pid} ->
-        print_server_banner()
-        {:ok, pid}
-
-      other ->
-        other
-    end
-  end
-
+  # The standalone app (its own SQLite Repo, CodeMySpecLocalWeb.Endpoint, the
+  # in-BEAM MCP server, Migrator, and everything else this used to wire into
+  # a Supervisor here) is gone from this path — nothing in `start/2` calls
+  # this module's boot code any more, by design: the harness is the only
+  # thing this binary boots. The modules themselves are still compiled into
+  # the release (splitting them into their own OTP app so they stop shipping
+  # as bytes too is separate, real work), but there is deliberately no flag,
+  # env var, or subcommand left that reaches them.
   @impl true
   def stop(_state), do: :ok
-
-  # Quick Cloudflare tunnel — :dev_cli only. Config in config/dev_cli.exs.
-  defp tunnel_children do
-    if Application.get_env(:code_my_spec, :env) == :dev_cli do
-      tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
-
-      tunnel_opts =
-        Keyword.merge(tunnel_config,
-          endpoint: CodeMySpecLocalWeb.Endpoint,
-          otp_app: :code_my_spec,
-          origin_url: tunnel_config[:origin_url] || "http://127.0.0.1:4004"
-        )
-
-      [{ClientUtils.CloudflareTunnel, tunnel_opts}]
-    else
-      []
-    end
-  end
 
   defp cli_argv do
     # Only a packaged release gets its argv parsed as `cms` subcommands. Run
     # from source, `System.argv()` holds the mix task name and its flags, and
-    # `Burrito.Util.Args.argv/0` hands those straight back — so
-    # `handle_cli_args/1` would reject "cms.content.publish" as an unknown
+    # reading it here would reject "cms.content.publish" as an unknown
     # subcommand and halt the VM before the task ran. Mix is absent from the
     # release, which makes its presence the signal for "booted from source."
-    if running_under_mix?(), do: [], else: call_optional(@burrito_args, :argv) || []
+    #
+    # A packaged release still reads through `System.argv()` — it is the
+    # `-extra` args the release script's boot line already carries, Burrito or
+    # not. `Burrito.Util.Args.argv/0` goes first only because a Burrito build
+    # rewrites which args land in `-extra` (unwrapping its own launcher
+    # arguments first); the plain `mix release` this ships as today has no
+    # such module loaded, and `System.argv()` is exactly what it needs.
+    if running_under_mix?(), do: [], else: call_optional(@burrito_args, :argv) || System.argv()
   rescue
     _ -> []
   end
@@ -458,17 +447,17 @@ defmodule CodeMySpecLocalWeb.Application do
 
   defp help_text do
     """
-    cms — CodeMySpec local server
+    cms — CodeMySpec light harness
 
-    The cms process hosts the Phoenix endpoint on :4003 and the MCP server
-    the Claude Code plugin talks to. Your workflow happens in Claude Code;
-    cms just needs to be running.
+    cms watches whichever working copies it is told to serve, runs analyzers
+    against them, and answers hooks and MCP calls by proxying to the server —
+    it holds no database and no local web UI of its own. Your workflow
+    happens in Claude Code; cms just needs to be running.
 
     Usage:
-      cms start        Run the server in the foreground (ctrl-C to stop).
-      cms harness      Run the light harness in the foreground: watch this
-                       checkout, run analyzers, report to codemyspec.com. Holds
-                       no local database — the model lives on the server.
+      cms start        Run the harness in the foreground (ctrl-C to stop).
+                        Serves every checkout whose .cms_harness.json names
+                        a project this machine can reach.
       cms migrate --project <cloud-project-id>
                        Copy this checkout's stories, rules, criteria, personas
                        and epics to that project on codemyspec.com. Run it from
@@ -478,22 +467,22 @@ defmodule CodeMySpecLocalWeb.Application do
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
+    Flags (all optional; a working copy's own .cms_harness.json deploy_key
+    is the normal way one project gets a credential — these aim the whole
+    machine instead):
+      --deploy-key <key>    Bootstrap credential for projects with no
+                             deploy_key of their own yet.
+      --server-url <url>    Server to report to. Defaults to codemyspec.com.
+      --port <port>         HTTP port for hooks/MCP. Defaults to 4005.
+      --node-name <name>    Erlang node name. Only matters when running more
+                             than one cms on the same machine.
+
     Lifecycle is managed by the service supervisor — `brew services` (launchd)
     on macOS, a Shawl-wrapped service on Windows (installed by
     installers/windows/install.ps1). Both run `cms start`, the release
     launcher's foreground boot command. Use those to start/stop/restart and to
-    read the service log. Application logs are written to ~/.codemyspec/server.log.
+    read the service log. Application logs are written to ~/.codemyspec/harness.log.
     """
-  end
-
-  defp print_server_banner do
-    unless silent?() do
-      version = Application.spec(:code_my_spec, :vsn)
-      pid = System.pid()
-      log = Path.expand("~/.codemyspec/server.log")
-
-      IO.puts("cms v#{version}  ·  pid #{pid}  ·  http://localhost:4003  ·  log #{log}")
-    end
   end
 
   defp silent? do
@@ -625,12 +614,6 @@ defmodule CodeMySpecLocalWeb.Application do
       "/opt/homebrew/bin",
       "/usr/local/bin"
     ]
-  end
-
-  defp maybe_install_file_logger do
-    if Application.get_env(:code_my_spec, :install_file_logger, false) do
-      CodeMySpec.Logging.install_file_handler!(source: "server")
-    end
   end
 
   # Dispatch to a module only when it's loaded. Used for the Burrito.Util.Args
