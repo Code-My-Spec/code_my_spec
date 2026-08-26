@@ -390,10 +390,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_event("viewport", %{"width" => width}, socket) when is_number(width) do
     screen = if width < 768, do: :narrow, else: :wide
 
-    {:noreply,
-     socket
-     |> assign(:screen, screen)
-     |> assign(:open_panels, fit(socket.assigns.open_panels, screen))}
+    socket =
+      socket
+      |> assign(:screen, screen)
+      |> assign(:open_panels, fit(socket.assigns.open_panels, screen))
+
+    # A screen that *loads* with an offer already waiting has to resolve it
+    # here, not only when one arrives. The first paint happens before the width
+    # is known, so an offer made while nobody was looking would otherwise sit as
+    # a mark on a desk — where the whole point is that the change is free and
+    # simply appears.
+    case {screen, socket.assigns.offer} do
+      {:wide, offer} when not is_nil(offer) ->
+        ScreenState.take(socket.assigns.current_scope)
+        {:noreply, take_offer(socket)}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_panel", %{"panel" => name}, socket) do
