@@ -156,7 +156,20 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         {current_title(@steps)}
       </p>
 
-      <p :if={current_detail(@steps)} data-test="step-detail" class="text-sm opacity-80">
+      <%!-- Desktop only. Two sentences explaining the step are worth the room
+      on a desk and are the bulk of the header on a phone, where the point is to
+      glance and know. Hidden rather than dropped: the sentences are still the
+      thing that makes a step mean something to somebody who does not know the
+      graph, and criterion 2927 still holds them to plain language with no
+      module names, file paths or counts of internals.
+
+      `md:` is 768px, the same threshold `handle_event("viewport", ...)` uses to
+      decide narrow from wide — one number, two places that must agree. --%>
+      <p
+        :if={current_detail(@steps)}
+        data-test="step-detail"
+        class="hidden text-sm opacity-80 md:block"
+      >
         {current_detail(@steps)}
       </p>
     </nav>
