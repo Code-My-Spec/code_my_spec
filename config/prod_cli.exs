@@ -59,7 +59,17 @@ config :code_my_spec, CodeMySpec.Repo,
 # Disable the main web endpoint
 config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
-# Local web endpoint (port 4003)
+# CodeMySpecLocalWeb.Endpoint's own config (port 4003) is dead weight now —
+# nothing in application.ex starts it in this build any more — but it stays
+# so nothing else that reads it at compile time breaks. What actually binds
+# 4003 in a prod_cli build is the harness. The base config.exs default
+# (4005) exists so a dev laptop can run this alongside a :dev_cli harness on
+# 4004; a real install has no such neighbor to avoid, and the plugin
+# published for this build already names 4003 (rewritten from the source
+# tree's 4004 by mix cms.package_plugin) — so this is the port that has to
+# match, not a preference.
+config :code_my_spec, CmsHarness.Web.Endpoint, http: [ip: {127, 0, 0, 1}, port: 4003]
+
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   code_reloader: false,
   check_origin: false
