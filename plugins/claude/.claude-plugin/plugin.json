@@ -27,13 +27,6 @@
         "X-Harness-Id": "${CMS_HARNESS_ID}"
       }
     },
-    "cms_cloud": {
-      "type": "http",
-      "url": "https://dev.codemyspec.com/mcp/harness",
-      "headers": {
-        "X-Harness-Id": "${CMS_HARNESS_ID}"
-      }
-    },
     "vibium": {
       "type": "stdio",
       "command": "vibium",

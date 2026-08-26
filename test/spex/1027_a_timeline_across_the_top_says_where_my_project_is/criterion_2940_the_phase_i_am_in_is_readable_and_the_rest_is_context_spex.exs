@@ -99,6 +99,39 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
         {:ok, context}
       end
 
+      then_ "and a collapsed phase still draws a mark for every step it has", context do
+        # The claim this block exists for is visual, and the counting blocks
+        # above pass either way — which is how a collapsed phase came to render
+        # its name and nothing else. A step used to draw only a tick, and only
+        # when it was done, so three of five phases were bare words and the one
+        # with a single done step read as "one thing here" rather than "one of
+        # five done".
+        #
+        # Bounded to the timeline's own list: the conversation below it is not
+        # part of this claim and must not be counted.
+        timeline = context.html |> String.split("</ol>") |> hd()
+
+        collapsed =
+          timeline
+          |> String.split(~s(data-test="timeline-phase"))
+          |> tl()
+          |> Enum.filter(&String.contains?(&1, ~s(data-expanded="false")))
+
+        assert collapsed != [], "no collapsed phase to check"
+
+        for phase <- collapsed do
+          steps = Regex.scan(~r/data-test="timeline-step"/, phase) |> length()
+          marks = Regex.scan(~r/size-2 rounded-full/, phase) |> length()
+
+          assert marks == steps,
+                 "a collapsed phase has #{steps} step(s) and draws #{marks} mark(s). " <>
+                   "Zoomed out is not absent — a phase you cannot count the steps of " <>
+                   "answers none of the questions the neighbouring phases are there for."
+        end
+
+        {:ok, context}
+      end
+
       then_ "and the whole graph is still on the line", context do
         steps = Regex.scan(~r/data-test="timeline-step"/, context.html) |> length()
 
