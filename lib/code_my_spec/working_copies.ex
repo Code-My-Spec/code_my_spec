@@ -312,6 +312,41 @@ defmodule CodeMySpec.WorkingCopies do
     })
   end
 
+  @doc """
+  Record where this checkout's preview answers.
+
+  Only for the copy the project designated. The preview runs where the project
+  runs, and every worktree can run the app — so an address on a sibling checkout
+  is a second answer to a question that has one, and the panel would have to
+  pick between them with nothing to pick on.
+
+  Refused rather than ignored: onboarding a worktree with a preview URL is a
+  person believing they have set the project's preview, and silence there is the
+  failure this returns instead.
+  """
+  @spec record_preview_url(WorkingCopy.t(), String.t() | nil) ::
+          {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
+  def record_preview_url(%WorkingCopy{main: true} = harness, url) do
+    save(harness, %{preview_url: url})
+  end
+
+  def record_preview_url(%WorkingCopy{}, _url), do: {:error, :not_the_main_copy}
+
+  @doc """
+  Where this project's preview answers, or nothing.
+
+  Nothing is the ordinary state — a project whose main checkout was onboarded
+  before this existed, or one with no main checkout at all. The panel says so
+  rather than showing an empty frame.
+  """
+  @spec preview_url(Scope.t()) :: String.t() | nil
+  def preview_url(%Scope{} = scope) do
+    case main(scope) do
+      %WorkingCopy{preview_url: url} when is_binary(url) and url != "" -> url
+      _ -> nil
+    end
+  end
+
   @doc "The id `ensure_default/1` resolves to, without touching the database."
   @spec default_id(Ecto.UUID.t()) :: Ecto.UUID.t()
   def default_id(project_id) when is_binary(project_id) do

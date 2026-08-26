@@ -67,6 +67,15 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # partial unique index rather than by whoever remembers to clear the others.
     field :main, :boolean, default: false
 
+    # Where this checkout's running preview answers, when it is the one serving
+    # the project. Null on every other copy, and expected to be: every worktree
+    # can run the app and only one of them is the project's, so an address on a
+    # sibling would be a second answer to a question with one.
+    #
+    # Written down rather than held by the harness, so a restart does not lose
+    # it and nobody has to onboard the checkout again to get it back.
+    field :preview_url, :string
+
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
     # says which machine it is announcing from. That is a real state — "we have
@@ -88,7 +97,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :project_id,
       :root,
       :device_id,
-      :main
+      :main,
+      :preview_url
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)

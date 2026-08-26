@@ -93,8 +93,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     relay_model_turns? = Enum.member?(args, "--relay-model-turns")
 
     case Enum.member?(args, "--check") do
-      true -> check(env, root)
-      false -> onboard(env, root, relay_model_turns?, project_flag(args))
+      true ->
+        check(env, root)
+
+      false ->
+        onboard(env, root, relay_model_turns?, project_flag(args), preview_url_flag(args))
     end
   end
 
@@ -137,11 +140,21 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  defp project_flag(args) do
+  defp project_flag(args), do: flag(args, "--project")
+
+  # Where this checkout's preview answers, for the copy that serves the project.
+  #
+  # Set at onboarding because that is the one moment something knows both that
+  # this machine exists and that it is the one serving this project — the same
+  # reason the designation lives here. Recorded rather than held, so a harness
+  # restart does not lose it.
+  defp preview_url_flag(args), do: flag(args, "--preview-url")
+
+  defp flag(args, name) do
     args
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.find_value(fn
-      ["--project", id] -> id
+      [^name, value] -> value
       _ -> nil
     end)
   end
@@ -218,16 +231,39 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     Mix.shell().info("not onboarded: #{root}\nrun: #{remedy}")
   end
 
-  defp onboard(env, root, relay_model_turns?, project_id) do
+  defp onboard(env, root, relay_model_turns?, project_id, preview_url) do
     bootstrap_local_dev_env(root)
 
     with {:ok, id} <- identity(env, root, project_id),
+         :ok <- record_preview_url(env, root, id, preview_url),
          :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
       outstanding(root, id, git)
     else
       {:error, message} -> Mix.raise(message)
     end
+  end
+
+  # Into the checkout's own config, which is where the harness will read it and
+  # report it from. Written here because onboarding is the one moment something
+  # knows both that this machine exists and that it is the one serving this
+  # project — and written down rather than held, so a restart does not lose it.
+  #
+  # No flag, nothing recorded. A checkout with no preview is the ordinary state
+  # and the panel says so; guessing an address would point a frame at nowhere.
+  defp record_preview_url(_env, _root, _id, nil), do: :ok
+
+  defp record_preview_url(env, root, id, url) do
+    Environments.write_file(
+      env,
+      @harness_config_file,
+      Jason.encode!(%{working_copy_id: id, harness_id: id, root: root, preview_url: url},
+        pretty: true
+      )
+    )
+
+    Mix.shell().info("      preview:    #{url}")
+    :ok
   end
 
   # `address_model_turns/4` is opt-in, not the default: its proxy only
