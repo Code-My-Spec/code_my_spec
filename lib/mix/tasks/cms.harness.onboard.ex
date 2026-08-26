@@ -94,7 +94,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     case Enum.member?(args, "--check") do
       true -> check(env, root)
-      false -> onboard(env, root, relay_model_turns?)
+      false -> onboard(env, root, relay_model_turns?, project_flag(args))
     end
   end
 
@@ -110,17 +110,30 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # every one of those is a fixture standing in for a surface. The boundary said
   # so first: `CodeMySpecSpex` may not reference `CmsHarness`, and the way past
   # that is not to write the bytes yourself.
+  # Where the disk is, which is a different question from which project this
+  # checkout belongs to.
+  #
+  # A registered environment wins when there is one: that is the remote-checkout
+  # case, and writing locally there would put the config on the wrong machine.
+  # Otherwise the disk is here.
+  #
+  # `--project` used to *require* a registered environment and raise without
+  # one, which blocked the case the flag now exists for — onboarding a local
+  # checkout for a project this session is not scoped to.
   defp environment(root, args) do
-    case project_flag(args) do
+    registered =
+      case project_flag(args) do
+        nil -> nil
+        project_id -> Environments.lookup_registered(project_id)
+      end
+
+    case registered do
       nil ->
         {:ok, env} = Environments.create(:local, working_dir: root)
         env
 
-      project_id ->
-        case Environments.lookup_registered(project_id) do
-          nil -> Mix.raise("no environment is registered for project #{project_id}")
-          env -> env
-        end
+      env ->
+        env
     end
   end
 
@@ -205,10 +218,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     Mix.shell().info("not onboarded: #{root}\nrun: #{remedy}")
   end
 
-  defp onboard(env, root, relay_model_turns?) do
+  defp onboard(env, root, relay_model_turns?, project_id) do
     bootstrap_local_dev_env(root)
 
-    with {:ok, id} <- identity(env, root),
+    with {:ok, id} <- identity(env, root, project_id),
          :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
       outstanding(root, id, git)
@@ -506,10 +519,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   # Read through the environment, so a working copy that already has an id is a
   # file the spec wrote through the same surface — not a fixture reaching past it.
-  defp identity(env, root) do
+  defp identity(env, root, project_id) do
     case Environments.read_file(env, @harness_config_file) do
       {:ok, contents} -> existing_id(contents, env, root)
-      _ -> mint(root)
+      _ -> mint(root, project_id)
     end
   end
 
@@ -537,7 +550,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp recorded_id(_map, env, root), do: mint_and_record(env, root)
 
   defp mint_and_record(env, root) do
-    with {:ok, id} <- mint(root) do
+    with {:ok, id} <- mint(root, nil) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `Environments` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
@@ -551,8 +564,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # to mint it cannot work for a copy nobody serves yet: the harness learns
   # which copies to serve by looking ids up, so a copy with no id would never
   # be served and would never acquire one.
-  defp mint(root) do
-    with {:ok, project} <- ProjectIdentity.resolve(root),
+  defp mint(root, project_id) do
+    with {:ok, project} <- project_for(root, project_id),
          _ = ensure_local_credential(project.id),
          {:ok, token} <- Token.access_token(),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
@@ -573,6 +586,42 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
       other ->
         {:error, "Could not get a harness id for #{root} from the server: #{inspect(other)}"}
+    end
+  end
+
+  # Which project this checkout belongs to.
+  #
+  # `--project` wins. Without it the answer comes from the directory —
+  # `.code_my_spec/config.yml`, then an existing `.cms_harness.json` — which is
+  # right when a checkout knows what it is and useless when it does not. A
+  # checkout being onboarded for the first time often does not: the submodule
+  # carrying that config may not even be checked out yet.
+  #
+  # Silently adopting whatever the directory named is the failure this fixes. It
+  # attached a scratch directory to an unrelated project and minted a working
+  # copy there, with nothing in the output saying so.
+  defp project_for(root, nil), do: ProjectIdentity.resolve(root)
+
+  defp project_for(root, project_id) do
+    case ProjectIdentity.resolve(root) do
+      {:ok, %{id: ^project_id}} = resolved ->
+        resolved
+
+      {:ok, %{id: other}} ->
+        # Said out loud rather than resolved quietly either way. One of the two
+        # is wrong and only the person running this knows which.
+        Mix.shell().info([
+          :yellow,
+          "warning: #{root} says it belongs to project #{other}, and you asked for " <>
+            "#{project_id}. Using #{project_id}. If that is wrong, fix " <>
+            "`.code_my_spec/config.yml` in that checkout rather than passing the flag.",
+          :reset
+        ])
+
+        {:ok, %{id: project_id, root: root, working_copy_id: nil}}
+
+      {:error, _reason} ->
+        {:ok, %{id: project_id, root: root, working_copy_id: nil}}
     end
   end
 

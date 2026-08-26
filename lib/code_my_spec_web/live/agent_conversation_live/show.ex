@@ -130,6 +130,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # broken promise as a box over something that never had a lane.
   defp talkable?(_scope, nil), do: false
 
+  defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    scope
+    |> Agents.list_running()
+    |> Enum.any?(&(&1.id == agent_id))
+  end
+
+  defp talkable?(_scope, _conversation), do: false
+
   # Whether this thread is the project's own agent.
   #
   # By identity, not by role: `agents.role` defaults to "main", so every agent
@@ -144,14 +152,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   defp main_agent?(_scope, _conversation), do: false
-
-  defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    scope
-    |> Agents.list_running()
-    |> Enum.any?(&(&1.id == agent_id))
-  end
-
-  defp talkable?(_scope, _conversation), do: false
 
   # What this conversation is still waiting to hand over. Read from the record
   # rather than kept in assigns: a person who reloads has not stopped waiting,
