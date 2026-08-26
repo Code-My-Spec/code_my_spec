@@ -120,6 +120,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
+  component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
 
   # Coding agents on this machine's working copies. Registered here rather than
   # only existing as modules — the spex call `execute/2` directly, which proves
