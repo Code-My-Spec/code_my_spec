@@ -235,8 +235,19 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
     cloudflare_client_secret: env!("CLOUDFLARE_CLIENT_SECRET", :string, ""),
     resend_client_id: env!("RESEND_CLIENT_ID", :string, ""),
     resend_client_secret: env!("RESEND_CLIENT_SECRET", :string, ""),
-    # No secret: OpenAI's is a public-client flow, PKCE and a client id only.
-    openai_client_id: env!("OPENAI_CLIENT_ID", :string, ""),
+    # No `openai_client_id` here on purpose. OpenAI's is a public-client flow —
+    # PKCE and a client id, no secret — and the client id is *theirs*: their
+    # Codex CLI client, because OpenAI documents no third-party registration for
+    # subscription sign-in. `Providers.OpenAI.client_id/0` hardcodes it and
+    # explains why.
+    #
+    # This line used to read `env!("OPENAI_CLIENT_ID", :string, "")`, and
+    # `Application.get_env/3` only falls back to its own default when the key is
+    # absent — so the empty string won, on every environment, and nobody could
+    # connect a ChatGPT subscription anywhere. The device code request succeeds
+    # with an empty client id, so the user completed the flow, was told it
+    # worked, and only the exchange failed. An env var offering to configure
+    # something that cannot be configured is the whole trap.
     base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
     deploy_key: env!("DEPLOY_KEY"),
     indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)
