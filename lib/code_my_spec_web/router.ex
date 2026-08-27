@@ -246,6 +246,12 @@ defmodule CodeMySpecWeb.Router do
     get "/harnesses/:id", HarnessLookupController, :show
     post "/harnesses", HarnessLookupController, :create
 
+    # Where this copy's preview answers, provisioned on first ask. Here rather
+    # than in onboarding because making a tunnel needs our Cloudflare
+    # credential, and onboarding ships in `client_utils` so a generated
+    # application can run it — see the action's doc.
+    post "/harnesses/:id/preview", HarnessLookupController, :preview
+
     # A machine announcing itself, which happens before it has any working copy
     # — so it cannot ride `harness_project:<project_id>`, a channel per
     # checkout. Here rather than there for the same reason the lookup above is.
