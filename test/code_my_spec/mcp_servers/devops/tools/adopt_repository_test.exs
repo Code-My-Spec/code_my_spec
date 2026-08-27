@@ -1,0 +1,93 @@
+defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.IntegrationsFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.GitHub
+  alias CodeMySpec.McpServers.Devops.Tools.AdoptRepository
+  alias CodeMySpec.Projects
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
+
+  setup do
+    {:ok, working_dir} = Briefly.create(directory: true)
+    File.write!(Path.join(working_dir, "README.md"), "# market_my_spec\n")
+
+    {:ok, bare_dir} = Briefly.create(directory: true)
+    {_, 0} = System.cmd("git", ["init", "--bare", "-b", "main", bare_dir])
+
+    scope = full_scope_fixture()
+    _ = github_integration_fixture(scope.user)
+    scope = %{scope | environment: Environment.new(:local, working_dir)}
+
+    %{scope: scope, project: scope.active_project, bare_dir: bare_dir}
+  end
+
+  defp stub_github(fun), do: Req.Test.stub(GitHub, fun)
+
+  defp json(conn, status, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, Jason.encode!(body))
+  end
+
+  describe "execute/2" do
+    # The whole point: a real repo named "market_my_spec" (underscores) does
+    # not exactly match what setup would derive from a project name like
+    # "Market My Spec" (dashes) — a plain run_devops_setup would miss this
+    # lookup and create a second, unrelated repository. Passing the real name
+    # explicitly is what makes the lookup find and push to the real one — a
+    # local bare repo stands in for GitHub here so the push is real but the
+    # network call is not.
+    test "looks up the repository by its real name, adopts it, and pushes — creating nothing new",
+         %{scope: scope, project: project, bare_dir: bare_dir} do
+      stub_github(fn
+        %{method: "GET", request_path: "/user"} = conn ->
+          json(conn, 200, %{"login" => "johns10"})
+
+        %{method: "GET", request_path: "/repos/johns10/market_my_spec"} = conn ->
+          json(conn, 200, %{"name" => "market_my_spec", "clone_url" => bare_dir})
+
+        %{method: "POST"} = conn ->
+          flunk("created a repository instead of adopting the real one")
+          conn
+      end)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      params = %{project_id: project.id, repository_name: "market_my_spec"}
+
+      assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
+
+      assert response.isError == false
+      assert response_text(response) =~ "market_my_spec"
+
+      # Pushed for real, to the real (stand-in) remote — not skipped, not
+      # redirected to a repo nobody asked for.
+      assert {log, 0} = System.cmd("git", ["log", "--oneline"], cd: bare_dir)
+      assert log != ""
+
+      project = Projects.get_project!(scope, project.id)
+      assert project.code_repo == bare_dir
+    end
+
+    test "refuses for a project that is not on this account", %{scope: scope} do
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      params = %{
+        project_id: "00000000-0000-0000-0000-000000000000",
+        repository_name: "whatever"
+      }
+
+      assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
+      assert response.isError == true
+      assert response_text(response) =~ "no project"
+    end
+  end
+
+  defp response_text(response) do
+    protocol = Response.to_protocol(response)
+    hd(protocol["content"])["text"]
+  end
+end

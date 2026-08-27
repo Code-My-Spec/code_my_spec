@@ -202,4 +202,5 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.LinkServer)
   component(CodeMySpec.McpServers.Devops.Tools.ProviderRequest)
   component(CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey)
+  component(CodeMySpec.McpServers.Devops.Tools.AdoptRepository)
 end
