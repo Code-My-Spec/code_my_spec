@@ -2,38 +2,37 @@ defmodule CodeMySpec.Provisioning.Registry do
   @moduledoc """
   Where built images live, and how they stop costing money.
 
-  A registry per customer, on the box the customer's app already runs on,
-  backed by the customer's own bucket.
+  On the box the app already runs on, backed by the customer's own bucket —
+  and, since an account can put more than one project on the same box, a
+  singleton there rather than one container per project.
 
-  This was the other way round first — one shared registry of ours, one shared
-  bucket, a repository per project — on the reasoning that story 992 is called
-  *my images are built on infrastructure I never maintain*, so a bucket Sam
-  pays for holding a registry Sam's lifecycle rule prunes would be
-  infrastructure Sam maintains.
+  This was one shared registry of ours first, on the reasoning that story 992
+  is called *my images are built on infrastructure I never maintain*, so a
+  bucket Sam pays for holding a registry Sam's lifecycle rule prunes would be
+  infrastructure Sam maintains. That argument does not survive contact with
+  what we already install on his box: setup puts Docker, kamal-proxy, a
+  firewall and TLS there and he touches none of it, and a registry container
+  is the same kind of thing.
 
-  That argument does not survive contact with what we already install on his
-  box. Setup puts Docker, kamal-proxy, a firewall and TLS there and he touches
-  none of it. A registry container is the same kind of thing: provisioned by
-  us, operated by us, never opened by him. "Infrastructure I never maintain"
-  is about who operates it, not about whose account it bills to — read the
-  other way, his application server would breach the promise too.
+  It then went per-customer, per-box: a shared registry meant one store
+  holding every customer's application images, which is a cross-tenant
+  boundary, and isolation was the acceptance criterion for the multi-tenant
+  work — a bug in one registry's auth would leak every customer's proprietary
+  code as a pullable image. That held exactly as long as "per customer" and
+  "per box" were the same fact. They no longer are: an account can put a
+  second project on a box it already has one on, and per-customer isolation
+  inside a shared box means per-project data on that box, not per-project
+  processes — the same shape `Database` settled on. What actually isolates
+  one project's images from another's here is the repository path within the
+  registry (`bucket_name/2`, `repository/2`) and each project's own htpasswd
+  entry, not a second registry nobody asked this box to run twice.
 
-  What the shared version cost was real: another always-on box, a public
-  hostname with a certificate, an auth secret to rotate, and one store holding
-  every customer's application images. That last one is the reason this
-  changed. Isolation is the acceptance criterion for our multi-tenant work,
-  and a bug in one registry's auth would leak every customer's proprietary
-  code as a pullable image. Per-customer, the blast radius is one customer's
-  own box.
-
-  Both criteria are still met, and the module docstring for the shared design
-  conceded as much — neither asked for sharing. 8240 wants a deploy that pulls
-  without a GitHub credential: it pulls from `localhost`, so there is no
-  credential at all. 8241 wants old images to expire without anyone
-  remembering: retention is still the bucket lifecycle rule we have already
-  written and debugged against Hetzner's Ceph, which is the part of running a
-  registry that actually bites — they fill disks silently, because every image
-  ever built stays until something deletes it.
+  8240 wants a deploy that pulls without a GitHub credential: it pulls from
+  `localhost`, so there is no credential at all. 8241 wants old images to
+  expire without anyone remembering: retention is still the bucket lifecycle
+  rule we have already written and debugged against Hetzner's Ceph, which is
+  the part of running a registry that actually bites — they fill disks
+  silently, because every image ever built stays until something deletes it.
 
   ## Why the address is `localhost`
 
@@ -261,11 +260,16 @@ defmodule CodeMySpec.Provisioning.Registry do
 
   @container "cms-registry"
   @volume "cms-registry-data"
-  @username "cms"
+  @username_prefix "cms"
   @password_secret "registry_password"
 
   @doc """
   The credential this project's registry answers to.
+
+  The username is derived from the project, not a shared constant, now that
+  the registry itself can be — one htpasswd file on a shared box holds an
+  entry per project, and two projects both named `cms` could not both have a
+  password in it.
 
   Minted once and kept in `ProjectSecrets`, like the age keys and the server
   key. kamal requires a registry password even when the registry would take
@@ -281,16 +285,28 @@ defmodule CodeMySpec.Provisioning.Registry do
   @spec credential(Scope.t()) ::
           {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
   def credential(%Scope{} = scope) do
-    case ProjectSecrets.fetch_value(scope, @password_secret) do
-      {:ok, password} when is_binary(password) and password != "" ->
-        {:ok, %{username: @username, password: password}}
+    with {:ok, username} <- tenant_username(scope) do
+      case ProjectSecrets.fetch_value(scope, @password_secret) do
+        {:ok, password} when is_binary(password) and password != "" ->
+          {:ok, %{username: username, password: password}}
+
+        _ ->
+          password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+          with {:ok, _} <- ProjectSecrets.put_value(scope, @password_secret, password) do
+            {:ok, %{username: username, password: password}}
+          end
+      end
+    end
+  end
+
+  defp tenant_username(scope) do
+    case project_slug(scope) do
+      slug when is_binary(slug) and slug != "" ->
+        {:ok, "#{@username_prefix}_#{String.replace(slug, "-", "_")}"}
 
       _ ->
-        password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-
-        with {:ok, _} <- ProjectSecrets.put_value(scope, @password_secret, password) do
-          {:ok, %{username: @username, password: password}}
-        end
+        {:error, :no_project}
     end
   end
 
@@ -302,9 +318,11 @@ defmodule CodeMySpec.Provisioning.Registry do
   nothing of ours in the serving path; this starts somebody else's daemon and
   tells it where its blobs live.
 
-  Idempotent, because setup runs more than once: the container is replaced
-  rather than added to, so a second run converges instead of failing on a name
-  that is already taken.
+  Idempotent at both grains: an already-running container is left alone
+  rather than restarted out from under whichever other project's app is
+  pulling from it right now, and this project's own htpasswd entry is
+  upserted rather than assumed — the container may already be running with a
+  different project's entry the first time this one reaches it.
 
   `:bind` is the address it listens on, loopback by default. That is the one
   knob the topology turns — a builder on another machine has to reach this
@@ -321,21 +339,63 @@ defmodule CodeMySpec.Provisioning.Registry do
     location = Keyword.get(opts, :location, "fsn1")
 
     with {:ok, credentials} <- credentials(scope, opts),
-         {:ok, credential} <- serve_credential(scope, opts) do
+         {:ok, credential} <- serve_credential(scope, opts),
+         :ok <- ensure_htpasswd(run, credential, opts) do
       bucket = bucket_name(scope, opts)
-      command = serve_command(bucket, credentials, credential, bind, location, opts)
 
       # This box pulls from the registry it is about to host, so it needs the
       # same exemption the builder does.
       run.([trust_command("#{bind}:#{port()}")])
 
-      case run.([command]) do
-        {_output, 0} ->
+      case ensure_container(run, bucket, credentials, bind, location, opts) do
+        :ok ->
           await_registry(run, bucket, bind, credential, Keyword.get(opts, :registry_attempts, 15))
 
-        {output, status} ->
-          {:error, {:registry_start_failed, status, String.trim(output)}}
+        {:error, reason} ->
+          {:error, reason}
       end
+    end
+  end
+
+  defp ensure_container(run, bucket, credentials, bind, location, opts) do
+    if container_running?(run) do
+      :ok
+    else
+      command = create_container_command(bucket, credentials, bind, location, opts)
+
+      case run.([command]) do
+        {_output, 0} -> :ok
+        {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
+      end
+    end
+  end
+
+  defp container_running?(run) do
+    case run.(["docker ps -q -f name=^/#{@container}$"]) do
+      {output, 0} -> String.trim(output) != ""
+      _ -> false
+    end
+  end
+
+  # Removes only this project's own prior line, if it has one, and appends
+  # the current one — every other project's entry in the file is untouched.
+  # `|| true` on the filter step: `grep -v` exits 1 when nothing survives the
+  # filter (the file held only this project's line), which is not a failure
+  # here, just an empty starting point for the line about to be appended.
+  defp ensure_htpasswd(run, credential, opts) do
+    auth_dir = Keyword.get(opts, :auth_dir, "/etc/cms-registry")
+    path = "#{auth_dir}/htpasswd"
+    entry = "#{credential.username}:#{Bcrypt.hash_pwd_salt(credential.password)}"
+
+    command =
+      "mkdir -p #{auth_dir} && touch #{path} && " <>
+        "(grep -v #{shell_escape("^#{credential.username}:")} #{path} > #{path}.tmp || true) && " <>
+        "printf '%s\\n' #{shell_escape(entry)} >> #{path}.tmp && " <>
+        "mv #{path}.tmp #{path} && chmod 600 #{path}"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:registry_credential_not_set, status, String.trim(output)}}
     end
   end
 
@@ -568,9 +628,13 @@ defmodule CodeMySpec.Provisioning.Registry do
   # it shares with the app. A deploy that cannot pull is a deploy that cannot
   # roll back, and the moment you need a rollback is not the moment to discover
   # the registry went away with the last kernel update.
-  defp serve_command(bucket, credentials, credential, bind, location, opts) do
+  #
+  # Only ever built for a container `ensure_container/5` has already confirmed
+  # is not running — the htpasswd file it mounts is `ensure_htpasswd/3`'s, kept
+  # current independently of whether this ever runs again after the first
+  # project on a box creates it.
+  defp create_container_command(bucket, credentials, bind, location, opts) do
     image = Keyword.get(opts, :registry_image, "registry:3")
-    htpasswd = "#{credential.username}:#{Bcrypt.hash_pwd_salt(credential.password)}"
 
     env =
       opts
@@ -578,20 +642,6 @@ defmodule CodeMySpec.Provisioning.Registry do
       |> storage_env(bucket, credentials, location)
       |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
 
-    # The htpasswd file is written before the container starts and mounted
-    # read-only. bcrypt because `distribution` accepts nothing else, and
-    # generated here because `htpasswd` is not installed on the box.
-    # A named volume, so images outlive the container. `docker rm -f` above
-    # replaces the registry on every run, and without this every replacement
-    # threw away everything it held — including the image the box is running,
-    # which is the one a rollback needs.
-    #
-    # `REGISTRY_STORAGE_DELETE_ENABLED=true` — without it `DELETE
-    # /v2/<repo>/manifests/<digest>` answers 405 regardless of what the
-    # image's baked-in config.yml says (that file is never rewritten; env
-    # vars are merged in at startup), so `prune/2` ran every deploy and
-    # deleted nothing. 9656c705.
-    #
     # `:auth_dir` defaults to the real box's path, but is overridable: on
     # `local_runner`, `mkdir`/`printf` run on the host while the bind mount
     # resolves inside a VM (Colima) with a different filesystem, so
@@ -600,10 +650,12 @@ defmodule CodeMySpec.Provisioning.Registry do
     # `baseline_local_test`'s own real failure mode. 8dcb9751.
     auth_dir = Keyword.get(opts, :auth_dir, "/etc/cms-registry")
 
-    "mkdir -p #{auth_dir} && " <>
-      "printf %s #{shell_escape(htpasswd)} > #{auth_dir}/htpasswd && " <>
-      "chmod 600 #{auth_dir}/htpasswd && " <>
-      "docker rm -f #{@container} >/dev/null 2>&1; " <>
+    # `REGISTRY_STORAGE_DELETE_ENABLED=true` — without it `DELETE
+    # /v2/<repo>/manifests/<digest>` answers 405 regardless of what the
+    # image's baked-in config.yml says (that file is never rewritten; env
+    # vars are merged in at startup), so `prune/2` ran every deploy and
+    # deleted nothing. 9656c705.
+    "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
       "-v #{auth_dir}/htpasswd:/auth/htpasswd:ro " <>
       "-v #{@volume}:/var/lib/registry " <>

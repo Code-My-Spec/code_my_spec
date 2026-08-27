@@ -8,17 +8,31 @@ defmodule CodeMySpec.Provisioning.Database do
   kamal would have started a container that could not boot. A whole step was
   assumed everywhere and implemented nowhere.
 
-  ## On the app's own box, one per environment
+  ## One box, shared — one role and one database per project
 
-  Same shape as the registry, for the same reasons. UAT and production must not
-  share a database — a migration tested against one would already have run
-  against the other — and a container beside the app on `db_net` is what the
-  generated kamal config already expects, so the app reaches it by container
-  name rather than by address.
+  The container is a box-wide singleton: whichever project's server step
+  reaches this box first starts it, and every project after that reuses the
+  one already running rather than restarting it out from under whoever else
+  is connected. That is what makes the box shareable across projects at all —
+  an account with two projects on one server is the ordinary case this exists
+  for, not an edge case bolted on afterward.
 
-  That is deliberately the simplest thing that works, and the least durable.
-  It is right for UAT and arguable for production; a managed instance is a
-  different conversation, and `backups` was written as though we own the dump.
+  What is *not* shared is the tenant inside it: each project gets its own
+  role and its own database per environment, named from the project so two
+  projects' `prod` cannot collide (`app_<project>_<environment>`). Ensuring
+  one project's role exists, or rotating its password, never touches another
+  project's role — the shape `sync_password/2` already had for one project's
+  own environments, extended one grain further.
+
+  ## Bootstrapping a shared container needs an administrator
+
+  The official Postgres image only creates the role and database named by
+  `POSTGRES_USER`/`POSTGRES_DB` at first boot. Every tenant after the first
+  cannot log in to create itself — nothing has granted it anything yet — so
+  the box needs one administrator credential, minted once per account
+  (`AccountSecrets`, the same grain the server access key uses: it opens
+  every box the account owns), used only to create and alter each project's
+  own role and database.
 
   ## The URL is a secret, and lives where the others do
 
@@ -27,15 +41,19 @@ defmodule CodeMySpec.Provisioning.Database do
   same way it reads everything else. Nothing puts it in the working tree.
   """
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
   @container "cms-postgres"
   @network "db_net"
   @volume "cms-postgres-data"
-  @username "app"
   @port 5432
+
+  @admin_username "postgres"
+  @admin_password_secret "database_admin_password"
 
   # Pinned rather than `:latest`, because a database that silently changes
   # major version between two runs of setup is a data-loss event with a
@@ -57,7 +75,10 @@ defmodule CodeMySpec.Provisioning.Database do
   This environment's database credential, minted once.
 
   Per environment, so UAT's password does not open production's — the same
-  separation the age keys have, and for the same reason.
+  separation the age keys have, and for the same reason. Per project too, now
+  that the box behind it can be shared: the role and database are both named
+  from the project, so two projects' `prod` cannot collide or answer to each
+  other's password.
   """
   @spec credential(Scope.t(), String.t()) ::
           {:ok, %{username: String.t(), password: String.t(), database: String.t()}}
@@ -67,13 +88,31 @@ defmodule CodeMySpec.Provisioning.Database do
 
     case ProjectSecrets.fetch_value(scope, name) do
       {:ok, password} when is_binary(password) and password != "" ->
-        {:ok, describe(password, environment)}
+        {:ok, describe(scope, password, environment)}
 
       _ ->
         password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
 
         with {:ok, _} <- ProjectSecrets.put_value(scope, name, password) do
-          {:ok, describe(password, environment)}
+          {:ok, describe(scope, password, environment)}
+        end
+    end
+  end
+
+  # The administrator that can create and alter *any* project's role or
+  # database on this box. Account-grained, like the server access key: it has
+  # to open every box the account owns, not just the one the project that
+  # happened to mint it was thinking of.
+  defp admin_credential(scope) do
+    case AccountSecrets.fetch_value(scope, @admin_password_secret) do
+      {:ok, password} when is_binary(password) and password != "" ->
+        {:ok, %{username: @admin_username, password: password}}
+
+      _ ->
+        password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+        with {:ok, _} <- AccountSecrets.put_value(scope, @admin_password_secret, password) do
+          {:ok, %{username: @admin_username, password: password}}
         end
     end
   end
@@ -91,11 +130,13 @@ defmodule CodeMySpec.Provisioning.Database do
   end
 
   @doc """
-  Start this environment's database on its box.
+  Start this environment's database on its shared box.
 
-  Idempotent: the container is replaced rather than added to, and the volume
-  outlives it — which is the point of naming the volume rather than letting
-  docker generate one. Re-running setup must not be a way to lose data.
+  Idempotent at both grains: an already-running container is left alone
+  rather than restarted out from under whichever other project is connected
+  to it, and this project's own role/database are created only if they are
+  not already there. Re-running setup must not be a way to lose data, or to
+  interrupt someone else's.
 
   `:run` takes the command and returns `{output, status}`, so what we ask the
   box to do is assertable without a box.
@@ -104,14 +145,20 @@ defmodule CodeMySpec.Provisioning.Database do
   def serve(%Scope{} = scope, environment, opts \\ []) do
     run = Keyword.fetch!(opts, :run)
 
-    with {:ok, credential} <- serve_credential(scope, environment, opts) do
-      case run.([serve_command(credential, opts)]) do
-        {_output, 0} ->
-          await(run, credential, Keyword.get(opts, :database_attempts, 30))
+    with {:ok, admin} <- serve_admin_credential(scope, opts),
+         {:ok, credential} <- serve_credential(scope, environment, opts),
+         :ok <- ensure_container(run, admin, opts),
+         :ok <- await_ready(run, Keyword.get(opts, :database_attempts, 30)),
+         :ok <- ensure_tenant(run, admin, credential),
+         :ok <- sync_password(run, credential) do
+      {:ok, %{host: @container, port: @port, database: credential.database}}
+    end
+  end
 
-        {output, status} ->
-          {:error, {:database_start_failed, status, String.trim(output)}}
-      end
+  defp serve_admin_credential(scope, opts) do
+    case Keyword.get(opts, :database_admin_credential) do
+      %{username: _, password: _} = admin -> {:ok, admin}
+      _ -> admin_credential(scope)
     end
   end
 
@@ -122,57 +169,143 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  # Only touches the container when it is not already there to touch. A box
+  # with a second project on it has this called against an already-running
+  # instance far more often than not, and the destructive form —
+  # `docker rm -f` unconditionally, every run — is exactly what made this box
+  # unshareable: whichever project provisioned second restarted the first
+  # project's database out from under its live connections.
+  defp ensure_container(run, admin, opts) do
+    if container_running?(run) do
+      :ok
+    else
+      create_container(run, admin, opts)
+    end
+  end
+
+  defp container_running?(run) do
+    case run.(["docker ps -q -f name=^/#{@container}$"]) do
+      {output, 0} -> String.trim(output) != ""
+      _ -> false
+    end
+  end
+
   # Bound to the docker network only — never published to a host port. The
   # firewall would refuse it from outside anyway, and a database that is not
   # listening on an address is a database that cannot be reached by mistake.
-  defp serve_command(credential, opts) do
+  #
+  # Bootstrapped with the administrator, not a tenant. The image only creates
+  # the role and database named by `POSTGRES_USER`/`POSTGRES_DB` at first
+  # boot, and the whole point of `ensure_tenant/3` running afterward is that
+  # a second project's role does not exist yet — it cannot have been the one
+  # the container was born with.
+  defp create_container(run, admin, opts) do
     image = Keyword.get(opts, :database_image, @image)
 
     env =
-      [
-        {"POSTGRES_USER", credential.username},
-        {"POSTGRES_PASSWORD", credential.password},
-        {"POSTGRES_DB", credential.database}
-      ]
+      [{"POSTGRES_USER", admin.username}, {"POSTGRES_PASSWORD", admin.password}]
       |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
 
-    "docker network create #{@network} >/dev/null 2>&1; " <>
-      "docker rm -f #{@container} >/dev/null 2>&1; " <>
-      "docker run -d --name #{@container} --restart always " <>
-      "--network #{@network} " <>
-      "-v #{@volume}:/var/lib/postgresql/data " <>
-      "#{env} #{image}"
+    command =
+      "docker network create #{@network} >/dev/null 2>&1; " <>
+        "docker rm -f #{@container} >/dev/null 2>&1; " <>
+        "docker run -d --name #{@container} --restart always " <>
+        "--network #{@network} " <>
+        "-v #{@volume}:/var/lib/postgresql/data " <>
+        "#{env} #{image}"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_start_failed, status, String.trim(output)}}
+    end
   end
 
   # `docker run -d` returning 0 means the container was created. Postgres takes
   # seconds more to accept connections, and a migration that arrives first
   # fails in a way that reads like a broken image rather than an impatient
   # caller — the same distinction the registry's probe draws.
-  defp await(run, credential, attempts) do
+  #
+  # Asks the server, not a role: `-U`/`-d` bound this to the one credential
+  # already, but ensuring a *second* project's role and database is `serve/3`'s
+  # next step, not something to have already happened by the time readiness is
+  # checked — pg_isready with neither answers whether Postgres itself is up,
+  # which is the only thing this gate needs to know.
+  defp await_ready(run, attempts) do
     # `-h 127.0.0.1`, so this asks the TCP listener rather than the unix socket.
     # Without it `pg_isready` answers over the socket, which is up during
     # Postgres's first-boot phase while TCP still refuses — so `serve/3`
     # reported ready and the very next connection got
     # `connection to server at "cms-postgres" ... failed: Connection refused`.
     # The app connects over TCP, so TCP is what readiness has to mean.
-    check =
-      "docker exec #{@container} pg_isready -h 127.0.0.1 " <>
-        "-U #{shell_escape(credential.username)} " <>
-        "-d #{shell_escape(credential.database)} > /dev/null"
+    check = "docker exec #{@container} pg_isready -h 127.0.0.1 > /dev/null"
 
     case run.([check]) do
       {_output, 0} ->
-        with :ok <- sync_password(run, credential) do
-          {:ok, %{host: @container, port: @port, database: credential.database}}
-        end
+        :ok
 
       _ when attempts > 1 ->
         Wait.sleep(2_000)
-        await(run, credential, attempts - 1)
+        await_ready(run, attempts - 1)
 
       _ ->
         {logs, _} = run.(["docker logs --tail 50 #{@container} 2>&1"])
         {:error, {:database_not_ready, @container, String.trim(logs)}}
+    end
+  end
+
+  # This project's role and database, created if this is the first time this
+  # project has reached this box. A box shared with another project already
+  # has the container running and someone else's role in it by the time this
+  # runs — creating is not a one-time event the way it was when the box and
+  # the project were the same thing.
+  defp ensure_tenant(run, admin, credential) do
+    with :ok <- ensure_role(run, admin, credential) do
+      ensure_database(run, admin, credential)
+    end
+  end
+
+  defp ensure_role(run, admin, credential) do
+    sql =
+      "DO $$ BEGIN " <>
+        "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = #{sql_escape(credential.username)}) THEN " <>
+        "CREATE ROLE #{credential.username} LOGIN PASSWORD #{sql_escape(credential.password)}; " <>
+        "END IF; END $$;"
+
+    run_admin_sql(run, admin, sql, :database_role_not_ready)
+  end
+
+  # `CREATE DATABASE` cannot run inside the `DO` block above — Postgres
+  # refuses it inside a transaction — so existence is checked first in the
+  # shell rather than left to a database-already-exists error, which would
+  # read as this step failing rather than as the ordinary case of a role
+  # provisioning its second environment.
+  defp ensure_database(run, admin, credential) do
+    check =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+        "-tAc #{shell_escape("SELECT 1 FROM pg_database WHERE datname = '#{credential.database}'")}"
+
+    case run.([check]) do
+      {output, 0} ->
+        if String.trim(output) == "1" do
+          :ok
+        else
+          create = "CREATE DATABASE #{credential.database} OWNER #{credential.username}"
+          run_admin_sql(run, admin, create, :database_role_not_ready)
+        end
+
+      {output, status} ->
+        {:error, {:database_role_not_ready, status, String.trim(output)}}
+    end
+  end
+
+  defp run_admin_sql(run, admin, sql, error_tag) do
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+        "-c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {error_tag, status, String.trim(output)}}
     end
   end
 
@@ -207,8 +340,24 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  defp describe(password, environment) do
-    %{username: @username, password: password, database: "app_#{environment}"}
+  defp describe(scope, password, environment) do
+    slug = tenant_slug(scope)
+    %{username: "app_#{slug}", password: password, database: "app_#{slug}_#{environment}"}
+  end
+
+  # Postgres identifiers built from the project's own name — `CREATE ROLE`
+  # and `CREATE DATABASE` above interpolate this unquoted, so it is
+  # restricted to what an unquoted identifier accepts rather than trusted to
+  # already be safe. `Repository.default_name/1` already normalises to
+  # lowercase letters, digits and dashes; only the dash needs converting; a
+  # project named entirely with characters that normalise away would be an
+  # empty identifier, so a short deterministic fallback keeps this a real
+  # database name instead of a syntax error.
+  defp tenant_slug(scope) do
+    case scope.active_project |> Repository.default_name() |> String.replace("-", "_") do
+      "" -> "project_#{scope.active_project.id |> to_string() |> String.slice(0, 8)}"
+      slug -> slug
+    end
   end
 
   # A SQL string literal, quoted for Postgres rather than for the shell. The
