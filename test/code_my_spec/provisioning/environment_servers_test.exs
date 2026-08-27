@@ -137,6 +137,40 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # unchanged and reported the step done having built a firewall and an ssh
   # key and not one box — this is 402f9439, reproduced without touching a
   # real Hetzner project.
+  # The re-grain story 879 deferred: an environment linked to an account
+  # server (`CodeMySpec.Servers.Server`) already has a real name, and asking
+  # for a derived one instead would search for a box that was never going to
+  # exist under that name — exactly the shape of bug this step exists to
+  # prevent for the un-linked case.
+  test "an environment linked to an account server is asked for by that server's own name", ctx do
+    record_requests(self(), :always_available)
+
+    # Seeds the initial prod+uat pair first — `put/3` creates exactly the row
+    # it's given, unlike `list/1`, so linking straight off a fresh project
+    # would leave uat never created at all rather than merely unlinked.
+    _ = EnvironmentRepository.list(ctx.scope)
+
+    {:ok, _} = CodeMySpec.Servers.Server.link(ctx.scope, %{name: "fuellytics-prod"})
+    linked = CodeMySpec.Servers.Server.get_linked(ctx.scope, "fuellytics-prod")
+    {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{server_id: linked.id})
+
+    Steps.run(:server, ctx.scope, [])
+
+    names = collect_names([])
+
+    derived_prod_name = "#{CodeMySpec.Provisioning.Repository.default_name(ctx.scope.active_project)}-prod"
+
+    assert "fuellytics-prod" in names
+    refute derived_prod_name in names,
+           "expected the linked environment to be asked for by the server's own name " <>
+             "(fuellytics-prod), not the derived #{derived_prod_name} — got #{inspect(names)}"
+
+    assert Enum.any?(names, &String.ends_with?(&1, "-uat")),
+           "the unlinked uat environment should still get a derived name"
+
+    assert length(names) == 2, "expected exactly one request per environment, got #{inspect(names)}"
+  end
+
   test "refuses instead of reporting done when every environment is filtered out", ctx do
     {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
     {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})

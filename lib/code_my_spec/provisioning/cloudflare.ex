@@ -481,7 +481,16 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
 
   ## Internals
 
-  defp request(scope, method, path, opts \\ []) do
+  @doc """
+  Make an arbitrary authenticated Cloudflare API call.
+
+  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can let an
+  agent make ad hoc Cloudflare calls without ever holding the token itself —
+  the credential is resolved and applied here, same as every other call in
+  this module, and never leaves this process.
+  """
+  @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def request(scope, method, path, opts \\ []) do
     case access_token(scope) do
       {:ok, token} ->
         [

@@ -823,7 +823,16 @@ defmodule CodeMySpec.Provisioning.Resend do
   @rate_limit_attempts 5
   @rate_limit_backoff_ms 1_100
 
-  defp request(scope, method, path, opts \\ []) do
+  @doc """
+  Make an arbitrary authenticated Resend API call.
+
+  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can let an
+  agent make ad hoc Resend calls without ever holding the token itself — the
+  credential is resolved and applied here, same as every other call in this
+  module, and never leaves this process.
+  """
+  @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def request(scope, method, path, opts \\ []) do
     case access_token(scope) do
       {:ok, token} ->
         send_request(token, method, path, opts, @rate_limit_attempts)

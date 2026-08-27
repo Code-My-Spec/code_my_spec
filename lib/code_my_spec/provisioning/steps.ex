@@ -48,6 +48,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   }
 
   alias CodeMySpec.Generators.DeployBoilerplate
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Servers.Server
   alias CodeMySpec.TempFile
 
   alias CodeMySpec.Provisioning.{
@@ -3602,8 +3604,26 @@ defmodule CodeMySpec.Provisioning.Steps do
   # An environment's server is its own box: `<project>-<environment>`. Sharing
   # one between environments would mean UAT traffic reaching production, which
   # is the thing having environments is for.
+  #
+  # Unless the environment is linked to an account-level server (the re-grain
+  # story 879 deferred) — then it already has a real name, and deriving a
+  # fresh one from the project would search for a box that was never going
+  # to exist under that name.
   defp server_name(scope, opts, environment) do
-    "#{server_name(scope, opts)}-#{environment}"
+    case linked_server_name(scope, environment) do
+      nil -> "#{server_name(scope, opts)}-#{environment}"
+      name -> name
+    end
+  end
+
+  defp linked_server_name(scope, environment_name) do
+    with %{server_id: server_id} when is_binary(server_id) <-
+           EnvironmentRepository.get(scope, environment_name),
+         %Server{name: name} <- Repo.get(Server, server_id) do
+      name
+    else
+      _ -> nil
+    end
   end
 
   # The disposition rides on the resource because "adopted rather than

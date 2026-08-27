@@ -199,4 +199,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.ReadProjectFile)
   component(CodeMySpec.McpServers.Devops.Tools.WriteProjectFile)
   component(CodeMySpec.McpServers.Devops.Tools.EnsureEnvironment)
+  component(CodeMySpec.McpServers.Devops.Tools.LinkServer)
+  component(CodeMySpec.McpServers.Devops.Tools.ProviderRequest)
 end

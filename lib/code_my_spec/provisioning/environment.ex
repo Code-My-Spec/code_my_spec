@@ -21,6 +21,11 @@ defmodule CodeMySpec.Provisioning.Environment do
   - `server_name` / `ip` — filled in by the server step. Null means "not
     provisioned yet", which is a real state: the environment is the plan and
     the server is the fulfilment.
+  - `server_id` — an account-level `CodeMySpec.Servers.Server` this
+    environment is served by, when it's a box the account already owns
+    rather than one the server step created for it. Null is the common case.
+    Story 879 deferred this exact re-grain: a box cannot be shared between
+    projects, or adopted, while `server_name`/`ip` are the only record of it.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -32,7 +37,8 @@ defmodule CodeMySpec.Provisioning.Environment do
           name: String.t(),
           host: String.t() | nil,
           server_name: String.t() | nil,
-          ip: String.t() | nil
+          ip: String.t() | nil,
+          server_id: Ecto.UUID.t() | nil
         }
 
   schema "provisioning_environments" do
@@ -42,6 +48,7 @@ defmodule CodeMySpec.Provisioning.Environment do
     field :ip, :string
 
     belongs_to :project, CodeMySpec.Projects.Project
+    belongs_to :server, CodeMySpec.Servers.Server
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -49,7 +56,7 @@ defmodule CodeMySpec.Provisioning.Environment do
   @doc false
   def changeset(environment, attrs) do
     environment
-    |> cast(attrs, [:name, :host, :server_name, :ip, :project_id])
+    |> cast(attrs, [:name, :host, :server_name, :ip, :project_id, :server_id])
     |> validate_required([:name, :project_id])
     # The same constraint the server name, the DNS label and the sops filename
     # each impose separately. Validating it once here means a bad name is
@@ -60,5 +67,6 @@ defmodule CodeMySpec.Provisioning.Environment do
     )
     |> unique_constraint([:project_id, :name])
     |> foreign_key_constraint(:project_id)
+    |> foreign_key_constraint(:server_id)
   end
 end

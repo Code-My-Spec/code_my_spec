@@ -794,7 +794,16 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp request(scope, method, path, opts) do
+  @doc """
+  Make an arbitrary authenticated Hetzner API call.
+
+  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can let an
+  agent make ad hoc Hetzner calls without ever holding the token itself —
+  the credential is resolved and applied here, same as every other call in
+  this module, and never leaves this process.
+  """
+  @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def request(scope, method, path, opts) do
     case token(scope) do
       {:ok, token} ->
         [
