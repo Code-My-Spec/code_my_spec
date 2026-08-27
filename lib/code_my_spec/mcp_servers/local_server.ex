@@ -195,7 +195,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # and had no way to answer whether it was done, or to do it.
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
-  component(CodeMySpec.McpServers.Devops.Tools.SetProvisioningCredential)
   component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
   component(CodeMySpec.McpServers.Devops.Tools.ReadProjectFile)
   component(CodeMySpec.McpServers.Devops.Tools.WriteProjectFile)
