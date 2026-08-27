@@ -188,8 +188,19 @@ defmodule CodeMySpecWeb.Router do
     # carries an `active_project_id` and only falls back to resolving one from a
     # working directory. Here there is no working directory and no fallback: a
     # request without a project is refused rather than guessed at.
+    # The library's bare 30s default is shorter than a real provisioning step
+    # against real infrastructure: :deploy alone measures ~167s (RunLock's own
+    # moduledoc), and :server provisioning two environments' Postgres/registry
+    # tenants over real ssh round-trips took over a minute end to end the
+    # first time it ran against fuellytics-prod/market-my-spec-uat, not the
+    # fast local test stubs the suite otherwise exercises it against. The
+    # underlying step kept running to completion regardless — RunLock was
+    # still held when the timed-out caller's retry arrived — so the 30s
+    # ceiling was never protecting anything; it just handed back a false
+    # "Internal error"/"Server unavailable" for calls that were working.
     forward "/harness", Anubis.Server.Transport.StreamableHTTP.Plug,
-      server: CodeMySpec.McpServers.LocalServer
+      server: CodeMySpec.McpServers.LocalServer,
+      request_timeout: :timer.minutes(5)
 
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
