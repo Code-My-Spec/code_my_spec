@@ -148,7 +148,11 @@ defmodule CodeMySpecWeb.HarnessLookupController do
         hostname: credentials.hostname,
         tunnel_id: credentials.tunnel_id,
         account_tag: credentials.account_tag,
-        tunnel_secret: credentials.tunnel_secret
+        tunnel_secret: credentials.tunnel_secret,
+        # Which origin may frame this app. Returned rather than left to the
+        # checkout to guess: getting it wrong refuses the pane silently, and the
+        # server is the thing doing the framing so it is the thing that knows.
+        embedder: credentials.embedder
       })
     else
       {:error, :not_found} ->

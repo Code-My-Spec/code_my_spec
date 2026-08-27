@@ -173,6 +173,16 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 config :code_my_spec, CodeMySpecWeb.Plugs.PreviewProxy,
   frame_ancestors: "http://localhost:4000 https://dev.codemyspec.com"
 
+# Who may frame a preview, handed to each app with its tunnel credentials so it
+# never has to be told separately. Both origins, because dev is reachable as
+# either and a preview opened from one has to be framed by it.
+#
+# Same value as the proxy's above, and deliberately not read from it: that plug
+# retires with the container path, and a config key outliving the module that
+# defined it is how a setting quietly stops being read.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
+  embedder: "http://localhost:4000 https://dev.codemyspec.com"
+
 # Previews get a listener of their own because the main endpoint cannot serve
 # them: it claims /live/websocket for its own LiveView socket before any plug
 # runs. See `CodeMySpecWeb.PreviewListener`. Route preview-* here at the edge.

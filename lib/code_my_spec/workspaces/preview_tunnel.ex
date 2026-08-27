@@ -59,8 +59,34 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
           hostname: String.t(),
           tunnel_id: String.t(),
           account_tag: String.t(),
-          tunnel_secret: String.t()
+          tunnel_secret: String.t(),
+          embedder: String.t()
         }
+
+  @doc """
+  The origin allowed to frame a preview — this deployment's own.
+
+  Returned with the credentials so no application has to be told it. An app that
+  carries a hardcoded embedder can carry the wrong one, and being wrong here is
+  silent: the browser refuses the frame, the iframe looks healthy and renders
+  nothing, and it reads as the framed app being broken. Broken Oaths lost an
+  afternoon to a variant of exactly that.
+
+  The server knows the answer — it is the site doing the framing — so it says
+  it rather than every app guessing.
+
+  Several origins are allowed and often needed: dev is reachable both as
+  `localhost:4000` and as `dev.codemyspec.com`, and a preview opened from either
+  has to be framed by both. `frame-ancestors` takes a space-separated list, so
+  this is passed through as written.
+  """
+  @spec embedder() :: String.t()
+  def embedder do
+    case config()[:embedder] do
+      value when is_binary(value) and value != "" -> value
+      _ -> CodeMySpec.PublicUrl.base()
+    end
+  end
 
   @doc """
   The tunnel serving this working copy's preview, making it exist if it does
@@ -89,7 +115,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
          host = PreviewAddress.host(copy.id),
          :ok <- point(host, tunnel.tunnel_id),
          {:ok, _copy} <- record(copy, host, tunnel) do
-      {:ok, Map.merge(tunnel, %{hostname: host, account_tag: account})}
+      {:ok, Map.merge(tunnel, %{hostname: host, account_tag: account, embedder: embedder()})}
     end
   end
 

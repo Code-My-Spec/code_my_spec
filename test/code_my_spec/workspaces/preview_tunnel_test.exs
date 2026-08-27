@@ -149,22 +149,66 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     assert_receive {:cloudflare, "/client/v4/zones/" <> _, _}
   end
 
-  test "an existing record is success, not a failure", %{copy: copy} do
+  # 81053 is "a record with that name already exists". It is the ordinary case
+  # from the second call onward AND the case where an earlier attempt left a
+  # record aimed somewhere else, and treating the two alike is what made a
+  # preview resolve to a deleted tunnel for an afternoon.
+  describe "when the address is already taken" do
+    test "a record already pointing at this tunnel is left alone", ctx do
+      taken(self(), @tunnel_id <> ".cfargotunnel.com")
+
+      assert {:ok, _creds} = PreviewTunnel.ensure(ctx.copy)
+
+      refute_receive {:patched, _body},
+                     100,
+                     "a record already aimed at this tunnel was rewritten anyway"
+    end
+
+    test "a record pointing anywhere else is repointed", ctx do
+      taken(self(), "some-old-tunnel.cfargotunnel.com")
+
+      assert {:ok, _creds} = PreviewTunnel.ensure(ctx.copy)
+
+      assert_receive {:patched, body},
+                     100,
+                     "the address was left pointing at another tunnel. Cloudflare " <>
+                       "answers 530 for that, which reads as the app being down — so " <>
+                       "the whole diagnosis lands on an application that is fine."
+
+      assert body["content"] == @tunnel_id <> ".cfargotunnel.com"
+    end
+  end
+
+  # Cloudflare refusing the create, then the lookup that follows, then the
+  # update. Reports the PATCH body so a test can tell "left alone" from
+  # "rewritten", which is the whole distinction here.
+  defp taken(test_pid, existing_content) do
     Req.Test.stub(PreviewTunnel, fn conn ->
-      if String.contains?(conn.request_path, "cfd_tunnel") do
-        Req.Test.json(conn, %{
-          "success" => true,
-          "errors" => [],
-          "result" => %{"id" => @tunnel_id}
-        })
-      else
-        # 81053 is "a record with that name already exists", which is the
-        # ordinary case from the second call onward.
-        Req.Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
+      cond do
+        String.contains?(conn.request_path, "cfd_tunnel") ->
+          Req.Test.json(conn, %{
+            "success" => true,
+            "errors" => [],
+            "result" => %{"id" => @tunnel_id}
+          })
+
+        conn.method == "PATCH" ->
+          {:ok, raw, conn} = Plug.Conn.read_body(conn)
+          send(test_pid, {:patched, Jason.decode!(raw)})
+
+          Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+
+        conn.method == "GET" ->
+          Req.Test.json(conn, %{
+            "success" => true,
+            "errors" => [],
+            "result" => [%{"id" => "rec-1", "content" => existing_content}]
+          })
+
+        true ->
+          Req.Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
       end
     end)
-
-    assert {:ok, _creds} = PreviewTunnel.ensure(copy)
   end
 
   test "a worktree is refused before anything is provisioned", %{scope: scope, copy: _copy} do
