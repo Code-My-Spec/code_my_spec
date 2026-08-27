@@ -118,6 +118,26 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   token: env!("CLOUDFLARE_TOKEN", :string, ""),
   zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
 
+# The tunnel half of the same story, for a preview whose app we do not host and
+# cannot dial. Same zone as the address above, because the record still has to
+# be ours — see `PreviewTunnel`'s moduledoc for why an app-chosen hostname
+# breaks the proxy, the CSP and Safari's cookie handling at once.
+#
+# A separate token, and not for tidiness. Creating a tunnel is an *account*
+# operation (`POST /accounts/{id}/cfd_tunnel`), and `CLOUDFLARE_TOKEN` is
+# zone-scoped: it writes DNS on the preview zone perfectly well and returns an
+# empty list from `GET /accounts`, so a tunnel create against it fails with a
+# permissions error that reads like a bad account id. Needs `Cloudflare
+# Tunnel:Edit` at account scope.
+#
+# Unset, `ensure/1` returns `:no_cloudflare_account_id` rather than half-
+# provisioning: no tunnel is created, no record is written, and the panel goes
+# on saying no preview is running, which is true.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
+  token: env!("CLOUDFLARE_TUNNEL_TOKEN", :string, env!("CLOUDFLARE_TOKEN", :string, "")),
+  account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, ""),
+  zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
+
 # Sprite mode — the harness on centralized data.
 #
 # Deliberately NOT part of the CLI block above: that block's whole job is to
@@ -338,8 +358,7 @@ end
 # `Application.put_env/3` at runtime instead of configuring it: the config
 # they wrote was being overwritten before they ran.
 unless config_env() == :test do
-  config :code_my_spec, CodeMySpec.Mail.ResendClient,
-    api_key: env!("RESEND_API_KEY", :string, "")
+  config :code_my_spec, CodeMySpec.Mail.ResendClient, api_key: env!("RESEND_API_KEY", :string, "")
 end
 
 # Guided intake writes its plan with a model, so req_llm needs a provider key.
