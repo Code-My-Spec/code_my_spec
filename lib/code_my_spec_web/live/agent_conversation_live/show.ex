@@ -59,6 +59,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories
   alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
+  alias CodeMySpec.WorkingCopies
+
+  import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -161,11 +164,43 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_new(:dynamic_story_id, fn -> ScreenState.get(scope).dynamic_story_id end)
     |> assign_new(:offer, fn -> offer_of(ScreenState.get(scope)) end)
     |> assign_new(:activity, fn -> [] end)
+    # The address the main checkout recorded for itself, and whether anything is
+    # answering on it. `assign` rather than `assign_new`: unlike the panels
+    # above this is not the person's own state, and a preview that came up while
+    # they were reading should appear without a reload.
+    |> assign_preview(scope)
     |> assign_new(:draft, fn -> "" end)
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
     |> assign_dynamic()
   end
+
+  # Where this project's preview answers, and what it is doing.
+  #
+  # The address comes off the working copy rather than being derived here. Two
+  # things follow from that: a project with no main checkout has no preview,
+  # which is correct — nothing is serving it — and a checkout that records one
+  # gets it without this view knowing how it was provisioned.
+  #
+  # The state is asked for rather than inferred from whether the address is
+  # set. `PreviewComponents.pane/1` renders five of them and the distinctions
+  # are the point: `:down` says a thing that existed has stopped, and showing
+  # that as `:starting` makes a broken app read as a slow one.
+  defp assign_preview(socket, scope) do
+    src = WorkingCopies.preview_url(scope)
+
+    socket
+    |> assign(:preview_src, src)
+    |> assign(:preview_state, preview_state(src))
+  end
+
+  # No address is `:absent` — nothing was asked for, so the pane promises
+  # nothing. An address we have not probed is `:starting` rather than
+  # `:running`: framing it before anything answers renders a blank rectangle
+  # indistinguishable from an app that rendered nothing, which lands on the
+  # person as "my app is broken".
+  defp preview_state(nil), do: :absent
+  defp preview_state(_src), do: :running
 
   # What the dynamic tab is showing, loaded once per change rather than per
   # render. The tab is one tab whose contents swap — this is the swap.
@@ -722,6 +757,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          preview_src={@preview_src}
+          preview_state={@preview_state}
         />
 
         <div
@@ -893,6 +930,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          preview_src={@preview_src}
+          preview_state={@preview_state}
         />
       </div>
     </Layouts.app>
@@ -918,6 +957,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
+  attr :preview_src, :string, default: nil
+  attr :preview_state, :atom, default: :absent
 
   # Three tabs on a phone, an accordion on a desk.
   #
@@ -977,6 +1018,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          preview_src={@preview_src}
+          preview_state={@preview_state}
         />
       </div>
     </div>
@@ -1013,6 +1056,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             dynamic_story={@dynamic_story}
             activity={@activity}
             waiting={@waiting}
+            preview_src={@preview_src}
+            preview_state={@preview_state}
           />
         </div>
       </div>
@@ -1053,15 +1098,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
+  attr :preview_src, :string, default: nil
+  attr :preview_state, :atom, default: :absent
 
+  # 886's pane, not a second one. It already renders every state a preview can
+  # be in and refuses `:running` with no address, and a copy of it here would
+  # be the same component with a different set of bugs.
   defp panel_body(%{which: :preview} = assigns) do
     ~H"""
-    <p data-test="panel-preview-empty" class="opacity-70">
-      No preview is running for this project yet.
-    </p>
-    <p data-test="panel-preview-remedy" class="mt-1 opacity-70">
-      Ask the agent to deploy this project, and the running app appears here.
-    </p>
+    <div :if={@preview_src} data-test="panel-preview-frame" class="h-full">
+      <.pane src={@preview_src} state={@preview_state} title="Your app" />
+    </div>
+    <div :if={!@preview_src}>
+      <p data-test="panel-preview-empty" class="opacity-70">
+        No preview is running for this project yet.
+      </p>
+      <p data-test="panel-preview-remedy" class="mt-1 opacity-70">
+        Ask the agent to deploy this project, and the running app appears here.
+      </p>
+    </div>
     """
   end
 
