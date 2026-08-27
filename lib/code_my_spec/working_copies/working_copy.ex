@@ -76,6 +76,16 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # it and nobody has to onboard the checkout again to get it back.
     field :preview_url, :string
 
+    # The tunnel that carries that address to wherever the app is listening.
+    #
+    # The id is public — it is the CNAME target in DNS, so anyone who resolves
+    # the name already has it. The secret is what lets a process claim to *be*
+    # the tunnel, and Cloudflare hands it back exactly once, at creation: there
+    # is nowhere to re-fetch it from, which is why it is stored rather than
+    # looked up, and encrypted rather than stored plainly.
+    field :preview_tunnel_id, :string
+    field :preview_tunnel_secret, CodeMySpec.Encrypted.Binary
+
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
     # says which machine it is announcing from. That is a real state — "we have
@@ -98,7 +108,9 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :root,
       :device_id,
       :main,
-      :preview_url
+      :preview_url,
+      :preview_tunnel_id,
+      :preview_tunnel_secret
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)

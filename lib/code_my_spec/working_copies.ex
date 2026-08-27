@@ -333,6 +333,28 @@ defmodule CodeMySpec.WorkingCopies do
   def record_preview_url(%WorkingCopy{}, _url), do: {:error, :not_the_main_copy}
 
   @doc """
+  Record the tunnel that carries this copy's preview, and the address it
+  carries it to.
+
+  One write rather than three. The address is only reachable *because* of the
+  tunnel, so a copy holding an address with no credential — or a credential
+  with no address — describes a preview that cannot work, and the panel would
+  frame it anyway. Saving them together means that state is unreachable rather
+  than merely unlikely.
+
+  Refused on a copy that is not the main one, for the same reason
+  `record_preview_url/2` is: provisioning a tunnel for a worktree spends a real
+  Cloudflare record on an address the panel will never read.
+  """
+  @spec record_preview_tunnel(WorkingCopy.t(), map()) ::
+          {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
+  def record_preview_tunnel(%WorkingCopy{main: true} = harness, attrs) do
+    save(harness, Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
+  end
+
+  def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
+
+  @doc """
   Where this project's preview answers, or nothing.
 
   Nothing is the ordinary state — a project whose main checkout was onboarded

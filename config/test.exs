@@ -285,6 +285,18 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "codemyspec.com",
   target: "test-tunnel.cfargotunnel.com"
 
+# The tunnel provisioner reaches Cloudflare to create tunnels and write DNS.
+# Pinned for the reason the GitHub client above is: `{Req.Test, Module}`
+# dispatches to the calling process's stub, so tests stay async, and a call with
+# no stub raises instead of provisioning a real tunnel on the real zone. An
+# unpinned plug plus a token in the environment is a live call, which this
+# project has shipped once already.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
+  token: "test-cloudflare-token",
+  zone_id: "test-zone",
+  account_id: "test-account",
+  req_options: [plug: {Req.Test, CodeMySpec.Workspaces.PreviewTunnel}]
+
 # The pane re-checks a workspace that is still coming up. Short here so a spec
 # observes the transition instead of waiting out the interval a visitor gets.
 config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
