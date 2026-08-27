@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
   alias CodeMySpec.GitHub
   alias CodeMySpec.McpServers.Devops.Tools.AdoptRepository
   alias CodeMySpec.Projects
+  alias CodeMySpec.Provisioning.RunLock
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
 
@@ -133,6 +134,40 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       {show, 0} = System.cmd("git", ["show", "--stat", "master"], cd: bare_dir)
       refute show =~ "mix.lock"
       refute show =~ "cms_harness"
+    end
+
+    # The exact confusion this is meant to prevent: a caller retrying blind
+    # against an unchanged devops_status because the tool always said
+    # "success" regardless of whether anything actually ran. A lock conflict
+    # is now a distinct, honest answer instead of a silent no-op dressed up
+    # as progress.
+    test "reports a run already in progress instead of a false success", %{
+      scope: scope,
+      project: project
+    } do
+      test_pid = self()
+
+      {:ok, holder} =
+        Task.start(fn ->
+          RunLock.with_lock(project.id, fn ->
+            send(test_pid, :locked)
+
+            receive do
+              :release -> :ok
+            end
+          end)
+        end)
+
+      assert_receive :locked
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      params = %{project_id: project.id, repository_name: "market_my_spec"}
+
+      assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
+      assert response.isError == true
+      assert response_text(response) =~ "already in progress"
+
+      send(holder, :release)
     end
 
     test "refuses for a project that is not on this account", %{scope: scope} do

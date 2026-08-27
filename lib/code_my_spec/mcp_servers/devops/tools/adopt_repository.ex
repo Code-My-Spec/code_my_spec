@@ -30,6 +30,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   workflow file, explicitly, never a broad `add -A`. Uncommitted local
   changes and untracked files in the working tree are not staged, committed,
   or pushed as a side effect of adopting.
+
+  ## Synchronous, deliberately
+
+  `run_devops_setup` fires the sequence and returns immediately, because a
+  real run can take minutes and the MCP transport's call timeout is far
+  shorter — but that shape also means a caller never learns whether a step
+  actually ran, only that starting it was attempted. A push is seconds, not
+  minutes, so this waits for the real outcome and reports it: adopted and
+  pushed, a git/GitHub error with its own message, or a run already in
+  flight for this project (same `RunLock` `run_devops_setup` itself
+  respects, held here explicitly since calling the step directly bypasses
+  the wrapper that normally acquires it). No more guessing from an
+  unchanged `devops_status` whether anything happened.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -38,6 +51,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Resources
 
   schema do
@@ -55,18 +69,29 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   def execute(%{project_id: project_id, repository_name: repository_name} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, project} <- find_project(scope, project_id) do
-      :ok =
-        scope
-        |> Resources.project_scope(project)
-        |> Provisioning.run_step_async(:repository, run_opts(repository_name, params))
+      scope = Resources.project_scope(scope, project)
+      opts = run_opts(repository_name, params)
 
-      {:reply,
-       ok(
-         "Adopting #{repository_name} for #{project.name}. Call devops_status shortly to watch it converge."
-       ), frame}
+      RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, :repository, opts) end)
+      |> reply(repository_name, project, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
     end
+  end
+
+  defp reply({:error, {:already_running, started_at}}, _name, _project, frame) do
+    since = started_at && " (started #{started_at})"
+    {:reply, error("a setup run is already in progress for this project#{since} — call devops_status rather than retrying"), frame}
+  end
+
+  defp reply({:ok, step}, repository_name, project, frame) do
+    {:reply,
+     ok("Adopted #{repository_name} for #{project.name} — repository step is now #{step.state}."),
+     frame}
+  end
+
+  defp reply({:halt, _step, reason}, repository_name, _project, frame) do
+    {:reply, error("could not adopt #{repository_name}: #{reason}"), frame}
   end
 
   defp run_opts(repository_name, params) do
