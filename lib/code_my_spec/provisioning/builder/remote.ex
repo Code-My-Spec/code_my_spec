@@ -434,6 +434,22 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         "StrictHostKeyChecking=no",
         "-o",
         "UserKnownHostsFile=/dev/null",
+        # `UserKnownHostsFile=/dev/null` throws every host away as soon as it is
+        # written, so ssh can never find one already saved and prints "Warning:
+        # Permanently added ... to the list of known hosts" on *every* call, not
+        # just the first. `ssh_runner/2` merges that onto stdout
+        # (`stderr_to_stdout: true`), so a caller checking "is the output empty"
+        # was never looking at the command's own output — `container_running?`
+        # in both `Database` and `Registry` read this banner as "yes, something
+        # is there" unconditionally, on a box with nothing running at all.
+        # Confirmed live against fuellytics-prod: `cms-registry` never got
+        # created — not even attempted, `docker images`/`docker ps -a` and
+        # dockerd's own journal show no trace of it — because this is why
+        # `ensure_container/5` believed a fresh box already had one. Silencing
+        # the banner at the source fixes every current and future caller that
+        # parses this output, not just the two callers found tonight.
+        "-o",
+        "LogLevel=ERROR",
         # Without these, `-i` is a suggestion: ssh offers every key the agent
         # holds first, and a box with the default `MaxAuthTries 6` disconnects
         # before reaching ours. `Servers.Containers` already learned this and

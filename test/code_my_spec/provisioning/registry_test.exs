@@ -200,7 +200,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # under whichever app is pulling from it right now.
     test "an already-running container is not touched" do
       run = fn
-        ["docker ps -q -f name=" <> _] -> {"c0ffee", 0}
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
         ["docker rm -f" <> _] -> raise "must not touch an already-running container"
         [_] -> {"", 0}
       end
@@ -211,6 +211,35 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
                  credentials: creds(),
                  registry_credentials: registry_cred()
                )
+    end
+
+    # Found live against fuellytics-prod: ssh's own "Warning: Permanently
+    # added ... to the list of known hosts" banner merges onto the same
+    # stream as the command's real output (`UserKnownHostsFile=/dev/null`
+    # guarantees it prints every time), so a box with nothing on it answered
+    # "docker ps -q" with banner text instead of silence — non-empty, but not
+    # a container id. `create_container_command` never ran at all.
+    test "banner noise on the ps check is not mistaken for a running container" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+
+        case command do
+          "docker ps -q -f name=" <> _ ->
+            {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
+
+          _ ->
+            {"", 0}
+        end
+      end
+
+      assert {:ok, _} =
+               Registry.serve(scope(),
+                 run: run,
+                 credentials: creds(),
+                 registry_credentials: registry_cred()
+               )
+
+      assert collect_commands() |> find_command("docker run -d --name cms-registry")
     end
 
     # `docker rm -f` replaces the registry the first time it is created, so

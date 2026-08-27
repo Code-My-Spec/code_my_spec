@@ -183,11 +183,26 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  # `docker ps -q` answers with nothing but container ID lines when it
+  # succeeds — but ssh's own "Warning: Permanently added ... to the list of
+  # known hosts" banner merges onto the same stream (`stderr_to_stdout: true`)
+  # on every call, since `UserKnownHostsFile=/dev/null` guarantees ssh never
+  # finds a host already known. Checking "is the output non-empty" answered
+  # that banner, not the container list — confirmed live: it read a fresh box
+  # with nothing on it as already running, and `create_container/3` never ran
+  # at all. `Remote.ssh_args/2` silences the banner at the source; this also
+  # refuses to be fooled by anything else that might land on the same stream.
   defp container_running?(run) do
     case run.(["docker ps -q -f name=^/#{@container}$"]) do
-      {output, 0} -> String.trim(output) != ""
+      {output, 0} -> output |> container_ids() |> Enum.any?()
       _ -> false
     end
+  end
+
+  defp container_ids(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.filter(&(&1 =~ ~r/^[0-9a-f]{12,64}$/))
   end
 
   # Bound to the docker network only — never published to a host port. The

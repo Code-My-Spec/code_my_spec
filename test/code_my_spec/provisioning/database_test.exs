@@ -83,12 +83,35 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # the opposite of ensuring anything.
     test "an already-running container is not touched" do
       run = fn
-        ["docker ps -q -f name=" <> _] -> {"c0ffee", 0}
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
         ["docker network create" <> _] -> raise "must not touch an already-running container"
         [_] -> {"", 0}
       end
 
       assert {:ok, _} = serve(run: run)
+    end
+
+    # Found live against fuellytics-prod: ssh's own "Warning: Permanently
+    # added ... to the list of known hosts" banner merges onto the same
+    # stream as the command's real output (`UserKnownHostsFile=/dev/null`
+    # guarantees it prints every time), so a box with nothing on it answered
+    # "docker ps -q" with banner text instead of silence — non-empty, but not
+    # a container id. `create_container/3` never ran at all.
+    test "banner noise on the ps check is not mistaken for a running container" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+
+        case command do
+          "docker ps -q -f name=" <> _ ->
+            {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
+
+          _ ->
+            {"", 0}
+        end
+      end
+
+      assert {:ok, _} = serve(run: run)
+      assert collect_commands() |> Enum.any?(&(&1 =~ "docker run -d --name cms-postgres"))
     end
 
     # Never published to a host port. The firewall would refuse it from
