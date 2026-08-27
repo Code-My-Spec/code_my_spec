@@ -301,6 +301,23 @@ defmodule CodeMySpec.Servers do
     end
   end
 
+  @doc """
+  The account's access key, as the text a human would paste into
+  `authorized_keys` on a box CodeMySpec did not create.
+
+  Ensures it exists first — same key `access_key/1` uploads to Hetzner for a
+  box this account creates itself, so a box adopted this way and a box built
+  from scratch end up reachable by the identical key. Retrofitting a key onto
+  an already-existing server is not something any provider API here does;
+  this is the value the account owner adds by hand, once, per box.
+  """
+  @spec access_public_key(Scope.t()) :: {:ok, String.t()} | {:error, term()}
+  def access_public_key(%Scope{} = scope) do
+    with {:ok, _key_ids} <- access_key(scope) do
+      account_public_key(scope)
+    end
+  end
+
   defp ensure_access_key(scope) do
     with {:ok, public} <- account_public_key(scope),
          {:ok, key} <- Hetzner.ensure_ssh_key(scope, "codemyspec", public) do
