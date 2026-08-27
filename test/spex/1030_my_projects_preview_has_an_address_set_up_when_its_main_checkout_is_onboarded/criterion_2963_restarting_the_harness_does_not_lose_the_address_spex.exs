@@ -34,9 +34,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2963Spex do
   # Story 1025's criteria drive the same page and override it the same way.
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
-  alias CodeMySpec.Environments
+  import CodeMySpecSpex.AgentProcessHelpers
+  import CodeMySpecSpex.MainAgentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -57,59 +56,30 @@ defmodule CodeMySpecSpex.Story1030.Criterion2963Spex do
     :ok
   end
 
-  @harness_config ".cms_harness.json"
   @url "https://preview-2963.example.test"
 
   spex "A preview address outlives the process that reported it" do
     scenario "Restarting the harness does not lose the address" do
-      given_ "a checkout whose config names where its preview answers", context do
-        :ok = Environments.register(context.project.id, context.environment)
+      given_ "a project whose main checkout reports where its preview answers", context do
+        context = given_a_main_checkout(context, "spex_2963", preview_url: @url)
 
-        :ok =
-          Environments.write_file(
-            context.environment,
-            @harness_config,
-            Jason.encode!(
-              %{
-                working_copy_id: "spex-harness-2963",
-                project_id: context.project.id,
-                preview_url: @url
-              },
-              pretty: true
-            )
-          )
-
-        reply =
-          join_working_copy(context, "/workspace/main", "main",
-            working_copy_id: "spex-harness-2963",
-            preview_url: @url
-          )
-
-        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
+        {:ok, Map.put(context, :path, say_to_main_agent(context, "how is it going"))}
       end
 
-      when_ "the harness goes away and comes back, reading only its own config", context do
-        # The restart. Nothing carries over between these two joins except what
-        # is on disk, which is the whole point — a second join that had to be
-        # handed the address again would prove nothing about it being written
-        # down.
-        {:ok, config} =
-          Environments.read_file(context.environment, @harness_config)
+      # The real restart surface: every agent on the machine is stopped and the
+      # harness brings back what it is still serving. Driven through the harness
+      # rather than reconstructed here, so the refusals a restart inherits are
+      # the ones a restart actually produces.
+      when_ "the machine running it restarts", context do
+        restart_harness(context.harness_socket)
 
-        recorded = Jason.decode!(config)["preview_url"]
-
-        reply =
-          join_working_copy(context, "/workspace/main", "main-again",
-            working_copy_id: "spex-harness-2963",
-            preview_url: recorded
-          )
-
-        {:ok, Map.put(context, :rejoined, reply.working_copy_id)}
+        {:ok, context}
       end
 
-      then_ "the project's preview is still where it was", context do
-        {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+      then_ "the founder's preview is still where it was", context do
+        {:ok, live, _html} = live(context.conn, context.path)
+
+        html = live |> element("[data-test='panel-tab-preview']") |> render_click()
 
         assert html =~ @url,
                "the address did not survive the restart. A harness restarts many " <>

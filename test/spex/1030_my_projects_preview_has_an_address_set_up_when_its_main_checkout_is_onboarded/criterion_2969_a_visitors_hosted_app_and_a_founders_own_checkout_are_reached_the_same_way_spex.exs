@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
   # Story 1025's criteria drive the same page and override it the same way.
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.WorkingCopyHelpers
+  import CodeMySpecSpex.MainAgentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -66,15 +66,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
   spex "One preview mechanism, whoever is running the app" do
     scenario "A visitor's hosted app and a founder's own checkout are reached the same way" do
       given_ "a founder whose app runs on their own machine", context do
-        reply =
-          join_working_copy(context, "/workspace/main", "main", preview_url: @self_run)
+        context = given_a_main_checkout(context, "spex_2969", preview_url: @self_run)
 
-        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
+        {:ok, Map.put(context, :path, say_to_main_agent(context, "how is it going"))}
       end
 
-      when_ "the founder opens their project", context do
-        {:ok, live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+      when_ "the founder opens their preview", context do
+        {:ok, live, _html} = live(context.conn, context.path)
+
+        html = live |> element("[data-test='panel-tab-preview']") |> render_click()
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end
