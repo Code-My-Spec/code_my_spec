@@ -184,6 +184,32 @@ defmodule CodeMySpec.ResourcesTest do
 
       assert resolved.environment == scope.environment
     end
+
+    # Found live: a project onboarded outside the usual local_path-setting
+    # flow (an adopted, pre-existing checkout) has no persisted column, but
+    # its harness is live-registered and connected right now. The harness
+    # clause used to go straight to `project.local_path` and never asked the
+    # registry at all, so a shelling-out step read "no working directory" for
+    # a project a real, active harness could answer for.
+    test "a harness-typed scope finds a live-registered checkout even with no local_path column",
+         %{scope: scope} do
+      {:ok, checkout} = Briefly.create(directory: true)
+
+      {:ok, project} =
+        Projects.update_project(scope, scope.active_project, %{local_path: nil})
+
+      :ok = CodeMySpec.Environments.register(project.id, Environment.new(:local, checkout))
+      on_exit(fn -> CodeMySpec.Environments.unregister(project.id) end)
+
+      harness_scope = %{
+        scope
+        | environment: Environment.new(:harness, "/wherever/the/harness/runs")
+      }
+
+      resolved = Resources.project_scope(harness_scope, project)
+
+      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+    end
   end
 
   # The state of a step, or `nil` while it has not been written yet.

@@ -126,38 +126,53 @@ defmodule CodeMySpec.Users.Scope do
   def from_local_config(nil), do: {:error, :no_working_dir}
 
   @doc """
-  Builds a complete local scope from a project record that has `local_path` set.
+  Builds a complete local scope from a project record, preferring a live
+  checkout over `local_path`.
 
-  No config.yml needed — uses the project's persisted `local_path` for the environment.
+  No config.yml needed. `resolve_environment/2` checks a live-registered
+  harness first — a currently-connected checkout wins over a stale or absent
+  column — and falls back to `root || project.local_path` only when nothing
+  is registered.
 
   A `root` may be supplied to override the persisted `local_path`. A sprite
   clones to a path it chooses at runtime and is not the only checkout of that
   project, so the column is neither authoritative nor necessarily set for it —
-  the caller that did the cloning is. When `root` is nil the persisted path is
-  used, which is the desktop behaviour.
+  the caller that did the cloning is.
+
+  Errors only when neither source resolves anything — a project with no
+  `local_path`, no `root`, and no live registration is genuinely reachable
+  nowhere, not merely missing a column. Failing that case here, once, means
+  every caller of this function gets the live-registry check for free instead
+  of each having to know to ask for it — a project onboarded outside the
+  usual `local_path`-setting flow (an adopted, pre-existing checkout with a
+  live harness but no persisted column) used to read as unreachable even
+  while a harness was actively connected to it.
   """
   @spec for_local_project(Project.t(), String.t() | nil) :: {:ok, t()} | {:error, atom()}
   def for_local_project(project, root \\ nil)
 
   def for_local_project(nil, _root), do: {:error, :no_local_path}
 
-  def for_local_project(%Project{local_path: nil}, nil), do: {:error, :no_local_path}
-
   def for_local_project(%Project{} = project, root) do
-    user = default_local_user()
-    env = resolve_environment(project, root)
+    case resolve_environment(project, root) do
+      %Environment{cwd: nil} ->
+        {:error, :no_local_path}
 
-    {:ok,
-     %__MODULE__{
-       user: user,
-       user_id: user.id,
-       active_account: nil,
-       active_account_id: project.account_id,
-       active_project: project,
-       active_project_id: project.id,
-       cwd: env.cwd,
-       environment: env
-     }}
+      env ->
+        user = default_local_user()
+
+        {:ok,
+         %__MODULE__{
+           user: user,
+           user_id: user.id,
+           active_account: nil,
+           active_account_id: project.account_id,
+           active_project: project,
+           active_project_id: project.id,
+           cwd: env.cwd,
+           environment: env
+         }}
+    end
   end
 
   @doc """

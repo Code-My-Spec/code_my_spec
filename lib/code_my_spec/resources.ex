@@ -335,8 +335,24 @@ defmodule CodeMySpec.Resources do
   its scope through this rather than re-deriving `:local` itself.
   """
   @spec project_scope(Scope.t(), Project.t()) :: Scope.t()
+  # Always re-derived for the *target* project rather than trusting the
+  # calling scope's own environment — a harness bound to project A iterating
+  # over project B must not run B's steps against A's checkout, which is what
+  # made this a separate branch from "keep what's already there" in the first
+  # place. But re-deriving used to mean `project.local_path` alone, which
+  # missed a project onboarded outside the usual local_path-setting flow
+  # (adopted, no persisted column) even while a harness was live-registered
+  # for it right now. `Scope.for_local_project/1` checks that registration
+  # first and falls back to `local_path` only if nothing answers, so this
+  # gets the same live-checkout preference the nil-environment clause below
+  # already has.
   def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
-    environment = Environment.new(:local, project.local_path)
+    environment =
+      case Scope.for_local_project(project) do
+        {:ok, %{environment: environment}} -> environment
+        {:error, _reason} -> Environment.new(:local, project.local_path)
+      end
+
     %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
   end
 
