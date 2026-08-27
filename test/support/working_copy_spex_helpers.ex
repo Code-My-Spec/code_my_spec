@@ -65,11 +65,20 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   defp join_payload(root, label, opts) do
     base = %{"working_copy_id" => opts[:working_copy_id], "root" => root, "label" => label}
 
-    case Keyword.fetch(opts, :device_id) do
-      {:ok, device_id} -> Map.put(base, "device", %{"id" => device_id})
-      :error -> base
-    end
+    base
+    |> put_device(Keyword.fetch(opts, :device_id))
+    |> put_preview(Keyword.fetch(opts, :preview_url))
   end
+
+  defp put_device(payload, {:ok, device_id}), do: Map.put(payload, "device", %{"id" => device_id})
+  defp put_device(payload, :error), do: payload
+
+  # Where this checkout says its preview answers. Absent unless a criterion is
+  # about it, for the same reason the device is: a payload without one is what a
+  # checkout that has no preview sends, and that is a real state rather than a
+  # thing to be filled in.
+  defp put_preview(payload, {:ok, url}), do: Map.put(payload, "preview_url", url)
+  defp put_preview(payload, :error), do: payload
 
   @doc """
   Report the set of agents a harness is running.
