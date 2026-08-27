@@ -185,8 +185,9 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "codemyspec.com",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
   scheme: "https",
-  manage_dns: true,
-  zone_id: "ba45c3c2010cb275de73f91f4f05edab"
+  # No `zone_id` here: `config/runtime.exs` runs after this file and sets it, so
+  # a value here is overwritten and only looks like it is in force.
+  manage_dns: true
 
 # The pane is served from the dev endpoint, so that is who has to be allowed to
 # frame a preview. Without this the proxy names the production origin, the

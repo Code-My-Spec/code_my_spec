@@ -116,7 +116,13 @@ end
 # dev.codemyspec.com down with it — which is exactly what happened here once.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   token: env!("CLOUDFLARE_TOKEN", :string, ""),
-  zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
+  # The zone previews live in, and it must agree with `base_domain` wherever
+  # that is set. This file runs *after* `config/dev.exs`, so a zone chosen there
+  # is overwritten by this line — which is how a hostname on one domain got
+  # written into another zone. Cloudflare does not reject that: a name outside
+  # the zone is treated as relative and the zone is appended, producing
+  # `preview-<id>.codemyspec.com.astralbi.com` and a success response.
+  zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "ba45c3c2010cb275de73f91f4f05edab")
 
 # The tunnel half of the same story, for a preview whose app we do not host and
 # cannot dial. Same zone as the address above, because the record still has to
