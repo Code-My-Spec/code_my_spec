@@ -23,12 +23,39 @@ defmodule CodeMySpecSpex.Story1030.Criterion2963Spex do
 
   use CodeMySpecSpex.Case
 
+  import Phoenix.LiveViewTest
+
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
+
+  # The panel lives in `CodeMySpecWeb`, not the local app the case template
+  # points at by default. Without this the route 404s and `live/2` fails
+  # inside LiveViewTest rather than saying which router it looked in.
+  # Story 1025's criteria drive the same page and override it the same way.
+  @endpoint CodeMySpecWeb.Endpoint
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    # The agent runs in another process, so it needs the connection this one
+    # holds.
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  # Without a provider the main agent is refused, no conversation is ever
+  # created, and the preview panel has no page to sit beside. The refusal is
+  # deliberate — an agent started on a credential that does not resolve fails on
+  # its first model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
 
   @harness_config ".cms_harness.json"
   @url "https://preview-2963.example.test"
@@ -81,7 +108,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2963Spex do
       end
 
       then_ "the project's preview is still where it was", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, _live, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
         assert html =~ @url,
                "the address did not survive the restart. A harness restarts many " <>

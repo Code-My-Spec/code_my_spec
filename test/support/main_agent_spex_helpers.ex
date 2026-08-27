@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers
 
-
   # The cloud router, because these paths are `/app` ones. `CodeMySpecSpex.Case`
   # verifies against the local router, where they do not exist — which is why
   # every spex in this story compiles with a "no route path" warning per `~p`.
@@ -34,12 +33,17 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   Answers the context with `:copy` (the path) and `:copy_id` added. The path is
   real and made, because an agent is refused a checkout that is not on disk —
   and that refusal is its own criterion rather than something to work around.
+
+  `opts` reach the join, for a criterion about something the checkout *reports*
+  rather than about the checkout itself — `preview_url:` is the one that exists
+  today. Empty by default, so a harness that announces nothing stays the
+  ordinary case here.
   """
-  @spec given_a_main_checkout(map(), String.t()) :: map()
-  def given_a_main_checkout(context, label) do
+  @spec given_a_main_checkout(map(), String.t(), keyword()) :: map()
+  def given_a_main_checkout(context, label, opts \\ []) do
     copy = CodeMySpec.TempFile.dir(label)
     File.mkdir_p!(copy)
-    {joined, socket} = join_working_copy_socket(context, copy, "the main checkout")
+    {joined, socket} = join_working_copy_socket(context, copy, "the main checkout", opts)
 
     {:ok, live, _html} =
       live(

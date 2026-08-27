@@ -29,6 +29,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion2962Spex do
 
   use CodeMySpecSpex.Case
 
+  import Phoenix.LiveViewTest
+
+  # The panel lives in `CodeMySpecWeb`, not the local app the case template
+  # points at by default. Without this the route 404s and `live/2` fails
+  # inside LiveViewTest rather than saying which router it looked in.
+  # Story 1025's criteria drive the same page and override it the same way.
+  @endpoint CodeMySpecWeb.Endpoint
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   setup :register_log_in_setup_account
@@ -65,7 +73,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2962Spex do
       end
 
       then_ "the project's preview is not the worktree's", context do
-        {:ok, live, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, live, _html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
         refute render(live) =~ @url,
                "a worktree's address became the project's preview. Whichever checkout " <>

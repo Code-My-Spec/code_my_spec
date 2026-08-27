@@ -32,6 +32,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -43,19 +45,25 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
   spex "Onboarding the main checkout gives the project a preview address" do
     scenario "The main checkout comes out of onboarding with an address" do
-      given_ "a checkout of the project, and Cloudflare answering", context do
+      given_ "a checkout of the project on the harness, and Cloudflare answering", context do
         :ok = Environments.register(context.project.id, context.environment)
 
-        # An id already on the copy, so the task does not go to the network to
-        # mint one. Written through the same surface the task reads it from —
-        # the same arrangement criterion 2352's spec uses and for the same
-        # reason.
+        # A real working copy, minted the way one actually is — a harness joining
+        # for it. The id has to be one the server issued: onboarding looks the
+        # copy up to decide whether it is the project's main checkout, and an
+        # invented id is refused before any of this is reached.
+        #
+        # An id already on the copy also keeps the task off the network, which is
+        # what criterion 2352's spec arranges and for the same reason: the task
+        # mints only when it finds none.
+        reply = join_working_copy(context, "/workspace/main", "main")
+
         :ok =
           Environments.write_file(
             context.environment,
             @harness_config,
             Jason.encode!(
-              %{working_copy_id: "spex-harness-2961", project_id: context.project.id},
+              %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
               pretty: true
             )
           )

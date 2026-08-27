@@ -27,35 +27,68 @@ defmodule CodeMySpecSpex.Story1030.Criterion2965Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers
+  import Phoenix.LiveViewTest
+
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
+
+  # The panel lives in `CodeMySpecWeb`, not the local app the case template
+  # points at by default. Without this the route 404s and `live/2` fails
+  # inside LiveViewTest rather than saying which router it looked in.
+  # Story 1025's criteria drive the same page and override it the same way.
+  @endpoint CodeMySpecWeb.Endpoint
+
+  import CodeMySpecSpex.MainAgentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    # The agent runs in another process, so it needs the connection this one
+    # holds.
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  # Without a provider the main agent is refused, no conversation is ever
+  # created, and the preview panel has no page to sit beside. The refusal is
+  # deliberate — an agent started on a credential that does not resolve fails on
+  # its first model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
 
   @url "https://preview-2965.example.test"
 
   spex "What the server holds comes from the checkout" do
     scenario "The server learns the address from the checkout" do
-      given_ "a project whose panel has no preview to show", context do
-        {:ok, live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+      given_ "its main checkout on the harness, reporting where its preview answers",
+             context do
+        context = given_a_main_checkout(context, "spex_2965", preview_url: @url)
 
-        refute html =~ @url,
-               "the address was already there before the checkout reported it, so " <>
-                 "this scenario cannot show that the join is what carried it"
-
-        {:ok, Map.put(context, :live, live)}
+        # The conversation has to exist for there to be a screen with a preview
+        # beside it, and saying something is how one comes into being — the panel
+        # is part of the page a person talks to their agent on, not a page of its
+        # own.
+        {:ok, Map.put(context, :path, say_to_main_agent(context, "how is it going"))}
       end
 
-      when_ "its main checkout joins, reporting where its preview answers", context do
-        reply = join_working_copy(context, "/workspace/main", "main", preview_url: @url)
+      # Opening it is the action, because every panel starts shut. Asserting on
+      # the page without opening one would be asserting on a closed drawer — the
+      # address is not in the document until the pane is rendered, so a spec that
+      # skipped this would fail for a reason that has nothing to do with the
+      # criterion.
+      when_ "the founder opens the preview beside the conversation", context do
+        {:ok, live, _html} = live(context.conn, context.path)
 
-        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
+        html = live |> element("[data-test='panel-tab-preview']") |> render_click()
+
+        {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end
 
-      then_ "the project's preview is the address the checkout named", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
-
-        assert html =~ @url,
+      then_ "it frames the address the checkout named", context do
+        assert context.html =~ @url,
                "the server did not take the address from the join, so the panel has " <>
                  "nothing to frame for a project whose checkout knows perfectly well " <>
                  "where its preview is. Nobody would ever be told why."

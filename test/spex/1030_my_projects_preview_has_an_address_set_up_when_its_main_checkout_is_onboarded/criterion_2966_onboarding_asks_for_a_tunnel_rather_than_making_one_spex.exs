@@ -27,6 +27,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -42,12 +44,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
              context do
         :ok = Environments.register(context.project.id, context.environment)
 
+        # A real working copy, minted the way one actually is - a harness joining
+        # for it. Onboarding looks the copy up to decide whether it is the
+        # project's main checkout, so an invented id is refused before any of
+        # this is reached.
+        reply = join_working_copy(context, "/workspace/main", "main")
+
         :ok =
           Environments.write_file(
             context.environment,
             @harness_config,
             Jason.encode!(
-              %{working_copy_id: "spex-harness-2966", project_id: context.project.id},
+              %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
               pretty: true
             )
           )

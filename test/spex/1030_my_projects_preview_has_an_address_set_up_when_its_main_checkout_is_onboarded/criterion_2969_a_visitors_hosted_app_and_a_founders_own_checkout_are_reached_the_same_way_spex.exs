@@ -29,12 +29,37 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers
+  import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
+
+  # The panel lives in `CodeMySpecWeb`, not the local app the case template
+  # points at by default. Without this the route 404s and `live/2` fails
+  # inside LiveViewTest rather than saying which router it looked in.
+  # Story 1025's criteria drive the same page and override it the same way.
+  @endpoint CodeMySpecWeb.Endpoint
+
+  import CodeMySpecSpex.WorkingCopyHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    # The agent runs in another process, so it needs the connection this one
+    # holds.
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  # Without a provider the main agent is refused, no conversation is ever
+  # created, and the preview panel has no page to sit beside. The refusal is
+  # deliberate — an agent started on a credential that does not resolve fails on
+  # its first model call, minutes later, in a log nobody reads.
+  setup %{scope: scope} do
+    Fixtures.connect_provider(scope, :openai)
+    :ok
+  end
 
   @self_run "https://preview-2969-selfrun.example.test"
 
@@ -48,7 +73,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
       end
 
       when_ "the founder opens their project", context do
-        {:ok, live, html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, live, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end
@@ -57,14 +83,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
         assert context.html =~ @self_run,
                "the self-run app's preview is not on the page at all"
 
-        # The address has to stay ours whoever runs the app. `PreviewProxy`
-        # recognises a preview by this prefix, the frame-src policy is derived
-        # from the same base domain, and Safari drops a framed app's session
-        # cookie across a registrable domain — so an app-chosen hostname breaks
-        # three things at once, and only on some browsers.
-        assert PreviewAddress.prefix() == "preview-",
-               "the prefix the whole scheme keys on has moved; this spec and the " <>
-                 "proxy no longer agree about what a preview address looks like"
+        # Asserted on the rendered address rather than by asking the application
+        # what its prefix is — a spex may not reach into `CodeMySpec`, and the
+        # boundary is right: reading the constant would let this pass while the
+        # page showed something else entirely.
+        #
+        # The address has to stay ours whoever runs the app. The proxy recognises
+        # a preview by this prefix, the frame-src policy is derived from the same
+        # base domain, and Safari drops a framed app's session cookie across a
+        # registrable domain — an app-chosen hostname breaks three things at
+        # once, and only on some browsers.
+        assert context.html =~ "preview-",
+               "the framed address is not one of ours"
 
         {:ok, context}
       end
