@@ -135,18 +135,32 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   defp point(host, tunnel_id) do
     with {:ok, token} <- token(),
          {:ok, zone} <- zone_id() do
-      body = %{
-        type: "CNAME",
-        name: host,
-        content: tunnel_id <> ".cfargotunnel.com",
-        proxied: true,
-        ttl: 1
-      }
+      target = tunnel_id <> ".cfargotunnel.com"
+      body = %{type: "CNAME", name: host, content: target, proxied: true, ttl: 1}
 
       "#{@api}/zones/#{zone}/dns_records"
       |> post(body, token)
-      |> interpret_record(host)
+      |> interpret_record(%{host: host, target: target, zone: zone, token: token})
     end
+  end
+
+  defp get(url, token) do
+    [url: url, headers: [{"authorization", "Bearer " <> token}], retry: false]
+    |> Keyword.merge(req_options())
+    |> Req.get()
+    |> body_of()
+  end
+
+  defp patch(url, body, token) do
+    [
+      url: url,
+      headers: [{"authorization", "Bearer " <> token}],
+      json: body,
+      retry: false
+    ]
+    |> Keyword.merge(req_options())
+    |> Req.patch()
+    |> body_of()
   end
 
   # Success first, and this clause is why. Cloudflare puts `"errors": []` on a
@@ -161,20 +175,59 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   # tidier than the API it stands in for tests a service that does not exist.
   defp interpret_record({:ok, %{"success" => true}}, _host), do: :ok
 
-  # An existing record is success too. The address is stable for the life of the
-  # working copy, so every call after the first finds what the first one wrote —
-  # 81053 and 81057 are the two ways Cloudflare says so.
-  defp interpret_record({:ok, %{"errors" => errors}}, host) when is_list(errors) do
+  # An existing record is NOT success on its own — it has to point at this
+  # tunnel. 81053 and 81057 are Cloudflare saying "that name is taken", which is
+  # the ordinary case from the second call onward *and* the case where a
+  # previous attempt left a record aimed somewhere else.
+  #
+  # Treating "taken" as done cost an afternoon. A first attempt created a tunnel
+  # and wrote its record, then failed for an unrelated reason; the tunnel was
+  # cleaned up and the record was not. Every retry then created a fresh tunnel,
+  # got 81053 for the record, reported success — and the address resolved to a
+  # tunnel that no longer existed. Cloudflare answers 530, which reads as the
+  # origin being down, so the whole diagnosis points at the app.
+  #
+  # So: taken means go and look, and repoint it if it is aimed at anything but
+  # this tunnel.
+  defp interpret_record({:ok, %{"errors" => errors}}, ctx) when is_list(errors) do
     if Enum.any?(errors, &(&1["code"] in [81_053, 81_057])) do
-      :ok
+      repoint(ctx)
     else
-      Logger.warning("[PreviewTunnel] #{host} could not be pointed: #{inspect(errors)}")
+      Logger.warning("[PreviewTunnel] #{ctx.host} could not be pointed: #{inspect(errors)}")
       {:error, {:cloudflare, errors}}
     end
   end
 
-  defp interpret_record({:ok, _body}, _host), do: :ok
-  defp interpret_record({:error, reason}, _host), do: {:error, reason}
+  defp interpret_record({:ok, _body}, _ctx), do: :ok
+  defp interpret_record({:error, reason}, _ctx), do: {:error, reason}
+
+  # Aim the record that already exists at this tunnel. A no-op when it is
+  # already correct, which is what the second and every later call sees.
+  defp repoint(%{host: host, target: target, zone: zone, token: token}) do
+    case get("#{@api}/zones/#{zone}/dns_records?name=#{host}", token) do
+      {:ok, %{"result" => [%{"content" => ^target} | _]}} ->
+        :ok
+
+      {:ok, %{"result" => [%{"id" => id} = record | _]}} ->
+        Logger.info(
+          "[PreviewTunnel] #{host} pointed at #{record["content"]}, repointing to #{target}"
+        )
+
+        "#{@api}/zones/#{zone}/dns_records/#{id}"
+        |> patch(%{type: "CNAME", name: host, content: target, proxied: true, ttl: 1}, token)
+        |> case do
+          {:ok, %{"success" => true}} -> :ok
+          {:ok, body} -> {:error, {:cloudflare, body}}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, _body} ->
+        {:error, {:cloudflare, :record_taken_but_not_found}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   defp record(copy, host, tunnel) do
     WorkingCopies.record_preview_tunnel(copy, %{
