@@ -254,6 +254,57 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
       assert {:ok, %{"id" => 9}} = Hetzner.ensure_server(ctx.scope, "box", ssh_key_ids: [1])
     end
+
+    # `create_server/3`'s payload is the only other place a firewall gets
+    # attached, and an adopted server never goes through it — so without this,
+    # a box the account already owned stayed under whatever firewall it had
+    # (often none) regardless of what `ensure_firewall/2` had just ensured for
+    # it.
+    test "an adopted server is attached to the firewall it was just ensured", ctx do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"servers" => [%{"id" => 7, "name" => "box"}]})
+
+        %{method: "POST", request_path: "/v1/firewalls/5/actions/apply_to_resources"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(self(), {:applied_to, Jason.decode!(body)})
+          json(conn, 201, %{"actions" => []})
+
+        %{method: "POST"} = conn ->
+          flunk("ensure_server created a second server when one already existed")
+          conn
+      end)
+
+      assert {:ok, %{"id" => 7}} =
+               Hetzner.ensure_server(ctx.scope, "box", firewall_ids: [5], ssh_key_ids: [1])
+
+      assert_received {:applied_to, %{"apply_to" => [%{"type" => "server", "server" => %{"id" => 7}}]}}
+    end
+
+    test "no firewall_ids given means no attach call at all", ctx do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"servers" => [%{"id" => 7, "name" => "box"}]})
+
+        %{method: "POST"} = conn ->
+          flunk("attached a firewall that was never asked for")
+          conn
+      end)
+
+      assert {:ok, %{"id" => 7}} = Hetzner.ensure_server(ctx.scope, "box", ssh_key_ids: [1])
+    end
+
+    test "a failed attach surfaces as an error rather than a silent adoption", ctx do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"servers" => [%{"id" => 7, "name" => "box"}]})
+
+        %{method: "POST"} = conn ->
+          json(conn, 404, %{"error" => %{"code" => "not_found"}})
+      end)
+
+      assert {:error, _} = Hetzner.ensure_server(ctx.scope, "box", firewall_ids: [5])
+    end
   end
 
   describe "find_server/2" do

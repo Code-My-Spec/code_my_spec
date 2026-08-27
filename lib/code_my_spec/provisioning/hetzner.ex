@@ -289,14 +289,26 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   This is the idempotent entry point: running the server step twice leaves one
   server, not two.
+
+  An adopted server never went through `create_server/3`'s payload, which is
+  the only place a firewall or SSH key otherwise gets attached — so adopting
+  one used to leave it wide open under our own firewall's rules regardless of
+  what `ensure_firewall/2` just ensured. `opts[:firewall_ids]` is attached
+  here explicitly to close that gap. The SSH key has no equivalent: Hetzner's
+  API has no action that adds a key to a server that already exists, only at
+  creation, so a box adopted this way needs the account's key added to its
+  `authorized_keys` by hand — one time, by whoever owns the box.
   """
   @spec ensure_server(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def ensure_server(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
     case find_server(scope, name) do
       {:ok, server} ->
         Logger.info("[Hetzner] server #{name} already exists — reusing")
-        # Adopted rather than created, so teardown leaves it alone.
-        {:ok, Map.put(server, "__adopted__", true)}
+
+        with :ok <- attach_firewalls(scope, server["id"], Keyword.get(opts, :firewall_ids, [])) do
+          # Adopted rather than created, so teardown leaves it alone.
+          {:ok, Map.put(server, "__adopted__", true)}
+        end
 
       {:error, :not_found} ->
         with {:ok, %{"server" => server}} <- create_server(scope, name, opts), do: {:ok, server}
@@ -304,6 +316,33 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       {:error, _} = error ->
         error
     end
+  end
+
+  defp attach_firewalls(_scope, _server_id, []), do: :ok
+
+  defp attach_firewalls(scope, server_id, firewall_ids) do
+    Enum.reduce_while(firewall_ids, :ok, fn firewall_id, :ok ->
+      case attach_firewall(scope, firewall_id, server_id) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @doc """
+  Apply an existing firewall to an existing server.
+
+  `create_server/3` does this as part of the create payload for a box we made
+  ourselves; this is the equivalent for a box `ensure_server/3` found instead
+  — the only case that needs a separate call, since applying a firewall a
+  server already has is a no-op on Hetzner's side rather than an error.
+  """
+  @spec attach_firewall(Scope.t(), integer() | String.t(), integer() | String.t()) ::
+          {:ok, body()} | error()
+  def attach_firewall(%Scope{} = scope, firewall_id, server_id) do
+    request(scope, :post, "/firewalls/#{firewall_id}/actions/apply_to_resources",
+      json: %{apply_to: [%{type: "server", server: %{id: server_id}}]}
+    )
   end
 
   @doc "List every server in the account."
