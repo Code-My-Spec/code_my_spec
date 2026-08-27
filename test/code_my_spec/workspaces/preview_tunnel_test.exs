@@ -51,10 +51,14 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       cond do
         String.contains?(conn.request_path, "cfd_tunnel") ->
-          Req.Test.json(conn, %{"success" => true, "result" => %{"id" => @tunnel_id}})
+          Req.Test.json(conn, %{
+            "success" => true,
+            "errors" => [],
+            "result" => %{"id" => @tunnel_id}
+          })
 
         true ->
-          Req.Test.json(conn, %{"success" => true, "result" => %{"id" => "rec-1"}})
+          Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
       end
     end)
   end
@@ -148,7 +152,11 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   test "an existing record is success, not a failure", %{copy: copy} do
     Req.Test.stub(PreviewTunnel, fn conn ->
       if String.contains?(conn.request_path, "cfd_tunnel") do
-        Req.Test.json(conn, %{"success" => true, "result" => %{"id" => @tunnel_id}})
+        Req.Test.json(conn, %{
+          "success" => true,
+          "errors" => [],
+          "result" => %{"id" => @tunnel_id}
+        })
       else
         # 81053 is "a record with that name already exists", which is the
         # ordinary case from the second call onward.

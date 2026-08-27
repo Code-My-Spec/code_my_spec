@@ -68,10 +68,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
           if String.contains?(conn.request_path, "cfd_tunnel") do
             Req.Test.json(conn, %{
               "success" => true,
+              "errors" => [],
               "result" => %{"id" => "c0ffee11-0000-4000-8000-000000002964"}
             })
           else
-            Req.Test.json(conn, %{"success" => true, "result" => %{"id" => "rec-2964"}})
+            Req.Test.json(conn, %{
+              "success" => true,
+              "errors" => [],
+              "result" => %{"id" => "rec-2964"}
+            })
           end
         end)
 

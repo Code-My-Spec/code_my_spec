@@ -66,9 +66,17 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
           send(test_pid, {:cloudflare_called, conn.request_path})
 
           if String.contains?(conn.request_path, "cfd_tunnel") do
-            Req.Test.json(conn, %{"success" => true, "result" => %{"id" => @tunnel_id}})
+            Req.Test.json(conn, %{
+              "success" => true,
+              "errors" => [],
+              "result" => %{"id" => @tunnel_id}
+            })
           else
-            Req.Test.json(conn, %{"success" => true, "result" => %{"id" => "rec-2966"}})
+            Req.Test.json(conn, %{
+              "success" => true,
+              "errors" => [],
+              "result" => %{"id" => "rec-2966"}
+            })
           end
         end)
 

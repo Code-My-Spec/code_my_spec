@@ -149,7 +149,19 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  # An existing record is success. The address is stable for the life of the
+  # Success first, and this clause is why. Cloudflare puts `"errors": []` on a
+  # *successful* response, so matching the errors key before checking `success`
+  # read every successful DNS write as a failure — `{:cloudflare, []}`, an error
+  # tuple carrying no errors, which is a shape that should have looked wrong on
+  # sight.
+  #
+  # The unit tests missed it because the stub returned `%{"success" => true,
+  # "result" => …}` with no errors key at all, so it fell through to the
+  # catch-all below. Real Cloudflare always sends the key. A stub that is
+  # tidier than the API it stands in for tests a service that does not exist.
+  defp interpret_record({:ok, %{"success" => true}}, _host), do: :ok
+
+  # An existing record is success too. The address is stable for the life of the
   # working copy, so every call after the first finds what the first one wrote —
   # 81053 and 81057 are the two ways Cloudflare says so.
   defp interpret_record({:ok, %{"errors" => errors}}, host) when is_list(errors) do

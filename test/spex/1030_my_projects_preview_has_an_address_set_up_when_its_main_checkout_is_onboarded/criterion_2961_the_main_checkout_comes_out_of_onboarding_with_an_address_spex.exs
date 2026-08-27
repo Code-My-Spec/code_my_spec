@@ -70,9 +70,17 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
         Req.Test.stub(PreviewTunnel, fn conn ->
           if String.contains?(conn.request_path, "cfd_tunnel") do
-            Req.Test.json(conn, %{"success" => true, "result" => %{"id" => @tunnel_id}})
+            Req.Test.json(conn, %{
+              "success" => true,
+              "errors" => [],
+              "result" => %{"id" => @tunnel_id}
+            })
           else
-            Req.Test.json(conn, %{"success" => true, "result" => %{"id" => "rec-2961"}})
+            Req.Test.json(conn, %{
+              "success" => true,
+              "errors" => [],
+              "result" => %{"id" => "rec-2961"}
+            })
           end
         end)
 
