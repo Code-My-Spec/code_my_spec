@@ -178,7 +178,16 @@ defmodule CodeMySpec.Environments.Local do
   #
   # A caller that genuinely wants the ambient directory says so by building the
   # environment with it, which is one word longer and cannot happen by accident.
-  def cmd(%Environment{cwd: nil}, command, _args, _opts) do
+  #
+  # `ssh` is exempt: `Remote.ssh_runner/2` builds it entirely from absolute
+  # arguments (an identity file path, `root@<ip>`) and a command string that
+  # runs in the *remote* shell's own directory — nothing about it resolves
+  # against this process's cwd, so the "would analyse the wrong project"
+  # rationale above cannot apply to it. Blocking it here meant :server (and
+  # every other step that reaches a box only to run a remote command, not to
+  # read a local checkout) could never succeed for a caller with no local
+  # working directory — e.g. a project reached through the light harness.
+  def cmd(%Environment{cwd: nil}, command, _args, _opts) when command != "ssh" do
     raise ArgumentError,
           "cannot run #{inspect(command)}: this environment has no working directory, " <>
             "and running it wherever the caller happens to be would analyse the wrong " <>

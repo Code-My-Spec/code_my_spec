@@ -69,4 +69,15 @@ defmodule CodeMySpec.Environments.NoAmbientDirectoryTest do
     assert {output, 0} = Environments.cmd(env, "pwd", [], [])
     assert String.trim(output) == File.cwd!()
   end
+
+  # `ssh` is exempt: `Remote.ssh_runner/2` builds it entirely from absolute
+  # arguments (an identity file path, `root@<ip>`) and a remote command string
+  # that runs in the *remote* shell's own directory — this process's cwd is
+  # irrelevant to it, unlike `mix`/`git`. Found live: :server (and every other
+  # step that only ever reaches a box to run a remote command) could not run
+  # for a caller with no local checkout, e.g. a project reached through the
+  # light harness.
+  test "ssh runs even with no working directory, since it never touches one" do
+    {_output, _status} = Environments.cmd(@nowhere, "ssh", ["-V"], [])
+  end
 end
