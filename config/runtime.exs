@@ -133,10 +133,16 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # Unset, `ensure/1` returns `:no_cloudflare_account_id` rather than half-
 # provisioning: no tunnel is created, no record is written, and the panel goes
 # on saying no preview is running, which is true.
-config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
-  token: env!("CLOUDFLARE_TUNNEL_TOKEN", :string, env!("CLOUDFLARE_TOKEN", :string, "")),
-  account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, ""),
-  zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
+# Not in test. This file runs for every environment and runs *after*
+# `config/test.exs`, so an unguarded block here overwrites the pinned stub and
+# the placeholder credentials with empty strings — the suite then fails on a
+# missing account id rather than on anything it is testing.
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
+    token: env!("CLOUDFLARE_TUNNEL_TOKEN", :string, env!("CLOUDFLARE_TOKEN", :string, "")),
+    account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, ""),
+    zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
+end
 
 # Sprite mode — the harness on centralized data.
 #
