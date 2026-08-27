@@ -138,10 +138,14 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # the placeholder credentials with empty strings — the suite then fails on a
 # missing account id rather than on anything it is testing.
 unless config_env() == :test do
+  # No `zone_id` here on purpose. `PreviewTunnel` falls back to
+  # `PreviewAddress`'s, so the zone previews live in is decided in one place —
+  # and it has to be, because the zone is what makes a preview same-site with
+  # the app framing it. Two settings could disagree, and the symptom of
+  # disagreeing is a framed app that cannot hold a session.
   config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
     token: env!("CLOUDFLARE_TUNNEL_TOKEN", :string, env!("CLOUDFLARE_TOKEN", :string, "")),
-    account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, ""),
-    zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
+    account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, "")
 end
 
 # Sprite mode — the harness on centralized data.

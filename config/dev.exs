@@ -157,14 +157,36 @@ config :code_my_spec, :cloudflare_tunnel,
 # loopback) against what it does not need (a Docker daemon on this machine).
 config :code_my_spec, CodeMySpec.Workspaces, runner: CodeMySpec.Workspaces.Runner.Local
 
+# `codemyspec.com`, not `astralbi.com`, and the reason is the session cookie.
+#
+# A preview is shown in a frame on the app. Served from a different registrable
+# domain that frame is cross-site, and a browser does not send a `SameSite=Lax`
+# cookie into one — which every generated Phoenix app sets by default. The
+# framed app is then session-less on every request: its login page renders, sets
+# a cookie that never comes back, and redirects to itself forever. Observed on
+# Broken Oaths 2026-08-27, and `PreviewAddress`'s own moduledoc had said so all
+# along.
+#
+# Production was always same-site: `base_domain` defaults to `codemyspec.com`
+# and prod does not override it. Only dev differed, so the whole class was
+# invisible until a real app was framed here.
+#
+# What this gives up, recorded because it was deliberate: previews were moved to
+# `astralbi.com` to keep a wildcard off the production domain, and so that a
+# malformed hostname in a generated tunnel config could not take
+# `dev.codemyspec.com` down with it — which had happened once. That protection
+# is real and this trades it for a preview that can hold a session, on the
+# grounds that a preview nobody can log into is not a preview.
+#
+# One label deep, still: `preview-{id}.codemyspec.com` is covered by a free
+# wildcard certificate and `preview-{id}.dev.codemyspec.com` would need a paid
+# one.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
-  base_domain: "astralbi.com",
+  base_domain: "codemyspec.com",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
   scheme: "https",
-  # Real records now: the tunnel routes *.codemyspec.com to the preview
-  # listener, so a per-project CNAME is what makes an address arrive.
   manage_dns: true,
-  zone_id: "0287fe8206425a2aac660a57a62f65bc"
+  zone_id: "ba45c3c2010cb275de73f91f4f05edab"
 
 # The pane is served from the dev endpoint, so that is who has to be allowed to
 # frame a preview. Without this the proxy names the production origin, the
