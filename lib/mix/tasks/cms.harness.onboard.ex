@@ -74,6 +74,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.Token
   alias CodeMySpec.Environments
   alias CodeMySpec.Projects
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpec.Workspaces.PreviewTunnel
 
   @settings_file ".claude/settings.local.json"
   @harness_config_file ".cms_harness.json"
@@ -97,7 +100,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         check(env, root)
 
       false ->
-        onboard(env, root, relay_model_turns?, project_flag(args), preview_url_flag(args))
+        onboard(env, root, relay_model_turns?, project_flag(args))
     end
   end
 
@@ -141,14 +144,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   defp project_flag(args), do: flag(args, "--project")
-
-  # Where this checkout's preview answers, for the copy that serves the project.
-  #
-  # Set at onboarding because that is the one moment something knows both that
-  # this machine exists and that it is the one serving this project — the same
-  # reason the designation lives here. Recorded rather than held, so a harness
-  # restart does not lose it.
-  defp preview_url_flag(args), do: flag(args, "--preview-url")
 
   defp flag(args, name) do
     args
@@ -231,11 +226,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     Mix.shell().info("not onboarded: #{root}\nrun: #{remedy}")
   end
 
-  defp onboard(env, root, relay_model_turns?, project_id, preview_url) do
+  defp onboard(env, root, relay_model_turns?, project_id) do
     bootstrap_local_dev_env(root)
 
     with {:ok, id} <- identity(env, root, project_id),
-         :ok <- record_preview_url(env, root, id, preview_url),
+         :ok <- provision_preview(env, root, id),
          :ok <- address(env, root, id, relay_model_turns?) do
       git = configure_git(env)
       outstanding(root, id, git)
@@ -249,10 +244,38 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # knows both that this machine exists and that it is the one serving this
   # project — and written down rather than held, so a restart does not lose it.
   #
-  # No flag, nothing recorded. A checkout with no preview is the ordinary state
-  # and the panel says so; guessing an address would point a frame at nowhere.
+  # Provisioned here rather than passed in on a flag. It was a flag for a day,
+  # which made the address something an operator had to already know — the exact
+  # errand story 968 exists to remove.
+  #
+  # Called directly rather than over `/api/harnesses/:id/preview`, because this
+  # task *is* the server: it runs inside CodeMySpec, which is where the
+  # Cloudflare credential lives. `client_utils` has the same job and no
+  # credential, so it asks over HTTP; both end at `PreviewTunnel.ensure/1`.
+  #
+  # Every refusal is `:ok`. A worktree gets one, a machine with no Cloudflare
+  # account configured gets one, and neither is a reason to fail an onboarding
+  # that has already established this copy's identity and databases.
+  defp provision_preview(env, root, id) do
+    with {:ok, copy} <- WorkingCopies.fetch(id),
+         {:ok, credentials} <- PreviewTunnel.ensure(copy) do
+      record_preview(env, root, id, %{
+        "preview_url" => PreviewAddress.url(copy.id),
+        "preview_tunnel_id" => credentials.tunnel_id,
+        "preview_tunnel_secret" => credentials.tunnel_secret
+      })
+    else
+      {:error, :not_the_main_copy} ->
+        :ok
+
+      {:error, reason} ->
+        Mix.shell().info("      preview:    none (#{inspect(reason)})")
+        :ok
+    end
+  end
+
   @doc false
-  def record_preview_url(_env, _root, _id, nil), do: :ok
+  def record_preview(_env, _root, _id, preview) when preview == %{}, do: :ok
 
   # Merged over what the file already says, never written from scratch. By the
   # time this runs `identity/3` has recorded `project_id` there, and possibly a
@@ -267,21 +290,17 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # copy's identity, and "keeps what was already there" has to be checkable
   # rather than asserted in a comment.
   @doc false
-  def record_preview_url(env, root, id, url) do
+  def record_preview(env, root, id, preview) do
     body =
       env
       |> recorded_config()
-      |> Map.merge(%{
-        "working_copy_id" => id,
-        "harness_id" => id,
-        "root" => root,
-        "preview_url" => url
-      })
+      |> Map.merge(%{"working_copy_id" => id, "harness_id" => id, "root" => root})
+      |> Map.merge(preview)
       |> Jason.encode!(pretty: true)
 
     Environments.write_file(env, @harness_config_file, body)
 
-    Mix.shell().info("      preview:    #{url}")
+    Mix.shell().info("      preview:    #{preview["preview_url"]}")
     :ok
   end
 

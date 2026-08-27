@@ -1,4 +1,4 @@
-defmodule CmsHarness.OnboardPreviewUrlTest do
+defmodule CmsHarness.OnboardPreviewTest do
   @moduledoc """
   Story 968: the preview's address is set when the main checkout is onboarded,
   and lives in that checkout's own `.cms_harness.json`.
@@ -15,6 +15,12 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
   the copy may be on another machine and it writes through `Environments` — so
   the merge is reimplemented, and reimplemented behaviour is what a test is
   for.
+
+  These drive the writer directly. What *obtains* the address moved from a
+  `--preview-url` flag to `PreviewTunnel.ensure/1` — a flag made the address
+  something the operator had to already know, which is the errand story 968
+  removes — but where it lands, and what survives landing it, is unchanged and
+  is what these are about.
   """
   use ExUnit.Case, async: true
 
@@ -44,7 +50,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
   test "records the address in the checkout's own config", ctx do
     existing!(ctx.root, %{"working_copy_id" => "wc-1", "root" => ctx.root})
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     assert read!(ctx.config_file)["preview_url"] == @url
   end
@@ -57,7 +63,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
       "root" => ctx.root
     })
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     config = read!(ctx.config_file)
 
@@ -78,7 +84,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
       "root" => ctx.root
     })
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     assert read!(ctx.config_file)["deploy_key"] == "sk-not-recoverable",
            "the key is decrypted out of the server once and written here; there is no " <>
@@ -89,7 +95,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
        ctx do
     existing!(ctx.root, %{"working_copy_id" => "wc-1", "root" => ctx.root})
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     config = read!(ctx.config_file)
 
@@ -100,7 +106,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
   test "no address given, nothing written", ctx do
     existing!(ctx.root, %{"working_copy_id" => "wc-1", "root" => ctx.root})
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", nil)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{})
 
     refute read!(ctx.config_file)["preview_url"],
            "a checkout with no preview is the ordinary state, and an address invented " <>
@@ -110,7 +116,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
   test "a config that cannot be parsed still gets an identity and an address", ctx do
     File.write!(ctx.config_file, "half a json file")
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     config = read!(ctx.config_file)
 
@@ -125,7 +131,7 @@ defmodule CmsHarness.OnboardPreviewUrlTest do
       "root" => ctx.root
     })
 
-    assert :ok = Onboard.record_preview_url(ctx.env, ctx.root, "wc-1", @url)
+    assert :ok = Onboard.record_preview(ctx.env, ctx.root, "wc-1", %{"preview_url" => @url})
 
     # The round trip is the point. Onboarding writing a key nothing reads is
     # the same as not writing it, and `HarnessConfig` is the one reader — it is
