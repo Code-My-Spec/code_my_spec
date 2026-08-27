@@ -15,6 +15,21 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   instead of a guessed one, so it reaches the real repo directly and adopts
   it — same push-and-prove behavior `run_devops_setup` would otherwise do,
   just aimed correctly.
+
+  `push/3`'s default branch is `"main"`, which the repository step never
+  overrides — a real checkout whose default branch is anything else (a
+  pre-existing `master`, for instance) would push nothing, since `git push
+  origin main` has no local `main` to push. Safe (it fails cleanly rather
+  than pushing the wrong content), but still a step that would otherwise
+  fail for no reason a caller could see, so this exposes the same override
+  `push/3` already supports.
+
+  Only pushes what is already committed — `ensure_commit/1` stages and
+  commits only when the checkout has no commit at all yet, and the one other
+  commit this can make (`commit_owner_patch/1`) touches only the generated CI
+  workflow file, explicitly, never a broad `add -A`. Uncommitted local
+  changes and untracked files in the working tree are not staged, committed,
+  or pushed as a side effect of adopting.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -31,6 +46,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
     field :repository_name, :string,
       required: true,
       doc: "The GitHub repository's exact name, e.g. \"market_my_spec\" — not a guess."
+
+    field :branch, :string,
+      doc: "The checkout's actual default branch, if it isn't \"main\" (e.g. \"master\")."
   end
 
   @impl true
@@ -40,7 +58,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
       :ok =
         scope
         |> Resources.project_scope(project)
-        |> Provisioning.run_step_async(:repository, adopt: true, name: repository_name)
+        |> Provisioning.run_step_async(:repository, run_opts(repository_name, params))
 
       {:reply,
        ok(
@@ -50,6 +68,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
+
+  defp run_opts(repository_name, params) do
+    [adopt: true, name: repository_name]
+    |> maybe_put(:branch, Map.get(params, :branch))
+  end
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, _key, ""), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp find_project(scope, project_id) do
     case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
