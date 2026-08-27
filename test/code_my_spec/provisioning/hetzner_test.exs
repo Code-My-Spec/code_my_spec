@@ -281,6 +281,26 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert_received {:applied_to, %{"apply_to" => [%{"type" => "server", "server" => %{"id" => 7}}]}}
     end
 
+    # Found live against fuellytics-prod: a box that already carries the
+    # firewall from an earlier run answers a repeat apply with 422
+    # firewall_already_applied, which is the desired state, not a failure —
+    # the earlier docs here assumed Hetzner treated this as a no-op, and it
+    # does not.
+    test "re-attaching a firewall the server already has is treated as success", ctx do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"servers" => [%{"id" => 7, "name" => "box"}]})
+
+        %{method: "POST", request_path: "/v1/firewalls/5/actions/apply_to_resources"} = conn ->
+          json(conn, 422, %{
+            "error" => %{"code" => "firewall_already_applied", "message" => "already applied"}
+          })
+      end)
+
+      assert {:ok, %{"id" => 7}} =
+               Hetzner.ensure_server(ctx.scope, "box", firewall_ids: [5], ssh_key_ids: [1])
+    end
+
     test "no firewall_ids given means no attach call at all", ctx do
       stub(fn
         %{method: "GET"} = conn ->

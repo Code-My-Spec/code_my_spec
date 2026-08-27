@@ -330,19 +330,34 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   end
 
   @doc """
-  Apply an existing firewall to an existing server.
+  Apply an existing firewall to an existing server, treating "already
+  applied" as success.
 
   `create_server/3` does this as part of the create payload for a box we made
   ourselves; this is the equivalent for a box `ensure_server/3` found instead
-  — the only case that needs a separate call, since applying a firewall a
-  server already has is a no-op on Hetzner's side rather than an error.
+  — the only case that needs a separate call. Setup runs more than once
+  though, same reasoning as `attach_to_network/3`: Hetzner answers a repeat
+  apply with 422 `firewall_already_applied`, not the no-op these docs used to
+  assume — found live against fuellytics-prod, where the box already carried
+  the firewall from an earlier run and the whole :server step failed on
+  exactly the state `ensure_server/3`'s "idempotent entry point" claim
+  requires it not to fail on.
   """
   @spec attach_firewall(Scope.t(), integer() | String.t(), integer() | String.t()) ::
-          {:ok, body()} | error()
+          {:ok, body() | :already_applied} | error()
   def attach_firewall(%Scope{} = scope, firewall_id, server_id) do
-    request(scope, :post, "/firewalls/#{firewall_id}/actions/apply_to_resources",
-      json: %{apply_to: [%{type: "server", server: %{id: server_id}}]}
-    )
+    case request(scope, :post, "/firewalls/#{firewall_id}/actions/apply_to_resources",
+           json: %{apply_to: [%{type: "server", server: %{id: server_id}}]}
+         ) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, {:hetzner_error, 422, %{"error" => %{"code" => "firewall_already_applied"}}}} ->
+        {:ok, :already_applied}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   @doc "List every server in the account."
