@@ -107,6 +107,23 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     {:ok, :valid}
   end
 
+  # Not this stop's task to judge, so it stays active.
+  #
+  # The third answer. `:valid` completes and `:invalid` files feedback, and an
+  # evaluator that wanted neither had to pick one anyway: `QaStory` returned
+  # `:valid` for a sub-agent's in-flight task, which completed it out from under
+  # the sub-agent before any attempt existed (7f79b855). The compensating fix
+  # was to mark `qa_complete` manual, which skipped this module entirely — and
+  # took the whole stop gate with it, because a session holding a manual task
+  # never reaches validation at all.
+  #
+  # So the outcome the guard always needed: do nothing, successfully. The task
+  # stays active for whoever owns it, and this stop is not blocked on it.
+  defp handle_result({:ok, :skip, why}, _scope, _session, task, _type_name, _opts) do
+    Logger.info("[TaskEvaluator] Leaving task #{task.id} active: #{why}")
+    {:ok, :valid}
+  end
+
   # R8: hash the feedback and bump (or reset) the session-level repeat counter
   # so stop_controller can detect a stuck loop (same hash 5 times → terminate).
   defp handle_result({:ok, :invalid, feedback}, scope, session, _task, _type_name, opts) do

@@ -103,11 +103,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           # which agent is stopping, so this guard prevents the
           # parent's stop from getting slammed with demand-submit
           # feedback for the sub-agent's in-flight task.
-          Logger.info(
-            "[QaStory] evaluate(#{story_id}): task is owned by sub-agent #{task.agent_id}; skipping demand-submit on parent stop"
-          )
-
-          {:ok, :valid}
+          #
+          # `:skip`, not `:valid`. Returning `:valid` here *completed* the
+          # sub-agent's live task on the parent's stop, before any attempt
+          # existed — 7f79b855, the defect that `validation_type: :manual` was
+          # added to work around. The guard never had an answer that meant
+          # "leave it alone"; now it does, and the workaround can go.
+          {:ok, :skip, "owned by sub-agent #{task.agent_id}, which has not submitted yet"}
 
         attempts != [] ->
           # Issue a15c252b. An attempt exists but doesn't satisfy — it failed,

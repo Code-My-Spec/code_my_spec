@@ -768,22 +768,32 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [3],
         execution_type: :sub_agent,
         subagent_role: :qa,
-        # Manual so the stop hook does not complete the sub-agent's task out
-        # from under it. Same rationale as `three_amigos_complete` above, and
-        # the omission here was a real defect (`7f79b855`): `execution_type:
-        # :sub_agent` says a sub-agent does this work, while the default
-        # `:automatic` says the stop hook finishes it, and `Session.active_task/1`
-        # selects by status alone with no reference to `agent_id`. So the
-        # parent's own stop picked up the QA sub-agent's live task and completed
-        # it — before any attempt existed, discarding the run and leaving no
-        # record that QA had been tried.
+        # Automatic, because "at least one valid DB-backed pass attempt exists"
+        # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
+        # completes on a real attempt, so nothing here needs a human to say it
+        # is done.
         #
-        # `QaStory.evaluate/2` carries a `subagent_owns?` guard that was added
-        # to compensate, and it cannot: its two available answers are `:valid`,
-        # which completes, and `:invalid`, which files feedback against the
-        # parent. Manual is skipped in `TaskEvaluator` *above* the evaluator, so
-        # the guard stops being reached at all.
-        validation_type: :manual
+        # This was `:manual` for a real reason and it is worth recording why the
+        # reason is gone. `execution_type: :sub_agent` says a sub-agent does the
+        # work, `Session.active_task/1` selects by status with no reference to
+        # `agent_id`, and the evaluator's only two answers were `:valid`, which
+        # completes, and `:invalid`, which files feedback against the parent. So
+        # the parent's own stop completed the QA sub-agent's live task before
+        # any attempt existed, discarding the run (7f79b855). Marking it manual
+        # stopped that.
+        #
+        # It also stopped everything else. A session holding a manual task is
+        # allowed out of `Hooks.Stop.do_decide/6` *before* validation runs, so
+        # for as long as a QA task was open no spex, credo or exunit finding
+        # could block anybody. Measured 2026-08-28: 44 of 55 main stops on this
+        # machine skipped the gate entirely, across two sessions, and the agents
+        # were never told they held the task that was doing it.
+        #
+        # The honest fix was the answer the guard always needed — `:skip`, which
+        # leaves a sub-agent's task active instead of completing or failing it.
+        # With that in `TaskEvaluator`, automatic is safe: a premature
+        # completion is impossible because completing requires the attempt.
+        validation_type: :automatic
       }),
       # Issues QA raised against *this* story, resolved before it is released.
       #
