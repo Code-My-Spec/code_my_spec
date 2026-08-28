@@ -54,4 +54,32 @@ defmodule CodeMySpec.Intake.ShaperFalseAnswerTest do
     refute saved.needs_sign_in
     refute saved.separate_copies
   end
+
+  test "a plan arriving ends the call, so nothing keeps saying Thinking" do
+    attrs = Llm.to_attrs_for_test(@object)
+
+    {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+    {:ok, plan} = Intake.describe(plan, "a mahjong game with an ai coach for beginners")
+    {:ok, plan} = Intake.answer(plan, attrs)
+
+    {:ok, thinking} = Intake.shape_async(plan, __MODULE__.AlwaysPlans)
+
+    assert thinking.shaping_status == :idle,
+           "the plan was written and the row still says a call is out, so every " <>
+             "viewer keeps a Thinking bubble under a finished plan card. Only the " <>
+             "question path cleared it."
+  end
+end
+
+defmodule CodeMySpec.Intake.ShaperFalseAnswerTest.AlwaysPlans do
+  @moduledoc false
+  @behaviour CodeMySpec.Intake.Shaper
+
+  @impl true
+  def shape(_plan, _turns),
+    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
+
+  @impl true
+  def conclude(_plan, _turns),
+    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
 end

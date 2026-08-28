@@ -126,6 +126,11 @@ defmodule CodeMySpec.Intake.Plan do
     |> cast(attrs, [:summary, :first_build, :account_name, :project_name])
     |> validate_required([:summary, :first_build, :account_name, :project_name])
     |> put_change(:status, :planned)
+    # The plan arriving ends the call, exactly as a question arriving does.
+    # Only the question path cleared it, so a conversation that went straight to
+    # a plan left `:thinking` on the row and every viewer kept the "Thinking…"
+    # bubble under a finished plan card, forever.
+    |> put_change(:shaping_status, :idle)
   end
 
   @doc """
