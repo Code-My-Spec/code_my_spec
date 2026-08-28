@@ -5,6 +5,7 @@ defmodule CodeMySpec.IntakeTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Personas
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Plan
   alias CodeMySpec.Projects
@@ -87,6 +88,47 @@ defmodule CodeMySpec.IntakeTest do
   end
 
   describe "convert/2" do
+    # `who_uses` was collected from the first conversation and used only to
+    # write a summary. The project was created without a persona, and that is
+    # not cosmetic: `personas_complete` is a project requirement and `add_rule`
+    # refuses a story with no persona linked, so the first Three Amigos on a
+    # project born from intake stopped until somebody invented one — throwing
+    # away the answer the visitor had actually given.
+    test "the project gets a persona for who the visitor said it is for" do
+      scope = user_scope_fixture()
+      plan = planned_plan()
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+
+      project_scope = %{scope | active_project_id: converted.project_id}
+
+      assert [persona] = Personas.list_personas(project_scope),
+             "the project was created with nobody it is for, so its first Three " <>
+               "Amigos is blocked on inventing a persona the visitor already described"
+
+      assert persona.name == "salon owners"
+      assert persona.persona_type == :proto
+    end
+
+    test "a plan that never said who it is for still converts" do
+      scope = user_scope_fixture()
+      token = Intake.new_session_token()
+      {:ok, plan} = Intake.start_plan(token)
+      {:ok, plan} = Intake.describe(plan, "something for me")
+      {:ok, plan} = Intake.answer(plan, %{needs_sign_in: false, separate_copies: false})
+      {:ok, plan} = Intake.generate_plan(plan)
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      assert {:ok, _converted} = Intake.convert(plan, scope),
+             "a missing persona must not cost the visitor their project — no persona " <>
+               "is worse than one, and no project is worse than both"
+    end
+
     test "creates the account and project under the confirmed names" do
       scope = user_scope_fixture()
       plan = planned_plan()
