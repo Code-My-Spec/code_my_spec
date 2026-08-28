@@ -320,8 +320,6 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     end
   end
 
-  # The plan's account and project become the active ones, so the rest of the
-  # app agrees with what the visitor is looking at.
   # Asked for at boot rather than offered as a button.
   #
   # The visitor has spent the whole of intake in a conversation; landing them on
@@ -344,6 +342,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     end
   end
 
+  # The plan's account and project become the active ones, so the rest of the
+  # app agrees with what the visitor is looking at.
   defp select_plan_scope(%Scope{} = scope, plan) do
     with {:ok, _} <- UserPreferences.select_active_account(scope, plan.account_id),
          {:ok, _} <- UserPreferences.select_active_project(scope, plan.project_id) do
