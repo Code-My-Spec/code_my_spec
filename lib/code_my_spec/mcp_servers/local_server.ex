@@ -204,4 +204,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey)
   component(CodeMySpec.McpServers.Devops.Tools.AdoptRepository)
   component(CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep)
+  component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
+  component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
 end

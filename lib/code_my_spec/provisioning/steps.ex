@@ -5232,10 +5232,39 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc """
+  Record an environment's age key when it was generated somewhere this
+  server cannot reach, not minted by `ensure_age_key/3` itself.
+
+  A project with no local checkout on this side (reached only through the
+  light harness, with nothing behind it that can write `.sops.yaml` or an
+  environment's `.enc.env` file) still needs its checkout's real key on
+  file here — a caller who generated the pair on a real checkout and
+  committed `.sops.yaml`'s public half has to hand this the private half,
+  or the next thing that needs to decrypt (`:deploy`, another secret write)
+  mints a *different* key under the same name, and every ciphertext already
+  committed under the real one becomes unreadable to it.
+
+  Returns the derived public key rather than trusting the input blind, so a
+  caller can confirm it matches what was actually committed to `.sops.yaml`
+  before relying on it — a mismatched key fails much later, decrypting
+  nothing, with no way to tell which of several inputs was wrong.
+  """
+  @spec import_age_key(Scope.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def import_age_key(%Scope{} = scope, environment, private_key) when is_binary(private_key) do
+    with {:ok, public} <- Sops.public_key(private_key),
+         {:ok, _} <- ProjectSecrets.put_value(scope, age_key_name(environment), private_key) do
+      {:ok, public}
+    end
+  end
+
   defp to_string_reason(reason) when is_binary(reason), do: reason
   defp to_string_reason(reason), do: inspect(reason)
 
-  defp age_key_name(environment), do: "age_private_key_#{environment}"
+  @doc "The `ProjectSecrets` key an environment's private age key is stored under."
+  @spec age_key_name(String.t()) :: String.t()
+  def age_key_name(environment), do: "age_private_key_#{environment}"
 
   defp host(scope, opts) do
     Keyword.get(opts, :host) || domain(scope)
