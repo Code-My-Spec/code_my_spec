@@ -80,6 +80,41 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
   end
 
+  describe "the kamal config" do
+    defp config(path, opts) do
+      {^path, body} = Enum.find(DeployArtifacts.files(opts), &(elem(&1, 0) == path))
+      body
+    end
+
+    test "logs into ghcr for a project that was never given its own registry" do
+      body = config("config/deploy.yml", @opts)
+
+      assert body =~ "server: ghcr.io"
+    end
+
+    # Found live onboarding a real project (MarketMySpec) onto a
+    # `:server`-provisioned self-hosted registry: this used to hardcode
+    # `server: ghcr.io` regardless of what `registry` the image itself was
+    # built from, so a project on its own registry got a config that could
+    # never authenticate against it. The credential env var *names* stay the
+    # same either way — `Deploy.run/3`'s `KAMAL_REGISTRY_USERNAME`/`PASSWORD`
+    # supply whichever registry's real credential at deploy time — only the
+    # host Kamal logs into was ever wrong here.
+    test "logs into the registry the image actually came from" do
+      opts = Keyword.put(@opts, :registry, "localhost:5000")
+
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        body = config(path, opts)
+
+        assert body =~ "server: localhost:5000", path
+        refute body =~ "ghcr.io", path
+        assert body =~ "- KAMAL_REGISTRY_USERNAME", path
+        assert body =~ "- KAMAL_REGISTRY_PASSWORD", path
+        assert body =~ "image: localhost:5000/acme/my_app", path
+      end
+    end
+  end
+
   describe "the runtime config" do
     test "excludes the health path by path, not by hostname" do
       # `Plug.SSL.validate_exclude!/1` maps a bare binary to `{:hosts, [binary]}`,

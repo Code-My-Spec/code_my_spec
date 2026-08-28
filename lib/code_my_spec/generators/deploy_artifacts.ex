@@ -111,8 +111,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     [
       {"Dockerfile", dockerfile(app)},
       {".github/workflows/build.yml", ci_workflow(image)},
-      {"config/deploy.yml", kamal_config(app, image, host, "prod")},
-      {"config/deploy.uat.yml", kamal_config(app, image, "uat.#{host}", "uat")},
+      {"config/deploy.yml", kamal_config(app, image, host, "prod", registry)},
+      {"config/deploy.uat.yml", kamal_config(app, image, "uat.#{host}", "uat", registry)},
       {".sops.yaml", sops_rules()},
       {"rel/overlays/bin/boot", boot_overlay(app)},
       {"rel/overlays/bin/migrate", migrate_overlay(app)},
@@ -270,7 +270,18 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   # renders, handed to kamal verbatim by bin/deploy. Everything around it
   # interpolated correctly, so the file read as complete while naming a server
   # that could not exist.
-  defp kamal_config(app, image, host, environment) do
+  # `registry` names the same host `image` was built from (`files/2` composes
+  # `image` as `"#{registry}/#{owner}/#{app}"`) — this used to hardcode
+  # `ghcr.io` regardless, which was never wrong for a fresh project (the only
+  # registry `generate/2` ever produced) until `:server` started provisioning
+  # a real, working self-hosted registry (`CodeMySpec.Provisioning.Registry`,
+  # box-wide singleton on `localhost:5000`) for a project onboarded onto
+  # infrastructure it did not start with. `Deploy.run/3`'s own
+  # `with_registry_credential_for_deploy/2` has supplied that registry's real
+  # credential as `KAMAL_REGISTRY_USERNAME`/`PASSWORD` at deploy time all
+  # along — env var *names* Kamal reads regardless of which registry they
+  # point at — so only the host Kamal logs into was ever wrong here.
+  defp kamal_config(app, image, host, environment, registry) do
     """
     # Kamal deploys #{environment} for #{app}.
     service: #{app}#{if environment == "prod", do: "", else: "-#{environment}"}
@@ -291,7 +302,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         timeout: 5
 
     registry:
-      server: ghcr.io
+      server: #{registry}
       username:
         - KAMAL_REGISTRY_USERNAME
       password:
