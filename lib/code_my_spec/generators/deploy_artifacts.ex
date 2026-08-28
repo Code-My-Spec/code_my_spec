@@ -61,7 +61,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     registry = Keyword.get(opts, :registry, "ghcr.io")
     owner = Keyword.get(opts, :owner, "your-org")
 
-    artifacts = files(app: app, host: host, registry: registry, owner: owner)
+    artifacts =
+      files(app: app, host: host, registry: registry, owner: owner, image: Keyword.get(opts, :image))
 
     artifacts
     |> Enum.reject(fn {path, _} -> present?(env, path) end)
@@ -99,14 +100,25 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     end
   end
 
-  @doc "Every artifact this generator can write, as `{path, content}`."
+  @doc """
+  Every artifact this generator can write, as `{path, content}`.
+
+  `:image`, when given, names the exact repository path the image lives at —
+  `owner`/`app` compose one that matches ghcr.io's naming (an org and a repo
+  under it), which is not what every registry uses. `CodeMySpec.Provisioning.
+  Registry` — the box-wide, self-hosted registry `:server` actually
+  provisions — has no owner segment at all; two projects never collide there
+  because each gets its own repository path, not because of an org name. A
+  caller generating for that registry passes its own `Registry.image/2`
+  rather than trusting this to guess it from `owner`/`app`.
+  """
   @spec files(keyword()) :: [{String.t(), String.t()}]
   def files(opts) do
     app = Keyword.fetch!(opts, :app)
     host = Keyword.fetch!(opts, :host)
     registry = Keyword.fetch!(opts, :registry)
     owner = Keyword.fetch!(opts, :owner)
-    image = "#{registry}/#{owner}/#{app}"
+    image = Keyword.get(opts, :image) || "#{registry}/#{owner}/#{app}"
 
     [
       {"Dockerfile", dockerfile(app)},
@@ -452,43 +464,101 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
+  # Two callers, two shapes of the same two phases.
+  #
+  # `CodeMySpec.Provisioning.Deploy.run/3` calls `migrate <env>` and, only if
+  # its own health probe of whatever is *already* serving passes, `swap
+  # <env>` — never running this script's "all" branch, and never invoking
+  # `kamal` directly itself. It already built the image on its own builder
+  # and pushed it to the project's own registry (`CMS_IMAGE`, the exact
+  # `registry/repo:tag` reference), so re-deriving a version from `git
+  # rev-parse HEAD` and waiting on CI here would silently deploy a *different*
+  # commit than the one setup verified — criterion 8240 is a deploy that
+  # needs no GitHub credential at all, which this satisfies by not touching
+  # GitHub in that path.
+  #
+  # A human running `bin/deploy [uat|prod]` by hand has no `CMS_IMAGE` to
+  # give it, so the "all" branch falls back to what this script always did:
+  # push, wait for GitHub Actions, then run both phases itself in order —
+  # migrate before swap, because the migration has to succeed before traffic
+  # moves. A deploy that swapped first and migrated after would leave a new
+  # version talking to an old schema.
   defp deploy_script do
     """
     #!/usr/bin/env bash
     #
-    # Push, wait for CI to publish the image, migrate, then swap.
-    #
-    #   bin/deploy [uat|prod]
-    #
-    # In that order deliberately: the image has to exist before Kamal can pull
-    # it, and the migration has to succeed before traffic moves. A deploy that
-    # swaps first and migrates after leaves a new version talking to an old
-    # schema.
+    #   bin/deploy [uat|prod]              — for a human: push, wait for CI,
+    #                                         migrate, then swap.
+    #   bin/deploy migrate|swap <uat|prod> — what CodeMySpec's own setup
+    #                                         calls. It already built and
+    #                                         pushed a specific image and
+    #                                         drives health checking itself
+    #                                         between the two phases, so
+    #                                         neither is meant to run alone
+    #                                         by hand.
     set -euo pipefail
 
-    ENVIRONMENT="${1:-uat}"
+    case "${1:-}" in
+      migrate|swap)
+        PHASE="$1"
+        ENVIRONMENT="${2:?usage: bin/deploy $1 <uat|prod>}"
+        ;;
+      *)
+        PHASE="all"
+        ENVIRONMENT="${1:-uat}"
+        ;;
+    esac
+
     CONFIG="config/deploy.yml"
     [ "$ENVIRONMENT" = "uat" ] && CONFIG="config/deploy.uat.yml"
 
-    COMMIT="$(git rev-parse HEAD)"
-    echo "deploying $COMMIT to $ENVIRONMENT"
+    # CMS_IMAGE names the exact image (registry/repo:tag) setup already built
+    # and pushed. Building or pulling another one here would deploy a
+    # different commit than the one setup verified. Without it — a human
+    # running this by hand — the version is whatever HEAD names once CI has
+    # published it.
+    if [ -n "${CMS_IMAGE:-}" ]; then
+      VERSION="${CMS_IMAGE##*:}"
+    else
+      VERSION="$(git rev-parse HEAD)"
+    fi
 
-    git push origin HEAD
+    migrate() {
+      # `-e`, so the migration carries the key instead of reading the host's
+      # copy. `kamal app exec` loads env/roles/<role>.env from the host, and
+      # kamal writes that only when it boots a container — so the migration
+      # ran against the environment of the last successful boot. A rotated
+      # SOPS_AGE_KEY deadlocked on it: the deploy re-encrypts to the new key,
+      # the migration reads the old one off the host, and the deploy that
+      # would replace the host's copy is the one that cannot finish.
+      kamal app exec --config "$CONFIG" --version "$VERSION" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
+    }
 
-    echo "waiting for CI to publish the image for $COMMIT"
-    gh run watch --exit-status "$(gh run list --commit "$COMMIT" --limit 1 --json databaseId --jq '.[0].databaseId')"
+    swap() {
+      kamal deploy --config "$CONFIG" --version "$VERSION"
+    }
 
-    # `-e`, so the migration carries the key instead of reading the host's copy.
-    # `kamal app exec` loads env/roles/<role>.env from the host, and kamal writes
-    # that only when it boots a container — so the migration ran against the
-    # environment of the last successful boot. A rotated SOPS_AGE_KEY deadlocked
-    # on it: the deploy re-encrypts to the new key, the migration reads the old
-    # one off the host, and the deploy that would replace the host's copy is the
-    # one that cannot finish.
-    kamal app exec --config "$CONFIG" --version "$COMMIT" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
-    kamal deploy --config "$CONFIG" --version "$COMMIT"
+    case "$PHASE" in
+      migrate)
+        migrate
+        ;;
+      swap)
+        swap
+        ;;
+      all)
+        echo "deploying $VERSION to $ENVIRONMENT"
 
-    echo "deployed $COMMIT to $ENVIRONMENT"
+        git push origin HEAD
+
+        echo "waiting for CI to publish the image for $VERSION"
+        gh run watch --exit-status "$(gh run list --commit "$VERSION" --limit 1 --json databaseId --jq '.[0].databaseId')"
+
+        migrate
+        swap
+
+        echo "deployed $VERSION to $ENVIRONMENT"
+        ;;
+    esac
     """
   end
 

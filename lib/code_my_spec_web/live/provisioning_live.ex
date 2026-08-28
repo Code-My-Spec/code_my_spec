@@ -60,6 +60,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     Credentials,
     Dns,
     Hetzner,
+    Registry,
     Resend,
     Sops,
     Steps,
@@ -1768,7 +1769,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     case DeployArtifacts.generate(scope.environment,
            app: DeployArtifacts.otp_app_name(project),
            host: project.domain || "example.com",
-           owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org"
+           owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
+           registry: Registry.default_host(),
+           image: registry_image(scope)
          ) do
       {:ok, []} ->
         {:noreply,
@@ -2370,6 +2373,16 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp resource_owner(_), do: "user"
 
   defp project(scope), do: scope.active_project
+
+  # The registry `:server` actually provisions, not ghcr.io — a generated
+  # `image:` composed from `owner`/`app` names a path this registry never
+  # served the project at, since it carries no owner segment at all.
+  defp registry_image(scope) do
+    case Registry.image(scope) do
+      {:ok, image} -> image
+      _ -> nil
+    end
+  end
 
   # The project's environments. Was a module attribute holding ["prod","uat"],
   # which made a `qa` or per-story environment invisible to the page even once

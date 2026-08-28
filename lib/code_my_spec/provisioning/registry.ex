@@ -103,9 +103,27 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec reference(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def reference(%Scope{} = scope, tag, opts \\ []) when is_binary(tag) do
+    with {:ok, image} <- image(scope, opts) do
+      {:ok, "#{image}:#{tag}"}
+    end
+  end
+
+  @doc """
+  The bare path a tag is appended to, with no tag of its own.
+
+  What a generated kamal config's `image:` field names — a bare repository
+  path, exactly like `reference/3` builds on, minus the tag a specific build
+  carries. A generator composing that field from `owner`/`app` opts the way
+  ghcr.io wants them named this project's real repository path only by
+  coincidence, since this registry has no owner segment at all: two projects
+  never collide here because each gets its own repository path, not because
+  of anything an org name would add.
+  """
+  @spec image(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def image(%Scope{} = scope, opts \\ []) do
     with {:ok, host} <- host(opts),
          {:ok, repository} <- repository(scope, opts) do
-      {:ok, "#{host}/#{repository}:#{tag}"}
+      {:ok, "#{host}/#{repository}"}
     end
   end
 

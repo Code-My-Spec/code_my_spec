@@ -113,6 +113,164 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
         assert body =~ "image: localhost:5000/acme/my_app", path
       end
     end
+
+    test "an explicit :image wins over the owner/app composition" do
+      opts = Keyword.merge(@opts, registry: "localhost:5000", image: "localhost:5000/sam-s-app")
+
+      body = config("config/deploy.yml", opts)
+
+      assert body =~ "image: localhost:5000/sam-s-app"
+      refute body =~ "acme"
+    end
+  end
+
+  # Real shelling out, same reasoning `Deploy.run/3`'s own tests give for
+  # doing this rather than asserting on the string content: a script this
+  # important is worth running for real, not just grepping.
+  describe "bin/deploy" do
+    setup do
+      {:ok, tmp} = Briefly.create(directory: true)
+      bin_dir = Path.join(tmp, "bin")
+      File.mkdir_p!(bin_dir)
+
+      script_path = Path.join(bin_dir, "deploy")
+      File.write!(script_path, file("bin/deploy"))
+      File.chmod!(script_path, 0o755)
+
+      fake_bin_dir = Path.join(tmp, "fakebin")
+      File.mkdir_p!(fake_bin_dir)
+
+      %{tmp: tmp, script_path: script_path, fake_bin_dir: fake_bin_dir}
+    end
+
+    defp fake_command(dir, name, script_body) do
+      path = Path.join(dir, name)
+      File.write!(path, "#!/bin/sh\n" <> script_body)
+      File.chmod!(path, 0o755)
+    end
+
+    # `fake_bin_dir` first, so a fake `kamal`/`gh` shadows anything real —
+    # the real system `PATH` stays behind it so `git` (never faked below)
+    # still works, and so a phase that reaches for something genuinely
+    # absent (real `kamal`, not installed here) fails loudly with "command
+    # not found" rather than silently succeeding against nothing.
+    defp run_deploy(script_path, fake_bin_dir, args, env) do
+      System.cmd(script_path, args,
+        cd: Path.dirname(Path.dirname(script_path)),
+        env: [{"PATH", "#{fake_bin_dir}:#{System.get_env("PATH")}"}] ++ env,
+        stderr_to_stdout: true
+      )
+    end
+
+    # The whole point: setup already built and pushed this exact image, so
+    # asking git or GitHub anything here would be answering a question that
+    # was already answered, in a way that could disagree with it. Proven by
+    # the script's own control flow rather than by forbidding git/gh
+    # outright: `case "$PHASE" in migrate) ... ;; esac` cannot reach the
+    # branch that calls them at all.
+    test "migrate calls kamal directly, never git or GitHub", %{
+      script_path: script_path,
+      fake_bin_dir: fake_bin_dir
+    } do
+      log = Path.join(fake_bin_dir, "kamal.log")
+      fake_command(fake_bin_dir, "kamal", "echo \"$*\" >> #{log}\n")
+
+      assert {_output, 0} =
+               run_deploy(script_path, fake_bin_dir, ["migrate", "prod"], [
+                 {"CMS_IMAGE", "localhost:5000/market-my-spec:abc123"},
+                 {"SOPS_AGE_KEY", "test-key"}
+               ])
+
+      logged = File.read!(log)
+      assert logged =~ "app exec --config config/deploy.yml --version abc123"
+      assert logged =~ "SOPS_AGE_KEY:test-key"
+      refute logged =~ "deploy --config"
+    end
+
+    test "swap deploys the exact version migrate just ran against", %{
+      script_path: script_path,
+      fake_bin_dir: fake_bin_dir
+    } do
+      log = Path.join(fake_bin_dir, "kamal.log")
+      fake_command(fake_bin_dir, "kamal", "echo \"$*\" >> #{log}\n")
+
+      assert {_output, 0} =
+               run_deploy(script_path, fake_bin_dir, ["swap", "uat"], [
+                 {"CMS_IMAGE", "localhost:5000/market-my-spec:abc123"}
+               ])
+
+      logged = File.read!(log)
+      assert logged =~ "deploy --config config/deploy.uat.yml --version abc123"
+      refute logged =~ "app exec"
+    end
+
+    test "a phase called without CMS_IMAGE falls back to the checkout's own HEAD", %{
+      tmp: tmp,
+      script_path: script_path,
+      fake_bin_dir: fake_bin_dir
+    } do
+      {_, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+
+      {_, 0} =
+        System.cmd(
+          "git",
+          ["-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "x"],
+          cd: tmp
+        )
+
+      {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: tmp)
+      head = String.trim(head)
+
+      log = Path.join(fake_bin_dir, "kamal.log")
+      fake_command(fake_bin_dir, "kamal", "echo \"$*\" >> #{log}\n")
+
+      assert {_output, 0} = run_deploy(script_path, fake_bin_dir, ["migrate", "prod"], [])
+
+      assert File.read!(log) =~ "--version #{head}"
+    end
+
+    # The original, single-invocation flow a human runs by hand — unchanged
+    # by any of the above, since setup never calls this branch.
+    test "a bare environment argument still pushes, waits for CI, then runs both phases", %{
+      tmp: tmp,
+      script_path: script_path,
+      fake_bin_dir: fake_bin_dir
+    } do
+      {_, 0} = System.cmd("git", ["init", "-q"], cd: tmp)
+
+      {_, 0} =
+        System.cmd(
+          "git",
+          ["-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "x"],
+          cd: tmp
+        )
+
+      {head, 0} = System.cmd("git", ["rev-parse", "HEAD"], cd: tmp)
+      head = String.trim(head)
+
+      # A fake `git remote`/push target so `git push origin HEAD` has
+      # somewhere real to push to instead of failing on a remote that does
+      # not exist — this test is about what the script does after that
+      # succeeds, not about proving push itself works.
+      {:ok, bare} = Briefly.create(directory: true)
+      {_, 0} = System.cmd("git", ["init", "-q", "--bare"], cd: bare)
+      {_, 0} = System.cmd("git", ["remote", "add", "origin", bare], cd: tmp)
+
+      log = Path.join(fake_bin_dir, "calls.log")
+      fake_command(fake_bin_dir, "gh", "echo \"gh $*\" >> #{log}; echo 999\n")
+      fake_command(fake_bin_dir, "kamal", "echo \"kamal $*\" >> #{log}\n")
+
+      assert {_output, 0} = run_deploy(script_path, fake_bin_dir, ["prod"], [])
+
+      logged = File.read!(log)
+      assert logged =~ "gh run list --commit #{head}"
+      assert logged =~ "gh run watch --exit-status 999"
+      assert logged =~ "kamal app exec --config config/deploy.yml --version #{head}"
+      assert logged =~ "kamal deploy --config config/deploy.yml --version #{head}"
+
+      {branches, 0} = System.cmd("git", ["branch", "-a"], cd: bare)
+      assert branches =~ "main" or branches =~ "master"
+    end
   end
 
   describe "the runtime config" do

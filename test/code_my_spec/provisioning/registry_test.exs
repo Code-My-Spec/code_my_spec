@@ -76,6 +76,26 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     end
   end
 
+  # Exists for a generated kamal config's `image:` field, which names a bare
+  # repository with no tag — `reference/3` builds one specific tag on top of
+  # exactly this. Found needed live: `DeployArtifacts`' own generator composed
+  # `image:` from `owner`/`app` opts the way ghcr.io wants them named, which
+  # is a different path than this registry actually serves the same project
+  # at — there is no owner segment here at all.
+  describe "image/2" do
+    test "the same bare path reference/3 builds a tag onto" do
+      assert {:ok, image} = Registry.image(scope())
+      assert {:ok, reference} = Registry.reference(scope(), "abc123")
+
+      assert reference == "#{image}:abc123"
+      assert image == "localhost:5000/sam-s-app"
+    end
+
+    test "a project with no name cannot name a repository" do
+      assert {:error, :no_project} = Registry.image(%Scope{})
+    end
+  end
+
   # The registry container is a box-wide singleton (`serve/2`), but what it
   # stores per project is not — a bucket, and a repository path, per project,
   # so the container being shared does not mean one project's images become
