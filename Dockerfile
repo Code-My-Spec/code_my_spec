@@ -22,8 +22,24 @@ FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential git ca-certificates \
+  && apt-get install -y --no-install-recommends build-essential git ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
+
+# sops, fetched here so the runtime stage needs no download tooling of its
+# own — same pattern (and version pin) `DeployArtifacts` generates for every
+# other project's own Dockerfile. This server calls the `sops` binary
+# directly (CodeMySpec.Provisioning.Sops) to manage a project's own
+# envs/*.enc.env during provisioning; it is not something any release tool
+# provides.
+#
+# `dpkg --print-architecture` prints amd64/arm64, which is exactly how sops
+# names its release assets — so this follows the image's own architecture
+# rather than assuming whichever one the build box happens to be.
+ARG SOPS_VERSION=3.9.4
+RUN curl -fsSL -o /usr/local/bin/sops \
+      "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.$(dpkg --print-architecture)" \
+  && chmod +x /usr/local/bin/sops \
+  && sops --version --disable-version-check
 
 # prepare build dir
 WORKDIR /app
@@ -71,8 +87,17 @@ RUN mix release code_my_spec
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates git openssh-client \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates git openssh-client age \
   && rm -rf /var/lib/apt/lists/*
+
+# `age-keygen` (from the `age` package above) mints and derives the
+# per-environment keys CodeMySpec.Provisioning.Sops manages; `sops` itself
+# edits/decrypts the encrypted env files those keys open. Both were missing
+# entirely — this server had never actually run this path until a project's
+# first real :server provisioning exercised it — and Sops.available?/0 reads
+# either one missing as :sops_unavailable rather than a clearer error, since
+# a mid-command failure is worse than refusing before starting.
+COPY --from=builder /usr/local/bin/sops /usr/local/bin/sops
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
