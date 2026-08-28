@@ -17,25 +17,27 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   decided by grepping a markdown file for the words "verified" and "prod",
   which an agent could satisfy by writing prose.
 
-  ## Refuses before it ever asks
+  ## Never sees past the one project it is connected to
 
   `Resources.report/1` is deliberately account-wide — the cross-project
   dangling checks need to see everything, and that is right for `/app/
   resources`, a human looking at their own whole account. It is wrong for
   this tool: a caller reaching it through the harness is scoped to one
-  project's work, and has no business learning what devops state — on,
-  off, or a *sibling* project's own checklist — some other project in the
-  same account is in. Confirmed live: a project whose own devops was still
-  `:off` got back a different project's checklist entirely, because nothing
-  here checked which project was actually asking before handing back
-  everyone's answer. Refusing here, before `Resources.report/1` ever runs,
-  is what stops that regardless of which other projects exist.
+  project's work, and has no business learning what devops state, missing
+  steps, or dangling resources some *other* project in the same account
+  carries. Confirmed live, twice: first a project whose own devops was
+  still `:off` got back a different project's checklist entirely; then,
+  once devops was turned on, that *same* other project kept appearing in
+  full detail beside the real answer, because the underlying call was still
+  `Resources.report/1`. This uses `Resources.project_report/2` instead,
+  which never runs `deployable/1` or asks a provider for anything beyond
+  the one project it is given — there is no account-wide data left to leak,
+  on or off.
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
-  alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Resources
 
@@ -44,29 +46,28 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_local_scope(frame, %{}) do
-      {:ok, scope} -> {:reply, reply(scope), frame}
+    with {:ok, scope} <- Validators.validate_local_scope(frame, %{}),
+         {:ok, project} <- Validators.devops_project(scope) do
+      {:reply, reply(scope, project), frame}
+    else
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
 
-  defp reply(scope) do
-    case Configurations.get(scope) do
-      %{devops: level} when level != :off -> ok(summary(Resources.report(scope)))
-      _ -> devops_off(scope)
+  defp reply(scope, project) do
+    case Resources.project_report(scope, project) do
+      {:ok, report} -> ok(summary(report))
+      {:error, :devops_off} -> devops_off(project)
     end
   end
 
-  defp devops_off(scope) do
+  defp devops_off(project) do
     Response.tool()
     |> Response.error(
-      "devops is off for #{project_name(scope)} — nothing to report. Turn it on for this " <>
+      "devops is off for #{project.name} — nothing to report. Turn it on for this " <>
         "project first; this tool never reports on any other project in the account."
     )
   end
-
-  defp project_name(%{active_project: %{name: name}}) when is_binary(name), do: name
-  defp project_name(_scope), do: "this project"
 
   defp summary(report) do
     missing = Enum.filter(report.checklist, &(&1.state == :missing))

@@ -275,12 +275,62 @@ defmodule CodeMySpec.Resources do
 
   defp config(key), do: Application.get_env(:code_my_spec, __MODULE__, [])[key]
 
+  @doc """
+  One project's own status — what it should have against what it actually
+  has, for that project alone.
+
+  Unlike `report/1` (the whole account, for `/app/resources` — the
+  cross-project dangling checks genuinely need to see everything, and
+  `Inventory.list/1` asking each provider for every resource on the account
+  is how they see it), this never looks past the one project it is given.
+  A harness-scoped caller has no business learning what devops state,
+  missing steps, or dangling resources some *other* project in the same
+  account carries — least of all by accident, through a report that
+  happened to include it regardless of whether the caller's own project
+  was on or off.
+
+  Confirmed live: `devops_status`'s original fix refused cleanly when the
+  calling project's own devops was `:off`, but once it was turned on the
+  tool still called `report/1` underneath — so a *different*,
+  independently devops-enabled project in the same account kept appearing
+  in full detail beside the real answer. This is what closes that: no
+  `deployable/1`, no `Inventory.list/1`, nothing that could ever name a
+  project other than the one given.
+
+  Errors when this project's own devops level is off — nothing to report,
+  not another project's checklist instead.
+  """
+  @spec project_report(Scope.t(), Project.t()) ::
+          {:ok, report()} | {:error, :devops_off}
+  def project_report(%Scope{} = scope, %Project{} = project) do
+    case devops(scope, project) do
+      :off ->
+        {:error, :devops_off}
+
+      _ ->
+        checklist = project_checklist(scope, project)
+        problems = Enum.count(checklist, &(&1.state == :missing))
+
+        {:ok,
+         %{
+           status: if(problems == 0, do: :healthy, else: :unhealthy),
+           problems: problems,
+           resources: [],
+           checklist: checklist,
+           errors: %{}
+         }}
+    end
+  end
+
   # What each project meant to be deployed should have, from the same sequence
   # the run uses. `plan/2` fills the gaps a run never reached, which is the
   # only reason a step nobody started can appear here at all.
   defp checklist(scope) do
-    for project <- deployable(scope),
-        step <- Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
+    for project <- deployable(scope), entry <- project_checklist(scope, project), do: entry
+  end
+
+  defp project_checklist(scope, project) do
+    for step <- Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
       %{
         project_id: project.id,
         project_name: project.name,

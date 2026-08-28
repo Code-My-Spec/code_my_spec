@@ -40,7 +40,17 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
       refute text =~ "Sibling Project"
     end
 
-    test "reports for real once this project's own devops is on", %{scope: scope, project: project} do
+    # Found live, the second half of the same incident: the first fix
+    # refused cleanly while this project's own devops was off, but once it
+    # was turned on the tool still called Resources.report/1 underneath —
+    # so a *different* project, independently devops-enabled in the same
+    # account, kept appearing in full detail beside the real answer. Both
+    # projects devops-on here, on purpose, to prove that specific case.
+    test "reports for real once this project's own devops is on, never a sibling's — even when both are on",
+         %{scope: scope, project: project} do
+      sibling = project_fixture(scope, %{name: "Sibling Project"})
+      sibling_scope = Resources.project_scope(scope, sibling)
+      {:ok, _} = Configurations.update(sibling_scope, %{devops: :prod})
       {:ok, _} = Configurations.update(scope, %{devops: :prod})
 
       frame = %Frame{assigns: %{current_scope: scope}}
@@ -48,7 +58,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
       assert {:reply, response, ^frame} = DevopsStatus.execute(%{}, frame)
 
       assert response.isError == false
-      assert response_text(response) =~ project.name
+      text = response_text(response)
+      assert text =~ project.name
+      refute text =~ "Sibling Project"
     end
   end
 
