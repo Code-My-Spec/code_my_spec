@@ -60,7 +60,22 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
   end
 
   defp ask_model(plan, turns, opts) do
-    case ReqLLM.generate_object(model(), prompt(plan, turns, opts), @schema, temperature: 0.2) do
+    # A timeout the model can actually finish inside.
+    #
+    # Req defaults `receive_timeout` to 15s and this set none, which is a budget
+    # that fits a fast chat model and nothing else. Measured against the same
+    # turn: gpt-4o answers in 2.2s and gpt-5 in 15.0s — right on the line
+    # locally, and reliably over it from a Fly region. So the conversation
+    # worked or did not depending on which side of 15s the model landed, which
+    # reads as the model being broken rather than the caller being impatient.
+    #
+    # 120s because the visitor is watching a "Thinking…" bubble and would rather
+    # wait than be told to start again; a model that has not answered by then is
+    # genuinely wrong, not slow.
+    case ReqLLM.generate_object(model(), prompt(plan, turns, opts), @schema,
+           temperature: 0.2,
+           receive_timeout: to_timeout(second: 120)
+         ) do
       {:ok, response} -> {:ok, response |> ReqLLM.Response.object() |> to_attrs()}
       {:error, reason} -> failed(reason)
     end
