@@ -41,6 +41,8 @@ defmodule CodeMySpec.Provisioning.Database do
   same way it reads everything else. Nothing puts it in the working tree.
   """
 
+  require Logger
+
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Repository
@@ -182,9 +184,53 @@ defmodule CodeMySpec.Provisioning.Database do
   # project's database out from under its live connections.
   defp ensure_container(run, admin, opts) do
     if container_running?(run) do
-      :ok
+      check_image(run, opts)
     else
       create_container(run, admin, opts)
+    end
+  end
+
+  # A running container is never assumed to be running the image this box
+  # would create today. Found live: `cms-postgres` on fuellytics-prod was
+  # started on plain `postgres:17` before pgvector became the default here,
+  # and `ensure_container/3` treated "running" as the whole answer — every
+  # run since would have kept reporting the server step done on a database
+  # that could never install `vector`, because nothing re-created here once
+  # a container exists.
+  #
+  # This does not act on the drift. Swapping the image under a running
+  # container whose volume might hold another project's real data is a
+  # deliberate `docker rm -f` plus volume wipe, not something a routine
+  # `serve/3` call gets to decide on its own — the same reason this box
+  # never restarts an already-running container in the first place. It only
+  # makes the drift visible, as a step that fails to verify rather than one
+  # that quietly reports done on a database this run never actually ensured.
+  #
+  # An inspect that cannot be read is not a verdict either way — the same
+  # rule `run_step/3` already applies to a provider that could not be read —
+  # so this proceeds rather than blocking on a transient SSH hiccup.
+  defp check_image(run, opts) do
+    wanted = Keyword.get(opts, :database_image, @image)
+
+    case run.(["docker inspect --format '{{.Config.Image}}' #{@container}"]) do
+      {output, 0} ->
+        case String.trim(output) do
+          ^wanted ->
+            :ok
+
+          running ->
+            {:error,
+             {:database_image_outdated,
+              "#{@container} is running #{running}, not #{wanted} — recreate it " <>
+                "deliberately, the volume may hold real data"}}
+        end
+
+      {output, status} ->
+        Logger.warning(
+          "[Database] could not read #{@container}'s running image (#{status}): #{String.trim(output)}"
+        )
+
+        :ok
     end
   end
 

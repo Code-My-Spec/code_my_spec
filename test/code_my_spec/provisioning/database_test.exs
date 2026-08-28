@@ -84,7 +84,40 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     test "an already-running container is not touched" do
       run = fn
         ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
+        ["docker inspect" <> _] -> {"pgvector/pgvector:pg18", 0}
         ["docker network create" <> _] -> raise "must not touch an already-running container"
+        [_] -> {"", 0}
+      end
+
+      assert {:ok, _} = serve(run: run)
+    end
+
+    # Found live against fuellytics-prod: cms-postgres was started on plain
+    # postgres:17 before pgvector became the default, and an already-running
+    # container was never checked against what a fresh one would use — every
+    # run since would have kept reporting the server step done on a database
+    # that could never install `vector`. This never auto-recreates the
+    # container: the volume may hold another project's real data, so drift
+    # becomes a step that fails to verify rather than a silent swap.
+    test "a running container on an outdated image refuses rather than reporting done" do
+      run = fn
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
+        ["docker inspect" <> _] -> {"postgres:17", 0}
+        [_] -> {"", 0}
+      end
+
+      assert {:error, {:database_image_outdated, message}} = serve(run: run)
+      assert message =~ "postgres:17"
+      assert message =~ "pgvector/pgvector:pg18"
+    end
+
+    # An inspect that cannot be read is not evidence of drift either way —
+    # the same rule already applied to a provider that could not be read —
+    # so this proceeds rather than blocking setup on a transient SSH hiccup.
+    test "an inspect that cannot be read does not block setup" do
+      run = fn
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
+        ["docker inspect" <> _] -> {"Error: No such object: cms-postgres", 1}
         [_] -> {"", 0}
       end
 
