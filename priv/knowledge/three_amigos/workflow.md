@@ -55,40 +55,54 @@ fine; this is example mapping, not full BDD spec writing —
 
 ### 4. Questions (red cards)
 
-Park unresolved questions with `add_question`. Don't let them
-derail the conversation. The PM resolves them between sessions or
-in a follow-up; the session moves on.
+Park unresolved questions with `add_question` so they don't derail
+the conversation. Parking is not the same as leaving them: **the
+session cannot be sealed while any question is open.** Each one is
+either answered with `resolve_question` or closed as somebody
+else's problem.
 
-A high question count is a smell. If questions outnumber scenarios,
-the story isn't ready for this session — the PM needs to do more
-intent-shaping first.
+A red card is a thing nobody in the room knew the answer to.
+Building on top of one is the failure Example Mapping exists to
+prevent, so "more green than red" is not the bar — that reads
+whether a story is ready to *estimate*, and says nothing about
+whether the conversation finished.
 
-## Done signal
+A high question count is still a smell. Several open at once usually
+means the PM needs to do more intent-shaping before this session is
+worth continuing.
 
-The `three_amigos_complete` requirement is satisfied when ALL of:
+## Done signal — the session is sealed
+
+`three_amigos_complete` reads one thing: whether the story is
+**sealed**. Sealing happens when ALL of:
 
 - ≥1 persona is linked to the story.
 - ≥1 Rule exists on the story.
 - Every Rule has ≥1 scenario (any kind).
-- `rules < 10` — if you're past 10 rules the story is too big;
-  split it.
-- `scenarios > open questions` (if any questions exist) — if
-  questions outnumber scenarios, the story isn't ready.
+- `rules < 15` — the hard ceiling. Past 10 you get a non-blocking
+  advisory to consider splitting the story.
+- **No question is left open.** Answer each with `resolve_question`,
+  or close the ones that turned out to belong somewhere else.
 
-## This is a manual-validation task
+Sealing is one-way, and the gate is the only thing that does it —
+so the conditions above cannot be bypassed. Once sealed, a question
+raised later does not un-seal the story. That is the next
+conversation, not evidence this one never happened.
 
-The stop hook does **not** auto-evaluate this requirement. You own
-the completion signal.
+## Stopping mid-session
 
-- Freely stop between turns to let the PM respond. The conversation
-  is multi-turn by design.
-- When you believe the readiness conditions are met, call
-  `evaluate_task` explicitly to run the checker. On pass, the
-  task completes and the graph advances.
-- If the PM directs you to abandon the session (refuses to provide
-  intent, walks away, decides the story needs more shaping), the
-  task remains open. The next run picks up where you left off —
-  rules and scenarios already on the story persist.
+The conversation is multi-turn by design and you should freely stop
+between turns to let the PM respond.
+
+- Call `evaluate_task` when you believe the conditions are met. On
+  pass the story is sealed and the graph advances; on fail you get
+  feedback naming what is missing, and you continue.
+- If the PM abandons the session (refuses to provide intent, walks
+  away, decides the story needs more shaping), the task stays open
+  and the next run picks up where you left off — rules, scenarios
+  and questions already on the story persist.
+- An unsealed story is simply not complete. There is no way to
+  report it as done, and nothing completes it on your behalf.
 
 ## Anti-patterns to avoid
 
@@ -98,6 +112,11 @@ the completion signal.
 - **Fabricating failure-path scenarios.** Coverage templates are not
   the bar. Only add a `failure_path` when a genuine failure surface
   exists for that rule.
+- **Leaving a red card open and moving on.** Parking a question
+  during the conversation is right; leaving it open at the end is
+  not. It blocks the seal, and that is deliberate — an unanswered
+  question that nobody ever returns to is how a story gets built on
+  a guess.
 - **Skipping persona linkage.** Without a persona, the story has no
   voice. The rules and scenarios should make sense FROM the linked
   persona's perspective.

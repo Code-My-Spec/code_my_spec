@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
   @moduledoc """
   Story 559 — Three Amigos
   Criterion 5898 — Resolved questions do not count against the
-  `scenarios > questions` readiness clause. The PM can resolve a
+  readiness gate — only open ones do. The PM can resolve a
   question via `resolve_question`, and the readiness gate passes
   even though the question record still exists in the audit trail.
 

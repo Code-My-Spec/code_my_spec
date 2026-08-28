@@ -3,7 +3,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
   Story 559 — Three Amigos
   Criterion 5887 — When a story has all readiness conditions met
   (≥1 persona linked, ≥1 rule, every rule has a happy + a failure
-  scenario, scenarios > questions), the agent's `evaluate/2` clears
+  scenario, and no question left open), the agent's `evaluate/2` seals
+  the story and clears
   `three_amigos_complete` and the next `get_next_requirement` no
   longer returns it for this story.
 

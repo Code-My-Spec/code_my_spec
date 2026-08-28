@@ -1,14 +1,22 @@
 defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5897 — When a story has more open questions (red cards)
-  than scenarios (green cards), the readiness gate fails on the
-  `scenarios > questions` clause and the failure detail tells the PM
-  the story isn't ready.
+  Criterion — While any question (red card) is open, the readiness
+  gate fails and the failure detail names the unanswered questions
+  and points the PM at `resolve_question`.
 
-  Enforces Wynne's Example Mapping signal: if there are more red
-  cards than green cards, the story is not yet ready for development
-  — the PM needs to find answers before the spec can be locked in.
+  This drove the ratio rule — `scenarios > questions`, Wynne's
+  Example Mapping signal — and now drives the rule that replaced it:
+  every red card answered, whatever the scenario count. The ratio
+  reads whether a story is ready to *estimate* and says nothing about
+  whether the conversation finished. A story with five scenarios and
+  three open questions satisfied it, and nothing ever asked those
+  three again; 50 released stories on this project were sitting in
+  exactly that shape.
+
+  The case here — more questions than scenarios — still fails, which
+  is why this criterion survived the change. It is now one case of a
+  stricter rule rather than the boundary itself.
 
   Depends on:
     - `BddRulesChecker` upgraded with the scenarios-vs-questions clause
@@ -29,7 +37,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "evaluate fails when open questions outnumber scenarios" do
+  spex "evaluate fails while a red card is unanswered" do
     scenario "evaluate_task names the scenarios-vs-questions readiness failure" do
       given_ :persona_exists
 
