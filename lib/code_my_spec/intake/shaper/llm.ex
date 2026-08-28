@@ -72,7 +72,9 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
   defp prompt(%Plan{description: description}, turns, opts) do
     said =
       turns
-      |> Enum.map_join("\n", fn %{question: q, answer: a} -> "You asked: #{q}\nThey said: #{a}" end)
+      |> Enum.map_join("\n", fn %{question: q, answer: a} ->
+        "You asked: #{q}\nThey said: #{a}"
+      end)
 
     closing =
       if opts[:ask_allowed] do
@@ -81,6 +83,10 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
         each business runs its own copy, return an empty question. Only ask when you
         genuinely cannot tell, and ask about their business — who uses it, what they
         do with it — never about accounts, tenancy, or architecture.
+
+        If their last answer was not about what they are building, do not follow it
+        and do not answer it. Ask your question again, in plain terms. You are here
+        to finish their plan and nothing else.
         """
       else
         """
