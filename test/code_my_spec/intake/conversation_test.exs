@@ -33,6 +33,11 @@ defmodule CodeMySpec.Intake.ConversationTest do
   end
 
   setup do
+    # Shared mode, so the conversation and the task it owns can both see the
+    # connection. Allowing them one at a time raced: the task is spawned by the
+    # conversation, after any grant the test could make.
+    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+
     previous = Application.get_env(:code_my_spec, Intake, [])
 
     Application.put_env(:code_my_spec, Intake, Keyword.put(previous, :shaper, SlowShaper))
@@ -40,6 +45,21 @@ defmodule CodeMySpec.Intake.ConversationTest do
     Application.put_env(:code_my_spec, :intake_shaping_async, true)
 
     on_exit(fn ->
+      # The idle timeout is thirty minutes, so a conversation left running
+      # outlives this test's sandbox and then crashes doing work for a database
+      # that has gone. The suite stayed green and the log filled with ownership
+      # errors from a test that had already passed.
+      for {_, pid, _, _} <-
+            DynamicSupervisor.which_children(CodeMySpec.Intake.ConversationSupervisor),
+          is_pid(pid),
+          do: DynamicSupervisor.terminate_child(CodeMySpec.Intake.ConversationSupervisor, pid)
+
+      # And the tasks they own. `async_nolink` deliberately does not link, so
+      # terminating the conversation leaves its task running against a database
+      # that is about to disappear.
+      for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor),
+          do: Task.Supervisor.terminate_child(CodeMySpec.TaskSupervisor, pid)
+
       Application.put_env(:code_my_spec, Intake, previous)
       Application.put_env(:code_my_spec, :intake_conversation_process, false)
       Application.put_env(:code_my_spec, :intake_shaping_async, false)
@@ -49,23 +69,15 @@ defmodule CodeMySpec.Intake.ConversationTest do
     {:ok, plan: plan}
   end
 
-  # The conversation and the task it spawns are both processes this test owns
-  # nothing in, so they are granted the connection explicitly.
-  defp allow(pid), do: Ecto.Adapters.SQL.Sandbox.allow(CodeMySpec.Repo, self(), pid)
-
   test "the call survives the caller going away", %{plan: plan} do
     :ok = Intake.subscribe(plan)
 
     conversation = Conversation.ensure_started(plan)
-    allow(conversation)
 
     # A caller that asks and then dies, which is a reload.
     caller = spawn(fn -> Conversation.said(plan, "a mahjong game with an ai coach") end)
     Process.sleep(20)
     Process.exit(caller, :kill)
-
-    # The task the conversation spawns needs the connection too.
-    for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor), do: allow(pid)
 
     assert_receive {:shaped, shaped}, 5_000
 
@@ -78,7 +90,6 @@ defmodule CodeMySpec.Intake.ConversationTest do
 
   test "two submissions do not race", %{plan: plan} do
     conversation = Conversation.ensure_started(plan)
-    allow(conversation)
 
     # A mailbox serialises these; two bare tasks would not.
     task_one = Task.async(fn -> Conversation.said(plan, "first") end)

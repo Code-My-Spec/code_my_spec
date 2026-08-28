@@ -99,7 +99,7 @@ defmodule CodeMySpec.Intake do
     with {:ok, thinking} <- mark_thinking(plan) do
       if async?() do
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          run_shaping(thinking, shaper)
+          shape(thinking, shaper)
         end)
 
         {:ok, thinking}
@@ -108,16 +108,44 @@ defmodule CodeMySpec.Intake do
         # sandbox's transaction. Same reasoning as `content_pull_async`.
         # Returns the *finished* plan, so a test asserts on an outcome rather
         # than on a race.
-        {:ok, run_shaping(thinking, shaper)}
+        {:ok, shape(thinking, shaper)}
       end
     end
   end
 
   defp async?, do: Application.get_env(:code_my_spec, :intake_shaping_async, true)
 
-  defp mark_thinking(plan) do
+  @doc """
+  Asks the model and records what it said. Runs wherever it is called.
+
+  Public because `Intake.Conversation` owns the task that runs it: the process
+  has to know whether a call is out, and it cannot know that about work it fired
+  and forgot.
+  """
+  @spec shape(Plan.t(), module()) :: Plan.t()
+  def shape(%Plan{} = plan, shaper \\ CodeMySpec.Intake.Shaper), do: run_shaping(plan, shaper)
+
+  @doc "Marks a model call as out."
+  @spec mark_thinking(Plan.t()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def mark_thinking(%Plan{} = plan) do
     plan |> Plan.shaping_status_changeset(:thinking) |> PlansRepository.update()
   end
+
+  @doc """
+  Records that a call died without answering, and tells anyone watching.
+
+  A crashed task leaves the row saying `:thinking`, and the row is what the next
+  page load reads — so without this a crash is indistinguishable from a call
+  still running, forever.
+  """
+  @spec mark_shaping_failed(Plan.t() | nil) :: :ok
+  def mark_shaping_failed(%Plan{} = plan) do
+    {:ok, failed} = plan |> Plan.shaping_status_changeset(:failed) |> PlansRepository.update()
+    broadcast(failed)
+    :ok
+  end
+
+  def mark_shaping_failed(nil), do: :ok
 
   # Written to the row before it is announced, so a subscriber that missed the
   # message and re-reads sees what one that got it saw.

@@ -152,7 +152,14 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     token = Map.fetch!(session, IntakeSession.session_key())
     {:ok, plan} = Intake.start_plan(token)
 
-    if connected?(socket), do: Intake.subscribe(plan)
+    if connected?(socket) do
+      Intake.subscribe(plan)
+
+      # A call the row says is out, with nothing running it — a deploy or a
+      # crash took the process and its task. Nothing recovered that: the page
+      # rendered "Thinking…" and meant it forever.
+      Conversation.resume(plan)
+    end
 
     {:ok,
      socket
