@@ -73,8 +73,23 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       assert {:ok, _} = serve()
 
       commands = collect_commands()
-      assert Enum.any?(commands, &(&1 =~ "-v cms-postgres-data:/var/lib/postgresql/data"))
+      assert Enum.any?(commands, &(&1 =~ "-v cms-postgres-data:/var/lib/postgresql "))
       assert Enum.any?(commands, &(&1 =~ "docker rm -f cms-postgres"))
+    end
+
+    # pg18's official image moved to a pg_ctlcluster-style layout and now
+    # refuses to start at all — crash-looping, not merely warning — when it
+    # finds a volume mounted at the pg17-and-earlier path one level too deep.
+    # Confirmed live: cms-postgres crash-looped against a brand new, empty
+    # volume on exactly this mount, with the image already correctly on
+    # pgvector/pgvector:pg18 — the mount depth was the whole complaint.
+    # docker-library/postgres#1259.
+    test "the volume mounts where pg18 actually expects it, not one level deeper" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+      refute Enum.any?(commands, &(&1 =~ "/var/lib/postgresql/data")),
+             "mounting at .../data is the pg17-and-earlier convention — pg18 refuses to boot on it"
     end
 
     # An already-running container is left alone rather than restarted —

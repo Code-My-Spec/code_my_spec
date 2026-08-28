@@ -52,6 +52,16 @@ defmodule CodeMySpec.Provisioning.Database do
   @container "cms-postgres"
   @network "db_net"
   @volume "cms-postgres-data"
+
+  # `/var/lib/postgresql`, not `/var/lib/postgresql/data` — pg18's official
+  # image moved to a `pg_ctlcluster`-style layout (`PGDATA` under
+  # `/var/lib/postgresql/18/docker`) and now refuses to start at all when it
+  # finds a volume mounted one level too deep, treating the old-style mount
+  # point itself as evidence of a foreign layout rather than checking
+  # whether anything is actually in it. Found live: cms-postgres crash-
+  # looped on a brand new, empty volume — mount depth was the whole
+  # complaint, not any data. docker-library/postgres#1259.
+  @volume_mount "/var/lib/postgresql"
   @port 5432
 
   @admin_username "postgres"
@@ -277,7 +287,7 @@ defmodule CodeMySpec.Provisioning.Database do
         "docker rm -f #{@container} >/dev/null 2>&1; " <>
         "docker run -d --name #{@container} --restart always " <>
         "--network #{@network} " <>
-        "-v #{@volume}:/var/lib/postgresql/data " <>
+        "-v #{@volume}:#{@volume_mount} " <>
         "#{env} #{image}"
 
     case run.([command]) do
