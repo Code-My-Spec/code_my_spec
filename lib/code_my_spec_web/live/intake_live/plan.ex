@@ -1,11 +1,25 @@
 defmodule CodeMySpecWeb.IntakeLive.Plan do
   @moduledoc """
-  Everything before the gate.
+  Everything before the gate, as one conversation.
 
-  Three steps on one mount — describe, answer, plan — because the visitor has
-  no account yet and every navigation is a chance to lose them. The plan is
-  written to a row as it goes, so leaving and coming back in the same browser
-  lands on whichever step they left.
+  The visitor has no account yet and every navigation is a chance to lose them,
+  so it is one mount throughout. The plan is written to a row as it goes, and
+  the transcript is derived from that row — so leaving and coming back in the
+  same browser returns the conversation rather than an empty page.
+
+  ## It was three steps and that was the problem
+
+  Describe, then answer, then plan, each a full-page heading that replaced the
+  one before. A visitor who had just typed a paragraph about their idea landed
+  on a fresh page headed "Tell me a bit more", which reads as starting over
+  rather than as the same conversation continuing. John, looking at it: "it's
+  very abrupt — you type in what you want to build and then there's a second
+  prompt that's totally obscure."
+
+  The steps still exist underneath as `plan.status`; they decide what the
+  composer submits and whether the plan card is shown. What changed is that
+  they stopped being pages. The conversation is the product, and the state
+  machine was leaking through it.
   """
 
   use CodeMySpecWeb, :live_view
@@ -18,122 +32,140 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-2xl px-4 py-12">
-      <div class="text-xs uppercase tracking-[0.22em] text-primary mb-4">
+    <div class="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 py-12">
+      <div class="text-xs uppercase tracking-[0.22em] text-primary mb-6">
         // guided intake
       </div>
 
-      <.step_describe :if={@plan.status == :describing} plan={@plan} />
-      <.step_answer
-        :if={@plan.status == :answering}
-        question={@question}
-        turns={@turns}
-        thinking={@thinking}
-      />
-      <.step_plan :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
+      <%!--
+        One transcript, start to finish. It was three steps that replaced each
+        other — describe, then a page headed "Tell me a bit more", then a page
+        headed "Here's what I think you're building" — and a visitor who had
+        just typed a paragraph landed on a fresh heading that read as starting
+        over. The conversation is the product here; the steps were an
+        implementation detail leaking through the page.
+      --%>
+      <div data-test="intake-transcript" class="min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <.said :for={entry <- @transcript} entry={entry} />
+
+        <div :if={@thinking} data-test="intake-thinking" class="chat chat-start">
+          <div class="chat-bubble chat-bubble-neutral opacity-60">Thinking…</div>
+        </div>
+
+        <.plan_card :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
+      </div>
+
+      <.composer :if={@plan.status in [:describing, :answering]} plan={@plan} />
     </div>
     """
   end
 
-  defp step_describe(assigns) do
-    ~H"""
-    <h1 class="text-3xl font-bold mb-2">What do you want to build?</h1>
-    <p class="text-base-content/70 mb-6">
-      In your own words. No account needed — you'll see a plan before we ask you for anything.
-    </p>
+  attr :entry, :map, required: true
 
-    <form phx-submit="describe">
+  defp said(%{entry: %{from: :agent}} = assigns) do
+    ~H"""
+    <div data-test="intake-said" data-from="agent" class="chat chat-start">
+      <div class="chat-bubble chat-bubble-neutral">{@entry.text}</div>
+    </div>
+    """
+  end
+
+  defp said(assigns) do
+    ~H"""
+    <div data-test="intake-said" data-from="visitor" class="chat chat-end">
+      <div class="chat-bubble chat-bubble-primary">{@entry.text}</div>
+    </div>
+    """
+  end
+
+  # The plan arrives *in* the conversation rather than on a page of its own,
+  # and it arrives as fields rather than as prose to be corrected by typing.
+  #
+  # Both halves are deliberate. In the transcript, because the visitor has been
+  # talking this whole time and being handed a form is where that stops. As
+  # fields, because what they confirm has to be exactly what gets built —
+  # parsing "call it Salon Book instead" out of a sentence puts a model between
+  # the visitor and the generator, and a misread name is not recoverable by the
+  # time anyone notices.
+  attr :plan, :map, required: true
+  attr :form, :any, required: true
+
+  defp plan_card(assigns) do
+    ~H"""
+    <div data-test="intake-plan" class="chat chat-start">
+      <div class="chat-bubble chat-bubble-neutral max-w-full">
+        <p>Here's what I think you're building.</p>
+        <p class="mt-2 opacity-80">{@plan.summary}</p>
+        <p class="mt-1 opacity-70">{@plan.first_build}</p>
+
+        <p class="mt-4 text-sm opacity-70">
+          These are my guesses — change anything that's wrong. What you confirm
+          here is what gets built.
+        </p>
+
+        <.form
+          for={@form}
+          phx-submit="confirm_names"
+          phx-change="validate_names"
+          class="mt-4 space-y-3"
+        >
+          <.input field={@form[:account_name]} type="text" label="Account name" />
+          <.input field={@form[:project_name]} type="text" label="Project name" />
+
+          <%!--
+            The two conclusions that pick the generators. They used to be prose,
+            which made the most consequential guesses the only ones the visitor
+            could not correct.
+          --%>
+          <.input
+            field={@form[:needs_sign_in]}
+            type="select"
+            label="People sign in to use it"
+            options={[{"Yes", "true"}, {"No", "false"}]}
+          />
+
+          <.input
+            field={@form[:separate_copies]}
+            type="select"
+            label="Each business gets its own separate copy"
+            options={[{"Yes", "true"}, {"No", "false"}]}
+          />
+
+          <.button class="btn-primary">Looks right — build it</.button>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
+  # One composer for the whole conversation. Which event it submits depends on
+  # where the conversation has got to, and that is the only thing that changes —
+  # the visitor sees the same box they have been typing into all along.
+  attr :plan, :map, required: true
+
+  defp composer(assigns) do
+    ~H"""
+    <form
+      data-test="intake-composer"
+      phx-submit={if @plan.status == :describing, do: "describe", else: "answer"}
+      class="mt-4 flex shrink-0 items-end gap-3"
+    >
       <textarea
-        name="description"
-        rows="5"
+        name={if @plan.status == :describing, do: "description", else: "answer"}
+        rows={if @plan.status == :describing, do: "3", else: "1"}
         required
         autofocus
-        class="textarea textarea-bordered w-full"
-        placeholder="A booking tool for hair salons, so owners can see their week and clients can book themselves in."
-      >{@plan.description}</textarea>
-      <.button class="btn-primary mt-4">Continue</.button>
-    </form>
-    """
-  end
-
-  # A short conversation, not a questionnaire. The model asks what a person
-  # would ask and works out sign-in and tenancy from the answers — those are
-  # our questions, and a visitor with an idea has no view on them.
-  defp step_answer(assigns) do
-    ~H"""
-    <h1 class="text-3xl font-bold mb-6">Tell me a bit more.</h1>
-
-    <div class="space-y-4 mb-6">
-      <div :for={turn <- @turns} class="space-y-2">
-        <div class="chat chat-start">
-          <div class="chat-bubble chat-bubble-neutral">{turn.question}</div>
-        </div>
-        <div class="chat chat-end">
-          <div class="chat-bubble chat-bubble-primary">{turn.answer}</div>
-        </div>
-      </div>
-
-      <div :if={@question} class="chat chat-start">
-        <div class="chat-bubble chat-bubble-neutral">{@question}</div>
-      </div>
-    </div>
-
-    <.form for={%{}} as={:answer} phx-submit="answer" class="flex gap-3">
-      <input
-        type="text"
-        name="answer"
-        autofocus
         autocomplete="off"
-        class="input input-bordered w-full"
-        placeholder="Type your answer"
-      />
+        class="textarea textarea-bordered w-full"
+        placeholder={
+          if @plan.status == :describing,
+            do:
+              "A booking tool for hair salons, so owners can see their week and clients can book themselves in.",
+            else: "Type your answer"
+        }
+      ></textarea>
       <.button class="btn-primary">Send</.button>
-    </.form>
-
-    <p :if={@thinking} class="text-sm text-base-content/60 mt-3">Thinking…</p>
-    """
-  end
-
-  defp step_plan(assigns) do
-    ~H"""
-    <h1 class="text-3xl font-bold mb-2">Here's what I think you're building.</h1>
-
-    <div class="card bg-base-200 my-6">
-      <div class="card-body">
-        <p class="text-lg">{@plan.summary}</p>
-        <p class="text-base-content/70 mt-2">{@plan.first_build}</p>
-      </div>
-    </div>
-
-    <p class="text-base-content/70 mb-4">
-      These are my guesses. Change anything that's wrong — what you confirm here is what gets built.
-    </p>
-
-    <.form for={@form} phx-submit="confirm_names" phx-change="validate_names" class="space-y-4">
-      <.input field={@form[:account_name]} type="text" label="Account name" />
-      <.input field={@form[:project_name]} type="text" label="Project name" />
-
-      <%!--
-        The two conclusions that pick the generators. They used to be prose in
-        the card above, which made the most consequential guesses in the plan
-        the only ones the visitor could not correct.
-      --%>
-      <.input
-        field={@form[:needs_sign_in]}
-        type="select"
-        label="People sign in to use it"
-        options={[{"Yes", "true"}, {"No", "false"}]}
-      />
-
-      <.input
-        field={@form[:separate_copies]}
-        type="select"
-        label="Each business gets its own separate copy"
-        options={[{"Yes", "true"}, {"No", "false"}]}
-      />
-
-      <.button class="btn-primary">Looks right — build it</.button>
-    </.form>
+    </form>
     """
   end
 
@@ -197,7 +229,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
     case Shaper.shape(plan, socket.assigns.turns) do
       {:ask, question} ->
-        assign(socket, question: question, thinking: false)
+        socket
+        |> assign(question: question, thinking: false)
+        |> assign_transcript()
 
       {:ok, attrs} ->
         case Intake.answer(plan, attrs) do
@@ -240,5 +274,42 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     |> assign(:thinking, false)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
+    |> assign_transcript()
   end
+
+  # Everything said so far, in the order it was said.
+  #
+  # Derived rather than accumulated, so a visitor who leaves and comes back in
+  # the same browser gets their conversation back rather than an empty one — the
+  # plan row is what persists, and the transcript is a reading of it. An
+  # accumulated list would live only in the socket and be lost on the reload
+  # this flow is specifically built to survive.
+  #
+  # The opening question is part of it. It used to be an `<h1>` above a
+  # textarea, which is what made the visitor's own description the only thing on
+  # screen that was not part of a conversation.
+  defp assign_transcript(socket) do
+    %{plan: plan, turns: turns, question: question} = socket.assigns
+
+    transcript =
+      [%{from: :agent, text: "What do you want to build?"}]
+      |> put_said(plan.description)
+      |> then(fn said ->
+        Enum.reduce(turns, said, fn turn, acc ->
+          acc
+          |> put_said(turn.question, :agent)
+          |> put_said(turn.answer)
+        end)
+      end)
+      |> put_said(question, :agent)
+
+    assign(socket, :transcript, transcript)
+  end
+
+  defp put_said(transcript, text, from \\ :visitor)
+
+  defp put_said(transcript, text, from) when is_binary(text) and text != "",
+    do: transcript ++ [%{from: from, text: text}]
+
+  defp put_said(transcript, _text, _from), do: transcript
 end
