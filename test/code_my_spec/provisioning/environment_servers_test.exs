@@ -22,8 +22,10 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
+  alias CodeMySpec.Servers.Server
 
   setup do
     scope = full_scope_fixture()
@@ -150,15 +152,15 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     # would leave uat never created at all rather than merely unlinked.
     _ = EnvironmentRepository.list(ctx.scope)
 
-    {:ok, _} = CodeMySpec.Servers.Server.link(ctx.scope, %{name: "fuellytics-prod"})
-    linked = CodeMySpec.Servers.Server.get_linked(ctx.scope, "fuellytics-prod")
+    {:ok, _} = Server.link(ctx.scope, %{name: "fuellytics-prod"})
+    linked = Server.get_linked(ctx.scope, "fuellytics-prod")
     {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{server_id: linked.id})
 
     Steps.run(:server, ctx.scope, [])
 
     names = collect_names([])
 
-    derived_prod_name = "#{CodeMySpec.Provisioning.Repository.default_name(ctx.scope.active_project)}-prod"
+    derived_prod_name = "#{Repository.default_name(ctx.scope.active_project)}-prod"
 
     assert "fuellytics-prod" in names
     refute derived_prod_name in names,

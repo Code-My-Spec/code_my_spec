@@ -551,15 +551,19 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
             {"sha256:digest-#{tag}", 0}
 
           cmd =~ "-X DELETE" ->
-            if Enum.any?(failing_tags, &(cmd =~ "manifests/sha256:digest-#{&1}")) do
-              {"405", 0}
-            else
-              {"202", 0}
-            end
+            delete_response(cmd, failing_tags)
 
           cmd =~ "garbage-collect" ->
             {"", 0}
         end
+      end
+    end
+
+    defp delete_response(cmd, failing_tags) do
+      if Enum.any?(failing_tags, &(cmd =~ "manifests/sha256:digest-#{&1}")) do
+        {"405", 0}
+      else
+        {"202", 0}
       end
     end
 
