@@ -155,18 +155,30 @@ defmodule CmsHarness.HarnessConfig do
     root = Path.expand(root)
     file = path(root)
 
-    # Merged over what is already recorded, not written from scratch. Callers
-    # supply the fields they know — `mint/1` knows the id and the project, and
-    # nothing about the deploy key — and a write that dropped the rest would
-    # take this copy's credential with it on the next mint.
+    # Merged over what the file literally says, not over what this module can
+    # model. Callers supply the fields they know — `mint/1` knows the id and the
+    # project, and nothing about the deploy key — and a write that dropped the
+    # rest would take this copy's credential with it on the next mint.
+    #
+    # It used to merge over `recorded/1`, which round-trips through `decode/1`
+    # and keeps five named keys. That is fine while this module is the only
+    # writer and stopped being true when onboarding started putting the preview
+    # credentials here: every write silently dropped `preview_tunnel_secret`,
+    # which Cloudflare returns exactly once at creation and has no endpoint to
+    # read back. The checkout kept running the tunnel it had already started, so
+    # nothing looked wrong until something restarted.
+    #
+    # So the merge is over the raw JSON. A file shared with another writer has
+    # to preserve what this side does not understand — including keys that do
+    # not exist yet.
     body =
       root
-      |> recorded()
-      |> Map.drop([:harness_id, "harness_id"])
+      |> raw()
+      |> Map.drop(~w(harness_id working_copy_id root project_id deploy_key preview_url))
       |> Map.merge(%{working_copy_id: id, harness_id: id, root: root})
-      |> merge_present(:project_id, config[:project_id])
-      |> merge_present(:deploy_key, config[:deploy_key])
-      |> merge_present(:preview_url, config[:preview_url])
+      |> merge_present(:project_id, config[:project_id] || recorded_value(root, :project_id))
+      |> merge_present(:deploy_key, config[:deploy_key] || recorded_value(root, :deploy_key))
+      |> merge_present(:preview_url, config[:preview_url] || recorded_value(root, :preview_url))
       |> Jason.encode!(pretty: true)
 
     with :ok <- refuse_to_clobber(root, file),
@@ -223,13 +235,24 @@ defmodule CmsHarness.HarnessConfig do
   # read. Deliberately not `from_file/1`'s error tuple: a caller here is about
   # to write, and `refuse_to_clobber/2` is what decides whether an unreadable
   # file may be replaced.
-  defp recorded(root) do
-    case from_file(root) do
-      {:ok, config} ->
-        Map.take(config, [:working_copy_id, :project_id, :deploy_key, :preview_url, :root])
+  # The file exactly as it stands, string keys and all. Deliberately not
+  # `from_file/1`: that answers "what does this module understand", and a write
+  # needs "what is actually in there" so it can put back what it does not.
+  defp raw(root) do
+    with {:ok, contents} <- File.read(path(root)),
+         {:ok, %{} = map} <- Jason.decode(contents) do
+      map
+    else
+      _ -> %{}
+    end
+  end
 
-      _ ->
-        %{}
+  # One of the keys this module does model, as previously recorded. Read through
+  # the decoder so both the old and the new id spellings still resolve.
+  defp recorded_value(root, key) do
+    case from_file(root) do
+      {:ok, config} -> Map.get(config, key)
+      _ -> nil
     end
   end
 

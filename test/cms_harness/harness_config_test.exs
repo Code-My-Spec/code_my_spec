@@ -177,4 +177,63 @@ defmodule CmsHarness.HarnessConfigTest do
       assert {:ok, %{preview_url: nil}} = HarnessConfig.read(root)
     end
   end
+
+  describe "keys this module does not model" do
+    test "survive a write", %{root: root} do
+      # The preview credentials, written by `client_utils`' onboarding into the
+      # same file this module owns. Two writers, one file.
+      File.write!(
+        Path.join(root, ".cms_harness.json"),
+        Jason.encode!(%{
+          "working_copy_id" => @id,
+          "project_id" => "a-project",
+          "deploy_key" => "dk_secret",
+          "preview_url" => "https://preview-x.codemyspec.com",
+          "preview_tunnel_id" => "tunnel-1",
+          "preview_tunnel_secret" => "the-secret",
+          "preview_account_tag" => "acct",
+          "preview_embedder" => "https://dev.codemyspec.com",
+          "root" => root
+        })
+      )
+
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "a-project"})
+
+      kept = root |> Path.join(".cms_harness.json") |> File.read!() |> Jason.decode!()
+
+      assert kept["preview_tunnel_secret"] == "the-secret",
+             "the tunnel secret did not survive a write, so this copy can no longer " <>
+               "run its own preview. Cloudflare returns that secret exactly once, at " <>
+               "creation, and there is no endpoint that reads it back — losing it " <>
+               "here means re-onboarding to recover it from the server, and until " <>
+               "somebody does the preview address serves nothing."
+
+      assert kept["preview_tunnel_id"] == "tunnel-1"
+      assert kept["preview_account_tag"] == "acct"
+      assert kept["preview_embedder"] == "https://dev.codemyspec.com"
+
+      assert kept["deploy_key"] == "dk_secret",
+             "the deploy key is the case this merge was written for and must not " <>
+               "regress while widening it"
+    end
+
+    test "do not turn into duplicate JSON keys", %{root: root} do
+      File.write!(
+        Path.join(root, ".cms_harness.json"),
+        Jason.encode!(%{"working_copy_id" => @id, "project_id" => "old", "extra" => "kept"})
+      )
+
+      :ok = HarnessConfig.write(root, %{working_copy_id: @id, project_id: "new"})
+
+      raw = root |> Path.join(".cms_harness.json") |> File.read!()
+
+      assert length(String.split(raw, "\"project_id\"")) == 2,
+             "project_id appears twice — a string key preserved from the file and an " <>
+               "atom key written beside it. Jason encodes both, so the file parses " <>
+               "and last-one-wins decides silently. Got: #{raw}"
+
+      assert Jason.decode!(raw)["project_id"] == "new"
+      assert Jason.decode!(raw)["extra"] == "kept"
+    end
+  end
 end
