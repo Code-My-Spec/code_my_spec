@@ -10,6 +10,8 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
+  require Logger
+
   @doc """
   Record where each criterion's spex file lives, for criteria that do not
   already say.
@@ -35,26 +37,60 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   def claim_spec_paths(%Scope{active_project_id: project_id}, paths) do
     ids = Map.keys(paths)
 
-    unclaimed =
+    # Unclaimed, plus claimed-but-stale.
+    #
+    # It only ever filled empties, on the reasoning that a recorded path is a
+    # decision and a scan should not overrule it. True while a file keeps its
+    # name — and a spex gets renamed whenever its criterion is reworded, which
+    # is the normal way a criterion changes. The record then points at a
+    # filename nobody will create again, `bdd_specs_exist` reads the record,
+    # finds nothing, and reports a spec that is sitting right there in the same
+    # directory. Silently, because a missing file is a legitimate answer.
+    #
+    # Overruling is safe here in a way it would not be generally: the id comes
+    # from the observed filename, so a row is only rewritten when a file
+    # claiming to be that criterion's spec is on disk *and* the path it holds
+    # is not. Nothing is taken from a record that still resolves.
+    candidates =
       from(c in Criterion,
         where: c.project_id == ^project_id and c.id in ^ids,
-        where: is_nil(c.spec_path) or c.spec_path == "",
-        select: c.id
+        select: {c.id, c.spec_path}
       )
       |> Repo.all()
 
+    claimable =
+      Enum.filter(candidates, fn
+        {_id, path} when is_nil(path) or path == "" -> true
+        {_id, path} -> not File.exists?(path)
+      end)
+
     count =
-      Enum.reduce(unclaimed, 0, fn id, acc ->
+      Enum.reduce(claimable, 0, fn {id, previous}, acc ->
+        recorded = Map.fetch!(paths, id)
+
         {n, _} =
           from(c in Criterion, where: c.id == ^id and c.project_id == ^project_id)
-          |> Repo.update_all(
-            set: [spec_path: Map.fetch!(paths, id), updated_at: DateTime.utc_now()]
-          )
+          |> Repo.update_all(set: [spec_path: recorded, updated_at: DateTime.utc_now()])
+
+        log_repair(id, previous, recorded)
 
         acc + n
       end)
 
     {:ok, count}
+  end
+
+  # A repair is worth a line; a first claim is not. The two are different
+  # events -- one records something new, the other corrects a record that was
+  # wrong -- and only the second says anything about a file having moved out
+  # from under the project.
+  defp log_repair(_id, previous, _recorded) when is_nil(previous) or previous == "", do: :ok
+
+  defp log_repair(id, previous, recorded) do
+    Logger.info(
+      "[AcceptanceCriteria] criterion #{id} pointed at #{previous}, which is gone; " <>
+        "repointed at #{recorded}, found on disk carrying the same criterion id"
+    )
   end
 
   @doc """

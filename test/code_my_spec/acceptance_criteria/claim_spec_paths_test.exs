@@ -45,19 +45,31 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == path
   end
 
-  test "a criterion that already says is left alone" do
+  test "a criterion whose recorded file is really there is left alone" do
     scope = full_scope_fixture()
     story = story_fixture(scope)
-    c = criterion(scope, story, %{spec_path: "test/spex/where/it/actually/is_spex.exs"})
+
+    # A real file, and deliberately not where the convention would put it.
+    # This used to record a path that existed nowhere, which made it stand for
+    # "a recorded path" without standing for a resolvable one — and those are
+    # the two cases this function now has to tell apart.
+    actual =
+      Path.join(
+        System.tmp_dir!(),
+        "claim_spec_paths_#{System.unique_integer([:positive])}_spex.exs"
+      )
+
+    File.write!(actual, "# a spex somebody put somewhere deliberate\n")
+    on_exit(fn -> File.rm(actual) end)
+
+    c = criterion(scope, story, %{spec_path: actual})
 
     assert {:ok, 0} =
              AcceptanceCriteria.claim_spec_paths(scope, %{c.id => "test/spex/derived_spex.exs"})
 
-    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path ==
-             "test/spex/where/it/actually/is_spex.exs",
-           "a recorded path outranks a derived one — otherwise renaming the file " <>
-             "would silently re-point the criterion at wherever the convention " <>
-             "says it should have been"
+    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == actual,
+           "a recorded path that resolves outranks a derived one — otherwise " <>
+             "moving a spex somewhere deliberate would be undone by the next scan"
   end
 
   test "another project's criterion is not touched" do
@@ -71,5 +83,26 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
 
   test "nothing to claim is not a query" do
     assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(full_scope_fixture(), %{})
+  end
+
+  test "a recorded path whose file is gone is repaired" do
+    scope = full_scope_fixture()
+    story = story_fixture(scope)
+
+    stale = "test/spex/1_x/criterion_999999_under_its_old_name_spex.exs"
+    c = criterion(scope, story, %{spec_path: stale})
+
+    refute File.exists?(stale), "the premise is that the recorded file is gone"
+
+    found = "test/spex/1_x/criterion_#{c.id}_under_its_new_name_spex.exs"
+
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}),
+           "a criterion pointing at a file that no longer exists was left pointing " <>
+             "at it. Renaming a spex is the normal consequence of rewording its " <>
+             "criterion, and the record then names a file nobody will create " <>
+             "again — `bdd_specs_exist` reads the record, finds nothing, and " <>
+             "reports a spec that is sitting in the same directory."
+
+    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == found
   end
 end
