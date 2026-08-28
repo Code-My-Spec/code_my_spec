@@ -90,6 +90,17 @@ defmodule CodeMySpecWeb.IntakeComponents do
   attr :field, :string, required: true
   attr :rows, :string, default: "1"
   attr :placeholder, :string, default: "Type your answer"
+
+  # What is in the box. A rendered value is load-bearing and not obvious:
+  # without one the DOM patch has nothing to set, so what the visitor typed
+  # survives the submit and sits there looking unsent — and the next thing
+  # anyone does is send it again. `AgentConversationLive` carries the same
+  # attribute for the same reason, and paid for it first.
+  #
+  # `@draft` rather than a hardcoded `""` because every broadcast is a patch:
+  # the "Thinking…" bubble alone would throw away a half-written answer.
+  attr :draft, :string, default: ""
+  attr :change, :string, default: nil
   attr :rest, :global
 
   # For anything the form has to carry that the visitor does not type — the
@@ -101,6 +112,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
     <form
       data-test="intake-composer"
       phx-submit={@event}
+      phx-change={@change}
       class="mt-4 flex shrink-0 items-end gap-3"
       {@rest}
     >
@@ -113,7 +125,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
         autocomplete="off"
         class="textarea textarea-bordered w-full"
         placeholder={@placeholder}
-      ></textarea>
+      >{@draft}</textarea>
       <.button class="btn-primary">Send</.button>
     </form>
     """

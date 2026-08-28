@@ -66,6 +66,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         field="answer"
         rows="2"
         placeholder="In your own words."
+        change="draft"
+        draft={@draft}
       >
         <input type="hidden" name="turn_id" value={@turn && @turn.id} />
       </.composer>
@@ -269,6 +271,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # The interview is loaded from the plan every time, so a reconnect — or a
   # boot that failed under it — picks up exactly where the visitor left off.
   defp assign_interview(socket, plan) do
+    socket = assign_new(socket, :draft, fn -> "" end)
+
     answered = plan |> Interview.turns() |> Enum.filter(& &1.answer)
 
     socket
@@ -351,12 +355,19 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     end
   end
 
+  def handle_event("draft", params, socket) do
+    {:noreply, assign(socket, :draft, params["answer"] || "")}
+  end
+
   def handle_event("answer", %{"turn_id" => turn_id, "answer" => answer}, socket) do
     turn = Enum.find([socket.assigns.turn], &(&1 && &1.id == turn_id))
 
     {:ok, _turn} = Interview.answer(turn, answer)
 
-    {:noreply, assign_interview(socket, socket.assigns.plan)}
+    # Cleared at the one moment the text should leave the box. Without a
+    # rendered value the patch has nothing to set, so the answer sits there
+    # looking unsent and the obvious next move is to send it again.
+    {:noreply, socket |> assign(:draft, "") |> assign_interview(socket.assigns.plan)}
   end
 
   def handle_event("retry", _params, socket) do

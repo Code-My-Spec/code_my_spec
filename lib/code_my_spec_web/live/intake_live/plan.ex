@@ -57,6 +57,8 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         :if={@plan.status in [:describing, :answering]}
         event={if @plan.status == :describing, do: "describe", else: "answer"}
         field={if @plan.status == :describing, do: "description", else: "answer"}
+        change="draft"
+        draft={@draft}
         rows={if @plan.status == :describing, do: "3", else: "1"}
         placeholder={
           if @plan.status == :describing,
@@ -199,7 +201,16 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     end
   end
 
+  def handle_event("draft", params, socket) do
+    {:noreply, assign(socket, :draft, params["description"] || params["answer"] || "")}
+  end
+
+  # Cleared here rather than by rendering an empty value, so the clear is a
+  # decision at the one moment the text should leave the box — not a side
+  # effect of every patch that happens to redraw the form.
   defp said(socket, text) do
+    socket = assign(socket, :draft, "")
+
     case Conversation.said(socket.assigns.plan, text) do
       {:ok, plan} ->
         if plan.status == :answering and Intake.turns(plan) == [],
@@ -265,6 +276,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     |> assign(:question, plan.pending_question)
     |> assign(:thinking, plan.shaping_status == :thinking)
     |> assign(:trouble, trouble_for(plan))
+    |> assign_new(:draft, fn -> "" end)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
     |> assign_transcript()
