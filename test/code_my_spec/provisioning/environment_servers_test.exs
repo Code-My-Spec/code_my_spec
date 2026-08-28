@@ -186,6 +186,111 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert collect_names([]) == []
   end
 
+  # Found live against MarketMySpec: prod's registry/database step hit a
+  # real, known local-checkout wall on every single rerun of `:server` — and
+  # because both environments' boxes ran through one `reduce_while` inside
+  # `serve_registries/5`, prod failing first meant uat's registry and
+  # database were never even attempted, on any rerun, for hours. Reproduced
+  # here with a simpler, deterministic failure (one server's registry
+  # command refused) rather than the exact secrets-write crash, because the
+  # claim under test is the independence between environments, not why any
+  # one of them failed.
+  test "one environment's registry/database failing does not block another's", ctx do
+    record_full_requests(self(), Repository.default_name(ctx.scope.active_project))
+
+    opts = [
+      run: refusing_run("10.0.0.99"),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:error, reason, resources} = Steps.run(:server, ctx.scope, opts)
+
+    assert reason =~ "uat",
+           "expected the failure to name uat, the one whose commands were refused: #{reason}"
+
+    refute reason =~ "prod",
+           "prod never failed — naming it here would blame the wrong environment: #{reason}"
+
+    assert Enum.any?(resources, &(&1.kind == "registry" and &1.identifier =~ "environment=prod")),
+           "expected prod's registry to be recorded despite uat's failure, got #{inspect(resources)}"
+
+    assert Enum.any?(resources, &(&1.kind == "database" and &1.identifier =~ "environment=prod")),
+           "expected prod's database to be recorded despite uat's failure, got #{inspect(resources)}"
+
+    refute Enum.any?(resources, &(&1.kind in ["registry", "database"] and &1.identifier =~ "environment=uat")),
+           "uat's registry/database never succeeded — nothing about them should read as done. " <>
+             "(uat's own server box is expected here — box creation is a separate, earlier " <>
+             "phase this fix does not touch — only its registry and database should be absent)"
+  end
+
+  # A `:run` that fails only for commands naming the given private IP —
+  # the registry container binds to it (`trust_command/1`), so this reaches
+  # every command in that one server's own sequence and none of the other's,
+  # without needing to know which docker/ssh command comes first or last.
+  defp refusing_run(bad_ip) do
+    fn [command] ->
+      if String.contains?(command, bad_ip) do
+        {"refused", 1}
+      else
+        {"", 0}
+      end
+    end
+  end
+
+  # Like `record_requests/2`, but with the full network shape
+  # `serve_registries/5` actually reads: a private IP per server (so
+  # `Hetzner.private_ip/2` resolves) and a public IP (so `serve_one_registry/5`
+  # gets past its own address check). Two fixed servers rather than
+  # `record_requests/2`'s created-on-demand list, because this test's claim
+  # is about what happens *after* both boxes already exist.
+  defp record_full_requests(owner, project_name) do
+    servers = [
+      %{
+        "id" => 101,
+        "name" => "#{project_name}-prod",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
+        "private_net" => [%{"network" => 4, "ip" => "10.0.0.10"}]
+      },
+      %{
+        "id" => 102,
+        "name" => "#{project_name}-uat",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
+        "private_net" => [%{"network" => 4, "ip" => "10.0.0.99"}]
+      }
+    ]
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(owner, {:ran, conn.method, conn.request_path})
+      full_reply(conn, conn.method, conn.request_path, decode(body), servers)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
+
+  defp full_reply(conn, "GET", "/v1/servers", _payload, servers), do: json(conn, %{"servers" => servers})
+  defp full_reply(conn, "GET", "/v1/firewalls", _payload, _servers), do: json(conn, %{"firewalls" => []})
+  defp full_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers), do: json(conn, %{"ssh_keys" => []})
+  defp full_reply(conn, "GET", "/v1/networks", _payload, _servers), do: json(conn, %{"networks" => []})
+
+  defp full_reply(conn, "POST", "/v1/firewalls", payload, _servers) do
+    json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
+  end
+
+  defp full_reply(conn, "POST", "/v1/ssh_keys", _payload, _servers) do
+    json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
+  end
+
+  defp full_reply(conn, "POST", "/v1/servers/" <> _rest, _payload, _servers) do
+    json(conn, %{"action" => %{"status" => "success"}})
+  end
+
+  defp full_reply(conn, _method, _path, payload, _servers) do
+    json(conn, %{"network" => %{"id" => 4, "name" => payload["name"]}})
+  end
+
   # Answers every Hetzner call plausibly and reports what was asked for. The
   # step will not finish — it goes on to reach boxes over SSH — but every
   # server it wanted has been requested by then, which is what this is about.

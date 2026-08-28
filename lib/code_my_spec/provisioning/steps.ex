@@ -3782,9 +3782,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, [%{"location" => %{"name" => location}} | _] = servers} <- servers,
          {:ok, network} <-
            Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
-         :ok <- attach_all(scope, servers, network),
-         {:ok, registries} <- serve_registries(scope, servers, network, opts, environments) do
-      {:ok, registries ++ [network_resource(name, network) | made]}
+         :ok <- attach_all(scope, servers, network) do
+      finish_baseline_network(scope, servers, network, opts, environments, name, made)
     else
       {:ok, []} -> {:ok, made}
       {:error, reason} -> {:error, format(reason), made}
@@ -3792,6 +3791,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp join_baseline_network(other, _scope, _opts, _environments), do: other
+
+  # Split from `join_baseline_network/4` only so `network` is a plain
+  # parameter here rather than a `with`-bound variable an `else` clause
+  # cannot see — `serve_registries/5` can fail two different ways
+  # (`{:ok, []}`-shaped nothing-to-do doesn't apply to it; it is either
+  # `{:ok, registries}` or `{:error, reason, registries}`) and both need
+  # `network` to build the network's own resource entry.
+  defp finish_baseline_network(scope, servers, network, opts, environments, name, made) do
+    case serve_registries(scope, servers, network, opts, environments) do
+      {:ok, registries} ->
+        {:ok, registries ++ [network_resource(name, network) | made]}
+
+      # One environment's registry/database failing is not evidence about
+      # any other environment's — `serve_registries/5` already tried every
+      # server independently, so whatever it did build is recorded here
+      # rather than thrown away because a *different* environment's write
+      # failed. Found live against MarketMySpec: prod's known
+      # local-checkout secrets-write wall halted the whole loop before uat
+      # was ever attempted, on every single rerun — uat's database could
+      # never be created as long as prod kept failing first, because two
+      # genuinely independent boxes were treated as one dependent sequence.
+      {:error, reason, registries} ->
+        {:error, format(reason), registries ++ [network_resource(name, network) | made]}
+    end
+  end
 
   # One registry per environment, on that environment's own box.
   #
@@ -3808,13 +3832,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # not match — and when they did this failed with a bare `not found`, naming
   # neither the environment nor the server it wanted. Iterating what was
   # actually found cannot disagree with itself.
+  #
+  # Every server is attempted regardless of another's outcome, not halted at
+  # the first failure — a `reduce_while` here made one environment's failure
+  # (prod's secrets-write wall, say) permanently block every environment
+  # after it in the list, on every rerun, since the failing one always fails
+  # first. Servers do not depend on each other the way pipeline steps do;
+  # nothing here should stop uat from ever being attempted because prod keeps
+  # erroring.
   defp serve_registries(scope, servers, network, opts, environments) do
-    Enum.reduce_while(servers, {:ok, []}, fn server, {:ok, acc} ->
-      case serve_one_registry(scope, server, network, opts, environments) do
-        {:ok, resources} -> {:cont, {:ok, resources ++ acc}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
+    results = Enum.map(servers, &{&1, serve_one_registry(scope, &1, network, opts, environments)})
+
+    resources = for {_server, {:ok, resources}} <- results, resource <- resources, do: resource
+
+    case Enum.filter(results, fn {_server, result} -> match?({:error, _}, result) end) do
+      [] ->
+        {:ok, resources}
+
+      failures ->
+        message =
+          Enum.map_join(failures, "; ", fn {server, {:error, reason}} ->
+            "#{environment_of(scope, server, opts, environments)}: #{reason}"
+          end)
+
+        {:error, message, resources}
+    end
   end
 
   defp serve_one_registry(scope, server, network, opts, environments) do
