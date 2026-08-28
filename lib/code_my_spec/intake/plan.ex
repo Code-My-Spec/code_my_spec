@@ -39,6 +39,14 @@ defmodule CodeMySpec.Intake.Plan do
     field :separate_copies, :boolean
     field :who_uses, :string
 
+    # The shaping conversation, on the row rather than in socket assigns.
+    # `transcript/3` always claimed to survive a reload; without these it
+    # survived only as far as the description, and resuming meant asking the
+    # model again — a different question from the same first message, every
+    # reload.
+    field :shaping_turns, {:array, :map}, default: []
+    field :pending_question, :string
+
     field :summary, :string
     field :first_build, :string
 
@@ -68,6 +76,27 @@ defmodule CodeMySpec.Intake.Plan do
     |> validate_required([:description])
     |> validate_length(:description, min: 1, max: 5000)
     |> put_change(:status, :answering)
+  end
+
+  @doc "Records the question now awaiting an answer, or clears it."
+  def pending_question_changeset(%__MODULE__{} = plan, question) do
+    cast(plan, %{pending_question: question}, [:pending_question])
+  end
+
+  @doc """
+  Appends one answered turn and clears the question it answered.
+
+  One changeset for both, because they are one event: a question stops pending
+  at the moment it becomes a turn, and any window where the row holds both is a
+  window where the transcript renders the question twice.
+  """
+  def turn_changeset(%__MODULE__{} = plan, question, answer) do
+    turn = %{"question" => to_string(question), "answer" => to_string(answer)}
+
+    cast(plan, %{shaping_turns: (plan.shaping_turns || []) ++ [turn], pending_question: nil}, [
+      :shaping_turns,
+      :pending_question
+    ])
   end
 
   @doc "The two generator inputs plus who uses it. Booleans are required — an unanswered question is not a `false`."

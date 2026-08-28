@@ -151,46 +151,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     {:ok,
      socket
      |> assign(page_title: "Build something")
-     |> assign_plan(plan)
-     |> resume()}
-  end
-
-  # A visitor coming back mid-conversation gets asked something.
-  #
-  # The turns live in socket assigns, so a reload keeps the plan row and loses
-  # the question that was on screen. What is left renders as the description
-  # followed by an empty answer box — a box with nothing above it to answer,
-  # which is not a state anybody can act on.
-  #
-  # It was reachable the slow way (reload, reconnect, come back tomorrow) and
-  # the fast way: for 25 days the model could not be called at all, so every
-  # visitor's plan stopped at `:answering` with no question ever asked, and
-  # every return visit rendered this. Fixing the credential does not clear those
-  # — the rows are still sitting at `:answering` — so resuming has to be able to
-  # pick the conversation back up.
-  #
-  # Asked *after* mount, not during it. The first version called the model
-  # inline here and the model takes the better part of a minute: it blocked the
-  # mount past the connect timeout, so the resumed page rendered the failure
-  # message instead of the question. Twice over, because a LiveView mounts
-  # disconnected and then connected, and both were paying for a call only one of
-  # them could use.
-  #
-  # `connected?/1` for the same reason: the static render has nowhere to put an
-  # answer and no socket to receive one.
-  defp resume(%{assigns: %{plan: %Plan{status: :answering}, question: nil}} = socket) do
-    if connected?(socket) do
-      send(self(), :resume_conversation)
-      assign(socket, :thinking, true)
-    else
-      socket
-    end
-  end
-
-  defp resume(socket), do: socket
-
-  def handle_info(:resume_conversation, socket) do
-    {:noreply, shape(socket)}
+     |> assign_plan(plan)}
   end
 
   def handle_event("describe", %{"description" => description}, socket) do
@@ -209,9 +170,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   # it in the transcript twice — once as the turn it became, and again as the
   # thing still being asked underneath the answer to it.
   def handle_event("answer", %{"answer" => written}, socket) do
-    turns = socket.assigns.turns ++ [%{question: socket.assigns.question, answer: written}]
+    {:ok, plan} = Intake.record_turn(socket.assigns.plan, socket.assigns.question, written)
 
-    {:noreply, socket |> assign(turns: turns, question: nil) |> shape()}
+    {:noreply, socket |> assign_plan(plan) |> shape()}
   end
 
   def handle_event("validate_names", %{"plan" => attrs}, socket) do
@@ -248,11 +209,10 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     # A fresh attempt, so last attempt's trouble stops being on screen.
     socket = assign(socket, :trouble, nil)
 
-    case Shaper.shape(plan, socket.assigns.turns) do
+    case Shaper.shape(plan, Intake.turns(plan)) do
       {:ask, question} ->
-        socket
-        |> assign(question: question, thinking: false)
-        |> assign_transcript()
+        {:ok, plan} = Intake.ask(socket.assigns.plan, question)
+        assign_plan(socket, plan)
 
       {:ok, attrs} ->
         case Intake.answer(plan, attrs) do
@@ -301,12 +261,19 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     end
   end
 
+  # Turns and the pending question come off the row, not out of assigns.
+  #
+  # Carrying them in assigns is what made a reload lose the conversation, and
+  # the fix for *that* — re-asking the model on mount — made every reload
+  # produce a different question from the same first message. There is nothing
+  # to re-ask now: the row remembers, so a reload renders exactly what was on
+  # screen and costs nothing.
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
     |> assign(:trouble, Map.get(socket.assigns, :trouble))
-    |> assign(:turns, Map.get(socket.assigns, :turns, []))
-    |> assign(:question, Map.get(socket.assigns, :question))
+    |> assign(:turns, Intake.turns(plan))
+    |> assign(:question, plan.pending_question)
     |> assign(:thinking, false)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))

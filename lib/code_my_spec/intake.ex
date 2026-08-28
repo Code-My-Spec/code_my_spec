@@ -56,6 +56,29 @@ defmodule CodeMySpec.Intake do
     |> PlansRepository.update()
   end
 
+  @doc "Records the question the visitor is now being asked."
+  @spec ask(Plan.t(), String.t() | nil) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def ask(%Plan{} = plan, question) do
+    plan |> Plan.pending_question_changeset(question) |> PlansRepository.update()
+  end
+
+  @doc "Records an answered turn and clears the question it answered."
+  @spec record_turn(Plan.t(), String.t(), String.t()) ::
+          {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def record_turn(%Plan{} = plan, question, answer) do
+    plan |> Plan.turn_changeset(question, answer) |> PlansRepository.update()
+  end
+
+  @doc "The shaping turns this plan has recorded, oldest first."
+  @spec turns(Plan.t()) :: [%{question: String.t(), answer: String.t()}]
+  def turns(%Plan{shaping_turns: turns}) when is_list(turns) do
+    Enum.map(turns, fn turn ->
+      %{question: turn["question"] || turn[:question], answer: turn["answer"] || turn[:answer]}
+    end)
+  end
+
+  def turns(%Plan{}), do: []
+
   @doc "Records the answers to the shaping questions."
   @spec answer(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def answer(%Plan{} = plan, attrs) do
