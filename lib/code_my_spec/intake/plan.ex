@@ -45,6 +45,11 @@ defmodule CodeMySpec.Intake.Plan do
     field :account_name, :string
     field :project_name, :string
 
+    # Where the visitor wants their project to run. Nullable on purpose: a plan
+    # that has not reached the confirmation card has not been asked, and that is
+    # a different state from either answer.
+    field :location, Ecto.Enum, values: [:local, :cloud]
+
     belongs_to :account, Account
     belongs_to :project, Project
 
@@ -92,11 +97,25 @@ defmodule CodeMySpec.Intake.Plan do
   """
   def names_changeset(%__MODULE__{} = plan, attrs) do
     plan
-    |> cast(attrs, [:account_name, :project_name, :needs_sign_in, :separate_copies])
-    |> validate_required([:account_name, :project_name, :needs_sign_in, :separate_copies])
+    |> default_location()
+    |> cast(attrs, [:account_name, :project_name, :needs_sign_in, :separate_copies, :location])
+    |> validate_required([
+      :account_name,
+      :project_name,
+      :needs_sign_in,
+      :separate_copies,
+      :location
+    ])
     |> validate_length(:account_name, min: 1, max: 100)
     |> validate_length(:project_name, min: 1, max: 100)
   end
+
+  # Cloud unless they say otherwise. Not a default column — a plan abandoned
+  # before the card was ever shown must still read as "never asked" — just what
+  # the select starts on, so the visitor sees a choice already made rather than
+  # an empty dropdown they have to discover.
+  defp default_location(%__MODULE__{location: nil} = plan), do: %{plan | location: :cloud}
+  defp default_location(%__MODULE__{} = plan), do: plan
 
   @doc "The gate. Records what was created so a second visit adopts it rather than creating again."
   def conversion_changeset(%__MODULE__{} = plan, %Account{} = account, %Project{} = project) do

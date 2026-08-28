@@ -66,8 +66,26 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
       <p :if={@interview_error} class="text-error text-sm mt-3">{@interview_error}</p>
 
+      <%!--
+        What to run, for a visitor who chose their own machine. There is no
+        container to watch, so the ambient strip is replaced by the one thing
+        they need — and it is the same command a generated application onboards
+        itself with, not a special path for this case.
+      --%>
+      <div
+        :if={@workspace.status == :local}
+        data-test="local-instructions"
+        class="border border-base-300 rounded p-4"
+      >
+        <p class="text-sm font-medium mb-2">Run it on your machine</p>
+        <p class="text-sm opacity-70 mb-3">
+          Your project is ready. Bring it up wherever you keep your code:
+        </p>
+        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{local_commands(@plan)}</code></pre>
+      </div>
+
       <.boot_status
-        :if={@workspace.status != :failed}
+        :if={@workspace.status not in [:failed, :local]}
         workspace={@workspace}
         app_state={@app_state}
       />
@@ -165,6 +183,22 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # the front of the flow rather than showing an empty workspace.
   defp mount_workspace(socket, _scope, nil), do: push_navigate(socket, to: ~p"/build")
 
+  # Nothing is booted for a visitor who chose to run it themselves. The project
+  # and its persona are still created — that is what they signed up for — but a
+  # container on our box would be one nobody asked for and nobody would open.
+  defp mount_workspace(socket, %Scope{} = scope, %{location: :local} = plan) do
+    with {:ok, plan} <- Intake.convert(plan, scope),
+         {:ok, scope} <- select_plan_scope(scope, plan) do
+      socket
+      |> assign(page_title: "Your project")
+      |> assign(scope: scope, plan: plan)
+      |> assign_local()
+      |> assign_interview(plan)
+    else
+      {:error, reason} -> failed_to_start(socket, scope, plan, reason)
+    end
+  end
+
   defp mount_workspace(socket, %Scope{} = scope, plan) do
     with {:ok, plan} <- Intake.convert(plan, scope),
          {:ok, scope} <- select_plan_scope(scope, plan),
@@ -189,6 +223,27 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       # story says they must be told what happened and keep their plan.
       {:error, reason} -> failed_to_start(socket, scope, plan, reason)
     end
+  end
+
+  # A workspace-shaped nothing. The page reads `@workspace.status` in several
+  # places and a nil here would crash the render rather than show the local
+  # path — and `:local` is a real status, not a failure, so it must not fall
+  # into the `:failed` branch either.
+  # Built here rather than inline, because a heredoc indented inside markup is
+  # a compiler warning and a heredoc outdented to satisfy the compiler is
+  # unreadable markup.
+  defp local_commands(plan) do
+    """
+    mix cms.new #{plan.project_name}
+    cd #{plan.project_name}
+    mix harness.onboard
+    """
+  end
+
+  defp assign_local(socket) do
+    socket
+    |> assign(:workspace, %{status: :local})
+    |> assign(:app_state, :local)
   end
 
   defp failed_to_start(socket, scope, plan, reason) do

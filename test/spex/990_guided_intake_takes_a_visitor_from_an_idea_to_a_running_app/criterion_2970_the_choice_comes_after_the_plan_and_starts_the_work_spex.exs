@@ -58,19 +58,32 @@ defmodule CodeMySpecSpex.Story990.Criterion2970Spex do
         {:ok, context}
       end
 
+      # On the confirmation card rather than a step of its own. The criterion is
+      # about *when* the choice happens and that nothing is provisioned before
+      # it — not about it having its own page, which would put a second gate in
+      # a flow whose whole complaint was having too many.
       when_ "they say where they want it to run", context do
-        html =
-          context.view
-          |> form("form[phx-submit=choose_location]", %{location: "cloud"})
-          |> render_submit()
+        context.view
+        |> form("form[phx-submit=confirm_names]", %{
+          plan: %{
+            account_name: "Acme",
+            project_name: "Salon Book",
+            needs_sign_in: "true",
+            separate_copies: "true",
+            location: "cloud"
+          }
+        })
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, context}
       end
 
       then_ "their working copy starts being provisioned there", context do
-        assert context.html =~ ~r/setting up|provisioning|coming up/i,
+        {:ok, _view, html} = live(context.conn, "/build/workspace")
+
+        assert html =~ ~r/getting ready|running|building|question 1 of/i,
                "saying where it should run started nothing, so the visitor is left " <>
-                 "on a plan with no way forward. Got: #{context.html}"
+                 "on a plan with no way forward. Got: #{html}"
 
         {:ok, context}
       end

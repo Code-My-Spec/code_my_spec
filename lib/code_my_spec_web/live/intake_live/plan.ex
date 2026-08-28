@@ -120,6 +120,23 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
             options={[{"Yes", "true"}, {"No", "false"}]}
           />
 
+          <%!--
+            Where it runs, asked here because this is the moment before anything
+            is provisioned. A development instance is a real container on a real
+            box, and this funnel leaks by design — the interview runs during the
+            boot precisely because visitors wander off. Starting one for
+            everybody who describes an idea spends it on everybody who leaves.
+          --%>
+          <.input
+            field={@form[:location]}
+            type="select"
+            label="Where should it run"
+            options={[
+              {"In the cloud — nothing to install", "cloud"},
+              {"On my machine", "local"}
+            ]}
+          />
+
           <.button class="btn-primary">Looks right — build it</.button>
         </.form>
       </div>
