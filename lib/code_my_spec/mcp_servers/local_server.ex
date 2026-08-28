@@ -207,4 +207,5 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
   component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
   component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
+  component(CodeMySpec.McpServers.Devops.Tools.SetDevopsLevel)
 end
