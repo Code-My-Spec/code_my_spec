@@ -41,9 +41,57 @@ defmodule CodeMySpec.Agents.Credential do
           {:ok, t()} | {:error, :not_connected | :reconnect_required | term()}
   def fetch(%Scope{} = scope, provider) when is_binary(provider) do
     with {:ok, integration_provider} <- Providers.integration_provider(provider) do
-      build(scope, provider, integration_provider)
+      case build(scope, provider, integration_provider) do
+        {:error, :not_connected} -> platform_credential(provider)
+        result -> result
+      end
     end
   end
+
+  @doc """
+  Ours, for a visitor who has connected nothing yet.
+
+  Story 875: intake ends with the visitor talking to their project's agent, and
+  someone who signed up ninety seconds ago has no provider. Making them connect
+  one there puts an OAuth detour in the exact stretch the flow exists to make
+  seamless, at the moment they have least invested.
+
+  So the first conversation runs on our credential.
+
+  ## Off unless configured, deliberately
+
+  This spends real money on people who may never come back — the interview runs
+  during the boot precisely because this funnel leaks. Nothing bounds that yet:
+  no turn cap, no token budget, no expiry. Until something does, an unset
+  configuration means a visitor sees "connect a provider", which is the
+  behaviour that existed before this and costs nothing.
+
+  A default that spent by accident would be the wrong way round for a decision
+  nobody has finished making.
+
+  Only ever reached when the visitor's own integration is missing. Someone who
+  has connected their own provider uses it — this never silently pays for a
+  customer who is already paying for themselves.
+  """
+  @spec platform_credential(String.t()) :: {:ok, t()} | {:error, :not_connected}
+  def platform_credential(_provider) do
+    # Trimmed, not just non-nil. A blank value is what an unset environment
+    # variable looks like once it has been through config — `""` or a few
+    # spaces — and it is truthy, so a bare presence check hands out a
+    # credential made of whitespace and the agent fails on its first call
+    # somewhere far from here.
+    case config()[:platform_api_key] |> to_string() |> String.trim() do
+      key when key != "" ->
+        # The same two-key shape the connected path builds. An extra field here
+        # would be one this module's own moduledoc says Pi does not read.
+        {:ok, %{"type" => "api_key", "key" => key}}
+
+      _ ->
+        {:error, :not_connected}
+    end
+  end
+
+  defp config, do: Application.get_env(:code_my_spec, __MODULE__, [])
 
   defp build(scope, provider, integration_provider) do
     scope
