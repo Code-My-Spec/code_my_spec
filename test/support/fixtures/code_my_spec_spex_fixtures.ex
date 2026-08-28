@@ -108,7 +108,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
-  alias CodeMySpecTest.PreviewWsClient
   alias CodeMySpecTest.WorkspaceWatchers
   alias Ecto.Changeset
 
@@ -2336,53 +2335,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
     PreviewAddress.host(project_id)
   end
-
-  @doc """
-  Binds the preview listener on an OS-assigned port and returns it.
-
-  The preview socket needs a real one — `Phoenix.ConnTest` never opens a
-  socket, so the proxy's upgrade path is unreachable from it. Port 0 rather
-  than a fixed number on purpose: a fixed port collides the moment two specs
-  run together, and this suite runs `max_cases: 20`.
-
-  `CodeMySpecWeb.PreviewListener` rather than the endpoint, and that is the
-  point rather than a convenience — the endpoint claims `/live/websocket` for
-  its own LiveView socket before any plug runs, so it can never serve a
-  preview's socket. See that module.
-  """
-  @spec preview_endpoint() :: pos_integer()
-  def preview_endpoint do
-    {:ok, listener} =
-      Bandit.start_link(plug: CodeMySpecWeb.PreviewListener, port: 0, startup_log: false)
-
-    {:ok, {_addr, port}} = ThousandIsland.listener_info(listener)
-    ExUnit.Callbacks.on_exit(fn -> Process.exit(listener, :normal) end)
-
-    port
-  end
-
-  @doc "Opens a preview socket as a browser would, addressed by Host header."
-  defdelegate open_preview_socket(port, host), to: PreviewWsClient, as: :connect
-
-  @doc "Sends a text frame up through the preview socket."
-  defdelegate send_preview_frame(client, text), to: PreviewWsClient, as: :send_text
-
-  @doc "Reads whatever frames have come back down, or none within the deadline."
-  defdelegate preview_frames(client, timeout \\ 2_000), to: PreviewWsClient, as: :recv
-
-  @doc """
-  Read preview frames until the one being asserted on turns up.
-
-  `preview_frames/2` stops at the first batch, which is the wrong wait for a
-  criterion asserting a particular frame — whatever arrived first comes back
-  and the frame under test may still be in flight.
-  """
-  def preview_frames_containing(client, frame, timeout \\ 2_000) do
-    PreviewWsClient.recv_until(client, &Enum.member?(&1, frame), timeout)
-  end
-
-  @doc "Closes a preview socket."
-  defdelegate close_preview_socket(client), to: PreviewWsClient, as: :close
 
   @doc "The address a project's preview is served at, so a spex need not know the rule."
   @spec preview_host(String.t()) :: String.t()

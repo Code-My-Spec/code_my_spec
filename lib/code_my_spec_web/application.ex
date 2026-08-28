@@ -62,7 +62,6 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
         CodeMySpecWeb.Endpoint
       ]
-      |> Kernel.++(CodeMySpecWeb.PreviewListener.child_spec_for_config())
       |> children(env)
 
     # See https://hexdocs.pm/elixir/Supervisor.html

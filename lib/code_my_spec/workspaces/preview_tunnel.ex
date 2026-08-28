@@ -17,12 +17,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   ## Why the address is still ours
 
   It would be simpler to let each app pick its own hostname, and every part of
-  the surrounding system would break. `PreviewProxy` recognises a preview by the
-  `preview-` prefix on our zone; `PreviewAddress.csp_origin/0` derives the
-  frame-src policy from the same base domain, so an address outside it is
-  refused by the browser and the pane renders blank; and the same-site property
-  that keeps Safari from dropping the framed app's session cookie holds only
-  while the preview shares a registrable domain with the page framing it.
+  the surrounding system would break. `PreviewAddress.csp_origin/0` derives the
+  frame-src policy from our base domain, so an address outside it is refused by
+  the browser and the pane renders blank; and the same-site property that keeps
+  a browser sending the framed app's session cookie holds only while the preview
+  shares a registrable domain with the page framing it — which is not a Safari
+  quirk, and cost an afternoon on Broken Oaths when dev previews sat on another
+  domain.
 
   So: our zone, our record, our prefix — and a tunnel underneath instead of a
   proxy.

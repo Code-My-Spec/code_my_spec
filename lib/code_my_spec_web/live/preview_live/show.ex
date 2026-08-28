@@ -162,8 +162,9 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
     # The preview address, not `Workspaces.url/1`. The container's own address
     # refuses to be framed — a generated app sends `frame-ancestors 'self'` —
     # and the refusal is silent: the iframe element looks perfectly healthy
-    # while rendering nothing. `PreviewProxy` replaces that header, and it only
-    # sees requests that arrive at the preview address.
+    # while rendering nothing. The app asserts its own `frame-ancestors` now
+    # via `ClientUtils.PreviewFraming`, because a tunnel has nothing in its path
+    # to rewrite one on the way back.
     |> assign(:src, preview_src(workspace, state))
     |> schedule_recheck()
   end

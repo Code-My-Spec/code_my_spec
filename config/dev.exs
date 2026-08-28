@@ -189,24 +189,12 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   # a value here is overwritten and only looks like it is in force.
   manage_dns: true
 
-# The pane is served from the dev endpoint, so that is who has to be allowed to
-# frame a preview. Without this the proxy names the production origin, the
-# browser refuses, and the frame renders blank in exactly the way it does when
-# the app refuses on its own.
-config :code_my_spec, CodeMySpecWeb.Plugs.PreviewProxy,
-  frame_ancestors: "http://localhost:4000 https://dev.codemyspec.com"
-
 # Who may frame a preview, handed to each app with its tunnel credentials so it
 # never has to be told separately. Both origins, because dev is reachable as
 # either and a preview opened from one has to be framed by it.
 #
-# Same value as the proxy's above, and deliberately not read from it: that plug
-# retires with the container path, and a config key outliving the module that
-# defined it is how a setting quietly stops being read.
+# The app asserts this itself now — `ClientUtils.PreviewFraming` — rather than
+# a proxy rewriting the header on a response it forwarded. Nothing sits in the
+# path any more to do the rewriting.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
   embedder: "http://localhost:4000 https://dev.codemyspec.com"
-
-# Previews get a listener of their own because the main endpoint cannot serve
-# them: it claims /live/websocket for its own LiveView socket before any plug
-# runs. See `CodeMySpecWeb.PreviewListener`. Route preview-* here at the edge.
-config :code_my_spec, CodeMySpecWeb.PreviewListener, port: 4010

@@ -9,9 +9,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
   app or not.
 
   Two mechanisms existed. A workspace we run in a container was reached by
-  dialling it — `PreviewProxy` forwards to the port and rewrites the
-  `frame-ancestors` header the generated app sends. A checkout on somebody's
-  laptop cannot be dialled at all, so it needs a tunnel it opens outward.
+  dialling it: a proxy forwarded to the port and rewrote the `frame-ancestors`
+  header the generated app sends. A checkout on somebody's laptop cannot be
+  dialled at all, so it needs a tunnel it opens outward.
+
+  The proxy is gone as of this story — the app asserts its own header now, and
+  nothing sits in a tunnel's path to rewrite one.
 
   Keeping both would mean every question about previews has two answers that
   drift: two ways an address is minted, two ways it goes down, two things to fix

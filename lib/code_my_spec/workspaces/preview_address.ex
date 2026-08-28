@@ -77,12 +77,15 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   Framing the container directly does not work and the failure is silent: a
   generated Phoenix app answers `content-security-policy: frame-ancestors
   'self'`, so any other origin is refused and the frame renders blank — which
-  reads to the visitor as their app being broken. `PreviewProxy` exists to
-  replace that header, and it only sees a request that arrives here.
+  reads to the visitor as their app being broken. The app asserts its own
+  `frame-ancestors` now, through `ClientUtils.PreviewFraming` — nothing sits in
+  a tunnel's path to rewrite the header on the way back.
 
   It is also the whole point of the address being same-site: framed from a
-  genuinely third-party origin, Safari drops the app's session cookie and takes
-  its CSRF token and LiveView connect with it.
+  genuinely third-party origin a browser drops the app's session cookie and
+  takes its CSRF token and LiveView connect with it. Not a Safari quirk — Chrome
+  does the same, and it cost an afternoon on Broken Oaths when dev previews sat
+  on a different registrable domain from the app framing them.
 
   Scheme and port are configurable because dev reaches the preview listener
   directly on its own port, while production has an edge in front of it on 443.

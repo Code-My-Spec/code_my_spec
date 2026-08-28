@@ -46,7 +46,6 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.Content.ExAwsReqClient => :other_knob,
     CodeMySpec.Migration.Client => :other_knob,
     CodeMySpec.Workspaces.PreviewAddress => :other_knob,
-    CodeMySpecWeb.Plugs.PreviewProxy => :other_knob,
 
     # Mix tasks. Not run by the suite.
     Mix.Tasks.Cms.Harness.Onboard => :mix_task,
