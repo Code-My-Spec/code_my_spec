@@ -47,6 +47,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
   """
   attr :transcript, :list, required: true
   attr :thinking, :boolean, default: false
+  attr :trouble, :string, default: nil
   slot :inner_block
 
   def conversation(assigns) do
@@ -56,6 +57,20 @@ defmodule CodeMySpecWeb.IntakeComponents do
 
       <div :if={@thinking} data-test="intake-thinking" class="chat chat-start">
         <div class="chat-bubble chat-bubble-neutral opacity-60">Thinking…</div>
+      </div>
+
+      <%!--
+        Trouble is said in the conversation, in the agent's voice, because that
+        is where the visitor is looking.
+        It was a flash. On a phone the flash sat off the top of a page the
+        visitor had already scrolled, so a failed turn rendered as their answer
+        and then nothing — no question, no plan, no error, and a box that would
+        fail again. Measured in production: the guided intake had been dead at
+        the first turn for 25 days and looked, from the front, like a page that
+        had simply stopped.
+      --%>
+      <div :if={@trouble} data-test="intake-trouble" class="chat chat-start">
+        <div class="chat-bubble chat-bubble-error">{@trouble}</div>
       </div>
 
       {render_slot(@inner_block)}

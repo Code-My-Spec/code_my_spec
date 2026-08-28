@@ -47,7 +47,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         over. The conversation is the product here; the steps were an
         implementation detail leaking through the page.
       --%>
-      <.conversation transcript={@transcript} thinking={@thinking}>
+      <.conversation transcript={@transcript} thinking={@thinking} trouble={@trouble}>
         <.plan_card :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
       </.conversation>
 
@@ -206,6 +206,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp shape(socket) do
     plan = socket.assigns.plan
 
+    # A fresh attempt, so last attempt's trouble stops being on screen.
+    socket = assign(socket, :trouble, nil)
+
     case Shaper.shape(plan, socket.assigns.turns) do
       {:ask, question} ->
         socket
@@ -226,8 +229,22 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   # No fallback questionnaire. The conversation is the product, so when the
   # model is unreachable the honest thing is to say so rather than hand over
   # the form it replaced.
+  #
+  # Said in the conversation rather than flashed. A flash is a poor place for
+  # the only sign that anything happened: on a phone it renders above a page
+  # the visitor has scrolled past, and this failure otherwise looks exactly
+  # like the page ending — their answer, then nothing, and a box that will
+  # fail the same way. The composer stays, because retrying is the right move
+  # and the message now says so.
   defp unavailable(socket) do
-    put_flash(socket, :error, "I couldn't think that through. Try again in a moment.")
+    socket
+    |> assign(
+      thinking: false,
+      trouble:
+        "Sorry — I couldn't think that through just now. Send it again and I'll " <>
+          "have another go."
+    )
+    |> put_flash(:error, "I couldn't think that through. Try again in a moment.")
   end
 
   defp generate(socket, plan) do
@@ -248,6 +265,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
+    |> assign(:trouble, Map.get(socket.assigns, :trouble))
     |> assign(:turns, Map.get(socket.assigns, :turns, []))
     |> assign(:question, Map.get(socket.assigns, :question))
     |> assign(:thinking, false)
