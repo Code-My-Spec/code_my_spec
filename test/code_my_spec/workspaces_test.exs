@@ -54,7 +54,18 @@ defmodule CodeMySpec.WorkspacesTest do
       {:ok, workspace} = Workspaces.boot(scope)
       assert_receive {:running, _}, 2_000
 
-      assert [{container_name, app_name, port}] = FakeWorkspaceRunner.calls()
+      assert [{container_name, app_name, port, env}] = FakeWorkspaceRunner.calls()
+
+      # The instance is told which working copy it is, which is what lets it
+      # onboard itself on the way up. Without it a container comes up holding an
+      # application and belonging to nobody: no identity, no row the visitor can
+      # see, no preview address.
+      assert {"CMS_WORKING_COPY_ID", working_copy_id} =
+               List.keyfind(env, "CMS_WORKING_COPY_ID", 0),
+             "the container was started without an identity, so whatever it runs " <>
+               "is not a working copy anybody owns. Got: #{inspect(env)}"
+
+      assert {:ok, _} = Ecto.UUID.cast(working_copy_id)
       assert app_name == "widget_tracker"
       assert container_name == "cms-workspace-#{scope.active_project_id}"
       assert port == workspace.port

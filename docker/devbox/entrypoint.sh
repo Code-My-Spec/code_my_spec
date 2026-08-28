@@ -41,6 +41,30 @@ log "Setting up the database"
 mix ecto.create
 mix ecto.migrate
 
+# --- identity ---------------------------------------------------------------
+# Onboard the copy we just generated, when the host told us which copy it is.
+#
+# Without this the container comes up holding an application and nothing else:
+# no .cms_harness.json, so nothing walks up to an identity, no working copy row
+# for the person to see, and no preview address. It ran, and it belonged to
+# nobody.
+#
+# The id is minted by the host before the container starts, because minting
+# needs the server and the point of onboarding is that the copy already has an
+# identity to be onboarded *as*.
+#
+# Absent, this is skipped rather than failed. A devbox started by hand for
+# development has no host to have told it anything, and it should still come up.
+if [ -n "${CMS_WORKING_COPY_ID:-}" ]; then
+  log "Onboarding ${APP_NAME} as ${CMS_WORKING_COPY_ID}"
+  mix harness.onboard \
+    --id "${CMS_WORKING_COPY_ID}" \
+    ${CMS_DEPLOY_KEY:+--deploy-key "${CMS_DEPLOY_KEY}"} \
+    || log "Onboarding did not complete; the app still runs, unowned"
+else
+  log "No working copy id given; starting un-onboarded"
+fi
+
 # --- harness ----------------------------------------------------------------
 # `start`, not `server`: this is a plain mix release, and `start` is its
 # launcher's foreground boot command. `server` is only a dev-time mix alias

@@ -12,7 +12,10 @@ defmodule CodeMySpec.Workspaces do
   """
 
   alias CodeMySpec.Projects.Project
+  require Logger
+
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.{Boot, BootSteps, Runner, Tracking, Workspace, WorkspacesRepository}
 
   @doc """
@@ -120,7 +123,7 @@ defmodule CodeMySpec.Workspaces do
     app_name = app_name(project)
     port = free_port()
 
-    with :ok <- Runner.start(container_name, app_name, port),
+    with :ok <- Runner.start(container_name, app_name, port, instance_env(project)),
          {:ok, workspace} <-
            WorkspacesRepository.upsert_booting(existing, %{
              project_id: project.id,
@@ -133,6 +136,40 @@ defmodule CodeMySpec.Workspaces do
       {:ok, workspace}
     end
   end
+
+  # What the instance needs to know about itself.
+  #
+  # A container comes up holding an application and nothing else — no checkout
+  # anybody onboarded, no identity, no credential. Handed these it can onboard
+  # itself on the way up, which is what turns it from a directory that happens
+  # to be running into a working copy the visitor owns: a row they can see, a
+  # harness that joins, and a preview address provisioned the same way a
+  # laptop's is.
+  #
+  # The id is minted here rather than inside, because minting needs the server
+  # and the whole point of onboarding a copy is that it already has one. Same
+  # reason `mix cms.harness.onboard` asks the server before it writes anything.
+  defp instance_env(%Project{} = project) do
+    scope = %Scope{active_project: project, active_project_id: project.id}
+
+    case WorkingCopies.issue(scope, nil, label: "the cloud copy of #{project.name}") do
+      {:ok, copy} ->
+        [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
+          deploy_key_env(project)
+
+      {:error, reason} ->
+        # Not fatal. An instance that comes up un-onboarded still runs the
+        # application, which is most of what the visitor came for — and saying
+        # so beats refusing to start one at all.
+        Logger.warning("[Workspaces] could not issue a working copy: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp deploy_key_env(%Project{deploy_key: key}) when is_binary(key) and key != "",
+    do: [{"CMS_DEPLOY_KEY", key}]
+
+  defp deploy_key_env(_project), do: []
 
   @doc "The workspace as it stands now, or nil if it has gone away."
   @spec reload(Workspace.t()) :: Workspace.t() | nil

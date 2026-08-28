@@ -51,7 +51,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   require Logger
 
   @impl true
-  def start(container_name, app_name, port) do
+  def start(container_name, app_name, port, _env \\ []) do
     stop(container_name)
 
     dir = workspace_dir(container_name)

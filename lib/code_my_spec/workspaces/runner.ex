@@ -9,9 +9,20 @@ defmodule CodeMySpec.Workspaces.Runner do
       config :code_my_spec, CodeMySpec.Workspaces, runner: MyRunner
   """
 
-  @doc "Start an instance named `container_name`, publishing its app on `port`."
-  @callback start(container_name :: String.t(), app_name :: String.t(), port :: pos_integer()) ::
-              :ok | {:error, term()}
+  @doc """
+  Start an instance named `container_name`, publishing its app on `port`.
+
+  `env` is what the instance needs to know about itself that it cannot work out
+  from inside: which working copy it is, and the key it authenticates as. An
+  instance with neither still starts — it just comes up as a directory rather
+  than as a working copy somebody owns.
+  """
+  @callback start(
+              container_name :: String.t(),
+              app_name :: String.t(),
+              port :: pos_integer(),
+              env :: [{String.t(), String.t()}]
+            ) :: :ok | {:error, term()}
 
   @doc """
   Where this instance can be reached from a browser.
@@ -50,7 +61,8 @@ defmodule CodeMySpec.Workspaces.Runner do
   @callback stop(container_name :: String.t()) :: :ok
 
   @spec start(String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
-  def start(container_name, app_name, port), do: impl().start(container_name, app_name, port)
+  def start(container_name, app_name, port, env \\ []),
+    do: impl().start(container_name, app_name, port, env)
 
   @spec url(String.t(), pos_integer()) :: String.t()
   def url(container_name, port), do: impl().url(container_name, port)

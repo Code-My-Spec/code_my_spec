@@ -69,11 +69,15 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   @doc "Every `start/3` the context made, oldest first."
   def calls, do: __MODULE__ |> Agent.get(& &1.calls) |> Enum.reverse()
 
+  # The env is recorded rather than dropped, because "the instance was told
+  # which working copy it is" is the difference between a container that
+  # onboards itself and one that comes up belonging to nobody — and that is a
+  # claim a test should be able to make.
   @impl true
-  def start(container_name, app_name, port) do
+  def start(container_name, app_name, port, env \\ []) do
     Agent.get_and_update(__MODULE__, fn state ->
       {state.start_result,
-       %{state | calls: [{container_name, app_name, port} | state.calls]}}
+       %{state | calls: [{container_name, app_name, port, env} | state.calls]}}
     end)
   end
 

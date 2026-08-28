@@ -17,23 +17,27 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
   @app_port 4000
 
   @impl true
-  def start(container_name, app_name, port) do
+  def start(container_name, app_name, port, env \\ []) do
     # The name is derived from the project, so a second boot for the same
     # project collides with whatever the first one left behind — `docker run`
     # exits 125 and the visitor never gets a workspace. Booting replaces.
     stop(container_name)
 
-    args = [
-      "run",
-      "--detach",
-      "--name",
-      container_name,
-      "--env",
-      "APP_NAME=#{app_name}",
-      "--publish",
-      "#{port}:#{@app_port}",
-      image()
-    ]
+    args =
+      [
+        "run",
+        "--detach",
+        "--name",
+        container_name,
+        "--env",
+        "APP_NAME=#{app_name}"
+      ] ++
+        env_args(env) ++
+        [
+          "--publish",
+          "#{port}:#{@app_port}",
+          image()
+        ]
 
     case docker(args) do
       {_out, 0} -> :ok
@@ -101,6 +105,14 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Workspaces, [])
     |> Keyword.get(:image, @image)
+  end
+
+  # One `--env` pair per entry. Values are passed as separate argv elements
+  # rather than interpolated into a shell string, because one of them is a
+  # deploy key and the other is an id, and neither should ever be somewhere a
+  # shell could look at it.
+  defp env_args(env) do
+    Enum.flat_map(env, fn {key, value} -> ["--env", "#{key}=#{value}"] end)
   end
 
   # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so a
