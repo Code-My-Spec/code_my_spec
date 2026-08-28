@@ -9,6 +9,22 @@ set -euo pipefail
 APP_NAME="${APP_NAME:-my_app}"
 APP_DIR="/workspace/${APP_NAME}"
 
+# One port, said once.
+#
+# A generated app's runtime.exs defaults PORT to 4100 -- deliberately not
+# Phoenix's 4000, because on a laptop 4000 is already CodeMySpec's own server.
+# Inside this container nothing competes, and three other things assume 4000:
+# the log line below, the port `Workspaces.Runner.Docker` publishes, and
+# therefore every health check the server makes against the instance.
+#
+# Left to the default, the app listened on 4100 while Docker published 4000, so
+# nothing answered on the host port and the workspace sat at "booting" forever
+# -- while the app itself was up and its preview served perfectly, because
+# cloudflared runs inside and reads the same runtime.exs the app does. The
+# visitor's progress bar was the only thing that was wrong, which is the worst
+# place for a mismatch to show up.
+export PORT="${PORT:-4000}"
+
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 
 # --- postgres ---------------------------------------------------------------
@@ -83,5 +99,5 @@ log "Starting the cms harness server on :4003"
 cms start &
 
 # --- app --------------------------------------------------------------------
-log "Starting ${APP_NAME} on :4000"
+log "Starting ${APP_NAME} on :${PORT}"
 exec mix phx.server
