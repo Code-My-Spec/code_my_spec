@@ -58,7 +58,12 @@ defmodule CodeMySpec.Provisioning.Database do
   # Pinned rather than `:latest`, because a database that silently changes
   # major version between two runs of setup is a data-loss event with a
   # convenient explanation.
-  @image "postgres:17"
+  #
+  # pgvector, not stock postgres: it is a strict superset (the extension
+  # only matters to a project that creates it) and MarketMySpec's own
+  # database already depends on `vector` — the same box has to be able to
+  # serve either kind of tenant without a special case for which one.
+  @image "pgvector/pgvector:pg18"
 
   @doc "The container the app connects to, and the port it listens on."
   @spec host() :: String.t()
@@ -274,8 +279,9 @@ defmodule CodeMySpec.Provisioning.Database do
   # runs — creating is not a one-time event the way it was when the box and
   # the project were the same thing.
   defp ensure_tenant(run, admin, credential) do
-    with :ok <- ensure_role(run, admin, credential) do
-      ensure_database(run, admin, credential)
+    with :ok <- ensure_role(run, admin, credential),
+         :ok <- ensure_database(run, admin, credential) do
+      ensure_vector_extension(run, admin, credential)
     end
   end
 
@@ -321,6 +327,30 @@ defmodule CodeMySpec.Provisioning.Database do
     case run.([command]) do
       {_output, 0} -> :ok
       {output, status} -> {:error, {error_tag, status, String.trim(output)}}
+    end
+  end
+
+  # pgvector is not a trusted extension — its control file carries no
+  # `trusted = true` — so a tenant role can never install it itself, no
+  # matter that it owns its own database: confirmed live, a plain LOGIN
+  # role got "permission denied to create extension ... Must be superuser"
+  # even as the database's owner. Installed here, once, by the admin the
+  # box already trusts for exactly this reason. `IF NOT EXISTS` is what
+  # then makes it safe for the tenant's own migration to ask for the same
+  # extension again — confirmed live too, the permission check never runs
+  # once the extension already exists, so the app's ordinary
+  # `CREATE EXTENSION IF NOT EXISTS vector` migration succeeds under its own,
+  # unprivileged role.
+  defp ensure_vector_extension(run, admin, credential) do
+    sql = "CREATE EXTENSION IF NOT EXISTS vector"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+        "-d #{shell_escape(credential.database)} -c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_role_not_ready, status, String.trim(output)}}
     end
   end
 

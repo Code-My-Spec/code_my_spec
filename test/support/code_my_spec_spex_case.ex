@@ -2015,7 +2015,7 @@ defmodule CodeMySpecSpex.Case do
   which is right when the dump runs here and wrong once it runs on a box. The
   generated `bin/backup` reaches postgres with
 
-      docker run --rm -i --network db_net postgres:17 pg_dump …
+      docker run --rm -i --network db_net pgvector/pgvector:pg18 pg_dump …
 
   because the environment's server carries docker and curl and no postgres
   client. So the URL is resolved *inside that container*, where `localhost` is

@@ -723,7 +723,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       if command -v "$bin" >/dev/null 2>&1; then
         "$bin" "$@"
       else
-        docker run --rm -i --network "${PG_NETWORK:-db_net}" "${PG_IMAGE:-postgres:17}" "$bin" "$@"
+        docker run --rm -i --network "${PG_NETWORK:-db_net}" "${PG_IMAGE:-pgvector/pgvector:pg18}" "$bin" "$@"
       fi
     }
 

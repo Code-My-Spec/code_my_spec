@@ -131,7 +131,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       assert {:ok, _} = serve()
 
       commands = collect_commands()
-      assert Enum.any?(commands, &(&1 =~ "postgres:17"))
+      assert Enum.any?(commands, &(&1 =~ "pgvector/pgvector:pg18"))
       refute Enum.any?(commands, &(&1 =~ "postgres:latest"))
     end
 
@@ -166,6 +166,26 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "CREATE ROLE app_sam_s_app"))
       assert Enum.any?(commands, &(&1 =~ "CREATE DATABASE app_sam_s_app_uat OWNER app_sam_s_app"))
+    end
+
+    # pgvector is not a trusted extension — a plain LOGIN role can never
+    # install it itself, even as the owner of its own database. Confirmed
+    # live: "permission denied to create extension ... Must be superuser".
+    # Installed once here, by the admin, so the app's own
+    # `CREATE EXTENSION IF NOT EXISTS vector` migration finds it already
+    # there and never has to ask for a privilege its own role could never
+    # hold — `IF NOT EXISTS` skips the permission check entirely once the
+    # extension exists, confirmed live too.
+    test "the vector extension is installed by the admin, in this project's own database" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~
+                   "-U 'postgres' -d 'app_sam_s_app_uat' -c 'CREATE EXTENSION IF NOT EXISTS vector'")
+             )
     end
 
     # Ensuring the database is a check-then-create, not a blind create — a

@@ -146,7 +146,7 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
           Database.network(),
           "-e",
           "PGPASSWORD=pw",
-          "postgres:17",
+          "pgvector/pgvector:pg18",
           "psql",
           url,
           "-tAc",
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
       psql = fn sql ->
         docker([
           "run", "--rm", "--network", Database.network(),
-          "-e", "PGPASSWORD=pw", "postgres:17", "psql", url, "-tAc", sql
+          "-e", "PGPASSWORD=pw", "pgvector/pgvector:pg18", "psql", url, "-tAc", sql
         ])
       end
 
