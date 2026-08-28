@@ -158,7 +158,8 @@ defmodule CodeMySpec.Workspaces do
 
     with {:ok, project} <- Projects.ensure_deploy_key(scope, project),
          scope = %Scope{scope | active_project: project, active_project_id: project.id},
-         {:ok, copy} <- WorkingCopies.issue(scope, nil, label: label),
+         {:ok, copy} <-
+           WorkingCopies.issue(scope, existing_cloud_copy(scope, project), label: label),
          # Where it will be, said now rather than waited for. A row is not a
          # checkout until it says where it is, and only a rooted copy can be the
          # project's main one — which is what the preview endpoint requires
@@ -180,6 +181,34 @@ defmodule CodeMySpec.Workspaces do
         # so beats refusing to start one at all.
         Logger.warning("[Workspaces] could not issue a working copy: #{inspect(reason)}")
         []
+    end
+  end
+
+  # The copy this project's cloud instance already has, if it has one.
+  #
+  # Booting replaces the container -- `Runner.start/4` removes whatever was
+  # there first -- so an instance that has gone down and been brought back is
+  # the same working copy at the same root, not a second one. Minting a fresh
+  # copy each time was visible: a workspace that crashed and was retried came
+  # back with a copy that was not the project's main one, and only the main copy
+  # is given a preview. The visitor's rebuilt project could never get an
+  # address, while the address on their screen belonged to the copy that no
+  # longer existed and answered 530.
+  #
+  # Matched on the root because that is what identifies a checkout, and the root
+  # is ours to know: the entrypoint generates into `/workspace/<app>` and
+  # nowhere else. `recognised/3` inside `issue/3` cannot do this for us -- it
+  # needs a device, and a cloud instance has none until its harness joins, which
+  # is after this runs.
+  defp existing_cloud_copy(scope, %Project{} = project) do
+    root = instance_root(project)
+
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.find(&(&1.root == root))
+    |> case do
+      nil -> nil
+      copy -> copy.id
     end
   end
 
