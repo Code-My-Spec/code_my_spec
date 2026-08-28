@@ -416,11 +416,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     # set the flag directly could seal a story this fixture had left incomplete,
     # and every downstream test would then be built on a state the product
     # cannot produce.
-    {:ok, :valid} =
-      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
-        entity_type: :story,
-        entity_id: to_string(story.id)
-      })
+    :ok = CodeMySpecSpex.Fixtures.seal_three_amigos(scope, story)
 
     :ok
   end

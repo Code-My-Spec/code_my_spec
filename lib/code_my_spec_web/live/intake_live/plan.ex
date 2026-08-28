@@ -151,8 +151,28 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     {:ok,
      socket
      |> assign(page_title: "Build something")
-     |> assign_plan(plan)}
+     |> assign_plan(plan)
+     |> resume()}
   end
+
+  # A visitor coming back mid-conversation gets asked something.
+  #
+  # The turns live in socket assigns, so a reload keeps the plan row and loses
+  # the question that was on screen. What is left renders as the description
+  # followed by an empty answer box — a box with nothing above it to answer,
+  # which is not a state anybody can act on.
+  #
+  # It was reachable the slow way (reload, reconnect, come back tomorrow) and
+  # the fast way: for 25 days the model could not be called at all, so every
+  # visitor's plan stopped at `:answering` with no question ever asked, and
+  # every return visit rendered this. Fixing the credential does not clear those
+  # — the rows are still sitting at `:answering` — so resuming has to be able to
+  # pick the conversation back up.
+  defp resume(%{assigns: %{plan: %Plan{status: :answering}, question: nil}} = socket) do
+    shape(socket)
+  end
+
+  defp resume(socket), do: socket
 
   def handle_event("describe", %{"description" => description}, socket) do
     {:ok, plan} = Intake.describe(socket.assigns.plan, description)

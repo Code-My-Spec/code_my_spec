@@ -440,11 +440,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     # builds the same state `ProjectStateFixtures.apply_three_amigos_for_story/3`
     # does, inline -- a second copy that had to be found the hard way when the
     # graph spex went yellow.
-    {:ok, :valid} =
-      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
-        entity_type: :story,
-        entity_id: to_string(story.id)
-      })
+    :ok = CodeMySpecSpex.Fixtures.seal_three_amigos(scope, story)
 
     story = StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria

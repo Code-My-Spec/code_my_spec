@@ -2196,6 +2196,30 @@ defmodule CodeMySpecSpex.Fixtures do
   all three, because the Case registers `stop_owner` earlier and earlier means
   later on the way out.
   """
+  @doc """
+  Seals a story's Three Amigos session, the way the gate does.
+
+  Here rather than called directly because `CodeMySpecSpex` may not name
+  `CodeMySpec.AgentTasks` — this bridge exists to hold exactly that kind of
+  reach-through, and three separate fixtures build three-amigos state and all
+  three need to seal.
+
+  Through `evaluate/2` rather than by writing the field: it seals only on a
+  passing check, so a fixture that set the flag directly could seal a story it
+  had left incomplete, and every downstream test would then be built on a state
+  the product cannot produce.
+  """
+  @spec seal_three_amigos(term(), term()) :: :ok
+  def seal_three_amigos(scope, story) do
+    {:ok, :valid} =
+      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
+        entity_type: :story,
+        entity_id: to_string(story.id)
+      })
+
+    :ok
+  end
+
   @spec install_workspace_runner(keyword(), keyword()) :: :ok
   def install_workspace_runner(opts \\ [healthy?: true, serving: :serving], config \\ []) do
     Application.put_env(
