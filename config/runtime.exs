@@ -381,7 +381,22 @@ end
 # ReqLLM resolves keys from `config :req_llm, <provider>_api_key`. Left nil when
 # unset — the planner then fails with :plan_unavailable and the visitor is told,
 # rather than the key's absence surfacing as a crash mid-flow.
-config :req_llm, anthropic_api_key: env!("ANTHROPIC_API_KEY", :string, nil)
+#
+# Both providers, because which one an environment has is a deployment fact
+# rather than a product decision. Production ran for 25 days with neither: the
+# key was never set there, every `shape/2` errored, and the guided intake — the
+# front door, the one the landing page says needs no signup — was dead at its
+# first turn the whole time.
+config :req_llm,
+  anthropic_api_key: env!("ANTHROPIC_API_KEY", :string, nil),
+  openai_api_key: env!("OPENAI_API_KEY", :string, nil)
+
+# And which model to spend. Configurable because the key an environment holds
+# decides it: a deployment with only an OpenAI key cannot run the Anthropic
+# default, and pinning the model in code makes the two settings able to
+# disagree — which reads, from the front, exactly like the missing key did.
+config :code_my_spec, CodeMySpec.Intake,
+  model: env!("INTAKE_MODEL", :string, "anthropic:claude-sonnet-5")
 
 # Stripe. Blank when unset rather than absent, so an unconfigured environment
 # degrades to a normal error the billing page can show instead of crashing
