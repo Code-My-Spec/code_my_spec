@@ -21,6 +21,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Environments.{Environment, Local}
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Hetzner, Sops, Steps}
 
@@ -94,6 +95,45 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       assert_received {:ran, probe}
       assert probe =~ "curl"
       assert probe =~ "http://#{@private_ip}:5000/v2/"
+    end
+  end
+
+  # Found live against MarketMySpec: a harness-scoped caller's scope carries
+  # no working directory for a real project, and `Sops.missing_secrets/4`
+  # resolves a relative path through it — `Environments.Local.resolve_path/2`
+  # raises rather than silently reading against the server's own checkout,
+  # which is right for a write and wrong for this read. The raise propagated
+  # out of `verify(:server, …)` entirely, past `safe_verify/3`'s rescue, so
+  # the step errored before `run_and_record/4` ever ran — nothing, not even
+  # the database, was ever created, on a box whose only real problem was
+  # that setup had never reached it yet.
+  #
+  # The suite swaps `:local` for `RecordingEnvironment` globally
+  # (`test_helper.exs`), which does not reproduce this — it never raises on
+  # a directoryless environment, only the real `Environments.Local` does.
+  # Restored to the real one for just this test, since the claim under test
+  # is specifically about that module's own behavior.
+  describe "the caller's scope carries no working directory" do
+    test "verify(:server, …) reports absent instead of raising", ctx do
+      previous = Application.get_env(:code_my_spec, :environment)
+      Application.put_env(:code_my_spec, :environment, Local)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:code_my_spec, :environment, previous)
+        else
+          Application.delete_env(:code_my_spec, :environment)
+        end
+      end)
+
+      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+
+      run = fn [_command] -> {"", 0} end
+
+      assert {:ok, :absent} =
+               Steps.verify(:server, directoryless, verify_opts(run)),
+             "a scope with no working directory must not crash the check — " <>
+               "absent is the honest answer, the same as any other unprovable claim"
     end
   end
 
