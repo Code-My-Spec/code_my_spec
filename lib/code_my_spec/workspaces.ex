@@ -152,11 +152,24 @@ defmodule CodeMySpec.Workspaces do
   defp instance_env(%Project{} = project) do
     scope = %Scope{active_project: project, active_project_id: project.id}
 
-    case WorkingCopies.issue(scope, nil, label: "the cloud copy of #{project.name}") do
-      {:ok, copy} ->
-        [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
-          deploy_key_env(project) ++ server_url_env()
+    label = "the cloud copy of #{project.name}"
 
+    with {:ok, copy} <- WorkingCopies.issue(scope, nil, label: label),
+         # Where it will be, said now rather than waited for. A row is not a
+         # checkout until it says where it is, and only a rooted copy can be the
+         # project's main one — which is what the preview endpoint requires
+         # before it will provision anything.
+         #
+         # The server knows the path because the server chose it: the entrypoint
+         # generates into `/workspace/<app>` and nowhere else. Waiting for the
+         # instance to report it instead is what left the copy rootless, never
+         # main and never previewed — the harness picks a copy up on its first
+         # hook request, and an instance a visitor is merely watching never makes
+         # one.
+         {:ok, copy} <- WorkingCopies.report_root(copy, instance_root(project)) do
+      [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
+        deploy_key_env(project) ++ server_url_env()
+    else
       {:error, reason} ->
         # Not fatal. An instance that comes up un-onboarded still runs the
         # application, which is most of what the visitor came for — and saying
@@ -165,6 +178,11 @@ defmodule CodeMySpec.Workspaces do
         []
     end
   end
+
+  # Where the entrypoint puts it. One place decides this and it is not the
+  # instance: `docker/devbox/entrypoint.sh` generates into `/workspace/$APP_NAME`
+  # and nowhere else.
+  defp instance_root(%Project{} = project), do: "/workspace/#{app_name(project)}"
 
   defp deploy_key_env(%Project{deploy_key: key}) when is_binary(key) and key != "",
     do: [{"CMS_DEPLOY_KEY", key}]

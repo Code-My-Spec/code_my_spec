@@ -57,9 +57,15 @@ mix ecto.migrate
 # development has no host to have told it anything, and it should still come up.
 if [ -n "${CMS_WORKING_COPY_ID:-}" ]; then
   log "Onboarding ${APP_NAME} as ${CMS_WORKING_COPY_ID}"
+  # --server-url is what makes the tunnel a *result* of onboarding rather than
+  # something that has to happen later. Without it `Preview.ensure` has nowhere
+  # to ask, answers "no preview", and the app comes up with nothing to show —
+  # silently, because no preview is a legitimate answer and looks identical to
+  # never having asked.
   mix harness.onboard \
     --id "${CMS_WORKING_COPY_ID}" \
     ${CMS_DEPLOY_KEY:+--deploy-key "${CMS_DEPLOY_KEY}"} \
+    ${CMS_SERVER_URL:+--server-url "${CMS_SERVER_URL}"} \
     || log "Onboarding did not complete; the app still runs, unowned"
 else
   log "No working copy id given; starting un-onboarded"
