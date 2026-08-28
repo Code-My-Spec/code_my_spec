@@ -27,7 +27,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Intake
-  alias CodeMySpec.Intake.{Funnel, Plan, Shaper}
+  alias CodeMySpec.Intake.{Funnel, Plan}
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
@@ -148,11 +148,21 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     token = Map.fetch!(session, IntakeSession.session_key())
     {:ok, plan} = Intake.start_plan(token)
 
+    if connected?(socket), do: Intake.subscribe(plan)
+
     {:ok,
      socket
      |> assign(page_title: "Build something")
      |> assign_plan(plan)}
   end
+
+  # The task finished. Whoever is watching gets the same row, so a second tab
+  # and a reloaded first tab agree without either of them having asked.
+  def handle_info({:shaped, %Plan{id: id} = plan}, %{assigns: %{plan: %Plan{id: id}}} = socket) do
+    {:noreply, assign_plan(socket, plan)}
+  end
+
+  def handle_info({:shaped, _other}, socket), do: {:noreply, socket}
 
   def handle_event("describe", %{"description" => description}, socket) do
     {:ok, plan} = Intake.describe(socket.assigns.plan, description)
@@ -160,7 +170,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
     # Straight into the conversation. A description that already says who uses
     # it and how gets no questions at all — the model goes to the plan.
-    {:noreply, socket |> assign_plan(plan) |> assign(turns: []) |> shape()}
+    {:noreply, shape(socket, plan)}
   end
 
   # The answer joins the transcript and the whole conversation goes back to the
@@ -172,7 +182,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   def handle_event("answer", %{"answer" => written}, socket) do
     {:ok, plan} = Intake.record_turn(socket.assigns.plan, socket.assigns.question, written)
 
-    {:noreply, socket |> assign_plan(plan) |> shape()}
+    {:noreply, shape(socket, plan)}
   end
 
   def handle_event("validate_names", %{"plan" => attrs}, socket) do
@@ -202,26 +212,17 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
   defp gate_for(_scope), do: ~p"/users/register"
 
-  # Ask once more, or take what the model inferred and write the plan.
-  defp shape(socket) do
-    plan = socket.assigns.plan
-
-    # A fresh attempt, so last attempt's trouble stops being on screen.
-    socket = assign(socket, :trouble, nil)
-
-    case Shaper.shape(plan, Intake.turns(plan)) do
-      {:ask, question} ->
-        {:ok, plan} = Intake.ask(socket.assigns.plan, question)
-        assign_plan(socket, plan)
-
-      {:ok, attrs} ->
-        case Intake.answer(plan, attrs) do
-          {:ok, plan} -> generate(socket, plan)
-          {:error, _} -> unavailable(socket)
-        end
-
-      {:error, _reason} ->
-        unavailable(socket)
+  # Hand the turn to a supervised task and render what the row now says.
+  #
+  # This used to call the model inline and assign the result, which coupled a
+  # call that takes tens of seconds to the socket that requested it: reload
+  # mid-call and the answer had nowhere to land. The row carries `:thinking`
+  # now, so every viewer of this plan — including one that arrives during the
+  # call — renders the same waiting state and gets the same result.
+  defp shape(socket, plan) do
+    case Intake.shape_async(plan) do
+      {:ok, thinking} -> assign_plan(socket, thinking)
+      {:error, _changeset} -> unavailable(socket)
     end
   end
 
@@ -246,20 +247,15 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     |> put_flash(:error, "I couldn't think that through. Try again in a moment.")
   end
 
-  defp generate(socket, plan) do
-    case Intake.generate_plan(plan) do
-      {:ok, plan} ->
-        Funnel.plan_reached(:plan_shown, %{plan_id: plan.id})
-        assign_plan(socket, plan)
-
-      # Writing the plan is a call to a model, so it can fail for reasons the
-      # visitor had nothing to do with. Keep them on what they already gave.
-      {:error, _reason} ->
-        socket
-        |> assign_plan(plan)
-        |> put_flash(:error, "That didn't come back. Try again in a moment.")
-    end
+  # Trouble is read off the row, so it survives the reload that a failed turn
+  # invites. `unavailable/1` set it in assigns, which meant the message existed
+  # only in the socket that saw the failure.
+  defp trouble_for(%Plan{shaping_status: :failed}) do
+    "Sorry — I couldn't think that through just now. Send it again and I'll " <>
+      "have another go."
   end
+
+  defp trouble_for(%Plan{}), do: nil
 
   # Turns and the pending question come off the row, not out of assigns.
   #
@@ -271,10 +267,10 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
-    |> assign(:trouble, Map.get(socket.assigns, :trouble))
     |> assign(:turns, Intake.turns(plan))
     |> assign(:question, plan.pending_question)
-    |> assign(:thinking, false)
+    |> assign(:thinking, plan.shaping_status == :thinking)
+    |> assign(:trouble, trouble_for(plan))
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
     |> assign_transcript()

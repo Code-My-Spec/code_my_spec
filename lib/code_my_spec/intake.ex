@@ -56,6 +56,94 @@ defmodule CodeMySpec.Intake do
     |> PlansRepository.update()
   end
 
+  @doc """
+  Subscribes to one plan's shaping. Broadcasts match `{:shaped, %Plan{}}`.
+  """
+  @spec subscribe(Plan.t() | String.t()) :: :ok | {:error, term()}
+  def subscribe(%Plan{id: id}), do: subscribe(id)
+
+  def subscribe(plan_id) when is_binary(plan_id),
+    do: Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic(plan_id))
+
+  defp topic(plan_id), do: "intake_plan:#{plan_id}"
+
+  @doc """
+  Asks the model what to do next, off the caller's process.
+
+  Returns a `:thinking` plan immediately; the answer arrives as a broadcast. A
+  caller that goes away — a reload, a dropped socket — does not take the call
+  with it, and a caller that comes back reads `:thinking` off the row and waits
+  alongside whoever else is watching.
+
+  The call used to run inside the LiveView's `handle_event`, which made the
+  LiveView the only record of it: reload mid-call and the process died with the
+  request, the answer landed nowhere, and the visitor came back to a page that
+  had forgotten it was waiting.
+
+  Under `CodeMySpec.TaskSupervisor` for the same reason `Workspaces.boot/1` is:
+  the work outlives the request that started it, and a crash in it must not take
+  the requester down.
+  """
+  @spec shape_async(Plan.t(), module()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def shape_async(%Plan{} = plan, shaper \\ CodeMySpec.Intake.Shaper) do
+    with {:ok, thinking} <- mark_thinking(plan) do
+      if async?() do
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          run_shaping(thinking, shaper)
+        end)
+
+        {:ok, thinking}
+      else
+        # Inline in test, where a task in another process cannot see the
+        # sandbox's transaction. Same reasoning as `content_pull_async`.
+        # Returns the *finished* plan, so a test asserts on an outcome rather
+        # than on a race.
+        {:ok, run_shaping(thinking, shaper)}
+      end
+    end
+  end
+
+  defp async?, do: Application.get_env(:code_my_spec, :intake_shaping_async, true)
+
+  defp mark_thinking(plan) do
+    plan |> Plan.shaping_status_changeset(:thinking) |> PlansRepository.update()
+  end
+
+  # Written to the row before it is announced, so a subscriber that missed the
+  # message and re-reads sees what one that got it saw.
+  defp run_shaping(plan, shaper) do
+    case shaped(plan, shaper) do
+      {:ok, %Plan{} = updated} ->
+        broadcast(updated)
+
+      _ ->
+        # `:failed`, not `:idle`. The failure has to outlive the task that hit
+        # it, or a reload renders a plan that looks merely unanswered and the
+        # visitor is left with a box and no reason.
+        {:ok, settled} = Plan.shaping_status_changeset(plan, :failed) |> PlansRepository.update()
+        broadcast(settled)
+    end
+  end
+
+  defp shaped(plan, shaper) do
+    case shaper.shape(plan, turns(plan)) do
+      {:ask, question} ->
+        ask(plan, question)
+
+      {:ok, attrs} ->
+        with {:ok, answered} <- answer(plan, attrs), do: generate_plan(answered)
+
+      {:error, reason} ->
+        Logger.warning("[Intake] shaping failed for plan #{plan.id}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp broadcast(%Plan{} = plan) do
+    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(plan.id), {:shaped, plan})
+    plan
+  end
+
   @doc "Records the question the visitor is now being asked."
   @spec ask(Plan.t(), String.t() | nil) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def ask(%Plan{} = plan, question) do

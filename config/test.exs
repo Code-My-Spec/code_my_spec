@@ -437,3 +437,7 @@ config :assent, http_adapter: {Assent.HTTPAdapter.Req, plug: {Req.Test, Assent}}
 # test cannot start a real login against somebody's ChatGPT account.
 config :code_my_spec, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth}
+
+# Guided intake shapes inline in test: a task in another process cannot see
+# the sandbox transaction, and an assertion on a race is not an assertion.
+config :code_my_spec, intake_shaping_async: false

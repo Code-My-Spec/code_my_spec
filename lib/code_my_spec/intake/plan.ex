@@ -47,6 +47,11 @@ defmodule CodeMySpec.Intake.Plan do
     field :shaping_turns, {:array, :map}, default: []
     field :pending_question, :string
 
+    # Whether a model call is out for this plan. The LiveView used to be the
+    # only record of one, so a reload mid-call lost it -- the process died with
+    # the request and the answer landed nowhere.
+    field :shaping_status, Ecto.Enum, values: [:idle, :thinking, :failed], default: :idle
+
     field :summary, :string
     field :first_build, :string
 
@@ -78,9 +83,17 @@ defmodule CodeMySpec.Intake.Plan do
     |> put_change(:status, :answering)
   end
 
+  @doc "Marks a model call as out, or done."
+  def shaping_status_changeset(%__MODULE__{} = plan, status) do
+    cast(plan, %{shaping_status: status}, [:shaping_status])
+  end
+
   @doc "Records the question now awaiting an answer, or clears it."
   def pending_question_changeset(%__MODULE__{} = plan, question) do
-    cast(plan, %{pending_question: question}, [:pending_question])
+    cast(plan, %{pending_question: question, shaping_status: :idle}, [
+      :pending_question,
+      :shaping_status
+    ])
   end
 
   @doc """
