@@ -198,6 +198,22 @@ RUN apt-get update \
        procps \
   && rm -rf /var/lib/apt/lists/*
 
+# cloudflared, because a generated app carries its own preview tunnel and runs
+# it in its own supervision tree — `ClientUtils.CloudflareTunnel`. Without the
+# binary the app boots, warns "cloudflared not found in PATH — tunnel disabled",
+# and serves nothing at the address onboarding just provisioned for it. That
+# degrades gracefully, which is right, and is also exactly why it is easy to
+# miss: everything else reports success.
+#
+# The static binary rather than Cloudflare's apt repository: one file, no
+# signing key to rotate, and the architecture is whatever the image is being
+# built for rather than whatever the builder happens to be.
+ARG TARGETARCH
+RUN curl -fsSL -o /usr/local/bin/cloudflared \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${TARGETARCH}" \
+  && chmod 0755 /usr/local/bin/cloudflared \
+  && cloudflared --version
+
 # Node is needed by the asset pipeline (esbuild/tailwind install their own
 # binaries, but npm is still the escape hatch for anything a project adds).
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
