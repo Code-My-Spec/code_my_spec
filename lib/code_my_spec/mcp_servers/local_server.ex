@@ -206,4 +206,5 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep)
   component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
   component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
+  component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
 end
