@@ -315,7 +315,7 @@ defmodule CodeMySpec.Provisioning do
     scope = reread_project(scope)
     previous = StepRepository.get(scope, key)
 
-    case verify(scope, key, opts) do
+    case safe_verify(scope, key, opts) do
       {:ok, :satisfied, resources} ->
         {:ok, mark(scope, key, :done, %{resources: still_ours(scope, key, resources)})}
 
@@ -340,6 +340,24 @@ defmodule CodeMySpec.Provisioning do
       {:error, reason} ->
         {:halt, mark(scope, key, :errored, error_attrs(key, reason)), describe(reason)}
     end
+  end
+
+  # A verify that raises is not a verdict the resource is gone — it is the
+  # same "could not confirm" the `{:error, reason}` branches above already
+  # handle, reached this way so a crash (an environment with no working
+  # directory, a missing binary, a bug in some provider's own check) halts
+  # the step cleanly instead of crashing the runner. Confirmed live: once
+  # `Sops` binaries became available, `verify(:server, …)`'s own
+  # `database_url_present?` check started reaching a real filesystem read
+  # against a harness-proxied scope with no checkout — exactly the shape
+  # `run_and_record/4`'s own rescue already exists to catch on the execute
+  # side, but nothing covered it here.
+  defp safe_verify(scope, key, opts) do
+    verify(scope, key, opts)
+  rescue
+    error ->
+      Logger.error(Exception.format(:error, error, __STACKTRACE__))
+      {:error, Exception.message(error)}
   end
 
   @doc """
@@ -632,7 +650,7 @@ defmodule CodeMySpec.Provisioning do
     for step <- Sequence.for_options(enabled_options),
         row = StepRepository.get(scope, step.key),
         row && row.state == :done do
-      case verify(scope, step.key, opts) do
+      case safe_verify(scope, step.key, opts) do
         {:ok, :satisfied, resources} ->
           mark(scope, step.key, :done, %{resources: resources, verified_at: now})
 

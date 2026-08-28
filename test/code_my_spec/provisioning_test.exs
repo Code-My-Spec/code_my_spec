@@ -239,6 +239,38 @@ defmodule CodeMySpec.ProvisioningTest do
 
       assert row.state == :errored
     end
+
+    # Found live: once sops became available on this server, verify(:server,
+    # …)'s own database_url_present? check started reaching a real
+    # filesystem read against a harness-proxied scope with no working
+    # directory — an ArgumentError, not a returned {:error, _}. Nothing
+    # short of a crash of the whole call distinguished this from any other
+    # verify failure, and the two tests above already establish what a
+    # returned {:error, _} does; a raise deserves the identical answer, not
+    # a runner that goes down with it.
+    test "a verify that raises halts cleanly instead of crashing the runner", %{scope: scope} do
+      verify = fn _scope, _key -> raise ArgumentError, "no working directory" end
+
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :server, verify: verify)
+
+      assert row.state == :errored
+      assert reason =~ "no working directory"
+    end
+
+    test "a verify that raises does not demote a step already confirmed done", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+
+      verify = fn
+        _scope, :repository -> raise ArgumentError, "no working directory"
+        _scope, _key -> {:ok, :absent}
+      end
+
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :repository, verify: verify)
+
+      assert row.state == :done
+      assert reason =~ "no working directory"
+      assert StepRepository.get(scope, :repository).state == :done
+    end
   end
 
   describe "resume/3" do
