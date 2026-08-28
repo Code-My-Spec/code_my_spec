@@ -20,7 +20,13 @@ defmodule CodeMySpecWeb.PageControllerTest do
 
       # Past the description and into the conversation — which is the point of
       # recording it here rather than passing it along in the URL.
-      refute body =~ "What do you want to build?"
+      #
+      # Read off the box they type into, not off the opening question. The
+      # question is now the transcript's first line and stays on screen for the
+      # whole conversation, so its absence stopped meaning anything; what says
+      # they are past it is that there is nothing left to describe.
+      assert body =~ "a booking tool for hair salons"
+      refute body =~ "phx-submit=\"describe\""
     end
 
     test "an empty box is not an error, just an unanswered question", %{conn: conn} do
@@ -29,7 +35,12 @@ defmodule CodeMySpecWeb.PageControllerTest do
       assert redirected_to(conn) == ~p"/build"
 
       body = conn |> recycle() |> get(~p"/build") |> html_response(200)
+
+      # Still being asked, not merely still mentioned — the question survives in
+      # the transcript either way, so the box is what distinguishes an
+      # unanswered question from an answered one.
       assert body =~ "What do you want to build?"
+      assert body =~ "phx-submit=\"describe\""
     end
   end
 
