@@ -105,4 +105,45 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
 
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == found
   end
+
+  test "a renumbered criterion is repaired through the id its old path remembers" do
+    scope = full_scope_fixture()
+    story = story_fixture(scope)
+
+    # The file was written when this criterion had a different id, and the
+    # project has renumbered since. Its recorded path is the only thing that
+    # still remembers which id the filename was built from.
+    stale = "test/spex/1_x/criterion_8010_under_its_old_name_spex.exs"
+    c = criterion(scope, story, %{spec_path: stale})
+
+    found = "test/spex/1_x/criterion_8010_under_its_new_name_spex.exs"
+
+    # Keyed by 8010 -- the id in the observed filename -- which matches no row.
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{8010 => found}),
+           "a criterion whose filename id predates a renumbering was left pointing " <>
+             "at a file that is gone. Matching the observed id against row ids finds " <>
+             "nothing for it, so the repair reaches every criterion except the ones " <>
+             "that have been renumbered — the oldest, and the least likely to be " <>
+             "noticed."
+
+    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == found
+  end
+
+  test "and not across directories, where an id could belong to another story" do
+    scope = full_scope_fixture()
+    story = story_fixture(scope)
+
+    stale = "test/spex/1_x/criterion_8010_under_its_old_name_spex.exs"
+    c = criterion(scope, story, %{spec_path: stale})
+
+    elsewhere = "test/spex/2_y/criterion_8010_a_different_storys_spec_spex.exs"
+
+    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(scope, %{8010 => elsewhere}),
+           "a stale id was matched across directories. Criterion ids were reused by " <>
+             "the renumbering, so the same number under a different story is a " <>
+             "different criterion — repointing there would hand one story's spec to " <>
+             "another and nothing downstream would question it."
+
+    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == stale
+  end
 end

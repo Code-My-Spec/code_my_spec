@@ -51,23 +51,54 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     # from the observed filename, so a row is only rewritten when a file
     # claiming to be that criterion's spec is on disk *and* the path it holds
     # is not. Nothing is taken from a record that still resolves.
-    candidates =
+    by_row_id =
       from(c in Criterion,
         where: c.project_id == ^project_id and c.id in ^ids,
         select: {c.id, c.spec_path}
       )
       |> Repo.all()
+      |> Enum.filter(fn {_id, path} -> stale?(path) end)
+      |> Enum.map(fn {id, previous} -> {id, previous, Map.fetch!(paths, id)} end)
 
-    claimable =
-      Enum.filter(candidates, fn
-        {_id, path} when is_nil(path) or path == "" -> true
-        {_id, path} -> not File.exists?(path)
+    # And the ones the filename cannot name.
+    #
+    # The id in a filename is the criterion's id *at the time the file was
+    # written*, and this project renumbered its criteria. So a row whose
+    # recorded path reads `criterion_8010_…` is row 2033, and matching the
+    # observed file's `8010` against row ids finds nothing — the repair above
+    # reaches every criterion except the ones that have been through a
+    # renumbering, which are exactly the oldest and least likely to be looked at.
+    #
+    # Bridged through the stale record itself: it is the only thing that still
+    # remembers which id the file was named for. Matched on the directory too,
+    # so an id reused under a different story cannot pull a path across.
+    already = MapSet.new(by_row_id, fn {id, _, _} -> id end)
+
+    by_recorded_id =
+      from(c in Criterion,
+        where: c.project_id == ^project_id,
+        where: not is_nil(c.spec_path) and c.spec_path != "",
+        select: {c.id, c.spec_path}
+      )
+      |> Repo.all()
+      |> Enum.reject(fn {id, _} -> MapSet.member?(already, id) end)
+      |> Enum.filter(fn {_id, path} -> stale?(path) end)
+      |> Enum.flat_map(fn {id, previous} ->
+        case embedded_id(previous) do
+          nil ->
+            []
+
+          embedded ->
+            case Map.get(paths, embedded) do
+              nil -> []
+              found -> if same_dir?(previous, found), do: [{id, previous, found}], else: []
+            end
+        end
       end)
 
     count =
-      Enum.reduce(claimable, 0, fn {id, previous}, acc ->
-        recorded = Map.fetch!(paths, id)
-
+      (by_row_id ++ by_recorded_id)
+      |> Enum.reduce(0, fn {id, previous, recorded}, acc ->
         {n, _} =
           from(c in Criterion, where: c.id == ^id and c.project_id == ^project_id)
           |> Repo.update_all(set: [spec_path: recorded, updated_at: DateTime.utc_now()])
@@ -79,6 +110,18 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
     {:ok, count}
   end
+
+  defp stale?(path) when is_nil(path) or path == "", do: true
+  defp stale?(path), do: not File.exists?(path)
+
+  defp embedded_id(path) do
+    case Regex.run(~r/criterion_(\d+)_/, Path.basename(path)) do
+      [_, id] -> String.to_integer(id)
+      _ -> nil
+    end
+  end
+
+  defp same_dir?(a, b), do: Path.dirname(a) == Path.dirname(b)
 
   # A repair is worth a line; a first claim is not. The two are different
   # events -- one records something new, the other corrects a record that was
