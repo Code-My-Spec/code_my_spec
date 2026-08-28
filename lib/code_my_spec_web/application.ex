@@ -32,6 +32,13 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
+        # Guided intake conversations, one process per plan. The conversation
+        # owns the flow so a LiveView can come and go without taking it — every
+        # bug in that feature has been a variation on the socket holding state
+        # it could not keep.
+        {Registry, keys: :unique, name: CodeMySpec.Intake.ConversationRegistry},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: CodeMySpec.Intake.ConversationSupervisor},
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

@@ -441,3 +441,7 @@ config :code_my_spec, CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth,
 # Guided intake shapes inline in test: a task in another process cannot see
 # the sandbox transaction, and an assertion on a race is not an assertion.
 config :code_my_spec, intake_shaping_async: false
+
+# Guided intake conversations run inline in test; ConversationTest exercises
+# the real process with an explicit sandbox grant.
+config :code_my_spec, intake_conversation_process: false

@@ -39,6 +39,16 @@ defmodule CodeMySpec.Intake do
   def get_plan(nil), do: nil
   def get_plan(session_token), do: PlansRepository.get_by_token(session_token)
 
+  @doc """
+  The plan with this id, or nil.
+
+  For the conversation process, which knows the plan it belongs to and re-reads
+  before acting — two tabs are two callers, and the one that submits second has
+  to build on the first's turn rather than on the row as its page saw it.
+  """
+  @spec get_plan_by_id(String.t()) :: Plan.t() | nil
+  def get_plan_by_id(id) when is_binary(id), do: CodeMySpec.Repo.get(Plan, id)
+
   @doc "The plan behind this token, starting one if there isn't one yet."
   @spec start_plan(String.t()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def start_plan(session_token) when is_binary(session_token) do

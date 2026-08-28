@@ -27,7 +27,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Intake
-  alias CodeMySpec.Intake.{Funnel, Plan}
+  alias CodeMySpec.Intake.{Conversation, Funnel, Plan}
+
+  require Logger
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
@@ -164,26 +166,18 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   def handle_info({:shaped, _other}, socket), do: {:noreply, socket}
 
-  def handle_event("describe", %{"description" => description}, socket) do
-    {:ok, plan} = Intake.describe(socket.assigns.plan, description)
-    Funnel.plan_reached(:described, %{plan_id: plan.id})
-
-    # Straight into the conversation. A description that already says who uses
-    # it and how gets no questions at all — the model goes to the plan.
-    {:noreply, shape(socket, plan)}
-  end
-
-  # The answer joins the transcript and the whole conversation goes back to the
-  # model, which either asks once more or has enough to fill the form.
+  # Both submissions are one thing: the visitor said something.
   #
-  # Answering it also stops it being the live question. Leaving it assigned put
-  # it in the transcript twice — once as the turn it became, and again as the
-  # thing still being asked underneath the answer to it.
-  def handle_event("answer", %{"answer" => written}, socket) do
-    {:ok, plan} = Intake.record_turn(socket.assigns.plan, socket.assigns.question, written)
-
-    {:noreply, shape(socket, plan)}
-  end
+  # The two names survive because they describe what the visitor is doing at
+  # that point, and twenty-odd specs read them. What does not survive is the
+  # view deciding what a submission *means* and acting on it — recording the
+  # turn, calling the model, assigning the answer. That was the same fact in two
+  # places, and the view's copy is the one that goes away on reload.
+  #
+  # These forward. `Conversation.said/2` reads the plan's own status to know
+  # whether it just heard a description or an answer.
+  def handle_event("describe", %{"description" => text}, socket), do: said(socket, text)
+  def handle_event("answer", %{"answer" => text}, socket), do: said(socket, text)
 
   def handle_event("validate_names", %{"plan" => attrs}, socket) do
     changeset = Intake.change_names(socket.assigns.plan, attrs)
@@ -205,26 +199,26 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     end
   end
 
+  defp said(socket, text) do
+    case Conversation.said(socket.assigns.plan, text) do
+      {:ok, plan} ->
+        if plan.status == :answering and Intake.turns(plan) == [],
+          do: Funnel.plan_reached(:described, %{plan_id: plan.id})
+
+        {:noreply, assign_plan(socket, plan)}
+
+      {:error, reason} ->
+        Logger.warning("[IntakeLive] the conversation refused a turn: #{inspect(reason)}")
+        {:noreply, unavailable(socket)}
+    end
+  end
+
   # The gate is a sign-up for a stranger and nothing at all for someone already
   # signed in. Sending everyone to /users/register meant an existing customer
   # was bounced off it by redirect_if_user_is_authenticated and landed on the
   # marketing site, plan stranded.
   defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
   defp gate_for(_scope), do: ~p"/users/register"
-
-  # Hand the turn to a supervised task and render what the row now says.
-  #
-  # This used to call the model inline and assign the result, which coupled a
-  # call that takes tens of seconds to the socket that requested it: reload
-  # mid-call and the answer had nowhere to land. The row carries `:thinking`
-  # now, so every viewer of this plan — including one that arrives during the
-  # call — renders the same waiting state and gets the same result.
-  defp shape(socket, plan) do
-    case Intake.shape_async(plan) do
-      {:ok, thinking} -> assign_plan(socket, thinking)
-      {:error, _changeset} -> unavailable(socket)
-    end
-  end
 
   # No fallback questionnaire. The conversation is the product, so when the
   # model is unreachable the honest thing is to say so rather than hand over
