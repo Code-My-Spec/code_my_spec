@@ -395,8 +395,18 @@ config :req_llm,
 # decides it: a deployment with only an OpenAI key cannot run the Anthropic
 # default, and pinning the model in code makes the two settings able to
 # disagree — which reads, from the front, exactly like the missing key did.
+# Two models sit behind guided intake — the shaper asks the questions, the
+# planner writes the plan — and only the shaper's was configurable. The planner
+# kept an Anthropic default on a deployment holding only an OpenAI key, could
+# not reach a model at all, and fell back to its offline heuristic without
+# saying so. Both follow the environment now, and `PLANNER_MODEL` falls back to
+# `INTAKE_MODEL` so the ordinary case is one setting rather than two that can
+# drift apart.
+intake_model = env!("INTAKE_MODEL", :string, "anthropic:claude-sonnet-5")
+
 config :code_my_spec, CodeMySpec.Intake,
-  model: env!("INTAKE_MODEL", :string, "anthropic:claude-sonnet-5")
+  model: intake_model,
+  planner_model: env!("PLANNER_MODEL", :string, nil) || intake_model
 
 # Stripe. Blank when unset rather than absent, so an unconfigured environment
 # degrades to a normal error the billing page can show instead of crashing

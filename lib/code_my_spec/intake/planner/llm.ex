@@ -24,7 +24,8 @@ defmodule CodeMySpec.Intake.Planner.Llm do
     summary: [
       type: :string,
       required: true,
-      doc: "Two or three sentences, in the visitor's own words, describing what they are building."
+      doc:
+        "Two or three sentences, in the visitor's own words, describing what they are building."
     ],
     first_build: [
       type: :string,
@@ -45,7 +46,13 @@ defmodule CodeMySpec.Intake.Planner.Llm do
 
   @impl true
   def generate(%Plan{description: description} = plan) when is_binary(description) do
-    case ReqLLM.generate_object(model(), prompt(plan), @schema, temperature: 0.3) do
+    # Same timeout reasoning as the shaper: Req defaults to 15s, this set none,
+    # and the plan is the slower of the two calls. Measured on gpt-5-mini at
+    # 12.5s and gpt-5 at 29.3s — a budget that fits neither reliably.
+    case ReqLLM.generate_object(model(), prompt(plan), @schema,
+           temperature: 0.3,
+           receive_timeout: to_timeout(second: 120)
+         ) do
       {:ok, response} -> {:ok, response |> ReqLLM.Response.object() |> to_attrs()}
       {:error, reason} -> failed(reason)
     end
@@ -56,9 +63,18 @@ defmodule CodeMySpec.Intake.Planner.Llm do
   # callback disagreeing on key type is the kind of thing that survives until
   # something merges both maps and Ecto refuses the mix.
   defp to_attrs(object) do
-    Map.new(@schema, fn {field, _spec} ->
-      {field, object[to_string(field)] || object[field]}
-    end)
+    Map.new(@schema, fn {field, _spec} -> {field, field_value(object, field)} end)
+  end
+
+  # `Map.fetch/2` rather than `||`, matching the shaper. Every field here is a
+  # string today, so `||` was not yet wrong — but it is the same expression that
+  # silently turned a model's `false` into `nil` next door, and a schema gains a
+  # boolean the moment somebody adds one.
+  defp field_value(object, field) do
+    case Map.fetch(object, to_string(field)) do
+      {:ok, value} -> value
+      :error -> Map.get(object, field)
+    end
   end
 
   defp failed(reason) do
@@ -95,6 +111,13 @@ defmodule CodeMySpec.Intake.Planner.Llm do
   defp yes_no(false), do: "no"
   defp yes_no(nil), do: "they did not say"
 
+  # Configurable, like the shaper's. It was not, so it kept the Anthropic
+  # default while the shaper followed `INTAKE_MODEL` to OpenAI — and on a
+  # deployment holding only an OpenAI key that meant the planner could never
+  # reach a model at all. It fell back to the offline heuristic silently, which
+  # is what wrote "a beginners for mahjong players" and named the project
+  # "Beginners". Two models behind one feature, one of them unreachable, and the
+  # visible symptom was a plan that read as though the model were stupid.
   defp model do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Intake, [])
