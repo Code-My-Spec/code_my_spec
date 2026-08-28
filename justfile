@@ -699,6 +699,29 @@ check:
 build-cli:
     MIX_ENV=prod_cli mix release code_my_spec_cli
 
+# Build the devbox image — the container a cloud working copy runs in
+devbox-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The three --build-context flags are the whole reason this recipe exists.
+    # The Dockerfile COPYs from cms_scan, cms_harness and cms_new by name, so a
+    # bare `docker build .` fails on a context nobody would guess was needed.
+    #
+    # Located from the main checkout rather than from the working directory:
+    # the siblings sit beside `code_my_spec`, and in a worktree `..` is
+    # `.claude/worktrees`, which is where this quietly built nothing.
+    siblings="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")"
+    echo "siblings: $siblings"
+    docker build -f docker/devbox/Dockerfile \
+      --build-context cms_new="$siblings/cms_new" \
+      --build-context cms_harness="$siblings/cms_harness" \
+      --build-context cms_scan="$siblings/cms_scan" \
+      -t codemyspec/devbox:latest .
+    # Nothing pushes this anywhere. `Workspaces.Runner.Docker` runs
+    # `codemyspec/devbox:latest` against whatever daemon it is pointed at, so
+    # the image has to be built on that machine.
+    docker run --rm --entrypoint cloudflared codemyspec/devbox:latest --version
+
 # Dry-run the plugin packager — lays out release/codemyspec-extension/ locally for inspection
 package-plugin:
     MIX_ENV=dev_cli mix cms.package_plugin
