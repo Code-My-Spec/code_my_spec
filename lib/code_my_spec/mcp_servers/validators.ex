@@ -76,6 +76,30 @@ defmodule CodeMySpec.McpServers.Validators do
     end
   end
 
+  @doc """
+  The project a devops tool acts on — always the one this call is already
+  scoped to, never one a caller names.
+
+  `validate_local_scope/2` already resolves the right project before a tool
+  ever runs: the harness's own `X-Project-ID` header for HTTP, or the
+  configured project for stdio. A devops tool that *also* accepted an
+  explicit `project_id` parameter was trusting that parameter over the
+  connection's own identity — `find_project/2`-style lookups only checked
+  "is this project somewhere in the caller's account", not "is it the one
+  this call is actually connected to". A caller (or a wrong parameter from
+  an agent) could act on a *different* project in the same account than the
+  one its own harness names, silently. This is the fix: the only project a
+  devops tool can ever act on is the one already on the scope.
+  """
+  @spec devops_project(CodeMySpec.Users.Scope.t()) :: {:ok, struct()} | {:error, String.t()}
+  def devops_project(%{active_project: %{} = project}), do: {:ok, project}
+
+  def devops_project(_scope),
+    do:
+      {:error,
+       "no project is connected to this call — this tool acts on whichever project the " <>
+         "connection itself identifies, not one named in a parameter"}
+
   defp configured_scope(nil), do: {:error, :no_working_dir}
 
   defp configured_scope(_project_id) do

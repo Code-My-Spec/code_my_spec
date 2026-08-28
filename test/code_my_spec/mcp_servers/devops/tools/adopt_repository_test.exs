@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       end)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, repository_name: "market_my_spec"}
+      params = %{repository_name: "market_my_spec"}
 
       assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
 
@@ -81,7 +81,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
     # in the real repo if that were wrong.
     test "does not commit or push uncommitted local changes or untracked files", %{
       scope: scope,
-      project: project,
       bare_dir: bare_dir
     } do
       working_dir = scope.environment.cwd
@@ -111,7 +110,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        project_id: project.id,
         repository_name: "market_my_spec",
         branch: "master"
       }
@@ -161,26 +159,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       assert_receive :locked
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, repository_name: "market_my_spec"}
+      params = %{repository_name: "market_my_spec"}
 
       assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
       assert response.isError == true
       assert response_text(response) =~ "already in progress"
 
       send(holder, :release)
-    end
-
-    test "refuses for a project that is not on this account", %{scope: scope} do
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      params = %{
-        project_id: "00000000-0000-0000-0000-000000000000",
-        repository_name: "whatever"
-      }
-
-      assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
-      assert response.isError == true
-      assert response_text(response) =~ "no project"
     end
   end
 

@@ -10,9 +10,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
   that has just read "missing lib/<app>/release.ex" from that audit needs a way
   to put it there without a browser.
 
-  Requires `project_id`, unlike `run_devops_setup`'s "omit for all" — this
-  writes to a specific checkout, and guessing which one a bare call meant risks
-  writing into the wrong project's tree.
+  Writes onto the checkout of whichever project this call is connected to —
+  no `project_id` parameter, so there is nothing for a caller to name (or
+  mis-name) a different project's tree with.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -20,28 +20,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
   alias Anubis.Server.Response
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.Registry
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Write onto this project's checkout."
   end
 
   @impl true
-  def execute(%{project_id: project_id} = params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id) do
+  def execute(_params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, %{}),
+         {:ok, project} <- Validators.devops_project(scope) do
       scope |> generate(project) |> reply(frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 

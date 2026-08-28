@@ -1,13 +1,24 @@
 defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
   @moduledoc """
-  Build the infrastructure that is missing, for one project or for all of them.
+  Build the infrastructure that is missing, for the project this call is
+  connected to.
 
   This provisions **real resources in real accounts** — servers, DNS records,
   buckets, sending domains — and they cost money and change where mail and
-  traffic go. It is the same run the provisioning page's buttons perform.
+  traffic go. It is the same run the provisioning page's per-project button
+  performs.
 
-  Each project runs on its own: a refusal halts that project and nothing else,
-  so one provider saying no cannot decide what happens to the rest.
+  No `project_id` parameter, on purpose. This used to take one, and
+  separately accepted omitting it entirely as a bulk "build every project
+  whose devops level is not off" mode — either shape let a caller name (or
+  fail to name) a *different* project than the one this call is actually
+  connected to, sometimes triggering real, costed provisioning on projects
+  nobody asked to touch. Found during an audit prompted by a real,
+  unrelated cross-project leak in `devops_status`. The only project this
+  tool can ever act on now is `Validators.devops_project/1`'s answer —
+  whichever project the connection itself identifies (the harness's own
+  `X-Project-ID` header, or the configured project for stdio) — the same
+  fix applied to every other devops tool.
 
   The sequence is ordered and halts on the first failure, which is deliberate —
   the ordering *is* the dependency model. A step that pauses is waiting on a
@@ -38,22 +49,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string,
-      doc:
-        "Build only this project's missing infrastructure. " <>
-          "Omit to build every project whose devops level is not `off`."
   end
 
   @impl true
-  def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params) do
-      case Map.get(params, :project_id) do
-        id when is_binary(id) and id != "" ->
-          {:reply, ok(one(id, Resources.fix_async(scope, id))), frame}
-
-        _ ->
-          {:reply, ok(all(Resources.fix_all_async(scope))), frame}
-      end
+  def execute(_params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, %{}),
+         {:ok, project} <- Validators.devops_project(scope) do
+      {:reply, ok(one(project.id, Resources.fix_async(scope, project.id))), frame}
     else
       {:error, reason} -> {:reply, error(reason), frame}
     end
@@ -63,16 +65,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
     do: "No project #{id} on this account, or its devops level is `off` so it is not deployable."
 
   defp one(id, result), do: "#{id}: #{outcome(result)}"
-
-  defp all([]),
-    do:
-      "Nothing to build: no project on this account has devops enabled. " <>
-        "Turn it on for a project first — the graph filters these steps out at `off`."
-
-  defp all(results),
-    do:
-      "Started setup for #{length(results)} project(s). Call devops_status to watch them converge.\n\n" <>
-        Enum.map_join(results, "\n", fn {id, result} -> "  - #{id}: #{outcome(result)}" end)
 
   # Named per outcome rather than inspected, same as before — but the
   # outcomes are now about whether the run *started*, not whether it

@@ -28,24 +28,21 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Run the step for this project."
-
     field :step, :string,
       required: true,
       doc: "One of: #{Step.keys() |> Enum.map_join(", ", &to_string/1)}."
   end
 
   @impl true
-  def execute(%{project_id: project_id, step: step} = params, frame) do
+  def execute(%{step: step} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id),
+         {:ok, project} <- Validators.devops_project(scope),
          {:ok, key} <- find_step(step) do
       scope = Resources.project_scope(scope, project)
 
@@ -53,13 +50,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
       |> reply(step, project, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 

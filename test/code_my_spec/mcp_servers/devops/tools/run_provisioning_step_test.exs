@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
     # order, bypassing the halt-on-first-failure wrapper — verified here
     # against a step (:repository) that behaves identically whether it's
     # reached through the sequence or asked for directly.
-    test "runs the named step and reports its real outcome", %{scope: scope, project: project} do
+    test "runs the named step and reports its real outcome", %{scope: scope} do
       stub_github(fn
         %{method: "GET", request_path: "/user"} = conn ->
           json(conn, 200, %{"login" => "johns10"})
@@ -51,7 +51,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
       end)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, step: "repository"}
+      params = %{step: "repository"}
 
       assert {:reply, response, ^frame} = RunProvisioningStep.execute(params, frame)
 
@@ -62,23 +62,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
       assert text =~ "repository for"
     end
 
-    test "refuses an unknown step name rather than guessing one", %{scope: scope, project: project} do
+    test "refuses an unknown step name rather than guessing one", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, step: "not_a_real_step"}
+      params = %{step: "not_a_real_step"}
 
       assert {:reply, response, ^frame} = RunProvisioningStep.execute(params, frame)
       assert response.isError == true
       assert response_text(response) =~ "unknown step"
-    end
-
-    test "refuses for a project that is not on this account", %{scope: scope} do
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      params = %{project_id: "00000000-0000-0000-0000-000000000000", step: "server"}
-
-      assert {:reply, response, ^frame} = RunProvisioningStep.execute(params, frame)
-      assert response.isError == true
-      assert response_text(response) =~ "no project"
     end
 
     test "reports a run already in progress instead of racing it", %{
@@ -101,7 +91,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
       assert_receive :locked
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, step: "server"}
+      params = %{step: "server"}
 
       assert {:reply, response, ^frame} = RunProvisioningStep.execute(params, frame)
       assert response.isError == true

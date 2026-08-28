@@ -20,13 +20,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKey do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Import the key for this project."
-
     field :environment, :string,
       required: true,
       doc: "Environment name, e.g. \"prod\" or \"uat\"."
@@ -37,25 +34,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKey do
   end
 
   @impl true
-  def execute(
-        %{project_id: project_id, environment: environment, private_key: private_key} = params,
-        frame
-      ) do
+  def execute(%{environment: environment, private_key: private_key} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id) do
+         {:ok, project} <- Validators.devops_project(scope) do
       scope
       |> Resources.project_scope(project)
       |> Steps.import_age_key(environment, private_key)
       |> reply(environment, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 

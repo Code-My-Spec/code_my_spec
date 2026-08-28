@@ -15,11 +15,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServerTest do
   end
 
   describe "execute/2" do
-    test "points an environment at an already-linked account server", %{scope: scope, project: project} do
+    test "points an environment at an already-linked account server", %{scope: scope} do
       {:ok, _} = Server.link(scope, %{name: "fuellytics-prod"})
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{project_id: project.id, environment: "prod", server_name: "fuellytics-prod"}
+      params = %{environment: "prod", server_name: "fuellytics-prod"}
       assert {:reply, response, ^frame} = LinkServer.execute(params, frame)
 
       assert response.isError == false
@@ -30,29 +30,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServerTest do
       assert environment.server_id == linked.id
     end
 
-    test "refuses when the server has not been linked to this account yet", %{
-      scope: scope,
-      project: project
-    } do
+    test "refuses when the server has not been linked to this account yet", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{project_id: project.id, environment: "prod", server_name: "not-linked-yet"}
+      params = %{environment: "prod", server_name: "not-linked-yet"}
       assert {:reply, response, ^frame} = LinkServer.execute(params, frame)
 
       assert response.isError == true
       assert response_text(response) =~ "not linked to this account"
 
       assert EnvironmentRepository.get(scope, "prod") == nil
-    end
-
-    test "refuses for a project that is not on this account", %{scope: scope} do
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      params = %{project_id: "00000000-0000-0000-0000-000000000000", environment: "prod", server_name: "x"}
-      assert {:reply, response, ^frame} = LinkServer.execute(params, frame)
-
-      assert response.isError == true
-      assert response_text(response) =~ "no project"
     end
   end
 

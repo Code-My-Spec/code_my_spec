@@ -16,11 +16,26 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   Read from the providers, not from a record file. Setup completion used to be
   decided by grepping a markdown file for the words "verified" and "prod",
   which an agent could satisfy by writing prose.
+
+  ## Refuses before it ever asks
+
+  `Resources.report/1` is deliberately account-wide — the cross-project
+  dangling checks need to see everything, and that is right for `/app/
+  resources`, a human looking at their own whole account. It is wrong for
+  this tool: a caller reaching it through the harness is scoped to one
+  project's work, and has no business learning what devops state — on,
+  off, or a *sibling* project's own checklist — some other project in the
+  same account is in. Confirmed live: a project whose own devops was still
+  `:off` got back a different project's checklist entirely, because nothing
+  here checked which project was actually asking before handing back
+  everyone's answer. Refusing here, before `Resources.report/1` ever runs,
+  is what stops that regardless of which other projects exist.
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Resources
 
@@ -30,10 +45,28 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   @impl true
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame, %{}) do
-      {:ok, scope} -> {:reply, ok(summary(Resources.report(scope))), frame}
+      {:ok, scope} -> {:reply, reply(scope), frame}
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
+
+  defp reply(scope) do
+    case Configurations.get(scope) do
+      %{devops: level} when level != :off -> ok(summary(Resources.report(scope)))
+      _ -> devops_off(scope)
+    end
+  end
+
+  defp devops_off(scope) do
+    Response.tool()
+    |> Response.error(
+      "devops is off for #{project_name(scope)} — nothing to report. Turn it on for this " <>
+        "project first; this tool never reports on any other project in the account."
+    )
+  end
+
+  defp project_name(%{active_project: %{name: name}}) when is_binary(name), do: name
+  defp project_name(_scope), do: "this project"
 
   defp summary(report) do
     missing = Enum.filter(report.checklist, &(&1.state == :missing))

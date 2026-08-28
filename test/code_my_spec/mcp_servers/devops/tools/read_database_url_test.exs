@@ -18,28 +18,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrlTest do
     # ProjectSecrets before it ever reaches the local-filesystem write that a
     # project with no checkout on this side cannot complete — this reads the
     # value back rather than minting a second one nobody asked for.
-    test "returns the connection string :server already minted", %{
-      scope: scope,
-      project: project
-    } do
+    test "returns the connection string :server already minted", %{scope: scope} do
       {:ok, credential} = Database.credential(scope, "prod")
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, environment: "prod"}
+      params = %{environment: "prod"}
 
       assert {:reply, response, ^frame} = ReadDatabaseUrl.execute(params, frame)
 
       assert response.isError == false
       assert response_text(response) == Database.url(credential)
-    end
-
-    test "refuses for a project that is not on this account", %{scope: scope} do
-      frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: "00000000-0000-0000-0000-000000000000", environment: "prod"}
-
-      assert {:reply, response, ^frame} = ReadDatabaseUrl.execute(params, frame)
-      assert response.isError == true
-      assert response_text(response) =~ "no project"
     end
   end
 

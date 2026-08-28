@@ -28,14 +28,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKeyTest do
     # ensure_age_key/3 would have used itself — or a later decrypt mints a
     # different key and every ciphertext already committed under the real
     # one becomes unreadable.
-    test "stores the private key and confirms its derived public half", %{
-      scope: scope,
-      project: project
-    } do
+    test "stores the private key and confirms its derived public half", %{scope: scope} do
       {:ok, {public, private}} = Sops.generate_key()
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, environment: "prod", private_key: private}
+      params = %{environment: "prod", private_key: private}
 
       assert {:reply, response, ^frame} = ImportAgeKey.execute(params, frame)
 
@@ -46,34 +43,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKeyTest do
                ProjectSecrets.fetch_value(scope, Steps.age_key_name("prod"))
     end
 
-    test "refuses a key that is not actually an age key, rather than storing it", %{
-      scope: scope,
-      project: project
-    } do
+    test "refuses a key that is not actually an age key, rather than storing it", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{project_id: project.id, environment: "prod", private_key: "not-a-real-key"}
+      params = %{environment: "prod", private_key: "not-a-real-key"}
 
       assert {:reply, response, ^frame} = ImportAgeKey.execute(params, frame)
       assert response.isError == true
 
       assert {:error, :not_found} =
                ProjectSecrets.fetch_value(scope, Steps.age_key_name("prod"))
-    end
-
-    test "refuses for a project that is not on this account", %{scope: scope} do
-      {:ok, {_public, private}} = Sops.generate_key()
-
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      params = %{
-        project_id: "00000000-0000-0000-0000-000000000000",
-        environment: "prod",
-        private_key: private
-      }
-
-      assert {:reply, response, ^frame} = ImportAgeKey.execute(params, frame)
-      assert response.isError == true
-      assert response_text(response) =~ "no project"
     end
   end
 

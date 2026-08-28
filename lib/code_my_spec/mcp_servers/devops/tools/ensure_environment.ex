@@ -21,32 +21,23 @@ defmodule CodeMySpec.McpServers.Devops.Tools.EnsureEnvironment do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Add the environment to this project."
     field :name, :string, required: true, doc: "Environment name, e.g. \"uat\" or \"prod\"."
   end
 
   @impl true
-  def execute(%{project_id: project_id, name: name} = params, frame) do
+  def execute(%{name: name} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id) do
+         {:ok, project} <- Validators.devops_project(scope) do
       scope
       |> Resources.project_scope(project)
       |> EnvironmentRepository.put(name, %{})
       |> reply(name, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 

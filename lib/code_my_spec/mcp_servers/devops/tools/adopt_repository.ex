@@ -49,14 +49,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Adopt the repository for this project."
-
     field :repository_name, :string,
       required: true,
       doc: "The GitHub repository's exact name, e.g. \"market_my_spec\" — not a guess."
@@ -66,9 +63,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   end
 
   @impl true
-  def execute(%{project_id: project_id, repository_name: repository_name} = params, frame) do
+  def execute(%{repository_name: repository_name} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id) do
+         {:ok, project} <- Validators.devops_project(scope) do
       scope = Resources.project_scope(scope, project)
       opts = run_opts(repository_name, params)
 
@@ -102,13 +99,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, _key, ""), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
-    end
-  end
 
   defp ok(text), do: Response.tool() |> Response.text(text)
 

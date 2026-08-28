@@ -16,31 +16,22 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.Registry
   alias CodeMySpec.Resources
 
   schema do
-    field :project_id, :string, required: true, doc: "Read the registry credential for this project."
   end
 
   @impl true
-  def execute(%{project_id: project_id} = params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id) do
+  def execute(_params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, %{}),
+         {:ok, project} <- Validators.devops_project(scope) do
       scope
       |> Resources.project_scope(project)
       |> read()
       |> reply(frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 

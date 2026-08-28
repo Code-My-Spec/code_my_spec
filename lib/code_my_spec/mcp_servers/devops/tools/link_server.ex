@@ -20,14 +20,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServer do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Resources
   alias CodeMySpec.Servers
 
   schema do
-    field :project_id, :string, required: true, doc: "Link an environment on this project."
-
     field :environment, :string,
       required: true,
       doc: "Environment name, e.g. \"prod\" or \"uat\"."
@@ -38,12 +35,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServer do
   end
 
   @impl true
-  def execute(
-        %{project_id: project_id, environment: environment, server_name: server_name} = params,
-        frame
-      ) do
+  def execute(%{environment: environment, server_name: server_name} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, project} <- find_project(scope, project_id),
+         {:ok, project} <- Validators.devops_project(scope),
          scope <- Resources.project_scope(scope, project),
          {:ok, server} <- find_linked_server(scope, server_name) do
       scope
@@ -51,13 +45,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServer do
       |> reply(environment, server_name, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
-    end
-  end
-
-  defp find_project(scope, project_id) do
-    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
-      nil -> {:error, "no project #{project_id} on this account"}
-      project -> {:ok, project}
     end
   end
 
