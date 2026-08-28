@@ -124,10 +124,38 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
     """
   end
 
+  @doc false
+  # Public so the `false` case can be asserted against the real mapping rather
+  # than a stub of it — same reason `Validation.session_paths_for_test/3` is.
+  # The bug was here and a test that stubbed the shaper would have skipped it.
+  @spec to_attrs_for_test(map()) :: map()
+  def to_attrs_for_test(object), do: to_attrs(object)
+
   defp to_attrs(object) do
-    Map.new(@schema, fn {field, _spec} ->
-      {field, object[to_string(field)] || object[field]}
-    end)
+    Map.new(@schema, fn {field, _spec} -> {field, field_value(object, field)} end)
+  end
+
+  # `false` is an answer, not a missing one.
+  #
+  # This read `object[to_string(field)] || object[field]`, and two of the four
+  # fields are booleans. A model answering `false` — one business's own tool,
+  # nobody signs in — hit the `||`, fell through to the atom key, found nothing,
+  # and produced `nil`. `answers_changeset/2` then rejected it as blank and the
+  # visitor was told the model could not think it through.
+  #
+  # So it failed on exactly the descriptions that answer no, deterministically,
+  # while a multi-tenant idea sailed through. Reported from production as "an ai
+  # mahjong coach" failing where "a booking tool for hair salons" worked, which
+  # reads as the model being unreliable rather than as `false` being dropped
+  # between it and the changeset.
+  #
+  # `Map.fetch/2` rather than access, because the question is whether the key is
+  # there at all.
+  defp field_value(object, field) do
+    case Map.fetch(object, to_string(field)) do
+      {:ok, value} -> value
+      :error -> Map.get(object, field)
+    end
   end
 
   defp failed(reason) do
