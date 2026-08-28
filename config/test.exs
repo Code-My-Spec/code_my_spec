@@ -292,6 +292,12 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # unpinned plug plus a token in the environment is a live call, which this
 # project has shipped once already.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
+  # Same-site with the preview domain, which is the property under test rather
+  # than a value chosen for convenience. `PublicUrl.base()` would fall back to
+  # `http://localhost:4002`, and localhost is a different registrable domain
+  # from `codemyspec.com` — so the fallback describes a configuration that
+  # cannot hold a session.
+  embedder: "https://codemyspec.com",
   token: "test-cloudflare-token",
   zone_id: "test-zone",
   account_id: "test-account",

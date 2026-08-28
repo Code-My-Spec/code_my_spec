@@ -190,11 +190,21 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   manage_dns: true
 
 # Who may frame a preview, handed to each app with its tunnel credentials so it
-# never has to be told separately. Both origins, because dev is reachable as
-# either and a preview opened from one has to be framed by it.
+# never has to be told separately. The app asserts it itself —
+# `ClientUtils.PreviewFraming` — because nothing sits in a tunnel's path to
+# rewrite a header on the way back.
 #
-# The app asserts this itself now — `ClientUtils.PreviewFraming` — rather than
-# a proxy rewriting the header on a response it forwarded. Nothing sits in the
-# path any more to do the rewriting.
-config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel,
-  embedder: "http://localhost:4000 https://dev.codemyspec.com"
+# `dev.codemyspec.com` only, and `http://localhost:4000` deliberately not.
+# Localhost is a different registrable domain from the preview's, so a frame
+# opened from there is cross-site: it renders, and then the app inside it cannot
+# hold a session, because no browser sends a SameSite=Lax cookie into a
+# cross-site frame. Every generated app sets Lax.
+#
+# Allowing it looked friendlier and was worse. A refused origin shows an empty
+# pane, which is diagnosable in seconds; an allowed one shows a login page
+# looping forever, which reads as the framed app being broken and cost an
+# afternoon on Broken Oaths.
+#
+# So dev previews are opened from dev.codemyspec.com. `PreviewSameSiteTest`
+# fails if this list ever gains an origin that cannot hold a session.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://dev.codemyspec.com"
