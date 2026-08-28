@@ -36,6 +36,7 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -66,6 +67,71 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   end
 
   def complete?(scope, entity, _ctx), do: complete?(scope, entity)
+
+  @doc """
+  Whether this story's Three Amigos session has been sealed.
+
+  What `three_amigos_complete` reads. Deliberately a different question from
+  `complete?/2`, which asks whether the story *would* seal right now:
+
+    * `complete?` is the bar. `ThreeAmigos.evaluate/2` calls it, and seals on a
+      pass — so sealing cannot happen while a red card is open.
+    * `sealed?` is the record. Once set it stays set, and a question raised
+      afterwards does not unset it.
+
+  Recomputing `complete?` here is what the requirement used to do, and it meant
+  a red card added to a story that shipped months ago quietly un-shipped it —
+  the requirement went false, the story left the graph, and nothing said why.
+  A seal is a statement about a conversation that happened.
+
+  Takes the same three-argument shape as `complete?/3` so the preloaded and
+  querying paths agree; there is nothing to preload for a field on the story.
+  """
+  @spec sealed?(Scope.t(), term(), map()) :: {boolean(), map()}
+  def sealed?(scope, entity, _ctx), do: sealed?(scope, entity)
+
+  @spec sealed?(Scope.t(), term()) :: {boolean(), map()}
+  def sealed?(_scope, %Story{three_amigos_sealed: true}),
+    do: {true, %{status: "Three Amigos sealed"}}
+
+  def sealed?(scope, %Story{} = story) do
+    # Re-read before concluding "not sealed", because the struct in hand may
+    # predate the seal. `ThreeAmigos.evaluate/2` seals mid-request and the
+    # response then re-checks this requirement from a story loaded before it —
+    # which reported "ready to seal but has not been sealed" about a story that
+    # had just been sealed one call earlier.
+    #
+    # Only on the negative path, so a sealed story costs nothing and an unsealed
+    # one costs a single read that decides whether it is really unsealed. The
+    # positive clause above already answered from the struct.
+    case Stories.get_story(scope, story.id) do
+      %Story{three_amigos_sealed: true} ->
+        {true, %{status: "Three Amigos sealed"}}
+
+      _ ->
+        unsealed_reason(scope, story)
+    end
+  end
+
+  def sealed?(_scope, _entity),
+    do: {false, %{reason: "No active scope or invalid story entity — cannot check Three Amigos."}}
+
+  defp unsealed_reason(scope, story) do
+    # The bar it has not cleared, because "not sealed" on its own tells nobody
+    # what to do about it.
+    case complete?(scope, story) do
+      {true, _meta} ->
+        {false,
+         %{
+           reason:
+             "Three Amigos is ready to seal but has not been sealed. Evaluate the " <>
+               "three_amigos_complete task to seal it."
+         }}
+
+      {false, meta} ->
+        {false, meta}
+    end
+  end
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{active_account_id: account_id} = scope, %Story{id: story_id} = story)
@@ -172,17 +238,35 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     rule_gaps ++ gaps
   end
 
+  # Every red card answered, not more green than red.
+  #
+  # It used to pass when `scenarios > open questions` — Wynne's Example Mapping
+  # signal, which is a good read on whether a story is *ready to estimate* and a
+  # bad one for whether the conversation is finished. A story with five
+  # scenarios and three open questions satisfied it, and those three questions
+  # were then never asked again by anything. Measured on this project before
+  # changing it: 50 released stories carried unanswered red cards while
+  # reporting Three Amigos complete.
+  #
+  # A red card is a thing nobody knew the answer to. Building on top of one is
+  # the failure Example Mapping exists to prevent, so the gate asks for what the
+  # practice actually asks for: resolve it, or decide it is out of scope and
+  # close it. `scenarios` is still taken so the count can be reported.
   defp maybe_add_questions_gap(gaps, scenarios, questions) do
-    scenario_count = length(scenarios)
-    open_question_count = Enum.count(questions, &(&1.status == :open))
+    open = Enum.filter(questions, &(&1.status == :open))
 
-    if open_question_count > 0 and scenario_count <= open_question_count do
-      [
-        "Story is not ready: #{open_question_count} open question(s) but only #{scenario_count} scenario(s) — scenarios > questions is required (Wynne's Example Mapping signal). Resolve open questions or add more scenarios before completing."
-        | gaps
-      ]
-    else
-      gaps
+    case open do
+      [] ->
+        gaps
+
+      open ->
+        [
+          "#{length(open)} open question(s) on this story, and Three Amigos is not " <>
+            "complete while a red card is unanswered — #{length(scenarios)} scenario(s) " <>
+            "does not settle them. Answer each with `resolve_question`, or close the " <>
+            "ones that turned out to be somebody else's problem."
+          | gaps
+        ]
     end
   end
 

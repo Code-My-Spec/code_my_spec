@@ -718,15 +718,29 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "three_amigos_complete",
         node_scope: :self,
         check_type: :delegate,
-        config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :complete?},
+        config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :sealed?},
         satisfied_by: AgentTasks.ThreeAmigos,
         artifact_type: :specification,
         description:
-          "Three Amigos session complete — persona linked, rules and scenarios populated",
+          "Three Amigos session sealed — persona, rules, scenarios, and every " <>
+            "red card answered",
         prerequisites: [1],
-        # Manual so the stop hook doesn't short-circuit the multi-turn
-        # PM/agent intake conversation. Same rationale as personas_complete.
-        validation_type: :manual
+        # Reads the seal rather than recomputing the conversation. A question
+        # raised against a story that shipped months ago is the next
+        # conversation, not evidence that the last one never happened — and
+        # recomputing meant exactly that, silently.
+        #
+        # Automatic, because sealing already requires every rule to hold.
+        # It was manual so the stop hook could not short-circuit the multi-turn
+        # intake conversation, and the cost of that was severe: a session
+        # holding a manual task is allowed out of `Hooks.Stop.do_decide/6`
+        # before validation runs at all, so an open Three Amigos task switched
+        # off spex, credo and exunit for that whole session. The short-circuit
+        # cannot happen now for the reason it never could for a real
+        # conversation: `ThreeAmigos.evaluate/2` completes only when persona,
+        # rules, scenarios and zero open questions all hold, and no stop hook
+        # can conjure those.
+        validation_type: :automatic
       }),
       new!(%{
         id: 2,

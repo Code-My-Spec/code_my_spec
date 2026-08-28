@@ -409,6 +409,19 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         frame
       )
 
+    # And sealed, because that is what `three_amigos_complete` reads now.
+    #
+    # Through the same door the product uses rather than by writing the field:
+    # `ThreeAmigos.evaluate/2` seals only on a passing check, so a fixture that
+    # set the flag directly could seal a story this fixture had left incomplete,
+    # and every downstream test would then be built on a state the product
+    # cannot produce.
+    {:ok, :valid} =
+      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
+        entity_type: :story,
+        entity_id: to_string(story.id)
+      })
+
     :ok
   end
 
@@ -646,5 +659,4 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     .code_my_spec/qa/<story_id>/result.md
     """
   end
-
 end

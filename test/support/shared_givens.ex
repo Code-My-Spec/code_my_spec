@@ -231,6 +231,15 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
+    # Sealed, because `three_amigos_complete` reads the seal now. Third copy of
+    # this setup in the support tree, after `ProjectStateFixtures` and
+    # `GraphGivens` -- each one found by a different spex going yellow.
+    {:ok, :valid} =
+      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
+        entity_type: :story,
+        entity_id: to_string(story.id)
+      })
+
     story = StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria
 

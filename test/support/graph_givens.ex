@@ -349,15 +349,30 @@ defmodule CodeMySpecSpex.GraphGivens do
     Enum.each(specs, fn {module_name, type, deps} ->
       spec_content =
         case type do
-          :context -> Content.context_spec(module_name, type: "context", dependencies: deps)
-          :live_context -> Content.context_spec(module_name, type: "live_context", dependencies: deps)
-          :liveview -> Content.liveview_spec(module_name, dependencies: deps)
-          :liveview_component -> Content.liveview_spec(module_name, type: "liveview_component", dependencies: deps)
-          atom when is_atom(atom) -> Content.child_spec(module_name, type: Atom.to_string(atom), dependencies: deps)
+          :context ->
+            Content.context_spec(module_name, type: "context", dependencies: deps)
+
+          :live_context ->
+            Content.context_spec(module_name, type: "live_context", dependencies: deps)
+
+          :liveview ->
+            Content.liveview_spec(module_name, dependencies: deps)
+
+          :liveview_component ->
+            Content.liveview_spec(module_name, type: "liveview_component", dependencies: deps)
+
+          atom when is_atom(atom) ->
+            Content.child_spec(module_name, type: Atom.to_string(atom), dependencies: deps)
         end
 
       :ok = Environments.write_file(env, Content.spec_path(module_name), spec_content)
-      :ok = Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
+
+      :ok =
+        Environments.write_file(
+          env,
+          Content.impl_path(module_name),
+          Content.impl_file(module_name)
+        )
     end)
   end
 
@@ -420,6 +435,16 @@ defmodule CodeMySpecSpex.GraphGivens do
         },
         frame
       )
+
+    # Sealed, because `three_amigos_complete` reads the seal now. This helper
+    # builds the same state `ProjectStateFixtures.apply_three_amigos_for_story/3`
+    # does, inline -- a second copy that had to be found the hard way when the
+    # graph spex went yellow.
+    {:ok, :valid} =
+      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
+        entity_type: :story,
+        entity_id: to_string(story.id)
+      })
 
     story = StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria

@@ -14,6 +14,7 @@ defmodule CodeMySpec.Stories.Story do
           notes: String.t() | nil,
           ready_for_dev: boolean(),
           specs_ready: boolean(),
+          three_amigos_sealed: boolean(),
           epic_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
@@ -46,6 +47,11 @@ defmodule CodeMySpec.Stories.Story do
           "specs-passing gate on a fresh green spex run, cleared when the " <>
           "chain restarts. Spex failures only block the agent on stories " <>
           "where this is true. New stories start false",
+      three_amigos_sealed:
+        "Whether the story's Three Amigos session has been sealed. Set by the " <>
+          "gate when persona, rules, scenarios and zero open questions all " <>
+          "hold. Sealing is refused while any red card is open. New stories " <>
+          "start false",
       epic_id: "Epic this story belongs to (a story belongs to at most one)",
       acceptance_criteria: "List of acceptance criteria strings",
       priority: "Priority order (1 = highest). Lower numbers are higher priority",
@@ -71,6 +77,12 @@ defmodule CodeMySpec.Stories.Story do
     # leaves it alone. That is the whole reason the node could come back
     # after bab2f792 removed it for clamping downstream work.
     field :specs_ready, :boolean, default: false
+
+    # Latch behind `three_amigos_complete`, in the same shape as `specs_ready`
+    # above. Recomputed, the requirement meant a red card added to a shipped
+    # story quietly un-shipped it; a seal is a statement about a conversation
+    # that happened, and a later question does not unhappen it.
+    field :three_amigos_sealed, :boolean, default: false
 
     # The id this story had on the harness it was migrated from. Story ids are
     # per-deployment sequences and the ranges overlap, so without this the same
@@ -142,6 +154,7 @@ defmodule CodeMySpec.Stories.Story do
       :notes,
       :ready_for_dev,
       :specs_ready,
+      :three_amigos_sealed,
       :priority,
       :locked_at,
       :lock_expires_at,

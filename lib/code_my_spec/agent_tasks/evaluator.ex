@@ -32,7 +32,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
   """
-  @spec evaluate(Scope.t(), map()) :: {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, String.t()}
+  @spec evaluate(Scope.t(), map()) ::
+          {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, String.t()}
   def evaluate(%Scope{} = scope, task, opts \\ []) do
     task_module = task.session_type
 
@@ -89,7 +90,14 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       # passing. The calculator's `:field_true` check can only read the
       # latch, so without this the stop hook would evaluate the field,
       # find it false, and block forever — nothing would ever flip it.
-      CodeMySpec.AgentTasks.FixBddSpecs
+      CodeMySpec.AgentTasks.FixBddSpecs,
+      # And Three Amigos, for exactly the reason above. Its gate SETS
+      # `three_amigos_sealed` as a side effect of passing, and the requirement
+      # reads the seal — so without this the calculator evaluates the latch,
+      # finds it false, and nothing ever flips it. The task reports "ready to
+      # seal but has not been sealed" forever, which is a true sentence and an
+      # unreachable state.
+      CodeMySpec.AgentTasks.ThreeAmigos
     ]
   end
 
@@ -157,10 +165,17 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   defp resolve_entity(scope, task) do
     cond do
-      task.component_id -> wrap_entity(Components.get_component(scope, task.component_id), :component)
-      task.story_id -> wrap_entity(StoriesRepository.get_story(scope, task.story_id), :story)
-      task.project_id || scope.active_project -> {:ok, {scope.active_project, :project}}
-      true -> {:error, "Cannot resolve entity from task — no component_id, story_id, or project"}
+      task.component_id ->
+        wrap_entity(Components.get_component(scope, task.component_id), :component)
+
+      task.story_id ->
+        wrap_entity(StoriesRepository.get_story(scope, task.story_id), :story)
+
+      task.project_id || scope.active_project ->
+        {:ok, {scope.active_project, :project}}
+
+      true ->
+        {:error, "Cannot resolve entity from task — no component_id, story_id, or project"}
     end
   end
 
@@ -178,7 +193,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       {:error, _} ->
         # If not found and component has a parent, check parent template's :child nodes.
         # A schema child of a context gets :child requirements from the context template.
-        case entity.parent_component_id && Components.get_component(scope, entity.parent_component_id) do
+        case entity.parent_component_id &&
+               Components.get_component(scope, entity.parent_component_id) do
           %_{} = parent ->
             parent_template = RequirementsRegistry.get_graph_template(parent.type)
             child_defs = Enum.filter(parent_template, &(&1.node_scope == :child))
@@ -220,10 +236,16 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   # -- Feedback Formatting --
 
   defp format_feedback(scope, entity, :component, result, _definition) do
-    req_feedback = RequirementsFormatter.format_unsatisfied(
-      [struct(CodeMySpec.Requirements.Requirement, Map.merge(result, %{description: result.details[:reason] || "unsatisfied"}))],
-      context: "Requirement not met:"
-    )
+    req_feedback =
+      RequirementsFormatter.format_unsatisfied(
+        [
+          struct(
+            CodeMySpec.Requirements.Requirement,
+            Map.merge(result, %{description: result.details[:reason] || "unsatisfied"})
+          )
+        ],
+        context: "Requirement not met:"
+      )
 
     project = scope.active_project
     problem_feedback = problem_feedback_for(scope, entity, :component, project)

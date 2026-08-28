@@ -110,8 +110,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
             context do
         body = response_text(context.evaluate_response)
 
-        assert body =~ ~r/scenarios?\s*>\s*questions?|too many open questions|story.*not.*ready/i,
-               "expected response to name the scenarios>questions failure, got #{inspect(context.evaluate_response)}"
+        # The rule this criterion names is now a case of a stricter one: any
+        # open red card blocks, not just more red than green. It still fails
+        # here — with more questions than scenarios — so the criterion holds;
+        # the message it produces is about the question rather than the ratio.
+        assert body =~ ~r/open question/i,
+               "expected the response to name the unanswered red card(s), got " <>
+                 inspect(context.evaluate_response)
 
         {:ok, context}
       end
