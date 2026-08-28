@@ -15,72 +15,87 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def read_file(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.read(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.read(resolved_path)
+    end
   end
 
   @impl true
   def list_directory(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.ls(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.ls(resolved_path)
+    end
   end
 
   @impl true
   def write_file(env, path, content) do
-    resolved_path = resolve_path(path, env.cwd)
-
-    with :ok <- File.mkdir_p(Path.dirname(resolved_path)) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd),
+         :ok <- File.mkdir_p(Path.dirname(resolved_path)) do
       File.write(resolved_path, content)
     end
   end
 
   @impl true
   def delete_file(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-
-    case File.rm(resolved_path) do
-      :ok -> :ok
-      # File doesn't exist, that's fine
-      {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, reason}
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.rm(resolved_path) do
+        :ok -> :ok
+        # File doesn't exist, that's fine
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
   @impl true
   def file_exists?(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.exists?(resolved_path)
+    # No working directory is not evidence either way — the same rule every
+    # caller of this already applies to a provider it could not reach, or a
+    # file it could not open: absent, not a crash. `resolve_path/2` used to
+    # raise here instead of answering that, which meant a harness-scoped
+    # caller with no working directory (a real, ordinary case, not a bug)
+    # took down whatever step asked rather than getting an honest "no".
+    case resolve_path(path, env.cwd) do
+      {:ok, resolved_path} -> File.exists?(resolved_path)
+      {:error, :no_working_directory} -> false
+    end
   end
 
   @impl true
   def stat(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.stat(resolved_path, time: :posix) do
+        {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
+          # POSIX file times are second-precision; mark microsecond as :usec-set
+          # so the Files.File schema (:utc_datetime_usec) accepts it.
+          mtime = mtime_posix |> DateTime.from_unix!() |> Map.put(:microsecond, {0, 6})
+          {:ok, %{mtime: mtime, size: size}}
 
-    case File.stat(resolved_path, time: :posix) do
-      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
-        # POSIX file times are second-precision; mark microsecond as :usec-set
-        # so the Files.File schema (:utc_datetime_usec) accepts it.
-        mtime = mtime_posix |> DateTime.from_unix!() |> Map.put(:microsecond, {0, 6})
-        {:ok, %{mtime: mtime, size: size}}
+        {:ok, _} ->
+          {:error, :not_regular}
 
-      {:ok, _} ->
-        {:error, :not_regular}
-
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
   @impl true
   def ensure_dir(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.mkdir_p(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.mkdir_p(resolved_path)
+    end
   end
 
   @impl true
   def glob(env, pattern) do
-    resolved_pattern = resolve_path(pattern, env.cwd)
-    Path.wildcard(resolved_pattern)
+    # No working directory means nothing to glob, not an error a caller
+    # building a plain list of matches has anywhere to put — the same
+    # "cannot prove it's there" answer `file_exists?/2` gives.
+    case resolve_path(pattern, env.cwd) do
+      {:ok, resolved_pattern} -> Path.wildcard(resolved_pattern)
+      {:error, :no_working_directory} -> []
+    end
   end
 
   @impl true
@@ -282,25 +297,37 @@ defmodule CodeMySpec.Environments.Local do
   # OS process is in, which on a server is its own checkout. Returning the path
   # unchanged is what made that silent.
   #
-  # Unreachable now that `Scope.resolve_environment/2` returns nil rather than a
-  # directoryless environment. Kept loud so that if some other path builds one,
-  # it says so instead of writing into the server's repository.
+  # `{:error, :no_working_directory}`, not a raise. This used to raise on the
+  # theory that a directoryless environment reaching here was a coding
+  # mistake nothing should actually trigger — `Scope.resolve_environment/2`
+  # was supposed to return `nil` first. It is not a mistake: a harness-scoped
+  # caller with no local checkout is an ordinary, expected case (a project
+  # reached through the light harness, e.g.), and every caller of this
+  # already has a well-defined, non-crashing answer for "cannot resolve" —
+  # `false` for `file_exists?/2`, `[]` for `glob/2`, a clean `{:error, ...}`
+  # everywhere else. Raising meant that answer never got the chance to run:
+  # the exception unwound straight past whatever `with`, `case`, or `Enum`
+  # was structured to handle a clean error, and was only ever caught by
+  # whichever top-level rescue happened to sit above it — which, on the run
+  # side, aborted an entire multi-environment step (every environment, not
+  # just the one whose write this was) rather than just this one operation.
+  # Found live against MarketMySpec, twice: once on the read side
+  # (`database_url_present?/2`) and once on the write side (`put_secret/4`),
+  # each needing its own rescue before this fix existed to make either
+  # unnecessary.
   defp resolve_path(path, nil) do
     if Path.type(path) == :relative do
-      raise ArgumentError,
-            "cannot resolve the relative path #{inspect(path)}: this environment has " <>
-              "no working directory, so the path would resolve against the current " <>
-              "process's directory — on a server, its own checkout"
+      {:error, :no_working_directory}
     else
-      path
+      {:ok, path}
     end
   end
 
   defp resolve_path(path, working_dir) do
     if Path.type(path) == :relative do
-      Path.join(working_dir, path) |> Path.absname()
+      {:ok, Path.join(working_dir, path) |> Path.absname()}
     else
-      path
+      {:ok, path}
     end
   end
 end

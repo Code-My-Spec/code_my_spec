@@ -13,6 +13,17 @@ defmodule CodeMySpec.Environments.NoWorkingDirectoryTest do
   had dependency edges, every component read as an orphan, and
   `architecture_designed` could not pass while the agent had done everything
   right.
+
+  The refusal used to be a raise. That fixed this incident and caused two
+  more just like it, tonight: `database_url_present?/2` and `put_secret/4`
+  each reached this same "no working directory" case from a harness-scoped
+  caller — an ordinary, expected shape, not a coding mistake — and the raise
+  unwound straight past every `with`/`case` built to handle a clean error,
+  landing wherever the nearest unrelated top-level rescue happened to sit.
+  On the run side that aborted an entire multi-environment provisioning
+  step, not just the one operation that could not proceed. The refusal is
+  the same; only the shape changed, to the one every caller already knew
+  how to handle.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -32,21 +43,16 @@ defmodule CodeMySpec.Environments.NoWorkingDirectoryTest do
     test "refuses to write a relative path instead of resolving it against the server", %{
       env: env
     } do
-      assert_raise ArgumentError, ~r/no working directory/, fn ->
-        Local.write_file(env, ".code_my_spec/spec/thing.spec.md", "contents")
-      end
+      assert {:error, :no_working_directory} =
+               Local.write_file(env, ".code_my_spec/spec/thing.spec.md", "contents")
     end
 
     test "refuses to read one too", %{env: env} do
-      assert_raise ArgumentError, ~r/no working directory/, fn ->
-        Local.read_file(env, "mix.exs")
-      end
+      assert {:error, :no_working_directory} = Local.read_file(env, "mix.exs")
     end
 
     test "the cli adapter refuses the same way", %{env: env} do
-      assert_raise ArgumentError, ~r/no working directory/, fn ->
-        Cli.read_file(%{env | type: :cli}, "mix.exs")
-      end
+      assert {:error, :no_working_directory} = Cli.read_file(%{env | type: :cli}, "mix.exs")
     end
 
     test "an absolute path is unambiguous and still allowed", %{env: env} do

@@ -5041,18 +5041,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     else
       true
     end
-  rescue
-    # `Environments.Local.resolve_path/2` raises rather than silently
-    # resolving a relative path against the server's own checkout — the
-    # right call for a write, and the wrong one here: this only reads, and a
-    # harness-scoped caller's scope genuinely carries no working directory
-    # for a real project. Found live: `run_provisioning_step` for
-    # MarketMySpec's `:server` step raised out of this check before
-    # `run_and_record/4` ever ran, so the whole step errored and nothing —
-    # not even the database — was ever created. Same outcome as every other
-    # "cannot prove it's there" branch above: absent, not a crash that halts
-    # the step before it gets a chance to build one.
-    ArgumentError -> false
   end
 
   # Every environment's registry, reached over SSH the way `serve_one_registry`
@@ -5314,6 +5302,16 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp to_string_reason(reason) when is_binary(reason), do: reason
+
+  # Named rather than left to `inspect/1`, the same way every other reason
+  # here already reads as a sentence rather than a term: a harness-scoped
+  # caller's scope carries no working directory to write this secret into
+  # — an ordinary, expected shape now that `Environments.Local`/`Cli`
+  # answer it as a clean error instead of raising, not a term worth making
+  # the reader decode.
+  defp to_string_reason(:no_working_directory),
+    do: "this project has no local working directory to write secrets into"
+
   defp to_string_reason(reason), do: inspect(reason)
 
   @doc "The `ProjectSecrets` key an environment's private age key is stored under."

@@ -73,8 +73,9 @@ defmodule CodeMySpec.Environments.Cli do
   @spec read_file(env :: Environment.t(), path :: String.t()) ::
           {:ok, String.t()} | {:error, term()}
   def read_file(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.read(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.read(resolved_path)
+    end
   end
 
   @doc """
@@ -85,8 +86,9 @@ defmodule CodeMySpec.Environments.Cli do
   @spec list_directory(env :: Environment.t(), path :: String.t()) ::
           {:ok, [String.t()]} | {:error, term()}
   def list_directory(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.ls(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.ls(resolved_path)
+    end
   end
 
   @doc """
@@ -98,12 +100,13 @@ defmodule CodeMySpec.Environments.Cli do
   @spec write_file(env :: Environment.t(), path :: String.t(), content :: String.t()) ::
           :ok | {:error, term()}
   def write_file(env, path, content) do
-    resolved_path = resolve_path(path, env.cwd)
-    Logger.info("write file called")
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      Logger.info("write file called")
 
-    with :ok <- ensure_parent_directory(resolved_path) do
-      Logger.info("parent directory ensured")
-      File.write(resolved_path, content)
+      with :ok <- ensure_parent_directory(resolved_path) do
+        Logger.info("parent directory ensured")
+        File.write(resolved_path, content)
+      end
     end
   end
 
@@ -116,13 +119,13 @@ defmodule CodeMySpec.Environments.Cli do
   @spec delete_file(env :: Environment.t(), path :: String.t()) ::
           :ok | {:error, term()}
   def delete_file(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-
-    case File.rm(resolved_path) do
-      :ok -> :ok
-      # File doesn't exist, that's fine
-      {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, reason}
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.rm(resolved_path) do
+        :ok -> :ok
+        # File doesn't exist, that's fine
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -133,8 +136,11 @@ defmodule CodeMySpec.Environments.Cli do
   """
   @spec file_exists?(env :: Environment.t(), path :: String.t()) :: boolean()
   def file_exists?(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.exists?(resolved_path)
+    # No working directory is not evidence either way — see Local.file_exists?/2.
+    case resolve_path(path, env.cwd) do
+      {:ok, resolved_path} -> File.exists?(resolved_path)
+      {:error, :no_working_directory} -> false
+    end
   end
 
   @doc """
@@ -143,18 +149,18 @@ defmodule CodeMySpec.Environments.Cli do
   @spec stat(env :: Environment.t(), path :: String.t()) ::
           {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
   def stat(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.stat(resolved_path, time: :posix) do
+        {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
+          mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
+          {:ok, %{mtime: mtime, size: size}}
 
-    case File.stat(resolved_path, time: :posix) do
-      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
-        mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
-        {:ok, %{mtime: mtime, size: size}}
+        {:ok, _} ->
+          {:error, :not_regular}
 
-      {:ok, _} ->
-        {:error, :not_regular}
-
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -163,13 +169,17 @@ defmodule CodeMySpec.Environments.Cli do
   """
   @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
   def glob(env, pattern) do
-    resolved_pattern = resolve_path(pattern, env.cwd)
-    Path.wildcard(resolved_pattern)
+    # No working directory means nothing to glob — see Local.glob/2.
+    case resolve_path(pattern, env.cwd) do
+      {:ok, resolved_pattern} -> Path.wildcard(resolved_pattern)
+      {:error, :no_working_directory} -> []
+    end
   end
 
   def ensure_dir(env, path) do
-    resolved_path = resolve_path(path, env.cwd)
-    File.mkdir_p(resolved_path)
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.mkdir_p(resolved_path)
+    end
   end
 
   @doc """
@@ -236,25 +246,25 @@ defmodule CodeMySpec.Environments.Cli do
   # OS process is in, which on a server is its own checkout. Returning the path
   # unchanged is what made that silent.
   #
-  # Unreachable now that `Scope.resolve_environment/2` returns nil rather than a
-  # directoryless environment. Kept loud so that if some other path builds one,
-  # it says so instead of writing into the server's repository.
+  # `{:error, :no_working_directory}`, not a raise — see `Local.resolve_path/2`
+  # for the incident this duplicated implementation shared with it (9770cea7
+  # already named this pattern of a fix landing in one and going stale in the
+  # other). Every caller here already has a well-defined answer for "cannot
+  # resolve": `false` for `file_exists?/2`, `[]` for `glob/2`, a clean
+  # `{:error, ...}` everywhere else.
   defp resolve_path(path, nil) do
     if Path.type(path) == :relative do
-      raise ArgumentError,
-            "cannot resolve the relative path #{inspect(path)}: this environment has " <>
-              "no working directory, so the path would resolve against the current " <>
-              "process's directory — on a server, its own checkout"
+      {:error, :no_working_directory}
     else
-      path
+      {:ok, path}
     end
   end
 
   defp resolve_path(path, working_dir) do
     if Path.type(path) == :relative do
-      Path.join(working_dir, path) |> Path.absname()
+      {:ok, Path.join(working_dir, path) |> Path.absname()}
     else
-      path
+      {:ok, path}
     end
   end
 end

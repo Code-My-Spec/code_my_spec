@@ -100,19 +100,22 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   # Found live against MarketMySpec: a harness-scoped caller's scope carries
   # no working directory for a real project, and `Sops.missing_secrets/4`
-  # resolves a relative path through it — `Environments.Local.resolve_path/2`
-  # raises rather than silently reading against the server's own checkout,
-  # which is right for a write and wrong for this read. The raise propagated
-  # out of `verify(:server, …)` entirely, past `safe_verify/3`'s rescue, so
-  # the step errored before `run_and_record/4` ever ran — nothing, not even
-  # the database, was ever created, on a box whose only real problem was
-  # that setup had never reached it yet.
+  # resolves a relative path through it. `Environments.Local.resolve_path/2`
+  # used to raise there rather than silently reading against the server's
+  # own checkout — right instinct, wrong mechanism: the raise propagated out
+  # of `verify(:server, …)` entirely, past `safe_verify/3`'s rescue, so the
+  # step errored before `run_and_record/4` ever ran — nothing, not even the
+  # database, was ever created, on a box whose only real problem was that
+  # setup had never reached it yet. Fixed at `resolve_path/2` itself, which
+  # now answers `{:error, :no_working_directory}` instead of raising, so
+  # every caller's own already-correct "cannot prove it" handling runs
+  # instead of being unwound past.
   #
   # The suite swaps `:local` for `RecordingEnvironment` globally
-  # (`test_helper.exs`), which does not reproduce this — it never raises on
-  # a directoryless environment, only the real `Environments.Local` does.
-  # Restored to the real one for just this test, since the claim under test
-  # is specifically about that module's own behavior.
+  # (`test_helper.exs`), which does not reproduce this — it always carries a
+  # cwd, only the real `Environments.Local` needs to answer a directoryless
+  # one. Restored to the real one for just this test, since the claim under
+  # test is specifically about that module's own behavior.
   describe "the caller's scope carries no working directory" do
     test "verify(:server, …) reports absent instead of raising", ctx do
       previous = Application.get_env(:code_my_spec, :environment)
@@ -134,6 +137,41 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
                Steps.verify(:server, directoryless, verify_opts(run)),
              "a scope with no working directory must not crash the check — " <>
                "absent is the honest answer, the same as any other unprovable claim"
+    end
+
+    # The write-side twin of the test above, and the one that actually
+    # mattered live: `verify/3` raising only stopped the check from lying
+    # about a resource that was never built. `put_secret/4` raising was
+    # worse — it is on the *run* path, reached from `write_database_url/3`
+    # inside `serve_one_registry/5`, and an uncaught raise there unwinds
+    # straight past `serve_registries/5`'s own per-environment handling the
+    # same way it unwinds past a `reduce_while`, landing in
+    # `run_and_record/4`'s top-level rescue — which aborts the *whole*
+    # :server step. Confirmed live against MarketMySpec: prod's write here
+    # kept taking uat down with it even after `serve_registries/5` was
+    # fixed to try every environment independently, because the failure
+    # never reached that independence in the first place — it never
+    # returned, it raised. Now that `resolve_path/2` itself answers cleanly,
+    # this reaches `put_secret/4`'s own `with`/`else` like any other error.
+    test "put_secret/4 reports a clean error instead of raising", ctx do
+      previous = Application.get_env(:code_my_spec, :environment)
+      Application.put_env(:code_my_spec, :environment, Local)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:code_my_spec, :environment, previous)
+        else
+          Application.delete_env(:code_my_spec, :environment)
+        end
+      end)
+
+      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+
+      assert {:error, reason} =
+               Steps.put_secret(directoryless, "prod", "DATABASE_URL", "ecto://u:p@host/db")
+
+      assert reason =~ "working directory",
+             "expected a clean, named reason rather than a raw exception message: #{reason}"
     end
   end
 
