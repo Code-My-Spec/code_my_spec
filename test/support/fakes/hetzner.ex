@@ -205,6 +205,15 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
     {{204, %{}}, %{state | firewalls: Enum.reject(state.firewalls, &(to_string(&1["id"]) == id))}}
   end
 
+  # `.../actions/apply_to_resources` and `.../actions/set_rules` — same
+  # "the action always succeeds" convention as `/servers/*/actions/*` above.
+  # Nothing here asserts on the firewall's own state afterward, so there is
+  # no rule/attachment bookkeeping to fake, only the shape of a successful
+  # action response.
+  defp route("POST", "/firewalls/" <> _rest, _body, _params, state) do
+    {{201, %{"action" => %{"status" => "success"}}}, state}
+  end
+
   # -- networks --
 
   defp route("GET", "/networks", _body, _params, state) do

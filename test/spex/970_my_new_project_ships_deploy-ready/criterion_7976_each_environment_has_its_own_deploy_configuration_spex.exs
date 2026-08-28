@@ -63,7 +63,18 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
           Enum.map(context.configs, fn path ->
             {:ok, body} = Environments.read_file(context.environment, path)
 
-            {path, Regex.run(~r/host:\s*(\S+)/, body), Regex.run(~r/APP_ENV:\s*(\S+)/, body)}
+            # Anchored to the start of the line (after indentation), not just
+            # anywhere the four characters "host:" appear — `image:` names a
+            # registry whose own default is `localhost:5000`, and an
+            # unanchored match landed on the "host:5000" inside "localhost:5000"
+            # there, on the line the template writes *before* the real
+            # `proxy: host:` key it was supposed to find (deploy_artifacts.ex's
+            # `kamal_config/4`: `image:` on line 300, `host:` on line 308) —
+            # so every environment's config read back the same registry host
+            # and reported no environment as distinct from any other, though
+            # the real per-environment `proxy: host:` values already were.
+            {path, Regex.run(~r/^\s*host:\s*(\S+)/m, body),
+             Regex.run(~r/^\s*APP_ENV:\s*(\S+)/m, body)}
           end)
 
         for {path, host, app_env} <- details do
