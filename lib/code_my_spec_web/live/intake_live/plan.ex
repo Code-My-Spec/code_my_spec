@@ -168,11 +168,30 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   # every return visit rendered this. Fixing the credential does not clear those
   # — the rows are still sitting at `:answering` — so resuming has to be able to
   # pick the conversation back up.
+  #
+  # Asked *after* mount, not during it. The first version called the model
+  # inline here and the model takes the better part of a minute: it blocked the
+  # mount past the connect timeout, so the resumed page rendered the failure
+  # message instead of the question. Twice over, because a LiveView mounts
+  # disconnected and then connected, and both were paying for a call only one of
+  # them could use.
+  #
+  # `connected?/1` for the same reason: the static render has nowhere to put an
+  # answer and no socket to receive one.
   defp resume(%{assigns: %{plan: %Plan{status: :answering}, question: nil}} = socket) do
-    shape(socket)
+    if connected?(socket) do
+      send(self(), :resume_conversation)
+      assign(socket, :thinking, true)
+    else
+      socket
+    end
   end
 
   defp resume(socket), do: socket
+
+  def handle_info(:resume_conversation, socket) do
+    {:noreply, shape(socket)}
+  end
 
   def handle_event("describe", %{"description" => description}, socket) do
     {:ok, plan} = Intake.describe(socket.assigns.plan, description)

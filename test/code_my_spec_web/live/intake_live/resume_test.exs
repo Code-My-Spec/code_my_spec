@@ -28,7 +28,13 @@ defmodule CodeMySpecWeb.IntakeLive.ResumeTest do
 
     # Coming back to it: same browser, same cookie, a fresh LiveView with none
     # of the first one's assigns.
-    {:ok, _resumed, html} = live(conn, "/build")
+    {:ok, resumed, _html} = live(conn, "/build")
+
+    # Rendered after mount returns, because the re-ask is a message to self
+    # rather than work done inline. Inline is what the first version did, and
+    # the model takes the better part of a minute: it blocked the mount past
+    # the connect timeout and the page rendered the failure instead.
+    html = render(resumed)
 
     # Opening question, the visitor's description, and something to answer.
     assert count_said(html) >= 3,
