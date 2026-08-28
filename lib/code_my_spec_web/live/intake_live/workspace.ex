@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   import CodeMySpecWeb.IntakeComponents
 
-  alias CodeMySpec.{Intake, UserPreferences, Workspaces}
+  alias CodeMySpec.{Agents, Intake, UserPreferences, Workspaces}
   alias CodeMySpec.Intake.Interview
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Workspaces.Workspace
@@ -37,7 +37,13 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         rather than kept: both pages derive the same transcript from the same
         plan row.
       --%>
-      <.conversation :if={@workspace.status != :failed} transcript={@transcript}>
+      <%!--
+        Shown on a failed workspace too. The failure screen tells the visitor
+        "the conversation below is still yours" and this is that conversation —
+        gating it on a healthy workspace made the sentence a lie and threw away
+        on screen exactly what the answers are written down to preserve.
+      --%>
+      <.conversation transcript={@transcript}>
         <.derived_rules :if={@rules} rules={@rules} />
       </.conversation>
 
@@ -204,6 +210,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
          {:ok, scope} <- select_plan_scope(scope, plan),
          {:ok, workspace} <- Workspaces.boot(scope) do
       Workspaces.subscribe_workspace(workspace.project_id)
+      start_the_conversation(scope)
 
       # Subscribe, then re-read. The watcher starts inside boot/1 and can
       # record a phase before this process is subscribed; since an unchanged
@@ -315,6 +322,28 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   # The plan's account and project become the active ones, so the rest of the
   # app agrees with what the visitor is looking at.
+  # Asked for at boot rather than offered as a button.
+  #
+  # The visitor has spent the whole of intake in a conversation; landing them on
+  # "start an agent" is a setup step at the exact moment the product is meant to
+  # be proving it removes them. `boot/1` has already minted the copy and made it
+  # main, so there is something to start on before the container answers.
+  #
+  # Best-effort on purpose. `ensure_main_agent/1` records `:starting` and the
+  # machine confirms, so an agent that cannot start yet is an unconfirmed row
+  # rather than a workspace that refused to appear — and a visitor with no
+  # provider and no platform credential configured still gets their app.
+  defp start_the_conversation(scope) do
+    case Agents.ensure_main_agent(scope) do
+      {:ok, _agent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("[Intake] no agent started for the new workspace: #{inspect(reason)}")
+        :ok
+    end
+  end
+
   defp select_plan_scope(%Scope{} = scope, plan) do
     with {:ok, _} <- UserPreferences.select_active_account(scope, plan.account_id),
          {:ok, _} <- UserPreferences.select_active_project(scope, plan.project_id) do

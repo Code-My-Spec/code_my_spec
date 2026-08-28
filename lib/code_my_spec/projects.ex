@@ -262,6 +262,35 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  The project's deploy key, minting one if it has none.
+
+  A machine running this project's application authenticates as the project,
+  and a deploy key is the only credential it can hold — a container has no
+  browser to complete an OAuth flow in. So anything that starts one has to be
+  able to get a key rather than find one already there.
+
+  Nothing mints a key at creation. Provisioning mints its own at the secrets
+  step, which is fine for a project that gets deployed and useless for one that
+  is merely run: a cloud workspace came up with no `CMS_DEPLOY_KEY`, so its
+  onboarding could not authenticate and the copy got no preview. Everything
+  reported success — the container ran, the app served — and the only missing
+  piece was the one nobody was watching.
+
+  Existing keys are returned untouched. Rotating here would break an already
+  deployed application that is authenticating with the old one.
+  """
+  @spec ensure_deploy_key(Scope.t(), Project.t()) :: {:ok, Project.t()} | {:error, term()}
+  def ensure_deploy_key(%Scope{}, %Project{deploy_key: key} = project)
+      when is_binary(key) and key != "",
+      do: {:ok, project}
+
+  def ensure_deploy_key(%Scope{} = scope, %Project{} = project) do
+    key = "dk_" <> (32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+
+    update_project(scope, project, %{deploy_key: key})
+  end
+
+  @doc """
   Returns the distinct `account_id` for every project that has a
   `local_path` set. Used by `CodeMySpecLocalWeb.SocketSupervisor` at
   boot to start one socket per local-tracked account.

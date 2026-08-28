@@ -1595,6 +1595,15 @@ defmodule CodeMySpecSpex.Case do
     as: :install_workspace_runner
 
   @doc """
+  What the instance was told about itself when it was started.
+
+  For a spec that has to act as the container — onboarding is something the
+  instance does with what it was handed, so a spec doing it on the instance's
+  behalf has to use the same values and no others.
+  """
+  defdelegate workspace_instance_env(), to: Fixtures
+
+  @doc """
   A scripted step that answers one thing on its first run and another after.
 
   The shape every resume criterion needs: a step fails, errors or pauses, and

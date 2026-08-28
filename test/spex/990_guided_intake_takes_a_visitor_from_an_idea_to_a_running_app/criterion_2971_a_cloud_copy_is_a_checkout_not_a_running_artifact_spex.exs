@@ -29,6 +29,8 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
+  alias CodeMySpec.Workspaces.PreviewTunnel
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -42,15 +44,24 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
   spex "A cloud project is a checkout the visitor owns, not an artifact we run" do
     scenario "A cloud copy is a checkout, not a running artifact" do
       given_ "a visitor who chose to have their project run in the cloud", context do
+        # Cloudflare answering. The tunnel is real work against a real account,
+        # so the spec stands in for the account and not for anything of ours —
+        # `PreviewTunnel` still decides what to ask for and what to store.
+        Req.Test.stub(PreviewTunnel, fn conn ->
+          Req.Test.json(conn, %{
+            "success" => true,
+            "errors" => [],
+            "result" => %{"id" => "tunnel-2971"}
+          })
+        end)
+
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 
         describe_idea(view, "a booking tool for hair salons")
         answer_shaping_questions(view)
 
-        view
-        |> form("form[phx-submit=choose_location]", %{location: "cloud"})
-        |> render_submit()
+        confirm_plan(view, %{location: "cloud"})
 
         {:ok, context |> Map.put(:conn, conn) |> Map.put(:view, view)}
       end
@@ -61,8 +72,26 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
         {:ok, Map.merge(context, %{view: view, html: await(view, ~r/running/i)})}
       end
 
+      when_ "the instance onboards itself the way the container does", context do
+        # Everything the instance knows about itself, read back off what it was
+        # started with. The container makes this call with exactly these two
+        # values and no others, so a copy id or a credential that never reached
+        # the environment fails here rather than being supplied by the spec.
+        env = workspace_instance_env()
+
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{env["CMS_DEPLOY_KEY"]}")
+          |> post("/api/harnesses/#{env["CMS_WORKING_COPY_ID"]}/preview")
+
+        {:ok, Map.put(context, :onboarding, json_response(conn, 200))}
+      end
+
       then_ "it appears among their working copies like any other", context do
-        {:ok, _live, html} = live(context.conn, ~p"/app/working-copies")
+        # Followed from the nav rather than typed, because the page is scoped to
+        # a project and the visitor never learns its id. A spec that guesses the
+        # path asserts on a URL; this asserts on the route they actually have.
+        {:ok, _live, html} = live(context.conn, working_copies_path(context.conn))
 
         assert html =~ ~r/working cop/i,
                "the visitor's cloud project is not on the page that lists what they " <>
@@ -81,6 +110,31 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
 
         {:ok, context}
       end
+    end
+  end
+
+  # The route the visitor walks: their projects, into the one they just made,
+  # then "Working copies" in its nav. Walked rather than constructed, so a
+  # cloud project that is missing from the list, or has no link to its copies,
+  # fails here — which is the criterion, not a detour on the way to it.
+  defp working_copies_path(conn) do
+    project = follow(conn, ~p"/app/projects", ~r|/app/projects/[a-f0-9-]{36}"|, "their projects")
+
+    follow(conn, project, ~r|/app/projects/[^"]+/working-copies|, "the project")
+  end
+
+  defp follow(conn, from, pattern, what) do
+    html = conn |> get(from) |> html_response(200)
+
+    case Regex.run(pattern, html) do
+      [path] ->
+        String.trim_trailing(path, ~s("))
+
+      nil ->
+        flunk(
+          "nothing on #{what} leads to the visitor's cloud project. A copy with " <>
+            "no route to it is an artifact we run rather than a checkout they own."
+        )
     end
   end
 

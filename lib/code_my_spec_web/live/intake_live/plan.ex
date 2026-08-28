@@ -165,10 +165,14 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   # The answer joins the transcript and the whole conversation goes back to the
   # model, which either asks once more or has enough to fill the form.
+  #
+  # Answering it also stops it being the live question. Leaving it assigned put
+  # it in the transcript twice — once as the turn it became, and again as the
+  # thing still being asked underneath the answer to it.
   def handle_event("answer", %{"answer" => written}, socket) do
     turns = socket.assigns.turns ++ [%{question: socket.assigns.question, answer: written}]
 
-    {:noreply, socket |> assign(turns: turns) |> shape()}
+    {:noreply, socket |> assign(turns: turns, question: nil) |> shape()}
   end
 
   def handle_event("validate_names", %{"plan" => attrs}, socket) do

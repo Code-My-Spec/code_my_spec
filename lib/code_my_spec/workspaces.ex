@@ -11,6 +11,7 @@ defmodule CodeMySpec.Workspaces do
   be told, and has to keep everything they had before it.
   """
 
+  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   require Logger
 
@@ -79,20 +80,20 @@ defmodule CodeMySpec.Workspaces do
   that is already running is returned as-is rather than started twice.
   """
   @spec boot(Scope.t()) :: {:ok, Workspace.t()} | {:error, term()}
-  def boot(%Scope{active_project: %Project{} = project} = scope) do
+  def boot(%Scope{active_project: %Project{}} = scope) do
     scope
     |> get_workspace()
-    |> boot_workspace(project)
+    |> boot_workspace(scope)
   end
 
   # A stored `:running` is a claim about a container that may no longer exist —
   # a prune, a host reboot or a teardown removes the instance and leaves the
   # row behind. Trusting it showed the visitor "It's running" over a link that
   # refused the connection, so the claim is checked before it is repeated.
-  defp boot_workspace(%Workspace{status: :running} = workspace, project) do
+  defp boot_workspace(%Workspace{status: :running} = workspace, scope) do
     case still_serving?(workspace) do
       true -> {:ok, workspace}
-      false -> start_instance(workspace, project)
+      false -> start_instance(workspace, scope)
     end
   end
 
@@ -102,14 +103,14 @@ defmodule CodeMySpec.Workspaces do
   # watchers polling for it. An instance that is already coming up is the
   # answer to "bring one up", so only a `:booting` row with nothing behind it
   # starts anything.
-  defp boot_workspace(%Workspace{status: :booting} = workspace, project) do
+  defp boot_workspace(%Workspace{status: :booting} = workspace, scope) do
     case Runner.alive?(workspace.container_name) do
       true -> {:ok, workspace}
-      false -> start_instance(workspace, project)
+      false -> start_instance(workspace, scope)
     end
   end
 
-  defp boot_workspace(existing, %Project{} = project), do: start_instance(existing, project)
+  defp boot_workspace(existing, %Scope{} = scope), do: start_instance(existing, scope)
 
   defp still_serving?(%Workspace{container_name: name, port: port})
        when is_binary(name) and is_integer(port) do
@@ -118,12 +119,12 @@ defmodule CodeMySpec.Workspaces do
 
   defp still_serving?(%Workspace{}), do: false
 
-  defp start_instance(existing, %Project{} = project) do
+  defp start_instance(existing, %Scope{active_project: %Project{} = project} = scope) do
     container_name = container_name(project)
     app_name = app_name(project)
     port = free_port()
 
-    with :ok <- Runner.start(container_name, app_name, port, instance_env(project)),
+    with :ok <- Runner.start(container_name, app_name, port, instance_env(scope)),
          {:ok, workspace} <-
            WorkspacesRepository.upsert_booting(existing, %{
              project_id: project.id,
@@ -149,12 +150,15 @@ defmodule CodeMySpec.Workspaces do
   # The id is minted here rather than inside, because minting needs the server
   # and the whole point of onboarding a copy is that it already has one. Same
   # reason `mix cms.harness.onboard` asks the server before it writes anything.
-  defp instance_env(%Project{} = project) do
-    scope = %Scope{active_project: project, active_project_id: project.id}
-
+  # Takes the caller's scope rather than building one from the project, because
+  # minting the deploy key is a write and a scope with no account cannot make
+  # one. The synthesised scope was enough while this only read.
+  defp instance_env(%Scope{active_project: %Project{} = project} = scope) do
     label = "the cloud copy of #{project.name}"
 
-    with {:ok, copy} <- WorkingCopies.issue(scope, nil, label: label),
+    with {:ok, project} <- Projects.ensure_deploy_key(scope, project),
+         scope = %Scope{scope | active_project: project, active_project_id: project.id},
+         {:ok, copy} <- WorkingCopies.issue(scope, nil, label: label),
          # Where it will be, said now rather than waited for. A row is not a
          # checkout until it says where it is, and only a rooted copy can be the
          # project's main one — which is what the preview endpoint requires
@@ -184,6 +188,11 @@ defmodule CodeMySpec.Workspaces do
   # and nowhere else.
   defp instance_root(%Project{} = project), do: "/workspace/#{app_name(project)}"
 
+  # The instance's only credential. `ensure_deploy_key/2` is what makes this
+  # clause reachable: nothing mints a key at project creation, so a project
+  # made through intake had none, and an instance handed no key could not
+  # authenticate to ask for its own preview. It came up and served, which is
+  # why that went unnoticed.
   defp deploy_key_env(%Project{deploy_key: key}) when is_binary(key) and key != "",
     do: [{"CMS_DEPLOY_KEY", key}]
 

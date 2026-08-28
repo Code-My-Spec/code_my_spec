@@ -2224,6 +2224,26 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc """
+  What the instance was told about itself when it was started.
+
+  The environment the runner was handed, which is everything a container knows
+  and the only thing it can onboard with. A spec that needs to act as the
+  instance reads it from here rather than being told the answers — a copy id or
+  a credential that never reached the environment then fails the spec instead
+  of being supplied by it.
+
+  Here rather than reached for directly because the fake is named on this side
+  of the boundary and nowhere else.
+  """
+  @spec workspace_instance_env() :: %{String.t() => String.t()}
+  def workspace_instance_env do
+    case FakeWorkspaceRunner.calls() do
+      [{_name, _app, _port, env} | _] -> Map.new(env)
+      [] -> %{}
+    end
+  end
+
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
     {:ok, runner} = FakeWorkspaceRunner.start_link(opts)

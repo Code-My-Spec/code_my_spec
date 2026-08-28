@@ -32,12 +32,29 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
+  alias CodeMySpec.Agents.Credential
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
 
   setup do
     start_workspace_runner([healthy?: true], boot_timeout: 5_000, poll_interval: 20)
+
+    # Our credential, configured. A visitor who signed up ninety seconds ago has
+    # connected no provider, so the first conversation runs on ours — and it is
+    # off unless configured, deliberately, because it spends real money. Stated
+    # here because it is the deployment this criterion describes: with nothing
+    # configured the honest behaviour is "connect a provider", which is a
+    # different criterion.
+    previous = Application.get_env(:code_my_spec, Credential)
+    Application.put_env(:code_my_spec, Credential, platform_api_key: "sk-platform-2972")
+    on_exit(fn ->
+      case previous do
+        nil -> Application.delete_env(:code_my_spec, Credential)
+        config -> Application.put_env(:code_my_spec, Credential, config)
+      end
+    end)
 
     :ok
   end
@@ -51,9 +68,7 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
         describe_idea(view, "a booking tool for hair salons")
         answer_shaping_questions(view)
 
-        view
-        |> form("form[phx-submit=choose_location]", %{location: "cloud"})
-        |> render_submit()
+        confirm_plan(view, %{location: "cloud"})
 
         {:ok, view, _html} = live(conn, "/build/workspace")
         await(view, ~r/running/i)
@@ -61,17 +76,21 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
         {:ok, context |> Map.put(:conn, conn) |> Map.put(:view, view)}
       end
 
-      when_ "they open their project", context do
-        {:ok, live, html} = live(context.conn, ~p"/app/projects")
+      when_ "they look at the copy their project runs in", context do
+        # Their working copies, which is the page that says what is running in
+        # each one. Reached the way they would reach it rather than by a path
+        # this spec knows.
+        {:ok, live, html} = live(context.conn, working_copies_path(context.conn))
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end
 
       then_ "an agent is already running in that copy", context do
-        assert context.html =~ ~r/agent/i,
-               "the project shows no agent, so nothing was started in the copy that " <>
-                 "was just provisioned. The visitor has spent all of intake in a " <>
-                 "conversation and now has to press a button to continue one."
+        assert context.html =~ ~s(data-test="agent-chip"),
+               "the copy shows no agent, so nothing was started in the one that was " <>
+                 "just provisioned. The visitor has spent all of intake in a " <>
+                 "conversation and now has to press a button to continue one. " <>
+                 "Got: #{context.html}"
 
         {:ok, context}
       end
@@ -83,6 +102,23 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
 
         {:ok, context}
       end
+    end
+  end
+
+  # The route the visitor walks to their copies: their projects, into the one
+  # they just made, then "Working copies" in its nav.
+  defp working_copies_path(conn) do
+    project = follow(conn, "/app/projects", ~r|/app/projects/[a-f0-9-]{36}"|, "their projects")
+
+    follow(conn, project, ~r|/app/projects/[^"]+/working-copies|, "the project")
+  end
+
+  defp follow(conn, from, pattern, what) do
+    html = conn |> get(from) |> html_response(200)
+
+    case Regex.run(pattern, html) do
+      [path] -> String.trim_trailing(path, ~s("))
+      nil -> flunk("nothing on #{what} leads to the visitor's cloud project.")
     end
   end
 

@@ -219,6 +219,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                     <.path_tail path={row.harness.root} />
                   </div>
 
+                  <%!-- Where this copy's preview answers. Only the copy that has
+                  one shows one, which is the whole of "a worktree does not claim
+                  to be where the preview runs" — nothing here has to say so. --%>
+                  <a
+                    :if={row.harness.preview_url}
+                    data-test="working-copy-preview"
+                    href={row.harness.preview_url}
+                    target="_blank"
+                    rel="noopener"
+                    class="block truncate text-xs link link-hover opacity-60"
+                  >
+                    {URI.parse(row.harness.preview_url).host}
+                  </a>
+
                   <div class="text-xs opacity-60 truncate">
                     <span
                       :if={row.device}
