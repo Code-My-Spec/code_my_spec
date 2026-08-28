@@ -439,6 +439,23 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
+  How many messages in `role` this conversation holds.
+
+  Counted in the database rather than by listing, because the caller wants a
+  number and `list_messages/2` is paged — a count taken from a page is the page
+  size once the conversation is longer than one, and the one caller that needs
+  this is a spending limit, which must not quietly stop counting at 50.
+  """
+  @spec count_messages(Conversation.t(), atom() | String.t()) :: non_neg_integer()
+  def count_messages(%Conversation{} = conversation, role) do
+    role = to_string(role)
+
+    Message
+    |> where([m], m.conversation_id == ^conversation.id and m.role == ^role)
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
   Text of the conversation's most recent message in `role`, or nil if none.
 
   Exists for the recorder's repeat check. Consecutive model turns often carry

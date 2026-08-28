@@ -61,13 +61,18 @@ defmodule CodeMySpec.Agents.Credential do
   ## Off unless configured, deliberately
 
   This spends real money on people who may never come back — the interview runs
-  during the boot precisely because this funnel leaks. Nothing bounds that yet:
-  no turn cap, no token budget, no expiry. Until something does, an unset
-  configuration means a visitor sees "connect a provider", which is the
-  behaviour that existed before this and costs nothing.
+  during the boot precisely because this funnel leaks.
 
-  A default that spent by accident would be the wrong way round for a decision
-  nobody has finished making.
+  `Agents.turn_allowance/2` now bounds it: ten turns per visitor, configurable
+  as `:platform_turn_cap`, enforced at `dispatch_message/3` and reported to the
+  visitor before they reach it. That is one of the three bounds this doc used to
+  say were missing; there is still no token budget and no expiry, so ten turns
+  of an expensive model is the worst case a deployment is agreeing to.
+
+  Still off by default. A cap makes the spend bounded, not free, and a default
+  that started spending on a version bump would be the wrong way round for a
+  commercial decision — the number is small enough to switch on deliberately and
+  large enough to matter multiplied by a funnel.
 
   Only ever reached when the visitor's own integration is missing. Someone who
   has connected their own provider uses it — this never silently pays for a
@@ -88,6 +93,52 @@ defmodule CodeMySpec.Agents.Credential do
 
       _ ->
         {:error, :not_connected}
+    end
+  end
+
+  @doc """
+  Whose credential an agent on this provider would run on.
+
+  `:user` is theirs, `:platform` is ours, `:none` is nobody's — the agent cannot
+  start at all.
+
+  Asked separately from `fetch/2` because the two callers want different things.
+  Starting an agent does not care whose credential it got, and folding the
+  answer into the return value would make every caller handle a distinction
+  almost none of them have an opinion about. What *does* care is the turn cap:
+  it exists because we are paying, so it has to apply to exactly the agents we
+  are paying for and to no others.
+
+  Derived rather than stored, and that is deliberate. A visitor who connects
+  their own provider later is paying for themselves from that moment, and their
+  cap should lift without anything having to notice and update a row. A stored
+  flag would say "started on ours" forever, which is a fact about the past
+  rather than about who is spending now.
+  """
+  @spec source(Scope.t(), String.t()) :: :user | :platform | :none
+  def source(%Scope{} = scope, provider) when is_binary(provider) do
+    with {:ok, integration_provider} <- Providers.integration_provider(provider) do
+      case build(scope, provider, integration_provider) do
+        {:ok, _credential} ->
+          :user
+
+        # A credential that needs reconnecting is still theirs. Treating it as
+        # ours would put a cap on someone who is paying and has a token to
+        # refresh, and `fetch/2` does not fall back for this case either.
+        {:error, :reconnect_required} ->
+          :user
+
+        {:error, :not_connected} ->
+          case platform_credential(provider) do
+            {:ok, _} -> :platform
+            {:error, _} -> :none
+          end
+
+        {:error, _other} ->
+          :none
+      end
+    else
+      _ -> :none
     end
   end
 

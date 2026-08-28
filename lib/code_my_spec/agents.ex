@@ -59,6 +59,12 @@ defmodule CodeMySpec.Agents do
 
   @stop_timeout_ms 10_000
 
+  # Ten, because that is roughly a conversation rather than a session: enough
+  # for a visitor to be shown their project works and be answered about it,
+  # short of an afternoon on our bill. Configurable, since the right number is
+  # a commercial question rather than a technical one.
+  @default_turn_cap 10
+
   # Long enough for a cold start on a loaded box, short enough that a machine
   # that is never going to answer does not hold the caller.
   @start_timeout_ms 15_000
@@ -396,6 +402,7 @@ defmodule CodeMySpec.Agents do
     ref = Ecto.UUID.generate()
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <- within_turn_cap(scope, agent),
          {:ok, disposition} <-
            Transport.impl().dispatch_message(
              agent.working_copy_id,
@@ -407,6 +414,60 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent),
          {:ok, message} <- record_sent(conversation, text, ref, disposition) do
       {:ok, disposition, message}
+    end
+  end
+
+  @doc """
+  How many turns an agent on our credential gets, and how many are left.
+
+  `{used, cap}` for an agent we are paying for, `:uncapped` for one the visitor
+  is paying for themselves. The view needs both numbers rather than a boolean:
+  a limit somebody discovers by hitting it is a worse experience than one they
+  could see coming.
+  """
+  @spec turn_allowance(Scope.t(), Agent.t()) ::
+          {non_neg_integer(), pos_integer()} | :uncapped
+  def turn_allowance(%Scope{} = scope, %Agent{} = agent) do
+    # `provider`, not `engine`. The engine is `:pi` -- what runs -- and the
+    # provider is whose subscription it spends. Asking Credential about the
+    # engine returns `:none` for every agent, which means the cap compiles,
+    # every credential test passes, and it never once binds.
+    case Credential.source(scope, agent.provider) do
+      :platform -> {turns_used(scope, agent), turn_cap()}
+      _ -> :uncapped
+    end
+  end
+
+  @doc "Turns an agent on our credential gets before it stops answering."
+  @spec turn_cap() :: pos_integer()
+  def turn_cap do
+    :code_my_spec
+    |> Application.get_env(Credential, [])
+    |> Keyword.get(:platform_turn_cap, @default_turn_cap)
+  end
+
+  # The cap exists because we are paying, so it is asked here rather than at
+  # start: the visitor may connect their own provider mid-conversation, and
+  # from that moment they are paying and the cap has no business applying.
+  #
+  # Refused at dispatch and nowhere else, because dispatch is the one door a
+  # turn comes through. Capping at start would only stop the eleventh
+  # conversation, not the eleventh turn of the first one.
+  defp within_turn_cap(scope, agent) do
+    case turn_allowance(scope, agent) do
+      :uncapped -> :ok
+      {used, cap} when used < cap -> :ok
+      {_used, cap} -> {:error, {:turn_cap_reached, cap}}
+    end
+  end
+
+  # What the visitor has said, not what the agent has answered. A turn is
+  # something they spend; counting the agent's replies would charge them for a
+  # model that answered twice.
+  defp turns_used(scope, agent) do
+    case open_conversation(scope, agent) do
+      {:ok, conversation} -> Conversations.count_messages(conversation, :operator)
+      _ -> 0
     end
   end
 

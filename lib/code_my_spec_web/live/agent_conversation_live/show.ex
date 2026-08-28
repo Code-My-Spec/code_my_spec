@@ -629,6 +629,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp sent({:error, reason}, socket),
     do: {:noreply, put_flash(socket, :error, undelivered(reason))}
 
+  # The one refusal that is not a fault. Running out of turns on our credential
+  # is the arrangement working as intended, so it says what happened and what
+  # to do about it rather than reporting a delivery problem — nothing failed
+  # and nothing is broken.
+  defp undelivered({:turn_cap_reached, cap}),
+    do:
+      "That is #{cap} messages on our account, which is where the free conversation ends. " <>
+        "Connect your own provider in Settings and the agent picks straight back up."
+
   defp undelivered(:harness_not_connected),
     do:
       "That message could not be delivered: the machine holding this working copy " <>

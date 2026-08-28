@@ -29,8 +29,9 @@ defmodule CodeMySpec.Agents.PlatformCredentialTest do
     assert {:error, :not_connected} = Credential.platform_credential("anthropic"),
            "an unset configuration handed out a credential, so a deployment that " <>
              "never chose to pay for visitors' conversations would start paying for " <>
-             "them. Nothing bounds that spend yet — no turn cap, no budget, no " <>
-             "expiry — so the default has to be the behaviour that costs nothing."
+             "them. `Agents.turn_allowance/2` bounds it once switched on, but a cap " <>
+             "makes the spend bounded rather than free, so the default is still the " <>
+             "behaviour that costs nothing."
   end
 
   test "blank is the same as unset" do
