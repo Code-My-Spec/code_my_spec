@@ -9,6 +9,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.IntakeComponents
+
   alias CodeMySpec.{Intake, UserPreferences, Workspaces}
   alias CodeMySpec.Intake.Interview
   alias CodeMySpec.Users.Scope
@@ -26,23 +28,43 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
       <.failed :if={@workspace.status == :failed} workspace={@workspace} />
 
-      <%= if @workspace.status != :failed do %>
-        <h1 class="text-3xl font-bold mb-2">Now let's decide what it actually does.</h1>
-        <p class="text-base-content/70 mb-6">
-          Your application is being built while we talk. A few questions and you'll see the rules
-          I derived from your answers.
-        </p>
-      <% end %>
+      <%!--
+        The same conversation, continued. It used to open with its own heading —
+        "Now let's decide what it actually does" — over a card-based interview,
+        so a visitor who had just confirmed a plan arrived somewhere that looked
+        like a different product. Signup sits between the two pages and a
+        LiveView cannot survive that navigation, so continuity has to be rebuilt
+        rather than kept: both pages derive the same transcript from the same
+        plan row.
+      --%>
+      <.conversation :if={@workspace.status != :failed} transcript={@transcript}>
+        <.derived_rules :if={@rules} rules={@rules} />
+      </.conversation>
 
-      <%!-- The interview outlives the boot. A workspace that dies is a reason
-            to retry the workspace, not to throw away a conversation the visitor
-            has already spent time on. --%>
-      <.interview
-        turn={@turn}
-        answered={@answered}
-        rules={@rules}
-        interview_error={@interview_error}
-      />
+      <%!--
+        How far through, kept from the card this replaced. Not decoration: the
+        interview promises to pay out within four questions, and a visitor who
+        cannot see the end of a conversation does not know it has one.
+      --%>
+      <p
+        :if={@workspace.status != :failed and @turn}
+        data-test="interview-progress"
+        class="mt-4 text-xs uppercase tracking-[0.18em] text-base-content/50"
+      >
+        question {length(@answered) + 1} of {Interview.question_cap()}
+      </p>
+
+      <.composer
+        :if={@workspace.status != :failed and @turn}
+        event="answer"
+        field="answer"
+        rows="2"
+        placeholder="In your own words."
+      >
+        <input type="hidden" name="turn_id" value={@turn && @turn.id} />
+      </.composer>
+
+      <p :if={@interview_error} class="text-error text-sm mt-3">{@interview_error}</p>
 
       <.boot_status
         :if={@workspace.status != :failed}
@@ -50,45 +72,6 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         app_state={@app_state}
       />
     </div>
-    """
-  end
-
-  defp interview(assigns) do
-    ~H"""
-    <div class="card bg-base-200 mb-6">
-      <div class="card-body">
-        <div :for={turn <- @answered} class="mb-4">
-          <p class="text-sm text-base-content/60">{turn.question}</p>
-          <p class="font-medium">{turn.answer}</p>
-        </div>
-
-        <.interview_question :if={@turn} turn={@turn} answered={@answered} />
-        <.derived_rules :if={@rules} rules={@rules} />
-        <p :if={@interview_error} class="text-error text-sm">{@interview_error}</p>
-      </div>
-    </div>
-    """
-  end
-
-  defp interview_question(assigns) do
-    ~H"""
-    <p class="text-xs uppercase tracking-[0.18em] text-base-content/50 mb-2">
-      question {length(@answered) + 1} of {Interview.question_cap()}
-    </p>
-    <p class="text-lg mb-3">{@turn.question}</p>
-
-    <form phx-submit="answer">
-      <input type="hidden" name="turn_id" value={@turn.id} />
-      <textarea
-        name="answer"
-        rows="3"
-        required
-        autofocus
-        class="textarea textarea-bordered w-full"
-        placeholder="In your own words."
-      ></textarea>
-      <.button class="btn-primary mt-3">Next</.button>
-    </form>
     """
   end
 
@@ -121,7 +104,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         class="flex items-center justify-between gap-3"
       >
         <span class="text-sm font-medium">It's running.</span>
-        <a href={Workspaces.url(@workspace)} target="_blank" rel="noopener" class="btn btn-sm btn-primary">
+        <a
+          href={Workspaces.url(@workspace)}
+          target="_blank"
+          rel="noopener"
+          class="btn btn-sm btn-primary"
+        >
           Open your application
         </a>
       </div>
@@ -224,6 +212,19 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     socket
     |> assign(:answered, answered)
     |> assign_current(plan)
+    |> assign_transcript()
+  end
+
+  # Everything said across both pages, rebuilt from the plan row. The shaping
+  # turns before signup and the interview turns after it are the same shape,
+  # because to the visitor they are the same conversation — the split exists
+  # because signup is between them, not because the questions differ.
+  defp assign_transcript(socket) do
+    %{plan: plan, answered: answered, turn: turn} = socket.assigns
+
+    turns = Enum.map(answered, &%{question: &1.question, answer: &1.answer})
+
+    assign(socket, :transcript, Intake.transcript(plan, turns, turn && turn.question))
   end
 
   defp assign_current(socket, plan) do

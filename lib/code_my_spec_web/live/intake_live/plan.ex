@@ -24,6 +24,8 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.IntakeComponents
+
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.{Funnel, Plan, Shaper}
   alias CodeMySpec.Users.Scope
@@ -45,35 +47,22 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         over. The conversation is the product here; the steps were an
         implementation detail leaking through the page.
       --%>
-      <div data-test="intake-transcript" class="min-h-0 flex-1 space-y-4 overflow-y-auto">
-        <.said :for={entry <- @transcript} entry={entry} />
-
-        <div :if={@thinking} data-test="intake-thinking" class="chat chat-start">
-          <div class="chat-bubble chat-bubble-neutral opacity-60">Thinking…</div>
-        </div>
-
+      <.conversation transcript={@transcript} thinking={@thinking}>
         <.plan_card :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
-      </div>
+      </.conversation>
 
-      <.composer :if={@plan.status in [:describing, :answering]} plan={@plan} />
-    </div>
-    """
-  end
-
-  attr :entry, :map, required: true
-
-  defp said(%{entry: %{from: :agent}} = assigns) do
-    ~H"""
-    <div data-test="intake-said" data-from="agent" class="chat chat-start">
-      <div class="chat-bubble chat-bubble-neutral">{@entry.text}</div>
-    </div>
-    """
-  end
-
-  defp said(assigns) do
-    ~H"""
-    <div data-test="intake-said" data-from="visitor" class="chat chat-end">
-      <div class="chat-bubble chat-bubble-primary">{@entry.text}</div>
+      <.composer
+        :if={@plan.status in [:describing, :answering]}
+        event={if @plan.status == :describing, do: "describe", else: "answer"}
+        field={if @plan.status == :describing, do: "description", else: "answer"}
+        rows={if @plan.status == :describing, do: "3", else: "1"}
+        placeholder={
+          if @plan.status == :describing,
+            do:
+              "A booking tool for hair salons, so owners can see their week and clients can book themselves in.",
+            else: "Type your answer"
+        }
+      />
     </div>
     """
   end
@@ -135,37 +124,6 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         </.form>
       </div>
     </div>
-    """
-  end
-
-  # One composer for the whole conversation. Which event it submits depends on
-  # where the conversation has got to, and that is the only thing that changes —
-  # the visitor sees the same box they have been typing into all along.
-  attr :plan, :map, required: true
-
-  defp composer(assigns) do
-    ~H"""
-    <form
-      data-test="intake-composer"
-      phx-submit={if @plan.status == :describing, do: "describe", else: "answer"}
-      class="mt-4 flex shrink-0 items-end gap-3"
-    >
-      <textarea
-        name={if @plan.status == :describing, do: "description", else: "answer"}
-        rows={if @plan.status == :describing, do: "3", else: "1"}
-        required
-        autofocus
-        autocomplete="off"
-        class="textarea textarea-bordered w-full"
-        placeholder={
-          if @plan.status == :describing,
-            do:
-              "A booking tool for hair salons, so owners can see their week and clients can book themselves in.",
-            else: "Type your answer"
-        }
-      ></textarea>
-      <.button class="btn-primary">Send</.button>
-    </form>
     """
   end
 
@@ -277,39 +235,11 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     |> assign_transcript()
   end
 
-  # Everything said so far, in the order it was said.
-  #
-  # Derived rather than accumulated, so a visitor who leaves and comes back in
-  # the same browser gets their conversation back rather than an empty one — the
-  # plan row is what persists, and the transcript is a reading of it. An
-  # accumulated list would live only in the socket and be lost on the reload
-  # this flow is specifically built to survive.
-  #
-  # The opening question is part of it. It used to be an `<h1>` above a
-  # textarea, which is what made the visitor's own description the only thing on
-  # screen that was not part of a conversation.
+  # Derived in `Intake`, not here, so the workspace page can rebuild the same
+  # conversation from the same row after the signup gate has navigated away.
   defp assign_transcript(socket) do
     %{plan: plan, turns: turns, question: question} = socket.assigns
 
-    transcript =
-      [%{from: :agent, text: "What do you want to build?"}]
-      |> put_said(plan.description)
-      |> then(fn said ->
-        Enum.reduce(turns, said, fn turn, acc ->
-          acc
-          |> put_said(turn.question, :agent)
-          |> put_said(turn.answer)
-        end)
-      end)
-      |> put_said(question, :agent)
-
-    assign(socket, :transcript, transcript)
+    assign(socket, :transcript, Intake.transcript(plan, turns, question))
   end
-
-  defp put_said(transcript, text, from \\ :visitor)
-
-  defp put_said(transcript, text, from) when is_binary(text) and text != "",
-    do: transcript ++ [%{from: from, text: text}]
-
-  defp put_said(transcript, _text, _from), do: transcript
 end

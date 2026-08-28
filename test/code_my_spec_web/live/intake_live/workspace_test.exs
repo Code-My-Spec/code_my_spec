@@ -79,8 +79,16 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       {:ok, view, html} = live(conn, ~p"/build/workspace")
 
-      assert html =~ "Now let's decide what it actually does." or
-               html =~ "decide what it actually does"
+      # The conversation, not a new heading. This page used to open with "Now
+      # let's decide what it actually does" over a card-based interview, so a
+      # visitor who had just confirmed a plan arrived somewhere that looked like
+      # a different product. Signup navigates between the two pages, so the
+      # transcript is rebuilt from the plan row rather than carried.
+      assert html =~ "What do you want to build?",
+             "the workspace page does not show what was said before it existed, so " <>
+               "the visitor's conversation restarts at the signup gate"
+
+      assert html =~ "a booking tool for hair salons"
 
       assert render_async_progress(view) =~ "Fetching dependencies"
 
@@ -97,8 +105,9 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       assert html =~ "Open your application"
       assert html =~ "http://localhost:"
-      # The interview is the foreground even once it is up.
-      assert html =~ "decide what it actually does"
+      # The conversation is the foreground even once it is up — the boot is
+      # ambient, which is the whole reason the interview runs during it.
+      assert html =~ "What do you want to build?"
     end
   end
 

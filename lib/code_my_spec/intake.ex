@@ -92,6 +92,46 @@ defmodule CodeMySpec.Intake do
   def change_names(%Plan{} = plan, attrs \\ %{}), do: Plan.names_changeset(plan, attrs)
 
   @doc """
+  Everything said so far, in the order it was said.
+
+  Derived from the plan row rather than accumulated anywhere, which is what
+  makes it survive both a reload and the navigation through the signup gate. A
+  visitor who comes back in the same browser gets their conversation back, and
+  the workspace page can show what was said before it existed — the two pages
+  read one row rather than passing a list between them.
+
+  The opening question is part of it. It was an `<h1>` above a textarea, which
+  is what made the visitor's own description the only thing on screen that was
+  not part of a conversation.
+
+  `turns` and `question` are whatever the caller is holding live: the shaping
+  turns before the plan, the interview turns after it. Both are the same shape,
+  because to the visitor they are the same conversation.
+  """
+  @spec transcript(Plan.t(), [map()], String.t() | nil) :: [
+          %{from: :agent | :visitor, text: String.t()}
+        ]
+  def transcript(%Plan{} = plan, turns \\ [], question \\ nil) do
+    [%{from: :agent, text: "What do you want to build?"}]
+    |> said(plan.description)
+    |> then(fn transcript ->
+      Enum.reduce(turns, transcript, fn turn, acc ->
+        acc
+        |> said(turn.question, :agent)
+        |> said(turn.answer)
+      end)
+    end)
+    |> said(question, :agent)
+  end
+
+  defp said(transcript, text, from \\ :visitor)
+
+  defp said(transcript, text, from) when is_binary(text) and text != "",
+    do: transcript ++ [%{from: from, text: text}]
+
+  defp said(transcript, _text, _from), do: transcript
+
+  @doc """
   Turns a confirmed plan into an account and a project for the signed-in user.
 
   Goes through `Accounts.create_account/2` deliberately — that path picks an
