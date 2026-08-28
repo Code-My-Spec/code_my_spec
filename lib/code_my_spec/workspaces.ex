@@ -155,7 +155,7 @@ defmodule CodeMySpec.Workspaces do
     case WorkingCopies.issue(scope, nil, label: "the cloud copy of #{project.name}") do
       {:ok, copy} ->
         [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
-          deploy_key_env(project)
+          deploy_key_env(project) ++ server_url_env()
 
       {:error, reason} ->
         # Not fatal. An instance that comes up un-onboarded still runs the
@@ -170,6 +170,27 @@ defmodule CodeMySpec.Workspaces do
     do: [{"CMS_DEPLOY_KEY", key}]
 
   defp deploy_key_env(_project), do: []
+
+  # Where the instance's harness reports back to.
+  #
+  # Without it the harness joins whatever URL it was compiled with, which is
+  # production — so a container a developer started would announce its working
+  # copy to the live server, and the copy the visitor is waiting to see would
+  # never appear here.
+  #
+  # Configured rather than derived, because the answer is a property of where
+  # the instance runs rather than of this server: inside a container
+  # `localhost:4000` is the container, so the host has to be named the way the
+  # container can actually reach it.
+  defp server_url_env do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Workspaces, [])
+    |> Keyword.get(:server_url)
+    |> case do
+      url when is_binary(url) and url != "" -> [{"CMS_SERVER_URL", url}]
+      _ -> []
+    end
+  end
 
   @doc "The workspace as it stands now, or nil if it has gone away."
   @spec reload(Workspace.t()) :: Workspace.t() | nil

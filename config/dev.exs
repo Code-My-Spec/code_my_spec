@@ -155,7 +155,13 @@ config :code_my_spec, :cloudflare_tunnel,
 # Bare metal, not Docker — see `CodeMySpec.Workspaces.Runner.Local`'s
 # moduledoc for what that trades away (each instance's own filesystem and
 # loopback) against what it does not need (a Docker daemon on this machine).
-config :code_my_spec, CodeMySpec.Workspaces, runner: CodeMySpec.Workspaces.Runner.Local
+# `host.docker.internal`, not localhost: inside a container localhost is the
+# container. An instance told to report to localhost:4000 announces itself to
+# its own Phoenix app, and the working copy the visitor is waiting to see never
+# appears.
+config :code_my_spec, CodeMySpec.Workspaces,
+  runner: CodeMySpec.Workspaces.Runner.Local,
+  server_url: "http://host.docker.internal:4000"
 
 # `codemyspec.com`, not `astralbi.com`, and the reason is the session cookie.
 #
