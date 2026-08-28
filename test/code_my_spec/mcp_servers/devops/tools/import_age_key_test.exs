@@ -3,11 +3,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKeyTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Devops.Tools.ImportAgeKey
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sops, Steps}
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   @moduletag :sops
 

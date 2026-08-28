@@ -3,10 +3,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredentialTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential
-  alias CodeMySpec.Provisioning.Registry
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential
+  alias CodeMySpec.Provisioning.Registry
 
   setup do
     scope = full_scope_fixture()

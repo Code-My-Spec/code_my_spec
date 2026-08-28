@@ -575,7 +575,7 @@ defmodule CodeMySpec.Provisioning.Registry do
     script =
       "[ -d #{shell_escape(dir)} ] || exit 0; " <>
         "for d in #{shell_escape(dir)}/*/; do " <>
-        "t=$(stat -c %Y \"$d\"current/link 2>/dev/null) && echo \"$t $(basename \"$d\")\"; " <>
+        ~s{t=$(stat -c %Y "$d"current/link 2>/dev/null) && echo "$t $(basename "$d")"; } <>
         "done"
 
     case run.(["docker exec #{@container} sh -c #{shell_escape(script)}"]) do

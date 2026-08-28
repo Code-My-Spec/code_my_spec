@@ -38,6 +38,7 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Repo
   alias CodeMySpec.Resources.Acknowledgement
   alias CodeMySpec.Resources.Inventory
@@ -130,7 +131,7 @@ defmodule CodeMySpec.Resources do
 
   defp remove(scope, resource) do
     case config(:trim) do
-      nil -> CodeMySpec.Provisioning.Teardown.resource(scope, Map.put(resource, :origin, "created"))
+      nil -> Teardown.resource(scope, Map.put(resource, :origin, "created"))
       fun -> fun.(scope, resource)
     end
   end

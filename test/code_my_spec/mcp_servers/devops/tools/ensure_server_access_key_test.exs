@@ -3,9 +3,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKeyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey
 
   setup do
     Application.put_env(:code_my_spec, CodeMySpec.Servers,

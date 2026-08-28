@@ -9,11 +9,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ProviderRequestTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Devops.Tools.ProviderRequest
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   setup do
     scope = full_scope_fixture()

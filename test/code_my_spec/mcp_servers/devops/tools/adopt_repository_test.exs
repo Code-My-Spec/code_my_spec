@@ -4,13 +4,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.GitHub
   alias CodeMySpec.McpServers.Devops.Tools.AdoptRepository
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.RunLock
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   setup do
     {:ok, working_dir} = Briefly.create(directory: true)

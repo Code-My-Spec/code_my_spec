@@ -4,12 +4,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.GitHub
   alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
   alias CodeMySpec.Provisioning.RunLock
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   setup do
     {:ok, working_dir} = Briefly.create(directory: true)

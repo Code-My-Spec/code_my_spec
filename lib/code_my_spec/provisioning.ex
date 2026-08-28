@@ -416,27 +416,31 @@ defmodule CodeMySpec.Provisioning do
   defp spawn_step(%Scope{active_project_id: project_id} = scope, key, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        # Guards against the same race a whole-sequence run guards against —
-        # a single-step retry writes to the same project's rows a
-        # `run_devops_setup`/`fix-all` run in flight is writing to. Refusing
-        # silently rather than surfacing an error is a deliberate, narrower
-        # choice than the whole-run path takes: this button is optimistic
-        # already (the caller never awaited a result even before this
-        # existed), so there is no caller here to hand a "try again" message
-        # to — only a log line for whoever goes looking.
-        case RunLock.with_lock(project_id, fn -> run_step(scope, key, opts) end) do
-          {:error, {:already_running, started_at}} ->
-            Logger.info(
-              "[Provisioning] #{key} skipped — a run for this project is already in flight" <>
-                (started_at && " (started #{started_at})" || "")
-            )
-
-          _result ->
-            :ok
-        end
+        run_locked_step(scope, project_id, key, opts)
       end)
 
     :ok
+  end
+
+  # Guards against the same race a whole-sequence run guards against — a
+  # single-step retry writes to the same project's rows a
+  # `run_devops_setup`/`fix-all` run in flight is writing to. Refusing
+  # silently rather than surfacing an error is a deliberate, narrower choice
+  # than the whole-run path takes: this button is optimistic already (the
+  # caller never awaited a result even before this existed), so there is no
+  # caller here to hand a "try again" message to — only a log line for
+  # whoever goes looking.
+  defp run_locked_step(scope, project_id, key, opts) do
+    case RunLock.with_lock(project_id, fn -> run_step(scope, key, opts) end) do
+      {:error, {:already_running, started_at}} ->
+        Logger.info(
+          "[Provisioning] #{key} skipped — a run for this project is already in flight" <>
+            (started_at && " (started #{started_at})" || "")
+        )
+
+      _result ->
+        :ok
+    end
   end
 
   defp run_step_sync(scope, key, opts) do

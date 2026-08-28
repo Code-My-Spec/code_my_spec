@@ -3,10 +3,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetupTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup
-  alias CodeMySpec.Provisioning.StepRepository
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup
+  alias CodeMySpec.Provisioning.StepRepository
 
   # Fake providers only, same reasoning as ResourcesTest: this exists to
   # prove the tool's own scoping and outcome reporting, not to exercise real

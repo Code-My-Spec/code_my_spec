@@ -3,10 +3,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrlTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl
-  alias CodeMySpec.Provisioning.Database
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl
+  alias CodeMySpec.Provisioning.Database
 
   setup do
     scope = full_scope_fixture()

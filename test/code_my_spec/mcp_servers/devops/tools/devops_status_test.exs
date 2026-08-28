@@ -4,11 +4,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
   alias CodeMySpec.Resources
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   setup do
     scope = full_scope_fixture()

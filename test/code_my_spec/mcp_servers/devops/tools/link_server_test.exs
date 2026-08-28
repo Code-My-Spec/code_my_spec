@@ -3,11 +3,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServerTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Devops.Tools.LinkServer
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Servers.Server
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
 
   setup do
     scope = full_scope_fixture()
