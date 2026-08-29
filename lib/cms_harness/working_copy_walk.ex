@@ -40,10 +40,38 @@ defmodule CmsHarness.WorkingCopyWalk do
   past it is how an un-onboarded checkout inherits its parent's identity, and
   reporting one checkout's work under another's id is the failure this whole
   area keeps producing.
+
+  ### A submodule is not a boundary
+
+  It has a `.git`, so it used to be one, and that wedged the harness. An agent
+  that commits to `.code_my_spec` — the normal path; specs, knowledge, rules
+  and QA briefs all live there — leaves its shell inside it, every subsequent
+  hook payload carries that `cwd`, and the walk refused at the submodule
+  forever. Worse than the refusal was its remedy: it named
+  `mix cms.harness.onboard` on the submodule, which would register the spec
+  repo as a working copy of its own and start tracking its files, problems and
+  analysis as a project.
+
+  A submodule is not an independent checkout. It is content *of* the parent,
+  committed there as a gitlink, so work done inside it belongs to the parent's
+  identity and walking through is correct rather than a leak.
+
+  Git says which it is. A submodule's `.git` is a file whose gitdir has a
+  `modules` segment after `.git`; a worktree's does not:
+
+      submodule  gitdir: ../../../../.git/worktrees/wt-name/modules/.code_my_spec
+      worktree   gitdir: /Users/…/code_my_spec/.git/worktrees/wt-name
+      plain      .git is a directory
+
+  Matched as a path segment after `.git` rather than anywhere in the string, so
+  a checkout living under a directory that happens to be called `modules` is
+  still a boundary.
+
+  A submodule that genuinely is its own onboarded project is unaffected: it
+  holds a `.cms_harness.json`, which is checked before this.
   """
 
   @config ".cms_harness.json"
-  @boundaries [".git", "mix.exs"]
 
   @doc """
   The working copy root containing `path`, or why not.
@@ -79,5 +107,48 @@ defmodule CmsHarness.WorkingCopyWalk do
     end
   end
 
-  defp boundary?(dir), do: Enum.any?(@boundaries, &File.exists?(Path.join(dir, &1)))
+  defp boundary?(dir) do
+    git_boundary?(Path.join(dir, ".git")) or File.exists?(Path.join(dir, "mix.exs"))
+  end
+
+  # A `.git` directory is a plain checkout. A `.git` file is either a worktree
+  # or a submodule, and only the worktree is a boundary.
+  defp git_boundary?(git) do
+    cond do
+      File.dir?(git) -> true
+      File.regular?(git) -> not submodule?(git)
+      true -> false
+    end
+  end
+
+  defp submodule?(git) do
+    case File.read(git) do
+      {:ok, contents} -> contents |> gitdir() |> modules_segment?()
+      {:error, _reason} -> false
+    end
+  end
+
+  defp gitdir(contents) do
+    contents
+    |> String.split("\n")
+    |> Enum.find_value("", fn line ->
+      case String.split(line, "gitdir:", parts: 2) do
+        [_before, path] -> String.trim(path)
+        _otherwise -> nil
+      end
+    end)
+  end
+
+  # After the `.git` segment, not anywhere in the string: `/srv/modules/app/.git`
+  # is somebody's checkout, not a submodule.
+  defp modules_segment?(""), do: false
+
+  defp modules_segment?(gitdir) do
+    segments = Path.split(gitdir)
+
+    case Enum.find_index(segments, &(&1 == ".git")) do
+      nil -> false
+      at -> "modules" in Enum.drop(segments, at + 1)
+    end
+  end
 end
