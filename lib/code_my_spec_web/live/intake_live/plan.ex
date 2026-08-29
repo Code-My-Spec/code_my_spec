@@ -102,8 +102,35 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
           phx-change="validate_names"
           class="mt-4 space-y-3"
         >
-          <.input field={@form[:account_name]} type="text" label="Account name" />
-          <.input field={@form[:project_name]} type="text" label="Project name" />
+          <%!--
+            `text-base-content` on every control, and this is load-bearing rather
+            than tidying. daisyUI's `.input` and `.select` set their own
+            background — `--color-base-100` — and no colour, so they inherit it
+            from whatever encloses them. Here that is `.chat-bubble-neutral`,
+            which sets `--color-neutral-content`: the colour meant to sit on the
+            dark neutral bubble.
+
+            In dark mode those happen to agree and it reads fine. In light mode
+            base-100 is white and neutral-content is near-white, so the plan card
+            — the one screen where the visitor confirms what gets built — was
+            white on white. Reported from a phone; every screenshot I had taken
+            was dark.
+
+            The labels are deliberately left alone: they sit on the bubble, not
+            in a field, so the bubble's colour is the right one for them.
+          --%>
+          <.input
+            field={@form[:account_name]}
+            type="text"
+            label="Account name"
+            class="w-full input text-base-content"
+          />
+          <.input
+            field={@form[:project_name]}
+            type="text"
+            label="Project name"
+            class="w-full input text-base-content"
+          />
 
           <%!--
             The two conclusions that pick the generators. They used to be prose,
@@ -115,6 +142,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
             type="select"
             label="People sign in to use it"
             options={[{"Yes", "true"}, {"No", "false"}]}
+            class="w-full select text-base-content"
           />
 
           <.input
@@ -122,6 +150,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
             type="select"
             label="Each business gets its own separate copy"
             options={[{"Yes", "true"}, {"No", "false"}]}
+            class="w-full select text-base-content"
           />
 
           <%!--
@@ -139,6 +168,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
               {"In the cloud — nothing to install", "cloud"},
               {"On my machine", "local"}
             ]}
+            class="w-full select text-base-content"
           />
 
           <.button class="btn-primary">Looks right — build it</.button>
