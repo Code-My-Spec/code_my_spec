@@ -158,6 +158,16 @@ defmodule CodeMySpec.MixProject do
       {:mdex, "~> 0.5"},
       {:mdex_mermaid, "~> 0.3"},
       {:floki, "~> 0.38"},
+      # The Lua VM code mode runs agent scripts in (story 970). A Lua 5.3 VM
+      # written in Elixir — no NIFs and no C, which is what makes it safe
+      # inside the Burrito binary after MDEx's NIF crashed the BEAM on Windows.
+      #
+      # Not Amber's `~> 0.4`, for two reasons. The resource limits code mode
+      # depends on (`max_instructions`, `max_call_depth`, `max_string_bytes`)
+      # arrived in 1.0. And 0.4 was a wrapper over the Erlang `luerl`; 1.0 is
+      # its own VM and drops that dependency, so there is no NIF-free claim to
+      # re-check at a layer below this one.
+      {:lua, "~> 1.0"},
       {:yaml_elixir, "~> 2.11"},
       {:dir_walker, "~> 0.0.8"},
       {:assent, "~> 0.3.1"},
