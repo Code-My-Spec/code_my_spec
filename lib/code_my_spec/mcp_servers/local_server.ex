@@ -155,6 +155,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
 
+  # Code mode — every other tool on this server, reachable from one script
+  # instead of one call each (story 970). `tool_docs` is how their arguments
+  # get looked up rather than carried; the 111 registrations above cost
+  # ~21,500 tokens at connect, which is what story 971 is about.
+  component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)
+  component(CodeMySpec.McpServers.CodeMode.Tools.RunScript)
+
   # Issues — full lifecycle
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ListIssues)

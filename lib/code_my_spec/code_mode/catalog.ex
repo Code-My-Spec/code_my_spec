@@ -33,6 +33,12 @@ defmodule CodeMySpec.CodeMode.Catalog do
   Those stay direct-call only. Story 971 carries the consequence: an excluded
   tool has to stay on the spine, or excluding it here makes it unreachable
   altogether.
+
+  Code mode's own two tools are excluded for a different reason. The catalog is
+  built from every tool the server registers, which after registration includes
+  `run_script` — so without this a script could call `run_script`, and that one
+  could call it again, each nesting a fresh VM inside a tool call of the last.
+  The limits are per-evaluation and would not see it.
   """
 
   @excluded ~w(
@@ -45,6 +51,8 @@ defmodule CodeMySpec.CodeMode.Catalog do
     message_agent
     tap_out
     show_in_panel
+    run_script
+    tool_docs
   )
 
   @type invoke :: (map() -> {:ok, term()} | {:error, String.t()})
