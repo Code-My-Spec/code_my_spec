@@ -3,9 +3,12 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebFetch do
   Read a web page as Markdown.
 
   Handles the shapes that are worth handling: GitHub file views are read as the
-  raw file rather than the surrounding application, Reddit threads come back as
-  the thread, JSON is pretty-printed, and ordinary pages are stripped of
-  navigation and converted to Markdown.
+  raw file rather than the surrounding application, JSON is pretty-printed, and
+  ordinary pages are stripped of navigation and converted to Markdown.
+
+  Reddit is refused rather than fetched — it needs an OAuth app now, and what
+  comes back without one is a login wall that converts to Markdown perfectly
+  and says nothing.
   """
 
   use Anubis.Server.Component, type: :tool
