@@ -408,6 +408,23 @@ config :code_my_spec, CodeMySpec.Intake,
   model: intake_model,
   planner_model: env!("PLANNER_MODEL", :string, nil) || intake_model
 
+# Web search and fetch for agents. Fetching needs nothing; searching needs a key
+# for one of the three providers, and `Research.Search` uses whichever is set —
+# so an environment with no key still starts, and `web_search` refuses there
+# with a message naming these variables rather than failing at boot.
+#
+# Skipped in test, where this file runs *after* `config/test.exs` and a whole
+# `config/2` call replaces rather than merges: setting three nil keys here
+# would silently unset the fake key and the `Req.Test` plug, and every search
+# test would exercise the "no provider configured" refusal instead of the thing
+# it means to test (`reference_runtime_exs_overrides_test_config`).
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Research,
+    tavily_api_key: env!("TAVILY_API_KEY", :string, nil),
+    brave_api_key: env!("BRAVE_API_KEY", :string, nil),
+    serper_api_key: env!("SERPER_API_KEY", :string, nil)
+end
+
 # Stripe. Blank when unset rather than absent, so an unconfigured environment
 # degrades to a normal error the billing page can show instead of crashing
 # inside Req's bearer-auth step.

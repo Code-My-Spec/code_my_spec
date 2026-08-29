@@ -149,6 +149,12 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)
 
+  # Research — the open web. Everything above this line answers from the
+  # repository or our own database; these two are the only way an agent here
+  # can find out something nobody in this project already knew.
+  component(CodeMySpec.McpServers.Research.Tools.WebSearch)
+  component(CodeMySpec.McpServers.Research.Tools.WebFetch)
+
   # Issues — full lifecycle
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ListIssues)

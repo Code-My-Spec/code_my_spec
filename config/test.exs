@@ -373,6 +373,14 @@ config :code_my_spec, CodeMySpec.Provisioning.Hetzner,
 #
 # Pinning the plug does not configure a credential, so a client with no
 # credential still short-circuits exactly as before.
+# Both tools go out through `Research.Http`, so one plug covers search and fetch.
+# The key is a literal so the provider resolves in test without an environment:
+# without it every search test would exercise the "no provider" refusal instead
+# of the thing it means to test.
+config :code_my_spec, CodeMySpec.Research,
+  plug: {Req.Test, CodeMySpec.Research},
+  tavily_api_key: "test-key"
+
 config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
 config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
 config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}

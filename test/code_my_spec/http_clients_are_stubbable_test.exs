@@ -47,6 +47,17 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.Migration.Client => :other_knob,
     CodeMySpec.Workspaces.PreviewAddress => :other_knob,
 
+    # Funnelled through `Research.Http`, which carries the plug pinned under the
+    # `CodeMySpec.Research` config key — one seam for both tools and all three
+    # search providers, so there is nothing per-module to pin. What this file
+    # would otherwise catch is caught instead by "every Research request is
+    # built by Research.Http" below, which is the stronger claim.
+    CodeMySpec.Research.Http => :shared_client,
+    CodeMySpec.Research.Fetch => :shared_client,
+    CodeMySpec.Research.Search.Brave => :shared_client,
+    CodeMySpec.Research.Search.Serper => :shared_client,
+    CodeMySpec.Research.Search.Tavily => :shared_client,
+
     # Mix tasks. Not run by the suite.
     Mix.Tasks.Cms.Harness.Onboard => :mix_task,
     Mix.Tasks.Google.Token => :mix_task,
@@ -117,6 +128,29 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
            "GitHub is a Req client with a pinned plug — if the scan misses it, it misses everything"
 
     assert CodeMySpec.Provisioning.Hetzner in callers
+  end
+
+  test "every Research request is built by Research.Http" do
+    # The five `:shared_client` entries above are only safe while this holds.
+    # A module under `research/` that builds its own `Req` gets no plug, and a
+    # search or fetch in the suite would then reach the live internet — the
+    # failure this whole file exists to prevent, arriving through the one door
+    # the module-name check cannot watch.
+    builders =
+      "lib/code_my_spec/research/**/*.ex"
+      |> Path.wildcard()
+      |> Kernel.++(["lib/code_my_spec/research.ex"])
+      |> Enum.filter(fn path -> path |> File.read!() |> String.contains?("Req.new") end)
+
+    assert builders == ["lib/code_my_spec/research/http.ex"],
+           """
+           Only `Research.Http` may build a `Req` — it is where the test plug is
+           attached. These build their own:
+
+           #{Enum.map_join(builders -- ["lib/code_my_spec/research/http.ex"], "\n", &"  * #{&1}")}
+
+           Route them through `Research.Http.new/1` instead.
+           """
   end
 
   test "no allowed entry is stale" do
