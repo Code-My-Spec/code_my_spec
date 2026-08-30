@@ -56,19 +56,43 @@ defmodule CodeMySpecSpex.Story963.Criterion2915Spex do
         {:ok, _live, before} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
-        {:ok, context |> Map.put(:copy, copy) |> Map.put(:before, before)}
+        {:ok,
+         context
+         |> Map.put(:copy, copy)
+         |> Map.put(:copy_id, joined.working_copy_id)
+         |> Map.put(:before, before)}
       end
 
+      # Both spellings, because a caller who does not name the checkout still
+      # lands in one. That is the ordinary call — the MCP tool drops nil keys,
+      # so nothing about a plain `start_agent` mentions a destination — and it
+      # used to be allowed while the named call was refused. Asserting only the
+      # named one is asserting the half that already worked.
       when_ "something tries to start another agent in that same copy", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} =
+        {:reply, named, _frame} =
           StartAgent.execute(
             %{"provider" => "openai-codex", "working_copy" => context.copy},
             frame
           )
 
-        {:ok, Map.put(context, :reply, reply)}
+        # A harness on the main checkout asks from that checkout, so its scope
+        # already points there and it has no reason to say so again.
+        from_the_copy = %Frame{
+          assigns: %{
+            current_scope: %{
+              context.scope
+              | cwd: context.copy,
+                active_working_copy_id: context.copy_id
+            }
+          }
+        }
+
+        {:reply, unnamed, _frame} =
+          StartAgent.execute(%{"provider" => "openai-codex"}, from_the_copy)
+
+        {:ok, context |> Map.put(:reply, named) |> Map.put(:unnamed, unnamed)}
       end
 
       then_ "it is refused", context do
@@ -76,6 +100,15 @@ defmodule CodeMySpecSpex.Story963.Criterion2915Spex do
                "a second agent was started in the main working copy. Two agents in one " <>
                  "checkout are two processes editing one tree, and the user now has two " <>
                  "conversations where the design says one."
+
+        {:ok, context}
+      end
+
+      then_ "and so is one that lands there without saying so", context do
+        assert context.unnamed.isError,
+               "naming the main checkout was refused and landing in it silently was not, " <>
+                 "so the rule held only against callers who volunteered where they were " <>
+                 "going. Every ordinary start omits it."
 
         {:ok, context}
       end

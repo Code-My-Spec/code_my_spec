@@ -84,6 +84,31 @@ defmodule CodeMySpecSpex.Story963.Criterion2902Spex do
 
         {:ok, context}
       end
+
+      # Stopping is story 961's whole point, and opening the project afterwards
+      # is the same act this criterion is about. It used to find nothing and
+      # start nothing: `main_agent/1` read every agent ever started, so the
+      # stopped one still counted as the agent on the copy, `ensure_main_agent/1`
+      # short-circuited on it, and the checkout could never hold another. The
+      # page went on saying it was getting ready, forever.
+      then_ "and opening it after stopping that agent finds a new one", context do
+        stop_main_agent(context)
+
+        {:ok, _after_stop, html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+
+        assert html =~ "data-test=\"main-agent\"",
+               "stopping the main agent left the project with none, and opening it " <>
+                 "did not start one. The one agent a non-technical user knows about " <>
+                 "cannot be a thing they can permanently destroy by using its stop " <>
+                 "button."
+
+        refute agent_id_in(html) == agent_id_in(context.html),
+               "the stopped agent was handed back as the project's agent. It is not " <>
+                 "running, so nothing will answer, and the page says it is getting ready."
+
+        {:ok, context}
+      end
     end
   end
 

@@ -95,6 +95,34 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   end
 
   @doc """
+  Stop whatever the project currently presents as its main agent.
+
+  Through the tool an operator's stop goes through, so what the scenario
+  observes afterwards is the state a real stop leaves behind. Reads the id off
+  the page rather than being handed one, because the criterion this serves is
+  about what the *page* offers before and after.
+  """
+  @spec stop_main_agent(map()) :: :ok
+  def stop_main_agent(context) do
+    {:ok, _live, html} =
+      live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+
+    agent_id = agent_id_in(html)
+
+    assert agent_id,
+           "there is no main agent to stop, so the scenario's premise never held"
+
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, reply, _frame} =
+      CodeMySpec.McpServers.Agents.Tools.StopAgent.execute(%{"agent_id" => agent_id}, frame)
+
+    refute reply.isError, "the stop was refused, so nothing was stopped"
+
+    :ok
+  end
+
+  @doc """
   Make that checkout the project's main one, through the control that does it.
 
   Does nothing when it already is, which is the ordinary case for a project's

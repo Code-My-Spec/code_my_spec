@@ -134,6 +134,24 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  # The checkout the project talks through holds one agent, and it already has
+  # one. Written out rather than left to the generic clause, which reported this
+  # as `{:main_copy_occupied, "/Users/..."}` — an inspect of an internal tuple,
+  # readable only if you already knew the atom was a reason and the string a
+  # path.
+  def error({:main_copy_occupied, root}, _provider) do
+    refuse("""
+    Something is already running in this project's main checkout, so nothing
+    was started.
+
+    Checkout: #{root}
+
+    That copy holds one agent on purpose — it is the one the project talks
+    through, and a second conversation there is indistinguishable from it.
+    Stop the agent that is there, or start this one on a different checkout.
+    """)
+  end
+
   def error(:not_found, _provider), do: refuse("Agent not found on this project.")
 
   def error(:missing_active_project, _provider),

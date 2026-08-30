@@ -111,6 +111,7 @@ defmodule CodeMySpec.Agents do
          {:ok, provider, model} <- provider_for(scope, role, attrs),
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
+         attrs = put_destination(scope, attrs),
          :ok <- main_copy_is_free(scope, attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
@@ -144,6 +145,22 @@ defmodule CodeMySpec.Agents do
       nil -> :ok
       copy -> if names?(attrs, copy), do: refuse_if_occupied(scope, copy), else: :ok
     end
+  end
+
+  # Where the agent will actually run, decided before anything is checked
+  # against it.
+  #
+  # `base_attrs/2` used to fill this in *after* the guard, so a caller who named
+  # no checkout was checked against a copy they had not mentioned and then
+  # started on the one they had not named. That is not a corner: the MCP tool
+  # drops nil keys, so every ordinary `start_agent` arrives naming nothing, and
+  # a second agent got into the main checkout by leaving a field out. QA found
+  # it by making the same call twice, once with the copy named and once
+  # without — refused, then allowed.
+  defp put_destination(%Scope{} = scope, attrs) do
+    attrs
+    |> Map.put(:working_copy, Map.get(attrs, :working_copy) || scope.cwd)
+    |> Map.put(:working_copy_id, Map.get(attrs, :working_copy_id) || scope.active_working_copy_id)
   end
 
   # By id or by root, because callers name a checkout both ways and a guard
@@ -271,12 +288,23 @@ defmodule CodeMySpec.Agents do
   `nil` when the project has no main working copy, or has one and nothing is
   running there yet. Both are ordinary states with different remedies, which is
   why `ensure_main_agent/1` reports them apart.
+
+  ## What is running, not what has ever run
+
+  `list_running/1` and not `list_agents/1`, and the difference was a bug with
+  no way out of it. Reading every agent ever started meant a *stopped* one
+  still counted as the agent on the copy: `ensure_main_agent/1` short-circuited
+  and never started a replacement, and `refuse_if_occupied/2` refused every
+  future start there. Stopping the main agent — which is the entire point of
+  story 961 — permanently removed the project's ability to have one, and the
+  page went on saying it was getting ready. Any stopped agent did it, not only
+  a main one, because `on_copy?/2` does not read the role.
   """
   @spec main_agent(Scope.t()) :: Agent.t() | nil
   def main_agent(%Scope{} = scope) do
     case WorkingCopies.main(scope) do
       nil -> nil
-      copy -> AgentsRepository.list_agents(scope) |> Enum.find(&on_copy?(&1, copy))
+      copy -> AgentsRepository.list_running(scope) |> Enum.find(&on_copy?(&1, copy))
     end
   end
 
@@ -312,14 +340,47 @@ defmodule CodeMySpec.Agents do
   end
 
   defp start_main_agent(scope, copy) do
-    with {:ok, provider} <- connected_provider(scope) do
+    with {:ok, provider, model} <- main_choice(scope) do
       start_agent(scope, %{
         provider: provider,
+        model: model,
         working_copy: copy.root,
         working_copy_id: copy.id,
         role: :main
       })
     end
+  end
+
+  # An explicit choice wins, and is recorded.
+  #
+  # This path used to skip `resolve_model/2` entirely — it passed a provider it
+  # had picked itself and no model at all — so `main` was the one agent type
+  # where stories 983 and 984's setting had no effect, and the `model` column
+  # 983 added so that "a running agent keeps the model it started on" was
+  # always NULL for the one agent a non-technical user talks to. Someone who
+  # pointed `main` at a provider got a different one with nothing saying so.
+  #
+  # Only the *unset* case still goes through `@provider_preference`, and that
+  # is deliberate rather than tidy. See the note there.
+  defp main_choice(scope) do
+    case resolve_model(scope, :main) do
+      {:ok, {provider, model}, :set} -> {:ok, provider, model}
+      _unset_or_nothing_connected -> preferred_main(scope)
+    end
+  end
+
+  defp preferred_main(scope) do
+    with {:ok, provider} <- connected_provider(scope) do
+      {:ok, provider, default_main_model(provider)}
+    end
+  end
+
+  # The model `Defaults` names for whichever provider we landed on, so the row
+  # says what it is running rather than nothing. `nil` for a provider with no
+  # entry, which is the same as before and no worse.
+  defp default_main_model(provider) do
+    Defaults.for_role(:main)
+    |> Enum.find_value(fn {candidate, model} -> candidate == provider && model end)
   end
 
   # The first connected provider, in an order somebody chose.
@@ -332,6 +393,26 @@ defmodule CodeMySpec.Agents do
   #
   # `:not_connected` when none of them is, which is a different problem from
   # having nowhere to run and gets a different remedy in front of the user.
+  #
+  # ## Why this disagrees with `Defaults` on purpose, for now
+  #
+  # `Defaults.for_role(:main)` leads with `anthropic`, on the argument that the
+  # main agent is the one explaining a project to somebody who cannot read the
+  # code. This list leads with the subscription, on the argument above. Two
+  # lists that disagree is normally the bug — it was reported as one — and
+  # collapsing them was deferred deliberately, because neither is right.
+  #
+  # The missing dimension is **where the agent runs**. A subscription
+  # credential is a subscription: the providers do not license it for a server
+  # running agents on somebody's behalf, so a cloud-run agent has to use an API
+  # key — the user's if they have one, ours if they do not. Locally, their
+  # subscription is exactly what they should be spending. So the right ordering
+  # is not one list at all; it is a different answer per location, and neither
+  # `Defaults` nor this list has anywhere to say that.
+  #
+  # Until that exists, an explicit setting wins (see `main_choice/1`) and the
+  # unset case keeps behaving as it always has, so nobody's bill moves because
+  # of a refactor.
   @provider_preference ["openai-codex", "zai", "anthropic"]
 
   defp connected_provider(scope) do
