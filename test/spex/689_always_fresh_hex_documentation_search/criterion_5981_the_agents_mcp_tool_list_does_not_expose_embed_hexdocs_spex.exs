@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.McpServers.LocalServer
+  alias CodeMySpec.McpServers.ScriptableTools
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,8 +38,12 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
       end
 
       when_ "the agent enumerates available tools", context do
+        # Both surfaces. Since story 971 `LocalServer` advertises only the
+        # spine and everything else is registered on `ScriptableTools` and
+        # reached with `run_script`. The anchor below is about the knowledge
+        # tools still being reachable, which is the union, not one list.
         tool_names =
-          LocalServer.__components__(:tool)
+          (LocalServer.__components__(:tool) ++ ScriptableTools.__components__(:tool))
           |> Enum.map(& &1.name)
 
         {:ok, Map.put(context, :tool_names, tool_names)}

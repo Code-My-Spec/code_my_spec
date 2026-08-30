@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.LocalServer
+  alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   # Snake-case tokens that legitimately appear in the prompt but are
@@ -200,8 +201,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
     end
   end
 
+  # Both surfaces. Since story 971 `LocalServer` advertises only the spine and
+  # everything else is registered on `ScriptableTools` and reached with
+  # `run_script`. This criterion is about whether the prompt names a tool the
+  # agent can *reach* — its own scenario says so — and reachability is now the
+  # union rather than one registration.
   defp registered_tool_names do
-    LocalServer.__components__(:tool)
+    (LocalServer.__components__(:tool) ++ ScriptableTools.__components__(:tool))
     |> Enum.map(& &1.name)
     |> MapSet.new()
   end
