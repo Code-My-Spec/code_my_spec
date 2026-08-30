@@ -36,7 +36,6 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.Defaults
   alias CodeMySpecWeb.AccountLive.Components.Navigation
 
   @impl true
@@ -117,7 +116,7 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
                 </div>
 
                 <p class="text-sm text-base-content/70 mt-2" data-test="model-cost">
-                  {cost_hint(row.role)}
+                  {cost_hint(row)}
                 </p>
               </div>
 
@@ -174,18 +173,20 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
     |> assign(:providers, Agents.provider_names())
   end
 
-  # What a type's default would cost, said in words rather than in model ids.
-  # Read off the preference list so it cannot disagree with what actually
-  # launches.
-  defp cost_hint(role) do
-    case Defaults.for_role(role) do
-      [] ->
-        ""
+  # The model this account would actually get, not the top of the preference
+  # list. The first version read `Defaults.for_role/1 |> hd()` and named
+  # glm-5.3 on an account that can only connect openai — while the same screen
+  # marked zai "connect it first". Two contradicting statements in one glance,
+  # and the wrong one was the answer.
+  #
+  # `row` already carries what `Agents.resolve_model/2` returned, which is the
+  # question the launcher asks a moment later.
+  defp cost_hint(%{provider: nil}), do: "Nothing to run on until a provider is connected."
 
-      [{_provider, model} | _rest] ->
-        "Defaults to #{model} — #{tier(role)}."
-    end
-  end
+  defp cost_hint(%{role: role, model: model, source: :default}),
+    do: "Defaults to #{model} — #{tier(role)}."
+
+  defp cost_hint(%{role: role, model: model}), do: "Set to #{model} — #{tier(role)}."
 
   defp tier(:qa), do: "the cheapest that can follow instructions, because it runs constantly"
   defp tier(_role), do: "a stronger model, because this one is reasoning rather than checking"

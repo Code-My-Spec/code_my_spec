@@ -958,15 +958,18 @@ defmodule CodeMySpec.Agents do
   # for a type nobody defined is a caller with the wrong idea about what exists.
   defp role_of(attrs) do
     case Map.get(attrs, :role, :main) do
-      role when is_atom(role) -> known_role(role)
-      role when is_binary(role) -> role |> safe_atom() |> known_role()
+      role when is_atom(role) -> known_role(role, role)
+      role when is_binary(role) -> role |> safe_atom() |> known_role(role)
     end
   end
 
-  defp known_role(role) do
+  # `asked` is carried separately from the atom, because the atom may be the
+  # sentinel `safe_atom/1` returns for a name that does not exist — and a
+  # refusal naming `:__unknown__` tells the caller a word it never sent.
+  defp known_role(role, asked) do
     case role in Agent.roles() do
       true -> {:ok, role}
-      false -> {:error, {:unknown_role, role, Agent.roles()}}
+      false -> {:error, {:unknown_role, asked, Agent.roles()}}
     end
   end
 
