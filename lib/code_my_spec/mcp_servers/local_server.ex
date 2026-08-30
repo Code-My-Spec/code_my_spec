@@ -40,184 +40,59 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Scope resolved from the X-Harness-Id header by `Plugs.HarnessScope`, which
   # reaches a tool's frame through the transport's assigns.
 
-  # Bootstrap — project linking, resource installation
-  component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallRules)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd)
+  #
+  # Story 971. Everything else moved to `ScriptableTools` and is reached with
+  # `run_script`. Measured before the move: 111 tools, 82,591 bytes, ~20,600
+  # tokens, paid by every agent at connect for a task that calls three or four.
+  #
+  # A tool belongs here for one of two reasons, and only those two.
 
-  # Stories — full CRUD scoped to the local working dir
-  component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
-  component(CodeMySpec.McpServers.Stories.Tools.DeleteStory)
-  component(CodeMySpec.McpServers.Stories.Tools.GetStory)
-  component(CodeMySpec.McpServers.Stories.Tools.ListStories)
-  component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
-  component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
-  component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
-  component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.DeleteCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.MoveCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule)
-  component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
-  component(CodeMySpec.McpServers.Stories.Tools.TagStories)
+  # The loop every session walks, in order. These stay direct because putting
+  # Lua ceremony on the most-walked path in the product buys nothing.
+  # ── The spine ─────────────────────────────────────────────────────────────
+  #
+  # Story 971. Everything else is registered on `ScriptableTools` and reached
+  # with `run_script`. Measured before the move: 111 tools, 82,591 bytes,
+  # ~20,600 tokens, paid by every agent at connect for a task that calls three
+  # or four of them.
+  #
+  # A tool is here for one of two reasons, and only those two.
 
-  # Epics — organizational grouping of stories, plus the one-shot bulk
-  # release that controls how fast work enters the development graph.
-  component(CodeMySpec.McpServers.Stories.Tools.CreateEpic)
-  # The main agent's half of the hand-off. `EpicDispatch.propose/2` existed with
-  # nothing exposing it, so the agent could group stories into an epic and had
-  # no way to send it — the epic stayed draft forever and the approve control
-  # never appeared.
-  component(CodeMySpec.McpServers.Stories.Tools.ProposeEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
-  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.SetEpicStoriesReady)
-  component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)
-  component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
-  component(CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession)
-  component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
-
-  # Architecture
-  component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
-  component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
-  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
-  component(CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview)
-  component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
-
-  # Components — incremental architecture mutations (patch mode).
-  # Deletion is intentionally not a tool: the architect deletes the
-  # spec/impl/test files and ComponentSync removes the component on
-  # the next sync. Dependency edges are likewise spec-driven — the
-  # architect edits the source spec's `## Dependencies` section and
-  # ComponentSync re-derives the graph.
-  component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
-  component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
-
-  # Requirements — discovery and sync
-  component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
+  # The loop every session walks, in order. Direct because putting Lua ceremony
+  # on the most-walked path in the product buys nothing.
   component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.SyncProject)
-  component(CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
-
-  # Tasks — start → evaluate lifecycle
   component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
-  component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
-  component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
-  component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
+
+  # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
+  # `ask_user` waits on a person, `start_agent` spawns — and a tool excluded
+  # from scripts *and* absent from here would be reachable by no route at all.
   component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
+  component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
+  component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
-
-  # Coding agents on this machine's working copies. Registered here rather than
-  # only existing as modules — the spex call `execute/2` directly, which proves
-  # the contract and says nothing about whether an agent can reach the tool.
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
   component(CodeMySpec.McpServers.Agents.Tools.StopAgent)
   component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
 
-  # AwaitAnalysis is a tombstone, not a tool. Waiting for the analyzers is
-  # `POST /api/analysis/wait` — MCP caps a request at 30s and a sweep runs
-  # 200-590s, so the tool could not return for the case it existed to serve.
-  #
-  # It is registered anyway because removing it from the server did not remove
-  # it from agents: a client fetches the tool list once at session start, and a
-  # session here runs for hours. Calling the absent tool answered "Invalid
-  # params", which reads as the agent's mistake and sent one inventing
-  # arguments for a schema with none (ba6904d6). Registered, it answers with the
-  # HTTP endpoints and the harness id filled in.
-  component(CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis)
-
-  # Knowledge — browse, read, and unified semantic search across every
-  # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).
-  # Embedding is implicit in file sync — there's no manual embed_docs tool.
-  component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)
-  component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)
-  component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)
-
-  # Research — the open web. Everything above this line answers from the
-  # repository or our own database; these two are the only way an agent here
-  # can find out something nobody in this project already knew.
-  component(CodeMySpec.McpServers.Research.Tools.WebSearch)
-  component(CodeMySpec.McpServers.Research.Tools.WebFetch)
-
-  # Code mode — every other tool on this server, reachable from one script
-  # instead of one call each (story 970). `tool_docs` is how their arguments
-  # get looked up rather than carried; the 111 registrations above cost
-  # ~21,500 tokens at connect, which is what story 971 is about.
+  # Code mode itself.
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)
   component(CodeMySpec.McpServers.CodeMode.Tools.RunScript)
 
-  # Issues — full lifecycle
-  component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
-  component(CodeMySpec.McpServers.Issues.Tools.GetIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
-
-  # Personas — account-scoped persona library
-  component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory)
-  component(CodeMySpec.McpServers.Personas.Tools.UnlinkPersonaFromStory)
-  component(CodeMySpec.McpServers.Personas.Tools.ListPersonas)
-  component(CodeMySpec.McpServers.Personas.Tools.GetPersona)
+  # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
+  # `ask_user` waits on a person and `start_agent` spawns, and a loop around
+  # either means something nobody asked for. They have to stay here, because a
+  # tool excluded from scripts *and* absent from this list is reachable from
+  # nowhere.
 
   # BDD Rules — Three Amigos session artifacts (blue + green + red cards).
   # Lives under BddRules namespace to disambiguate from CodeMySpec.Rules
   # (the coding-convention markdown rules consumed by agent task prompts).
-  component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.UpdateRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.ListRules)
-  component(CodeMySpec.McpServers.BddRules.Tools.AddScenario)
-  component(CodeMySpec.McpServers.BddRules.Tools.UpdateScenario)
-  component(CodeMySpec.McpServers.BddRules.Tools.AddQuestion)
-  component(CodeMySpec.McpServers.BddRules.Tools.ListQuestions)
-  component(CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion)
-  component(CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin)
 
-  # QA — attempt submission and lifecycle
-  component(CodeMySpec.McpServers.Qa.Tools.SubmitQaResult)
-  component(CodeMySpec.McpServers.Qa.Tools.ListQaAttempts)
-  component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
-
-  # Problems — clear stale persisted problems that block the Stop hook
   # after the underlying file is fixed but a later run didn't re-check it.
-  component(CodeMySpec.McpServers.Problems.Tools.ClearProblems)
-  component(CodeMySpec.McpServers.Problems.Tools.ListProblems)
 
-  # Devops on the graph. The agent could see `devops_setup` as a requirement
   # and had no way to answer whether it was done, or to do it.
-  component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
-  component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
-  component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadProjectFile)
-  component(CodeMySpec.McpServers.Devops.Tools.WriteProjectFile)
-  component(CodeMySpec.McpServers.Devops.Tools.EnsureEnvironment)
-  component(CodeMySpec.McpServers.Devops.Tools.LinkServer)
-  component(CodeMySpec.McpServers.Devops.Tools.ProviderRequest)
-  component(CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey)
-  component(CodeMySpec.McpServers.Devops.Tools.AdoptRepository)
-  component(CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
-  component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
 end

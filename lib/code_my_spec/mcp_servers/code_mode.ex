@@ -2,10 +2,15 @@ defmodule CodeMySpec.McpServers.CodeMode do
   @moduledoc """
   Builds the catalog `CodeMySpec.CodeMode` runs scripts against.
 
-  This is the half that knows about MCP: which tools the server registers, how
-  to build a frame, and how to read a `Response`. `CodeMode` itself knows none
-  of it — Boundary saw to that, and it is why the runtime's tests need two fake
+  This is the half that knows about MCP: which tools are registered, how to
+  build a frame, and how to read a `Response`. `CodeMode` itself knows none of
+  it — Boundary saw to that, and it is why the runtime's tests need two fake
   tools rather than a server.
+
+  The registrations come from `ScriptableTools`, not `LocalServer`. Story 971
+  took the long tail off the advertised list, and taking them off `LocalServer`
+  alone would have taken them away from scripts too — unregistered is
+  unreachable, not merely unadvertised.
 
   ## Scope is captured here
 
@@ -33,13 +38,13 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.CodeMode.Catalog
-  alias CodeMySpec.McpServers.LocalServer
+  alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.ScriptResult
 
   @doc "The catalog of tools a script may call, acting as `scope`."
   @spec catalog(term()) :: Catalog.t()
   def catalog(scope) do
-    Catalog.from(LocalServer.__components__(), &invoker(&1, scope))
+    Catalog.from(ScriptableTools.__components__(), &invoker(&1, scope))
   end
 
   defp invoker(tool, scope) do
