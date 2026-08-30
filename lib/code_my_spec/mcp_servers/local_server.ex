@@ -32,6 +32,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   tool is wrong.
   """
 
+  alias CodeMySpec.McpServers.ScriptableTools
+
   use Anubis.Server,
     name: "codemyspec-local",
     version: "1.0.0",
@@ -88,11 +90,46 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # tool excluded from scripts *and* absent from this list is reachable from
   # nowhere.
 
-  # BDD Rules — Three Amigos session artifacts (blue + green + red cards).
-  # Lives under BddRules namespace to disambiguate from CodeMySpec.Rules
-  # (the coding-convention markdown rules consumed by agent task prompts).
+  # ── A client that connected before the spine ──────────────────────────────
+  #
+  # A tool list is cached at connect, so a session that joined before story 971
+  # still holds all 111 names and will call one that is no longer advertised.
+  # Anubis answers that with `method_not_found`, which is true and unhelpful:
+  # the tool exists, it moved, and the agent is one `run_script` call from it.
+  #
+  # Delegating to `Anubis.Server.Handlers.handle/3` rather than `super`:
+  # Anubis defines `handle_request/2` in `__before_compile__`, which runs after
+  # this module body, so there is no super to call yet. The delegation is
+  # exactly what the generated clause does.
+  @impl Anubis.Server
+  def handle_request(%{"method" => "tools/call", "params" => %{"name" => name}} = request, frame) do
+    case moved?(name) do
+      true -> {:reply, moved_response(name), frame}
+      false -> Anubis.Server.Handlers.handle(request, __MODULE__, frame)
+    end
+  end
 
-  # after the underlying file is fixed but a later run didn't re-check it.
+  def handle_request(request, frame) do
+    Anubis.Server.Handlers.handle(request, __MODULE__, frame)
+  end
 
-  # and had no way to answer whether it was done, or to do it.
+  defp moved?(name) do
+    not Enum.any?(__components__(), &(&1.name == name)) and
+      Enum.any?(ScriptableTools.__components__(), &(&1.name == name))
+  end
+
+  defp moved_response(name) do
+    Anubis.Server.Response.tool()
+    |> Anubis.Server.Response.error("""
+    #{name} is no longer called directly — it moved to code mode, along with
+    most of this server's tools, so that connecting does not cost twenty
+    thousand tokens of tool list.
+
+    Call it from a script instead:
+
+        run_script({ script = "return #{name}({ ... })" })
+
+    `tool_docs({ name = "#{name}" })` gives its arguments.
+    """)
+  end
 end

@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.SpineTest do
   """
   use ExUnit.Case, async: true
 
+  alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
@@ -42,6 +43,42 @@ defmodule CodeMySpec.McpServers.SpineTest do
              "the advertised list is #{byte_size(payload)} bytes, against 82,591 before " <>
                "this story and 15,615 when it landed. Something large came back onto " <>
                "the spine."
+    end
+  end
+
+  describe "a client that connected before the change" do
+    test "is told the tool moved, not that it does not exist" do
+      # A tool list is cached at connect, so a session that joined before this
+      # story still holds all 111 names and will call one that has moved.
+      # Anubis answers method_not_found, which is true and unhelpful.
+      request = %{
+        "method" => "tools/call",
+        "params" => %{"name" => "list_stories", "arguments" => %{}}
+      }
+
+      assert {:reply, response, _frame} = LocalServer.handle_request(request, %Frame{})
+
+      assert response.isError
+
+      text = response |> Response.to_protocol() |> Map.get("content") |> hd() |> Map.get("text")
+
+      assert text =~ "moved to code mode"
+      assert text =~ "run_script"
+
+      refute text =~ "method_not_found",
+             "the agent is one run_script call away from the tool; saying only that it " <>
+               "was not found sends it looking for a name that is not wrong"
+    end
+
+    test "and a name that never existed is still just not found" do
+      request = %{
+        "method" => "tools/call",
+        "params" => %{"name" => "definitely_not_a_tool", "arguments" => %{}}
+      }
+
+      # Not our business — the redirect fires only for tools that really moved,
+      # so a typo does not get told to script something that does not exist.
+      assert {:error, _error, _frame} = LocalServer.handle_request(request, %Frame{})
     end
   end
 
