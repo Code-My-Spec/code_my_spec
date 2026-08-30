@@ -21,6 +21,14 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
 
   Surface: `start_task` for `architecture_designed` (routes to
   `ArchitectureDesign.command/2`) + reflection on `LocalServer`.
+
+  Story 971 split tool registration in two: `LocalServer` keeps the
+  spine reached directly at connect, and `ScriptableTools` holds
+  everything else, reachable through `run_script` (a stale direct call
+  to one of those names still resolves — `LocalServer.moved?/1` catches
+  it and redirects — so it is not an unreachable tool, only one reached
+  a different way). "Reachable by the agent" now means registered on
+  either, so this spec checks the union of both.
   """
 
   use CodeMySpecSpex.Case

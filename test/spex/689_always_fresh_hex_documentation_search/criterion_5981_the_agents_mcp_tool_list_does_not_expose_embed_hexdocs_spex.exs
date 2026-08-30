@@ -10,11 +10,13 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
 
   ## Observation surface
 
-  Same approach as story 688's `embed_docs` removal scenario:
-  enumerate `LocalServer.__components__(:tool)` and assert
-  `embed_hexdocs` is not registered. The check via
-  `__components__/1` is exactly what the MCP transport reports to
-  the agent, so this is the agent surface.
+  Same approach as story 688's `embed_docs` removal scenario. Story
+  971 split tool registration in two: `LocalServer.__components__(:tool)`
+  is the spine an agent gets at connect, and
+  `ScriptableTools.__components__(:tool)` is everything else, reachable
+  only through `run_script` (see `LocalServer.moved?/1`). Neither list
+  alone is "what the agent can invoke" any more — the union of both is.
+  This spec reads that union and asserts `embed_hexdocs` is in neither.
   """
 
   use CodeMySpecSpex.Case

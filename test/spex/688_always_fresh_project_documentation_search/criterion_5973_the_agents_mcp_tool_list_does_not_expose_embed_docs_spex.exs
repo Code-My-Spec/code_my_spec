@@ -10,12 +10,12 @@ defmodule CodeMySpecSpex.Story688.Criterion5973Spex do
   ## Observation surface
 
   Anubis registers MCP tools statically on the server module via
-  `component/1` calls. `LocalServer.__components__(:tool)` returns
-  the list the agent receives over the MCP protocol — that's the
-  surface this spec reads. Calling the underlying transport handler
-  would observe the same set; this is the cheaper equivalent and
-  matches the property we care about (no `embed_docs` tool exists
-  for the agent to invoke).
+  `component/1` calls. Story 971 split that registration in two:
+  `LocalServer.__components__(:tool)` is the spine an agent gets at
+  connect, and `ScriptableTools.__components__(:tool)` is everything
+  else, reachable only through `run_script` (see
+  `LocalServer.moved?/1`). Neither list alone is "what the agent can
+  invoke" any more — the union of both is. This spec reads that union.
   """
 
   use CodeMySpecSpex.Case
