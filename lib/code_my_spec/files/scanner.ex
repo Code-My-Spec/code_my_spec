@@ -29,7 +29,36 @@ defmodule CodeMySpec.Files.Scanner do
 
   # The subtrees a sync walks. Everything outside them is invisible to the
   # domain, which is what keeps a project's own deps/ and _build/ out of it.
-  @sync_roots ["lib", "test", Paths.base_dir(), "CLAUDE.md", "mix.exs", ".credo.exs"]
+  #
+  # `bin`, `.github`, `config`, `rel`, `envs`, `Dockerfile`, `.sops.yaml` and
+  # the plaintext env names joined 2026-08-30: `DeployBoilerplate`'s own
+  # manifest lives entirely outside the original list, so a harness-scoped
+  # devops call's fallback to this table could never see it regardless of
+  # whether sync itself worked — confirmed live against MarketMySpec, whose
+  # sync was genuinely healthy (a real scan, a real reconcile, real rows) and
+  # still reported every boilerplate artifact missing, because none of those
+  # paths were ever walked. Each of these is small and bounded the same way
+  # `lib`/`test` already are — nothing here risks the `deps`/`_build` problem
+  # this list exists to avoid.
+  @sync_roots [
+    "lib",
+    "test",
+    "bin",
+    ".github",
+    "config",
+    "rel",
+    "envs",
+    Paths.base_dir(),
+    "CLAUDE.md",
+    "mix.exs",
+    ".credo.exs",
+    "Dockerfile",
+    ".sops.yaml",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.schema"
+  ]
 
   # Directories the walker never descends into. Build output and vendored
   # source are not the project's own files.
@@ -391,7 +420,8 @@ defmodule CodeMySpec.Files.Scanner do
     :integration,
     :agents_md,
     :project_knowledge,
-    :hex_doc
+    :hex_doc,
+    :deploy_artifact
   ]
 
   def validate_entry(%{role: role} = entry, _env, _component_by_id, _strict?)
@@ -775,10 +805,25 @@ defmodule CodeMySpec.Files.Scanner do
         &classify_credo_check/1,
         &classify_docs/1,
         &classify_qa/1,
-        &classify_config/1
+        &classify_config/1,
+        &classify_deploy_artifact/1
       ],
       & &1.(path)
     )
+  end
+
+  # `DeployBoilerplate`'s own manifest — walked since `bin`/`.github`/`config`/
+  # `rel`/`envs` joined `@sync_roots`, but a walk alone answers nothing: the
+  # scan pipeline drops anything `classify/1` returns nil for before it ever
+  # reaches a `File` row (`classified/2`'s own `Stream.reject(&is_nil/1)`).
+  # Existence is all `DeployBoilerplate.present?/2` ever asks of these, so one
+  # role covers the whole manifest rather than one per artifact.
+  @deploy_artifact_dirs ~w(bin/ .github/ config/ rel/ envs/)
+  @deploy_artifact_files ~w(Dockerfile .sops.yaml .env .env.local .env.production .env.schema)
+
+  defp classify_deploy_artifact(path) do
+    if path in @deploy_artifact_files or Enum.any?(@deploy_artifact_dirs, &String.starts_with?(path, &1)),
+      do: {path, :deploy_artifact}
   end
 
   # Setup-time artifacts. Validated at sync time so the requirements graph

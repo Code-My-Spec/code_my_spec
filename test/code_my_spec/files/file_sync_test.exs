@@ -3,6 +3,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Embeddings.TestBackend
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
@@ -81,6 +82,36 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert is_nil(FileSync.classify("assets/js/app.js"))
     end
 
+    # Found live against MarketMySpec: the sync's own scan was genuinely
+    # healthy (a real scan, a real reconcile, real rows landing) and every
+    # deploy artifact still reported missing, because `bin`/`.github`/
+    # `config`/`rel`/`envs` and the plaintext root files were outside
+    # `@sync_roots` entirely — walking them alone would not have been
+    # enough either, since classify/1 returning nil is what drops a path
+    # before it ever becomes a row.
+    test "classifies deploy boilerplate as deploy_artifact" do
+      for path <- [
+            "Dockerfile",
+            ".sops.yaml",
+            ".env",
+            ".env.local",
+            ".env.production",
+            ".env.schema",
+            "bin/deploy",
+            "bin/backup",
+            ".github/workflows/build.yml",
+            "config/deploy.yml",
+            "config/deploy.uat.yml",
+            "rel/overlays/bin/boot",
+            "rel/overlays/bin/migrate",
+            "envs/prod.enc.env",
+            "envs/uat.enc.env"
+          ] do
+        assert {:deploy_artifact, ^path} = swap(FileSync.classify(path)),
+               "expected #{path} to classify as deploy_artifact"
+      end
+    end
+
     test "returns nil for files in ignored dirs" do
       # These would be filtered by ignored_path? before classify,
       # but classify itself doesn't match them either
@@ -118,6 +149,39 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert "lib/my_app/accounts.ex" in paths
       assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths
       assert "CLAUDE.md" in paths
+    end
+
+    # The real incident, end to end: a harness-scoped devops call can't see
+    # a live checkout, so `DeployBoilerplate.present?/2` falls back to this
+    # table — and a real scan of MarketMySpec's actual checkout produced
+    # rows for every real file except its deploy boilerplate, because
+    # `bin`/`.github`/`config`/`rel`/`envs` were never walked at all.
+    test "a real scan picks up deploy boilerplate outside lib/test" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "Dockerfile", "FROM elixir:1.19\n")
+      write_file(tmp_dir, ".sops.yaml", "creation_rules: []\n")
+      write_file(tmp_dir, "bin/deploy", "#!/bin/sh\nkamal deploy\n")
+      write_file(tmp_dir, ".github/workflows/build.yml", "name: build\n")
+      write_file(tmp_dir, "config/deploy.yml", "service: app\n")
+      write_file(tmp_dir, "rel/overlays/bin/boot", "#!/bin/sh\n")
+      write_file(tmp_dir, "envs/prod.enc.env", "SECRET_KEY_BASE=ENC[...]\n")
+
+      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      paths = scope |> Files.list_files() |> Enum.map(& &1.path)
+
+      for path <- [
+            "Dockerfile",
+            ".sops.yaml",
+            "bin/deploy",
+            ".github/workflows/build.yml",
+            "config/deploy.yml",
+            "rel/overlays/bin/boot",
+            "envs/prod.enc.env"
+          ] do
+        assert path in paths, "expected #{path} to be synced, got #{inspect(paths)}"
+      end
     end
 
     test "full sync reports only fingerprint-changed paths" do
@@ -632,7 +696,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     # `:fs` events drive embedding in real time, not only on the
     # next stop hook batch.
     test "embeds a newly-created spec file" do
-      CodeMySpec.Embeddings.TestBackend.reset()
+      TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
       path = ".code_my_spec/spec/my_app/widget.spec.md"
@@ -649,7 +713,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     end
 
     test "re-embeds when a file's content changes (fingerprint diff)" do
-      CodeMySpec.Embeddings.TestBackend.reset()
+      TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
       path = ".code_my_spec/spec/my_app/widget.spec.md"
@@ -674,7 +738,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     end
 
     test "drops embeddings when a tracked file is deleted from disk" do
-      CodeMySpec.Embeddings.TestBackend.reset()
+      TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
       path = ".code_my_spec/rules/legacy.md"
@@ -705,7 +769,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     end
 
     test "skips re-embedding when content fingerprint is unchanged" do
-      CodeMySpec.Embeddings.TestBackend.reset()
+      TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
       path = ".code_my_spec/spec/my_app/widget.spec.md"

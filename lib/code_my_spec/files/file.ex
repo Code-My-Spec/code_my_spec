@@ -12,9 +12,9 @@ defmodule CodeMySpec.Files.File do
   import Ecto.Changeset
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @roles [
     :spec,
@@ -43,7 +43,8 @@ defmodule CodeMySpec.Files.File do
     :agents_md,
     :knowledge,
     :project_knowledge,
-    :hex_doc
+    :hex_doc,
+    :deploy_artifact
   ]
 
   @type role ::
@@ -70,6 +71,7 @@ defmodule CodeMySpec.Files.File do
           | :knowledge
           | :project_knowledge
           | :hex_doc
+          | :deploy_artifact
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,

@@ -67,7 +67,8 @@ defmodule CodeMySpec.Analysis.Fingerprint do
     :setup_config,
     :knowledge,
     :project_knowledge,
-    :hex_doc
+    :hex_doc,
+    :deploy_artifact
   ]
 
   @doc "Roles holding code an analyzer reads."
