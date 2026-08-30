@@ -102,6 +102,47 @@ defmodule CodeMySpec.CodeModeTest do
                "three that were missing is half of what code mode is for"
     end
 
+    test "a tool taking a list and nested objects can actually be called" do
+      # The conversion has to run on the way in as well as out. Without it a
+      # tool whose schema expects an array saw `[{1, [{"name", "..."}]}]` and
+      # rejected it, so no tool taking a list was callable from a script at
+      # all. `submit_qa_result` found it — a tool an agent calls once per QA
+      # session, and could not.
+      recorder =
+        catalog([
+          %{
+            name: "submit",
+            description: "Takes a list of records.",
+            input_schema: %{},
+            invoke: fn args -> {:ok, args} end
+          }
+        ])
+
+      script = ~S"""
+      return submit({
+        ids = { "a", "b" },
+        scenarios = {
+          { name = "first", status = "pass" },
+          { name = "second", status = "fail" }
+        },
+        count = 2
+      })
+      """
+
+      result = CodeMode.eval(recorder, script)
+
+      refute Result.failed?(result)
+
+      assert %{
+               "ids" => ["a", "b"],
+               "count" => 2,
+               "scenarios" => [
+                 %{"name" => "first", "status" => "pass"},
+                 %{"name" => "second", "status" => "fail"}
+               ]
+             } = result.value
+    end
+
     test "a tool that crashes is reported, not propagated" do
       exploding =
         catalog([

@@ -29,6 +29,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
   require Logger
 
   alias CodeMySpec.CodeMode.Catalog
+  alias CodeMySpec.CodeMode.LuaValue
 
   @printed :code_mode_printed
 
@@ -57,7 +58,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
   defp render(value) when is_binary(value), do: value
   defp render(value) when is_boolean(value), do: to_string(value)
-  defp render(value) when is_float(value), do: value |> whole() |> to_string()
+  defp render(value) when is_float(value), do: value |> LuaValue.from_lua() |> to_string()
   defp render(value) when is_number(value), do: to_string(value)
   defp render(nil), do: "nil"
   defp render(value), do: inspect(value)
@@ -101,26 +102,15 @@ defmodule CodeMySpec.CodeMode.Bindings do
   # and Lua spells that `list_stories()` rather than `list_stories({})`.
   defp arguments(_state, []), do: %{}
 
+  # The same conversion the return path uses. Without it only the top-level
+  # keys were normalised, so a tool whose schema expects an array or a nested
+  # object could not be called from a script at all — validation saw
+  # `[{1, [{"name", "..."}]}]` and rejected it. `submit_qa_result` was the one
+  # that found it, which an agent calls exactly once per QA session.
   defp arguments(state, [table | _rest]) do
-    state |> Lua.decode!(table) |> Map.new() |> normalise()
-  end
-
-  defp normalise(args) do
-    Map.new(args, fn
-      {key, value} when is_float(value) -> {to_string(key), whole(value)}
-      {key, value} -> {to_string(key), value}
-    end)
-  end
-
-  # Lua has one number type, so every integer arrives as a float and a tool
-  # expecting an integer id rejects `970.0`. Only exact integers are converted;
-  # a genuine fraction is left alone rather than quietly truncated.
-  defp whole(value) when is_float(value) do
-    truncated = trunc(value)
-
-    case truncated == value do
-      true -> truncated
-      false -> value
+    case state |> Lua.decode!(table) |> LuaValue.from_lua() do
+      %{} = args -> args
+      other -> %{"_" => other}
     end
   end
 

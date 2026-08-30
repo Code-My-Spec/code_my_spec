@@ -37,7 +37,7 @@ defmodule CodeMySpec.CodeMode do
   differ, is in `.code_my_spec/knowledge/code_mode/lua_for_mcp.md`.
   """
 
-  alias CodeMySpec.CodeMode.{Bindings, Catalog, Docs, Result, Sandbox}
+  alias CodeMySpec.CodeMode.{Bindings, Catalog, Docs, LuaValue, Result, Sandbox}
 
   @doc """
   Runs `script` with `catalog`'s tools bound, and answers with a `Result`.
@@ -70,7 +70,7 @@ defmodule CodeMySpec.CodeMode do
       |> Bindings.install(catalog)
 
     {values, lua} = Lua.eval!(lua, script)
-    Result.ok(values |> Enum.map(&lua_value/1) |> value(), Bindings.printed(lua))
+    Result.ok(values |> Enum.map(&LuaValue.from_lua/1) |> value(), Bindings.printed(lua))
   rescue
     error in Lua.CompilerException ->
       Result.error(:compile, Exception.message(error))
@@ -85,40 +85,6 @@ defmodule CodeMySpec.CodeMode do
   defp value([]), do: nil
   defp value([single]), do: single
   defp value(many), do: many
-
-  # A Lua table comes back as a list of `{key, value}` pairs, which is the VM's
-  # shape and not an answer. Left alone it reaches the agent as
-  # `{54, [{"id", 962}, {"title", "..."}]}` — the array index showing as a key,
-  # every record a list of pairs. Found by running the real endpoint; the unit
-  # tests all returned scalars.
-  #
-  # Consecutive integer keys from 1 are a Lua array and become a list; anything
-  # else is a record and becomes a map.
-  defp lua_value([{_key, _value} | _rest] = table) do
-    keys = Enum.map(table, &elem(&1, 0))
-
-    case array?(keys) do
-      true -> table |> Enum.sort_by(&elem(&1, 0)) |> Enum.map(&lua_value(elem(&1, 1)))
-      false -> Map.new(table, fn {key, value} -> {to_string(key), lua_value(value)} end)
-    end
-  end
-
-  defp lua_value(value) when is_float(value) do
-    case trunc(value) do
-      whole when whole == value -> whole
-      _otherwise -> value
-    end
-  end
-
-  defp lua_value(value), do: value
-
-  # Sorted, and sorted again on the way out. A Lua table is a hash, so its pairs
-  # arrive in whatever order the VM happens to hold them — `[49, 75, 1, …]` for
-  # a plain array of 98 stories. Comparing the keys as they arrive says "not an
-  # array" and hands back a map keyed by position, which is what shipped for
-  # about a minute.
-  defp array?([]), do: false
-  defp array?(keys), do: Enum.sort(keys) == Enum.to_list(1..length(keys)//1)
 
   # The limits raise ordinary runtime errors, so the message is the only thing
   # separating "your script is wrong" from "your script was stopped". Worth
