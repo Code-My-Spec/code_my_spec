@@ -1,14 +1,18 @@
 defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   @moduledoc """
-  Start a coding agent on a working copy, on one of the account's connected
-  providers.
+  Start an agent of a given type on a working copy.
 
-  The provider is required rather than defaulted. A machine-wide default
-  answers correctly right until two callers want different things, and then
-  quietly spends the wrong subscription for one of them — which nobody notices
-  until a quota or a bill does.
+  The type decides the provider and model: an account says once what QA runs on
+  and what its coder runs on, and this looks that up. Naming a provider
+  explicitly still wins, for the caller that genuinely wants a particular one.
 
-  If the named provider has no usable credential this refuses and says which
+  The old shape required a provider on every call. That was right while there
+  was nowhere to record the answer — a machine-wide default answers correctly
+  right until two callers want different things, and then quietly spends the
+  wrong subscription for one of them. Story 983 gave it somewhere to live, and
+  per-type is the grain that was actually wanted.
+
+  If the resolved provider has no usable credential this refuses and says which
   one, rather than starting an agent that fails on its first model call.
   """
 
@@ -19,9 +23,10 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   alias CodeMySpec.McpServers.Validators
 
   schema do
+    field :role, :string, doc: "Agent type: main, product, coding or qa. Defaults to main."
+
     field :provider, :string,
-      required: true,
-      doc: "Provider to run on, e.g. openai-codex, anthropic, zai"
+      doc: "Override the provider this type would use, e.g. openai-codex, anthropic, zai"
 
     field :engine, :string, doc: "Agent engine: pi (default) or claude_code"
 
@@ -41,17 +46,21 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
 
   defp attrs(params) do
     %{
+      role: params["role"] || params[:role] || "main",
       provider: provider(params),
       engine: engine(params),
       working_copy: params["working_copy"] || params[:working_copy]
     }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   defp provider(params), do: params["provider"] || params[:provider]
 
   defp engine(params) do
-    params["engine"] || params[:engine]
-    |> to_engine()
+    params["engine"] ||
+      params[:engine]
+      |> to_engine()
   end
 
   defp to_engine("claude_code"), do: :claude_code

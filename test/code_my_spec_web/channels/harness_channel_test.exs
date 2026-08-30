@@ -68,7 +68,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
     roles = scope |> Agents.list_running() |> Enum.map(& &1.role) |> Enum.sort()
 
-    assert roles == ["coding", "qa"],
+    assert roles == [:coding, :qa],
            "a checkout runs one or more agents. Keying the reconcile on the copy " <>
              "alone made the second lane overwrite the first, so two agents " <>
              "working side by side rendered as one row changing its mind."
@@ -84,7 +84,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
     assert_reply ref, :ok, %{"running" => _}
 
-    assert scope |> Agents.list_running() |> Enum.map(& &1.role) == ["coding"],
+    assert scope |> Agents.list_running() |> Enum.map(& &1.role) == [:coding],
            "the report is the whole set, so a lane it omits has stopped — but " <>
              "only that lane. Reaping by working copy would take the sibling " <>
              "that is still working with it."

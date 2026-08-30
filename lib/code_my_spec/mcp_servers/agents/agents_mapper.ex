@@ -25,8 +25,10 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Agent started.
 
     Agent: #{agent.id}
+    Type: #{agent.role}
     Engine: #{agent.engine}
     Provider: #{agent.provider}
+    Model: #{agent.model || "the provider's default"}
     Working copy: #{agent.working_copy}
     Account: #{agent.account_id}
     Status: #{agent.status}
@@ -141,6 +143,31 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   # message and list — and naming one of them sends a reader who was doing
   # another to look in the wrong place. QA hit exactly that: a message whose
   # provider refused was reported as "could not start the agent".
+  # Named rather than left to the catch-all. `inspect/1` on the tuple happens to
+  # contain the type names, so a test asserting the refusal lists them would
+  # pass on a struct dump — which is the shape of unhelpful this project keeps
+  # finding.
+  def error({:unknown_role, asked, roles}, _provider) do
+    refuse("""
+    There is no agent type called #{inspect(asked)}, so nothing was started.
+
+    The types are: #{Enum.map_join(roles, ", ", &to_string/1)}.
+
+    Each one runs on whatever provider and model the account chose for it. A
+    type that does not exist has no such choice, which is why this refuses
+    rather than picking something.
+    """)
+  end
+
+  def error(:no_provider, _provider) do
+    refuse("""
+    This account has no connected provider, so no agent was started.
+
+    Connect one and every agent type will start on a sensible default for it —
+    nothing has to be configured per type first.
+    """)
+  end
+
   def error(reason, _provider), do: refuse("That agent call failed: #{inspect(reason)}")
 
   defp refuse(text) do

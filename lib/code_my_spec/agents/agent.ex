@@ -15,7 +15,8 @@ defmodule CodeMySpec.Agents.Agent do
   status `harnesses.root` has.
 
   `role` is which lane on that copy this agent is, and it is the half of the key
-  that was missing. A copy runs one or more agents; the harness already
+  that was missing. An `Ecto.Enum` since story 983 — the four types are fixed,
+  and as a string a misspelling produced a row nothing would ever launch. A copy runs one or more agents; the harness already
   distinguishes them by role — `CodeMySpecLocalWeb.HarnessChannel` joins one
   session per copy and tracks Presence under the lane's role — so without it the
   reconcile found "the copy's agent" and a second lane overwrote the first.
@@ -54,12 +55,22 @@ defmodule CodeMySpec.Agents.Agent do
   @statuses [:starting, :running, :stopped, :failed]
   @engines [:pi, :claude_code]
 
+  # An enum rather than a free string, because a role is a fixed set and a typo
+  # in one was silent: a row nothing launches, a setting nothing reads, and no
+  # error anywhere to say so. Story 983.
+  #
+  # `spec_writer` is deliberately absent. Specs are written by the agent that
+  # writes the code — John's call in that session — so requirements that used
+  # to carry `subagent_role: :spec_writer` are re-tagged `:coding`.
+  @roles [:main, :product, :coding, :qa]
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           engine: atom() | nil,
           provider: String.t() | nil,
+          model: String.t() | nil,
           working_copy: String.t() | nil,
-          role: String.t() | nil,
+          role: atom() | nil,
           config_dir: String.t() | nil,
           history: [map()],
           os_pid: integer() | nil,
@@ -78,8 +89,14 @@ defmodule CodeMySpec.Agents.Agent do
   schema "agents" do
     field :engine, Ecto.Enum, values: @engines, default: :pi
     field :provider, :string
+    # Which model this agent started on, recorded rather than looked up.
+    # Story 983: pointing a type at a different model must not move an agent
+    # already running — a turn whose provider changed underneath it is one
+    # whose transcript stops making sense — so the answer has to be on the row
+    # rather than read back from a setting that has since changed.
+    field :model, :string
     field :working_copy, :string
-    field :role, :string, default: "main"
+    field :role, Ecto.Enum, values: @roles, default: :main
     field :config_dir, :string
 
     # Held for the length of a start and never written down. The machine needs
@@ -108,6 +125,10 @@ defmodule CodeMySpec.Agents.Agent do
   @spec statuses() :: [atom()]
   def statuses, do: @statuses
 
+  @doc "The agent types. Fixed here so nothing can invent a fifth by typing it."
+  @spec roles() :: [atom()]
+  def roles, do: @roles
+
   @spec engines() :: [atom()]
   def engines, do: @engines
 
@@ -117,6 +138,7 @@ defmodule CodeMySpec.Agents.Agent do
     |> cast(attrs, [
       :engine,
       :provider,
+      :model,
       :working_copy,
       :role,
       :config_dir,

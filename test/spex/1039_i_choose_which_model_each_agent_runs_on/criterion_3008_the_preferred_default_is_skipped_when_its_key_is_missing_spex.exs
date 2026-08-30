@@ -6,10 +6,14 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
   The default is a preference across providers rather than one value, so the
   same unset type resolves differently depending on what the account holds.
 
-  Asserted by connecting each provider in turn rather than by naming which one
-  QA prefers: a spec that hardcoded the order would have to be edited every
-  time the order changed, and would pass for the wrong reason if the resolution
-  were hardcoded to one provider.
+  Asserted by swapping which provider is connected rather than by naming which
+  one QA prefers: a spec that hardcoded the order would have to be edited every
+  time the order changed, and would pass for the wrong reason if resolution
+  were fixed to one provider.
+
+  One scope throughout. The first version used a second account, and it failed
+  on setup rather than on the claim — a bare scope fixture has no working copy,
+  so the agent was refused by validation before resolution was reached.
   """
 
   use CodeMySpecSpex.Case
@@ -50,14 +54,14 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
         {:ok, context}
       end
 
-      then_ "and an account holding a different one runs on that instead", context do
-        other = Fixtures.full_scope_fixture()
-        Fixtures.connect_provider(other, "anthropic")
+      then_ "and holding a different one instead runs on that", context do
+        Fixtures.disconnect_provider(context.scope, :zai)
+        Fixtures.connect_provider(context.scope, "anthropic")
 
-        {:reply, second, _} =
-          StartAgent.execute(%{role: "qa"}, %Frame{assigns: %{current_scope: other}})
+        {:reply, second, _} = StartAgent.execute(%{role: "qa"}, context.frame)
 
-        refute second.isError
+        refute second.isError, response_text(second)
+
         assert response_text(second) =~ "anthropic",
                "the default resolved to the same provider regardless of what was " <>
                  "connected, so it is a fixed value rather than a preference"

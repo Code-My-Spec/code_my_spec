@@ -405,6 +405,7 @@ defmodule CodeMySpecWeb.Router do
       live "/accounts/:id/manage", AccountLive.Manage, :show
       live "/accounts/:id/members", AccountLive.Members, :show
       live "/accounts/:id/invitations", AccountLive.Invitations, :show
+      live "/accounts/:id/agents", AccountLive.Agents, :show
     end
 
     live_session :require_active_account,

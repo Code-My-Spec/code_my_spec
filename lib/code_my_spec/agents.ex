@@ -39,12 +39,13 @@ defmodule CodeMySpec.Agents do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Transport
-
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
+  alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -105,8 +106,12 @@ defmodule CodeMySpec.Agents do
   quota or a bill does.
   """
   @spec start_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, start_error()}
-  def start_agent(%Scope{} = scope, %{provider: provider} = attrs) do
-    with :ok <- main_copy_is_free(scope, attrs),
+  def start_agent(%Scope{} = scope, attrs) do
+    with {:ok, role} <- role_of(attrs),
+         {:ok, provider, model} <- provider_for(scope, role, attrs),
+         attrs =
+           attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
+         :ok <- main_copy_is_free(scope, attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
@@ -312,7 +317,7 @@ defmodule CodeMySpec.Agents do
         provider: provider,
         working_copy: copy.root,
         working_copy_id: copy.id,
-        role: "main"
+        role: :main
       })
     end
   end
@@ -375,7 +380,7 @@ defmodule CodeMySpec.Agents do
   defp main_agent_anywhere(%Scope{} = scope) do
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.role == "main" and &1.status in [:starting, :running]))
+    |> Enum.find(&(&1.role == :main and &1.status in [:starting, :running]))
   end
 
   @doc """
@@ -578,7 +583,11 @@ defmodule CodeMySpec.Agents do
   defp write_turn_event(conversation, agent, event) do
     Conversations.add_agent_message(
       conversation,
-      agent.role || "main",
+      # `to_string`, because `role` became an `Ecto.Enum` in story 983 and
+      # `agent_role` on a message is a string column. Without it the insert
+      # fails and the step never reaches the page — which reads as an agent
+      # that went quiet rather than as a type error.
+      to_string(agent.role || :main),
       turn_event_kind(event),
       turn_event_text(event)
     )
@@ -872,12 +881,124 @@ defmodule CodeMySpec.Agents do
     AgentsRepository.update_agent(scope, agent, %{status: :running})
   end
 
+  @doc """
+  Which provider and model an agent type launches on, and why.
+
+  The account's setting when there is one, and `Defaults.resolve/2` against the
+  providers it actually holds when there is not. Public because the settings
+  screen shows what a type *would* do before anybody chooses.
+  """
+  @spec resolve_model(Scope.t(), atom()) ::
+          {:ok, {String.t(), String.t() | nil}, :set | :default} | {:error, :no_provider}
+  def resolve_model(%Scope{} = scope, role) do
+    case AgentsRepository.model_setting(scope, role) do
+      %ModelSetting{provider: provider, model: model} ->
+        {:ok, {provider, model}, :set}
+
+      nil ->
+        with {:ok, choice} <- Defaults.resolve(role, connected_providers(scope)) do
+          {:ok, choice, :default}
+        end
+    end
+  end
+
+  @doc "The agent types there are."
+  @spec roles() :: [atom()]
+  defdelegate roles(), to: Agent
+
+  @doc "Every provider that can be chosen, connected or not."
+  @spec provider_names() :: [String.t()]
+  defdelegate provider_names(), to: Providers, as: :names
+
+  @doc """
+  Every provider this account can actually launch on.
+
+  Asked of `Credential.fetch/2` rather than of the integrations table, so it
+  answers the same question the launcher will ask a moment later. A provider
+  listed here and refused at launch is the mismatch this exists to prevent.
+  """
+  @spec connected_providers(Scope.t()) :: [String.t()]
+  def connected_providers(%Scope{} = scope) do
+    Enum.filter(Providers.names(), &match?({:ok, _}, Credential.fetch(scope, &1)))
+  end
+
+  @doc "What each type runs on today, for every type. The settings screen reads this."
+  @spec model_settings(Scope.t()) :: [
+          %{role: atom(), provider: String.t() | nil, model: String.t() | nil, source: atom()}
+        ]
+  def model_settings(%Scope{} = scope) do
+    Enum.map(Agent.roles(), fn role ->
+      case resolve_model(scope, role) do
+        {:ok, {provider, model}, source} ->
+          %{role: role, provider: provider, model: model, source: source}
+
+        {:error, :no_provider} ->
+          %{role: role, provider: nil, model: nil, source: :none}
+      end
+    end)
+  end
+
+  @doc "Point an agent type at a provider and model."
+  @spec put_model_setting(Scope.t(), atom(), String.t(), String.t() | nil) ::
+          {:ok, ModelSetting.t()} | {:error, Ecto.Changeset.t() | :unknown_provider}
+  def put_model_setting(%Scope{} = scope, role, provider, model) do
+    # Refused here rather than at launch. A screen that stores a provider the
+    # account cannot authenticate produces an agent that fails on its first
+    # model call, minutes later, in a log nobody is reading — which is the
+    # failure the credential ordering above exists to prevent, arriving through
+    # the front door instead.
+    case provider in connected_providers(scope) do
+      true -> AgentsRepository.put_model_setting(scope, role, provider, model)
+      false -> {:error, :unknown_provider}
+    end
+  end
+
+  # The type an agent is being started as. Refused rather than defaulted when it
+  # names one that does not exist: `Agent.role` is an enum, and a caller asking
+  # for a type nobody defined is a caller with the wrong idea about what exists.
+  defp role_of(attrs) do
+    case Map.get(attrs, :role, :main) do
+      role when is_atom(role) -> known_role(role)
+      role when is_binary(role) -> role |> safe_atom() |> known_role()
+    end
+  end
+
+  defp known_role(role) do
+    case role in Agent.roles() do
+      true -> {:ok, role}
+      false -> {:error, {:unknown_role, role, Agent.roles()}}
+    end
+  end
+
+  # `to_existing_atom` so a caller cannot grow the atom table by asking for
+  # types that do not exist.
+  defp safe_atom(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> :__unknown__
+  end
+
+  # An explicit provider still wins — a caller that names one is asking for it,
+  # and story 983 is about what happens when nobody does.
+  defp provider_for(scope, role, attrs) do
+    case Map.get(attrs, :provider) do
+      nil ->
+        with {:ok, {provider, model}, _source} <- resolve_model(scope, role) do
+          {:ok, provider, model}
+        end
+
+      provider ->
+        {:ok, provider, Map.get(attrs, :model)}
+    end
+  end
+
   defp base_attrs(%Scope{} = scope, attrs) do
     %{
       engine: Map.get(attrs, :engine, :pi),
       provider: Map.fetch!(attrs, :provider),
+      model: Map.get(attrs, :model),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
-      role: Map.get(attrs, :role, "main"),
+      role: Map.fetch!(attrs, :role),
       working_copy_id: Map.get(attrs, :working_copy_id) || scope.active_working_copy_id,
       status: :starting
     }
