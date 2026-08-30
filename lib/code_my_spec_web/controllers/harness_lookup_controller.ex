@@ -62,13 +62,22 @@ defmodule CodeMySpecWeb.HarnessLookupController do
     end
   end
 
+  # `device` and `root` go through, not only the label.
+  #
+  # `WorkingCopies.issue/3` recognises a checkout by `{project, device, root}`,
+  # so withholding two of the three left this endpoint unable to recognise
+  # anything: onboarding the same checkout twice minted two rows, and both were
+  # device-less because the device is written at mint. The channel join has
+  # passed all three for a while; this path is where the gap survived.
   defp issue(project, params) do
     scope = %Scope{active_project_id: project.id, active_project: project}
 
     WorkingCopies.issue(
       scope,
       params["working_copy_id"] || params["harness_id"],
-      label: params["label"]
+      label: params["label"],
+      device: params["device_id"],
+      root: params["root"]
     )
   end
 

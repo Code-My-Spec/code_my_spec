@@ -75,7 +75,7 @@ defmodule CodeMySpec.WorkingCopies do
   # correct for a harness too old to say.
   defp recognise_or_create(project_id, label, opts) do
     case recognised(project_id, opts[:device], opts[:root]) do
-      nil -> create(project_id, label)
+      nil -> create(project_id, label, opts[:device])
       harness -> touch(harness, label)
     end
   end
@@ -442,15 +442,33 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
-  defp create(project_id, label) do
+  # The device is written at mint rather than attached afterwards.
+  #
+  # `Devices.attach/2` runs on the channel join, so a copy minted any other way
+  # — `mix cms.harness.onboard` posts to `/api/harnesses` — stayed device-less
+  # until a harness happened to join for that root, and never if none did.
+  # Measured on dev: 11 of 17 copies with no machine, and the newest of them
+  # minted by an onboarding twenty minutes earlier.
+  #
+  # It also breaks recognition, which is the more expensive half.
+  # `recognised/3` matches on `{project, device, root}`, so a mint that records
+  # no device cannot be recognised by the next one either — the same checkout
+  # onboarded twice is two rows, which is the duplicate this whole lookup exists
+  # to prevent.
+  defp create(project_id, label, device) do
     %WorkingCopy{}
     |> WorkingCopy.changeset(%{
       project_id: project_id,
       label: label,
+      device_id: device_id(device),
       last_seen_at: now()
     })
     |> Repo.insert()
   end
+
+  defp device_id(%Device{id: id}), do: id
+  defp device_id(id) when is_binary(id) and id != "", do: id
+  defp device_id(_device), do: nil
 
   # A project's *only* checkout is its main one.
   #

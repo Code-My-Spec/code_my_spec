@@ -94,6 +94,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     root = target_root(args)
     env = environment(root, args)
     relay_model_turns? = Enum.member?(args, "--relay-model-turns")
+    put_device_flag(args)
 
     case Enum.member?(args, "--check") do
       true ->
@@ -669,9 +670,30 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # bare word, so dropping only tokens starting with `-` would leave the id
   # standing where the path goes and expand it against the cwd. Same bug, one
   # argument along.
+  # `--device <id>`, read once and left where `device_id/0` can find it.
+  #
+  # Into application env rather than threaded, because the value is needed five
+  # calls down — `onboard/4` → `identity/3` → `mint/2` → `post/3` — and none of
+  # the four in between has any business knowing about it. The same seam
+  # `:device_config_path` uses, in a task that runs once and exits.
+  defp put_device_flag(args) do
+    case device_flag(args) do
+      nil -> Application.delete_env(:code_my_spec, :onboard_device_id)
+      id -> Application.put_env(:code_my_spec, :onboard_device_id, id)
+    end
+  end
+
+  defp device_flag(["--device", id | _rest]) when is_binary(id), do: id
+  defp device_flag([_arg | rest]), do: device_flag(rest)
+  defp device_flag([]), do: nil
+
   defp target_root(args), do: args |> drop_flags() |> first_path()
 
   defp drop_flags(["--project", _id | rest]), do: drop_flags(rest)
+  # Same shape as `--project`: the value is not a path, and without this clause
+  # `mix cms.harness.onboard --device <id>` onboards a directory named after
+  # the id.
+  defp drop_flags(["--device", _id | rest]), do: drop_flags(rest)
   defp drop_flags(["--" <> _ | rest]), do: drop_flags(rest)
   defp drop_flags([arg | rest]), do: [arg | drop_flags(rest)]
   defp drop_flags([]), do: []
@@ -793,11 +815,40 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         Config.server_url()
         |> String.trim_trailing("/")
         |> Kernel.<>("/api/harnesses"),
-      json: %{project_id: project.id, root: root, label: Config.label(root)},
+      json: %{
+        project_id: project.id,
+        root: root,
+        label: Config.label(root),
+        device_id: device_id()
+      },
       headers: [{"authorization", "Bearer " <> token}],
       retry: false,
       receive_timeout: to_timeout(second: 15)
     )
+  end
+
+  # Which machine this checkout is on. Two cases, and they want opposite
+  # answers.
+  #
+  # Installing on somebody's own machine, the answer is the machine we are
+  # standing in, and it already has an identity: `Device.announce/0` writes one
+  # to `~/.codemyspec/device.json` the first time a harness comes up here, and
+  # `recorded_id/0` reads it. Minting a second identity for a machine that
+  # already has one is the duplicate this is trying to stop, one level up.
+  #
+  # Installing on our dev box, we are onboarding a checkout for a machine we
+  # are not: several people share it, and the box's own identity is not the
+  # answer for any of them. So it is passed explicitly, and nothing tries to
+  # infer it.
+  #
+  # `nil` when neither holds — a machine that has never run a harness and was
+  # not told. That still mints, so an onboarding is not blocked by it, and the
+  # copy simply has no machine until one joins for that root.
+  defp device_id do
+    case Application.get_env(:code_my_spec, :onboard_device_id) do
+      id when is_binary(id) and id != "" -> id
+      _ -> CmsHarness.Device.recorded_id()
+    end
   end
 
   # The model turns, same question again.
