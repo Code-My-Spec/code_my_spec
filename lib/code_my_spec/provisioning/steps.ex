@@ -4719,12 +4719,40 @@ defmodule CodeMySpec.Provisioning.Steps do
       "real visitor at #{site} proves it just as well; resume once one exists."
   end
 
+  # `lib/app_web/router.ex`, `lib/app/release.ex` — the fallback this used to
+  # be — is Phoenix's own generator template path, before a project's real
+  # name is substituted in. It is never actually right for a real project, so
+  # falling back to it reported the WRONG file as missing rather than saying
+  # the app name could not be determined: MarketMySpec's `module_name` never
+  # arrived (a separate onboarding gap, in the sync payload, not here), and
+  # every deploy-readiness check built on this path checked `lib/app_web/...`
+  # against a project whose real files are `lib/market_my_spec_web/...`.
+  #
+  # `mix.exs`'s own `app:` atom is never ambiguous — it is what `mix release`
+  # and `mix phx.gen` themselves resolve every one of these same paths from —
+  # so reading it directly means this stops depending on `module_name` ever
+  # having been synced at all. `module_name` remains a fallback for an
+  # environment `mix.exs` cannot be read from; a project with neither degrades
+  # to the same "not found" honesty every check downstream already reports
+  # for a file that genuinely does not exist, rather than to a wrong guess.
   defp app_path(scope) do
-    project(scope)
-    |> Map.get(:module_name)
-    |> Kernel.||("App")
-    |> to_string()
-    |> Macro.underscore()
+    mix_exs_app_name(scope) || module_name_app_path(scope)
+  end
+
+  defp mix_exs_app_name(%Scope{environment: env}) do
+    with {:ok, content} <- Environments.read_file(env, "mix.exs"),
+         [_, app] <- Regex.run(~r/app:\s*:([a-zA-Z_][a-zA-Z0-9_]*)/, content) do
+      app
+    else
+      _ -> nil
+    end
+  end
+
+  defp module_name_app_path(scope) do
+    case project(scope) |> Map.get(:module_name) do
+      name when is_binary(name) and name != "" -> Macro.underscore(name)
+      _ -> nil
+    end
   end
 
   # Receiving is at the **apex**, and that is a decision rather than a default:
