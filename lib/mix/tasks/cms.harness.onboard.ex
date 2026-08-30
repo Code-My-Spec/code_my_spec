@@ -256,8 +256,26 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Every refusal is `:ok`. A worktree gets one, a machine with no Cloudflare
   # account configured gets one, and neither is a reason to fail an onboarding
   # that has already established this copy's identity and databases.
+  #
+  # ## It has to start the database itself
+  #
+  # `run/1` starts `:req` and nothing else, on purpose — this task runs in
+  # checkouts that have never been started, where `app.start` would boot Phoenix
+  # and Ecto against a database the new copy does not need. `WorkingCopies.fetch/1`
+  # is a `Repo.get`, so reaching it without saying so raised
+  # "could not lookup Ecto repo CodeMySpec.Repo" on *every* invocation — after
+  # the id had been minted, the row created and the config written, so half the
+  # onboarding stood and the operator saw only a stack trace. Running it again
+  # then minted a second working copy for the same root.
+  #
+  # `start_local_repo/0` already exists for this, and brings up only `Vault` and
+  # `Repo` rather than the endpoint a `mix phx.server` may already have bound.
+  # A machine with no database reachable is a refusal like the others, not a
+  # failure: the preview is an address, and the identity this task exists to
+  # write is already on disk.
   defp provision_preview(env, root, id) do
-    with {:ok, copy} <- WorkingCopies.fetch(id),
+    with :ok <- reachable_repo(),
+         {:ok, copy} <- WorkingCopies.fetch(id),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
       record_preview(env, root, id, %{
         "preview_url" => PreviewAddress.url(copy.id),
@@ -271,6 +289,20 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       {:error, reason} ->
         Mix.shell().info("      preview:    none (#{inspect(reason)})")
         :ok
+    end
+  end
+
+  # Started *and* answering. `Repo.start_link/1` succeeds against a database
+  # nobody is running — Postgrex pools connect lazily — so a started repo is not
+  # yet evidence that a query will not raise. One `SELECT 1`, which returns a
+  # tuple rather than raising, is.
+  defp reachable_repo do
+    with :ok <- start_local_repo(),
+         {:ok, _result} <- Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT 1", []) do
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+      other -> {:error, other}
     end
   end
 
