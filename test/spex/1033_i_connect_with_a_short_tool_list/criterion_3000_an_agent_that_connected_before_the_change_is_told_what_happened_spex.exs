@@ -7,11 +7,17 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
   landed still holds all 111 names and will call one that is no longer
   advertised. The honest answer is not "no such tool" — the tool exists, it
   moved, and the agent is one call from it.
+
+  Asserted on the reply as the transport receives it. An earlier version
+  called `Response.to_protocol/1` on it here, which was the conversion the
+  server had skipped — the spec did the server's job and passed either way.
+  When the server was fixed to convert, this spec broke, which is the right
+  way round but for the wrong reason: it should never have been converting.
   """
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.{Frame, Response}
+  alias Anubis.Server.Frame
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
@@ -34,18 +40,13 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
           "params" => %{"name" => context.moved, "arguments" => %{}}
         }
 
-        {:reply, response, _frame} = LocalServer.handle_request(request, %Frame{})
+        {:reply, reply, _frame} = LocalServer.handle_request(request, %Frame{})
 
-        {:ok, Map.put(context, :response, response)}
+        {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is told the tool moved and how to reach it", context do
-        text =
-          context.response
-          |> Response.to_protocol()
-          |> Map.get("content")
-          |> hd()
-          |> Map.get("text")
+        text = context.reply |> Map.get("content") |> hd() |> Map.get("text")
 
         assert text =~ "code mode"
         assert text =~ "run_script"
@@ -53,16 +54,18 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
       end
 
       then_ "and is not told the tool does not exist", context do
-        text =
-          context.response
-          |> Response.to_protocol()
-          |> Map.get("content")
-          |> hd()
-          |> Map.get("text")
+        text = context.reply |> Map.get("content") |> hd() |> Map.get("text")
 
         refute text =~ "not found",
                "the agent would go looking for a name that is not wrong"
 
+        {:ok, context}
+      end
+
+      then_ "and the reply is something the transport can actually send", context do
+        # The bug this criterion nearly shipped with: a struct here does not
+        # fail the call, it terminates the session.
+        assert {:ok, _json} = Jason.encode(context.reply)
         {:ok, context}
       end
     end
