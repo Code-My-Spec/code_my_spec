@@ -139,6 +139,88 @@ defmodule CodeMySpec.GeneratorsTest do
       assert {:no_health_route, @router} in Generators.audit_environment(env, @router)
     end
 
+    # Found live against MarketMySpec: no router route at all, but a genuine
+    # health check answering from `endpoint.ex` ahead of the router plug — no
+    # pipeline is even reachable from there. Reported missing before this
+    # fallback existed, on infrastructure that was already correct.
+    test "an endpoint-level health plug ahead of the router satisfies the check", %{
+      env: env,
+      dir: dir
+    } do
+      deployable_project(dir)
+
+      write(dir, @router, """
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+      end
+      """)
+
+      write(dir, "lib/my_app_web/endpoint.ex", """
+      defmodule MyAppWeb.Endpoint do
+        use Phoenix.Endpoint, otp_app: :my_app
+
+        plug :health_check
+        plug MyAppWeb.Router
+
+        defp health_check(%{request_path: "/health"} = conn, _opts) do
+          conn |> send_resp(200, "") |> halt()
+        end
+
+        defp health_check(conn, _opts), do: conn
+      end
+      """)
+
+      assert Generators.audit_environment(env, @router) == []
+    end
+
+    test "a router route still wins the pipeline check even with an endpoint.ex present", %{
+      env: env,
+      dir: dir
+    } do
+      deployable_project(dir)
+
+      write(dir, @router, """
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+
+        scope "/", MyAppWeb do
+          pipe_through :browser
+          get "/health", HealthController, :show
+        end
+      end
+      """)
+
+      write(dir, "lib/my_app_web/endpoint.ex", """
+      defmodule MyAppWeb.Endpoint do
+        use Phoenix.Endpoint, otp_app: :my_app
+
+        plug MyAppWeb.Router
+      end
+      """)
+
+      assert {:health_route_piped, @router} in Generators.audit_environment(env, @router)
+    end
+
+    test "no mention of the path anywhere is still caught", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      write(dir, @router, """
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+      end
+      """)
+
+      write(dir, "lib/my_app_web/endpoint.ex", """
+      defmodule MyAppWeb.Endpoint do
+        use Phoenix.Endpoint, otp_app: :my_app
+
+        plug MyAppWeb.Router
+      end
+      """)
+
+      assert {:no_health_route, @router} in Generators.audit_environment(env, @router)
+    end
+
     test "force_ssl without a health exclusion is caught", %{env: env, dir: dir} do
       deployable_project(dir)
 

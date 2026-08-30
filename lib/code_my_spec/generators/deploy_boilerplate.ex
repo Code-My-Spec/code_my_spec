@@ -173,6 +173,21 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
 
   A health route inside `:browser` carries session and CSRF plugs and can fail
   the proxy's probe for reasons unrelated to whether the app is up.
+
+  A route the router never sees at all satisfies this too: found live against
+  MarketMySpec, whose `/health` is a plug in `endpoint.ex` rather than a
+  router route — a stronger guarantee than an unpiped router scope, not a
+  weaker one, since no pipeline exists to run before the router is even
+  reached. Checked as a fallback only, so a project with a real router route
+  still reports on that route's own pipeline placement first. Detection is
+  deliberately loose (does `endpoint.ex` mention the path at all) rather than
+  parsing plug declaration order against the function it names: a plug
+  referenced by atom (`plug :health_check`) is ordinarily implemented by a
+  `defp` further down the same module, so "is the path textually before the
+  router plug line" would reject the exact shape it needs to accept. The
+  ordering guarantee this check exists to protect stays enforced by the
+  router branch above; this branch only answers "does something here appear
+  to handle it."
   """
   @spec health_route_unpiped(Environments.Environment.t(), String.t()) ::
           :ok
@@ -180,8 +195,33 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
           | {:error, {:health_route_piped, String.t()}}
   def health_route_unpiped(env, router_path) do
     case Environments.read_file(env, router_path) do
-      {:ok, body} -> check_health_route(body, router_path)
+      {:ok, body} ->
+        case check_health_route(body, router_path) do
+          {:error, {:no_health_route, _}} -> endpoint_health_plug(env, router_path)
+          result -> result
+        end
+
+      _ ->
+        endpoint_health_plug(env, router_path)
+    end
+  end
+
+  defp endpoint_health_plug(env, router_path) do
+    with path when not is_nil(path) <- endpoint_path(router_path),
+         {:ok, body} <- Environments.read_file(env, path),
+         true <- String.contains?(body, "\"/health\"") do
+      :ok
+    else
       _ -> {:error, {:no_health_route, router_path}}
+    end
+  end
+
+  # `router_path` is always `lib/<app>_web/router.ex`; the endpoint sits
+  # beside it by the same convention.
+  defp endpoint_path(router_path) do
+    case String.split(router_path, "router.ex", parts: 2) do
+      [prefix, ""] -> "#{prefix}endpoint.ex"
+      _ -> nil
     end
   end
 
