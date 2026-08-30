@@ -3726,7 +3726,15 @@ defmodule CodeMySpecSpex.Case do
         create: fn _scope, name, _o -> {:ok, %{"id" => 4242, "name" => name}} end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
-        registry_host: "registry.example.com"
+        registry_host: "registry.example.com",
+        # The deploy now runs on the same box the build just used — see
+        # `Steps.with_deploy_execution/4` — so every build here triggers one,
+        # not just the criteria this file is actually about. The fake server
+        # above has no real address for `Remote.ssh_runner/2` to reach, and
+        # none of story 992's criteria are about whether that deploy
+        # succeeded — an inert stub answers it harmlessly, the same way the
+        # fake `create`/`destroy` above answer the box's own lifecycle.
+        run: fn [_command] -> {"", 0} end
       )
     )
 

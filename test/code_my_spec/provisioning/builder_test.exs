@@ -193,6 +193,95 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
+  # `opts[:then]` is what lets a deploy run on the same box the image was
+  # just built and pushed on — never a second box, and never the environment
+  # of whichever caller triggered the run. `Build.deploy` carries back
+  # whatever `:then` returned; `nil` for every caller that never asked.
+  describe "opts[:then]" do
+    defp build_fun do
+      fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+    end
+
+    test "Build.deploy stays nil when no :then is given" do
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
+
+      assert build.deploy == nil
+    end
+
+    test "runs on the same box the build just used, not a second one" do
+      then_fun = fn run, _dir -> run.(["echo ran"]) end
+
+      opts =
+        opts(
+          build_fun: build_fun(),
+          then: then_fun,
+          run: fn [command] -> {"ran: #{command}", 0} end
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert build.deploy == {"ran: echo ran", 0}
+    end
+
+    test "runs before the box is destroyed, not after" do
+      owner = self()
+
+      then_fun = fn run, _dir ->
+        send(owner, :then_ran)
+        run.(["true"])
+      end
+
+      opts =
+        opts(
+          build_fun: build_fun(),
+          then: then_fun,
+          run: fn [_command] -> {"", 0} end
+        )
+
+      assert {:ok, _build} = Builder.build(scope(), "abc123", opts)
+
+      # Ordering, not just occurrence: the destroy message arrives from the
+      # injected `destroy` in `opts/1`, so the sequence proves `:then` ran
+      # while the box still existed rather than merely that both happened.
+      assert_received :then_ran
+      assert_received {:destroyed, 42}
+    end
+
+    test "the box is still destroyed when :then fails" do
+      then_fun = fn _run, _dir -> raise "kamal exploded" end
+      run = fn [_command] -> {"", 0} end
+
+      opts = opts(build_fun: build_fun(), then: then_fun, run: run)
+
+      assert_raise RuntimeError, fn ->
+        Builder.build(scope(), "abc123", opts)
+      end
+
+      assert_received {:destroyed, 42}
+    end
+
+    test "delivers into build_dir, defaulting to /build" do
+      then_fun = fn _run, dir -> dir end
+      run = fn [_command] -> {"", 0} end
+
+      opts = opts(build_fun: build_fun(), then: then_fun, run: run)
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert build.deploy == "/build"
+    end
+
+    test "a custom build_dir travels to :then too" do
+      then_fun = fn _run, dir -> dir end
+      run = fn [_command] -> {"", 0} end
+
+      opts = opts(build_fun: build_fun(), then: then_fun, build_dir: "/opt/deploy", run: run)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert build.deploy == "/opt/deploy"
+    end
+  end
+
   # Issue faaf76b6: a builder name is deterministic from `ref`, so a 409 here
   # is not two callers racing (RunLock already serializes per project) — it
   # is a box an earlier interrupted run left behind. These prove that box

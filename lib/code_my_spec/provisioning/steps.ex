@@ -2473,6 +2473,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # for something already finished. Deriving it needs only the tag.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
+         opts = with_deploy_execution(opts, scope, environment, reference),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2485,9 +2486,41 @@ defmodule CodeMySpec.Provisioning.Steps do
          retention: retention_claim(scope, environment, opts),
          builder: build.builder,
          builder_image: build.builder_image,
-         builder_destroyed: build.builder_destroyed
+         builder_destroyed: build.builder_destroyed,
+         deploy: build.deploy
        }}
     end
+  end
+
+  # The deploy runs on the same box the image was just built and pushed on —
+  # never a second box, and never wherever the caller of `run_provisioning_step`
+  # happens to be connected from. A harness cannot shell out at all, and even a
+  # real local checkout would mean the deploy is no longer reproducibly the
+  # platform's own (see `Deploy`'s own moduledoc). `Builder`'s `opts[:then]` is
+  # exactly this hook: called with the box's own runner and the directory the
+  # source landed in, after the push, while the box still exists.
+  #
+  # Built here from the same pieces `deploy_environment/3` used to assemble
+  # for its own, separate call to `Deploy.run/3` — `with_host_ip`/`with_age_key`/
+  # `with_registry_credential_for_deploy` need only `scope`/`environment`, so
+  # nothing here depends on the build having finished. `with_deploy_ssh`/
+  # `forget_stale_host_key` are not needed: `with_builder_ssh` already set
+  # `opts[:env]` earlier in this same pipeline, and `Deploy.remote_command/3`'s
+  # own `trust_host/1` replaces what `forget_stale_host_key/1` did for a local
+  # run.
+  defp with_deploy_execution(opts, scope, environment, reference) do
+    host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
+
+    deploy_opts =
+      opts
+      |> deploy_opts(host, %{reference: reference})
+      |> with_host_ip(scope, environment)
+      |> with_age_key(scope, environment)
+      |> with_registry_credential_for_deploy(scope)
+
+    Keyword.put(opts, :then, fn run, dir ->
+      Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
+    end)
   end
 
   # Retention's claim is proven by what just happened, not assumed from
@@ -3484,15 +3517,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # committing afterwards built one SHA and deployed another.
          :ok <- commit_generated_configuration(scope),
          {:ok, image} <- image_for(scope, environment, opts),
-         deploy_opts =
-           opts
-           |> deploy_opts(host, image)
-           |> with_host_ip(scope, environment)
-           |> with_age_key(scope, environment)
-           |> with_registry_credential_for_deploy(scope)
-           |> with_deploy_ssh(scope),
-         :ok <- forget_stale_host_key(deploy_opts),
-         result <- run_deploy(scope, environment, deploy_opts) do
+         result <- deploy_result(scope, environment, host, image, opts) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
           # Recorded only here, on the success branch, because `deploy_outcome`
@@ -3512,6 +3537,28 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:error, reason, [delivery | resources]}
       end
     end
+  end
+
+  # A build already ran the deploy on its own box, over its own ssh — see
+  # `with_deploy_execution/4` — so `image.deploy` carries that result back
+  # rather than this running it a second time, on a second, different
+  # environment. Only a caller that skipped the build entirely (an explicit
+  # `:image`, or `build: false` — a redeploy of what is already running)
+  # still reaches the old path here, against whatever `env(scope)` is.
+  defp deploy_result(_scope, _environment, _host, %{deploy: %Deploy.Result{} = result}, _opts),
+    do: result
+
+  defp deploy_result(scope, environment, host, image, opts) do
+    deploy_opts =
+      opts
+      |> deploy_opts(host, image)
+      |> with_host_ip(scope, environment)
+      |> with_age_key(scope, environment)
+      |> with_registry_credential_for_deploy(scope)
+      |> with_deploy_ssh(scope)
+
+    forget_stale_host_key(deploy_opts)
+    run_deploy(scope, environment, deploy_opts)
   end
 
   defp environments(scope, opts) do

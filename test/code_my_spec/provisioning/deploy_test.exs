@@ -328,4 +328,133 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert recorded =~ "CMS_DEPLOY_HOST_IP="
     end
   end
+
+  # `opts[:run]` is the same escape hatch `Backups.run_script/4` already has:
+  # kamal is meant to connect *to* the app server over SSH, never to run on
+  # whichever machine called this — a harness's environment cannot shell out
+  # at all, and even a real local checkout is the wrong place. `Builder`
+  # supplies this bound to the box the image was just built and pushed on.
+  describe "running via opts[:run] instead of shelling out locally" do
+    test "migrate and swap run through it, not Environments.cmd/4", %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: "bin/deploy",
+          host: "app.example.com",
+          image: "localhost:5000/app:abc123",
+          run: run,
+          remote_dir: "/build",
+          probe: healthy()
+        )
+
+      assert_receive {:ran, migrate_command}
+      assert_receive {:ran, swap_command}
+
+      assert migrate_command =~ "cd '/build' &&"
+      assert migrate_command =~ "bin/deploy 'migrate' 'prod'"
+      assert migrate_command =~ "CMS_IMAGE='localhost:5000/app:abc123'"
+
+      assert swap_command =~ "bin/deploy 'swap' 'prod'"
+      assert Result.swapped?(result)
+    end
+
+    # The box `opts[:run]` reaches is single-use and freshly created, so its
+    # known_hosts is always empty — kamal's own outbound ssh to the deploy
+    # target would otherwise fail host-key verification on every single
+    # deploy, not just the first one on a persistent machine.
+    test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "ssh-keyscan -H 'app.example.com' >> ~/.ssh/known_hosts"
+      assert Regex.match?(~r/ssh-keyscan.*; cd '\/build'/, migrate_command),
+             "expected the host key to be seeded before the script runs"
+    end
+
+    test "does not try to seed a host it was never given", %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+      refute migrate_command =~ "ssh-keyscan"
+    end
+
+    # `resolve_script/2` joins the caller's own `env.cwd` onto a relative
+    # script name — right when the script has to be found on this machine,
+    # wrong when `opts[:run]` means it lives on a box neither `env` nor this
+    # process can see the path of. The relative name has to travel as-is; the
+    # `cd` into `opts[:remote_dir]` is what resolves it, on the far end.
+    test "the caller's own cwd never gets joined onto the script name", ctx do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(ctx.env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, command}
+      refute command =~ ctx.env.cwd,
+             "the local tmp dir leaked into a command meant for a different box"
+    end
+
+    test "a failed migration still refuses the swap", %{env: env} do
+      run = fn [command] ->
+        if String.contains?(command, "migrate") do
+          {"boom", 1}
+        else
+          flunk("swap ran after a failed migration")
+        end
+      end
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: "bin/deploy",
+          host: "app.example.com",
+          run: run,
+          remote_dir: "/build"
+        )
+
+      assert result.failed_phase == :migrate
+      refute Result.swapped?(result)
+    end
+  end
 end

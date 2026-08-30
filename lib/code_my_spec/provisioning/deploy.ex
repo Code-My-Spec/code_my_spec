@@ -90,7 +90,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   @spec run(CodeMySpec.Environments.Environment.t(), String.t(), keyword()) :: Result.t()
   def run(env, environment, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    script = resolve_script(env, Keyword.get(opts, :deploy_script, "bin/deploy"))
+    script = deploy_script(env, opts)
 
     with {:ok, migrate_out, result} <- migrate(env, environment, script, now, opts),
          {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out)),
@@ -106,10 +106,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # "Migration failed (exit 1)" — the exit code and nothing else. The reason
   # was never lost; it was never collected.
   defp migrate(env, environment, script, now, opts) do
-    case Environments.cmd(env, script, ["migrate", environment],
-           env: script_env(opts),
-           stderr_to_stdout: true
-         ) do
+    case run_script(env, script, ["migrate", environment], opts) do
       {output, 0} ->
         {:ok, output, %Result{migrated_at: now.()}}
 
@@ -191,10 +188,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   end
 
   defp swap(env, environment, script, result, now, opts) do
-    case Environments.cmd(env, script, ["swap", environment],
-           env: script_env(opts),
-           stderr_to_stdout: true
-         ) do
+    case run_script(env, script, ["swap", environment], opts) do
       {_output, 0} ->
         {:ok, %{result | swapped_at: now.()}}
 
@@ -349,4 +343,78 @@ defmodule CodeMySpec.Provisioning.Deploy do
   end
 
   defp resolve_script(_env, script), do: script
+
+  # `opts[:run]` means the checkout lives on a box neither `env` nor this
+  # process can see the path of — `resolve_script/2` would join the caller's
+  # own `cwd` onto a name that only means something on the far end of the SSH
+  # connection `opts[:run]` already is. The relative name travels instead, and
+  # `run_script/4`'s `cd` into `opts[:remote_dir]` is what resolves it there.
+  defp deploy_script(env, opts) do
+    script = Keyword.get(opts, :deploy_script, "bin/deploy")
+
+    case Keyword.has_key?(opts, :run) do
+      true -> script
+      false -> resolve_script(env, script)
+    end
+  end
+
+  # Where the script runs, which is not always where `env` points. `opts[:run]`
+  # is the same escape hatch `Backups.run_script/4` already has, for the same
+  # reason: kamal is meant to connect *to* the app server over SSH (port 22 is
+  # open for exactly that — see `Hetzner`'s own comment on it), never to run
+  # on the box it is deploying, and never on whichever machine happened to
+  # call this — a harness's environment cannot shell out at all, and even a
+  # real local checkout is the wrong place: `bin/deploy` still runs, but not
+  # as *this* project's own setup, reproducibly, off the platform's own
+  # infrastructure. `Builder` supplies `opts[:run]` bound to the same builder
+  # box and SSH session the image was just built and pushed on.
+  defp run_script(env, script, args, opts) do
+    case Keyword.get(opts, :run) do
+      nil ->
+        Environments.cmd(env, script, args, env: script_env(opts), stderr_to_stdout: true)
+
+      run ->
+        run.([remote_command(script, args, opts)])
+    end
+  end
+
+  # One shell line: seed the box's own trust of the deploy target, cd to the
+  # delivered tree, export what the script reads, run it. The environment
+  # cannot travel as `System.cmd`'s `:env` over ssh, so it is spelled out in
+  # the command — quoted, because a decrypt key or a registry password is not
+  # guaranteed to be shell-safe.
+  defp remote_command(script, args, opts) do
+    exports =
+      opts
+      |> script_env()
+      |> Enum.map_join(" ", fn {name, value} -> "#{name}=#{shell_quote(value)}" end)
+
+    dir = Keyword.get(opts, :remote_dir, ".")
+
+    trust_host(opts) <>
+      "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
+  end
+
+  # Kamal's own outbound ssh — from wherever `opts[:run]` reaches, to
+  # `opts[:host]` — is the one connection nothing here has already told to
+  # skip host-key checking. `Remote.ssh_args/2` set `StrictHostKeyChecking=no`
+  # for the *delivery* ssh (this process reaching the box `opts[:run]` targets),
+  # which says nothing about a *second*, independent ssh client Kamal starts on
+  # the far end. `opts[:run]`'s box is single-use and freshly created, so its
+  # `known_hosts` is always empty on the first deploy — never accumulated, the
+  # way a developer's own machine would. Net::SSH reads the standard file by
+  # default, so seeding it once here is the whole fix; nothing about Kamal's
+  # own config needs to change to get the same effect the delivery connection
+  # already has.
+  defp trust_host(opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        "ssh-keyscan -H #{shell_quote(host)} >> ~/.ssh/known_hosts 2>/dev/null; "
+
+      _ ->
+        ""
+    end
+  end
+
+  defp shell_quote(value), do: "'" <> String.replace(to_string(value), "'", "'\\''") <> "'"
 end

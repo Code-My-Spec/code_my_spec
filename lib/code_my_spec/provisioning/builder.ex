@@ -29,10 +29,19 @@ defmodule CodeMySpec.Provisioning.Builder do
             builder: String.t(),
             builder_image: String.t(),
             builder_destroyed: boolean(),
-            built_at: DateTime.t()
+            built_at: DateTime.t(),
+            deploy: term()
           }
 
-    defstruct [:image, :architecture, :builder, :builder_image, :builder_destroyed, :built_at]
+    defstruct [
+      :image,
+      :architecture,
+      :builder,
+      :builder_image,
+      :builder_destroyed,
+      :built_at,
+      :deploy
+    ]
   end
 
   # Hetzner's two lines, and the box each architecture builds on. A build has
@@ -327,8 +336,30 @@ defmodule CodeMySpec.Provisioning.Builder do
          image: image.reference,
          architecture: image.architecture,
          builder: server_name(server),
-         built_at: now.()
+         built_at: now.(),
+         deploy: run_then(server, opts)
        }}
+    end
+  end
+
+  # `:then` runs on the same box, over the same SSH the build already
+  # delivered the source and pushed the image with — never a second box, and
+  # never the environment of whichever caller triggered this run. `bin/deploy`
+  # is meant to connect *to* the app server, not run on the box being deployed
+  # and not on wherever a caller happens to be shelling out from — a harness
+  # cannot shell out at all, and even a real local checkout would mean the
+  # deploy is no longer reproducibly the platform's own.
+  #
+  # `nil` when no caller asked for one, which is every existing caller —
+  # `Build.deploy` staying `nil` is the ordinary case, not a degraded one.
+  defp run_then(server, opts) do
+    case Keyword.get(opts, :then) do
+      nil ->
+        nil
+
+      then_fun ->
+        run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
+        then_fun.(run, Keyword.get(opts, :build_dir, "/build"))
     end
   end
 
