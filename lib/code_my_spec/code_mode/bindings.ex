@@ -39,6 +39,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
     |> Lua.put_private(@printed, [])
     |> capture_print()
     |> bind_tools(catalog)
+    |> explain_exclusions()
   end
 
   @doc "What the script printed, in order."
@@ -64,6 +65,21 @@ defmodule CodeMySpec.CodeMode.Bindings do
   defp bind_tools(lua, catalog) do
     Enum.reduce(catalog, lua, fn {name, tool}, acc ->
       Lua.set!(acc, [String.to_atom(name)], callback(tool))
+    end)
+  end
+
+  # Bound so that calling one says why rather than failing as an unknown global.
+  # Absence alone produces "attempt to call a nil value", which reads like a
+  # misspelling — and an agent that reads it tries variations instead of
+  # learning that the tool is direct-call only.
+  defp explain_exclusions(lua) do
+    Enum.reduce(Catalog.excluded(), lua, fn name, acc ->
+      reason = Catalog.exclusion_reason(name)
+
+      Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
+        raise Lua.RuntimeException,
+              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool."
+      end)
     end)
   end
 

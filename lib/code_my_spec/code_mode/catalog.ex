@@ -41,19 +41,26 @@ defmodule CodeMySpec.CodeMode.Catalog do
   The limits are per-evaluation and would not see it.
   """
 
-  @excluded ~w(
-    ask_user
-    check_answer
-    list_user_questions
-    start_agent
-    assign_subagent
-    stop_agent
-    message_agent
-    tap_out
-    show_in_panel
-    run_script
-    tool_docs
-  )
+  # Name to the reason a script may not call it. The reason is not decoration:
+  # it is what an agent is told when it tries, and "attempt to call a nil value
+  # (global 'ask_user')" — which is what absence alone produces — reads like a
+  # typo in the script rather than a rule about the tool. QA on story 970 found
+  # an agent would most likely try spelling variations rather than learn.
+  @excluded %{
+    "ask_user" =>
+      "it waits on a person, and a loop around it is questions nobody agreed to answer",
+    "check_answer" => "it belongs with ask_user, which a script cannot call",
+    "list_user_questions" => "it belongs with ask_user, which a script cannot call",
+    "start_agent" => "it spawns background work, and a loop around it is a fleet",
+    "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
+    "stop_agent" => "it acts on agents, which a script cannot start",
+    "message_agent" => "it acts on agents, which a script cannot start",
+    "tap_out" => "it ends your turn, which is yours to do and not a script's",
+    "show_in_panel" => "it puts something in front of a person, who is not watching a script",
+    "run_script" =>
+      "you are already in one — a script starting a script nests a VM inside a tool call",
+    "tool_docs" => "read the documentation before writing the script, not from inside it"
+  }
 
   @type invoke :: (map() -> {:ok, term()} | {:error, String.t()})
 
@@ -85,7 +92,7 @@ defmodule CodeMySpec.CodeMode.Catalog do
   def from(registered, build_invoke) when is_function(build_invoke, 1) do
     registered
     |> Enum.map(&describe(&1, build_invoke))
-    |> Enum.reject(&(&1.name in @excluded))
+    |> Enum.reject(&Map.has_key?(@excluded, &1.name))
     |> Map.new(&{&1.name, &1})
   end
 
@@ -105,7 +112,11 @@ defmodule CodeMySpec.CodeMode.Catalog do
   a list something else can read.
   """
   @spec excluded() :: [String.t()]
-  def excluded, do: @excluded
+  def excluded, do: @excluded |> Map.keys() |> Enum.sort()
+
+  @doc "Why that tool is not callable from a script, in a sentence."
+  @spec exclusion_reason(String.t()) :: String.t() | nil
+  def exclusion_reason(name), do: Map.get(@excluded, name)
 
   defp describe(tool, build_invoke) do
     %{

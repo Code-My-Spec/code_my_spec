@@ -85,5 +85,28 @@ defmodule CodeMySpec.McpServers.CodeMode do
   end
 
   defp describe(reason) when is_binary(reason), do: reason
+
+  # Validation errors arrive as structs carrying a readable sentence and a lot
+  # of machinery around it. `inspect/1` on the struct puts the machinery in the
+  # agent's context and buries the sentence — and in a loop, twenty times. Pull
+  # the sentence out, name the field, drop the rest.
+  defp describe(errors) when is_list(errors) do
+    case Enum.map(errors, &describe/1) do
+      [] -> "invalid"
+      described -> Enum.join(described, "; ")
+    end
+  end
+
+  defp describe(%{message: message} = error) when is_binary(message) do
+    case field(error) do
+      nil -> message
+      name -> "#{name} #{message}"
+    end
+  end
+
   defp describe(reason), do: inspect(reason)
+
+  defp field(%{path: [name | _rest]}), do: name
+  defp field(%{key: name}) when not is_nil(name), do: name
+  defp field(_error), do: nil
 end
