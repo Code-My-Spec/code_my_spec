@@ -79,6 +79,13 @@ defmodule CodeMySpec.CodeMode do
       Result.error(kind(error), Exception.message(error))
   end
 
+  # A script that returns nothing is a script run for its writes, which is a
+  # normal thing to do — `nil` rather than an empty list, so it reads as "no
+  # answer" rather than "an answer that was a list".
+  defp value([]), do: nil
+  defp value([single]), do: single
+  defp value(many), do: many
+
   # A Lua table comes back as a list of `{key, value}` pairs, which is the VM's
   # shape and not an answer. Left alone it reaches the agent as
   # `{54, [{"id", 962}, {"title", "..."}]}` — the array index showing as a key,
@@ -87,13 +94,6 @@ defmodule CodeMySpec.CodeMode do
   #
   # Consecutive integer keys from 1 are a Lua array and become a list; anything
   # else is a record and becomes a map.
-  # A script that returns nothing is a script run for its writes, which is a
-  # normal thing to do — `nil` rather than an empty list, so it reads as "no
-  # answer" rather than "an answer that was a list".
-  defp value([]), do: nil
-  defp value([single]), do: single
-  defp value(many), do: many
-
   defp lua_value([{_key, _value} | _rest] = table) do
     keys = Enum.map(table, &elem(&1, 0))
 
