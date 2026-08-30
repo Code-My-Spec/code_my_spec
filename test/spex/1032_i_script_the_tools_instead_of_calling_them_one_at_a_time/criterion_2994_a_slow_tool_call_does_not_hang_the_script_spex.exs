@@ -5,10 +5,17 @@ defmodule CodeMySpecSpex.Story1032.Criterion2994Spex do
 
   Nothing lets a spec make a real tool slow, so the clock is lowered instead —
   the mechanism under test is "work past the wall clock is stopped and
-  reported", and lowering the clock reaches it from the other side.
+  reported", and lowering the clock reaches it from the other side. The limits
+  are configurable for the operator's sake anyway: a harness against a slow
+  database wants a longer clock than one on a laptop.
 
-  The limits are configurable for the operator's sake anyway: a harness against
-  a slow database wants a longer clock than one on a laptop.
+  The first draft set the clock to 1ms and called a tool. It passed here and
+  failed in the analyzer sweep, because a tool call against an empty project
+  sometimes finishes inside a millisecond — a race I wrote, not a defect it
+  found. The script now does work that cannot finish that fast before it makes
+  its call, so the clock always wins. The instruction budget is raised for the
+  same scenario so that the wall clock, and not the budget, is what stops it —
+  otherwise this would pass for the wrong reason.
   """
 
   use CodeMySpecSpex.Case
@@ -33,7 +40,9 @@ defmodule CodeMySpecSpex.Story1032.Criterion2994Spex do
         Application.put_env(
           :code_my_spec,
           CodeMySpec.CodeMode,
-          Keyword.put(previous, :timeout, 1)
+          previous
+          |> Keyword.put(:timeout, 1)
+          |> Keyword.put(:max_instructions, 1_000_000_000)
         )
 
         on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.CodeMode, previous) end)
@@ -41,9 +50,14 @@ defmodule CodeMySpecSpex.Story1032.Criterion2994Spex do
         {:ok, context}
       end
 
-      when_ "the script calls a tool", context do
-        {:reply, response, _frame} =
-          RunScript.execute(%{script: ~S[return list_story_titles()]}, context.frame)
+      when_ "the script works for longer than the clock allows, then calls a tool", context do
+        script = ~S"""
+        local n = 0
+        for i = 1, 3000000 do n = n + i end
+        return list_story_titles()
+        """
+
+        {:reply, response, _frame} = RunScript.execute(%{script: script}, context.frame)
 
         {:ok, Map.put(context, :response, response)}
       end
