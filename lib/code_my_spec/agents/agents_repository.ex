@@ -84,31 +84,32 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def update_agent(%Scope{}, %Agent{}, _attrs), do: {:error, :cross_project}
 
   @doc """
-  The account's setting for one agent type, or nil.
+  This person's setting for one agent type, or nil.
 
-  Account-scoped rather than project-scoped, unlike everything above it. An
-  agent is a tenant's property and so is the subscription it spends, but which
-  model a type runs on is a decision about the account's money — an account
-  with twenty projects should not answer it twenty times.
+  User-scoped rather than project- or account-scoped, unlike everything above
+  it. The row names a provider, and the credential for that provider lives on
+  `integrations`, which is keyed by user — so an account-level answer is only
+  true for whichever member connected the provider. Not project-scoped either:
+  someone with twenty projects should not answer this twenty times.
   """
   @spec model_setting(Scope.t(), atom()) :: ModelSetting.t() | nil
-  def model_setting(%Scope{active_account_id: account_id}, role) do
-    Repo.get_by(ModelSetting, account_id: account_id, role: role)
+  def model_setting(%Scope{user: %{id: user_id}}, role) do
+    Repo.get_by(ModelSetting, user_id: user_id, role: role)
   end
 
-  @doc "Every type this account has chosen for."
+  @doc "Every type this person has chosen for."
   @spec list_model_settings(Scope.t()) :: [ModelSetting.t()]
-  def list_model_settings(%Scope{active_account_id: account_id}) do
-    Repo.all(from s in ModelSetting, where: s.account_id == ^account_id)
+  def list_model_settings(%Scope{user: %{id: user_id}}) do
+    Repo.all(from s in ModelSetting, where: s.user_id == ^user_id)
   end
 
   @doc "Point a type at a provider and model, replacing any previous choice."
   @spec put_model_setting(Scope.t(), atom(), String.t(), String.t() | nil) ::
           {:ok, ModelSetting.t()} | {:error, Ecto.Changeset.t()}
-  def put_model_setting(%Scope{active_account_id: account_id}, role, provider, model) do
-    attrs = %{role: role, provider: provider, model: model, account_id: account_id}
+  def put_model_setting(%Scope{user: %{id: user_id}}, role, provider, model) do
+    attrs = %{role: role, provider: provider, model: model, user_id: user_id}
 
-    case Repo.get_by(ModelSetting, account_id: account_id, role: role) do
+    case Repo.get_by(ModelSetting, user_id: user_id, role: role) do
       nil -> %ModelSetting{}
       existing -> existing
     end

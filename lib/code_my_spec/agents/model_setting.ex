@@ -1,18 +1,22 @@
 defmodule CodeMySpec.Agents.ModelSetting do
   @moduledoc """
-  Which provider and model one agent type runs on, for one account.
+  Which provider and model one agent type runs on, for one person.
 
   Story 983. The launcher does not know what a QA agent is; it looks up the
   row for the type it was asked to start. A QA agent runs on something cheap
   because this says so, not because anything branches on the word "qa".
 
-  ## Account-scoped, not project-scoped
+  ## User-scoped, because the credential is
 
-  Agents belong to the account — `Agents.start_agent/2` resolves its credential
-  from the account's integration, and a working copy is a place an agent runs
-  rather than a thing that owns it. A per-project setting would also mean an
-  account with twenty projects configures the same four types twenty times to
-  say the same thing.
+  Story 984. The setting names a provider, and the provider is reached through
+  `integrations`, which is keyed by `user_id`. Held against the account, a row
+  saying "QA runs on Z.ai" was true for whoever pasted the key and false for
+  everybody else on it — and the settings screen could not tell which, so it
+  named a model no agent would start on.
+
+  Not project-scoped either: a working copy is a place an agent runs rather
+  than a thing that owns it, and an account with twenty projects would
+  otherwise configure the same four types twenty times to say the same thing.
 
   ## Absent is a real state, not a missing row to paper over
 
@@ -35,7 +39,7 @@ defmodule CodeMySpec.Agents.ModelSetting do
     field :role, Ecto.Enum, values: Agent.roles()
     field :provider, :string
     field :model, :string
-    field :account_id, Ecto.UUID
+    field :user_id, :integer
 
     timestamps(type: :utc_datetime)
   end
@@ -43,8 +47,8 @@ defmodule CodeMySpec.Agents.ModelSetting do
   @doc false
   def changeset(setting, attrs) do
     setting
-    |> cast(attrs, [:role, :provider, :model, :account_id])
-    |> validate_required([:role, :provider, :account_id])
-    |> unique_constraint([:account_id, :role])
+    |> cast(attrs, [:role, :provider, :model, :user_id])
+    |> validate_required([:role, :provider, :user_id])
+    |> unique_constraint([:user_id, :role])
   end
 end

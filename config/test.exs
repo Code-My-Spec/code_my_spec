@@ -381,6 +381,11 @@ config :code_my_spec, CodeMySpec.Research,
   plug: {Req.Test, CodeMySpec.Research},
   tavily_api_key: "test-key"
 
+# Pasting a key asks the provider whether it works, and a suite that really
+# asked would connect to Anthropic and Z.ai from every run of this story.
+config :code_my_spec, CodeMySpec.Integrations.Providers.ApiKey,
+  plug: {Req.Test, CodeMySpec.Integrations.Providers.ApiKey}
+
 config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
 config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
 config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}

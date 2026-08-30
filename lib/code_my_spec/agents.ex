@@ -884,21 +884,45 @@ defmodule CodeMySpec.Agents do
   @doc """
   Which provider and model an agent type launches on, and why.
 
-  The account's setting when there is one, and `Defaults.resolve/2` against the
-  providers it actually holds when there is not. Public because the settings
-  screen shows what a type *would* do before anybody chooses.
+  Their setting when there is one and it still names a provider they hold, and
+  `Defaults.resolve/2` against what they do hold otherwise. Public because the
+  settings screen shows what a type *would* do before anybody chooses.
+
+  ## A setting can outlive its credential
+
+  Disconnecting a provider does not delete the rows naming it — deriving this
+  instead of cleaning up means there is one place the answer comes from, and no
+  window in which a row and the integrations table disagree. Read against what
+  is connected right now, a stale row falls back on its own; cleaned up on
+  disconnect, it would only be right if every path that removes a credential
+  remembered to.
+
+  Falling back rather than refusing, because the person already said what they
+  want when there is a choice, and being asked again is being asked about
+  something that has not changed.
   """
   @spec resolve_model(Scope.t(), atom()) ::
           {:ok, {String.t(), String.t() | nil}, :set | :default} | {:error, :no_provider}
   def resolve_model(%Scope{} = scope, role) do
-    case AgentsRepository.model_setting(scope, role) do
-      %ModelSetting{provider: provider, model: model} ->
-        {:ok, {provider, model}, :set}
+    connected = connected_providers(scope)
 
-      nil ->
-        with {:ok, choice} <- Defaults.resolve(role, connected_providers(scope)) do
-          {:ok, choice, :default}
-        end
+    scope
+    |> AgentsRepository.model_setting(role)
+    |> honour_setting(role, connected)
+  end
+
+  defp honour_setting(%ModelSetting{provider: provider, model: model}, role, connected) do
+    case provider in connected do
+      true -> {:ok, {provider, model}, :set}
+      false -> resolved_default(role, connected)
+    end
+  end
+
+  defp honour_setting(nil, role, connected), do: resolved_default(role, connected)
+
+  defp resolved_default(role, connected) do
+    with {:ok, choice} <- Defaults.resolve(role, connected) do
+      {:ok, choice, :default}
     end
   end
 

@@ -28,6 +28,7 @@ defmodule CodeMySpec.Integrations do
   """
 
   alias CodeMySpec.Integrations.{Integration, IntegrationRepository}
+  alias CodeMySpec.Integrations.Providers.ApiKey
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -159,6 +160,41 @@ defmodule CodeMySpec.Integrations do
   """
   @spec connected?(Scope.t(), provider()) :: boolean()
   defdelegate connected?(scope, provider), to: IntegrationRepository
+
+  ## API-key Providers
+
+  @doc """
+  Connect a provider by the key someone pasted, once the provider says it works.
+
+  The key is asked about before it is stored, and a refusal stores nothing —
+  otherwise the settings page reports a connection whose first evidence is an
+  agent failing a model call minutes later. `ApiKey.verify/2` distinguishes a
+  key the provider refused from a provider that did not answer, and both are
+  passed through: they read alike and want opposite responses.
+
+  Stored the way GitHub's token is — no refresh token, an expiry a year out —
+  because that is what a credential nobody can renew on the user's behalf looks
+  like, and `fetch_access_token/2` already takes the fresh path for it.
+  """
+  @spec connect_api_key(Scope.t(), atom(), String.t()) ::
+          {:ok, Integration.t()} | {:error, ApiKey.failure() | term()}
+  def connect_api_key(%Scope{} = scope, provider, key) when is_binary(key) do
+    trimmed = String.trim(key)
+
+    with :ok <- present(trimmed),
+         :ok <- ApiKey.verify(provider, trimmed) do
+      IntegrationRepository.upsert_integration(scope, provider, %{
+        access_token: trimmed,
+        refresh_token: nil,
+        expires_at: DateTime.utc_now() |> DateTime.add(365, :day),
+        granted_scopes: [],
+        provider_metadata: %{}
+      })
+    end
+  end
+
+  defp present(""), do: {:error, :blank}
+  defp present(_key), do: :ok
 
   ## Social Login Flow
 

@@ -48,6 +48,13 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
+  # `Req.Test.stub` is a provider seam, listed by the same precedent as `stage_`
+  # and `with_provider_cassette`. A block saying "Z.ai will accept this key" and
+  # calling it has made its precondition true in the only way available: the
+  # provider is the thing that decides, and `config/test.exs` pins every client
+  # to `Req.Test` precisely so a suite cannot ask the real one. Without this,
+  # a criterion about what a provider answers has no legal way to be written.
+  #
   # `System.cmd`, `System.put_env` and `System.delete_env` were removed from this
   # list, because `SpexDeniedCalls` (CMS0002) forbids all three inside a
   # `_spex.exs`. Listing them here told an author to establish a precondition by
@@ -136,6 +143,7 @@ defmodule CodeMySpec.SpexGivensTest do
     put_env! delete_env!
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout say_to_main_agent
+    Req.Test.stub
   )
 
   # The failure message has always offered a second remedy — "if the

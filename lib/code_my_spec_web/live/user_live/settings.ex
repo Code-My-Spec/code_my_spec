@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
   require Logger
 
   alias CodeMySpec.Integrations
+  alias CodeMySpec.Integrations.Providers.ApiKey
   alias CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth
   alias CodeMySpec.Users
 
@@ -92,7 +93,10 @@ defmodule CodeMySpecWeb.UserLive.Settings do
 
   defp connected_service(assigns) do
     ~H"""
-    <div class="border rounded-lg p-4 flex items-center justify-between">
+    <div
+      class="border rounded-lg p-4 flex items-center justify-between gap-3"
+      data-test={"service-#{@service.provider}"}
+    >
       <div class="flex items-center gap-3">
         <.service_icon provider={@service.provider} />
         <div>
@@ -103,50 +107,90 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         </div>
       </div>
 
-      <%= if @service.connected do %>
-        <button
-          type="button"
-          class="btn btn-sm btn-outline btn-error"
-          phx-click={show_confirm("confirm-disconnect-#{@service.provider}")}
-        >
-          Disconnect
-        </button>
-        <.link
-          id={"disconnect-#{@service.provider}-link"}
-          href={~p"/auth/#{@service.provider}"}
-          method="delete"
-          class="hidden"
-          aria-hidden="true"
-          tabindex="-1"
-        >
-          Disconnect
-        </.link>
-        <.confirm_dialog
-          id={"confirm-disconnect-#{@service.provider}"}
-          title={"Disconnect #{@service.label}?"}
-          message={@service.disconnect_warning}
-          confirm_label="Disconnect"
-          on_confirm={JS.dispatch("click", to: "##{"disconnect-#{@service.provider}-link"}")}
-        />
-      <% else %>
-        <button
-          :if={@service.device_flow}
-          phx-click="start_device_auth"
-          phx-value-provider={@service.provider}
-          phx-disable-with="Asking OpenAI..."
-          class="btn btn-sm btn-primary"
-        >
-          Connect {@service.label}
-        </button>
-        <.link
-          :if={!@service.device_flow}
-          href={~p"/auth/#{@service.provider}"}
-          class="btn btn-sm btn-primary"
-        >
-          Connect {@service.label}
-        </.link>
-      <% end %>
+      <div class="flex items-center gap-2">
+        <.api_key_form :if={@service.api_key} service={@service} />
+
+        <%= if @service.connected do %>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline btn-error"
+            phx-click={show_confirm("confirm-disconnect-#{@service.provider}")}
+          >
+            Disconnect
+          </button>
+          <.link
+            id={"disconnect-#{@service.provider}-link"}
+            href={~p"/auth/#{@service.provider}"}
+            method="delete"
+            class="hidden"
+            aria-hidden="true"
+            tabindex="-1"
+          >
+            Disconnect
+          </.link>
+          <.confirm_dialog
+            id={"confirm-disconnect-#{@service.provider}"}
+            title={"Disconnect #{@service.label}?"}
+            message={@service.disconnect_warning}
+            confirm_label="Disconnect"
+            on_confirm={JS.dispatch("click", to: "##{"disconnect-#{@service.provider}-link"}")}
+          />
+        <% else %>
+          <button
+            :if={@service.device_flow}
+            phx-click="start_device_auth"
+            phx-value-provider={@service.provider}
+            phx-disable-with="Asking OpenAI..."
+            class="btn btn-sm btn-primary"
+          >
+            Connect {@service.label}
+          </button>
+          <.link
+            :if={!@service.device_flow && !@service.api_key}
+            href={~p"/auth/#{@service.provider}"}
+            class="btn btn-sm btn-primary"
+          >
+            Connect {@service.label}
+          </.link>
+        <% end %>
+      </div>
     </div>
+    """
+  end
+
+  @doc false
+  # Where a key gets pasted. Rendered whether or not the provider is already
+  # connected, because rotating a key is the ordinary reason to paste one: a
+  # form that disappears on success leaves someone who has just revoked a key
+  # with a connection they cannot replace.
+  #
+  # `type="password"` and `autocomplete="off"` so the key is not shouldered or
+  # kept by the browser, and nothing ever renders a stored one back — the value
+  # is always empty, including on the connected card.
+  attr :service, :map, required: true
+
+  defp api_key_form(assigns) do
+    ~H"""
+    <.form
+      for={%{}}
+      as={:api_key}
+      phx-submit="save_api_key"
+      data-test={"api-key-form-#{@service.provider}"}
+      class="flex items-center gap-2"
+    >
+      <input type="hidden" name="provider" value={@service.provider} />
+      <input
+        type="password"
+        name="api_key[key]"
+        value=""
+        autocomplete="off"
+        placeholder={if @service.connected, do: "Replace key", else: "Paste key"}
+        class="input input-sm input-bordered w-48"
+      />
+      <button class="btn btn-sm btn-primary" phx-disable-with="Checking...">
+        {if @service.connected, do: "Replace", else: "Connect"}
+      </button>
+    </.form>
     """
   end
 
@@ -265,6 +309,20 @@ defmodule CodeMySpecWeb.UserLive.Settings do
     """
   end
 
+  # A provider with no drawing of its own still gets a card. Without this the
+  # page raises on a row somebody added to `services/1`, which is a hard failure
+  # of the whole settings screen over a missing icon.
+  defp service_icon(assigns) do
+    ~H"""
+    <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.1" />
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+      <path d="M9 12h6" stroke="currentColor" stroke-width="1.5" />
+      <path d="M12 9v6" stroke="currentColor" stroke-width="1.5" />
+    </svg>
+    """
+  end
+
   def mount(%{"token" => token}, _session, socket) do
     socket =
       case Users.update_user_email(socket.assigns.current_scope.user, token) do
@@ -335,10 +393,78 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         # a short code typed on OpenAI's own page, no redirect of ours at all.
         device_flow: true,
         disconnect_warning: "Agents will not be able to start on your ChatGPT subscription."
+      },
+      %{
+        provider: :anthropic,
+        label: "Anthropic",
+        note: "An API key from console.anthropic.com, so agents can run on Claude.",
+        api_key: true,
+        disconnect_warning: "Agent types set to Anthropic will fall back to another provider."
+      },
+      %{
+        provider: :zai,
+        label: "Z.ai",
+        note: "An API key from z.ai, the cheap one — worth having for the QA agent.",
+        api_key: true,
+        disconnect_warning: "Agent types set to Z.ai will fall back to another provider."
       }
     ]
     |> Enum.map(&Map.put(&1, :connected, Integrations.connected?(scope, &1.provider)))
     |> Enum.map(&Map.put_new(&1, :device_flow, false))
+    |> Enum.map(&Map.put_new(&1, :api_key, false))
+  end
+
+  # Matched against the providers that exist rather than converted, so a posted
+  # name nobody defined is refused instead of becoming an atom.
+  defp api_key_provider(name) do
+    case Enum.find(ApiKey.names(), &(to_string(&1) == name)) do
+      nil -> {:error, :unknown_provider}
+      provider -> {:ok, provider}
+    end
+  end
+
+  # Named separately from the verification because they read alike and want
+  # opposite responses: a refused key is the person's to fix, a provider that
+  # did not answer is nobody's, and saying "rejected" to the second sends
+  # someone to re-copy a key that was fine.
+  defp key_error(_name, :unknown_provider), do: "That is not a provider you can paste a key for."
+
+  defp key_error(name, :blank), do: "Paste a #{label_of(name)} key first."
+
+  defp key_error(name, :rejected),
+    do: "#{label_of(name)} rejected that key, so nothing was saved. Check you copied all of it."
+
+  defp key_error(name, {:unexpected, status}),
+    do: "#{label_of(name)} answered #{status} when asked about that key, so nothing was saved."
+
+  defp key_error(name, {:unreachable, _reason}),
+    do: "Could not reach #{label_of(name)} to check that key. Nothing was saved — try again."
+
+  defp key_error(name, _reason), do: "Could not save the #{label_of(name)} key."
+
+  defp label_of(name) do
+    case api_key_provider(name) do
+      {:ok, provider} -> ApiKey.label(provider)
+      {:error, _} -> name
+    end
+  end
+
+  def handle_event("save_api_key", %{"provider" => name, "api_key" => %{"key" => key}}, socket) do
+    scope = socket.assigns.current_scope
+
+    with {:ok, provider} <- api_key_provider(name),
+         {:ok, _integration} <- Integrations.connect_api_key(scope, provider, key) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "#{ApiKey.label(provider)} connected.")
+       |> assign(:services, services(scope))}
+    else
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, key_error(name, reason))
+         |> assign(:services, services(scope))}
+    end
   end
 
   def handle_event("start_device_auth", %{"provider" => "openai"}, socket) do

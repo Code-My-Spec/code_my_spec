@@ -13,9 +13,13 @@ defmodule CodeMySpec.Agents.Providers do
   them by convention rather than by table would be a silent mismatch.
   """
 
+  # Anthropic is an api_key provider because that is the only way anyone can
+  # connect it: no Assent strategy for it exists and never did, so the `:oauth`
+  # it carried described a path that was never built. ChatGPT keeps `:oauth` —
+  # it is a subscription rather than a key, and its device flow works.
   @providers %{
     "openai-codex" => %{integration_provider: :openai, kind: :oauth},
-    "anthropic" => %{integration_provider: :anthropic, kind: :oauth},
+    "anthropic" => %{integration_provider: :anthropic, kind: :api_key},
     "zai" => %{integration_provider: :zai, kind: :api_key}
   }
 
