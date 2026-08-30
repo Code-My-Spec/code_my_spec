@@ -71,11 +71,11 @@ defmodule CodeMySpec.Generators do
       [{:missing_file, %{key: :dockerfile, ...}}]
   """
   @spec audit(Scope.t(), String.t()) :: [finding()]
-  def audit(%Scope{environment: env}, router_path) when not is_nil(env) do
-    missing_files(env) ++
-      missing_env_files(env) ++
-      plaintext_env_files(env) ++
-      config_findings(env, router_path)
+  def audit(%Scope{environment: env} = scope, router_path) when not is_nil(env) do
+    missing_files(scope) ++
+      missing_env_files(scope) ++
+      plaintext_env_files(scope) ++
+      config_findings(scope, router_path)
   end
 
   @doc """
@@ -109,23 +109,29 @@ defmodule CodeMySpec.Generators do
     do:
       "missing #{path} — the migrate overlay calls <App>.Release.migrate inside the released binary, and without this module the migration crashes on a real box instead of failing setup here"
 
-  defp missing_files(env) do
-    env |> DeployBoilerplate.missing() |> Enum.map(&{:missing_file, &1})
+  defp missing_files(scope) do
+    scope |> DeployBoilerplate.missing() |> Enum.map(&{:missing_file, &1})
   end
 
-  defp missing_env_files(env) do
-    env |> DeployBoilerplate.missing_env_files() |> Enum.map(&{:missing_env_file, &1})
+  defp missing_env_files(scope) do
+    scope |> DeployBoilerplate.missing_env_files() |> Enum.map(&{:missing_env_file, &1})
   end
 
-  defp plaintext_env_files(env) do
-    env |> DeployBoilerplate.plaintext_env_files() |> Enum.map(&{:plaintext_env_file, &1})
+  defp plaintext_env_files(scope) do
+    scope |> DeployBoilerplate.plaintext_env_files() |> Enum.map(&{:plaintext_env_file, &1})
   end
 
-  defp config_findings(env, router_path) do
+  # The two content checks still take the environment alone, not the scope —
+  # what a file *contains* is not something the `Files` sync table records
+  # (path, role, mtime, size, fingerprint; never a body), so there is no
+  # fallback for these the way `present?/2` has one. A harness-scoped caller
+  # genuinely cannot answer them, and each already says so in its own words
+  # rather than guessing.
+  defp config_findings(%Scope{environment: env} = scope, router_path) do
     [
       DeployBoilerplate.force_ssl_excludes_health(env),
       DeployBoilerplate.health_route_unpiped(env, router_path),
-      DeployBoilerplate.release_module_exists?(env, release_module_path(router_path))
+      DeployBoilerplate.release_module_exists?(scope, release_module_path(router_path))
     ]
     |> Enum.flat_map(fn
       :ok -> []

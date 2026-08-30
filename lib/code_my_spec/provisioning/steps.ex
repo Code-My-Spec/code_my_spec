@@ -4415,21 +4415,36 @@ defmodule CodeMySpec.Provisioning.Steps do
     if Environments.exec_file_exists?(environment, path) do
       :ok
     else
-      missing =
-        scope
-        |> CodeMySpec.Generators.audit(router_path(scope))
-        |> Enum.map(&CodeMySpec.Generators.explain/1)
+      findings = CodeMySpec.Generators.audit(scope, router_path(scope))
 
-      detail =
-        case missing do
-          [] -> "#{path} is not present or not executable"
-          findings -> Enum.join(findings, "; ")
-        end
+      case {findings, Environments.file_exists?(environment, path)} do
+        # Nothing else looks wrong, and this environment cannot see the
+        # plain file either — a harness-scoped caller's environment, the
+        # same shape every other check tonight already treats as "cannot
+        # prove it," not "definitely wrong." `Generators.audit/2` already
+        # asked the project's own `Files` sync table whether the boilerplate
+        # is there; asking harder than that needs a live checkout, which
+        # this call does not have.
+        {[], false} ->
+          :ok
 
-      {:error,
-       "this project is not deploy-ready: #{detail}. " <>
-         "The boilerplate ships with `cms new`; a project generated another way has to add it."}
+        # The plain file really is there — a live, reachable checkout says
+        # so — and still fails the executable check. That is a real
+        # permission problem, not an absent one.
+        {[], true} ->
+          deploy_not_ready_error("#{path} is not present or not executable")
+
+        {findings, _} ->
+          detail = Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1)
+          deploy_not_ready_error(detail)
+      end
     end
+  end
+
+  defp deploy_not_ready_error(detail) do
+    {:error,
+     "this project is not deploy-ready: #{detail}. " <>
+       "The boilerplate ships with `cms new`; a project generated another way has to add it."}
   end
 
   # `bin/deploy` refuses a dirty tree — correctly, since the image it ships is

@@ -14,6 +14,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   """
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Files
+  alias CodeMySpec.Users.Scope
 
   @type artifact :: %{
           path: String.t() | nil,
@@ -101,17 +103,17 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   An empty list means the project carries everything the setup routine assumes
   it can find.
   """
-  @spec missing(Environments.Environment.t()) :: [artifact()]
-  def missing(env) do
-    Enum.reject(@files, &present?(env, &1.path))
+  @spec missing(Scope.t()) :: [artifact()]
+  def missing(scope) do
+    Enum.reject(@files, &present?(scope, &1.path))
   end
 
   @doc """
   Returns the encrypted environment files a project is missing.
   """
-  @spec missing_env_files(Environments.Environment.t()) :: [String.t()]
-  def missing_env_files(env) do
-    Enum.reject(@env_files, &present?(env, &1))
+  @spec missing_env_files(Scope.t()) :: [String.t()]
+  def missing_env_files(scope) do
+    Enum.reject(@env_files, &present?(scope, &1))
   end
 
   @doc """
@@ -121,9 +123,9 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   push from its first commit, and a plaintext env file is the way that stops
   being true.
   """
-  @spec plaintext_env_files(Environments.Environment.t()) :: [String.t()]
-  def plaintext_env_files(env) do
-    Enum.filter(@plaintext_env_names, &present?(env, &1))
+  @spec plaintext_env_files(Scope.t()) :: [String.t()]
+  def plaintext_env_files(scope) do
+    Enum.filter(@plaintext_env_names, &present?(scope, &1))
   end
 
   @doc """
@@ -192,12 +194,12 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   builds, pushes and boots — and only fails once the migration step runs
   against a real box, several steps past where the cause is visible.
   """
-  @spec release_module_exists?(Environments.Environment.t(), String.t() | nil) ::
+  @spec release_module_exists?(Scope.t(), String.t() | nil) ::
           :ok | {:error, {:missing_release_module, String.t()}}
-  def release_module_exists?(_env, nil), do: :ok
+  def release_module_exists?(_scope, nil), do: :ok
 
-  def release_module_exists?(env, path) do
-    if present?(env, path), do: :ok, else: {:error, {:missing_release_module, path}}
+  def release_module_exists?(scope, path) do
+    if present?(scope, path), do: :ok, else: {:error, {:missing_release_module, path}}
   end
 
   defp check_health_route(body, path) do
@@ -216,5 +218,33 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
-  defp present?(env, path), do: Environments.file_exists?(env, path) == true
+  # Live first, the fast and common path: a real checkout answers this
+  # itself and needs nothing else. The `Files` table is the fallback for
+  # exactly one shape of caller — a harness-scoped devops tool, whose scope
+  # carries no working directory to check live at all, but whose checkout
+  # has been continuously syncing file existence into this table the whole
+  # time regardless. Found live against MarketMySpec: `run_provisioning_step
+  # step: "deploy"` reported every one of these artifacts missing — Dockerfile,
+  # .sops.yaml, both encrypted envs, bin/deploy — despite all of them being
+  # real, committed, and pushed, because the only thing this ever asked was a
+  # directoryless environment that could never have answered honestly. It did
+  # not need to ask that at all: the sync this project already runs had the
+  # answer the whole time.
+  defp present?(%Scope{environment: env} = scope, path) do
+    Environments.file_exists?(env, path) == true or synced?(scope, path)
+  end
+
+  # No project to ask the sync table about — `Files.get_by_path/2` refuses
+  # to build `project_id == NULL` at all (Ecto raises rather than silently
+  # matching nothing on an unsafe nil comparison), so this is checked here
+  # first rather than let through to become a crash. A scope with no project
+  # cannot fall back to anything better than the live check already gave.
+  defp synced?(%Scope{active_project_id: nil}, _path), do: false
+
+  defp synced?(scope, path) do
+    case Files.get_by_path(scope, path) do
+      nil -> false
+      _file -> true
+    end
+  end
 end
