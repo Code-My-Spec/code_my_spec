@@ -35,12 +35,26 @@ defmodule CodeMySpec.CodeMode.Sandbox do
   `Task.shutdown(:brutal_kill)` collapses them, because the brutal kill on a
   timeout also exits the worker `:killed`, and a CPU-bound loop then reports as
   whichever arrived first.
+
+  ## Tuning
+
+  Every limit is settable under `config :code_my_spec, CodeMySpec.CodeMode` and
+  overridable per call. An operator running scripts against a slow database
+  wants a longer clock than one on a laptop, and the numbers below are a
+  starting point rather than a law.
+
+  It is also the only honest way to specify the timeout. Nothing lets a spec
+  make a real tool slow, so a spec that wanted to prove "work past the clock is
+  stopped and reported" had no way to; lowering the clock tests the same
+  mechanism from the other side.
   """
 
-  @max_instructions 10_000_000
-  @max_call_depth 200
-  @max_string_bytes 256 * 1024
-  @timeout to_timeout(second: 30)
+  @defaults [
+    max_instructions: 10_000_000,
+    max_call_depth: 200,
+    max_string_bytes: 256 * 1024,
+    timeout: to_timeout(second: 30)
+  ]
 
   @doc """
   A fresh VM with the limits applied.
@@ -52,15 +66,24 @@ defmodule CodeMySpec.CodeMode.Sandbox do
   @spec new(keyword()) :: Lua.t()
   def new(opts \\ []) do
     Lua.new(
-      max_instructions: Keyword.get(opts, :max_instructions, @max_instructions),
-      max_call_depth: Keyword.get(opts, :max_call_depth, @max_call_depth),
-      max_string_bytes: Keyword.get(opts, :max_string_bytes, @max_string_bytes)
+      max_instructions: limit(opts, :max_instructions),
+      max_call_depth: limit(opts, :max_call_depth),
+      max_string_bytes: limit(opts, :max_string_bytes)
     )
   end
 
   @doc "How long an evaluation may take in wall-clock terms."
   @spec timeout(keyword()) :: pos_integer()
-  def timeout(opts \\ []), do: Keyword.get(opts, :timeout, @timeout)
+  def timeout(opts \\ []), do: limit(opts, :timeout)
+
+  # Call, then configuration, then the default.
+  defp limit(opts, key) do
+    Keyword.get_lazy(opts, key, fn ->
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.CodeMode, [])
+      |> Keyword.get(key, Keyword.fetch!(@defaults, key))
+    end)
+  end
 
   @doc """
   Runs `fun` under the wall-clock timeout.
