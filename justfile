@@ -765,7 +765,12 @@ publish VERSION:
     # and left main without the version bump. `release` then refused, naming
     # origin/main — which was true and unrelated to what had just gone wrong.
     # Two steps disagreeing about which branch a release lives on.
-    git fetch origin main --quiet
+    # `-c fetch.recurseSubmodules=no`: a plain `git fetch` here also tries to
+    # fetch `.code_my_spec`, and from a worktree that submodule fetch fails
+    # ("Could not access submodule '.code_my_spec'") even though the fetch of
+    # `origin` itself would have succeeded — `bump`/`release` never touch the
+    # submodule and don't need its state to answer "is HEAD at origin/main".
+    git -c fetch.recurseSubmodules=no fetch origin main --quiet
     if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
       echo "✗ HEAD is not at origin/main — a release is a commit on main." >&2
       echo >&2
@@ -812,7 +817,12 @@ release:
     # message claimed it had compared against main. A tag is permanent and
     # points at one commit; the check that guards it should name the same ref
     # the message does.
-    git fetch origin main --quiet
+    # `-c fetch.recurseSubmodules=no`: a plain `git fetch` here also tries to
+    # fetch `.code_my_spec`, and from a worktree that submodule fetch fails
+    # ("Could not access submodule '.code_my_spec'") even though the fetch of
+    # `origin` itself would have succeeded — `bump`/`release` never touch the
+    # submodule and don't need its state to answer "is HEAD at origin/main".
+    git -c fetch.recurseSubmodules=no fetch origin main --quiet
     if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
       echo "HEAD is not at origin/main. Push first:" >&2
       git log --oneline --left-right HEAD...origin/main >&2
