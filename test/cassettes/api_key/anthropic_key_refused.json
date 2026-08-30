@@ -1,0 +1,67 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-30T09:23:07.304160Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/models"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "message": "API key is invalid.",
+            "type": "authentication_error"
+          },
+          "request_id": null,
+          "type": "error"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a332bc2279a2f80a-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-length": [
+            "106"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 30 Aug 2026 09:23:07 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "x-originResponse;dur="
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 401
+      }
+    }
+  ],
+  "version": "2.0"
+}
