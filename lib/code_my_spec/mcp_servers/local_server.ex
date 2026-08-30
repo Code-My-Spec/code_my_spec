@@ -32,6 +32,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   tool is wrong.
   """
 
+  alias Anubis.Server.Handlers
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.ScriptableTools
 
   use Anubis.Server,
@@ -90,12 +92,12 @@ defmodule CodeMySpec.McpServers.LocalServer do
   def handle_request(%{"method" => "tools/call", "params" => %{"name" => name}} = request, frame) do
     case moved?(name) do
       true -> {:reply, moved_response(name), frame}
-      false -> Anubis.Server.Handlers.handle(request, __MODULE__, frame)
+      false -> Handlers.handle(request, __MODULE__, frame)
     end
   end
 
   def handle_request(request, frame) do
-    Anubis.Server.Handlers.handle(request, __MODULE__, frame)
+    Handlers.handle(request, __MODULE__, frame)
   end
 
   defp moved?(name) do
@@ -111,8 +113,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # test asserted on the struct it had just been handed, which is a tautology
   # at exactly the boundary that matters. QA on the real endpoint found it.
   defp moved_response(name) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.error("""
+    Response.tool()
+    |> Response.error("""
     #{name} is no longer called directly — it moved to code mode, along with
     most of this server's tools, so that connecting does not cost twenty
     thousand tokens of tool list.
