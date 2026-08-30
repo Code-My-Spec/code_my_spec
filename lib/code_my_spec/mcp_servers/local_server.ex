@@ -42,15 +42,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Scope resolved from the X-Harness-Id header by `Plugs.HarnessScope`, which
   # reaches a tool's frame through the transport's assigns.
 
-  #
-  # Story 971. Everything else moved to `ScriptableTools` and is reached with
-  # `run_script`. Measured before the move: 111 tools, 82,591 bytes, ~20,600
-  # tokens, paid by every agent at connect for a task that calls three or four.
-  #
-  # A tool belongs here for one of two reasons, and only those two.
-
-  # The loop every session walks, in order. These stay direct because putting
-  # Lua ceremony on the most-walked path in the product buys nothing.
   # ── The spine ─────────────────────────────────────────────────────────────
   #
   # Story 971. Everything else is registered on `ScriptableTools` and reached
@@ -84,12 +75,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)
   component(CodeMySpec.McpServers.CodeMode.Tools.RunScript)
 
-  # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
-  # `ask_user` waits on a person and `start_agent` spawns, and a loop around
-  # either means something nobody asked for. They have to stay here, because a
-  # tool excluded from scripts *and* absent from this list is reachable from
-  # nowhere.
-
   # ── A client that connected before the spine ──────────────────────────────
   #
   # A tool list is cached at connect, so a session that joined before story 971
@@ -118,6 +103,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
       Enum.any?(ScriptableTools.__components__(), &(&1.name == name))
   end
 
+  # `to_protocol/1`, not the struct. Anubis's own handler converts before
+  # replying and this path bypasses it, so returning the struct hands the
+  # transport something `JSON.Encoder` has no implementation for — which does
+  # not merely fail the call, it **terminates the session**. That is worse than
+  # the `method_not_found` this exists to improve on, and it shipped: the unit
+  # test asserted on the struct it had just been handed, which is a tautology
+  # at exactly the boundary that matters. QA on the real endpoint found it.
   defp moved_response(name) do
     Anubis.Server.Response.tool()
     |> Anubis.Server.Response.error("""
@@ -131,5 +123,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
     `tool_docs({ name = "#{name}" })` gives its arguments.
     """)
+    |> Anubis.Server.Response.to_protocol()
   end
 end

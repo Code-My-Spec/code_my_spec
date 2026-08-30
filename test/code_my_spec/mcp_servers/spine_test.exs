@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.SpineTest do
   """
   use ExUnit.Case, async: true
 
-  alias Anubis.Server.{Frame, Response}
+  alias Anubis.Server.Frame
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
@@ -56,11 +56,24 @@ defmodule CodeMySpec.McpServers.SpineTest do
         "params" => %{"name" => "list_stories", "arguments" => %{}}
       }
 
-      assert {:reply, response, _frame} = LocalServer.handle_request(request, %Frame{})
+      assert {:reply, reply, _frame} = LocalServer.handle_request(request, %Frame{})
 
-      assert response.isError
+      # Asserted on what the transport is handed, not on a struct this test
+      # just converted itself. The first version returned `%Response{}` and
+      # checked `Response.to_protocol(response)` — which passes whatever the
+      # reply is, because the test did the conversion the server had skipped.
+      # On the real endpoint `JSON.Encoder` had no implementation for it and
+      # the **session terminated**, which is worse than the method_not_found
+      # this exists to improve on.
+      assert is_map(reply) and not is_struct(reply),
+             "the reply must already be in protocol form; got #{inspect(reply) |> String.slice(0, 120)}"
 
-      text = response |> Response.to_protocol() |> Map.get("content") |> hd() |> Map.get("text")
+      assert {:ok, _json} = Jason.encode(reply),
+             "the transport JSON-encodes this; a value it cannot encode kills the session"
+
+      assert reply["isError"]
+
+      text = reply |> Map.get("content") |> hd() |> Map.get("text")
 
       assert text =~ "moved to code mode"
       assert text =~ "run_script"

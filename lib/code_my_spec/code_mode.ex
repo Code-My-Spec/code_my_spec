@@ -87,6 +87,13 @@ defmodule CodeMySpec.CodeMode do
   #
   # Consecutive integer keys from 1 are a Lua array and become a list; anything
   # else is a record and becomes a map.
+  # A script that returns nothing is a script run for its writes, which is a
+  # normal thing to do — `nil` rather than an empty list, so it reads as "no
+  # answer" rather than "an answer that was a list".
+  defp value([]), do: nil
+  defp value([single]), do: single
+  defp value(many), do: many
+
   defp lua_value([{_key, _value} | _rest] = table) do
     keys = Enum.map(table, &elem(&1, 0))
 
@@ -95,14 +102,6 @@ defmodule CodeMySpec.CodeMode do
       false -> Map.new(table, fn {key, value} -> {to_string(key), lua_value(value)} end)
     end
   end
-
-  # Sorted, and sorted again on the way out. A Lua table is a hash, so its pairs
-  # arrive in whatever order the VM happens to hold them — `[49, 75, 1, …]` for
-  # a plain array of 98 stories. Comparing the keys as they arrive says "not an
-  # array" and hands back a map keyed by position, which is what shipped for
-  # about a minute.
-  defp array?([]), do: false
-  defp array?(keys), do: Enum.sort(keys) == Enum.to_list(1..length(keys)//1)
 
   defp lua_value(value) when is_float(value) do
     case trunc(value) do
@@ -113,12 +112,13 @@ defmodule CodeMySpec.CodeMode do
 
   defp lua_value(value), do: value
 
-  # A script that returns nothing is a script run for its writes, which is a
-  # normal thing to do — `nil` rather than an empty list, so it reads as "no
-  # answer" rather than "an answer that was a list".
-  defp value([]), do: nil
-  defp value([single]), do: single
-  defp value(many), do: many
+  # Sorted, and sorted again on the way out. A Lua table is a hash, so its pairs
+  # arrive in whatever order the VM happens to hold them — `[49, 75, 1, …]` for
+  # a plain array of 98 stories. Comparing the keys as they arrive says "not an
+  # array" and hands back a map keyed by position, which is what shipped for
+  # about a minute.
+  defp array?([]), do: false
+  defp array?(keys), do: Enum.sort(keys) == Enum.to_list(1..length(keys)//1)
 
   # The limits raise ordinary runtime errors, so the message is the only thing
   # separating "your script is wrong" from "your script was stopped". Worth
