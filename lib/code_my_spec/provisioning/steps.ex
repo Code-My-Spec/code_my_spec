@@ -4724,28 +4724,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   # name is substituted in. It is never actually right for a real project, so
   # falling back to it reported the WRONG file as missing rather than saying
   # the app name could not be determined: MarketMySpec's `module_name` never
-  # arrived (a separate onboarding gap, in the sync payload, not here), and
-  # every deploy-readiness check built on this path checked `lib/app_web/...`
-  # against a project whose real files are `lib/market_my_spec_web/...`.
+  # arrived, and every deploy-readiness check built on this path checked
+  # `lib/app_web/...` against a project whose real files are
+  # `lib/market_my_spec_web/...`.
   #
-  # `mix.exs`'s own `app:` atom is never ambiguous — it is what `mix release`
-  # and `mix phx.gen` themselves resolve every one of these same paths from —
-  # so reading it directly means this stops depending on `module_name` ever
-  # having been synced at all. `module_name` remains a fallback for an
-  # environment `mix.exs` cannot be read from; a project with neither degrades
-  # to the same "not found" honesty every check downstream already reports
-  # for a file that genuinely does not exist, rather than to a wrong guess.
+  # `Environments.mix_exs_app_name/1` reads `mix.exs`'s own `app:` atom
+  # directly — never ambiguous, but only answerable when `scope.environment`
+  # can actually be read from. For a project reached only through a live
+  # harness connection, `scope.environment` here resolves through
+  # `Resources.project_scope/2`'s fallback to `Environment.new(:local,
+  # project.local_path)` — a path on *the machine the checkout is on*, not
+  # this server's — so this returns `nil` for exactly that shape of project,
+  # same as any other environment nothing here can actually reach.
+  # `module_name` is the fallback for that case: `CmsHarness.Sync` derives it
+  # from the SAME `mix.exs`, on the machine that can actually read it, and
+  # keeps it corrected on every sync (see `HarnessProjectChannel`'s
+  # `"module_name"` handler) — so a harness-only project still gets the real
+  # answer, just relayed rather than read here directly. A project with
+  # neither degrades to the same "not found" honesty every check downstream
+  # already reports for a file that genuinely does not exist, rather than to
+  # a wrong guess.
   defp app_path(scope) do
-    mix_exs_app_name(scope) || module_name_app_path(scope)
-  end
-
-  defp mix_exs_app_name(%Scope{environment: env}) do
-    with {:ok, content} <- Environments.read_file(env, "mix.exs"),
-         [_, app] <- Regex.run(~r/app:\s*:([a-zA-Z_][a-zA-Z0-9_]*)/, content) do
-      app
-    else
-      _ -> nil
-    end
+    Environments.mix_exs_app_name(scope.environment) || module_name_app_path(scope)
   end
 
   defp module_name_app_path(scope) do

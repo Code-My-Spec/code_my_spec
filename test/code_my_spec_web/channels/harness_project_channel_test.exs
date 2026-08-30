@@ -544,6 +544,54 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "module_name" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      %{channel: channel}
+    end
+
+    # `mix.exs`'s own `app:` atom, camelized and relayed here on every sync,
+    # is the fix for a project a server-side check has no real way to read
+    # `mix.exs` from at all (see `CodeMySpec.Provisioning.Steps.app_path/1`)
+    # — this is what keeps that fallback correct without a repeat onboarding
+    # step. Sent CamelCase, matching `CmsHarness.Sync`'s own
+    # `Macro.camelize/1`: `module_name` is validated as an Elixir module name,
+    # and `app_path/1` un-derives this exact value back with
+    # `Macro.underscore/1`.
+    test "corrects a stale module_name", %{channel: channel, scope: scope} do
+      ref = push(channel, "module_name", %{"module_name" => "MarketMySpec"})
+
+      assert_reply ref, :ok, _reply, 2_000
+
+      assert CodeMySpec.Projects.get_project_by_id(scope.active_project_id).module_name ==
+               "MarketMySpec"
+    end
+
+    test "an already-correct module_name is left alone", %{
+      channel: channel,
+      scope: scope
+    } do
+      {:ok, project} =
+        CodeMySpec.Projects.update_project(scope, scope.active_project, %{
+          module_name: "MarketMySpec"
+        })
+
+      ref = push(channel, "module_name", %{"module_name" => "MarketMySpec"})
+
+      assert_reply ref, :ok, _reply, 2_000
+      assert CodeMySpec.Projects.get_project_by_id(project.id).updated_at == project.updated_at
+    end
+
+    test "an empty name is ignored rather than written", %{channel: channel, scope: scope} do
+      ref = push(channel, "module_name", %{"module_name" => ""})
+
+      assert_reply ref, :ok, _reply, 2_000
+
+      assert CodeMySpec.Projects.get_project_by_id(scope.active_project_id).module_name ==
+               scope.active_project.module_name
+    end
+  end
+
   describe "hook decisions" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =

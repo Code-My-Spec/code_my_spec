@@ -354,6 +354,29 @@ defmodule CodeMySpec.Environments do
   end
 
   @doc """
+  The real OTP app name for this environment's checkout, read straight out of
+  its `mix.exs` — the one place it is never ambiguous, since it is what `mix
+  release` and `mix phx.gen` themselves resolve every `lib/<app>(_web)/...`
+  path from.
+
+  `nil` when `mix.exs` cannot be read (a remote or disconnected environment
+  server-side code has no real access to — see `CodeMySpec.Provisioning.
+  Steps.app_path/1`) or does not contain a plain `app: :name`. Callers with a
+  real filesystem underneath them (a harness's own sync, a local checkout)
+  always get a real answer; callers that do not get a clean absence to fall
+  back from, not a wrong guess.
+  """
+  @spec mix_exs_app_name(env :: Environment.t() | nil) :: String.t() | nil
+  def mix_exs_app_name(env) do
+    with {:ok, content} <- read_file(env, "mix.exs"),
+         [_, app] <- Regex.run(~r/app:\s*:([a-zA-Z_][a-zA-Z0-9_]*)/, content) do
+      app
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
   List contents of a directory in the execution environment.
   """
   @spec list_directory(env :: Environment.t(), path :: String.t()) ::

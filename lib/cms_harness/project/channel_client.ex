@@ -339,6 +339,17 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc false
+  # Called from the scanning task with the app name read straight out of
+  # this checkout's own `mix.exs`.
+  @spec deliver_module_name(String.t(), String.t()) :: :ok
+  def deliver_module_name(root, name) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:module_name, name})
+      [] -> :ok
+    end
+  end
+
+  @doc false
   # Called from the analysis queue with a finished (or failed) run.
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do
@@ -1737,6 +1748,27 @@ defmodule CmsHarness.Project.ChannelClient do
 
     {:noreply, socket}
   end
+
+  def handle_cast({:module_name, name}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "module_name",
+           %{"module_name" => name},
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send module_name: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  # Dropped, same reasoning as a dropped manifest: the next sync after
+  # reconnect reports it again.
+  def handle_cast({:module_name, _name}, socket), do: {:noreply, socket}
 
   # --- Private ---
 

@@ -14,6 +14,7 @@ defmodule CmsHarness.Sync do
   require Logger
 
   alias CmsHarness.Project.ChannelClient
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
@@ -50,6 +51,8 @@ defmodule CmsHarness.Sync do
     started = System.monotonic_time(:millisecond)
     env = Environment.new(:local, project.root)
 
+    report_app_name(env, project.root)
+
     case Scanner.observe(env, read_model) do
       {:error, reason} ->
         Logger.error(
@@ -85,6 +88,25 @@ defmodule CmsHarness.Sync do
         log_unclassified(env, project.root)
 
         ChannelClient.deliver_observations(project.root, observations)
+    end
+  end
+
+  # A server-side deploy-readiness check has no real way to read this
+  # project's `mix.exs` — `scope.environment` there resolves through
+  # `Resources.project_scope/2`'s fallback to `Environment.new(:local,
+  # project.local_path)`, a path on *this* machine, not the server's (see
+  # `CodeMySpec.Provisioning.Steps.app_path/1`). This machine can read it
+  # directly, so it does, on every sync — self-healing a `module_name` that
+  # was never set (or was set wrong) without waiting on a separate onboarding
+  # step to have asked for it correctly.
+  defp report_app_name(env, root) do
+    case Environments.mix_exs_app_name(env) do
+      # `project.module_name` stores the CamelCase form — `app_path/1`'s
+      # fallback un-derives it back to this same snake_case name via
+      # `Macro.underscore/1` — so this is the inverse of that, not a second
+      # format decision.
+      name when is_binary(name) -> ChannelClient.deliver_module_name(root, Macro.camelize(name))
+      nil -> :ok
     end
   end
 

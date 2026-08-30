@@ -98,6 +98,30 @@ defmodule CmsHarness.SyncPathTest do
       refute Enum.any?(Map.keys(accounts), &(&1 == "content"))
     end
 
+    # A server-side deploy-readiness check has no real way to read this
+    # project's `mix.exs` at all — see `CodeMySpec.Provisioning.
+    # Steps.app_path/1` — so this machine, which can, reports the real app
+    # name on every sync rather than waiting on a separate onboarding step
+    # to have asked for it correctly.
+    test "mix.exs's own app name is reported alongside the manifest", %{project: project} do
+      write(
+        project.root,
+        "mix.exs",
+        """
+        defmodule Demo.MixProject do
+          use Mix.Project
+          def project, do: [app: :demo, version: "0.1.0"]
+        end
+        """
+      )
+
+      FakeServer.start()
+      {:ok, _} = Projects.ensure_started(project.root)
+
+      assert_receive {:module_name, project_id, "Demo"}, 5_000
+      assert project_id == project.id
+    end
+
     test "a project another harness holds is not served", %{project: project} do
       FakeServer.start(refuse: "the harness at /elsewhere")
 

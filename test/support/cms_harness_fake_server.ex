@@ -229,6 +229,11 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
     end
   end
 
+  def handle_in("module_name", %{"module_name" => name}, socket) do
+    FakeServer.notify({:module_name, socket.assigns.project_id, name})
+    {:reply, :ok, socket}
+  end
+
   def handle_in("hook_decision", payload, socket) do
     FakeServer.notify({:hook_decision, payload})
 

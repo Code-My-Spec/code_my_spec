@@ -305,6 +305,45 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # Corrects `project.module_name` from the one place it is never ambiguous —
+  # the checkout's own `mix.exs`, read on the machine that can actually reach
+  # it. Server-side deploy-readiness checks have no real way to read a
+  # harness-only project's files at all (`Environments.mix_exs_app_name/1`
+  # resolves to `nil` there — see `CodeMySpec.Provisioning.Steps.app_path/1`),
+  # so this is what keeps that fallback correct instead of stuck on whatever
+  # onboarding did or did not ask for.
+  #
+  # Sent on every sync, so a project onboarded before this existed — or with
+  # a stale value from before a rename — self-heals on the harness's own
+  # schedule rather than needing a repeat onboarding step.
+  def handle_in("module_name", %{"module_name" => name}, socket)
+      when is_binary(name) and name != "" do
+    project = socket.assigns.scope.active_project
+
+    if project && project.module_name != name do
+      case Projects.update_project(socket.assigns.scope, project, %{module_name: name}) do
+        {:ok, updated} ->
+          {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[HarnessProject] could not correct module_name to #{inspect(name)} for " <>
+              "#{project.id}: #{inspect(reason)}"
+          )
+
+          {:reply, :ok, socket}
+      end
+    else
+      {:reply, :ok, socket}
+    end
+  end
+
+  # A blank or missing name is not the harness telling us anything wrong —
+  # `Environments.mix_exs_app_name/1` answers `nil` for plenty of legitimate
+  # reasons (checkout mid-write, an unusual `mix.exs`) — so it is accepted
+  # and ignored rather than refused as an unrecognised event.
+  def handle_in("module_name", _payload, socket), do: {:reply, :ok, socket}
+
   # Decide a hook the harness is proxying for Claude Code.
   #
   # The decision is mostly database work — blocking problems, config modes,
