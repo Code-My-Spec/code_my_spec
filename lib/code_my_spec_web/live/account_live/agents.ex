@@ -68,9 +68,14 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
               you have connected.
             </p>
 
+            <p class="text-sm text-base-content/60">
+              These are yours, not the account's — they run on the providers you
+              connected, so everyone here picks their own.
+            </p>
+
             <div :if={@connected == []} class="alert alert-warning mt-4">
               No provider is connected, so no agent can start.
-              <.link navigate={~p"/app/accounts/#{@account.id}/manage"} class="link">
+              <.link navigate={~p"/app/users/settings"} class="link">
                 Connect one
               </.link>
             </div>
