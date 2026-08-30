@@ -209,6 +209,27 @@ defmodule CodeMySpec.CodeModeTest do
                "the index in the data"
     end
 
+    test "a long array is still an array, whatever order the VM holds it in" do
+      # A Lua table is a hash, so its pairs arrive in whatever order the VM has
+      # them — for 98 stories that was [49, 75, 1, ...]. Comparing keys as they
+      # arrive says "not an array" and returns a map keyed by position, which
+      # is exactly what shipped and what QA caught. Three elements are ordered
+      # by luck; this many are not.
+      result =
+        CodeMode.eval(stories_catalog(), ~S"""
+        local out = {}
+        for i = 1, 60 do out[i] = i * 10 end
+        return out
+        """)
+
+      refute Result.failed?(result)
+
+      assert is_list(result.value), "got #{inspect(result.value) |> String.slice(0, 80)}"
+      assert length(result.value) == 60
+      assert List.first(result.value) == 10, "and in the table's own order, not the VM's"
+      assert List.last(result.value) == 600
+    end
+
     test "a nested table converts all the way down" do
       script = ~S"""
       return { stories = { { id = 1, tags = { "a", "b" } } }, total = 1 }
