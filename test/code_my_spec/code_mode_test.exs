@@ -190,6 +190,35 @@ defmodule CodeMySpec.CodeModeTest do
                "the agent that wrote the script never sees it"
     end
 
+    test "a returned table is a record, not the VM's pair list" do
+      result =
+        CodeMode.eval(stories_catalog(), ~S[return { id = 970, title = "Scripted", done = true }])
+
+      refute Result.failed?(result)
+
+      assert %{"id" => 970, "title" => "Scripted", "done" => true} = result.value,
+             "a Lua table comes back as {key, value} pairs; unconverted the agent sees " <>
+               "the pairs and every record reads as a list"
+    end
+
+    test "and a returned array is a list, not a map keyed by position" do
+      result = CodeMode.eval(stories_catalog(), ~S[return { "alpha", "beta", "gamma" }])
+
+      assert result.value == ["alpha", "beta", "gamma"],
+             "consecutive integer keys from 1 are a Lua array; keeping them as keys puts " <>
+               "the index in the data"
+    end
+
+    test "a nested table converts all the way down" do
+      script = ~S"""
+      return { stories = { { id = 1, tags = { "a", "b" } } }, total = 1 }
+      """
+
+      result = CodeMode.eval(stories_catalog(), script)
+
+      assert %{"total" => 1, "stories" => [%{"id" => 1, "tags" => ["a", "b"]}]} = result.value
+    end
+
     test "a script run only for its writes returns nothing rather than an empty list" do
       result = CodeMode.eval(stories_catalog(), ~S[local _ = list_stories()])
 

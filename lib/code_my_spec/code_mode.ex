@@ -70,7 +70,7 @@ defmodule CodeMySpec.CodeMode do
       |> Bindings.install(catalog)
 
     {values, lua} = Lua.eval!(lua, script)
-    Result.ok(value(values), Bindings.printed(lua))
+    Result.ok(values |> Enum.map(&lua_value/1) |> value(), Bindings.printed(lua))
   rescue
     error in Lua.CompilerException ->
       Result.error(:compile, Exception.message(error))
@@ -78,6 +78,33 @@ defmodule CodeMySpec.CodeMode do
     error in Lua.RuntimeException ->
       Result.error(kind(error), Exception.message(error))
   end
+
+  # A Lua table comes back as a list of `{key, value}` pairs, which is the VM's
+  # shape and not an answer. Left alone it reaches the agent as
+  # `{54, [{"id", 962}, {"title", "..."}]}` — the array index showing as a key,
+  # every record a list of pairs. Found by running the real endpoint; the unit
+  # tests all returned scalars.
+  #
+  # Consecutive integer keys from 1 are a Lua array and become a list; anything
+  # else is a record and becomes a map.
+  defp lua_value([{_key, _value} | _rest] = table) do
+    keys = Enum.map(table, &elem(&1, 0))
+    values = Enum.map(table, &lua_value(elem(&1, 1)))
+
+    case keys == Enum.to_list(1..length(keys)//1) do
+      true -> values
+      false -> keys |> Enum.map(&to_string/1) |> Enum.zip(values) |> Map.new()
+    end
+  end
+
+  defp lua_value(value) when is_float(value) do
+    case trunc(value) do
+      whole when whole == value -> whole
+      _otherwise -> value
+    end
+  end
+
+  defp lua_value(value), do: value
 
   # A script that returns nothing is a script run for its writes, which is a
   # normal thing to do — `nil` rather than an empty list, so it reads as "no
