@@ -827,6 +827,142 @@ release:
     echo "Marketplace:"
     echo "  https://github.com/Code-My-Spec/plugins"
 
+# The CI pipeline's macOS-only half, run by hand — for when release-extension.yml
+# itself cannot run (found live: an org Actions spending cap failed every build
+# job in 7s, on both v2.0.4 and v2.0.5, silently — the run "completed" and
+# looked like nothing had gone wrong until someone read the annotation).
+#
+# This does not replace `just release`: no Windows/Linux tarballs, no MSI, no
+# Antigravity/Codex catalogs beyond what packaging already produces. It exists
+# to unblock exactly the two things that were actually load-bearing that night —
+# a client stuck on a stale plugin version could not talk to a server already
+# moved forward, and Homebrew had nothing newer to offer either — without
+# waiting on a billing fix.
+#
+# Requires `HEAD` at the tag `just release` already pushed (run that first, or
+# at least `just bump` + commit + push), and admin access to both
+# Code-My-Spec/plugins and Code-My-Spec/homebrew-tap — the same access the
+# CI's repo-scoped tokens have, here standing in as whoever runs this.
+# Manual macOS-only substitute for release-extension.yml when its CI can't run.
+publish_claude_extension VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! echo "{{VERSION}}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      echo "Bad version: {{VERSION}} (want N.N.N)" >&2
+      exit 1
+    fi
+
+    plugin_version=$(jq -r .version plugins/claude/.claude-plugin/plugin.json)
+    if [ "$plugin_version" != "{{VERSION}}" ]; then
+      echo "plugin.json is at $plugin_version, not {{VERSION}} — run \`just bump {{VERSION}}\`," >&2
+      echo "commit, and push first. This publishes what's already tagged; it does not tag." >&2
+      exit 1
+    fi
+
+    tag="v{{VERSION}}"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+
+    echo "→ building the darwin release (MIX_ENV=prod_cli)"
+    rm -rf _build/prod_cli release/
+    ( cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay . )
+    MIX_ENV=prod_cli mix deps.get
+    MIX_ENV=prod_cli mix compile --warnings-as-errors
+    MIX_ENV=prod_cli mix release code_my_spec_cli
+    cp _build/prod_cli/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
+
+    echo "→ packaging the extension"
+    MIX_ENV=prod_cli mix cms.package_plugin release/codemyspec-extension
+    ext="release/codemyspec-extension"
+    chmod +x "$ext"/plugins/codemyspec/.claude-plugin/bin/* 2>/dev/null || true
+    [ -f "$ext/install.sh" ] && chmod +x "$ext/install.sh"
+    [ -f "$ext/install-antigravity.sh" ] && chmod +x "$ext/install-antigravity.sh"
+    [ -f "$ext/antigravity/codemyspec/bin/ag-hook.sh" ] && chmod +x "$ext/antigravity/codemyspec/bin/ag-hook.sh"
+    [ -f "$ext/codex/codemyspec/bin/hook" ] && chmod +x "$ext/codex/codemyspec/bin/hook"
+
+    echo "→ publishing the brew formula"
+    sha=$(shasum -a 256 "$work/cms-darwin-arm64.tar.gz" | cut -d' ' -f1)
+    sed -e "s/__CMS_TAG__/${tag}/g; s/__CMS_VERSION__/{{VERSION}}/g; s/__DARWIN_SHA256__/${sha}/" \
+      installers/macos/codemyspec.rb > "$work/codemyspec.rb"
+    gh repo clone Code-My-Spec/homebrew-tap "$work/tap-repo" -- --quiet
+    cp "$work/codemyspec.rb" "$work/tap-repo/Formula/codemyspec.rb"
+    ( cd "$work/tap-repo" && git add Formula/codemyspec.rb
+      if git diff --cached --quiet; then
+        echo "  formula unchanged"
+      else
+        git commit -q -m "codemyspec ${tag}"
+        git push -q origin main
+      fi )
+
+    echo "→ publishing the GitHub release (darwin tarball only)"
+    if gh release view "$tag" --repo Code-My-Spec/plugins >/dev/null 2>&1; then
+      gh release delete "$tag" --repo Code-My-Spec/plugins --yes
+    fi
+    gh release create "$tag" "$work/cms-darwin-arm64.tar.gz" \
+      --repo Code-My-Spec/plugins --title "$tag" --notes "$(cat <<NOTES
+    ## Installation
+
+    macOS (Homebrew):
+    \`\`\`bash
+    brew install Code-My-Spec/tap/codemyspec
+    \`\`\`
+
+    Published by \`just publish_claude_extension\` (CI unavailable) —
+    macOS ARM64 only. No Windows/Linux tarballs or MSI in this release.
+    NOTES
+    )"
+
+    echo "→ pushing the extension to the marketplace repo"
+    gh repo clone Code-My-Spec/plugins "$work/target-repo" -- --quiet
+    dest="$work/target-repo"
+    rm -rf "$dest/plugins/codemyspec"
+    mkdir -p "$dest/plugins"
+    cp -R "$ext/plugins/codemyspec" "$dest/plugins/codemyspec"
+    rm -rf "$dest/antigravity" "$dest/codex" "$dest/.agents"
+    cp -R "$ext/antigravity" "$dest/antigravity"
+    cp -R "$ext/codex" "$dest/codex"
+    mkdir -p "$dest/.agents/plugins"
+    cp "$ext/.agents/plugins/marketplace.json" "$dest/.agents/plugins/marketplace.json"
+    cp "$ext/install.sh" "$dest/install.sh"
+    cp "$ext/install-antigravity.sh" "$dest/install-antigravity.sh"
+    cp installers/windows/install.ps1 "$dest/install.ps1"
+    cp "$ext/README.md" "$dest/README.md"
+    rm -rf "$dest/.claude-plugin/bin"
+    rm -f "$dest/.claude-plugin/plugin.json"
+    rm -rf "$dest/agents" "$dest/skills" "$dest/hooks"
+    rm -f "$dest/AGENTS.md"
+
+    # Merge rather than overwrite: the marketplace repo carries other plugins
+    # (market-my-spec, at least) this publish has no business touching.
+    jq '.plugins[] | select(.name == "codemyspec")' "$ext/.claude-plugin/marketplace.json" \
+      > "$work/our_entry.json"
+    mkdir -p "$dest/.claude-plugin"
+    if [ -f "$dest/.claude-plugin/marketplace.json" ]; then
+      jq --slurpfile entry "$work/our_entry.json" '
+        .plugins = ((.plugins // []) | map(select(.name != "codemyspec")) + $entry)
+      ' "$dest/.claude-plugin/marketplace.json" > "$dest/.claude-plugin/marketplace.json.new"
+      mv "$dest/.claude-plugin/marketplace.json.new" "$dest/.claude-plugin/marketplace.json"
+    else
+      cp "$ext/.claude-plugin/marketplace.json" "$dest/.claude-plugin/marketplace.json"
+    fi
+
+    ( cd "$dest" && git add -A
+      if git diff --cached --quiet; then
+        echo "  extension unchanged"
+      else
+        git commit -q -m "Release codemyspec ${tag}"
+      fi
+      git tag -f "$tag"
+      git push -q origin main
+      git push -q -f origin "$tag" )
+
+    echo
+    echo "✓ published ${tag}: brew formula, GitHub release (darwin only), marketplace."
+    echo "  Every session on the stale version still needs to update+restart"
+    echo "  (brew upgrade codemyspec && brew services restart codemyspec) and"
+    echo "  reconnect its Claude Code plugin (/plugin update, or reinstall) —"
+    echo "  publishing here does not push to anyone already connected."
+
 # Push this worktree's HEAD to origin/main, then make it live.
 #
 # `git push origin main` from a worktree pushes the local `main` *ref*, which in
