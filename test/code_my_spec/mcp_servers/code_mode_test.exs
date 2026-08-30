@@ -98,6 +98,39 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       assert body =~ "First"
     end
 
+    test "a converted tool answers with records, so a script can compose", %{
+      scope: scope,
+      frame: frame
+    } do
+      for title <- ["Alpha", "Beta", "Gamma"] do
+        CodeMySpec.StoriesFixtures.story_fixture(scope, %{title: title})
+      end
+
+      # The shape that motivated code mode, and the one that did not work while
+      # every tool answered with prose: iterate the result, filter it, count.
+      script = ~S"""
+      local matching = 0
+      for _, story in ipairs(list_story_titles()) do
+        if string.sub(story.title, 1, 1) == "A" then matching = matching + 1 end
+      end
+      return matching
+      """
+
+      assert {:reply, response, ^frame} = RunScript.execute(%{script: script}, frame)
+
+      refute response.isError
+
+      # Exactly the count, not merely a digit somewhere in the output: three
+      # stories exist and one starts with A, so a weak match would pass on the
+      # total and prove nothing.
+      returned = text(response) |> String.split("Returned:") |> List.last() |> String.trim()
+
+      assert returned in ["1", "1.0"],
+             "expected the filtered count, got #{inspect(returned)} — a formatted " <>
+               "listing is a string; only records can be iterated, and that is the " <>
+               "whole reason script_result/2 exists"
+    end
+
     test "a tool that refuses gives the script an error to handle", %{frame: frame} do
       script = ~S"""
       local story, err = get_story({ story_id = "00000000-0000-0000-0000-000000000000" })

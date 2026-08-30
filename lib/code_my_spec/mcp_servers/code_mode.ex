@@ -16,22 +16,25 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   ## What a script actually receives
 
-  Our tools answer with prose — `Response.text/2` — because
-  `structured_content` alongside text makes Claude ignore the text. In a script
-  that is a real limit: `list_stories()` returns a formatted listing, not a
-  list, so a script can sequence and branch on tool calls but cannot iterate
-  their results as records.
+  Data from a tool that implements `ScriptResult.script_result/2`, and the
+  tool's prose from one that does not.
 
-  Structured content is preferred when a tool sets it, so the seam is here at
-  no cost and a tool that opts in becomes scriptable as data without changing
-  anything below. Nothing sets it today. Making the flagship
-  "list, filter, count" shape work is a per-tool decision that has to revisit
-  why text-only was chosen, and it is not this story.
+  The prose fallback is not a degraded mode; it is what every tool gave scripts
+  before that callback existed. What it cannot do is be iterated — a formatted
+  listing is a string — so composing over a result is exactly what opting in
+  buys.
+
+  Deliberately **not** `structured_content`. Anubis can put structured data on
+  the wire, and Claude then ignores the text beside it — measured, and the
+  reason every tool here answers with prose alone. Serving scripts that way
+  would make every direct tool call pay for it. The script path is separate and
+  a direct caller never sees it.
   """
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.LocalServer
+  alias CodeMySpec.McpServers.ScriptResult
 
   @doc "The catalog of tools a script may call, acting as `scope`."
   @spec catalog(term()) :: Catalog.t()
@@ -62,7 +65,24 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp validate(_tool, args), do: {:ok, args}
 
+  # Data when the tool can give it, prose when it cannot. The fallback is not a
+  # degraded mode — it is what every tool gave scripts before `script_result/2`
+  # existed, and most still do.
   defp execute(tool, params, frame) do
+    case ScriptResult.implemented?(tool.handler) do
+      true -> script_result(tool, params, frame)
+      false -> reply(tool, params, frame)
+    end
+  end
+
+  defp script_result(tool, params, frame) do
+    case tool.handler.script_result(params, frame) do
+      {:ok, value} -> {:ok, value}
+      {:error, reason} -> {:error, describe(reason)}
+    end
+  end
+
+  defp reply(tool, params, frame) do
     case tool.handler.execute(params, frame) do
       {:reply, response, _frame} -> read(response)
       {:error, reason, _frame} -> {:error, describe(reason)}
