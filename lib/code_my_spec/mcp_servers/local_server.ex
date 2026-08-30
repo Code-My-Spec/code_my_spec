@@ -125,6 +125,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
     `tool_docs({ name = "#{name}" })` gives its arguments.
     """)
-    |> Anubis.Server.Response.to_protocol()
+    |> Response.to_protocol()
   end
 end
