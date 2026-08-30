@@ -77,8 +77,24 @@ defmodule CmsHarness.Web.McpController do
   # server-initiated request (`ask_user`, elicitation) reaches the agent. It is
   # streamed rather than buffered, because buffering it would mean the agent
   # never sees anything until the session ends.
+  #
+  # `into: fun` rather than `into: :self`: the latter's `Req.Response.Async`
+  # raises out of `Enum.reduce_while/3` the moment the upstream connection
+  # dies mid-stream (`Enumerable.Req.Response.Async.reduce/3` does `raise e`
+  # on a transport error, not `{:error, e}`) — and that crossed `action/2`
+  # unhandled, taking the whole request down for a session that had already
+  # gotten a real 200 and real chunks. `into: fun` reports the same failure as
+  # `run_request/1`'s ordinary return, `Exception.t()` instead of
+  # `Req.Response.t()` — see `finish_stream/2` — so it is handled the same way
+  # every other upstream outcome here is: matched, not rescued.
   defp dispatch(%{method: "GET"} = conn, project, token) do
-    stream(conn, request(conn, project, token, :get, nil, :infinity))
+    req =
+      request(conn, project, token, :get, nil, :infinity)
+      |> Req.merge(into: &relay_chunk/2)
+      |> Req.Request.put_private(:cms_relay, %{conn: conn, chunking?: false, buffer: []})
+
+    {req, result} = Req.Request.run_request(req)
+    finish_stream(result, Req.Request.get_private(req, :cms_relay))
   end
 
   defp dispatch(%{method: method} = conn, project, token) when method in ~w(POST DELETE) do
@@ -216,42 +232,73 @@ defmodule CmsHarness.Web.McpController do
     end
   end
 
-  # `into: :self` rather than a callback, because the status has to be known
-  # before anything is sent: an upstream 401 must reach the client as a 401, and
-  # a stream opened optimistically would have already committed to 200.
-  defp stream(conn, req) do
-    case Req.request(req, into: :self) do
-      {:ok, %{status: 200} = response} ->
-        conn
-        |> copy_headers(response)
-        |> put_resp_content_type("text/event-stream")
-        |> put_resp_header("cache-control", "no-cache")
-        |> send_chunked(200)
-        |> pump(response.body)
+  # The status has to be known before anything is sent to the client: an
+  # upstream 401 must reach it as a 401, and a stream opened optimistically
+  # would have already committed to 200. `status`/`headers` events land on
+  # `resp` before any `:data` can (HTTP always sends them first), so by the
+  # time this runs at all the accumulator's `resp.status` is already final.
+  #
+  # A 200's chunks are written straight to the client as they arrive. Any
+  # other status is never streamed — its bytes are only ever a small error
+  # body — so they are held in `state.buffer` and sent as one plain response
+  # once the whole thing is known, in `finish_stream/2`.
+  defp relay_chunk({:data, data}, {request, %{status: 200} = resp}) do
+    %{conn: conn, chunking?: chunking?} = state = Req.Request.get_private(request, :cms_relay)
+    conn = if chunking?, do: conn, else: begin_event_stream(conn, resp)
 
-      {:ok, response} ->
-        Logger.warning("[CmsHarness] MCP stream refused upstream: #{response.status}")
+    case chunk(conn, data) do
+      {:ok, conn} ->
+        {:cont, {put_relay(request, %{state | conn: conn, chunking?: true}), resp}}
 
-        conn
-        |> copy_headers(response)
-        |> put_resp_content_type(content_type(response))
-        |> send_resp(response.status, Enum.join(Enum.to_list(response.body)))
-
-      {:error, reason} ->
-        unreachable(conn, reason)
+      # The agent went away. Nothing to log: closing the tab is the normal end
+      # of an MCP session, not a fault. Halting tells Finch to stop pulling
+      # more of the upstream body — there is nowhere left to put it.
+      {:error, _reason} ->
+        {:halt, {put_relay(request, %{state | conn: conn, chunking?: true}), resp}}
     end
   end
 
-  defp pump(conn, chunks) do
-    Enum.reduce_while(chunks, conn, fn chunk, conn ->
-      case chunk(conn, chunk) do
-        # The agent went away. Nothing to log: closing the tab is the normal end
-        # of an MCP session, not a fault.
-        {:error, _reason} -> {:halt, conn}
-        {:ok, conn} -> {:cont, conn}
-      end
-    end)
+  defp relay_chunk({:data, data}, {request, resp}) do
+    state = Req.Request.get_private(request, :cms_relay)
+    {:cont, {put_relay(request, %{state | buffer: [state.buffer, data]}), resp}}
   end
+
+  defp put_relay(request, state), do: Req.Request.put_private(request, :cms_relay, state)
+
+  defp begin_event_stream(conn, response) do
+    conn
+    |> copy_headers(response)
+    |> put_resp_content_type("text/event-stream")
+    |> put_resp_header("cache-control", "no-cache")
+    |> send_chunked(200)
+  end
+
+  # `run_request/1` always answers with one of these — a response or an
+  # `Exception.t()`, never a raise (see `dispatch/3`'s GET clause) — so the
+  # upstream connection dying mid-stream is just one more shape to match, the
+  # same as it dying before anything came back at all.
+  defp finish_stream(%Req.Response{status: 200}, %{chunking?: true, conn: conn}), do: conn
+
+  defp finish_stream(%Req.Response{status: 200} = response, %{chunking?: false, conn: conn}),
+    do: begin_event_stream(conn, response)
+
+  defp finish_stream(%Req.Response{} = response, %{conn: conn, buffer: buffer}) do
+    Logger.warning("[CmsHarness] MCP stream refused upstream: #{response.status}")
+
+    conn
+    |> copy_headers(response)
+    |> put_resp_content_type(content_type(response))
+    |> send_resp(response.status, IO.iodata_to_binary(buffer))
+  end
+
+  # Chunking had already started: a real 200 and real chunks already reached
+  # the client, so the upstream dying now ends the stream the same way the
+  # agent's own disconnect does above — silently, by sending no more.
+  defp finish_stream(exception, %{chunking?: true, conn: conn}) when is_exception(exception),
+    do: conn
+
+  defp finish_stream(exception, %{conn: conn}) when is_exception(exception),
+    do: unreachable(conn, exception)
 
   defp copy_headers(conn, response) do
     Enum.reduce(@returned, conn, fn name, conn ->

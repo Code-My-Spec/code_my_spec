@@ -32,7 +32,8 @@ defmodule CmsHarnessTest.FakeUpstream do
     status: 200,
     body: ~s({"jsonrpc":"2.0","id":1,"result":{"ok":true}}),
     headers: [],
-    chunks: nil
+    chunks: nil,
+    die: false
   }
 
   @doc "Start the listener on a free port and return it. Torn down with the test."
@@ -65,6 +66,14 @@ defmodule CmsHarnessTest.FakeUpstream do
   @doc "Answer the next request as an event stream of these chunks."
   @spec stream([binary()]) :: :ok
   def stream(chunks), do: respond_with(chunks: chunks)
+
+  @doc """
+  Like `stream/1`, but the connection drops after the last chunk instead of
+  ending cleanly — a dev-server restart or an idle timeout landing mid-response,
+  not the far end saying it is done.
+  """
+  @spec stream_then_die([binary()]) :: :ok
+  def stream_then_die(chunks), do: respond_with(chunks: chunks, die: true)
 
   @doc """
   The last request that arrived, or nil. Headers are a map, downcased by HTTP.
@@ -205,15 +214,21 @@ defmodule CmsHarnessTest.FakeUpstream do
   defp respond(conn, %{chunks: chunks} = response) when is_list(chunks) do
     conn = with_headers(conn, response)
 
-    conn
-    |> put_resp_content_type("text/event-stream")
-    |> send_chunked(response.status)
-    |> then(fn conn ->
-      Enum.reduce(chunks, conn, fn chunk, conn ->
-        {:ok, conn} = chunk(conn, chunk)
-        conn
+    conn =
+      conn
+      |> put_resp_content_type("text/event-stream")
+      |> send_chunked(response.status)
+      |> then(fn conn ->
+        Enum.reduce(chunks, conn, fn chunk, conn ->
+          {:ok, conn} = chunk(conn, chunk)
+          conn
+        end)
       end)
-    end)
+
+    # A real mid-stream drop is the socket closing with no terminating chunk,
+    # not this plug returning normally — Bandit only produces that if the
+    # process serving the request dies instead of finishing it.
+    if response.die, do: exit(:simulated_upstream_death), else: conn
   end
 
   defp respond(conn, response) do

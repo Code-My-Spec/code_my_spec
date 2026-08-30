@@ -261,6 +261,27 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert conn.status == 401
       assert conn.resp_body =~ "invalid_token"
     end
+
+    # The upstream connection dying mid-stream — a dev-server restart between
+    # here and there, an idle timeout — used to cross the controller action
+    # as an unhandled exception (`Enumerable.Req.Response.Async.reduce/3`
+    # raises rather than returning an error) and take the whole request down.
+    # The client had already gotten a real 200 and real chunks; the session,
+    # not the harness, is what should look broken to it, and only if it does
+    # something with the abrupt close its own connection dropping wouldn't.
+    test "an upstream drop mid-stream ends the client stream instead of crashing", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+      FakeUpstream.stream_then_die(["event: message\ndata: one\n\n"])
+
+      conn =
+        conn
+        |> Plug.Conn.put_req_header("accept", "text/event-stream")
+        |> get("/mcp?harness=#{working_copy_id_at(dir)}")
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "data: one"
+    end
   end
 
   # `require_oauth_token` on the server takes a user's access token and nothing
