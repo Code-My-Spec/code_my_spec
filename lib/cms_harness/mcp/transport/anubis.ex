@@ -50,12 +50,22 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # rather than as a question asked too early, and it is why every agent on this
   # machine was recorded with no browser tools while vibium sat installed on it.
   #
-  # A ping waits for the same handshake any first request would, and costs one
-  # round trip rather than a page of tools.
-  defp ready(name) do
-    case Anubis.Client.ping(name, timeout: 10_000) do
-      :pong -> {:ok, name}
-      {:error, reason} -> {:error, reason}
+  # Waited for with `tools/list` rather than with `ping`, because a ping is not
+  # a thing every server implements: vibium answers `initialize` and
+  # `tools/list` and errors on `ping`, so pinging for readiness declared a
+  # perfectly healthy server unreachable. The first request the caller was going
+  # to make anyway is the honest thing to wait on.
+  defp ready(name, attempts \\ 20) do
+    case Anubis.Client.list_tools(name) do
+      {:ok, _tools} ->
+        {:ok, name}
+
+      {:error, _reason} when attempts > 1 ->
+        Process.sleep(100)
+        ready(name, attempts - 1)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
