@@ -28,4 +28,8 @@ defmodule CodeMySpecTest.UnreachableMachine do
 
   @impl true
   def stop_agent(_copy, _agent, _timeout), do: {:error, :harness_not_connected}
+  @impl true
+  def call_machine_tool(_working_copy_id, _tool, _arguments, _timeout),
+    do: {:error, :harness_unreachable}
+
 end

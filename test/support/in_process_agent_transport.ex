@@ -61,4 +61,12 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     Machine.ensure_supervisor()
     Agents.withdraw(agent.id, ref)
   end
+  @impl true
+  def call_machine_tool(_working_copy_id, tool, arguments, _timeout) do
+    # In this VM the browser is whatever the local MCP transport was told to
+    # offer, so the round trip is the part that is stood in for and the answer
+    # is the one a criterion asserts on.
+    CmsHarness.Mcp.Transport.Local.call({CmsHarness.Mcp.Transport.Local, :browser}, tool, arguments)
+  end
+
 end

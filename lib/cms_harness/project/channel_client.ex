@@ -1148,6 +1148,21 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A script on the server asked for something that lives here. The browser is
+  # the only such thing today, and it is on this machine because Chrome is.
+  def handle_message(_topic, "tool_call", %{"ref" => ref} = msg, socket) do
+    result = CmsHarness.Browser.call(msg["tool"], msg["arguments"] || %{})
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "tool_call_result",
+      Map.put(encode_tool_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, event, _payload, socket) do
     Logger.warning(
       "[CmsHarness] the server sent #{inspect(event)}, which this harness does not " <>
@@ -1156,6 +1171,15 @@ defmodule CmsHarness.Project.ChannelClient do
 
     {:ok, socket}
   end
+
+  # An error stays an error across the wire. A browser that refused and one that
+  # answered "no such element" are different things to an agent deciding what to
+  # do next, and flattening both into text makes them the same thing.
+  defp encode_tool_result({:ok, text}), do: %{"text" => text}
+  defp encode_tool_result({:error, reason}), do: %{"error" => to_string_reason(reason)}
+
+  defp to_string_reason(reason) when is_binary(reason), do: reason
+  defp to_string_reason(reason), do: inspect(reason)
 
   defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
 

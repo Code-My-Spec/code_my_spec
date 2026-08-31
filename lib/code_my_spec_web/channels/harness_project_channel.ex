@@ -618,6 +618,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
+  def handle_in("tool_call_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_machine_tool(socket), ref)
+    if from, do: GenServer.reply(from, decode_machine_tool_result(msg))
+    {:reply, :ok, assign(socket, :pending_machine_tool, pending)}
+  end
+
   def handle_in("fs_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(socket.assigns[:pending_fs] || %{}, ref)
     if from, do: GenServer.reply(from, decode_fs_result(msg))
@@ -708,6 +714,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  # A script asked for something that lives on the machine — a browser, today.
+  # Same shape as every other push here: ref out, reply correlated back.
+  def handle_call({:call_machine_tool, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "tool_call", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_machine_tool, Map.put(pending_machine_tool(socket), ref, from))}
+  end
+
   def handle_call({:stop_agent, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -720,6 +737,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 
   defp pending_agent_stop(socket), do: socket.assigns[:pending_agent_stop] || %{}
+
+  defp pending_machine_tool(socket), do: socket.assigns[:pending_machine_tool] || %{}
+
+  # The machine's answer, in the shape a tool's caller expects. An error is kept
+  # as an error rather than folded into the text: a browser that refused and a
+  # browser that answered "no such element" are different things to an agent
+  # deciding what to do next.
+  defp decode_machine_tool_result(%{"error" => reason}), do: {:error, reason}
+  defp decode_machine_tool_result(%{"text" => text}), do: {:ok, text}
+  defp decode_machine_tool_result(other), do: {:error, {:unexpected_reply, other}}
 
   # Both halves of the pair or neither. A group id recorded without its boot
   # cannot later be told from a recycled number, and the only safe thing to do

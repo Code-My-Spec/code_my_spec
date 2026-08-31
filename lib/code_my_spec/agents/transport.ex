@@ -105,6 +105,25 @@ defmodule CodeMySpec.Agents.Transport do
   `:ok` means the group is gone and the caller may record the stop.
   `{:error, reason}` means it is not, and the caller must not.
   """
+  @doc """
+  Call a tool that lives on the machine rather than here.
+
+  A browser is an MCP server on somebody's box, so a script calling one has to
+  come back down. The hop is cheap — a channel round trip on localhost — and
+  what it replaces is a model turn, which is not.
+
+  Answers the tool's text, or why it could not be reached. `{:error,
+  :harness_unreachable}` when nothing holds that copy, which is a different
+  thing from a tool that ran and failed and gets a different sentence in front
+  of the agent.
+  """
+  @callback call_machine_tool(
+              working_copy_id :: String.t(),
+              tool :: String.t(),
+              arguments :: map(),
+              timeout()
+            ) :: {:ok, String.t()} | {:error, term()}
+
   @callback stop_agent(working_copy_id :: String.t(), agent :: Agent.t(), timeout()) ::
               :ok | {:error, term()}
 

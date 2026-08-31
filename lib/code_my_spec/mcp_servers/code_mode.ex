@@ -53,7 +53,51 @@ defmodule CodeMySpec.McpServers.CodeMode do
   """
   @spec catalog(Scope.t(), [String.t()] | nil) :: Catalog.t()
   def catalog(scope, allowed) do
-    Catalog.from(ScriptableTools.__components__(), &invoker(&1, scope), allowed)
+    ScriptableTools.__components__()
+    |> Catalog.from(&invoker(&1, scope), allowed)
+    |> Map.merge(machine_catalog(scope, allowed))
+  end
+
+  # The tools that live on the agent's machine — a browser, today.
+  #
+  # Mounted the same way ours are, which is the whole of criterion 3017: they go
+  # into the catalog a script already reaches rather than onto the agent, so
+  # twenty-nine browser schemas never reach a turn. Their invoker pushes down
+  # the channel to the copy that reported them, because that is where Chrome is.
+  #
+  # Only the ones the agent carries. `allowed` is the list on its row, and a
+  # machine tool it was not given is out of scope for the same reason one of
+  # ours is.
+  defp machine_catalog(scope, allowed) do
+    scope
+    |> machine_tools()
+    |> Enum.filter(&(is_nil(allowed) or &1 in allowed))
+    |> Map.new(&{&1, machine_tool(scope, &1)})
+  end
+
+  defp machine_tools(%{active_working_copy_id: id}) when is_binary(id) do
+    case CodeMySpec.WorkingCopies.fetch(id) do
+      {:ok, %{machine_tools: names}} when is_list(names) -> names
+      _ -> []
+    end
+  end
+
+  defp machine_tools(_scope), do: []
+
+  defp machine_tool(scope, name) do
+    %{
+      name: name,
+      description: "Runs on this project's machine. See tool_docs for its arguments.",
+      input_schema: %{"type" => "object"},
+      invoke: fn args ->
+        CodeMySpec.Agents.Transport.impl().call_machine_tool(
+          scope.active_working_copy_id,
+          name,
+          args,
+          30_000
+        )
+      end
+    }
   end
 
   @doc "What this agent may not call, of the tools that exist."

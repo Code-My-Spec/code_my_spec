@@ -74,6 +74,43 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   @impl true
+  @impl true
+  def call_machine_tool(working_copy_id, tool, arguments, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(
+          pid,
+          {:call_machine_tool, %{"tool" => tool, "arguments" => arguments}},
+          timeout,
+          :machine_tool_timed_out
+        )
+
+      :none ->
+        {:error, :harness_unreachable}
+    end
+  end
+
+  @impl true
+  @impl true
+  def call_machine_tool(working_copy_id, tool, arguments, timeout) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        call(
+          pid,
+          {:call_machine_tool, %{"tool" => tool, "arguments" => arguments}},
+          timeout,
+          :machine_tool_timed_out
+        )
+
+      # Different from a tool that ran and failed, and it gets a different
+      # sentence: the browser is on a machine that is not connected, which the
+      # agent cannot fix by calling something else.
+      :none ->
+        {:error, :harness_unreachable}
+    end
+  end
+
+  @impl true
   def stop_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} ->
