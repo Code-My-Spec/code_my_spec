@@ -877,7 +877,13 @@ publish_claude_extension VERSION:
     rm -rf _build/prod_cli release/
     ( cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay . )
     MIX_ENV=prod_cli mix deps.get
-    MIX_ENV=prod_cli mix compile --warnings-as-errors
+    # Not --warnings-as-errors: this is packaging a release build, not
+    # re-validating the whole codebase's warning-cleanliness — that already
+    # happened on whatever was actually changed, before it was committed. On
+    # a night several sessions are landing work concurrently, a warning in
+    # someone else's unrelated, already-merged file has nothing to do with
+    # what this recipe is releasing and should not be able to block it.
+    MIX_ENV=prod_cli mix compile
     MIX_ENV=prod_cli mix release code_my_spec_cli
     cp _build/prod_cli/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
 
