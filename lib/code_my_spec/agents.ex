@@ -45,6 +45,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
@@ -1104,6 +1105,11 @@ defmodule CodeMySpec.Agents do
     %{
       engine: Map.get(attrs, :engine, :pi),
       provider: Map.fetch!(attrs, :provider),
+      # Written down at start rather than derived at call time. A list on the
+      # row survives a change to what a role means, answers "what may this
+      # agent call" without a second lookup, and takes an exception without
+      # inventing a role for it.
+      tools: Map.get(attrs, :tools) || ToolSets.for_role(Map.fetch!(attrs, :role)),
       model: Map.get(attrs, :model),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.fetch!(attrs, :role),

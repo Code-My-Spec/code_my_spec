@@ -850,6 +850,10 @@ defmodule CodeMySpecSpex.Fixtures do
         provider: Keyword.get(opts, :provider, "zai"),
         working_copy: Keyword.get(opts, :working_copy, scope.cwd || "/tmp/a-copy"),
         role: Keyword.get(opts, :role, "coding"),
+        # What this agent may call, as a list rather than a rule read off the
+        # role — so a criterion about scoping asserts on the same column the
+        # server enforces from.
+        tools: Keyword.get(opts, :tools) || tool_set(Keyword.get(opts, :role, "coding")),
         working_copy_id: scope.active_working_copy_id,
         project_id: scope.active_project_id,
         account_id: scope.active_account_id,
@@ -868,6 +872,11 @@ defmodule CodeMySpecSpex.Fixtures do
 
     agent
   end
+
+  defp tool_set(role) when is_binary(role),
+    do: role |> String.to_existing_atom() |> tool_set()
+
+  defp tool_set(role) when is_atom(role), do: CodeMySpec.Agents.ToolSets.for_role(role)
 
   @doc """
   Every agent recorded on this project, read back from the database.

@@ -89,12 +89,50 @@ defmodule CodeMySpec.CodeMode.Catalog do
   `:input_schema`), so nothing here names the struct either.
   """
   @spec from(Enumerable.t(), (term() -> invoke())) :: t()
-  def from(registered, build_invoke) when is_function(build_invoke, 1) do
+  def from(registered, build_invoke), do: from(registered, build_invoke, nil)
+
+  @doc """
+  The same, scoped to what one agent may call.
+
+  `allowed` is a list of names, or `nil` for an agent that predates scoping and
+  could call everything. A list rather than a role, so an exception is a
+  different list on one row rather than a new role or a `case` in here.
+
+  Out-of-scope tools are *removed* from the catalog and named separately, so
+  `Bindings` can bind each to a stub that says why. Dropping them silently
+  produces "attempt to call a nil value", which reads as a misspelling — and an
+  agent that reads that tries variations of a name that exists.
+  """
+  @spec from(Enumerable.t(), (term() -> invoke()), [String.t()] | nil) :: t()
+  def from(registered, build_invoke, allowed) when is_function(build_invoke, 1) do
     registered
     |> Enum.map(&describe(&1, build_invoke))
     |> Enum.reject(&Map.has_key?(@excluded, &1.name))
+    |> Enum.filter(&in_scope?(&1.name, allowed))
     |> Map.new(&{&1.name, &1})
   end
+
+  @doc """
+  Names this agent may not call, of the ones that exist.
+
+  Separate from `excluded/0`: that is "no script may call this, ever", and this
+  is "not for an agent of this kind". They read alike to an agent and want
+  different sentences, which is the same distinction `Credential` draws between
+  never-connected and needs-reconnecting.
+  """
+  @spec out_of_scope(Enumerable.t(), [String.t()] | nil) :: [String.t()]
+  def out_of_scope(_registered, nil), do: []
+
+  def out_of_scope(registered, allowed) do
+    registered
+    |> Enum.map(& &1.name())
+    |> Enum.reject(&Map.has_key?(@excluded, &1))
+    |> Enum.reject(&(&1 in allowed))
+    |> Enum.sort()
+  end
+
+  defp in_scope?(_name, nil), do: true
+  defp in_scope?(name, allowed), do: name in allowed
 
   @doc "One tool by name."
   @spec fetch(t(), String.t()) :: {:ok, tool()} | :error

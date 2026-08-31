@@ -33,8 +33,8 @@ defmodule CmsHarness.Mcp.Transport.Local do
 
 
   @impl true
-  def call({__MODULE__, _headers}, "run_script", %{"script" => script}) do
-    dispatch(RunScript, %{script: script})
+  def call({__MODULE__, _headers}, "run_script", %{"script" => script} = arguments) do
+    dispatch(RunScript, script_params(script, arguments))
   end
 
   def call({__MODULE__, _headers}, "tool_docs", arguments) do
@@ -49,6 +49,11 @@ defmodule CmsHarness.Mcp.Transport.Local do
   def list_tool_names({__MODULE__, _headers}) do
     {:ok, Enum.map(ScriptableTools.__components__(), & &1.name/0)}
   end
+
+  defp script_params(script, %{"agent_id" => id}) when is_binary(id),
+    do: %{script: script, agent_id: id}
+
+  defp script_params(script, _arguments), do: %{script: script}
 
   defp docs_params(%{"names" => names}) when is_list(names), do: %{names: names}
   defp docs_params(_arguments), do: %{}

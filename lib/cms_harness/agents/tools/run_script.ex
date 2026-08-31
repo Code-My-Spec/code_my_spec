@@ -55,7 +55,7 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   def execute(%{"script" => script}, context) do
     with {:ok, client} <- session(context) do
       client
-      |> Mcp.call("run_script", %{"script" => script})
+      |> Mcp.call("run_script", arguments(script, context))
       |> answer()
     end
   end
@@ -71,6 +71,14 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   @doc "What a single answer may cost the turn. Public so a spec can ask."
   @spec max_result_chars() :: pos_integer()
   def max_result_chars, do: @max_result_chars
+
+  # The agent names itself, and the server reads which tools that agent carries
+  # off its own row. Sending the list from here would let the machine declare
+  # its own scope.
+  defp arguments(script, %{agent_id: agent_id}) when is_binary(agent_id),
+    do: %{"script" => script, "agent_id" => agent_id}
+
+  defp arguments(script, _context), do: %{"script" => script}
 
   defp session(%{mcp_client: client}) when not is_nil(client), do: {:ok, client}
 

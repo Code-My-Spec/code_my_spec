@@ -43,9 +43,22 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   @doc "The catalog of tools a script may call, acting as `scope`."
   @spec catalog(term()) :: Catalog.t()
-  def catalog(scope) do
-    Catalog.from(ScriptableTools.__components__(), &invoker(&1, scope))
+  def catalog(scope), do: catalog(scope, nil)
+
+  @doc """
+  The same, scoped to what one agent may call.
+
+  `allowed` is the list on the agent's row — not its role. See
+  `CodeMySpec.Agents.ToolSets`.
+  """
+  @spec catalog(Scope.t(), [String.t()] | nil) :: Catalog.t()
+  def catalog(scope, allowed) do
+    Catalog.from(ScriptableTools.__components__(), &invoker(&1, scope), allowed)
   end
+
+  @doc "What this agent may not call, of the tools that exist."
+  @spec out_of_scope([String.t()] | nil) :: [String.t()]
+  def out_of_scope(allowed), do: Catalog.out_of_scope(ScriptableTools.__components__(), allowed)
 
   defp invoker(tool, scope) do
     frame = %Frame{assigns: %{current_scope: scope}}

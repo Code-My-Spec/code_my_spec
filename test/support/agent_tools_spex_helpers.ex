@@ -24,9 +24,16 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
   """
   @spec launch_request(map(), map()) :: map()
   def launch_request(context, overrides \\ %{}) do
+    # The server's own agent row, and its id is what the machine runs under.
+    # That is how it works in production — `Agents.start_agent/2` hands the row
+    # id to the machine — and it is what makes the scoping criteria real: which
+    # tools an agent may call is read off that row, so an invented id would be
+    # asserting against no row at all.
+    agent = Fixtures.running_agent(context.scope, role: Map.get(overrides, "role", "coding"))
+
     Map.merge(
       %{
-        "agent_id" => "spex-1038-#{System.unique_integer([:positive])}",
+        "agent_id" => agent.id,
         "provider" => "zai",
         # Never reached: nothing here chats to the agent. Present because a
         # provider that needs a key and does not get one is a different failure

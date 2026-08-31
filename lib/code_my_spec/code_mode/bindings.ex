@@ -35,12 +35,24 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
   @doc "Binds every tool in `catalog`, plus a capturing `print`."
   @spec install(Lua.t(), Catalog.t()) :: Lua.t()
-  def install(lua, catalog) do
+  def install(lua, catalog), do: install(lua, catalog, [])
+
+  @doc """
+  The same, with the tools this agent's type does not carry bound to a stub.
+
+  Bound rather than absent, for the reason `explain_exclusions/1` gives one line
+  down: absence produces "attempt to call a nil value", which reads as a
+  misspelling. An agent told that about a tool it knows exists tries variations
+  of the name instead of learning it is not for it.
+  """
+  @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil) :: Lua.t()
+  def install(lua, catalog, out_of_scope, kind \\ nil) do
     lua
     |> Lua.put_private(@printed, [])
     |> capture_print()
     |> bind_tools(catalog)
     |> explain_exclusions()
+    |> explain_scope(out_of_scope, kind)
   end
 
   @doc "What the script printed, in order."
@@ -83,6 +95,26 @@ defmodule CodeMySpec.CodeMode.Bindings do
       end)
     end)
   end
+
+  # Named, and named as a scope decision rather than as an absence. The agent
+  # asked for a tool that exists; what it needs to be told is that this kind of
+  # agent does not carry it, so it stops looking and does something else.
+  defp explain_scope(lua, out_of_scope, kind) do
+    Enum.reduce(out_of_scope, lua, fn name, acc ->
+      Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
+        raise Lua.RuntimeException,
+              "#{name} is not a tool #{describe(kind)} carries. It exists, and this " <>
+                "kind of agent is not given it — asking again with a different " <>
+                "spelling will not help."
+      end)
+    end)
+  end
+
+  # Named when we know it. "a qa agent cannot call delete_story" is a sentence
+  # somebody can act on; "this agent cannot" leaves them wondering whether it is
+  # about the type, the project, or the moment.
+  defp describe(nil), do: "this agent"
+  defp describe(kind), do: "a #{kind} agent"
 
   defp callback(tool) do
     fn args, state ->

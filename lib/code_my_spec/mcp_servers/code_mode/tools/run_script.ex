@@ -36,17 +36,51 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
     field :script, :string,
       required: true,
       description: "Lua source. Return a value to get it back; use print() for progress."
+
+    field :agent_id, :string,
+      description:
+        "The agent running this, when one is. Its row says which tools it carries; " <>
+          "omitted, the script may call everything the caller can."
   end
 
   @impl true
-  def execute(%{script: script}, frame) do
+  def execute(%{script: script} = params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        result = CodeMode.eval(Layer.catalog(scope), script)
+        # Which tools, read off the agent's row rather than worked out from its
+        # role. The caller names *which* agent it is; the server decides what
+        # that agent may do, so naming a different one cannot invent
+        # permissions — it can only borrow another agent's, and both are ours.
+        {allowed, kind} = agent_scope(scope, Map.get(params, :agent_id))
+
+        result =
+          CodeMode.eval(Layer.catalog(scope, allowed), script,
+            out_of_scope: Layer.out_of_scope(allowed),
+            agent_kind: kind
+          )
+
         {:reply, render(result), frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+    end
+  end
+
+  # `nil` for a call nobody attributed to an agent — a person at an MCP client,
+  # or an agent started before scoping existed. Both could already call
+  # everything, and narrowing them here would be a scoping decision applied to
+  # somebody who never asked for one.
+  defp agent_scope(_scope, nil), do: {nil, nil}
+
+  defp agent_scope(scope, agent_id) do
+    with {:ok, _uuid} <- Ecto.UUID.cast(agent_id),
+         {:ok, agent} <- CodeMySpec.Agents.fetch_agent(scope, agent_id) do
+      {agent.tools, agent.role}
+    else
+      # An id that names no agent is a caller pointed at nothing, not a caller
+      # to be narrowed: guessing a scope for an agent we cannot find would apply
+      # a decision nobody made.
+      _ -> {nil, nil}
     end
   end
 

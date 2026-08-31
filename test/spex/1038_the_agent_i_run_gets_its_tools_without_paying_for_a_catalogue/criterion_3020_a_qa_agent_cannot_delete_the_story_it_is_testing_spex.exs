@@ -54,11 +54,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
       end
 
       then_ "and the story is untouched", context do
-        listed =
-          RunScript.execute(
-            %{"script" => "return list_story_titles({})"},
-            %{agent_id: context.agent_id}
-          )
+        listed = Fixtures.run_script("return list_story_titles({})", agent_context(context))
 
         assert {:ok, body} = listed
         assert body =~ context.story.title,

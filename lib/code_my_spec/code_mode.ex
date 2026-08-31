@@ -67,7 +67,11 @@ defmodule CodeMySpec.CodeMode do
     lua =
       opts
       |> Sandbox.new()
-      |> Bindings.install(catalog)
+      |> Bindings.install(
+        catalog,
+        Keyword.get(opts, :out_of_scope, []),
+        Keyword.get(opts, :agent_kind)
+      )
 
     {values, lua} = Lua.eval!(lua, script)
     Result.ok(values |> Enum.map(&LuaValue.from_lua/1) |> value(), Bindings.printed(lua))

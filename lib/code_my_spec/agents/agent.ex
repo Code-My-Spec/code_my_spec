@@ -97,6 +97,11 @@ defmodule CodeMySpec.Agents.Agent do
     field :model, :string
     field :working_copy, :string
     field :role, Ecto.Enum, values: @roles, default: :main
+
+    # What this agent may call, as a list rather than as a rule read off its
+    # role. `nil` means it predates scoping and could call everything — the one
+    # state the column has that is not a list, and it goes when the old rows do.
+    field :tools, {:array, :string}
     field :config_dir, :string
 
     # Held for the length of a start and never written down. The machine needs
@@ -141,6 +146,7 @@ defmodule CodeMySpec.Agents.Agent do
       :model,
       :working_copy,
       :role,
+      :tools,
       :config_dir,
       :os_pid,
       :os_boot_id,
