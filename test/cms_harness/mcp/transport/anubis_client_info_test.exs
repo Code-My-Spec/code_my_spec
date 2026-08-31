@@ -39,9 +39,21 @@ defmodule CmsHarness.Mcp.Transport.AnubisClientInfoTest do
              "neither the table nor the collision."
   end
 
+  test "the browser's real name does not raise" do
+    # `CmsHarness.Browser`'s own name, copied exactly. The term inside the
+    # `:global` tuple is itself a tuple, and the first version called
+    # `to_string/1` on it — which raises, on every machine, for the one session
+    # a QA agent most needs. It reached production and was caught by the browser
+    # status this same session added, not by a test.
+    name = {:global, {CmsHarness.Browser, :session}}
+
+    assert %{"name" => derived} = Anubis.client_info(name)
+    assert is_binary(derived)
+  end
+
   test "an agent does not share one with the browser" do
     agent = Anubis.client_info(session("agent-1"))
-    browser = Anubis.client_info({:global, :cms_harness_browser})
+    browser = Anubis.client_info({:global, {CmsHarness.Browser, :session}})
 
     refute table(agent) == table(browser),
            "the browser starts at boot, so sharing a table with it means no agent on " <>

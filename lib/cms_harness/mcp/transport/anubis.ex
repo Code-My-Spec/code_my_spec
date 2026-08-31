@@ -107,7 +107,14 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # and the browser's global name stands in for the one session that has no
   # agent behind it.
   defp session_tag({:via, Registry, {_registry, {:mcp, agent_id, _base_url}}}), do: agent_id
-  defp session_tag({:global, term}), do: to_string(term)
+  defp session_tag({:global, term}) when is_atom(term), do: to_string(term)
+
+  # The browser's own name is `{:global, {CmsHarness.Browser, :session}}`, so
+  # the term inside is a tuple and `to_string/1` on it raises — which it did,
+  # on every machine, for the one session that matters most. Hashed rather than
+  # inspected because this ends up in an atom Anubis interns: `inspect/1` on a
+  # tuple is long and full of characters, and the hash is stable for the same
+  # name, which is all this needs to be.
   defp session_tag(other), do: other |> :erlang.phash2() |> Integer.to_string()
 
   # A client started under a via or global name has to say what to call its
