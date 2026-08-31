@@ -18,6 +18,7 @@ defmodule CodeMySpec.Provisioning.Builder do
 
   alias CodeMySpec.Integrations
   alias CodeMySpec.Provisioning.Builder.Remote
+  alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Users.Scope
 
@@ -353,6 +354,15 @@ defmodule CodeMySpec.Provisioning.Builder do
   #
   # `nil` when no caller asked for one, which is every existing caller —
   # `Build.deploy` staying `nil` is the ordinary case, not a degraded one.
+  #
+  # `then_fun` invokes `bin/deploy`, which shells out to `kamal` directly —
+  # never installed here before, because nothing had ever gotten a real
+  # harness-only project's deploy this far. Refused as a `Deploy.Result`
+  # rather than a bare error tuple so it still matches
+  # `deploy_result(_scope, _environment, _host, %{deploy: %Deploy.Result{}}, _opts)`
+  # — an untyped error here would fall through to that clause's sibling,
+  # which reaches for `env(scope)` directly and crashes the exact way this
+  # session spent tonight fixing.
   defp run_then(server, opts) do
     case Keyword.get(opts, :then) do
       nil ->
@@ -360,7 +370,17 @@ defmodule CodeMySpec.Provisioning.Builder do
 
       then_fun ->
         run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
-        then_fun.(run, Keyword.get(opts, :build_dir, "/build"))
+
+        case Remote.ensure_kamal(run) do
+          :ok ->
+            then_fun.(run, Keyword.get(opts, :build_dir, "/build"))
+
+          {:error, {status, output}} ->
+            %Deploy.Result{
+              failed_phase: :build,
+              reason: "could not install kamal on the builder (exit #{status}): #{output}"
+            }
+        end
     end
   end
 

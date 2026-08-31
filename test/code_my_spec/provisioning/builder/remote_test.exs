@@ -276,6 +276,29 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
+  # `bin/deploy` shells out to `kamal` directly, and the docker-ce builder
+  # image never had Ruby, let alone the gem. Confirmed live against
+  # MarketMySpec: `kamal: command not found` (exit 127), the first real
+  # harness-only deploy to get far enough to invoke it.
+  describe "ensure_kamal/1" do
+    test "installs ruby and the kamal gem" do
+      run = recorder(self(), %{})
+
+      assert :ok = Remote.ensure_kamal(run)
+
+      assert_received {:ran, command}
+      assert command =~ "apt-get install -y -qq ruby-full"
+      assert command =~ "gem install kamal --no-document"
+    end
+
+    test "reports a real failure rather than proceeding without kamal" do
+      run = recorder(self(), %{"gem install" => {"ERROR:  Could not find a valid gem", 1}})
+
+      assert {:error, {1, output}} = Remote.ensure_kamal(run)
+      assert output =~ "Could not find a valid gem"
+    end
+  end
+
   # For a harness-only project `ssh_deliver/2` cannot reach — `env` there is
   # `Environment.new(:local, nil)` — so `Builder` falls back to this instead.
   describe "github_deliver/2" do

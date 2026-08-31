@@ -16,6 +16,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
+  alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Users.Scope
 
   defp scope, do: %Scope{}
@@ -295,6 +296,29 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert {:ok, build} = Builder.build(scope(), "abc123", opts)
 
       assert build.deploy == "/opt/deploy"
+    end
+
+    # `bin/deploy` shells out to `kamal`, never installed on the builder
+    # before tonight. A raw error tuple here would fall through
+    # `deploy_result/5`'s clause that matches `%{deploy: %Deploy.Result{}}`
+    # straight into its sibling — the one that reaches for `env(scope)`
+    # directly and crashes for a harness-only project. Wrapping it in a
+    # `Deploy.Result` keeps that clause matching.
+    test "a kamal install failure is reported as a Deploy.Result, not a bare error" do
+      then_fun = fn _run, _dir -> flunk("then_fun must not run when kamal never installed") end
+
+      run = fn
+        ["apt-get" <> _ = _command] -> {"E: Unable to locate package ruby-full", 100}
+        [_command] -> {"", 0}
+      end
+
+      opts = opts(build_fun: build_fun(), then: then_fun, run: run)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert %Deploy.Result{failed_phase: :build, reason: reason} = build.deploy
+      assert reason =~ "could not install kamal"
+      assert reason =~ "Unable to locate package ruby-full"
     end
   end
 

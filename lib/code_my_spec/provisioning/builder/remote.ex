@@ -116,6 +116,31 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   end
 
   @doc """
+  Install kamal on the builder before it orchestrates a deploy over it.
+
+  Every builder is single-use and destroyed after one build (see `Builder`'s
+  own moduledoc), so there is never an "already installed" case to check
+  for — the box is always fresh. Ruby is not part of the `docker-ce` base
+  image, and nothing installed it before tonight: nothing had gotten a real
+  harness-only project's deploy far enough to actually invoke `bin/deploy
+  migrate` and find `kamal: command not found` (exit 127) — confirmed live
+  against MarketMySpec, the first deploy through this path to get this far.
+  """
+  @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
+          :ok | {:error, {non_neg_integer(), String.t()}}
+  def ensure_kamal(run) do
+    command =
+      "apt-get update -qq && " <>
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ruby-full >/dev/null && " <>
+        "gem install kamal --no-document"
+
+    case run.([command]) do
+      {_, 0} -> :ok
+      {output, status} -> {:error, {status, trim(output)}}
+    end
+  end
+
+  @doc """
   Send one commit's tree to the builder, over the SSH we already have.
 
   The builder used to clone from GitHub. Repositories are created private
