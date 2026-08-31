@@ -91,14 +91,34 @@ defmodule CmsHarness.Browser do
   """
   @spec tool_names() :: [String.t()]
   def tool_names do
+    {names, _status} = asked()
+    names
+  end
+
+  @doc """
+  Why this machine offers the tools it does.
+
+  `:absent` for a machine with no vibium, `{:unreachable, reason}` for one that
+  has it and could not be reached, `:ready` otherwise. The distinction is the
+  whole point: both of the first two report no tools, and treating them as one
+  state is how a QA agent that could not look at anything looked exactly like a
+  QA agent on a machine that was never meant to.
+  """
+  @spec status() :: :ready | :absent | {:unreachable, String.t()}
+  def status do
+    {_names, status} = asked()
+    status
+  end
+
+  defp asked do
     case :persistent_term.get(@cached, :unasked) do
       :unasked ->
-        names = ask()
-        :persistent_term.put(@cached, names)
-        names
+        {names, status} = ask()
+        :persistent_term.put(@cached, {names, status})
+        {names, status}
 
-      names ->
-        names
+      cached ->
+        cached
     end
   end
 
@@ -122,61 +142,64 @@ defmodule CmsHarness.Browser do
     {pid, ref} = spawn_monitor(fn -> exit({:asked, ask_now()}) end)
 
     receive do
-      {:DOWN, ^ref, :process, ^pid, {:asked, names}} ->
-        names
+      {:DOWN, ^ref, :process, ^pid, {:asked, result}} ->
+        result
 
       {:DOWN, ^ref, :process, ^pid, reason} ->
-        Logger.warning(
-          "[CmsHarness] asking this machine's browser what it offers died " <>
-            "(#{inspect(reason)}); agents started here will have no browser tools"
-        )
-
-        []
+        unreachable("asking this machine's browser what it offers died (#{inspect(reason)})")
     after
       5_000 ->
         Process.exit(pid, :kill)
-
-        Logger.warning(
-          "[CmsHarness] this machine's browser did not say what it offers within 5s; " <>
-            "agents started here will have no browser tools"
-        )
-
-        []
+        unreachable("this machine's browser did not say what it offers within 5s")
     end
   end
 
   defp ask_now do
     with {:ok, client} <- ensure_started(),
          {:ok, names} <- Transport.impl().list_tool_names(client) do
-      names
+      {names, :ready}
     else
+      # The one empty answer that is not a failure — and still worth saying once,
+      # because it is the quiet one. An agent here does not fail for want of a
+      # browser; it never looks at anything, and until this line the machine said
+      # nothing at all about it. Issue ebc5586d wanted a package prerequisite;
+      # vibium ships on npm, so there is no formula to depend on and this is
+      # where a person finds out instead.
       {:error, :no_browser} ->
-        []
-
-      {:error, reason} ->
-        Logger.warning(
-          "[CmsHarness] this machine's browser did not say what it offers " <>
-            "(#{inspect(reason)}); agents started here will have no browser tools"
+        Logger.info(
+          "[CmsHarness] no browser on this machine, so agents started here cannot " <>
+            "look at a page. `npm install -g vibium` if they should."
         )
 
-        []
+        {[], :absent}
+
+      {:error, reason} ->
+        unreachable("this machine's browser did not say what it offers (#{inspect(reason)})")
     end
   rescue
     error ->
-      Logger.warning(
-        "[CmsHarness] asking this machine's browser what it offers raised " <>
-          "#{Exception.message(error)}; agents started here will have no browser tools"
+      unreachable(
+        "asking this machine's browser what it offers raised #{Exception.message(error)}"
       )
-
-      []
   catch
     :exit, reason ->
-      Logger.warning(
-        "[CmsHarness] this machine's browser died while being asked what it offers " <>
-          "(#{inspect(reason)}); agents started here will have no browser tools"
+      unreachable(
+        "this machine's browser died while being asked what it offers (#{inspect(reason)})"
       )
+  end
 
-      []
+  # A browser that is installed and cannot be reached, said once in the log and
+  # once in the answer.
+  #
+  # The log line existed already and was the only record, which is what made
+  # this expensive: a QA agent was recorded with twenty-nine tools, none of them
+  # could look at a page, and the sole trace was a warning nobody reads. It does
+  # not fail; it never looks. So the reason travels with the empty list now, and
+  # `{[], :absent}` — a machine that simply has no vibium — stays a different
+  # answer from this one.
+  defp unreachable(reason) do
+    Logger.warning("[CmsHarness] #{reason}; agents started here will have no browser tools")
+    {[], {:unreachable, reason}}
   end
 
   @doc "Ask again — for a machine that installed a browser since it came up."
@@ -193,7 +216,16 @@ defmodule CmsHarness.Browser do
 
   # Configurable so a machine that keeps it somewhere unusual is not stuck, and
   # so a test can point at something that is not a browser.
+  # `false` means "there is no browser here", which is different from unset.
+  # Unset looks on PATH; `false` is a machine that has one and should not use it
+  # — a server, a box where agents must not drive a browser — and it is the only
+  # way to reach the `:absent` branch on a machine where vibium is installed,
+  # which is every machine a test runs on here.
   defp executable do
-    Application.get_env(:code_my_spec, :vibium_executable) || System.find_executable("vibium")
+    case Application.get_env(:code_my_spec, :vibium_executable, nil) do
+      false -> nil
+      nil -> System.find_executable("vibium")
+      path -> path
+    end
   end
 end

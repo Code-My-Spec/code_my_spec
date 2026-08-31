@@ -53,6 +53,24 @@ class Codemyspec < Formula
     error_log_path var/"log/codemyspec.log"
   end
 
+  # Not `depends_on "vibium"`: vibium ships on npm, so Homebrew has no formula to
+  # depend on and this is the strongest form available. Issue ebc5586d asked for
+  # a prerequisite; what a prerequisite would have bought is a person finding out
+  # at install time instead of never, and the reason it matters is issue
+  # 02b03d04 — an agent on a machine with no browser does not fail, it just never
+  # looks at anything.
+  def caveats
+    <<~EOS
+      Agents run by CodeMySpec drive a browser through vibium, which is not
+      bundled. Without it they still run, and quietly cannot look at a page:
+
+        npm install -g vibium
+
+      A working copy's page reports which of the three it is — a browser that is
+      ready, absent, or installed and not answering.
+    EOS
+  end
+
   test do
     assert_match version.to_s,
       shell_output("#{bin}/cms eval 'IO.puts Application.spec(:code_my_spec, :vsn)'")

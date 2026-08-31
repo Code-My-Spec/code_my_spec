@@ -133,6 +133,23 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   # The chat is only an offer where there is something on the other end of it.
   #
+  # What an agent started here can look at, in the words somebody would use.
+  #
+  # On the page because the failing case is invisible everywhere else: a machine
+  # whose vibium will not answer reports the same empty list as a machine with no
+  # vibium, and an agent there is recorded with its tools, none of which can look
+  # at a page. Until this existed the only record was a warning in the harness
+  # log — issue 02b03d04.
+  defp browser_label(%{browser_status: "ready"} = harness),
+    do: "#{length(harness.machine_tools || [])} browser tools"
+
+  defp browser_label(%{browser_status: "absent"}), do: "No browser on this machine"
+
+  defp browser_label(%{browser_status: "unreachable"}),
+    do: "Installed, and did not answer — agents here cannot look at a page"
+
+  defp browser_label(_), do: "Not reported"
+
   # `:running`, not merely `:pi` — the same mistake `Liveness` made, one panel
   # further down the page. Gating on engine alone offered "Open agent chat" for
   # a lane that had not confirmed, so the page said "no harness has confirmed
@@ -227,6 +244,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               <span :if={@row.liveness.since} data-test="liveness-since">{@row.liveness.since}</span>
             </span>
             <div data-test="liveness-basis" class="text-xs opacity-60">{@row.liveness.basis}</div>
+          </:item>
+          <:item title="Browser">
+            <span data-test="browser-status">{browser_label(@row.harness)}</span>
+            <div
+              :if={@row.harness.browser_error}
+              data-test="browser-error"
+              class="text-xs opacity-60"
+            >
+              {@row.harness.browser_error}
+            </div>
           </:item>
         </.list>
 

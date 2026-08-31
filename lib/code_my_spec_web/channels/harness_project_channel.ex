@@ -86,6 +86,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
          :ok <- record_machine_tools(harness, payload["machine_tools"]),
+         :ok <- record_browser_status(harness, payload["browser_status"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -169,6 +170,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp record_machine_tools(_harness, _other), do: :ok
+
+  # Why the list was what it was. Absent from an older harness, which is the
+  # `nil` the column already means — not an error, and not a reason to refuse a
+  # join over.
+  defp record_browser_status(harness, %{"status" => status} = payload)
+       when is_binary(status) do
+    WorkingCopies.record_browser_status(harness, status, payload["error"])
+  end
+
+  defp record_browser_status(_harness, _other), do: :ok
 
   # The channel contract this server speaks. Kept in step with
   # `CmsHarness.Project.ChannelClient`'s copy — the two *are* the contract, so

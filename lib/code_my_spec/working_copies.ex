@@ -309,6 +309,28 @@ defmodule CodeMySpec.WorkingCopies do
     :ok
   end
 
+  @doc """
+  Why this machine's browser tool list is what it is.
+
+  `"ready"`, `"absent"`, or `"unreachable"` with a reason. The distinction the
+  list alone cannot make: a machine with no vibium and one whose vibium would
+  not answer both report `[]`, and only the second is something an operator can
+  act on.
+
+  `:ok` either way, on the same reasoning as `record_machine_tools/2` above — an
+  older harness sends nothing, and that is a harness, not a failure.
+  """
+  @spec record_browser_status(WorkingCopy.t(), String.t(), String.t() | nil) :: :ok
+  def record_browser_status(%WorkingCopy{} = harness, status, error) when is_binary(status) do
+    harness
+    |> WorkingCopy.changeset(%{browser_status: status, browser_error: error})
+    |> Repo.update()
+
+    :ok
+  end
+
+  def record_browser_status(_harness, _status, _error), do: :ok
+
   def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
     # And designated, if this is the project's first checkout.
     #

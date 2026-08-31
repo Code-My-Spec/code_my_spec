@@ -77,6 +77,19 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # actionable.
     field :machine_tools, {:array, :string}
 
+    # Why the list beside this is empty, because `[]` covered two machines: one
+    # with no browser, and one whose browser is installed and could not be
+    # reached. `"absent"` and `"unreachable"` respectively, `"ready"` when there
+    # are tools, and `nil` for a harness that has not said.
+    #
+    # The second is the one worth telling somebody about. An agent there is
+    # recorded with its tools, none of which can look at a page, and until this
+    # existed the only record was a warning in the harness log — it does not
+    # fail, it never looks. `browser_error` carries the reason so the state is
+    # actionable rather than merely distinguishable.
+    field :browser_status, :string
+    field :browser_error, :string
+
     # Where this checkout's running preview answers, when it is the one serving
     # the project. Null on every other copy, and expected to be: every worktree
     # can run the app and only one of them is the project's, so an address on a
@@ -118,6 +131,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :root,
       :device_id,
       :machine_tools,
+      :browser_status,
+      :browser_error,
       :main,
       :preview_url,
       :preview_tunnel_id,
