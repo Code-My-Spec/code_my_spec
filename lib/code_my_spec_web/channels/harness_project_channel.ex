@@ -401,16 +401,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # and ignored rather than refused as an unrecognised event.
   def handle_in("module_name", _payload, socket), do: {:reply, :ok, socket}
 
-  # Unknown copy answers false. A correction we cannot attribute to the main
-  # checkout is one we should not apply, and the cost of being wrong here is a
-  # project renamed out from under 1,091 components.
-  defp main_copy?(socket) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} -> copy.main
-      _ -> false
-    end
-  end
-
   # Same self-healing shape as `module_name`, for a check `Files` sync cannot
   # answer (it records existence, never a body) and the server cannot read
   # directly for a harness-only project. `Project.changeset/3`'s
@@ -706,6 +696,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # Unknown copy answers false. A correction we cannot attribute to the main
+  # checkout is one we should not apply, and the cost of being wrong here is a
+  # project renamed out from under 1,091 components.
+  defp main_copy?(socket) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} -> copy.main
+      _ -> false
+    end
   end
 
   # A filesystem operation for the working copy this channel serves.
