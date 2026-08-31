@@ -349,11 +349,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Sent on every sync, so a project onboarded before this existed — or with
   # a stale value from before a rename — self-heals on the harness's own
   # schedule rather than needing a repeat onboarding step.
+  #
+  # From the **main** copy only. "The one place it is never ambiguous" is true
+  # of one checkout and false of a project, which has several: every copy sends
+  # this on every sync, so without the gate the last one to sync wins. A QA
+  # sandbox holding a different application (`:qa_sandbox`) sat on this project
+  # for an afternoon and renamed it `QaSandbox`, against 1,091 components all
+  # called `CodeMySpec.*` — and it kept renaming it after being un-designated,
+  # because being connected was enough. The architecture task then instructed
+  # its agent to create components in a namespace that does not exist.
+  #
+  # The main copy is the project's own answer to "which checkout defines this",
+  # which is story 963's whole subject, so the gate is that one rather than a
+  # new rule.
   def handle_in("module_name", %{"module_name" => name}, socket)
       when is_binary(name) and name != "" do
     project = socket.assigns.scope.active_project
 
-    if project && project.module_name != name do
+    if project && project.module_name != name && main_copy?(socket) do
       case Projects.update_project(socket.assigns.scope, project, %{module_name: name}) do
         {:ok, updated} ->
           {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
@@ -376,6 +389,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # reasons (checkout mid-write, an unusual `mix.exs`) — so it is accepted
   # and ignored rather than refused as an unrecognised event.
   def handle_in("module_name", _payload, socket), do: {:reply, :ok, socket}
+
+  # Unknown copy answers false. A correction we cannot attribute to the main
+  # checkout is one we should not apply, and the cost of being wrong here is a
+  # project renamed out from under 1,091 components.
+  defp main_copy?(socket) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} -> copy.main
+      _ -> false
+    end
+  end
 
   # Same self-healing shape as `module_name`, for a check `Files` sync cannot
   # answer (it records existence, never a body) and the server cannot read

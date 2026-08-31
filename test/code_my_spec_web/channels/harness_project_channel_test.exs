@@ -562,6 +562,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   describe "module_name" do
     setup %{scope: scope, topic: topic} do
+      # The main one, because only the main checkout may say what the project is
+      # called. Every copy sends this on every sync, so ungated it was
+      # last-writer-wins between checkouts that need not even be the same app —
+      # see `HarnessProjectModuleNameTest`, which owns the gate itself. Here the
+      # copy is made main so these keep testing the correction rather than
+      # silently testing the refusal.
+      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
+      copy |> Ecto.Changeset.change(main: true) |> CodeMySpec.Repo.update!()
+
       {:ok, _reply, channel} = join_as(scope, topic)
       %{channel: channel}
     end
