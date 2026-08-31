@@ -79,7 +79,13 @@ defmodule CmsHarness.Agents.Engine do
     with {:ok, agent_id} <- require_opt(opts, :agent_id),
          {:ok, working_copy} <- require_opt(opts, :working_copy),
          :ok <- working_copy_exists(working_copy),
-         {:ok, _alloy_opts} <- alloy_options(opts) do
+         # Validation only. `alloy_options/1` used to start the agent's MCP
+         # session as a side effect, and this call happens in *the caller's*
+         # process — which for a server-pushed start is the channel. A failure
+         # in there took the channel down, and with it every working copy this
+         # harness serves. Sessions are opened in `init/1` now, where the agent
+         # is the thing at risk.
+         {:ok, _alloy_opts} <- alloy_options(opts, nil) do
       case DynamicSupervisor.start_child(@supervisor, {__MODULE__, opts}) do
         {:ok, pid} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
@@ -274,7 +280,9 @@ defmodule CmsHarness.Agents.Engine do
 
   @impl true
   def init(opts) do
-    {:ok, alloy_opts} = alloy_options(opts)
+    # Opened here rather than during validation, and unlinked: this process is
+    # the right thing for a session's failure to reach, and nothing above it is.
+    {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
 
     case Alloy.Agent.Server.start_link(alloy_opts) do
       {:ok, alloy} ->
@@ -632,7 +640,7 @@ defmodule CmsHarness.Agents.Engine do
   # sandbox we would have to build — and `bash_restricted` stays on, because
   # Alloy is explicit that bash is a guardrail and not a sandbox. The sprite is
   # the sandbox.
-  defp alloy_options(opts) do
+  defp alloy_options(opts, mcp_client) do
     with {:ok, provider} <- require_opt(opts, :provider),
          {:ok, working_copy} <- require_opt(opts, :working_copy),
          credential = Keyword.get(opts, :credential, %{}),
@@ -658,7 +666,7 @@ defmodule CmsHarness.Agents.Engine do
          # the tools report rather than crashing on — an agent that can still
          # read and edit its checkout is worth more than one that refused to
          # start because the server was briefly unreachable.
-         mcp_client: mcp_session(opts),
+         mcp_client: mcp_client,
          # How the compaction middleware reaches the agent it is running
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.

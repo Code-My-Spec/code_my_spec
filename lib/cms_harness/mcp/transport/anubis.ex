@@ -22,7 +22,14 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   @impl true
   def connect(name, opts) do
     with {:ok, headers} <- headers(opts),
-         {:ok, _supervisor} <- start_client(name, opts, headers) do
+         {:ok, supervisor} <- start_client(name, opts, headers) do
+      # Unlinked, deliberately. `Anubis.Client.start_link/1` links its
+      # supervisor to whoever called it, and callers here are processes that
+      # must outlive a session: an agent whose browser died is an agent that
+      # cannot browse, not one that should stop. Twice tonight a link like this
+      # took down something far more important than the session at the end of
+      # it.
+      Process.unlink(supervisor)
       {:ok, name}
     end
   end
