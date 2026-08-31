@@ -12,6 +12,7 @@ defmodule CodeMySpec.Projects.Project do
           description: String.t() | nil,
           module_name: String.t() | nil,
           health_route_status: String.t() | nil,
+          head_commit: String.t() | nil,
           code_repo: String.t() | nil,
           docs_repo: String.t() | nil,
           client_api_url: String.t() | nil,
@@ -47,6 +48,12 @@ defmodule CodeMySpec.Projects.Project do
     # same way it reports `module_name`. `nil` means "not reported yet", a
     # different state from either "ok" or "missing".
     field :health_route_status, :string
+    # The checkout's own `git rev-parse HEAD` — what `Steps.image_tag/2` tags a
+    # build with. The server cannot run `git` against a harness-only project's
+    # environment (`Environments.cmd/4` has no working directory to run it in
+    # there); the harness runs it locally on every sync and reports it, the
+    # same shape as `module_name`/`health_route_status`.
+    field :head_commit, :string
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
@@ -143,6 +150,7 @@ defmodule CodeMySpec.Projects.Project do
       :description,
       :module_name,
       :health_route_status,
+      :head_commit,
       :code_repo,
       :docs_repo,
       :client_api_url,
@@ -172,6 +180,7 @@ defmodule CodeMySpec.Projects.Project do
       message: "must be a valid Elixir module name"
     )
     |> validate_inclusion(:health_route_status, ~w(ok no_health_route health_route_piped))
+    |> validate_format(:head_commit, ~r/^[0-9a-f]{40}$/, message: "must be a git commit SHA")
     |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_deploy_key_hash()

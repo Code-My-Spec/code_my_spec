@@ -2595,16 +2595,40 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # The commit is the tag, because "which image is this" and "which code is
   # this" should not be two questions.
-  defp image_tag(scope, opts) do
+  #
+  # Public for its own test: reaching it through `run(:deploy, ...)` means
+  # buying a whole build pipeline (registry, builder SSH, a linked server) just
+  # to exercise a tagging decision that never touches any of them.
+  @doc false
+  @spec image_tag(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def image_tag(scope, opts) do
     case Keyword.get(opts, :tag) || head_commit(scope) do
       sha when is_binary(sha) and sha != "" -> {:ok, String.slice(sha, 0, 12)}
       _ -> {:error, "cannot tag an image: the project has no commit to build"}
     end
   end
 
-  defp head_commit(scope) do
-    case Environments.cmd(env(scope), "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+  # `Environments.cmd/4` raises rather than returning an error for an
+  # environment with no working directory (deliberately — see `Local.cmd/4`),
+  # so calling it against a harness-only project's `scope.environment`
+  # (`Resources.project_scope/2`'s fallback, `cwd: nil`) took the whole build
+  # down instead of falling back cleanly. Checked here first, same reachability
+  # gap `app_path/1` has with `mix.exs`. `CmsHarness.Sync` runs this same `git
+  # rev-parse HEAD` on the machine that can actually reach it and reports the
+  # SHA on every sync (`HarnessProjectChannel`'s `"head_commit"` handler) — the
+  # fallback for exactly this shape of project.
+  defp head_commit(%{environment: %{cwd: cwd}} = scope) when is_binary(cwd) do
+    case Environments.cmd(scope.environment, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
       {sha, 0} -> String.trim(sha)
+      _ -> reported_head_commit(scope)
+    end
+  end
+
+  defp head_commit(scope), do: reported_head_commit(scope)
+
+  defp reported_head_commit(scope) do
+    case project(scope) |> Map.get(:head_commit) do
+      sha when is_binary(sha) and sha != "" -> sha
       _ -> nil
     end
   end

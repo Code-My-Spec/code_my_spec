@@ -361,6 +361,17 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc false
+  # Called from the scanning task with `git rev-parse HEAD`, read straight out
+  # of this checkout.
+  @spec deliver_head_commit(String.t(), String.t()) :: :ok
+  def deliver_head_commit(root, sha) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:head_commit, sha})
+      [] -> :ok
+    end
+  end
+
+  @doc false
   # Called from the analysis queue with a finished (or failed) run.
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do
@@ -1834,6 +1845,25 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:health_route_status, _status}, socket), do: {:noreply, socket}
+
+  def handle_cast({:head_commit, sha}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "head_commit",
+           %{"sha" => sha},
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send head_commit: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:head_commit, _sha}, socket), do: {:noreply, socket}
 
   # --- Private ---
 

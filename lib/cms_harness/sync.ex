@@ -53,6 +53,7 @@ defmodule CmsHarness.Sync do
     env = Environment.new(:local, project.root)
 
     report_app_name(env, project.root)
+    report_head_commit(env, project.root)
 
     case Scanner.observe(env, read_model) do
       {:error, reason} ->
@@ -112,6 +113,17 @@ defmodule CmsHarness.Sync do
 
       nil ->
         :ok
+    end
+  end
+
+  # `Steps.image_tag/2` needs the checkout's real `git rev-parse HEAD` to tag a
+  # build with — the same reachability gap `app_path/1` has with `mix.exs`.
+  # This machine can run `git` in the real checkout, so it does, on every
+  # sync, and reports the SHA for a harness-only project to fall back to.
+  defp report_head_commit(env, root) do
+    case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> ChannelClient.deliver_head_commit(root, String.trim(sha))
+      _ -> :ok
     end
   end
 

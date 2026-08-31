@@ -407,6 +407,35 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   def handle_in("health_route_status", _payload, socket), do: {:reply, :ok, socket}
 
+  # Same self-healing shape as `module_name`/`health_route_status`, for
+  # `Steps.image_tag/2`'s `git rev-parse HEAD` — the server has no working
+  # directory to run `git` in for a harness-only project.
+  # `Project.changeset/3`'s `validate_format` keeps a malformed SHA from ever
+  # landing.
+  def handle_in("head_commit", %{"sha" => sha}, socket)
+      when is_binary(sha) and byte_size(sha) == 40 do
+    project = socket.assigns.scope.active_project
+
+    if project && project.head_commit != sha do
+      case Projects.update_project(socket.assigns.scope, project, %{head_commit: sha}) do
+        {:ok, updated} ->
+          {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[HarnessProject] could not correct head_commit to #{inspect(sha)} for " <>
+              "#{project.id}: #{inspect(reason)}"
+          )
+
+          {:reply, :ok, socket}
+      end
+    else
+      {:reply, :ok, socket}
+    end
+  end
+
+  def handle_in("head_commit", _payload, socket), do: {:reply, :ok, socket}
+
   # Decide a hook the harness is proxying for Claude Code.
   #
   # The decision is mostly database work — blocking problems, config modes,
