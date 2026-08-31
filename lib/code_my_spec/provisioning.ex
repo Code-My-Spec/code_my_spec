@@ -413,6 +413,49 @@ defmodule CodeMySpec.Provisioning do
     end
   end
 
+  @doc "A run currently in flight for this project's `RunLock`, right now?"
+  @spec runs_in_flight?(Scope.t()) :: boolean()
+  def runs_in_flight?(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: not is_nil(RunLock.in_flight(project_id))
+
+  def runs_in_flight?(_scope), do: false
+
+  @doc """
+  Block until this project's `RunLock` is free, or `opts[:timeout]` elapses.
+
+  `run_provisioning_step`/`run_devops_setup` both return the moment a run
+  starts, for the same reason `Analysis.await_all/2` does — the MCP
+  transport's own request cap, and the code-mode sandbox's 30s wall clock on
+  top of it, are both far shorter than a real run (`:deploy` alone measured
+  ~167s). This is the other half: a caller that wants to actually wait polls
+  `RunLock` here instead of hammering `devops_status` or the stop hook.
+
+  Same shape as `Analysis.poll_until_idle/2` — a plain poll rather than a
+  subscription, because `RunLock` is a `Registry`, not a broadcaster, and the
+  wait itself is meant to run somewhere the 30s ceiling can't reach it (a
+  plain HTTP handler, never inside code-mode).
+  """
+  @spec await_run(Scope.t(), keyword()) :: :ok | :timeout
+  def await_run(%Scope{} = scope, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, :timer.minutes(10))
+    deadline = System.monotonic_time(:millisecond) + timeout
+    poll_until_free(scope, deadline)
+  end
+
+  defp poll_until_free(scope, deadline) do
+    cond do
+      not runs_in_flight?(scope) ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        :timeout
+
+      true ->
+        Process.sleep(500)
+        poll_until_free(scope, deadline)
+    end
+  end
+
   defp spawn_step(%Scope{active_project_id: project_id} = scope, key, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->

@@ -227,6 +227,11 @@ defmodule CodeMySpecWeb.Router do
     # One project's authored graph, one request, one transaction (story 991).
     post "/migrations", MigrationsController, :create
 
+    # Blocks until the connected project's provisioning RunLock is free — see
+    # ProvisioningController's moduledoc for why this is plain HTTP rather
+    # than an MCP tool or a code-mode script.
+    post "/provisioning/wait", ProvisioningController, :wait
+
     post "/uploads/presign", UploadController, :create
 
     post "/notifications/push", NotificationController, :push
