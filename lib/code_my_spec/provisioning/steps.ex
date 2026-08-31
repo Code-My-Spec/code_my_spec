@@ -43,6 +43,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Conversations,
     Deploys,
     Environments,
+    Files,
     Projects,
     ProjectSecrets
   }
@@ -3296,10 +3297,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: {:error, no_environment_message()}
 
   def check_secrets(%Scope{} = scope, environment) do
-    env = env(scope)
-
     with {:ok, private} <- fetch_age_key(scope, environment),
-         {:ok, missing} <- Sops.missing_secrets(env, environment, private, @required_secrets) do
+         {:ok, missing} <- missing_required_secrets(scope, environment, private) do
       case missing do
         [] -> {:ok, key_delivery_resource(environment)}
         names -> {:error, boot_refusal(environment, names)}
@@ -3312,6 +3311,25 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       {:error, reason} ->
         {:error, to_string_reason(reason)}
+    end
+  end
+
+  # The harness reports this at sync time
+  # (`CodeMySpec.Files.Scanner.validate_entry/4`'s `:encrypted_env` clause) —
+  # the same reachability gap `app_path/1` had with `mix.exs`, on a check
+  # that needs no decryption to answer: SOPS's dotenv mode encrypts values
+  # only, so key names are plaintext in the file exactly as committed. The
+  # reported verdict wins whenever there is one; an environment that can
+  # genuinely be read directly (a local checkout, a container, the sops
+  # drills) still gets the original check unchanged, for a project that has
+  # not synced since this existed.
+  defp missing_required_secrets(scope, environment, private) do
+    case Files.get_by_path(scope, Sops.env_file(environment)) do
+      %{validation_errors: %{"data" => %{"missing" => missing}}} ->
+        {:ok, missing}
+
+      _ ->
+        Sops.missing_secrets(env(scope), environment, private, @required_secrets)
     end
   end
 

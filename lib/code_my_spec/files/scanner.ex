@@ -376,6 +376,19 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_persona_sources/1)
   end
 
+  # Which required secret names an environment's encrypted file declares —
+  # never their values, and never a decryption. SOPS's dotenv mode encrypts
+  # values only; key names are plaintext in the file exactly as committed, so
+  # this reads no differently than any other setup artifact here. What used
+  # to be a server-side `Environments.file_exists?/2` + `sops decrypt` against
+  # a project's checkout — unreachable for a harness-only project, the same
+  # gap `module_name`/`health_route_status` had — is answered here instead,
+  # at sync time, where the file actually is. `Provisioning.Steps.
+  # check_secrets/2` reads the verdict rather than the file.
+  def validate_entry(%{role: :encrypted_env} = entry, env, _component_by_id, _strict?) do
+    validate_setup_file(entry, env, &validate_encrypted_env/1)
+  end
+
   def validate_entry(%{role: :implementation} = entry, env, _component_by_id, _strict?) do
     # Not "valid by existence" any more, but the validity claim is unchanged —
     # an implementation file is valid because it is there. What is new is the
@@ -636,6 +649,26 @@ defmodule CodeMySpec.Files.Scanner do
       else: "`spex: :test` not found in preferred_envs in `mix.exs`"
   end
 
+  # The exact key names `CodeMySpec.Provisioning.Steps.check_secrets/2` needs
+  # before it will run a deploy — kept here rather than derived from a shared
+  # constant because this is the one place either side actually has to agree
+  # on the literal strings, and a rename on one side without the other should
+  # fail loudly (a missing key reads as "not configured", not as "renamed").
+  @required_secret_keys ~w(SECRET_KEY_BASE DATABASE_URL)
+
+  defp validate_encrypted_env(content) do
+    present = Enum.filter(@required_secret_keys, &Regex.match?(~r/^#{&1}=/m, content))
+    missing = @required_secret_keys -- present
+
+    error =
+      case missing do
+        [] -> nil
+        names -> "missing " <> Enum.join(names, ", ")
+      end
+
+    %{errors: %{required_secrets: error}, data: %{"present" => present, "missing" => missing}}
+  end
+
   defp validate_credo_exs(content) do
     has_requires =
       String.contains?(content, "credo_checks/framework") and
@@ -806,6 +839,7 @@ defmodule CodeMySpec.Files.Scanner do
         &classify_docs/1,
         &classify_qa/1,
         &classify_config/1,
+        &classify_encrypted_env/1,
         &classify_deploy_artifact/1
       ],
       & &1.(path)
@@ -824,6 +858,14 @@ defmodule CodeMySpec.Files.Scanner do
   defp classify_deploy_artifact(path) do
     if path in @deploy_artifact_files or Enum.any?(@deploy_artifact_dirs, &String.starts_with?(path, &1)),
       do: {path, :deploy_artifact}
+  end
+
+  # The one deploy artifact whose content a check needs, not just its
+  # existence — see `validate_encrypted_env/1`. Checked ahead of the general
+  # `envs/` rule above so these two specific files get it instead.
+  defp classify_encrypted_env(path) do
+    if String.starts_with?(path, "envs/") and String.ends_with?(path, ".enc.env"),
+      do: {path, :encrypted_env}
   end
 
   # Setup-time artifacts. Validated at sync time so the requirements graph

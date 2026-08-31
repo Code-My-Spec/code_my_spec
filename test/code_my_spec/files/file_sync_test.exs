@@ -103,12 +103,21 @@ defmodule CodeMySpec.Files.FileSyncTest do
             "config/deploy.yml",
             "config/deploy.uat.yml",
             "rel/overlays/bin/boot",
-            "rel/overlays/bin/migrate",
-            "envs/prod.enc.env",
-            "envs/uat.enc.env"
+            "rel/overlays/bin/migrate"
           ] do
         assert {:deploy_artifact, ^path} = swap(FileSync.classify(path)),
                "expected #{path} to classify as deploy_artifact"
+      end
+    end
+
+    # Split out of :deploy_artifact — the one deploy artifact a check needs
+    # content from, not just existence. See `check_secrets/2`'s missing_
+    # required_secrets/2` and `Scanner.validate_entry/4`'s `:encrypted_env`
+    # clause.
+    test "classifies an environment's encrypted file as encrypted_env" do
+      for path <- ["envs/prod.enc.env", "envs/uat.enc.env"] do
+        assert {:encrypted_env, ^path} = swap(FileSync.classify(path)),
+               "expected #{path} to classify as encrypted_env"
       end
     end
 
@@ -182,6 +191,45 @@ defmodule CodeMySpec.Files.FileSyncTest do
           ] do
         assert path in paths, "expected #{path} to be synced, got #{inspect(paths)}"
       end
+    end
+
+    # `check_secrets/2` reads this verdict rather than the file, so the
+    # server never needs `Environments.read_file/2` to reach a harness-only
+    # project — and no decryption happens here either: SOPS's dotenv mode
+    # encrypts values only, so key names are plaintext exactly as committed.
+    test "an encrypted env file with both required secrets is valid" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "envs/prod.enc.env", """
+      SECRET_KEY_BASE=ENC[AES256_GCM,data:aaaa,iv:bbbb,tag:cccc,type:str]
+      DATABASE_URL=ENC[AES256_GCM,data:dddd,iv:eeee,tag:ffff,type:str]
+      """)
+
+      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      file = Files.get_by_path(scope, "envs/prod.enc.env")
+
+      assert file.valid == true
+      assert file.validation_errors["data"]["missing"] == []
+
+      assert Enum.sort(file.validation_errors["data"]["present"]) ==
+               ["DATABASE_URL", "SECRET_KEY_BASE"]
+    end
+
+    test "an encrypted env file missing a required secret is invalid, by name" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "envs/prod.enc.env", """
+      SECRET_KEY_BASE=ENC[AES256_GCM,data:aaaa,iv:bbbb,tag:cccc,type:str]
+      """)
+
+      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      file = Files.get_by_path(scope, "envs/prod.enc.env")
+
+      assert file.valid == false
+      assert file.validation_errors["data"]["missing"] == ["DATABASE_URL"]
+      assert file.validation_errors["data"]["present"] == ["SECRET_KEY_BASE"]
     end
 
     test "full sync reports only fingerprint-changed paths" do
