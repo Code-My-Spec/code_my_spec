@@ -4547,7 +4547,26 @@ defmodule CodeMySpec.Provisioning.Steps do
   # commit would be a worse failure than the one it is fixing — they stay
   # uncommitted, and `bin/deploy` still refuses, now naming files setup did
   # not write.
-  defp commit_generated_configuration(scope) do
+  # Runs before `image_tag` ever gets a chance to fall back cleanly (see
+  # `head_commit/1`), so the crash reported live against MarketMySpec was
+  # actually here: `work_tree?/1` calls `git` through the same
+  # `Environments.cmd/4` unconditionally, no reachability check at all. The
+  # server has no real way to write to a harness-only project's checkout in
+  # the first place — committing setup's generated files there is whoever
+  # owns that checkout's own doing (or already done by hand, as it was for
+  # MarketMySpec's `envs/*.enc.env`), so there is nothing for this to do here.
+  #
+  # Public for its own test, same reason as `image_tag/2`: reaching this
+  # through `run(:deploy, ...)` means buying the whole pre-build gate chain
+  # (secrets, config-target check, script presence) just to exercise a
+  # reachability guard that precedes all of them in the pipeline but depends
+  # on none of them.
+  @doc false
+  @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
+  def commit_generated_configuration(%{environment: %{cwd: cwd}}) when not is_binary(cwd),
+    do: :ok
+
+  def commit_generated_configuration(scope) do
     environment = env(scope)
 
     paths =
