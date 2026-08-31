@@ -12,7 +12,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   alias CmsHarness.Token
 
-  @client_info %{"name" => "cms-harness", "version" => "1"}
+  @client_name "cms-harness"
 
   # What our own server speaks. Overridable per session because a third-party
   # server speaks whatever it speaks, and one of them answers an unsupported
@@ -74,11 +74,41 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
         name: name,
         transport_name: transport_name(name),
         transport: transport(opts, headers),
-        client_info: @client_info,
+        client_info: client_info(name),
         capabilities: %{},
         protocol_version: Keyword.get(opts, :protocol_version, @protocol_version)
       )
   end
+
+  # One `client_info["name"]` per session, because Anubis keys an ETS table on
+  # it — `anubis_client_<name>_tool_validators`, created `:private` by whichever
+  # client gets there first (`Anubis.Client.Cache.ensure_table/1`).
+  #
+  # A constant here meant every session in this VM computed the same table name,
+  # so exactly one could ever work. The browser starts at boot and took it;
+  # every agent after that died on
+  #
+  #     :ets.internal_delete_all(:"anubis_client_cms-harness_tool_validators", :undefined)
+  #     ** (ArgumentError) the table identifier refers to an ETS table with
+  #        insufficient access rights
+  #
+  # which surfaced as `:start_timed_out` — the agent's session never came up,
+  # and thirteen restore attempts in a row failed without one succeeding.
+  #
+  # The cost is an atom per distinct session, since Anubis interns the derived
+  # table name. That is the trade the library forces and it is a bounded one: an
+  # atom per agent start against a table of a million, where the alternative is
+  # one working session per machine.
+  @doc false
+  @spec client_info(term()) :: map()
+  def client_info(name), do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
+
+  # Readable in a log line and unique per session. The agent id already is both,
+  # and the browser's global name stands in for the one session that has no
+  # agent behind it.
+  defp session_tag({:via, Registry, {_registry, {:mcp, agent_id, _base_url}}}), do: agent_id
+  defp session_tag({:global, term}), do: to_string(term)
+  defp session_tag(other), do: other |> :erlang.phash2() |> Integer.to_string()
 
   # A client started under a via or global name has to say what to call its
   # transport: Anubis derives one from an atom name and raises on anything else.
