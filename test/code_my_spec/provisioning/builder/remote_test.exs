@@ -276,6 +276,47 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
+  # For a harness-only project `ssh_deliver/2` cannot reach — `env` there is
+  # `Environment.new(:local, nil)` — so `Builder` falls back to this instead.
+  describe "github_deliver/2" do
+    defp github_opts(run, overrides \\ []) do
+      Keyword.merge(
+        [run: run, github_repo: "acme/market_my_spec", github_token: "ghs_abc123"],
+        overrides
+      )
+    end
+
+    test "downloads the ref's tarball from GitHub and extracts it, stripping the wrapper directory" do
+      run = recorder(self(), %{})
+      deliver = Remote.github_deliver(%{"ip" => "1.2.3.4"}, github_opts(run))
+
+      assert :ok = deliver.("abc123", "/build")
+
+      assert_received {:ran, command}
+      assert command =~ "curl -sSfL --location-trusted -u 'x-access-token:ghs_abc123'"
+      assert command =~ "https://api.github.com/repos/acme/market_my_spec/tarball/abc123"
+      assert command =~ "tar -xz -C /build --strip-components=1"
+    end
+
+    test "the token never appears as a bare -H header value curl would echo on a redirect" do
+      run = recorder(self(), %{})
+      deliver = Remote.github_deliver(%{"ip" => "1.2.3.4"}, github_opts(run))
+
+      :ok = deliver.("abc123", "/build")
+
+      assert_received {:ran, command}
+      refute command =~ "-H "
+    end
+
+    test "reports a real failure rather than succeeding on an error page" do
+      run = recorder(self(), %{"curl" => {"HTTP 404: Not Found", 22}})
+      deliver = Remote.github_deliver(%{"ip" => "1.2.3.4"}, github_opts(run))
+
+      assert {:error, {:source_delivery_failed, 22, output}} = deliver.("abc123", "/build")
+      assert output =~ "HTTP 404"
+    end
+  end
+
   # The sequence `build/4` runs is fixed — reachability, build, trust, login,
   # push, inspect — so the count is known rather than searched for. Taking a known
   # number and matching positionally says where the login belongs, which "scan

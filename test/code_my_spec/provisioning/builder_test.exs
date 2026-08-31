@@ -14,6 +14,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   """
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Users.Scope
 
@@ -190,6 +191,21 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     test "refuses an architecture with no builder rather than guessing one" do
       assert {:error, {:unknown_architecture, :sparc}} =
                Builder.build(scope(), "abc123", opts(architecture: :sparc))
+    end
+  end
+
+  # `Remote.ssh_deliver/2` needs a real environment to archive the commit
+  # from — for a harness-only project, `scope.environment` is
+  # `Environment.new(:local, nil)`, the same unreachable shape
+  # `Steps.head_commit/1` already falls back for. Reported live against
+  # MarketMySpec: this used to raise instead of failing cleanly.
+  describe "choosing how to deliver the source" do
+    test "falls back to a clean error, not a crash, when there is no repo to fall back to" do
+      scope = %Scope{environment: Environment.new(:local, nil)}
+      run = fn [_cmd] -> {"", 0} end
+
+      assert {:error, {:source_delivery_failed, :no_reachable_source, _}, _resources} =
+               Builder.build(scope, "abc123", opts(run: run, reference: "reg/app:abc123"))
     end
   end
 

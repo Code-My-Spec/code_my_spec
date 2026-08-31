@@ -16,6 +16,7 @@ defmodule CodeMySpec.Provisioning.Builder do
   Publishing is `Registry`'s. This owns the box and the build.
   """
 
+  alias CodeMySpec.Integrations
   alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Users.Scope
@@ -376,14 +377,55 @@ defmodule CodeMySpec.Provisioning.Builder do
   # is not the box — where the source is, where the image goes, which key opens
   # the door — arrives in `opts`, because the builder should not be the module
   # that knows how a project is addressed.
-  defp docker_build(_scope, server, ref, _architecture, opts) do
+  defp docker_build(scope, server, ref, _architecture, opts) do
     case Keyword.get(opts, :reference) do
       nil ->
         {:error, :no_image_reference}
 
       reference ->
-        Remote.build(server, ref, reference, opts)
+        Remote.build(server, ref, reference, with_deliver(opts, server, scope))
     end
+  end
+
+  # `Remote.ssh_deliver/2`'s own default is the stronger property (no GitHub
+  # credential anywhere near the builder) and stays untouched whenever there
+  # is a real environment to archive from. A harness-only project's
+  # `scope.environment` is not one — same shape `Steps.head_commit/1` and
+  # `commit_generated_configuration/1` already fall back for — so this is the
+  # one place that falls back to a different property instead of a fact to
+  # report: there is no string that answers "here is the source tree".
+  defp with_deliver(opts, _server, %{environment: %{cwd: cwd}}) when is_binary(cwd), do: opts
+
+  defp with_deliver(opts, server, scope) do
+    case github_source(scope) do
+      {:ok, repo, token} ->
+        opts
+        |> Keyword.put(:github_repo, repo)
+        |> Keyword.put(:github_token, token)
+        |> then(&Keyword.put(&1, :deliver, Remote.github_deliver(server, &1)))
+
+      {:error, reason} ->
+        Keyword.put(opts, :deliver, fn _ref, _dir ->
+          {:error, {:source_delivery_failed, :no_reachable_source, inspect(reason)}}
+        end)
+    end
+  end
+
+  defp github_source(%Scope{active_project: %{code_repo: url}} = scope)
+       when is_binary(url) and url != "" do
+    with {:ok, token} <- Integrations.fetch_access_token(scope, :github) do
+      {:ok, repo_path(url), token}
+    end
+  end
+
+  defp github_source(_scope), do: {:error, :no_repository}
+
+  defp repo_path(url) do
+    url
+    |> String.trim_trailing(".git")
+    |> String.split("/")
+    |> Enum.take(-2)
+    |> Enum.join("/")
   end
 
   # Best effort, and deliberately not part of the return. A failure to destroy

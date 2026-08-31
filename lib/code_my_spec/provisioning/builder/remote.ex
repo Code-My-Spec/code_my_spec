@@ -158,6 +158,48 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   end
 
   @doc """
+  Deliver `ref`'s tree straight from GitHub, for a project whose real
+  checkout `ssh_deliver/2` cannot reach.
+
+  `ssh_deliver/2`'s own reasoning for archiving from the project's own
+  environment — no GitHub credential anywhere near the builder — assumes
+  there is a reachable environment to archive from. A harness-only project's
+  `scope.environment` is not one (`Environment.new(:local, nil)`, the same
+  shape `Steps.head_commit/1` already falls back for), so there is nothing
+  to run `git archive` against; the source has to come from somewhere the
+  builder itself can already reach. GitHub is that somewhere, since setup
+  already pushed the project there.
+
+  Runs entirely over the same SSH `ssh_deliver/2` uses — the credential
+  travels with this one request, not as a file or a git remote the builder
+  keeps. `--location-trusted` is needed and safe here specifically because
+  the API's tarball endpoint always redirects to `codeload.github.com`: `-u`
+  credentials are stripped on a cross-host redirect otherwise, and a private
+  repository's tarball 404s on the redirected request without them.
+  `--strip-components=1` matches `git archive`'s output — the API wraps the
+  tree in a single `owner-repo-sha/` directory `git archive` never adds.
+  """
+  @spec github_deliver(map(), keyword()) :: (String.t(), String.t() -> :ok | {:error, term()})
+  def github_deliver(server, opts) do
+    run = Keyword.get(opts, :run) || ssh_runner(server, opts)
+    repo = Keyword.fetch!(opts, :github_repo)
+    token = Keyword.fetch!(opts, :github_token)
+
+    fn ref, dir ->
+      command =
+        "rm -rf #{dir} && mkdir -p #{dir} && " <>
+          "curl -sSfL --location-trusted -u #{shell_quote("x-access-token:#{token}")} " <>
+          "https://api.github.com/repos/#{repo}/tarball/#{ref} | " <>
+          "tar -xz -C #{dir} --strip-components=1"
+
+      case run.([command]) do
+        {_, 0} -> :ok
+        {output, status} -> {:error, {:source_delivery_failed, status, trim(output)}}
+      end
+    end
+  end
+
+  @doc """
   Deliver into a directory on this machine, for the local build path.
 
   `:cd` is the checkout to archive from. Pairs with `local_runner/1` the way
