@@ -19,15 +19,30 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     with {:ok, headers} <- headers(opts) do
       Anubis.Client.start_link(
         name: name,
-        transport:
-          {:streamable_http,
-           base_url: Keyword.fetch!(opts, :base_url),
-           mcp_path: Keyword.fetch!(opts, :mcp_path),
-           headers: headers},
+        transport: transport(opts, headers),
         client_info: @client_info,
         capabilities: %{},
         protocol_version: "2025-06-18"
       )
+    end
+  end
+
+  # Two shapes, because the servers this harness talks to come in two.
+  #
+  # Ours is HTTP and authenticated: the route the proxy already proved. A
+  # third-party one on this machine is a subprocess speaking JSON-RPC over its
+  # own stdin and stdout — `vibium mcp` is exactly that — and has no URL and no
+  # credential, because it is not reached across anything.
+  defp transport(opts, headers) do
+    case Keyword.get(opts, :command) do
+      nil ->
+        {:streamable_http,
+         base_url: Keyword.fetch!(opts, :base_url),
+         mcp_path: Keyword.fetch!(opts, :mcp_path),
+         headers: headers}
+
+      command ->
+        {:stdio, command: command, args: Keyword.get(opts, :args, [])}
     end
   end
 
@@ -37,7 +52,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # harness id, which names the working copy *and* the project it belongs to and
   # so cannot contradict itself.
   defp headers(opts) do
-    case Keyword.get(opts, :headers) do
+    case Keyword.get(opts, :headers) || stdio_needs_none(opts) do
       %{} = given ->
         {:ok, given}
 
@@ -51,6 +66,9 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
         end
     end
   end
+
+  # A subprocess on this machine authenticates by being on this machine.
+  defp stdio_needs_none(opts), do: if(Keyword.get(opts, :command), do: %{}, else: nil)
 
   @impl true
   def call(client, tool, arguments) do
