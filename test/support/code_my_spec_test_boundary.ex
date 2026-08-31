@@ -16,6 +16,11 @@ defmodule CodeMySpecTest do
     # in-process transport starts real agents through it, and a second copy of
     # that setup is how one test's supervisor ended up holding another test's
     # agents.
-    deps: [CodeMySpec, CmsHarness, CmsHarnessTest],
+    # `CodeMySpec.McpServers` because `InVmMcpTransport` stands in for the wire
+    # between the harness and the server, which means touching both sides of it.
+    # That is exactly why it lives here rather than beside the real transport:
+    # `CmsHarness` may not reference the MCP layer, and a test double for a wire
+    # has to.
+    deps: [CodeMySpec, CodeMySpec.McpServers, CmsHarness, CmsHarnessTest],
     exports: [FakeWorkspaceRunner, WorkspaceWatchers]
 end

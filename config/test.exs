@@ -189,7 +189,7 @@ config :code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport
 # `server: false` here, so the harness cannot make the HTTP hop its tools make
 # in production — and everything worth testing sits on either side of it. Same
 # seam as `:harness_transport` for the channel.
-config :code_my_spec, :harness_mcp_transport, CmsHarness.Mcp.Transport.Local
+config :code_my_spec, :harness_mcp_transport, CodeMySpecTest.InVmMcpTransport
 
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —

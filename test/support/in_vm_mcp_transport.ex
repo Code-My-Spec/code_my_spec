@@ -1,4 +1,4 @@
-defmodule CmsHarness.Mcp.Transport.Local do
+defmodule CodeMySpecTest.InVmMcpTransport do
   @moduledoc """
   The session, without the socket.
 
@@ -11,6 +11,14 @@ defmodule CmsHarness.Mcp.Transport.Local do
   real, and the answer a criterion asserts on is the answer the server really
   gave. That is the same bargain `config/test.exs` already makes a dozen times
   over with `Req.Test`: pin the transport, run everything else.
+
+  ## Why it lives in test support rather than beside the real transport
+
+  `Project.Transport.Test` sits in `lib/` and this one cannot: standing in for
+  the wire between the harness and the server means touching both sides, and
+  `CmsHarness` is not allowed to reference `CodeMySpec.McpServers`. The closer
+  precedent is `CodeMySpecTest.InProcessAgentTransport`, which is the same
+  shape for the same reason and already lives here.
 
   ## Whose scope
 
@@ -26,7 +34,6 @@ defmodule CmsHarness.Mcp.Transport.Local do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
-  alias CodeMySpec.McpServers.ScriptableTools
 
   @impl true
   def connect(_name, opts) do
@@ -63,8 +70,14 @@ defmodule CmsHarness.Mcp.Transport.Local do
   @impl true
   def list_tool_names({__MODULE__, :browser}), do: {:ok, browser_tools()}
 
+  # Through the catalog rather than at `ScriptableTools`: which tools exist is
+  # the MCP layer's knowledge, and `CmsHarness` is not allowed to reach past it
+  # to the registry behind it.
   def list_tool_names({__MODULE__, _headers}) do
-    {:ok, Enum.map(ScriptableTools.__components__(), & &1.name/0)}
+    case scope() do
+      nil -> {:ok, []}
+      scope -> {:ok, scope |> CodeMySpec.McpServers.CodeMode.catalog() |> Map.keys()}
+    end
   end
 
   defp script_params(script, %{"agent_id" => id}) when is_binary(id),

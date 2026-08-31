@@ -66,7 +66,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     # In this VM the browser is whatever the local MCP transport was told to
     # offer, so the round trip is the part that is stood in for and the answer
     # is the one a criterion asserts on.
-    CmsHarness.Mcp.Transport.Local.call({CmsHarness.Mcp.Transport.Local, :browser}, tool, arguments)
+    CodeMySpecTest.InVmMcpTransport.call({CodeMySpecTest.InVmMcpTransport, :browser}, tool, arguments)
   end
 
 end

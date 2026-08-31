@@ -1115,7 +1115,12 @@ defmodule CodeMySpec.Agents do
   defp tools_for(%Scope{} = scope, attrs) do
     role = Map.fetch!(attrs, :role)
 
-    ToolSets.for_role(role) ++ machine_tools(scope, attrs, role)
+    case ToolSets.for_role(role) do
+      # Everything, and not written down as a list — see `ToolSets.for_role/1`.
+      # A machine's tools need no adding to "all of them".
+      nil -> nil
+      granted -> granted ++ machine_tools(scope, attrs, role)
+    end
   end
 
   defp machine_tools(_scope, _attrs, role) when role not in [:main, :qa, :coding], do: []

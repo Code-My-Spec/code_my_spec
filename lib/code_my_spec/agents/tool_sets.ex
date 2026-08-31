@@ -23,8 +23,6 @@ defmodule CodeMySpec.Agents.ToolSets do
   scoping it is scoping the thing that checks the others.
   """
 
-  alias CodeMySpec.McpServers.ScriptableTools
-
   # Reading, and writing what a QA run produces. Everything a QA agent files
   # against a story it is testing, and nothing that edits the story itself: a
   # QA agent that can rewrite a criterion can make a failing run pass without
@@ -75,20 +73,28 @@ defmodule CodeMySpec.Agents.ToolSets do
   )
 
   @doc """
-  The tools an agent of this type starts with.
+  The tools an agent of this type starts with, or `nil` for every tool there is.
 
-  `:main` is every tool there is, read from the server's own list rather than
-  written out — a copy here would go stale the day a tool is added, and the
-  staleness would look like a scoping decision somebody made.
+  `:main` is `nil` rather than a list, and both halves of that are deliberate.
+
+  It may call everything, because its job is the whole project and scoping it
+  is scoping the thing that checks the others. And enumerating "everything" into
+  a row would be a copy of the catalogue that goes stale the day a tool is
+  added — the same argument this column's own migration makes for not
+  backfilling one. A stale list would read as a scoping decision somebody made.
+
+  `nil` already means "no restriction" everywhere it is read, so main shares a
+  meaning with the rows that predate scoping. That is not a coincidence to be
+  tidied away: both may call everything, and saying so twice in two shapes would
+  be the ambiguity, not the fix.
+
+  Which tools exist at all is the MCP layer's knowledge and stays there — this
+  context is not allowed to ask, and should not want to.
   """
-  @spec for_role(atom()) :: [String.t()]
-  def for_role(:main), do: all()
+  @spec for_role(atom()) :: [String.t()] | nil
+  def for_role(:main), do: nil
   def for_role(:qa), do: @qa
   def for_role(:coding), do: @coding
   def for_role(:product), do: @product
   def for_role(_role), do: []
-
-  @doc "Every tool the server exposes."
-  @spec all() :: [String.t()]
-  def all, do: Enum.map(ScriptableTools.__components__(), & &1.name())
 end
