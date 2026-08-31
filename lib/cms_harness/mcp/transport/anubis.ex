@@ -14,6 +14,12 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   @client_info %{"name" => "cms-harness", "version" => "1"}
 
+  # What our own server speaks. Overridable per session because a third-party
+  # server speaks whatever it speaks, and one of them answers an unsupported
+  # proposal with silence rather than with a version it does support — see
+  # `CmsHarness.Browser`.
+  @protocol_version "2025-06-18"
+
   # The *name*, not the pid `start_link/1` hands back — that is the client's
   # supervisor, and calling `list_tools` on it reaches `:supervisor.handle_call`
   # with an operation no supervisor has a clause for. Anubis says as much in its
@@ -60,7 +66,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
         transport: transport(opts, headers),
         client_info: @client_info,
         capabilities: %{},
-        protocol_version: "2025-06-18"
+        protocol_version: Keyword.get(opts, :protocol_version, @protocol_version)
       )
   end
 

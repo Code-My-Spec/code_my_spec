@@ -31,6 +31,20 @@ defmodule CmsHarness.Browser do
 
   alias CmsHarness.Mcp.Transport
 
+  # What vibium speaks, and it will not negotiate.
+  #
+  # Proposing `2025-06-18` — our own server's version, and this client's default
+  # — gets **no reply at all** rather than a counter-offer, so `initialize` never
+  # completes and every later request is answered "Server capabilities not set".
+  # Verified by hand: the same request with `2024-11-05` comes back with
+  # serverInfo and a tools capability, and with the newer one comes back empty.
+  #
+  # That silence is vibium's bug rather than ours — the protocol has a server
+  # answer with a version it *does* support — but it is not one we can fix from
+  # here, and every agent on a machine with a browser was getting no browser
+  # tools because of it.
+  @protocol_version "2024-11-05"
+
   @session {:global, {__MODULE__, :session}}
   @cached {__MODULE__, :tool_names}
 
@@ -54,7 +68,11 @@ defmodule CmsHarness.Browser do
         {:ok, @session}
 
       {path, nil} ->
-        Transport.impl().connect(@session, command: path, args: ["mcp"])
+        Transport.impl().connect(@session,
+          command: path,
+          args: ["mcp"],
+          protocol_version: @protocol_version
+        )
     end
   end
 
