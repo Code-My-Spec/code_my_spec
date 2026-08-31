@@ -19,6 +19,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     with {:ok, headers} <- headers(opts) do
       Anubis.Client.start_link(
         name: name,
+        transport_name: transport_name(name),
         transport: transport(opts, headers),
         client_info: @client_info,
         capabilities: %{},
@@ -26,6 +27,22 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       )
     end
   end
+
+  # A client started under a via or global name has to say what to call its
+  # transport: Anubis derives one from an atom name and raises on anything else.
+  #
+  # Neither of our names is an atom, and both are that way on purpose — an agent
+  # id and a base url arrive as input, and `String.to_atom/1` on input grows the
+  # atom table until the VM stops. So the sibling is derived here instead.
+  #
+  # Not doing this took the whole harness down: the client raised on start, the
+  # channel join raised with it, and it retried every eighty milliseconds. The
+  # stop hook read it correctly — the server was answering and this machine
+  # could not hold a socket to it.
+  defp transport_name({:via, registry, key}), do: {:via, registry, {:transport, key}}
+  defp transport_name({:global, term}), do: {:global, {:transport, term}}
+  defp transport_name(name) when is_atom(name), do: Module.concat(name, Transport)
+  defp transport_name(other), do: other
 
   # Two shapes, because the servers this harness talks to come in two.
   #

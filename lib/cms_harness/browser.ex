@@ -32,6 +32,7 @@ defmodule CmsHarness.Browser do
   alias CmsHarness.Mcp.Transport
 
   @session {:global, {__MODULE__, :session}}
+  @cached {__MODULE__, :tool_names}
 
   @doc """
   Start the browser's MCP server, or say why not.
@@ -59,6 +60,30 @@ defmodule CmsHarness.Browser do
   """
   @spec tool_names() :: [String.t()]
   def tool_names do
+    case :persistent_term.get(@cached, :unasked) do
+      :unasked ->
+        names = ask()
+        :persistent_term.put(@cached, names)
+        names
+
+      names ->
+        names
+    end
+  end
+
+  # Asked once per harness, and never allowed to raise.
+  #
+  # This is called from the channel join, which is the most important thing this
+  # harness does — and the first version started a subprocess there and let its
+  # failure through. `Anubis.Client` raised on a via-name without an explicit
+  # transport name, the join raised with it, and the harness spent the night
+  # reconnecting every eighty milliseconds against a server that was answering
+  # fine. The stop hook said exactly that and it was right.
+  #
+  # So: memoised, because what a machine has installed does not change between
+  # two joins a second apart, and wrapped, because nothing about a browser is
+  # worth a checkout losing its channel over.
+  defp ask do
     with {:ok, client} <- ensure_started(),
          {:ok, names} <- Transport.impl().list_tool_names(client) do
       names
@@ -74,7 +99,27 @@ defmodule CmsHarness.Browser do
 
         []
     end
+  rescue
+    error ->
+      Logger.warning(
+        "[CmsHarness] asking this machine's browser what it offers raised " <>
+          "#{Exception.message(error)}; agents started here will have no browser tools"
+      )
+
+      []
+  catch
+    :exit, reason ->
+      Logger.warning(
+        "[CmsHarness] this machine's browser died while being asked what it offers " <>
+          "(#{inspect(reason)}); agents started here will have no browser tools"
+      )
+
+      []
   end
+
+  @doc "Ask again — for a machine that installed a browser since it came up."
+  @spec forget() :: :ok
+  def forget, do: :persistent_term.erase(@cached) && :ok
 
   @doc "Call one of them."
   @spec call(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
