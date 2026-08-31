@@ -91,10 +91,26 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # channel join raised with it, and it retried every eighty milliseconds. The
   # stop hook read it correctly — the server was answering and this machine
   # could not hold a socket to it.
-  defp transport_name({:via, registry, key}), do: {:via, registry, {:transport, key}}
-  defp transport_name({:global, term}), do: {:global, {:transport, term}}
-  defp transport_name(name) when is_atom(name), do: Module.concat(name, Transport)
-  defp transport_name(other), do: other
+  #
+  # The tag goes around the *key*, inside the pair. A `Registry` via tuple
+  # carries `{registry_name, key}` as its third element, and wrapping that whole
+  # pair names a registry called `:transport` that nobody started — which is
+  # what the first version of this did, and it stopped every agent on every
+  # machine from starting for forty minutes.
+  #
+  # Public because getting it wrong is silent. A malformed via tuple is a
+  # perfectly good term; nothing objects until a supervisor start deep inside
+  # Anubis does, and its `ArgumentError: unknown registry: :transport` reaches a
+  # person as "the agent was not started on its machine", which reads like the
+  # machine's fault. So it is tested directly.
+  @doc false
+  @spec transport_name(term()) :: term()
+  def transport_name({:via, Registry, {registry, key}}),
+    do: {:via, Registry, {registry, {:transport, key}}}
+
+  def transport_name({:global, term}), do: {:global, {:transport, term}}
+  def transport_name(name) when is_atom(name), do: Module.concat(name, Transport)
+  def transport_name(other), do: other
 
   # Two shapes, because the servers this harness talks to come in two.
   #
