@@ -46,6 +46,38 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
     )
   end
 
+  @doc """
+  A machine with a browser on it, reporting what it offers.
+
+  Twenty-nine names, because that is what `plugins/claude/agents/qa.md` grants a
+  QA agent today and the whole argument is about that number. Set the way the
+  scope is — the local transport reads it from the test process — so a criterion
+  about reaching a browser does not need Chrome, a subprocess, or a machine that
+  happens to have vibium installed.
+
+  Recorded against the working copy as well, because that is where an agent's
+  list is computed from: reporting to the transport alone would prove the
+  session and nothing about what an agent started here carries.
+  """
+  @spec fake_browser(map()) :: [String.t()]
+  def fake_browser(context) do
+    offered =
+      for n <- 1..29, do: "browser_#{Enum.at(~w(click fill type screenshot find), rem(n, 5))}_#{n}"
+
+    prior = Application.get_env(:code_my_spec, :harness_browser_tools)
+    Application.put_env(:code_my_spec, :harness_browser_tools, offered)
+    on_exit(fn -> restore_browser(prior) end)
+
+    Fixtures.record_machine_tools(context.scope, offered)
+
+    offered
+  end
+
+  defp restore_browser(nil), do: Application.delete_env(:code_my_spec, :harness_browser_tools)
+
+  defp restore_browser(tools),
+    do: Application.put_env(:code_my_spec, :harness_browser_tools, tools)
+
   @doc "Start one and stop it when the scenario ends."
   @spec running_agent(map(), map()) :: String.t()
   def running_agent(context, overrides \\ %{}) do

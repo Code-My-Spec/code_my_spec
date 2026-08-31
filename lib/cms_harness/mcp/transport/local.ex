@@ -29,7 +29,15 @@ defmodule CmsHarness.Mcp.Transport.Local do
   alias CodeMySpec.McpServers.ScriptableTools
 
   @impl true
-  def connect(_name, opts), do: {:ok, {__MODULE__, Keyword.get(opts, :headers, %{})}}
+  def connect(_name, opts) do
+    case Keyword.get(opts, :command) do
+      # A subprocess this VM is not going to start. What a browser on this
+      # machine offers is set by the test the way the scope is, so a criterion
+      # about reaching one does not need Chrome.
+      nil -> {:ok, {__MODULE__, Keyword.get(opts, :headers, %{})}}
+      _command -> {:ok, {__MODULE__, :browser}}
+    end
+  end
 
 
   @impl true
@@ -41,11 +49,20 @@ defmodule CmsHarness.Mcp.Transport.Local do
     dispatch(ToolDocs, docs_params(arguments))
   end
 
+  def call({__MODULE__, :browser}, tool, arguments) do
+    case tool in browser_tools() do
+      true -> {:ok, "#{tool} ran with #{inspect(arguments)}"}
+      false -> {:error, "This machine's browser has no tool called #{inspect(tool)}."}
+    end
+  end
+
   def call({__MODULE__, _headers}, tool, _arguments) do
     {:error, "This server has no tool called #{inspect(tool)}."}
   end
 
   @impl true
+  def list_tool_names({__MODULE__, :browser}), do: {:ok, browser_tools()}
+
   def list_tool_names({__MODULE__, _headers}) do
     {:ok, Enum.map(ScriptableTools.__components__(), & &1.name/0)}
   end
@@ -92,4 +109,6 @@ defmodule CmsHarness.Mcp.Transport.Local do
   defp text(other), do: inspect(other)
 
   defp scope, do: Application.get_env(:code_my_spec, :harness_mcp_scope)
+
+  defp browser_tools, do: Application.get_env(:code_my_spec, :harness_browser_tools, [])
 end

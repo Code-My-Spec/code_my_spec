@@ -289,6 +289,26 @@ defmodule CodeMySpec.WorkingCopies do
   moves without the id changing underneath its files.
   """
   @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
+  @doc """
+  What this copy's machine can do beyond the server's own tools.
+
+  Written on every join rather than once, because it is a fact about the machine
+  right now: a browser installed since the last connect is one an agent started
+  after this can use, and one uninstalled is one it must not be offered.
+
+  `:ok` either way. A machine that could not say is not a machine that failed —
+  an older harness sends nothing at all, and refusing its join over a browser
+  would take the checkout down for the tools it does have.
+  """
+  @spec record_machine_tools(WorkingCopy.t(), [String.t()]) :: :ok
+  def record_machine_tools(%WorkingCopy{} = harness, names) when is_list(names) do
+    harness
+    |> WorkingCopy.changeset(%{machine_tools: names})
+    |> Repo.update()
+
+    :ok
+  end
+
   def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
     # And designated, if this is the project's first checkout.
     #

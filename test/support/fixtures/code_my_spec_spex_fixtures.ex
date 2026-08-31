@@ -1855,6 +1855,12 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
   defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
 
+  @doc "Say what this scope's working copy machine can do, as a join would."
+  def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(id)
+    CodeMySpec.WorkingCopies.record_machine_tools(copy, names)
+  end
+
   @doc "Run a script as this agent would, through the tool it carries."
   def run_script(script, context),
     do: CmsHarness.Agents.Tools.RunScript.execute(%{"script" => script}, context)

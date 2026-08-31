@@ -67,6 +67,16 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # partial unique index rather than by whoever remembers to clear the others.
     field :main, :boolean, default: false
 
+    # What this copy's machine can do beyond the server's own tools — a browser,
+    # today. Reported on join, and read when an agent is started here so its
+    # tool list is computed from what its machine actually has rather than from
+    # what a role says it should.
+    #
+    # `nil` is a harness too old to report; `[]` is a machine that reported and
+    # has no browser. Both give an agent no browser tools and only the second is
+    # actionable.
+    field :machine_tools, {:array, :string}
+
     # Where this checkout's running preview answers, when it is the one serving
     # the project. Null on every other copy, and expected to be: every worktree
     # can run the app and only one of them is the project's, so an address on a
@@ -107,6 +117,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :project_id,
       :root,
       :device_id,
+      :machine_tools,
       :main,
       :preview_url,
       :preview_tunnel_id,

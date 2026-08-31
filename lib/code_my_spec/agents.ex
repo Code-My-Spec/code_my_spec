@@ -1101,6 +1101,35 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # Computed at start, from the role and from what this agent's machine said it
+  # could do.
+  #
+  # The machine half cannot come from a list here: a browser is an MCP server on
+  # somebody's box, its tools are whatever that box's vibium reports, and a copy
+  # written down here would drift the first time vibium ships one. So the
+  # harness reports names on join and this reads them back.
+  #
+  # Only for the types that browse. A product agent shaping stories has no use
+  # for a click, and handing it twenty-nine ways to make one is the catalogue
+  # this story is about, one layer over.
+  defp tools_for(%Scope{} = scope, attrs) do
+    role = Map.fetch!(attrs, :role)
+
+    ToolSets.for_role(role) ++ machine_tools(scope, attrs, role)
+  end
+
+  defp machine_tools(_scope, _attrs, role) when role not in [:main, :qa, :coding], do: []
+
+  defp machine_tools(scope, attrs, _role) do
+    with id when is_binary(id) <-
+           Map.get(attrs, :working_copy_id) || scope.active_working_copy_id,
+         {:ok, %{machine_tools: names}} when is_list(names) <- WorkingCopies.fetch(id) do
+      names
+    else
+      _ -> []
+    end
+  end
+
   defp base_attrs(%Scope{} = scope, attrs) do
     %{
       engine: Map.get(attrs, :engine, :pi),
@@ -1109,7 +1138,7 @@ defmodule CodeMySpec.Agents do
       # row survives a change to what a role means, answers "what may this
       # agent call" without a second lookup, and takes an exception without
       # inventing a role for it.
-      tools: Map.get(attrs, :tools) || ToolSets.for_role(Map.fetch!(attrs, :role)),
+      tools: Map.get(attrs, :tools) || tools_for(scope, attrs),
       model: Map.get(attrs, :model),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.fetch!(attrs, :role),

@@ -85,6 +85,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          {:ok, harness} <- report_root(harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
+         :ok <- record_machine_tools(harness, payload["machine_tools"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -152,6 +153,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
+
+  # What else this machine can do, by name — a browser, today. Kept against the
+  # working copy because that is what an agent is started on, and an agent's
+  # tool list is computed at start from what its machine said.
+  #
+  # Absent from an older harness, which is not the same as an empty list: one
+  # says "this machine reported nothing", the other "this machine has no
+  # browser". Both end with an agent that has no browser tools, and only the
+  # second is a thing the operator can act on.
+  defp record_machine_tools(_harness, nil), do: :ok
+
+  defp record_machine_tools(harness, names) when is_list(names) do
+    WorkingCopies.record_machine_tools(harness, names)
+  end
+
+  defp record_machine_tools(_harness, _other), do: :ok
 
   # The channel contract this server speaks. Kept in step with
   # `CmsHarness.Project.ChannelClient`'s copy — the two *are* the contract, so

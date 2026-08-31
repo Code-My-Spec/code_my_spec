@@ -464,6 +464,17 @@ defmodule CmsHarness.Project.ChannelClient do
        # older harness. Both mean "no device announced", which is a real state
        # and not a failure.
        "device" => %{"id" => CmsHarness.Device.recorded_id()},
+       # What else this machine can do, by name. A browser is an MCP server on
+       # this box — `vibium mcp` over stdio — and its tools go into the catalog
+       # a script can call rather than onto the agent, which is what keeps
+       # twenty-nine schemas out of every turn.
+       #
+       # Reported on join because it is a property of the machine and not of an
+       # agent: an agent's list is computed at start from what its machine
+       # said, so the server has to know before there is an agent to ask about.
+       # `[]` from a machine with no browser, which is a state rather than a
+       # failure — see `CmsHarness.Browser`.
+       "machine_tools" => CmsHarness.Browser.tool_names(),
        # Which OS process holds this socket. The server needs it to tell a
        # rejoin apart from a rival: both present the same working_copy_id, because
        # that id is the working copy and is read from a file in it. Same
