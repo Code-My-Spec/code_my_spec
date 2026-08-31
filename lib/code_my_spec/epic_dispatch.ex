@@ -247,12 +247,24 @@ defmodule CodeMySpec.EpicDispatch do
     |> Repo.all()
   end
 
+  # Cast before the query, because `Repo.get_by/3` raises on an id that is not a
+  # UUID rather than answering nil — and the raise reaches an agent as a dump of
+  # the Ecto query, which reads like a broken tool rather than a bad argument.
+  #
+  # `:not_found` for both, deliberately. To the caller "that is not an epic id"
+  # and "no epic has that id" are the same fact — there is no epic — and two
+  # answers would only invite an agent to try casting the string differently.
   defp fetch(%Scope{active_project_id: project_id}, epic_id) do
-    case Repo.get_by(Epic, id: epic_id, project_id: project_id) do
-      nil -> {:error, :not_found}
-      epic -> {:ok, epic}
+    with {:ok, id} <- cast_id(epic_id),
+         epic when not is_nil(epic) <- Repo.get_by(Epic, id: id, project_id: project_id) do
+      {:ok, epic}
+    else
+      _ -> {:error, :not_found}
     end
   end
+
+  defp cast_id(id) when is_binary(id), do: Ecto.UUID.cast(id)
+  defp cast_id(_), do: :error
 
   # Through `Epics` rather than straight to the repo, so every transition
   # broadcasts the way an edit does. The epics screen is where the user watches
