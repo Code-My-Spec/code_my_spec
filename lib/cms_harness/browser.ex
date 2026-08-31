@@ -71,19 +71,50 @@ defmodule CmsHarness.Browser do
     end
   end
 
-  # Asked once per harness, and never allowed to raise.
+  # Asked once per harness, in a process of its own, and bounded.
   #
-  # This is called from the channel join, which is the most important thing this
-  # harness does — and the first version started a subprocess there and let its
-  # failure through. `Anubis.Client` raised on a via-name without an explicit
-  # transport name, the join raised with it, and the harness spent the night
-  # reconnecting every eighty milliseconds against a server that was answering
-  # fine. The stop hook said exactly that and it was right.
+  # This is called from the channel join — the most important thing this harness
+  # does — and the first version started a subprocess there and let the failure
+  # through. It cost two crash loops in a row: first `Anubis.Client` raising on
+  # a via-name with no explicit transport name, then `list_tools` addressed at
+  # the supervisor `start_link/1` returns instead of at the client.
   #
-  # So: memoised, because what a machine has installed does not change between
-  # two joins a second apart, and wrapped, because nothing about a browser is
-  # worth a checkout losing its channel over.
+  # `rescue` was not enough for either, and that is the lesson rather than the
+  # bug: `Anubis.Client.start_link/1` links its supervisor to whoever called it,
+  # so a crash in there takes the caller down whatever the caller has wrapped
+  # itself in. The only thing that actually isolates it is not being the same
+  # process — hence `spawn_monitor`, unlinked, with a deadline.
+  #
+  # Memoised on top, because what a machine has installed does not change
+  # between two joins a second apart.
   defp ask do
+    {pid, ref} = spawn_monitor(fn -> exit({:asked, ask_now()}) end)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, {:asked, names}} ->
+        names
+
+      {:DOWN, ^ref, :process, ^pid, reason} ->
+        Logger.warning(
+          "[CmsHarness] asking this machine's browser what it offers died " <>
+            "(#{inspect(reason)}); agents started here will have no browser tools"
+        )
+
+        []
+    after
+      5_000 ->
+        Process.exit(pid, :kill)
+
+        Logger.warning(
+          "[CmsHarness] this machine's browser did not say what it offers within 5s; " <>
+            "agents started here will have no browser tools"
+        )
+
+        []
+    end
+  end
+
+  defp ask_now do
     with {:ok, client} <- ensure_started(),
          {:ok, names} <- Transport.impl().list_tool_names(client) do
       names

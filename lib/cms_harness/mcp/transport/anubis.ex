@@ -14,9 +14,20 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   @client_info %{"name" => "cms-harness", "version" => "1"}
 
+  # The *name*, not the pid `start_link/1` hands back — that is the client's
+  # supervisor, and calling `list_tools` on it reaches `:supervisor.handle_call`
+  # with an operation no supervisor has a clause for. Anubis says as much in its
+  # own docs ("use the client by passing the registered name") and this ignored
+  # it, which cost a second crash loop on top of the first.
   @impl true
   def connect(name, opts) do
-    with {:ok, headers} <- headers(opts) do
+    with {:ok, headers} <- headers(opts),
+         {:ok, _supervisor} <- start_client(name, opts, headers) do
+      {:ok, name}
+    end
+  end
+
+  defp start_client(name, opts, headers) do
       Anubis.Client.start_link(
         name: name,
         transport_name: transport_name(name),
@@ -25,7 +36,6 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
         capabilities: %{},
         protocol_version: "2025-06-18"
       )
-    end
   end
 
   # A client started under a via or global name has to say what to call its
