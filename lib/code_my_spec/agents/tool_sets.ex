@@ -29,12 +29,12 @@ defmodule CodeMySpec.Agents.ToolSets do
   # anybody deciding to.
   @qa ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    list_components show_component_requirements show_architecture_overview
+    show_component_requirements show_architecture_overview
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
     list_qa_attempts submit_qa_result invalidate_qa_attempt
     list_knowledge read_knowledge semantic_search
-    list_tasks list_session_subagents sync_project
+    list_tasks list_session_subagents
     web_search web_fetch
   )
 
@@ -43,14 +43,14 @@ defmodule CodeMySpec.Agents.ToolSets do
   # the issue it was given is grading its own work.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    list_components show_component_requirements show_architecture_overview
+    show_component_requirements show_architecture_overview
     create_component update_component validate_dependency_graph
     list_requirements show_requirement
     list_rules list_questions
     list_issues get_issue create_issue
     list_knowledge read_knowledge semantic_search refresh_embeddings
     read_project_file write_project_file
-    list_tasks sync_project clear_problems list_problems
+    list_tasks clear_problems list_problems
     web_search web_fetch
   )
 
