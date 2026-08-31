@@ -30,7 +30,26 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       # took down something far more important than the session at the end of
       # it.
       Process.unlink(supervisor)
-      {:ok, name}
+      ready(name)
+    end
+  end
+
+  # Started is not the same as handshaken, and only this transport has a
+  # handshake — which is why waiting for one belongs here rather than in a
+  # caller that also has to work against a session with no wire at all.
+  #
+  # `start_link/1` returns once the process is up, with the MCP `initialize`
+  # round trip still in flight behind it, so a `tools/list` sent straight after
+  # is answered "Server capabilities not set". That reads as a broken server
+  # rather than as a question asked too early, and it is why every agent on this
+  # machine was recorded with no browser tools while vibium sat installed on it.
+  #
+  # A ping waits for the same handshake any first request would, and costs one
+  # round trip rather than a page of tools.
+  defp ready(name) do
+    case Anubis.Client.ping(name, timeout: 10_000) do
+      :pong -> {:ok, name}
+      {:error, reason} -> {:error, reason}
     end
   end
 

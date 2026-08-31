@@ -42,14 +42,23 @@ defmodule CmsHarness.Browser do
   """
   @spec ensure_started() :: {:ok, term()} | {:error, term()}
   def ensure_started do
-    case executable() do
-      nil ->
+    case {executable(), whereis()} do
+      {nil, _} ->
         {:error, :no_browser}
 
-      path ->
+      # Already up. This claimed to be idempotent and was not: it called
+      # `connect` unconditionally, and the second call failed on
+      # `:already_started` — so the *second* agent to ask on a machine got no
+      # browser tools and a log line about a child that could not start.
+      {_path, session} when session != nil ->
+        {:ok, @session}
+
+      {path, nil} ->
         Transport.impl().connect(@session, command: path, args: ["mcp"])
     end
   end
+
+  defp whereis, do: GenServer.whereis(@session)
 
   @doc """
   What this machine's browser offers, by name.
