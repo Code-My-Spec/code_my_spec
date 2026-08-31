@@ -38,6 +38,15 @@ defmodule CmsHarness.Agents do
              provider: request["provider"],
              credential: credential(request),
              working_copy: request["working_copy"],
+             # Which checkout this is, as the server knows it. The agent's own
+             # MCP session is addressed by it — `x-harness-id` is what makes a
+             # script act for this copy and no other — so an agent without it
+             # can edit its files and reach none of the project's tools.
+             #
+             # Read from the request when the server says, and from the copy's
+             # own config when it does not, because a caller that named a root
+             # has already said which checkout it means.
+             working_copy_id: request["working_copy_id"] || copy_id(request["working_copy"]),
              model: request["model"],
              # What this agent already knows. An agent dies with its harness
              # and the transcript is the state — which is only true if the
@@ -123,6 +132,29 @@ defmodule CmsHarness.Agents do
   defdelegate status(agent_id), to: Engine
 
   @doc """
+  What this agent carries.
+
+  Asked of the running agent rather than of a list, because that is the claim
+  worth being able to check: two project tools reach the ninety-eight behind
+  them, and a constant naming two modules says nothing about the agent that was
+  started.
+  """
+  @spec tools(String.t()) :: [module()]
+  defdelegate tools(agent_id), to: Engine, as: :agent_tools
+
+  @doc """
+  The context this agent's tools are called with.
+
+  What `run_script` and `tool_docs` receive when the agent itself calls them —
+  the session included — so a caller exercising a tool exercises the one the
+  agent has rather than one built beside it.
+  """
+  @spec tool_context(String.t()) :: map()
+  def tool_context(agent_id) do
+    %{agent_id: agent_id, mcp_client: Engine.mcp_client(agent_id)}
+  end
+
+  @doc """
   What one agent knows — the turns its loop is actually holding.
 
   Distinct from its transcript, which is what was written down. The two come
@@ -190,6 +222,21 @@ defmodule CmsHarness.Agents do
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
       CmsHarness.Project.ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+    end
+  end
+
+  # This checkout's id, from the file it keeps it in.
+  #
+  # `read_file/1` and not `read/1`, for the reason `WorkingCopies.all/0` gives:
+  # `read/1` honours `CMS_HARNESS_ID`, which is set in the environment of every
+  # worktree session on this machine, so it would answer every root with
+  # whichever one the session happened to belong to.
+  defp copy_id(nil), do: nil
+
+  defp copy_id(root) do
+    case CmsHarness.HarnessConfig.read_file(root) do
+      {:ok, %{working_copy_id: id}} -> id
+      _ -> nil
     end
   end
 

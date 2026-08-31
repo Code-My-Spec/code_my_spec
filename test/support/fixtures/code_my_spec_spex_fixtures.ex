@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Fixtures do
   use Boundary,
     top_level?: true,
     deps: [
+      CmsHarness,
       CodeMySpec,
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
@@ -1834,6 +1835,27 @@ defmodule CodeMySpecSpex.Fixtures do
     session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
     CodeMySpec.Sessions.register_subagent(scope, session, attrs)
   end
+
+  # -- Agents on this machine --
+  #
+  # Story 1038's criteria are about what a *running* agent carries and what a
+  # script it runs can reach, so they start one. Through the bridge because
+  # `CodeMySpecSpex` is its own Boundary and cannot name `CmsHarness` directly.
+  defdelegate launch_agent(request), to: CmsHarness.Agents, as: :launch
+  defdelegate halt_agent(agent_id), to: CmsHarness.Agents, as: :halt
+  defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
+  defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
+
+  @doc "Run a script as this agent would, through the tool it carries."
+  def run_script(script, context),
+    do: CmsHarness.Agents.Tools.RunScript.execute(%{"script" => script}, context)
+
+  @doc "Ask what it may call, through the tool it carries."
+  def tool_docs(input, context),
+    do: CmsHarness.Agents.Tools.ToolDocs.execute(input, context)
+
+  @doc "What one answer may cost the turn."
+  defdelegate max_result_chars(), to: CmsHarness.Agents.Tools.RunScript
 
   # -- Devices --
   #

@@ -1,0 +1,61 @@
+defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
+  @moduledoc """
+  Story 1038 — The agent I run gets its tools without paying for a catalogue.
+  Criterion 3015 — The agent carries two tools and can reach a hundred.
+
+  Rule: Reaching them costs two tools, not a hundred.
+
+  The whole story in one number. Ninety-eight tool schemas is a catalogue the
+  agent reads before it can do anything, every turn, and it is the same
+  catalogue every turn. Code mode replaces it with two: a way to run a script,
+  and a way to look up what the script may call.
+
+  Counted on a running agent rather than on a list in the source, because the
+  claim is about what the model is handed. A constant naming two modules is
+  true of the constant and says nothing about the agent that was started.
+  """
+
+  use CodeMySpecSpex.Case
+
+  alias CodeMySpecSpex.Fixtures
+
+  import CodeMySpecSpex.AgentToolsHelpers
+
+  
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Reaching them costs two tools, not a hundred" do
+    scenario "The agent carries two tools and can reach a hundred" do
+      given_ "an agent configured with the harness's tools", context do
+        {:ok, Map.put(context, :agent_id, running_agent(context))}
+      end
+
+      when_ "what it carries is counted", context do
+        {:ok, Map.put(context, :tools, Fixtures.agent_tools(context.agent_id))}
+      end
+
+      then_ "it is code mode's two, and not the ninety-eight behind them", context do
+        names = Enum.map(context.tools, & &1.name())
+
+        assert "run_script" in names,
+               "the agent cannot run a script, so the ninety-eight are unreachable " <>
+                 "rather than merely uncounted. Got: #{inspect(names)}"
+
+        assert "tool_docs" in names,
+               "the agent can run scripts and cannot find out what to call in one, " <>
+                 "which is a catalogue it has to be told rather than one it can ask for"
+
+        project_tools = Enum.reject(names, &(&1 in ~w(read write edit bash)))
+
+        assert length(project_tools) == 2,
+               "the agent carries #{length(project_tools)} project tools rather than " <>
+                 "two: #{inspect(project_tools)}. Every one past the second is a " <>
+                 "schema the model reads on every turn to learn something it could " <>
+                 "have looked up once."
+
+        {:ok, context}
+      end
+    end
+  end
+end

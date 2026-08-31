@@ -161,6 +161,35 @@ defmodule CmsHarness.Agents.Engine do
   end
 
   @doc """
+  The tool modules this running agent carries.
+
+  Read off the agent rather than recomputed, so it answers about the one that
+  is running rather than about what a fresh one would get.
+  """
+  @spec agent_tools(String.t()) :: [module()]
+  def agent_tools(agent_id) do
+    case whereis(agent_id) do
+      {:ok, pid} -> GenServer.call(pid, :tools)
+      _ -> []
+    end
+  end
+
+  @doc """
+  The MCP session this agent's tools call through, or nil.
+
+  Its own, not one built beside it: a script has exactly the authority of the
+  agent that ran it, and a second session would have whatever the caller gave
+  it instead.
+  """
+  @spec mcp_client(String.t()) :: pid() | nil
+  def mcp_client(agent_id) do
+    case whereis(agent_id) do
+      {:ok, pid} -> GenServer.call(pid, :mcp_client)
+      _ -> nil
+    end
+  end
+
+  @doc """
   What this agent knows — every turn it is holding, oldest first.
 
   Not the transcript. The server's transcript is what was *written down*, and
@@ -255,6 +284,14 @@ defmodule CmsHarness.Agents.Engine do
          %{
            agent_id: Keyword.fetch!(opts, :agent_id),
            working_copy: Keyword.fetch!(opts, :working_copy),
+           # Kept so `agent_tools/1` answers about this agent rather than
+           # recomputing what a fresh one would be given.
+           tools: Keyword.fetch!(alloy_opts, :tools),
+           # The session the tools call through. Held so it can be asked for —
+           # a spec driving `run_script` needs the same context the agent's own
+           # call gets, and building a second session would be testing a
+           # different one.
+           mcp_client: get_in(alloy_opts, [:context, :mcp_client]),
            provider: Keyword.fetch!(opts, :provider),
            on_stop: Keyword.get(opts, :on_stop),
            on_event: Keyword.get(opts, :on_event),
@@ -302,6 +339,14 @@ defmodule CmsHarness.Agents.Engine do
 
   def handle_call(:status, _from, state) do
     {:reply, {:ok, %{busy?: state.turn != nil, queued: length(state.queue)}}, state}
+  end
+
+  def handle_call(:tools, _from, state) do
+    {:reply, state.tools, state}
+  end
+
+  def handle_call(:mcp_client, _from, state) do
+    {:reply, state.mcp_client, state}
   end
 
   def handle_call({:withdraw, ref}, _from, state) do
@@ -529,6 +574,58 @@ defmodule CmsHarness.Agents.Engine do
     end
   end
 
+  @doc """
+  What an agent of this type carries.
+
+  Two project tools, not ninety-eight. The rest are reachable through
+  `run_script` — which is the whole of this story: the model reads two schemas
+  per turn instead of a catalogue it has already read, and the ninety-eight are
+  a lookup rather than a preamble.
+
+  Public because "what does this agent carry" is a question about a running
+  agent, not about a list in this file. A constant naming two modules is true
+  of the constant.
+  """
+  @spec tools(keyword()) :: [module()]
+  def tools(_opts) do
+    [
+      Alloy.Tool.Core.Read,
+      Alloy.Tool.Core.Write,
+      Alloy.Tool.Core.Edit,
+      Alloy.Tool.Core.Bash,
+      CmsHarness.Agents.Tools.RunScript,
+      CmsHarness.Agents.Tools.ToolDocs
+    ]
+  end
+
+  # One session per agent, started with it.
+  #
+  # `initialize` is a round trip, and paying it on every `run_script` would put
+  # back the latency that running the script beside the data took out.
+  #
+  # Failure is not fatal. A machine that cannot reach the server right now
+  # still has a checkout the agent can read and edit, and the two tools say so
+  # when called rather than the agent refusing to exist.
+  defp mcp_session(opts) do
+    agent_id = Keyword.get(opts, :agent_id)
+    working_copy_id = Keyword.get(opts, :working_copy_id)
+    root = Keyword.get(opts, :working_copy)
+
+    with true <- is_binary(agent_id) and is_binary(working_copy_id),
+         {:ok, client} <- CmsHarness.Mcp.connect(agent_id, working_copy_id, root) do
+      client
+    else
+      other ->
+        Logger.warning(
+          "[CmsHarness] agent #{inspect(agent_id)} has no MCP session " <>
+            "(#{inspect(other)}); it can read and edit its checkout and cannot " <>
+            "reach the project's tools until it restarts"
+        )
+
+        nil
+    end
+  end
+
   # The tools run against this checkout and are told so explicitly. `Alloy`'s
   # core tools read `:working_directory` and `:allowed_paths` out of the
   # context, so scoping an agent to its copy is configuration rather than a
@@ -549,18 +646,19 @@ defmodule CmsHarness.Agents.Engine do
            ) do
       {:ok,
        provider_opts
-       |> Keyword.put(:tools, [
-         Alloy.Tool.Core.Read,
-         Alloy.Tool.Core.Write,
-         Alloy.Tool.Core.Edit,
-         Alloy.Tool.Core.Bash
-       ])
+       |> Keyword.put(:tools, tools(opts))
        |> Keyword.put(:working_directory, working_copy)
        |> Keyword.put(:middleware, [Compaction])
        |> Keyword.put(:context, %{
          working_directory: working_copy,
          allowed_paths: [working_copy],
          bash_restricted: true,
+         # The agent's own MCP session, so a script it runs acts with exactly
+         # its authority. Nil when the machine could not authenticate, which
+         # the tools report rather than crashing on — an agent that can still
+         # read and edit its checkout is worth more than one that refused to
+         # start because the server was briefly unreachable.
+         mcp_client: mcp_session(opts),
          # How the compaction middleware reaches the agent it is running
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.
