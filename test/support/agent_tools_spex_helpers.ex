@@ -49,8 +49,10 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
   @doc """
   A machine with a browser on it, reporting what it offers.
 
-  Twenty-nine names, because that is what `plugins/claude/agents/qa.md` grants a
-  QA agent today and the whole argument is about that number. Set the way the
+  Eighty-five names, because that is what `vibium mcp` answers `tools/list`
+  with, and the whole argument is about that number. Not the twenty-nine
+  `plugins/claude/agents/qa.md` grants — that is what the plugin hands out, and
+  the tools it does not hand out cost just as much to carry. Set the way
   scope is — the local transport reads it from the test process — so a criterion
   about reaching a browser does not need Chrome, a subprocess, or a machine that
   happens to have vibium installed.
@@ -62,7 +64,7 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
   @spec fake_browser(map()) :: [String.t()]
   def fake_browser(context) do
     offered =
-      for n <- 1..29, do: "browser_#{Enum.at(~w(click fill type screenshot find), rem(n, 5))}_#{n}"
+      for n <- 1..85, do: "browser_#{Enum.at(~w(click fill type screenshot find), rem(n, 5))}_#{n}"
 
     prior = Application.get_env(:code_my_spec, :harness_browser_tools)
     Application.put_env(:code_my_spec, :harness_browser_tools, offered)

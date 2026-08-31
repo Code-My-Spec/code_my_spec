@@ -8,10 +8,14 @@ defmodule CmsHarness.Browser do
 
   ## Why it is not twenty-nine tools on the agent
 
-  A QA agent's plugin definition grants twenty-nine `mcp__vibium__browser_*`
-  tools today, and every one of them is a schema the model reads on every turn
-  to be told what a click is. On top of our own ninety-eight that is most of the
-  budget spent before the agent has looked at anything.
+  `vibium mcp` answers `tools/list` with eighty-five tools, and every one of them
+  would be a schema the model reads on every turn to be told what a click is. On
+  top of our own ninety-eight that is most of the budget spent before the agent
+  has looked at anything.
+
+  Not twenty-nine, which is what `plugins/claude/agents/qa.md` grants a QA agent
+  — a number I once mistook for this one. The plugin's grant is a subset of what
+  the browser has, and the tools it leaves out cost the same to carry.
 
   So a third-party server is mounted the way ours is: its tools go into the
   catalog a script can call, and the agent carries nothing extra for them. The
