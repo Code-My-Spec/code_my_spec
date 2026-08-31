@@ -125,18 +125,33 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   harness-only project's deploy far enough to actually invoke `bin/deploy
   migrate` and find `kamal: command not found` (exit 127) — confirmed live
   against MarketMySpec, the first deploy through this path to get this far.
+
+  `NEEDRESTART_MODE=a` is load-bearing, not decoration: installing
+  `ruby-full` on a stock Debian image triggers `needrestart`'s own apt hook,
+  and its default interactive mode prints a page of "Restarting
+  services.../No containers need to be restarted" chatter ahead of whatever
+  actually failed. `devops_status` reports a failure's first 300 characters
+  — confirmed live, that chatter alone pushed the real error (a follow-up
+  `apt-get`/`gem` failure) past the cutoff, reading as truncated nonsense
+  instead of a cause. `-y` alone does not suppress it; needrestart reads its
+  own env var.
   """
   @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
           :ok | {:error, {non_neg_integer(), String.t()}}
   def ensure_kamal(run) do
     command =
       "apt-get update -qq && " <>
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ruby-full >/dev/null && " <>
+        "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
+        "apt-get install -y -qq ruby-full >/dev/null && " <>
         "gem install kamal --no-document"
 
     case run.([command]) do
       {_, 0} -> :ok
-      {output, status} -> {:error, {status, trim(output)}}
+      # The tail, not the head: `devops_status` keeps only the first 300
+      # characters of whatever reason this becomes, and apt/gem both put
+      # their actual failure at the end of their output, after everything
+      # that went fine. The head is the least useful part to keep.
+      {output, status} -> {:error, {status, output |> trim() |> String.slice(-300, 300)}}
     end
   end
 

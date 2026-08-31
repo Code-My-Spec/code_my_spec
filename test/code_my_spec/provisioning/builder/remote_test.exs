@@ -297,6 +297,29 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert {:error, {1, output}} = Remote.ensure_kamal(run)
       assert output =~ "Could not find a valid gem"
     end
+
+    # Confirmed live against MarketMySpec: installing ruby-full triggers
+    # needrestart's own apt hook, which prints a page of "Restarting
+    # services.../No containers need to be restarted" chatter — and
+    # devops_status keeps only the first 300 characters of whatever this
+    # becomes. That chatter alone pushed the real cause past the cutoff.
+    test "suppresses needrestart's own restart-service chatter" do
+      run = recorder(self(), %{})
+      Remote.ensure_kamal(run)
+
+      assert_received {:ran, command}
+      assert command =~ "NEEDRESTART_MODE=a"
+    end
+
+    test "keeps the tail of a long failure, where apt and gem put the real cause" do
+      noise = String.duplicate("Restarting services...\n", 30)
+      run = recorder(self(), %{"gem install" => {noise <> "ERROR: the real cause", 1}})
+
+      assert {:error, {1, output}} = Remote.ensure_kamal(run)
+
+      assert output =~ "ERROR: the real cause"
+      assert String.length(output) <= 300
+    end
   end
 
   # For a harness-only project `ssh_deliver/2` cannot reach — `env` there is
