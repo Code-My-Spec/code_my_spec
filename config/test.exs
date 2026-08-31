@@ -185,6 +185,12 @@ config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 # gets it genuinely signalled.
 config :code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport
 
+# The agent's own MCP session, without a socket. `CodeMySpecWeb.Endpoint` runs
+# `server: false` here, so the harness cannot make the HTTP hop its tools make
+# in production — and everything worth testing sits on either side of it. Same
+# seam as `:harness_transport` for the channel.
+config :code_my_spec, :harness_mcp_transport, CmsHarness.Mcp.Transport.Local
+
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —
 # and an unset plug plus a real credential is a live request that logs nothing

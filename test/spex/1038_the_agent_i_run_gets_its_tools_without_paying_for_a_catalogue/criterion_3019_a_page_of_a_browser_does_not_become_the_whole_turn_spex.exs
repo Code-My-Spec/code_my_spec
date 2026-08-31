@@ -27,8 +27,13 @@ defmodule CodeMySpecSpex.Story1038.Criterion3019Spex do
 
   # Built in the script rather than fetched, so the size is the point and not a
   # fixture's incidental length. Nothing here depends on which tool produced it.
+  #
+  # Comfortably over what the agent can carry and comfortably under the Lua
+  # sandbox's own string ceiling — the sandbox refuses to build one past 256KB
+  # at all, which is a different refusal about a different limit and would be
+  # asserting on the wrong one.
   @oversized """
-  local page = string.rep("x", 400000)
+  local page = string.rep("x", 100000)
   return page
   """
 

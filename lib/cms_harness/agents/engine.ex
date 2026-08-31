@@ -611,7 +611,7 @@ defmodule CmsHarness.Agents.Engine do
     working_copy_id = Keyword.get(opts, :working_copy_id)
     root = Keyword.get(opts, :working_copy)
 
-    with true <- is_binary(agent_id) and is_binary(working_copy_id),
+    with true <- is_binary(agent_id),
          {:ok, client} <- CmsHarness.Mcp.connect(agent_id, working_copy_id, root) do
       client
     else

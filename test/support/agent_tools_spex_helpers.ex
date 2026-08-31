@@ -44,11 +44,22 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
   def running_agent(context, overrides \\ %{}) do
     CmsHarnessTest.Machine.ensure_supervisor()
 
+    # Whose authority a script runs with. The local transport reads it the way
+    # `Project.Transport.Test` reads its owner, and it is the agent's own — so
+    # the isolation criterion is real rather than circular: another project's
+    # story is refused by the tool's own scoping, not by anything here.
+    prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
+    Application.put_env(:code_my_spec, :harness_mcp_scope, context.scope)
+    on_exit(fn -> restore_scope(prior) end)
+
     {:ok, %{agent_id: id}} = Fixtures.launch_agent(launch_request(context, overrides))
     on_exit(fn -> Fixtures.halt_agent(id) end)
 
     id
   end
+
+  defp restore_scope(nil), do: Application.delete_env(:code_my_spec, :harness_mcp_scope)
+  defp restore_scope(scope), do: Application.put_env(:code_my_spec, :harness_mcp_scope, scope)
 
   @doc """
   The context this agent's own tool calls are made with.
