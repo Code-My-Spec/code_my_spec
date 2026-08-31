@@ -410,6 +410,50 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       refute migrate_command =~ "ssh-keyscan"
     end
 
+    # `CMS_SSH_KEY_PATH` travels as an env var — only ever a path. Kamal
+    # reads it on the builder to make its own, second outbound ssh
+    # connection to the app host, which needs the key's actual bytes to be
+    # there, not just its name. Confirmed live: without this, kamal fell
+    # through to interactive password auth and died `Errno::ENOTTY`.
+    test "delivers the ssh key's own bytes onto the box, not just its path", %{env: env} do
+      test_pid = self()
+      {:ok, key_dir} = Briefly.create(directory: true)
+      key_path = Path.join(key_dir, "id_ed25519")
+      File.write!(key_path, "-----BEGIN OPENSSH PRIVATE KEY-----\nfake+key/data==\n-----END OPENSSH PRIVATE KEY-----\n")
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        ssh_key_path: key_path,
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "mkdir -p #{shell_quote(Path.dirname(key_path))}"
+      assert migrate_command =~ "base64 -d > #{shell_quote(key_path)}"
+      assert migrate_command =~ "chmod 600 #{shell_quote(key_path)}"
+
+      [_mkdir, encoded_and_rest] = String.split(migrate_command, "echo ", parts: 2)
+      [encoded, _rest] = String.split(encoded_and_rest, " | base64 -d", parts: 2)
+
+      assert encoded
+             |> String.trim("'")
+             |> Base.decode64!() == File.read!(key_path)
+
+      assert Regex.match?(~r/base64 -d > .* && chmod 600 .* && cd/, migrate_command),
+             "the key must be written before bin/deploy ever runs"
+    end
+
+    defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
+
     # `resolve_script/2` joins the caller's own `env.cwd` onto a relative
     # script name — right when the script has to be found on this machine,
     # wrong when `opts[:run]` means it lives on a box neither `env` nor this

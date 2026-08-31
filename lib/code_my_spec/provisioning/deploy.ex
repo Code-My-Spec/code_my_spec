@@ -392,7 +392,36 @@ defmodule CodeMySpec.Provisioning.Deploy do
     dir = Keyword.get(opts, :remote_dir, ".")
 
     trust_host(opts) <>
+      deliver_ssh_key(opts) <>
       "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
+  end
+
+  # `CMS_SSH_KEY_PATH` travels as an env var (`script_env/1`), which is only
+  # ever a path — kamal reads it from `config/deploy.yml`'s own ERB
+  # (`Steps.deploy_config_target_test`'s neighbourhood: `<% if
+  # ENV["CMS_SSH_KEY_PATH"] %> keys_only: true ... <% end %>`) when it runs
+  # *on the builder*, orchestrating a second, independent ssh connection out
+  # to the app host. `with_builder_ssh/2` writes the key's bytes locally, on
+  # whichever machine calls this process — real for the delivery connection
+  # this process makes itself, meaningless for kamal's own outbound
+  # connection, which reads a path on a filesystem the key was never copied
+  # to. Confirmed live: kamal fell through to interactive password auth and
+  # died `Errno::ENOTTY` — no key at the path it was told to trust, so it had
+  # nothing else to offer. Delivered base64-over-the-wire rather than a
+  # heredoc so the key's own newlines and `-----BEGIN...-----` framing need
+  # no quoting at all.
+  defp deliver_ssh_key(opts) do
+    case Keyword.get(opts, :ssh_key_path) do
+      path when is_binary(path) ->
+        encoded = path |> File.read!() |> Base.encode64()
+
+        "mkdir -p #{shell_quote(Path.dirname(path))} && " <>
+          "echo #{shell_quote(encoded)} | base64 -d > #{shell_quote(path)} && " <>
+          "chmod 600 #{shell_quote(path)} && "
+
+      _ ->
+        ""
+    end
   end
 
   # Kamal's own outbound ssh — from wherever `opts[:run]` reaches, to
