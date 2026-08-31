@@ -135,6 +135,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   `apt-get`/`gem` failure) past the cutoff, reading as truncated nonsense
   instead of a cause. `-y` alone does not suppress it; needrestart reads its
   own env var.
+
+  `build-essential` is there for `ed25519` — a native-extension gem `kamal`
+  pulls in transitively through `net-ssh`, whose `extconf`/`mkmf` step needs
+  a C toolchain to compile against. `ruby-full`'s own dependency chain does
+  not pull that in on Debian: confirmed live, the very next failure once
+  `ruby-full` alone installed cleanly was `mkmf.log`/`extconf failed`.
   """
   @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
           :ok | {:error, {non_neg_integer(), String.t()}}
@@ -142,7 +148,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     command =
       "apt-get update -qq && " <>
         "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
-        "apt-get install -y -qq ruby-full >/dev/null && " <>
+        "apt-get install -y -qq ruby-full build-essential >/dev/null && " <>
         "gem install kamal --no-document"
 
     case run.([command]) do

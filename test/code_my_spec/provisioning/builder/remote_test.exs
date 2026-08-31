@@ -287,7 +287,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert :ok = Remote.ensure_kamal(run)
 
       assert_received {:ran, command}
-      assert command =~ "apt-get install -y -qq ruby-full"
+      assert command =~ "apt-get install -y -qq ruby-full build-essential"
       assert command =~ "gem install kamal --no-document"
     end
 
