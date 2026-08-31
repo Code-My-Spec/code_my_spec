@@ -12,6 +12,8 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import Ecto.Query
 
   import CodeMySpec.ComponentsFixtures
@@ -48,7 +50,12 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   # error, and the difference matters because the thing under test is what
   # happens when two checkouts both file rows.
   defp second_harness(scope) do
-    {:ok, harness} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "the other checkout")
+    {:ok, harness} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "the other checkout",
+        device: device_fixture(scope)
+      )
+
     harness.id
   end
 

@@ -17,6 +17,8 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   # concurrency, which is why "it passed when I flipped it" is not evidence.
   use CodeMySpecTest.DataCase, async: false
 
+  import CodeMySpec.DevicesFixtures
+
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
 
@@ -35,7 +37,12 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     # A real working copy, issued the way a checkout gets one. The report keys
     # on this id, so a test that invents a uuid would be testing a shape rather
     # than the join.
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /tmp/two-lanes")
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil,
+        label: "the harness at /tmp/two-lanes",
+        device: device_fixture(scope)
+      )
+
     {:ok, harness} = WorkingCopies.report_root(harness, "/tmp/two-lanes")
 
     {:ok, _reply, channel} =

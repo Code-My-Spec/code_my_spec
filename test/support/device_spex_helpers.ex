@@ -39,6 +39,17 @@ defmodule CodeMySpecSpex.DeviceHelpers do
   """
   @spec announce_device(map(), keyword()) :: map()
   def announce_device(context, opts \\ []) do
+    context |> announce_response(opts) |> json_response(200)
+  end
+
+  @doc """
+  The same announce, handed back unread.
+
+  For the criteria about an announce being *refused*: asserting on the reply
+  means the reply has to survive not being a 200.
+  """
+  @spec announce_response(map(), keyword()) :: Plug.Conn.t()
+  def announce_response(context, opts \\ []) do
     body =
       %{
         "device_id" => Keyword.get(opts, :device_id),
@@ -52,7 +63,6 @@ defmodule CodeMySpecSpex.DeviceHelpers do
     |> Plug.Conn.put_req_header("authorization", "Bearer " <> token(context, opts))
     |> Plug.Conn.put_req_header("content-type", "application/json")
     |> post("/api/devices", body)
-    |> json_response(200)
   end
 
   @doc """

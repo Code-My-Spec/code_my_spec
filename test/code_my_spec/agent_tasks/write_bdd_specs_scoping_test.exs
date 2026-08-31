@@ -22,6 +22,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
@@ -50,8 +52,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
            "the fixture made a story with no criteria, so this test would pass without " <>
              "checking anything"
 
-    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "mine")
-    {:ok, theirs} = WorkingCopies.issue(scope, nil, label: "theirs")
+    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "mine", device: device_fixture(scope))
+
+    {:ok, theirs} =
+      WorkingCopies.issue(scope, nil, label: "theirs", device: device_fixture(scope))
 
     paths = Enum.map(story.criteria, &BddSpecs.spec_file_path(story, &1))
 

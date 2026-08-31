@@ -1,23 +1,32 @@
 defmodule CodeMySpecSpex.Story1020.Criterion2848Spex do
   @moduledoc """
   Story 1020 — Each device onboards itself and I can see what is running where.
-  Criterion 2848 — Destroying a machine leaves its checkouts behind, with no
-  machine.
+  Criterion 2848 — Destroying a machine takes its checkouts with it, and leaves
+  the record of their work.
 
-  Rule: A device that goes leaves its working copies behind, orphaned rather
-  than deleted — and an orphan is indistinguishable from a copy that never
-  reported one.
+  Rule: A device that goes takes its working copies, because a checkout on no
+  machine is not a state any more.
 
   Destroying is a real act for a sprite, and uninstalling CMS from a laptop
   amounts to the same thing: the machine stops existing as far as this system is
-  concerned, while the checkouts it served remain facts that happened. A cascade
-  delete would take the record of work that was really done because the box it
-  sat on went away.
+  concerned.
 
-  So the copies survive with `device_id` nullified, landing in the same state as
-  a copy that never reported a machine — which is why this scenario and 2845
-  assert the same rendered outcome by two different routes. That convergence is
-  the model being right rather than a duplicate.
+  ## Rewritten, and why
+
+  This used to assert the opposite — that the copies survived with `device_id`
+  nullified, "landing in the same state as a copy that never reported a
+  machine". That state no longer exists. `working_copies.device_id` is required
+  now, because a checkout is identified by `{project, device, root}` and two
+  machines share a path constantly, so a copy with no machine cannot be told
+  apart from one somewhere else.
+
+  The fear that shaped the old version was that a cascade "would take the record
+  of work that was really done". It does not, and the tables say so themselves:
+  `agents`, `issues`, `problems`, `sessions` and a project's default copy are
+  `SET NULL` and survive; `files`, `requirements`, `analysis_runs` and
+  `file_analyses` cascade, and every one of those is a projection of a directory
+  that has just stopped existing. What is kept is what happened; what goes is a
+  description of a disk nobody has.
   """
 
   use CodeMySpecSpex.Case
@@ -38,7 +47,7 @@ defmodule CodeMySpecSpex.Story1020.Criterion2848Spex do
   end
 
   spex "A machine going does not take the record of its work with it" do
-    scenario "Destroying a machine leaves its checkouts behind, with no machine" do
+    scenario "Destroying a machine takes its checkouts with it" do
       given_ "a machine with checkouts on it", context do
         id = device_id(context, hostname: "a-doomed-sprite", kind: "cloud")
         copy = join_working_copy(context, "/tmp/spex-1020-doomed", "a checkout", device_id: id)
@@ -69,25 +78,17 @@ defmodule CodeMySpecSpex.Story1020.Criterion2848Spex do
         {:ok, context}
       end
 
-      then_ "and its checkouts are still listed, now saying their machine is not known",
-            context do
+      then_ "and its checkouts are gone with it", context do
         {:ok, copies, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")
 
-        row =
-          copies
-          |> element(
-            "[data-test='working-copy'][data-working-copy-id='#{context.copy.working_copy_id}']"
-          )
-          |> render()
-
-        assert row =~ ~r/no machine|machine (is )?not known|orphan/i,
-               "the checkout survived its machine and does not say so. It lands " <>
-                 "in the same state as a copy that never reported one, and the " <>
-                 "row has to describe that rather than stay silent. Got: #{row}"
-
-        refute row =~ context.device_id,
-               "the checkout still points at a machine that no longer exists"
+        refute has_element?(
+                 copies,
+                 "[data-test='working-copy'][data-working-copy-id='#{context.copy.working_copy_id}']"
+               ),
+               "the checkout outlived the machine it was on. There is nowhere for it " <>
+                 "to be — a copy is a directory on a box, and the box is gone — so a " <>
+                 "row still listing it is offering somewhere to look that is not there."
 
         {:ok, context}
       end

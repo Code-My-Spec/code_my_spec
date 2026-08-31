@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -38,7 +40,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
         {:ok, reply, socket} =
           UserSocket
           |> socket("harness_holder", %{scope: context.scope})
-          |> subscribe_and_join(HarnessProjectChannel, topic(context), join_payload(nil))
+          |> subscribe_and_join(HarnessProjectChannel, topic(context), join_payload(context, nil))
 
         {:ok,
          context
@@ -58,7 +60,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
           |> subscribe_and_join(
             HarnessProjectChannel,
             topic(context),
-            join_payload(context.holder_id)
+            join_payload(context, context.holder_id)
           )
 
         {:ok, Map.put(context, :second_join, result)}
@@ -96,12 +98,17 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
 
   defp topic(context), do: "harness_project:#{context.project.id}"
 
-  defp join_payload(working_copy_id) do
+  # Both joins name the same machine on purpose. The refusal under test is
+  # "one working copy, one harness", and a second device would make these two
+  # different checkouts that happen to share a path — which is allowed, and
+  # would be testing the opposite thing.
+  defp join_payload(context, working_copy_id) do
     %{
       "contract_version" => @contract_version,
       "harness_id" => working_copy_id,
       "root" => @root,
-      "label" => "the harness at #{@root}"
+      "label" => "the harness at #{@root}",
+      "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
     }
   end
 

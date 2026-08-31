@@ -18,6 +18,8 @@ defmodule CodeMySpec.WorkingCopiesTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -31,7 +33,11 @@ defmodule CodeMySpec.WorkingCopiesTest do
 
   describe "issue/3" do
     test "a checkout that has never connected is minted one", %{scope: scope} do
-      assert {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
+      assert {:ok, harness} =
+               WorkingCopies.issue(scope, nil,
+                 label: "the harness at /a",
+                 device: device_fixture(scope)
+               )
 
       assert harness.project_id == scope.active_project_id
       assert harness.label == "the harness at /a"
@@ -39,9 +45,14 @@ defmodule CodeMySpec.WorkingCopiesTest do
     end
 
     test "a checkout presenting its id is recognised, not minted again", %{scope: scope} do
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /a", device: device_fixture(scope))
 
-      assert {:ok, same} = WorkingCopies.issue(scope, first.id, label: "the harness at /a")
+      assert {:ok, same} =
+               WorkingCopies.issue(scope, first.id,
+                 label: "the harness at /a",
+                 device: device_fixture(scope)
+               )
 
       assert same.id == first.id
 
@@ -50,8 +61,11 @@ defmodule CodeMySpec.WorkingCopiesTest do
     end
 
     test "two checkouts of one project are two harnesses", %{scope: scope} do
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
-      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /b")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /a", device: device_fixture(scope))
+
+      {:ok, second} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /b", device: device_fixture(scope))
 
       refute first.id == second.id,
              "a checkout with no id has never been seen — sharing one with another " <>
@@ -65,8 +79,17 @@ defmodule CodeMySpec.WorkingCopiesTest do
       # Two containers at /workspace/app on hosts with generated names produce
       # the same string. That collision is exactly why the label is display only
       # and the id is issued.
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /workspace/app")
-      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /workspace/app")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /workspace/app",
+          device: device_fixture(scope)
+        )
+
+      {:ok, second} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /workspace/app",
+          device: device_fixture(scope)
+        )
 
       refute first.id == second.id
     end
@@ -74,7 +97,11 @@ defmodule CodeMySpec.WorkingCopiesTest do
     test "an id naming no harness is reissued rather than refused", %{scope: scope} do
       stale = Ecto.UUID.generate()
 
-      assert {:ok, harness} = WorkingCopies.issue(scope, stale, label: "the harness at /a")
+      assert {:ok, harness} =
+               WorkingCopies.issue(scope, stale,
+                 label: "the harness at /a",
+                 device: device_fixture(scope)
+               )
 
       refute harness.id == stale,
              "a row deleted under a working copy that still holds the file must not " <>
@@ -82,15 +109,29 @@ defmodule CodeMySpec.WorkingCopiesTest do
     end
 
     test "a malformed id is reissued rather than crashing the join", %{scope: scope} do
-      assert {:ok, harness} = WorkingCopies.issue(scope, "not-a-uuid", label: "the harness at /a")
+      assert {:ok, harness} =
+               WorkingCopies.issue(scope, "not-a-uuid",
+                 label: "the harness at /a",
+                 device: device_fixture(scope)
+               )
+
       assert harness.id
     end
 
     test "an id belonging to another project does not resolve", %{scope: scope} do
       other = full_scope_fixture()
-      {:ok, theirs} = WorkingCopies.issue(other, nil, label: "the harness at /theirs")
 
-      assert {:ok, mine} = WorkingCopies.issue(scope, theirs.id, label: "the harness at /mine")
+      {:ok, theirs} =
+        WorkingCopies.issue(other, nil,
+          label: "the harness at /theirs",
+          device: device_fixture(other)
+        )
+
+      assert {:ok, mine} =
+               WorkingCopies.issue(scope, theirs.id,
+                 label: "the harness at /mine",
+                 device: device_fixture(scope)
+               )
 
       refute mine.id == theirs.id,
              "a misconfigured checkout must not adopt a harness belonging to a " <>
@@ -100,18 +141,27 @@ defmodule CodeMySpec.WorkingCopiesTest do
     end
 
     test "rejoining refreshes the label, because a checkout can move", %{scope: scope} do
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /old")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /old",
+          device: device_fixture(scope)
+        )
 
-      {:ok, same} = WorkingCopies.issue(scope, first.id, label: "the harness at /new")
+      {:ok, same} =
+        WorkingCopies.issue(scope, first.id,
+          label: "the harness at /new",
+          device: device_fixture(scope)
+        )
 
       assert same.id == first.id
       assert same.label == "the harness at /new"
     end
 
     test "a join carrying no label leaves the last known one alone", %{scope: scope} do
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /a", device: device_fixture(scope))
 
-      {:ok, same} = WorkingCopies.issue(scope, first.id)
+      {:ok, same} = WorkingCopies.issue(scope, first.id, device: device_fixture(scope))
 
       assert same.label == "the harness at /a",
              "losing the only human-readable name for a checkout would leave a " <>
@@ -125,7 +175,9 @@ defmodule CodeMySpec.WorkingCopiesTest do
     # project, that meant each checkout's sync erased the other's files, so the
     # requirement graph — computed from those rows — described neither.
     defp harness_scope(scope, label) do
-      {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
+      {:ok, harness} =
+        WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
+
       %{scope | active_working_copy_id: harness.id}
     end
 
@@ -312,8 +364,11 @@ defmodule CodeMySpec.WorkingCopiesTest do
 
   describe "the operator's view" do
     test "the most recently active harness is the default", %{scope: scope} do
-      {:ok, first} = WorkingCopies.issue(scope, nil, label: "the harness at /a")
-      {:ok, second} = WorkingCopies.issue(scope, nil, label: "the harness at /b")
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /a", device: device_fixture(scope))
+
+      {:ok, second} =
+        WorkingCopies.issue(scope, nil, label: "the harness at /b", device: device_fixture(scope))
 
       assert WorkingCopies.most_recent(scope).id == second.id,
              "criterion 739 — no configuration needed, and it stays correct for a " <>
@@ -358,8 +413,18 @@ defmodule CodeMySpec.WorkingCopiesTest do
 
     test "another project's harnesses are not listed", %{scope: scope} do
       other = full_scope_fixture()
-      {:ok, theirs} = WorkingCopies.issue(other, nil, label: "the harness at /theirs")
-      {:ok, mine} = WorkingCopies.issue(scope, nil, label: "the harness at /mine")
+
+      {:ok, theirs} =
+        WorkingCopies.issue(other, nil,
+          label: "the harness at /theirs",
+          device: device_fixture(other)
+        )
+
+      {:ok, mine} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /mine",
+          device: device_fixture(scope)
+        )
 
       ids = Enum.map(WorkingCopies.list_harnesses(scope), & &1.id)
       assert mine.id in ids

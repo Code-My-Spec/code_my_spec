@@ -17,6 +17,8 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
   # Sync: reads and writes application config other tests must not see change.
   use CodeMySpecTest.DataCase, async: false
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
@@ -61,7 +63,11 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
   defp agent_row(scope, provider) do
     # A real copy, because an agent's `working_copy_id` is a foreign key -- an
     # invented one is refused before any of this is reached.
-    {:ok, copy} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "a checkout")
+    {:ok, copy} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "a checkout",
+        device: device_fixture(scope)
+      )
 
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{

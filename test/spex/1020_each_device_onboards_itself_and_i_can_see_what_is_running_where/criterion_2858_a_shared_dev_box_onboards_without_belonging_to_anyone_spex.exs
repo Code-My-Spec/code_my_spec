@@ -48,8 +48,14 @@ defmodule CodeMySpecSpex.Story1020.Criterion2858Spex do
              context do
         {:ok, live, _html} = live(context.conn, "/app/devices")
 
-        refute has_element?(live, "[data-test='device']"),
-               "the premise is a box that has never announced, so nothing is here yet"
+        # By hostname, not by the list being empty. The account is not empty any
+        # more — `working_copies.device_id` is required, so the fixture that
+        # mints this scope's checkout mints a machine for it — and the claim was
+        # never about the account. It is about *this* box never having
+        # announced.
+        refute has_element?(live, "[data-test='device']", "the-shared-box"),
+               "the premise is a box that has never announced, and one calling " <>
+                 "itself the-shared-box is already here"
 
         {:ok, context}
       end

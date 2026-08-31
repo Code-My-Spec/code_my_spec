@@ -14,6 +14,8 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
 
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.WorkingCopies
@@ -24,7 +26,12 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
   setup %{scope: scope, account: account} do
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, account_id: account.id)
     scope = %{scope | active_project_id: project.id, active_project: project}
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the harness at /repo/main")
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil,
+        label: "the harness at /repo/main",
+        device: device_fixture(scope)
+      )
 
     %{project: project, scope: %{scope | active_working_copy_id: harness.id}}
   end

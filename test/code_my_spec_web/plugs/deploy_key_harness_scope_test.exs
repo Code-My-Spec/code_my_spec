@@ -15,6 +15,8 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
 
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.WorkingCopies
@@ -57,7 +59,8 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
   end
 
   test "adopts the harness from the x-harness-id header", %{scope: scope, token: token} do
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
 
     conn = call_with_header(token, harness.id)
 
@@ -69,7 +72,8 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
   end
 
   test "adopts the harness the caller names in the query", %{scope: scope, token: token} do
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
 
     conn = call(token, "harness=#{harness.id}")
 
@@ -78,7 +82,12 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
 
   test "ignores a harness belonging to another project", %{token: token} do
     other = full_scope_fixture()
-    {:ok, foreign} = WorkingCopies.issue(other, nil, label: "someone else's checkout")
+
+    {:ok, foreign} =
+      WorkingCopies.issue(other, nil,
+        label: "someone else's checkout",
+        device: device_fixture(other)
+      )
 
     conn = call(token, "harness=#{foreign.id}")
 

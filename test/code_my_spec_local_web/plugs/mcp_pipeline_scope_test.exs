@@ -21,6 +21,8 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
   import Plug.Conn
   import Plug.Test
@@ -45,7 +47,9 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
   defp mcp(conn), do: HarnessScope.call(conn, [])
 
   defp harness_for(scope, root) do
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "mcp test")
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "mcp test", device: device_fixture(scope))
+
     {:ok, harness} = WorkingCopies.report_root(harness, root)
     harness
   end

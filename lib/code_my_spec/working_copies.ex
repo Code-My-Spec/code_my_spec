@@ -455,15 +455,30 @@ defmodule CodeMySpec.WorkingCopies do
   # no device cannot be recognised by the next one either — the same checkout
   # onboarded twice is two rows, which is the duplicate this whole lookup exists
   # to prevent.
+  # Refused rather than minted machine-less, because `device_id` is `NOT NULL`
+  # and a constraint violation here reads as a crash rather than as an answer.
+  #
+  # Both callers can say which machine they are. A harness join carries it in
+  # the payload; onboarding reads the identity this machine already holds and
+  # announces one if it has none. A caller that says nothing is a client too old
+  # to know about devices, and the useful thing to tell it is to update — not to
+  # write a row that nothing can attribute and that `location/1` cannot answer
+  # for.
   defp create(project_id, label, device) do
-    %WorkingCopy{}
-    |> WorkingCopy.changeset(%{
-      project_id: project_id,
-      label: label,
-      device_id: device_id(device),
-      last_seen_at: now()
-    })
-    |> Repo.insert()
+    case device_id(device) do
+      nil ->
+        {:error, :no_device}
+
+      id ->
+        %WorkingCopy{}
+        |> WorkingCopy.changeset(%{
+          project_id: project_id,
+          label: label,
+          device_id: id,
+          last_seen_at: now()
+        })
+        |> Repo.insert()
+    end
   end
 
   defp device_id(%Device{id: id}), do: id

@@ -21,6 +21,8 @@ defmodule CodeMySpec.Analysis.InFlightScopeTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
@@ -28,8 +30,12 @@ defmodule CodeMySpec.Analysis.InFlightScopeTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "this working copy")
-    {:ok, theirs} = WorkingCopies.issue(scope, nil, label: "another checkout")
+
+    {:ok, mine} =
+      WorkingCopies.issue(scope, nil, label: "this working copy", device: device_fixture(scope))
+
+    {:ok, theirs} =
+      WorkingCopies.issue(scope, nil, label: "another checkout", device: device_fixture(scope))
 
     %{
       scope: %{scope | active_working_copy_id: mine.id},

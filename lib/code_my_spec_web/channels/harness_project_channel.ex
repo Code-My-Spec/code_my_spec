@@ -130,6 +130,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {:error, %{} = refusal} ->
         {:error, refusal}
 
+      # A join that names no machine. Every harness on a current build announces
+      # itself at boot and sends the id it was issued, so this is a client old
+      # enough to predate devices — and a checkout is identified by
+      # {project, device, root}, which cannot be answered without one. Minting
+      # anyway is what left this project with rows nothing could attribute to a
+      # machine, and `device_id` is `NOT NULL` now.
+      {:error, :no_device} ->
+        {:error,
+         %{
+           reason:
+             "This harness did not say which machine it is on, so its checkout " <>
+               "cannot be told apart from the same path on another machine. " <>
+               "Update the harness — a current one announces itself at boot and " <>
+               "sends the id it was issued."
+         }}
+
       {:error, reason} ->
         {:error, %{reason: to_string(reason)}}
     end

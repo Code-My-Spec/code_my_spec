@@ -27,6 +27,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpecSpex.Fixtures
+
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
@@ -87,7 +90,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
               "contract_version" => @contract_version,
               "harness_id" => nil,
               "root" => second_root,
-              "label" => "the harness at #{second_root}"
+              "label" => "the harness at #{second_root}",
+              "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
             }
           )
 

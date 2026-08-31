@@ -23,6 +23,8 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.WorkingCopies
@@ -69,7 +71,9 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   test "a session on another checkout warns about tasks, not about git", %{scope: scope} do
     {200, _} = start_session(scope, "session-here")
 
-    {:ok, other} = WorkingCopies.issue(scope, nil, label: "another checkout")
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil, label: "another checkout", device: device_fixture(scope))
+
     elsewhere = %{scope | active_working_copy_id: other.id}
 
     {200, body} = start_session(elsewhere, "session-elsewhere")
@@ -88,7 +92,9 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   test "both hazards are reported when both are present", %{scope: scope} do
     {200, _} = start_session(scope, "session-same-copy")
 
-    {:ok, other} = WorkingCopies.issue(scope, nil, label: "another checkout")
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil, label: "another checkout", device: device_fixture(scope))
+
     {200, _} = start_session(%{scope | active_working_copy_id: other.id}, "session-other-copy")
 
     {200, body} = start_session(scope, "session-third")

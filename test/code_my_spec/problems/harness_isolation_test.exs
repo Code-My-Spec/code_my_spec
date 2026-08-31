@@ -17,6 +17,8 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.WorkingCopies
@@ -46,8 +48,8 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, a} = WorkingCopies.issue(scope, nil, label: "copy A")
-    {:ok, b} = WorkingCopies.issue(scope, nil, label: "copy B")
+    {:ok, a} = WorkingCopies.issue(scope, nil, label: "copy A", device: device_fixture(scope))
+    {:ok, b} = WorkingCopies.issue(scope, nil, label: "copy B", device: device_fixture(scope))
 
     %{
       scope: scope,
@@ -84,7 +86,12 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
     # Losing the stored id and registering again. `issue/3` with nil is the
     # whole of a re-onboard from the server's side.
-    {:ok, reissued} = WorkingCopies.issue(scope, nil, label: "copy A, after re-onboarding")
+    {:ok, reissued} =
+      WorkingCopies.issue(scope, nil,
+        label: "copy A, after re-onboarding",
+        device: device_fixture(scope)
+      )
+
     refute reissued.id == old.active_working_copy_id
     reonboarded = %{scope | active_working_copy_id: reissued.id}
 

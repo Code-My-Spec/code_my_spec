@@ -1148,7 +1148,16 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec live_agent_scope(Scope.t(), keyword()) :: Scope.t()
   def live_agent_scope(%Scope{} = scope, opts \\ []) do
     label = Keyword.get(opts, :label, "the agent still working")
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
+
+    # On its own machine, because a checkout has to be on one: a copy is
+    # identified by {project, device, root} and `device_id` is required. A fresh
+    # device rather than a shared one for the same reason the working copy is
+    # its own — two agents that share an identity are not two agents.
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil,
+        label: label,
+        device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+      )
 
     # Records a root, because the hook rebuilds the scope from the harness row
     # rather than trusting the request: `put_scope/2` takes `cwd` from
@@ -1825,6 +1834,15 @@ defmodule CodeMySpecSpex.Fixtures do
     session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
     CodeMySpec.Sessions.register_subagent(scope, session, attrs)
   end
+
+  # -- Devices --
+  #
+  # A checkout is identified by {project, device, root} and `device_id` is
+  # required, so a spex that joins a working copy needs a machine to join from.
+  # Through the bridge like everything else: `CodeMySpecSpex` is its own
+  # Boundary and cannot reach `CodeMySpec.DevicesFixtures` directly.
+  defdelegate device_fixture(scope), to: CodeMySpec.DevicesFixtures
+  defdelegate device_fixture(scope, attrs), to: CodeMySpec.DevicesFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures

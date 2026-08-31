@@ -16,6 +16,8 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
   """
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.WorkingCopies
@@ -30,7 +32,9 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
 
   test "a harness id alone resolves the project", %{conn: conn} do
     scope = full_scope_fixture()
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
 
     result = run(conn, scope, [{"x-harness-id", harness.id}])
 
@@ -41,7 +45,9 @@ defmodule CodeMySpecWeb.Plugs.HarnessIdOnlyTest do
 
   test "the harness wins when a project header names something else", %{conn: conn} do
     scope = full_scope_fixture()
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a checkout")
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
 
     # A second project in the *same account*, so the override would genuinely
     # succeed if the project header won. A project from another account is

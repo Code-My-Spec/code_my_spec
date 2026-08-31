@@ -19,6 +19,8 @@ defmodule CodeMySpec.Issues.HarnessAttributionTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Issues
@@ -40,7 +42,13 @@ defmodule CodeMySpec.Issues.HarnessAttributionTest do
 
   test "two checkouts of one project file distinguishable issues" do
     a = full_scope_fixture()
-    {:ok, other} = CodeMySpec.WorkingCopies.issue(a, nil, label: "a second checkout")
+
+    {:ok, other} =
+      CodeMySpec.WorkingCopies.issue(a, nil,
+        label: "a second checkout",
+        device: device_fixture(a)
+      )
+
     b = %{a | active_working_copy_id: other.id}
 
     {:ok, from_a} = Issues.create_issue(a, attrs(%{title: "raised from A"}))
@@ -62,7 +70,12 @@ defmodule CodeMySpec.Issues.HarnessAttributionTest do
 
   test "the caller cannot name a working copy that is not its own" do
     scope = full_scope_fixture()
-    {:ok, other} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "somebody else")
+
+    {:ok, other} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "somebody else",
+        device: device_fixture(scope)
+      )
 
     {:ok, issue} = Issues.create_issue(scope, attrs(%{working_copy_id: other.id}))
 

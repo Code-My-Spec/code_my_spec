@@ -36,6 +36,8 @@ defmodule CodeMySpec.Requirements.SatisfactionIsPerWorkingCopyTest do
   """
   use ExUnit.Case, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
@@ -74,8 +76,17 @@ defmodule CodeMySpec.Requirements.SatisfactionIsPerWorkingCopyTest do
   end
 
   defp two_copies(scope) do
-    {:ok, has_them} = WorkingCopies.issue(scope, nil, label: "the checkout with the specs")
-    {:ok, has_none} = WorkingCopies.issue(scope, nil, label: "a checkout that never scanned")
+    {:ok, has_them} =
+      WorkingCopies.issue(scope, nil,
+        label: "the checkout with the specs",
+        device: device_fixture(scope)
+      )
+
+    {:ok, has_none} =
+      WorkingCopies.issue(scope, nil,
+        label: "a checkout that never scanned",
+        device: device_fixture(scope)
+      )
 
     {%{scope | active_working_copy_id: has_them.id},
      %{scope | active_working_copy_id: has_none.id}}

@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   """
 
   import ExUnit.Assertions
+
+  alias CodeMySpecSpex.Fixtures
   import Phoenix.ChannelTest
 
   alias CodeMySpecWeb.HarnessChannel
@@ -52,26 +54,33 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
       |> subscribe_and_join(
         HarnessProjectChannel,
         "harness_project:#{context.project.id}",
-        join_payload(root, label, opts)
+        join_payload(context, root, label, opts)
       )
 
     {reply, socket}
   end
 
-  # The device the harness is announcing from, when a criterion is about which
-  # machine a checkout is on. Omitted entirely otherwise, because a payload with
-  # no device is exactly what a harness built before devices sends — and "no
-  # device announced" has to stay distinguishable from "a new one, please".
-  defp join_payload(root, label, opts) do
+  # The device the harness is announcing from.
+  #
+  # Named explicitly when a criterion is about which machine a checkout is on,
+  # and otherwise a fresh one, because a join that names no machine is refused:
+  # a checkout is identified by {project, device, root}, and two boxes share a
+  # path constantly. This used to omit it, on the reasoning that a payload with
+  # no device is what a harness built before devices sends — true then, and that
+  # harness can no longer join at all.
+  defp join_payload(context, root, label, opts) do
     base = %{"working_copy_id" => opts[:working_copy_id], "root" => root, "label" => label}
 
     base
-    |> put_device(Keyword.fetch(opts, :device_id))
+    |> put_device(context, Keyword.fetch(opts, :device_id))
     |> put_preview(Keyword.fetch(opts, :preview_url))
   end
 
-  defp put_device(payload, {:ok, device_id}), do: Map.put(payload, "device", %{"id" => device_id})
-  defp put_device(payload, :error), do: payload
+  defp put_device(payload, _context, {:ok, device_id}),
+    do: Map.put(payload, "device", %{"id" => device_id})
+
+  defp put_device(payload, context, :error),
+    do: Map.put(payload, "device", %{"id" => Fixtures.device_fixture(context.scope).id})
 
   # Where this checkout says its preview answers. Absent unless a criterion is
   # about it, for the same reason the device is: a payload without one is what a

@@ -841,13 +841,29 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # answer for any of them. So it is passed explicitly, and nothing tries to
   # infer it.
   #
-  # `nil` when neither holds — a machine that has never run a harness and was
-  # not told. That still mints, so an onboarding is not blocked by it, and the
-  # copy simply has no machine until one joins for that root.
+  # A machine that has never run a harness has no identity yet, and this is
+  # usually the first thing that runs on it — so it announces, the same way the
+  # harness does at boot, rather than leaving the copy machine-less. The
+  # credential is already in hand: `mint/2` exchanged the deploy key a few lines
+  # up, which is what `announce/0` asks `Token.access_token/0` for.
+  #
+  # Announcing is idempotent by design. It presents the id we hold, and that is
+  # how the server recognises the machine instead of minting another, so this is
+  # safe on a box that has onboarded a dozen checkouts.
   defp device_id do
     case Application.get_env(:code_my_spec, :onboard_device_id) do
       id when is_binary(id) and id != "" -> id
-      _ -> CmsHarness.Device.recorded_id()
+      _ -> CmsHarness.Device.recorded_id() || announced_id()
+    end
+  end
+
+  # `nil` when the announce could not reach the server. It logs its own warning
+  # and the mint below will fail on the same unreachable server a moment later,
+  # so there is nothing useful to add here.
+  defp announced_id do
+    case CmsHarness.Device.announce() do
+      {:ok, %{device_id: id}} -> id
+      {:error, _reason} -> nil
     end
   end
 

@@ -17,6 +17,7 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
   use CodeMySpecTest.DataCase, async: false
 
   import Phoenix.ChannelTest
+  import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -32,7 +33,17 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     scope = full_scope_fixture()
-    %{scope: scope, topic: "harness_project:#{scope.active_project_id}"}
+
+    # The machine, because a join that names none is refused now: a checkout is
+    # identified by {project, device, root}, and `/workspace/main` is a path
+    # every container shares.
+    device = device_fixture(scope)
+
+    %{
+      scope: scope,
+      device: device,
+      topic: "harness_project:#{scope.active_project_id}"
+    }
   end
 
   defp join_as(scope, topic, payload) do
@@ -41,29 +52,36 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
     |> subscribe_and_join(HarnessProjectChannel, topic, payload)
   end
 
-  defp base(root), do: %{"label" => "harness at #{root}", "root" => root}
+  defp base(device, root),
+    do: %{"label" => "harness at #{root}", "root" => root, "device" => %{"id" => device.id}}
 
   defp fetched(id) do
     {:ok, copy} = WorkingCopies.fetch(id)
     copy
   end
 
-  test "the main checkout's address lands on the server", %{scope: scope, topic: topic} do
+  test "the main checkout's address lands on the server", %{
+    scope: scope,
+    device: device,
+    topic: topic
+  } do
     assert {:ok, %{working_copy_id: id}, _socket} =
-             join_as(scope, topic, Map.put(base("/workspace/main"), "preview_url", @url))
+             join_as(scope, topic, Map.put(base(device, "/workspace/main"), "preview_url", @url))
 
     assert fetched(id).preview_url == @url,
            "the address is written in the checkout's config and nowhere the web app can " <>
              "read; if the join does not carry it, the panel has nothing to point at"
   end
 
-  test "a worktree does not get to claim it", %{scope: scope, topic: topic} do
-    {:ok, %{working_copy_id: main_id}, main} = join_as(scope, topic, base("/workspace/main"))
+  test "a worktree does not get to claim it", %{scope: scope, device: device, topic: topic} do
+    {:ok, %{working_copy_id: main_id}, main} =
+      join_as(scope, topic, base(device, "/workspace/main"))
+
     Process.unlink(main.channel_pid)
     leave_and_wait(main)
 
     assert {:ok, %{working_copy_id: id}, _socket} =
-             join_as(scope, topic, Map.put(base("/workspace/wt"), "preview_url", @url))
+             join_as(scope, topic, Map.put(base(device, "/workspace/wt"), "preview_url", @url))
 
     # Otherwise the refutation below is about the main copy, which would decline
     # for no reason and pass whatever the code did.
@@ -76,19 +94,24 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
              "that happened to restart."
   end
 
-  test "a worktree that claims it still joins", %{scope: scope, topic: topic} do
-    {:ok, _reply, main} = join_as(scope, topic, base("/workspace/main"))
+  test "a worktree that claims it still joins", %{scope: scope, device: device, topic: topic} do
+    {:ok, _reply, main} = join_as(scope, topic, base(device, "/workspace/main"))
     Process.unlink(main.channel_pid)
     leave_and_wait(main)
 
     assert {:ok, _reply, _socket} =
-             join_as(scope, topic, Map.put(base("/workspace/wt"), "preview_url", @url)),
+             join_as(scope, topic, Map.put(base(device, "/workspace/wt"), "preview_url", @url)),
            "refusing the address is right; refusing the join takes a working checkout " <>
              "off the harness over a field nothing depends on"
   end
 
-  test "a harness that names no address joins and records none", %{scope: scope, topic: topic} do
-    assert {:ok, %{working_copy_id: id}, _socket} = join_as(scope, topic, base("/workspace/main"))
+  test "a harness that names no address joins and records none", %{
+    scope: scope,
+    device: device,
+    topic: topic
+  } do
+    assert {:ok, %{working_copy_id: id}, _socket} =
+             join_as(scope, topic, base(device, "/workspace/main"))
 
     refute fetched(id).preview_url
   end

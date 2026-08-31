@@ -11,13 +11,18 @@ defmodule CodeMySpec.DevicesTest do
       `harnesses` does today when a checkout joins without its id.
     * **The id is scoped.** It arrives from a machine, so it is an input. An id
       belonging to another account must not be handed over.
-    * **Absence is a state.** A daemon built before devices sends nothing, gets
-      no device, and its copies keep a null — "we have not been told", which is
-      different from a machine that reported and is different again from a
-      failure.
+    * **Absence is refused, not recorded.** It used to be a state: a daemon
+      built before devices sent nothing, got no device, and its copies kept a
+      null meaning "we have not been told". `working_copies.device_id` and
+      `devices.kind` are both required now — a checkout is identified by
+      {project, device, root}, and a machine that will not say what it is
+      cannot answer the question `kind` exists for. A client that says neither
+      is turned away rather than written down as an unknown.
   """
 
   use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.DevicesFixtures
 
   import CodeMySpec.UsersFixtures
 
@@ -44,12 +49,19 @@ defmodule CodeMySpec.DevicesTest do
     test "presenting the id again is the same machine, not a second one", %{scope: scope} do
       {:ok, first} = Devices.announce(scope, nil, %{hostname: "Johns-Mac-mini", kind: :local})
 
+      before = length(Devices.list_devices(scope))
+
       {:ok, again} =
         Devices.announce(scope, first.id, %{hostname: "Johns-Mac-mini", kind: :local})
 
       assert again.id == first.id
 
-      assert length(Devices.list_devices(scope)) == 1,
+      # Counted as a difference rather than against one, because the scope
+      # arrives holding a machine of its own now: `working_copies.device_id` is
+      # required, so the fixture that mints this scope's checkout has to mint a
+      # device for it too. What this asserts is unchanged — the second announce
+      # added nothing.
+      assert length(Devices.list_devices(scope)) == before,
              "a reconnect that mints a new machine fills the list with duplicates of " <>
                "one laptop, which is the failure the working-copy level has today"
     end
@@ -100,8 +112,10 @@ defmodule CodeMySpec.DevicesTest do
     end
 
     test "it recognises itself across restarts" do
-      {:ok, first} = Devices.announce(%Scope{}, nil, %{hostname: "the-shared-box"})
-      {:ok, again} = Devices.announce(%Scope{}, first.id, %{hostname: "the-shared-box"})
+      {:ok, first} = Devices.announce(%Scope{}, nil, %{hostname: "the-shared-box", kind: :local})
+
+      {:ok, again} =
+        Devices.announce(%Scope{}, first.id, %{hostname: "the-shared-box", kind: :local})
 
       assert again.id == first.id
     end
@@ -109,7 +123,8 @@ defmodule CodeMySpec.DevicesTest do
     test "an accountless announce cannot reach an account's machine", %{scope: scope} do
       {:ok, owned} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
 
-      {:ok, shared} = Devices.announce(%Scope{}, owned.id, %{hostname: "the-shared-box"})
+      {:ok, shared} =
+        Devices.announce(%Scope{}, owned.id, %{hostname: "the-shared-box", kind: :local})
 
       refute shared.id == owned.id,
              "presenting a real device id with no credentials behind it was " <>
@@ -124,26 +139,29 @@ defmodule CodeMySpec.DevicesTest do
   describe "attaching a working copy" do
     test "a copy records the machine it is on", %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "Johns-Mac-mini", kind: :local})
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout")
+      {:ok, other} = Devices.announce(scope, nil, %{hostname: "somewhere-else", kind: :local})
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: other)
 
       assert {:ok, attached} = Devices.attach(copy, device)
       assert attached.device_id == device.id
     end
 
-    test "no device announced leaves the copy unattached, and that is a state", %{scope: scope} do
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout")
+    test "attaching nothing leaves the copy on the machine it already had", %{scope: scope} do
+      {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
 
       assert {:ok, same} = Devices.attach(copy, nil)
 
-      assert same.device_id == nil,
-             "a daemon built before devices announces none. Null means 'we have not " <>
-               "been told', which has to stay distinguishable from a machine that reported."
+      assert same.device_id == device.id,
+             "a join that announces no device must not detach the copy from the machine " <>
+               "that minted it. This used to assert the copy stayed unattached, which was " <>
+               "a state a copy could be in before `device_id` was required — it is not one now."
     end
 
     test "a copy that moves machines re-attaches", %{scope: scope} do
       {:ok, laptop} = Devices.announce(scope, nil, %{hostname: "laptop", kind: :local})
       {:ok, sprite} = Devices.announce(scope, nil, %{hostname: "sprite", kind: :cloud})
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout")
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: laptop)
 
       {:ok, copy} = Devices.attach(copy, laptop)
       {:ok, moved} = Devices.attach(copy, sprite)
@@ -157,8 +175,7 @@ defmodule CodeMySpec.DevicesTest do
   describe "staying alive" do
     test "a copy proving it is alive proves its machine alive too", %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout")
-      {:ok, copy} = Devices.attach(copy, device)
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
 
       # Back-date the machine so a touch is observable. Announcing stamped it a
       # moment ago, and comparing two timestamps from the same millisecond
@@ -181,7 +198,11 @@ defmodule CodeMySpec.DevicesTest do
     end
 
     test "a copy on no machine marks nothing and does not raise", %{scope: scope} do
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "an unattached checkout")
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil,
+          label: "an unattached checkout",
+          device: device_fixture(scope)
+        )
 
       assert :ok = WorkingCopies.mark_alive(copy),
              "bookkeeping alongside a request that has real work to do must not " <>
@@ -209,8 +230,11 @@ defmodule CodeMySpec.DevicesTest do
       assert Device.display_name(cleared) == "Johns-Mac-mini"
     end
 
+    # Neither *name*. `kind` is required — a machine that will not say what it is
+    # is refused rather than recorded — so the nameless case still says that
+    # much about itself.
     test "a machine with neither is still distinguishable", %{scope: scope} do
-      {:ok, device} = Devices.announce(scope, nil, %{})
+      {:ok, device} = Devices.announce(scope, nil, %{kind: :local})
 
       assert Device.display_name(device) == String.slice(device.id, 0, 8),
              "a blank cell reads as a rendering bug rather than as a machine nobody named"

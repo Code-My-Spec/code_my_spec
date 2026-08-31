@@ -1,20 +1,27 @@
 defmodule CodeMySpecSpex.Story1020.Criterion2844Spex do
   @moduledoc """
   Story 1020 — Each device onboards itself and I can see what is running where.
-  Criterion 2844 — A machine that did not say what it is does not read as a
-  laptop.
+  Criterion 2844 — A machine that did not say what it is is not recorded as one.
 
-  Rule: What a machine has not said reads as unknown, never as a guess.
+  Rule: What a machine has not said is never guessed at.
 
   `kind` has no default on purpose. A default is a guess, and the guess that
   costs money is the wrong one: a cloud box quietly rendered as somebody's
   laptop is a machine nobody thinks to shut down. The distinction is the one
   thing this field exists for, so inventing it defeats the field.
 
-  It also has to say *something*. A blank cell reads as a rendering bug, and
-  somebody debugging the page instead of reading it is the failure one step over
-  — the same reason `Liveness` says "Idle · no agent reported on this copy"
-  rather than leaving the row empty.
+  ## Rewritten, and why
+
+  This used to assert that an unstated kind rendered as "unknown" on the devices
+  page. `devices.kind` is `NOT NULL` now — a machine whose kind nobody knows
+  cannot answer the question the column exists for, and everything downstream
+  carried a third state forever because of it.
+
+  The rule is untouched: nothing is guessed. What changed is where the answer
+  is refused. An announce that does not say what the machine is does not produce
+  a row reading "unknown" — it does not produce a row. That reaches only a
+  client too old to send a kind, which is the same client whose device-less
+  joins are already refused, and for the same reason.
   """
 
   use CodeMySpecSpex.Case
@@ -34,49 +41,39 @@ defmodule CodeMySpecSpex.Story1020.Criterion2844Spex do
   end
 
   spex "An unanswered question is not answered on the machine's behalf" do
-    scenario "A machine that did not say what it is does not read as a laptop" do
-      given_ "a machine that connected without saying whether it is local or cloud",
+    scenario "A machine that did not say what it is is not recorded as one" do
+      given_ "a machine about to connect without saying whether it is local or cloud",
              context do
         # `kind: nil` is dropped from the body by the helper, so the machine
         # genuinely says nothing rather than saying "unknown" — a client built
         # before the field existed sends exactly this.
-        id = device_id(context, hostname: "a-quiet-machine", kind: nil)
-
-        {:ok, Map.put(context, :device_id, id)}
+        {:ok, Map.put(context, :quiet, kind: nil, hostname: "a-quiet-machine")}
       end
 
-      when_ "I look at it", context do
-        {:ok, live, html} = live(context.conn, "/app/devices")
-
-        {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
+      when_ "it announces itself", context do
+        {:ok, Map.put(context, :reply, announce_response(context, context.quiet))}
       end
 
-      then_ "it reads as unknown", context do
-        row =
-          context.live
-          |> element("[data-test='device'][data-device-id='#{context.device_id}']")
-          |> render()
+      then_ "it is refused rather than filled in", context do
+        assert context.reply.status == 422,
+               "the announce was accepted, so something decided what this machine is " <>
+                 "on its behalf. A default is a guess, and the guess that costs money " <>
+                 "is the wrong one: a cloud box rendered as somebody's laptop is a " <>
+                 "machine nobody thinks to shut down."
 
-        assert row =~ ~r/unknown/i,
-               "the machine said nothing about what it is and the row says nothing " <>
-                 "either. A blank cell reads as a rendering bug, and somebody " <>
-                 "debugging the page instead of reading it is the next failure over. " <>
-                 "Got: #{row}"
+        assert context.reply.resp_body =~ "kind",
+               "the refusal does not name the field that was missing, so the operator " <>
+                 "cannot tell what their machine failed to send. Got: " <>
+                 context.reply.resp_body
 
-        {:ok, Map.put(context, :row, row)}
+        {:ok, context}
       end
 
-      then_ "and it is not described as local", context do
-        refute context.row =~ ~r/\blocal\b/i,
-               "a machine that never said what it is was rendered as a laptop. " <>
-                 "That is the guess that costs money: a cloud box shown as local " <>
-                 "is one nobody thinks to shut down. Got: #{context.row}"
+      then_ "and it is not on my devices", context do
+        {:ok, live, _html} = live(context.conn, "/app/devices")
 
-        refute has_element?(
-                 context.live,
-                 "[data-test='device'][data-device-id='#{context.device_id}'][data-kind='local']"
-               ),
-               "the row carries data-kind='local' for a machine that reported no kind"
+        refute has_element?(live, "[data-test='device']", "a-quiet-machine"),
+               "the machine was refused and is listed anyway"
 
         {:ok, context}
       end

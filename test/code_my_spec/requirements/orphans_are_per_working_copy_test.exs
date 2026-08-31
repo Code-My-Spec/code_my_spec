@@ -16,6 +16,8 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
   """
   use ExUnit.Case, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -31,8 +33,10 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
   test "a context whose only spec lives in another checkout is not this one's orphan" do
     scope = full_scope_fixture()
 
-    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "mine")
-    {:ok, theirs} = WorkingCopies.issue(scope, nil, label: "theirs")
+    {:ok, mine} = WorkingCopies.issue(scope, nil, label: "mine", device: device_fixture(scope))
+
+    {:ok, theirs} =
+      WorkingCopies.issue(scope, nil, label: "theirs", device: device_fixture(scope))
 
     component = component_fixture(scope, %{module_name: "MyApp.Stale", type: "context"})
 

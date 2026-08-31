@@ -15,6 +15,8 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
   import Plug.Conn
   import Plug.Test
@@ -38,7 +40,9 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
   defp harness(scope, root, opts \\ [])
 
   defp harness(scope, nil, opts) do
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: opts[:label])
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: opts[:label], device: device_fixture(scope))
+
     harness
   end
 

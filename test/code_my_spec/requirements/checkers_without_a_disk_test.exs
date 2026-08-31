@@ -15,6 +15,8 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files.File, as: FileRecord
@@ -49,7 +51,12 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   # A real second working copy. `working_copy_id` is a foreign key, so a generated
   # UUID is a constraint error rather than another checkout.
   defp second_harness(scope) do
-    {:ok, harness} = CodeMySpec.WorkingCopies.issue(scope, nil, label: "the other checkout")
+    {:ok, harness} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "the other checkout",
+        device: device_fixture(scope)
+      )
+
     harness.id
   end
 

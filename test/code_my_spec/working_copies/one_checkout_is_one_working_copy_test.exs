@@ -22,6 +22,8 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Devices
@@ -75,10 +77,10 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
   test "a join carrying no device still mints, rather than guessing" do
     scope = full_scope_fixture()
 
-    {:ok, first} = WorkingCopies.issue(scope, nil, root: @root)
+    {:ok, first} = WorkingCopies.issue(scope, nil, root: @root, device: device_fixture(scope))
     {:ok, _} = WorkingCopies.report_root(first, @root)
 
-    {:ok, second} = WorkingCopies.issue(scope, nil, root: @root)
+    {:ok, second} = WorkingCopies.issue(scope, nil, root: @root, device: device_fixture(scope))
 
     refute second.id == first.id,
            "without a device this cannot tell two machines apart, and merging on " <>
@@ -115,7 +117,12 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
       # A row minted around the lookup — which is what a regression in
       # `recognise_or_create/3` looks like, and what produced 52 rows for one
       # worktree before that lookup existed.
-      {:ok, second} = WorkingCopies.issue(scope, nil, label: "minted around the lookup")
+      {:ok, second} =
+        WorkingCopies.issue(scope, nil,
+          label: "minted around the lookup",
+          device: device_fixture(scope)
+        )
+
       {:ok, second} = Devices.attach(second, laptop)
 
       assert {:error, %Ecto.Changeset{} = changeset} = WorkingCopies.report_root(second, @root)
@@ -151,10 +158,10 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
     test "two device-less joins at one path are left alone" do
       scope = full_scope_fixture()
 
-      {:ok, first} = WorkingCopies.issue(scope, nil, root: @root)
+      {:ok, first} = WorkingCopies.issue(scope, nil, root: @root, device: device_fixture(scope))
       {:ok, _} = WorkingCopies.report_root(first, @root)
 
-      {:ok, second} = WorkingCopies.issue(scope, nil, root: @root)
+      {:ok, second} = WorkingCopies.issue(scope, nil, root: @root, device: device_fixture(scope))
 
       assert {:ok, _} = WorkingCopies.report_root(second, @root),
              "the index deduped two rows that nothing can prove are the same " <>

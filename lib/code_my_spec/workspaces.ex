@@ -11,6 +11,7 @@ defmodule CodeMySpec.Workspaces do
   be told, and has to keep everything they had before it.
   """
 
+  alias CodeMySpec.Devices
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   require Logger
@@ -158,8 +159,12 @@ defmodule CodeMySpec.Workspaces do
 
     with {:ok, project} <- Projects.ensure_deploy_key(scope, project),
          scope = %Scope{scope | active_project: project, active_project_id: project.id},
+         {:ok, device} <- cloud_device(scope, project),
          {:ok, copy} <-
-           WorkingCopies.issue(scope, existing_cloud_copy(scope, project), label: label),
+           WorkingCopies.issue(scope, existing_cloud_copy(scope, project),
+             label: label,
+             device: device
+           ),
          # Where it will be, said now rather than waited for. A row is not a
          # checkout until it says where it is, and only a rooted copy can be the
          # project's main one — which is what the preview endpoint requires
@@ -200,6 +205,41 @@ defmodule CodeMySpec.Workspaces do
   # nowhere else. `recognised/3` inside `issue/3` cannot do this for us -- it
   # needs a device, and a cloud instance has none until its harness joins, which
   # is after this runs.
+  # The machine a cloud copy is on, which is not anybody's laptop.
+  #
+  # `working_copies.device_id` is `NOT NULL` — a checkout is identified by
+  # {project, device, root}, and `/workspace/<app>` is a path every container
+  # shares, so without a device two visitors' instances are one indistinguishable
+  # row. This is also the only place `kind: :cloud` is written from, and it is
+  # what will let an agent on this copy know it may not spend a subscription:
+  # the providers do not license one for a server running agents on somebody's
+  # behalf, so a cloud copy's agent needs an API key.
+  #
+  # One device per project, not one per boot. `announce/3` recognises by
+  # `{account, device_id}` and this has no id to present, so announcing on every
+  # boot would mint a row every time a visitor restarted their workspace — the
+  # duplicate the working-copy lookup exists to prevent, one table over. The
+  # copy that is already there is what remembers which machine it was, so it is
+  # asked first.
+  defp cloud_device(scope, %Project{} = project) do
+    case device_of_existing_cloud_copy(scope, project) do
+      nil -> Devices.announce(scope, nil, %{hostname: "cloud-#{project.id}", kind: :cloud})
+      device_id -> {:ok, device_id}
+    end
+  end
+
+  defp device_of_existing_cloud_copy(scope, %Project{} = project) do
+    root = instance_root(project)
+
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.find(&(&1.root == root))
+    |> case do
+      %{device_id: device_id} when is_binary(device_id) -> device_id
+      _ -> nil
+    end
+  end
+
   defp existing_cloud_copy(scope, %Project{} = project) do
     root = instance_root(project)
 

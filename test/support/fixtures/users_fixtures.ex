@@ -89,7 +89,19 @@ defmodule CodeMySpec.UsersFixtures do
     # can write files needs one. A scope with a project stands in for something
     # serving a checkout of it, so minting here is what makes these fixtures
     # honest rather than a way around the constraint.
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "the test harness for #{project.id}")
+    #
+    # The machine comes with it, for the same reason one level up: a checkout is
+    # identified by {project, device, root}, `working_copies.device_id` is
+    # NOT NULL, and a fixture that could mint a copy belonging to no machine
+    # would be describing a state the product no longer has.
+    {:ok, device} =
+      CodeMySpec.Devices.announce(scope, nil, %{hostname: "test-machine", kind: :local})
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil,
+        label: "the test harness for #{project.id}",
+        device: device
+      )
 
     %{scope | active_working_copy_id: harness.id}
   end

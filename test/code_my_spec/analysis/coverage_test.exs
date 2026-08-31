@@ -12,6 +12,8 @@ defmodule CodeMySpec.Analysis.CoverageTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.Coverage
@@ -20,7 +22,10 @@ defmodule CodeMySpec.Analysis.CoverageTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a working copy", device: device_fixture(scope))
+
     %{scope: %{scope | active_working_copy_id: harness.id}}
   end
 

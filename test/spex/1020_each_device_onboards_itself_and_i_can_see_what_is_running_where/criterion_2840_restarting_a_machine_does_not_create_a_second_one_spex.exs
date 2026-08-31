@@ -33,6 +33,15 @@ defmodule CodeMySpecSpex.Story1020.Criterion2840Spex do
     :ok
   end
 
+  defp device_rows(live) do
+    live
+    |> element("[data-test='devices']")
+    |> render()
+    |> String.split("data-test=\"device\"")
+    |> length()
+    |> Kernel.-(1)
+  end
+
   spex "One machine stays one machine" do
     scenario "Restarting a machine does not create a second one" do
       given_ "a machine already among my devices", context do
@@ -43,7 +52,11 @@ defmodule CodeMySpecSpex.Story1020.Criterion2840Spex do
         assert has_element?(live, "[data-test='device']"),
                "the machine has to be on the list before restarting it means anything"
 
-        {:ok, context |> Map.put(:device_id, id) |> Map.put(:live, live)}
+        {:ok,
+         context
+         |> Map.put(:device_id, id)
+         |> Map.put(:live, live)
+         |> Map.put(:before, device_rows(live))}
       end
 
       when_ "its harness restarts and reconnects", context do
@@ -70,13 +83,18 @@ defmodule CodeMySpecSpex.Story1020.Criterion2840Spex do
       end
 
       then_ "and my list does not grow", context do
-        rows = context.live |> element("[data-test='devices']") |> render()
-        count = rows |> String.split("data-test=\"device\"") |> length() |> Kernel.-(1)
+        count = device_rows(context.live)
 
-        assert count == 1,
-               "restarting produced #{count} machines. A list that gains a row on " <>
-                 "every restart is one nobody can read after a week — which is the " <>
-                 "state the working-copies list is already in."
+        # Measured as a change rather than against one. The account arrives
+        # holding a machine of its own — `working_copies.device_id` is required,
+        # so the fixture that mints this scope's checkout mints a device for it
+        # — and what this criterion claims is unaffected by that: restarting
+        # adds nothing.
+        assert count == context.before,
+               "restarting took the list from #{context.before} machines to #{count}. " <>
+                 "A list that gains a row on every restart is one nobody can read " <>
+                 "after a week — which is the state the working-copies list is " <>
+                 "already in."
 
         {:ok, context}
       end

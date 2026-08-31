@@ -12,6 +12,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   # are genuinely sharing state even with sandboxed rows.
   use CodeMySpecTest.DataCase, async: false
 
+  import CodeMySpec.DevicesFixtures
+
   import Phoenix.ChannelTest
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.ProblemsFixtures
@@ -64,7 +66,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     |> harness_socket(opts)
     |> subscribe_and_join(HarnessProjectChannel, topic, %{
       "label" => @label,
-      "harness_id" => scope.active_working_copy_id
+      "harness_id" => scope.active_working_copy_id,
+      "device" => %{"id" => device_fixture(scope).id}
     })
   end
 
@@ -77,7 +80,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # two containers at /workspace/app, a generated hostname, a churning
     # session id.
     defp join_with(scope, topic, working_copy_id) do
-      payload = %{"label" => @label, "harness_id" => working_copy_id}
+      # A join names its machine or it is refused: a checkout is identified by
+      # {project, device, root}, and without a device two boxes at one path are
+      # one row.
+      payload = %{
+        "label" => @label,
+        "harness_id" => working_copy_id,
+        "device" => %{"id" => device_fixture(scope).id}
+      }
 
       scope
       |> harness_socket([])
@@ -95,7 +105,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "presenting an id gets that same id back", %{scope: scope, topic: topic} do
-      {:ok, harness} = WorkingCopies.issue(scope, nil, label: @label)
+      {:ok, harness} =
+        WorkingCopies.issue(scope, nil, label: @label, device: device_fixture(scope))
 
       assert {:ok, %{working_copy_id: returned}, _socket} = join_with(scope, topic, harness.id)
 
@@ -186,10 +197,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # where it is still says so there, rather than having a host invented for it.
     test "a harness that does not say where it is is recorded that way",
          %{scope: scope, topic: topic} do
+      # Says which machine and nothing else. Not saying the machine is a
+      # different failure with its own refusal now, and this criterion is about
+      # the root — a payload naming neither would be asserting the wrong one.
       {:ok, %{working_copy_id: id}, _first} =
         scope
         |> harness_socket([])
-        |> subscribe_and_join(HarnessProjectChannel, topic, %{})
+        |> subscribe_and_join(HarnessProjectChannel, topic, %{
+          "device" => %{"id" => device_fixture(scope).id}
+        })
 
       harness = Enum.find(WorkingCopies.list_harnesses(scope), &(&1.id == id))
 

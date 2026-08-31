@@ -24,6 +24,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
@@ -67,7 +69,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
               "contract_version" => @contract_version,
               "harness_id" => nil,
               "root" => "/workspace/without-the-spec",
-              "label" => "the checkout that has not written the spec"
+              "label" => "the checkout that has not written the spec",
+              "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
             }
           )
 

@@ -18,6 +18,8 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis
@@ -27,7 +29,9 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
   # Two working copies of one project, as two scopes differing only by harness.
   defp two_checkouts do
     scope = full_scope_fixture()
-    {:ok, other} = WorkingCopies.issue(scope, nil, label: "a second checkout")
+
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil, label: "a second checkout", device: device_fixture(scope))
 
     {scope, %{scope | active_working_copy_id: other.id}}
   end

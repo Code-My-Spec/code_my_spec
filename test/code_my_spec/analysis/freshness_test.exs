@@ -23,6 +23,8 @@ defmodule CodeMySpec.Analysis.FreshnessTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
@@ -39,7 +41,10 @@ defmodule CodeMySpec.Analysis.FreshnessTest do
 
   test "another checkout's run does not answer for mine" do
     mine = full_scope_fixture()
-    {:ok, other} = WorkingCopies.issue(mine, nil, label: "a second checkout")
+
+    {:ok, other} =
+      WorkingCopies.issue(mine, nil, label: "a second checkout", device: device_fixture(mine))
+
     theirs = %{mine | active_working_copy_id: other.id}
 
     theirs |> run(%{input_fingerprint: "theirs"}) |> finish(:completed)

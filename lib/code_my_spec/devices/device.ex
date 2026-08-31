@@ -58,6 +58,19 @@ defmodule CodeMySpec.Devices.Device do
   schema "devices" do
     field :hostname, :string
     field :label, :string
+    # Required, and deliberately not defaulted.
+    #
+    # `NOT NULL` because a machine whose kind is unknown cannot answer the
+    # question the field exists for, and everything downstream then carries a
+    # third state forever. No default because a default is a guess, and
+    # criterion 2844 names what the guess costs: "a cloud box quietly rendered
+    # as somebody's laptop is a machine nobody thinks to shut down."
+    #
+    # Both at once means an announce that does not say what it is is refused.
+    # That reaches only clients too old to send one — the current harness always
+    # does, from `CmsHarness.Device.kind/0` — and it is the same population
+    # whose device-less joins are already refused, for the same reason: a
+    # machine that will not identify itself cannot be recorded as one.
     field :kind, Ecto.Enum, values: @kinds
     field :account_id, Ecto.UUID
     field :last_seen_at, :utc_datetime_usec
@@ -74,6 +87,10 @@ defmodule CodeMySpec.Devices.Device do
   def changeset(device, attrs) do
     device
     |> cast(attrs, [:hostname, :label, :kind, :account_id, :last_seen_at])
+    # Refused here rather than by the database, so an announce that does not say
+    # what the machine is comes back as an error somebody can read instead of a
+    # `not_null_violation` on a column name.
+    |> validate_required([:kind])
   end
 
   @doc """

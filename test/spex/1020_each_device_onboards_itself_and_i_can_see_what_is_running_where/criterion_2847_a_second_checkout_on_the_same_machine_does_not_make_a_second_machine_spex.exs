@@ -43,7 +43,15 @@ defmodule CodeMySpecSpex.Story1020.Criterion2847Spex do
         first =
           join_working_copy(context, "/tmp/spex-1020-first", "first checkout", device_id: id)
 
-        {:ok, context |> Map.put(:device_id, id) |> Map.put(:first, first)}
+        {:ok, live, _html} = live(context.conn, "/app/devices")
+        rows = live |> element("[data-test='devices']") |> render()
+        before = rows |> String.split("data-test=\"device\"") |> length() |> Kernel.-(1)
+
+        {:ok,
+         context
+         |> Map.put(:device_id, id)
+         |> Map.put(:first, first)
+         |> Map.put(:before, before)}
       end
 
       when_ "a second checkout on that same machine starts being served", context do
@@ -75,8 +83,14 @@ defmodule CodeMySpecSpex.Story1020.Criterion2847Spex do
         rows = context.live |> element("[data-test='devices']") |> render()
         count = rows |> String.split("data-test=\"device\"") |> length() |> Kernel.-(1)
 
-        assert count == 1,
-               "serving two checkouts produced #{count} machines. One install " <>
+        # One machine *for this checkout pair*, not one on the account. The
+        # account arrives holding a machine of its own now: `device_id` is
+        # required on a working copy, so the fixture that mints this scope's
+        # checkout mints a device for it too. What this claims is unchanged —
+        # serving a second checkout added nothing.
+        assert count == context.before,
+               "serving two checkouts took the list from #{context.before} machines " <>
+                 "to #{count}. One install " <>
                  "serves many checkouts — eight worktrees on this laptop alone — " <>
                  "so a machine per checkout makes the device list a slower copy of " <>
                  "the list it exists to summarise."

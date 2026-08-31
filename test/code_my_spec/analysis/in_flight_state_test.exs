@@ -24,6 +24,8 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis
@@ -48,7 +50,10 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
   describe "a project served by a harness" do
     setup do
       scope = full_scope_fixture()
-      {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+
+      {:ok, harness} =
+        WorkingCopies.issue(scope, nil, label: "a working copy", device: device_fixture(scope))
+
       scope = %{scope | active_working_copy_id: harness.id}
 
       # Registering an executor is what makes the project *served*. A harness
@@ -74,7 +79,12 @@ defmodule CodeMySpec.Analysis.InFlightStateTest do
 
     test "a harness that has never joined is untracked, not idle" do
       unserved = full_scope_fixture()
-      {:ok, harness} = WorkingCopies.issue(unserved, nil, label: "never joined")
+
+      {:ok, harness} =
+        WorkingCopies.issue(unserved, nil,
+          label: "never joined",
+          device: device_fixture(unserved)
+        )
 
       assert Analysis.in_flight_state(%{unserved | active_working_copy_id: harness.id}) ==
                :untracked,

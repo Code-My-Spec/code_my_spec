@@ -17,6 +17,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
@@ -34,7 +36,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     project = project_fixture(scope, %{name: "Tunnel project"})
     scope = %{scope | active_project_id: project.id, active_project: project}
 
-    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main")
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/tunnel_main")
 
     %{scope: scope, copy: copy}
@@ -214,7 +216,9 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   test "a worktree is refused before anything is provisioned", %{scope: scope, copy: _copy} do
     stub_cloudflare(self())
 
-    {:ok, worktree} = WorkingCopies.issue(scope, nil, label: "worktree")
+    {:ok, worktree} =
+      WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
     {:ok, worktree} = WorkingCopies.report_root(worktree, "/tmp/tunnel_worktree")
 
     refute worktree.main

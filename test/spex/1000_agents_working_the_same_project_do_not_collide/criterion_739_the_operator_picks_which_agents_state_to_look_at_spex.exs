@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion739Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -92,7 +94,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion739Spex do
         "contract_version" => @contract_version,
         "harness_id" => nil,
         "root" => root,
-        "label" => "the harness at #{root}"
+        "label" => "the harness at #{root}",
+        "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
       })
 
     ref =

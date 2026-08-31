@@ -15,6 +15,8 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
 
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.Files
@@ -28,7 +30,7 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
   end
 
   defp checkout(scope, label, paths) do
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
+    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
     served = %{scope | active_working_copy_id: harness.id}
 
     Files.upsert_files(

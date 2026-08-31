@@ -21,6 +21,8 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
@@ -29,7 +31,10 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: "a working copy")
+
+    {:ok, harness} =
+      WorkingCopies.issue(scope, nil, label: "a working copy", device: device_fixture(scope))
+
     %{scope: %{scope | active_working_copy_id: harness.id}}
   end
 
@@ -101,7 +106,11 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     # them, and a busy machine makes that the common case rather than the rare
     # one. Measured there: three stops reported 71m, 78m, 87m, then 5m, while
     # this copy's last completed run never moved.
-    {:ok, other} = WorkingCopies.issue(scope, nil, label: "a different working copy")
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil,
+        label: "a different working copy",
+        device: device_fixture(scope)
+      )
 
     finished_run(scope, "spex", :completed, 5_760)
     finished_run(%{scope | active_working_copy_id: other.id}, "spex", :completed, 300)

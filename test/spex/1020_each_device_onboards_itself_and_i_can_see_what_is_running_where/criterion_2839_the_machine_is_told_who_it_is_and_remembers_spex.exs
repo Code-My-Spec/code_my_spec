@@ -48,9 +48,15 @@ defmodule CodeMySpecSpex.Story1020.Criterion2839Spex do
         # "it handed back one that was already there".
         {:ok, live, _html} = live(context.conn, "/app/devices")
 
-        refute has_element?(live, "[data-test='device']"),
-               "the premise is a machine that has never connected, so there is " <>
-                 "nothing on this account yet"
+        # By hostname, not by the list being empty. The account is not empty any
+        # more — `working_copies.device_id` is required, so the fixture that
+        # mints this scope's checkout mints a machine for it — and the claim was
+        # never about the account. It is about *this* machine never having
+        # connected, which is what makes "the server issues an identity"
+        # distinguishable from "it handed back one that was already there".
+        refute has_element?(live, "[data-test='device']", "a-machine"),
+               "the premise is a machine that has never connected, and one calling " <>
+                 "itself a-machine is already here"
 
         {:ok, Map.put(context, :live, live)}
       end

@@ -15,6 +15,8 @@ defmodule CodeMySpec.WorkingCopies.PreviewUrlTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
@@ -32,7 +34,7 @@ defmodule CodeMySpec.WorkingCopies.PreviewUrlTest do
   end
 
   defp main_copy(scope) do
-    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main")
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/preview_main")
     copy
   end
@@ -54,7 +56,9 @@ defmodule CodeMySpec.WorkingCopies.PreviewUrlTest do
   test "a checkout that is not the main one is refused", %{scope: scope} do
     _main = main_copy(scope)
 
-    {:ok, other} = WorkingCopies.issue(scope, nil, label: "worktree")
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
     {:ok, other} = WorkingCopies.report_root(other, "/tmp/preview_worktree")
 
     refute other.main, "the second checkout should not have taken the designation"
@@ -76,7 +80,8 @@ defmodule CodeMySpec.WorkingCopies.PreviewUrlTest do
   end
 
   test "a project with no main checkout at all reports nothing", %{scope: scope} do
-    {:ok, orphan} = WorkingCopies.issue(scope, nil, label: "unrooted")
+    {:ok, orphan} =
+      WorkingCopies.issue(scope, nil, label: "unrooted", device: device_fixture(scope))
 
     refute orphan.main,
            "a checkout that never said where it is was designated, which is the quiet " <>
