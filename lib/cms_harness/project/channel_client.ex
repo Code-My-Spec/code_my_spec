@@ -350,6 +350,17 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc false
+  # Called from the scanning task with the health-route verdict, checked
+  # against this checkout's own real router.ex/endpoint.ex.
+  @spec deliver_health_route_status(String.t(), String.t()) :: :ok
+  def deliver_health_route_status(root, status) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:health_route_status, status})
+      [] -> :ok
+    end
+  end
+
+  @doc false
   # Called from the analysis queue with a finished (or failed) run.
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do
@@ -1769,6 +1780,25 @@ defmodule CmsHarness.Project.ChannelClient do
   # Dropped, same reasoning as a dropped manifest: the next sync after
   # reconnect reports it again.
   def handle_cast({:module_name, _name}, socket), do: {:noreply, socket}
+
+  def handle_cast({:health_route_status, status}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "health_route_status",
+           %{"status" => status},
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send health_route_status: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:health_route_status, _status}, socket), do: {:noreply, socket}
 
   # --- Private ---
 

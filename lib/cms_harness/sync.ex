@@ -18,6 +18,7 @@ defmodule CmsHarness.Sync do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Generators.DeployBoilerplate
 
   @doc """
   Kick off a scan for a project. Returns immediately.
@@ -105,9 +106,33 @@ defmodule CmsHarness.Sync do
       # fallback un-derives it back to this same snake_case name via
       # `Macro.underscore/1` — so this is the inverse of that, not a second
       # format decision.
-      name when is_binary(name) -> ChannelClient.deliver_module_name(root, Macro.camelize(name))
-      nil -> :ok
+      name when is_binary(name) ->
+        ChannelClient.deliver_module_name(root, Macro.camelize(name))
+        report_health_route(env, root, name)
+
+      nil ->
+        :ok
     end
+  end
+
+  # `health_route_unpiped/2` is a content check — the server has no real way
+  # to read a harness-only project's `router.ex`/`endpoint.ex` at all, the
+  # same reason `app_path/1` stopped depending on `module_name` ever having
+  # arrived through onboarding. This machine can read them directly, so it
+  # runs the exact same check `Generators.audit/2` would, on every sync, and
+  # reports the verdict — `Project.changeset/3`'s `validate_inclusion` is
+  # what fixes these three strings to match what `Generators` expects back.
+  defp report_health_route(env, root, app_name) do
+    router_path = "lib/#{app_name}_web/router.ex"
+
+    status =
+      case DeployBoilerplate.health_route_unpiped(env, router_path) do
+        :ok -> "ok"
+        {:error, {:no_health_route, _}} -> "no_health_route"
+        {:error, {:health_route_piped, _}} -> "health_route_piped"
+      end
+
+    ChannelClient.deliver_health_route_status(root, status)
   end
 
   # What the scan walked past.

@@ -121,22 +121,52 @@ defmodule CodeMySpec.Generators do
     scope |> DeployBoilerplate.plaintext_env_files() |> Enum.map(&{:plaintext_env_file, &1})
   end
 
-  # The two content checks still take the environment alone, not the scope —
-  # what a file *contains* is not something the `Files` sync table records
-  # (path, role, mtime, size, fingerprint; never a body), so there is no
-  # fallback for these the way `present?/2` has one. A harness-scoped caller
-  # genuinely cannot answer them, and each already says so in its own words
+  # `force_ssl_excludes_health` still takes the environment alone, not the
+  # scope — what a file *contains* is not something the `Files` sync table
+  # records (path, role, mtime, size, fingerprint; never a body), so there is
+  # no fallback for it the way `present?/2` has one. A harness-scoped caller
+  # genuinely cannot answer it, and it already says so in its own words
   # rather than guessing.
   defp config_findings(%Scope{environment: env} = scope, router_path) do
     [
       DeployBoilerplate.force_ssl_excludes_health(env),
-      DeployBoilerplate.health_route_unpiped(env, router_path),
+      health_route_finding(scope, env, router_path),
       DeployBoilerplate.release_module_exists?(scope, release_module_path(router_path))
     ]
     |> Enum.flat_map(fn
       :ok -> []
       {:error, finding} -> [finding]
     end)
+  end
+
+  # The one content check that no longer only takes the environment: the
+  # harness reports this on every sync (`CmsHarness.Sync`, `project.
+  # health_route_status`) because the server has no real way to read a
+  # harness-only project's files at all — the same reason `app_path/1`
+  # stopped depending on `module_name` ever having arrived through
+  # onboarding. Reported status wins whenever there is one; a project that
+  # has never synced since this existed, or a caller whose environment can
+  # genuinely be read directly (a local checkout, a container), still gets
+  # the direct check.
+  defp health_route_finding(%Scope{active_project: %{health_route_status: "ok"}}, _env, _path),
+    do: :ok
+
+  defp health_route_finding(
+         %Scope{active_project: %{health_route_status: "no_health_route"}},
+         _env,
+         router_path
+       ),
+       do: {:error, {:no_health_route, router_path}}
+
+  defp health_route_finding(
+         %Scope{active_project: %{health_route_status: "health_route_piped"}},
+         _env,
+         router_path
+       ),
+       do: {:error, {:health_route_piped, router_path}}
+
+  defp health_route_finding(_scope, env, router_path) do
+    DeployBoilerplate.health_route_unpiped(env, router_path)
   end
 
   # `router_path` is always `lib/<app>_web/router.ex`, by the same convention

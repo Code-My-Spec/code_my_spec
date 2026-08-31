@@ -360,6 +360,36 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # and ignored rather than refused as an unrecognised event.
   def handle_in("module_name", _payload, socket), do: {:reply, :ok, socket}
 
+  # Same self-healing shape as `module_name`, for a check `Files` sync cannot
+  # answer (it records existence, never a body) and the server cannot read
+  # directly for a harness-only project. `Project.changeset/3`'s
+  # `validate_inclusion` is what keeps a malformed status from ever landing.
+  def handle_in("health_route_status", %{"status" => status}, socket)
+      when status in ~w(ok no_health_route health_route_piped) do
+    project = socket.assigns.scope.active_project
+
+    if project && project.health_route_status != status do
+      case Projects.update_project(socket.assigns.scope, project, %{
+             health_route_status: status
+           }) do
+        {:ok, updated} ->
+          {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[HarnessProject] could not correct health_route_status to #{inspect(status)} " <>
+              "for #{project.id}: #{inspect(reason)}"
+          )
+
+          {:reply, :ok, socket}
+      end
+    else
+      {:reply, :ok, socket}
+    end
+  end
+
+  def handle_in("health_route_status", _payload, socket), do: {:reply, :ok, socket}
+
   # Decide a hook the harness is proxying for Claude Code.
   #
   # The decision is mostly database work — blocking problems, config modes,

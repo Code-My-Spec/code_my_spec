@@ -11,6 +11,7 @@ defmodule CodeMySpec.Projects.Project do
           name: String.t(),
           description: String.t() | nil,
           module_name: String.t() | nil,
+          health_route_status: String.t() | nil,
           code_repo: String.t() | nil,
           docs_repo: String.t() | nil,
           client_api_url: String.t() | nil,
@@ -39,6 +40,13 @@ defmodule CodeMySpec.Projects.Project do
     field :name, :string
     field :description, :string
     field :module_name, :string
+    # A content check `Files` sync cannot answer (it records existence, never
+    # a body — see `CodeMySpec.Generators`) and the server cannot read
+    # directly for a harness-only project (`Environments.read_file/2` has
+    # nowhere real to read from there). The harness reports it instead, the
+    # same way it reports `module_name`. `nil` means "not reported yet", a
+    # different state from either "ok" or "missing".
+    field :health_route_status, :string
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
@@ -134,6 +142,7 @@ defmodule CodeMySpec.Projects.Project do
       :name,
       :description,
       :module_name,
+      :health_route_status,
       :code_repo,
       :docs_repo,
       :client_api_url,
@@ -162,6 +171,7 @@ defmodule CodeMySpec.Projects.Project do
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,
       message: "must be a valid Elixir module name"
     )
+    |> validate_inclusion(:health_route_status, ~w(ok no_health_route health_route_piped))
     |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_deploy_key_hash()

@@ -122,6 +122,42 @@ defmodule CmsHarness.SyncPathTest do
       assert project_id == project.id
     end
 
+    # The same reachability gap, on a check with no Files-table fallback at
+    # all — `Generators.health_route_finding/3` has nothing to read server-side
+    # for a harness-only project, so this machine runs the real content check
+    # (`DeployBoilerplate.health_route_unpiped/2`) where the files actually
+    # are and reports the verdict.
+    test "a real health route is checked and reported alongside the manifest", %{
+      project: project
+    } do
+      write(
+        project.root,
+        "mix.exs",
+        """
+        defmodule Demo.MixProject do
+          use Mix.Project
+          def project, do: [app: :demo, version: "0.1.0"]
+        end
+        """
+      )
+
+      write(project.root, "lib/demo_web/router.ex", """
+      defmodule DemoWeb.Router do
+        use DemoWeb, :router
+
+        scope "/", DemoWeb do
+          get "/health", HealthController, :show
+        end
+      end
+      """)
+
+      FakeServer.start()
+      {:ok, _} = Projects.ensure_started(project.root)
+
+      assert_receive {:health_route_status, project_id, "ok"}, 5_000
+      assert project_id == project.id
+    end
+
     test "a project another harness holds is not served", %{project: project} do
       FakeServer.start(refuse: "the harness at /elsewhere")
 

@@ -264,6 +264,65 @@ defmodule CodeMySpec.GeneratorsTest do
     end
   end
 
+  # A harness-only project's real files are on the checkout's own machine, not
+  # this one — `Environments.read_file/2` has nowhere to read from server-side
+  # (see `CodeMySpec.Provisioning.Steps.app_path/1`). `CmsHarness.Sync` runs
+  # this exact check where the files really are and reports the verdict onto
+  # `project.health_route_status`; these prove the reported status is what
+  # `audit/2` trusts once one exists, over whatever the (unreachable) files
+  # actually contain.
+  describe "a reported health_route_status" do
+    test "ok wins even over a router that would otherwise fail", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      write(dir, @router, """
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+      end
+      """)
+
+      scope = %CodeMySpec.Users.Scope{
+        environment: env,
+        active_project: %{health_route_status: "ok"}
+      }
+
+      assert Generators.audit(scope, @router) == []
+    end
+
+    test "no_health_route wins even over a router that actually has one", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      scope = %CodeMySpec.Users.Scope{
+        environment: env,
+        active_project: %{health_route_status: "no_health_route"}
+      }
+
+      assert {:no_health_route, @router} in Generators.audit(scope, @router)
+    end
+
+    test "health_route_piped wins the same way", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      scope = %CodeMySpec.Users.Scope{
+        environment: env,
+        active_project: %{health_route_status: "health_route_piped"}
+      }
+
+      assert {:health_route_piped, @router} in Generators.audit(scope, @router)
+    end
+
+    test "no report yet falls back to reading the file directly", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      scope = %CodeMySpec.Users.Scope{
+        environment: env,
+        active_project: %{health_route_status: nil}
+      }
+
+      assert Generators.audit(scope, @router) == []
+    end
+  end
+
   describe "a project that is not safe to push" do
     test "a plaintext env file is reported", %{env: env, dir: dir} do
       deployable_project(dir)

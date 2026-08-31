@@ -608,6 +608,49 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "health_route_status" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      %{channel: channel}
+    end
+
+    # Same self-healing shape as module_name, for a check `Files` sync cannot
+    # answer at all (it records existence, never a body) — see
+    # `CodeMySpec.Generators.health_route_finding/3`.
+    test "corrects a stale status", %{channel: channel, scope: scope} do
+      ref = push(channel, "health_route_status", %{"status" => "ok"})
+
+      assert_reply ref, :ok, _reply, 2_000
+
+      assert CodeMySpec.Projects.get_project_by_id(scope.active_project_id).health_route_status ==
+               "ok"
+    end
+
+    test "an already-correct status is left alone", %{channel: channel, scope: scope} do
+      {:ok, project} =
+        CodeMySpec.Projects.update_project(scope, scope.active_project, %{
+          health_route_status: "no_health_route"
+        })
+
+      ref = push(channel, "health_route_status", %{"status" => "no_health_route"})
+
+      assert_reply ref, :ok, _reply, 2_000
+      assert CodeMySpec.Projects.get_project_by_id(project.id).updated_at == project.updated_at
+    end
+
+    test "an unrecognised status is ignored rather than written", %{
+      channel: channel,
+      scope: scope
+    } do
+      ref = push(channel, "health_route_status", %{"status" => "not_a_real_status"})
+
+      assert_reply ref, :ok, _reply, 2_000
+
+      assert CodeMySpec.Projects.get_project_by_id(scope.active_project_id).health_route_status ==
+               scope.active_project.health_route_status
+    end
+  end
+
   describe "hook decisions" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =
