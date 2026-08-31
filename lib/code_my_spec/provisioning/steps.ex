@@ -3380,14 +3380,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   # version serving (8008), and that an unhealthy version never went live
   # (8009). A failure keeps its resources via the partial-resource path, so
   # the record shows what happened rather than just an error string.
-  defp with_output(reason, output) when is_binary(output) do
+  #
+  # The tail of `output`, not the whole thing: `devops_status` keeps only the
+  # first 300 characters of whatever this becomes, and kamal's own output
+  # always puts the real exception last, after every "Launching command..."/
+  # "INFO [...] Running docker login..." progress line that came before it.
+  # Confirmed live against MarketMySpec, twice, in two different failure
+  # shapes (an install log, then an SSHKit exception) — both cut off exactly
+  # where the actual cause would have started.
+  #
+  # Public for its own test, same reason as `image_tag/2`: reaching this
+  # through `run(:deploy, ...)` means driving a whole failed deploy just to
+  # exercise a string-formatting decision that depends on none of it.
+  @doc false
+  @spec with_output(String.t(), term()) :: String.t()
+  def with_output(reason, output) when is_binary(output) do
     case String.trim(output) do
       "" -> reason
-      trimmed -> reason <> "\n\n" <> trimmed
+      trimmed -> reason <> "\n\n" <> String.slice(trimmed, -200, 200)
     end
   end
 
-  defp with_output(reason, _output), do: reason
+  def with_output(reason, _output), do: reason
 
   defp deploy_outcome(result, environment, host) do
     phases =
