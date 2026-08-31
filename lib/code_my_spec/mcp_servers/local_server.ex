@@ -71,7 +71,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
   component(CodeMySpec.McpServers.Agents.Tools.StopAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
 
   # Code mode itself.
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)

@@ -30,6 +30,14 @@ defmodule CodeMySpec.CodeMode.Catalog do
   of them in a `for` is twenty questions nobody agreed to answer. `start_agent`
   spawns; a loop is a fleet.
 
+  `message_agent` was excluded on that reasoning too — "it acts on agents, which
+  a script cannot start" — and the premise stopped being true. Agents get their
+  work by role, routed to them, rather than by being spawned on request; what one
+  agent needs of another is not the ability to start it but the ability to talk
+  to it. A loop around a message is noise, which is a smaller thing than a fleet
+  and bounded by the agents that already exist. So it is scriptable, and
+  `start_agent`, `stop_agent` and `assign_subagent` are not.
+
   Those stay direct-call only. Story 971 carries the consequence: an excluded
   tool has to stay on the spine, or excluding it here makes it unreachable
   altogether.
@@ -54,7 +62,6 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "start_agent" => "it spawns background work, and a loop around it is a fleet",
     "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
     "stop_agent" => "it acts on agents, which a script cannot start",
-    "message_agent" => "it acts on agents, which a script cannot start",
     "tap_out" => "it ends your turn, which is yours to do and not a script's",
     "show_in_panel" => "it puts something in front of a person, who is not watching a script",
     "run_script" =>
