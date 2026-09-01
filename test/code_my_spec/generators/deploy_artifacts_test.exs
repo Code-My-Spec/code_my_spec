@@ -182,7 +182,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
                ])
 
       logged = File.read!(log)
-      assert logged =~ "app exec --config config/deploy.yml --version abc123"
+      assert logged =~ "app exec --config-file config/deploy.yml --version abc123"
       assert logged =~ "SOPS_AGE_KEY:test-key"
       refute logged =~ "deploy --config"
     end
@@ -200,7 +200,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
                ])
 
       logged = File.read!(log)
-      assert logged =~ "deploy --config config/deploy.uat.yml --version abc123"
+      assert logged =~ "deploy --config-file config/deploy.uat.yml --version abc123"
       refute logged =~ "app exec"
     end
 
@@ -265,8 +265,8 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       logged = File.read!(log)
       assert logged =~ "gh run list --commit #{head}"
       assert logged =~ "gh run watch --exit-status 999"
-      assert logged =~ "kamal app exec --config config/deploy.yml --version #{head}"
-      assert logged =~ "kamal deploy --config config/deploy.yml --version #{head}"
+      assert logged =~ "kamal app exec --config-file config/deploy.yml --version #{head}"
+      assert logged =~ "kamal deploy --config-file config/deploy.yml --version #{head}"
 
       {branches, 0} = System.cmd("git", ["branch", "-a"], cd: bare)
       assert branches =~ "main" or branches =~ "master"

@@ -531,11 +531,17 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       # SOPS_AGE_KEY deadlocked on it: the deploy re-encrypts to the new key,
       # the migration reads the old one off the host, and the deploy that
       # would replace the host's copy is the one that cannot finish.
-      kamal app exec --config "$CONFIG" --version "$VERSION" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
+      #
+      # `--config-file`, not `--config` — kamal has no `--config` flag at
+      # all, only `-c`/`--config-file`. Thor silently folded the unrecognised
+      # `--config "$CONFIG"` into `app exec`'s own CMD positional, so runc
+      # tried to exec the literal string "--config" as the container's
+      # entrypoint. Confirmed live against MarketMySpec on kamal 2.11.0.
+      kamal app exec --config-file "$CONFIG" --version "$VERSION" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
     }
 
     swap() {
-      kamal deploy --config "$CONFIG" --version "$VERSION"
+      kamal deploy --config-file "$CONFIG" --version "$VERSION"
     }
 
     case "$PHASE" in
