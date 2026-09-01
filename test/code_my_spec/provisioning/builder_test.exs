@@ -322,7 +322,10 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"", 0} end
       create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
-      destroy = fn _scope, 42 -> send(owner, :destroyed); {:ok, %{}} end
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
 
       assert {:error, {:image_not_ready, 777}} =
                Builder.ensure_builder_image(scope(), :x86,
@@ -343,7 +346,10 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       list_images = fn _scope, _opts -> {:ok, []} end
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"connection refused", 255} end
-      destroy = fn _scope, 42 -> send(owner, :destroyed); {:ok, %{}} end
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
 
       assert {:error, {:builder_unreachable, _seconds, _last}} =
                Builder.ensure_builder_image(scope(), :x86,
