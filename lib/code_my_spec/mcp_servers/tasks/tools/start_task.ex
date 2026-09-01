@@ -221,7 +221,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp note_handover(scope, agent_id, work) do
     Conversations.record_orchestrator_action(
       agent_id || Agents.main_agent(scope),
-      "Gave you the next requirement: #{handover_name(work)}."
+      "Gave you the next requirement: #{handover_name(work)}.",
+      kind: "handover"
     )
   rescue
     error ->

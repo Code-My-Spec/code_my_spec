@@ -71,6 +71,7 @@ defmodule CodeMySpec.Hooks.Stop do
     |> do_decide(session_id, session, active_task, validation_opts, req_id)
     |> note_config_edits(session_id)
     |> note_on_conversation(scope)
+    |> tap(fn _ -> nudge_open_task(scope, session) end)
   end
 
   # The decision, on the conversation of the agent it was about.
@@ -93,7 +94,8 @@ defmodule CodeMySpec.Hooks.Stop do
       Agents.main_agent(scope),
       stop_sentence(response),
       count: problem_count(scope),
-      tool: "list_problems"
+      tool: "list_problems",
+      kind: "decision"
     )
 
     response
@@ -108,6 +110,37 @@ defmodule CodeMySpec.Hooks.Stop do
       )
 
       response
+  end
+
+  # An agent stopping with a task still open is told to close it, on its own
+  # thread, and nothing closes it for it.
+  #
+  # John, on why the orchestrator must not do it: "the agent should be nudged to
+  # complete its own task ... it should always be at the agent's discretion."
+  # Completing work for an agent decides on its behalf whether the work is done,
+  # which is the one judgement the agent is there to make.
+  #
+  # On the task's own agent rather than the project's — the agent that looks
+  # like it walked away is the one that needs the record, and John: "we don't
+  # care about showing this on the main agent's conversation."
+  defp nudge_open_task(scope, session) do
+    case session && Session.active_task(session) do
+      nil ->
+        :ok
+
+      task ->
+        Conversations.record_orchestrator_action(
+          Map.get(task, :agent_id) || Agents.main_agent(scope),
+          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
+            "it is done — nothing will do it for you.",
+          tool: "evaluate_task",
+          kind: "nudge"
+        )
+    end
+  rescue
+    error ->
+      Logger.warning("[StopHook] could not record the nudge: " <> Exception.message(error))
+      :ok
   end
 
   defp stop_sentence(%{"decision" => "block", "reason" => reason}),

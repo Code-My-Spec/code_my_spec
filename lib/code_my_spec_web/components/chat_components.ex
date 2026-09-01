@@ -71,6 +71,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       id={@id}
       data-test="orchestrator-action"
       data-role="orchestrator"
+      data-action-kind={orchestrator_kind(@message)}
       class="flex items-start gap-2 rounded-box border border-info/30 bg-info/5 px-3 py-2 text-sm"
     >
       <.icon name="hero-adjustments-horizontal" class="size-4 shrink-0 opacity-60" />
@@ -624,6 +625,18 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   defp orchestrator_tool(_message), do: nil
+
+  # Which kind of act this was. "One decision is one action" is a claim about
+  # decisions, and a stop that also nudges an agent about open work produces two
+  # actions that are not duplicates of each other.
+  defp orchestrator_kind(%{content: parts}) when is_list(parts) do
+    Enum.find_value(parts, fn
+      %{"type" => "kind", "text" => text} -> text
+      _ -> nil
+    end)
+  end
+
+  defp orchestrator_kind(_message), do: nil
 
   # Results keyed by the call they answer, so a call can render its own.
   defp results_by_call_id(messages) do

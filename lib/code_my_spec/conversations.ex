@@ -341,6 +341,7 @@ defmodule CodeMySpec.Conversations do
     [%{"type" => "text", "text" => what}]
     |> maybe_part("count", opts[:count])
     |> maybe_part("tool", opts[:tool])
+    |> maybe_part("kind", opts[:kind])
   end
 
   defp maybe_part(parts, _type, nil), do: parts

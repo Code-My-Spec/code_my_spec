@@ -55,23 +55,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  # Work finished for the agent, on its own thread. Story 985, and the direction
-  # that reads worst without a record: an agent moving off a task it was working
-  # on looks like it gave up, and the only reading available to somebody
-  # watching is that it abandoned the work.
-  defp note_completion(scope, task) do
-    Conversations.record_orchestrator_action(
-      Map.get(task, :agent_id) || Agents.main_agent(scope),
-      "Finished #{task.requirement_name} for you."
-    )
-  rescue
-    error ->
-      Logger.warning(
-        "[EvaluateTask] could not record the completion: " <> Exception.message(error)
-      )
-
-      :ok
-  end
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     session =
@@ -108,8 +91,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   end
 
   defp handle_evaluate(scope, session, task, frame) do
-    note_completion(scope, task)
-
     task_module = task.session_type
 
     if is_nil(task_module) do

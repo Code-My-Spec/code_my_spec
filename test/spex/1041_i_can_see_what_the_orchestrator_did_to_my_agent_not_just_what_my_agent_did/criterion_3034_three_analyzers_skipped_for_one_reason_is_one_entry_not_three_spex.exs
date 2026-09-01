@@ -82,8 +82,12 @@ defmodule CodeMySpecSpex.Story985.Criterion3034Spex do
       end
 
       then_ "there is one orchestrator action, naming the decision and its reason", context do
+        # Decisions, not actions. A stop that also nudges the agent about open
+        # work produces two actions and neither duplicates the other — this rule
+        # is about the analyzers *within* a decision, not about how many things
+        # a stop can be.
         entries =
-          Regex.scan(~r/data-test="orchestrator-action"/, context.transcript) |> length()
+          Regex.scan(~r/data-action-kind="decision"/, context.transcript) |> length()
 
         assert entries == 1,
                "the stop produced #{entries} entries. One decision is one action — the " <>

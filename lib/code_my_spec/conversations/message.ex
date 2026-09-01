@@ -32,7 +32,7 @@ defmodule CodeMySpec.Conversations.Message do
   # is, and the name of the tool that lists the rest. Typed parts rather than a
   # sentence, so the view renders them distinctly and no reader — person or
   # agent — is parsing prose for a number. Story 985.
-  @part_types ~w(text image file thinking count tool)
+  @part_types ~w(text image file thinking count tool kind)
 
   schema "conversation_messages" do
     # Typed parts, in order. See @part_types for what a part may be.
