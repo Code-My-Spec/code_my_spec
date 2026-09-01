@@ -54,6 +54,7 @@ defmodule CmsHarness.HarnessConfig do
           project_id: String.t() | nil,
           deploy_key: String.t() | nil,
           preview_url: String.t() | nil,
+          server_url: String.t() | nil,
           root: String.t()
         }
 
@@ -110,7 +111,14 @@ defmodule CmsHarness.HarnessConfig do
     case from_env() do
       {:ok, id} ->
         {:ok,
-         %{working_copy_id: id, project_id: nil, deploy_key: nil, preview_url: nil, root: root}}
+         %{
+           working_copy_id: id,
+           project_id: nil,
+           deploy_key: nil,
+           preview_url: nil,
+           server_url: nil,
+           root: root
+         }}
 
       :none ->
         :none
@@ -174,11 +182,19 @@ defmodule CmsHarness.HarnessConfig do
     body =
       root
       |> raw()
-      |> Map.drop(~w(harness_id working_copy_id root project_id deploy_key preview_url))
+      |> Map.drop(
+        ~w(harness_id working_copy_id root project_id deploy_key preview_url server_url)
+      )
       |> Map.merge(%{working_copy_id: id, harness_id: id, root: root})
       |> merge_present(:project_id, config[:project_id] || recorded_value(root, :project_id))
       |> merge_present(:deploy_key, config[:deploy_key] || recorded_value(root, :deploy_key))
       |> merge_present(:preview_url, config[:preview_url] || recorded_value(root, :preview_url))
+      # Which CodeMySpec minted this copy's id. Recorded because nothing else can
+      # answer it: every tier of `Config.server_url/0` reports the *reading*
+      # build's server, so a copy onboarded from a sibling checkout had no way to
+      # say where it actually belongs, and its hooks 404ed against a daemon that
+      # had never seen the row (a6d07cf3).
+      |> merge_present(:server_url, config[:server_url] || recorded_value(root, :server_url))
       |> Jason.encode!(pretty: true)
 
     with :ok <- refuse_to_clobber(root, file),
@@ -306,6 +322,7 @@ defmodule CmsHarness.HarnessConfig do
        project_id: map["project_id"],
        deploy_key: map["deploy_key"],
        preview_url: map["preview_url"],
+       server_url: map["server_url"],
        root: map["root"] || root
      }}
   end

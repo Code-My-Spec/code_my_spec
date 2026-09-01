@@ -36,6 +36,16 @@ defmodule CmsHarness.Config do
 
   Resolved in order of how specific the instruction is:
 
+    0. `:harness_server_url_override` — this call, this target. Set by
+       `mix cms.harness.onboard --server-url` and by nothing else.
+
+       Above `CMS_SERVER_URL` because it is more specific, not less: the
+       variable is about the shell, and this is about the root being onboarded.
+       Onboarding a checkout that is not this build's is the one case where the
+       caller knows something no layer below can — a sibling repo served by a
+       packaged release on another port belongs to that release's server, and
+       every tier below this one answers with the calling build's.
+
     1. `CMS_SERVER_URL` — this run, this shell. What `just harness` uses to aim
        a laptop harness at its own dev server.
     2. `:harness_server_url` — this install, for when the harness should differ
@@ -50,7 +60,8 @@ defmodule CmsHarness.Config do
   """
   @spec server_url() :: String.t()
   def server_url do
-    System.get_env("CMS_SERVER_URL") ||
+    Application.get_env(:code_my_spec, :harness_server_url_override) ||
+      System.get_env("CMS_SERVER_URL") ||
       Application.get_env(:code_my_spec, :harness_server_url) ||
       Application.get_env(:code_my_spec, :base_url) ||
       @default_server_url

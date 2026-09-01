@@ -5,6 +5,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   Address this checkout's hooks to the harness that serves it.
 
       mix cms.harness.onboard
+      mix cms.harness.onboard <root> --server-url https://codemyspec.com
+
+  `--server-url` names the CodeMySpec that will serve the target. Needed when
+  onboarding a checkout this build does not belong to: the id is minted against
+  the *calling* build's server otherwise, and a sibling repo served by a
+  packaged release ends up with an id its own daemon has never heard of.
 
   Reads the id the server issued this working copy and writes it to
   `.cms_harness.json` and `.claude/settings.local.json`. **Neither `--plugin-dir`
@@ -95,6 +101,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     env = environment(root, args)
     relay_model_turns? = Enum.member?(args, "--relay-model-turns")
     put_device_flag(args)
+    put_server_url_flag(args, root)
 
     case Enum.member?(args, "--check") do
       true ->
@@ -540,8 +547,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # from the daemon that actually serves that checkout, which reads like a
   # deleted row rather than two servers that never shared data.
   #
-  # Not fixed here — which server is right is a design question. Said out loud,
-  # because silence is what made it cost a diagnosis.
+  # The remedy is `--server-url`, which is the only thing that can be right: no
+  # tier under `Config.server_url/0` knows anything about the target, and the
+  # target has no key that names its server. The warning stays because the
+  # default is still the calling build's and a caller who did not think about it
+  # gets the same wrong answer — it just now says what to type.
   defp warn_if_foreign_root(root) do
     here = File.cwd!() |> Path.expand()
     root = Path.expand(root)
@@ -559,8 +569,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         one), the id is unknown there and its hooks will fail with
         "No harness with id ...".
 
-        Check by asking the daemon that actually serves it, and re-run onboard
-        from a build pointed at that server if they disagree.
+        Check by asking the daemon that actually serves it. If they disagree,
+        re-run with the server that one belongs to:
+
+            mix cms.harness.onboard #{root} --server-url <url>
         """,
         :reset
       ])
@@ -676,6 +688,38 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # calls down — `onboard/4` → `identity/3` → `mint/2` → `post/3` — and none of
   # the four in between has any business knowing about it. The same seam
   # `:device_config_path` uses, in a task that runs once and exits.
+  # Which server mints the id, when the caller knows better than the build does.
+  #
+  # The id is minted against whatever `Config.server_url/0` resolves, and every
+  # tier of that answers with the *calling* build: a dev checkout says
+  # localhost:4000, a packaged release says codemyspec.com. Onboarding a sibling
+  # repo from here therefore mints into a database the daemon that actually
+  # serves it has never seen, and the failure surfaces much later as "No harness
+  # with id …", which reads like a deleted row rather than two servers that
+  # never shared one. Issue a6d07cf3.
+  #
+  # A flag rather than something read off the target: a checkout has no key that
+  # names its server. `.code_my_spec/config.yml` carries `client_api_url`, which
+  # is where the *deployed app* talks — this repo's says codemyspec.com while
+  # its harness is localhost — so reading it would be confidently wrong.
+  # The flag first, then what the copy already recorded. A copy onboarded once
+  # knows which server issued its id, so every run after the first is right
+  # without anybody typing anything — and the flag is still there for the first,
+  # which is the only moment nothing can know.
+  defp put_server_url_flag(args, root) do
+    case flag(args, "--server-url") || recorded_server_url(root) do
+      nil -> Application.delete_env(:code_my_spec, :harness_server_url_override)
+      url -> Application.put_env(:code_my_spec, :harness_server_url_override, url)
+    end
+  end
+
+  defp recorded_server_url(root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{server_url: url}} when is_binary(url) and url != "" -> url
+      _ -> nil
+    end
+  end
+
   defp put_device_flag(args) do
     case device_flag(args) do
       nil -> Application.delete_env(:code_my_spec, :onboard_device_id)
@@ -694,6 +738,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `mix cms.harness.onboard --device <id>` onboards a directory named after
   # the id.
   defp drop_flags(["--device", _id | rest]), do: drop_flags(rest)
+  defp drop_flags(["--server-url", _url | rest]), do: drop_flags(rest)
   defp drop_flags(["--" <> _ | rest]), do: drop_flags(rest)
   defp drop_flags([arg | rest]), do: [arg | drop_flags(rest)]
   defp drop_flags([]), do: []
@@ -754,7 +799,17 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          {:ok, token} <- Token.access_token(),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <-
-           HarnessConfig.write(root, %{working_copy_id: id, project_id: project.id, root: root}) do
+           HarnessConfig.write(root, %{
+             working_copy_id: id,
+             project_id: project.id,
+             # Written down because the id is only meaningful to the server that
+             # issued it, and nothing else can say which that was: every tier of
+             # `Config.server_url/0` answers with the build doing the *reading*.
+             # A later run on this copy reads it back rather than defaulting to
+             # its own server and 404ing against a row it never had (a6d07cf3).
+             server_url: Config.server_url(),
+             root: root
+           }) do
       Mix.shell().info("Issued a new harness id for #{root}")
       {:ok, id}
     else
