@@ -543,21 +543,43 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
-  @doc "Create a private network with a subnet servers can attach to."
+  @doc """
+  Create a private network with a subnet servers can attach to.
+
+  `:network_index` picks the range: 0 (the default) is `10.0.0.0/16`, every
+  index after it its own `10.<index>.0.0/16`. A project used to ever create
+  exactly one network, so one hardcoded range was the whole project's range.
+  A project whose environments span more than one Hetzner zone now creates
+  more than one (`Steps.ensure_zone_networks/4`), and Hetzner refuses a
+  network whose range overlaps another's in the same project — zone or not.
+  Confirmed live against MarketMySpec: its existing network and a freshly
+  attempted second one both defaulted to the identical `10.0.0.0/16` and
+  Hetzner answered `networks_overlap`. Index 0 always stays the original
+  range so every project's existing, already-created network is completely
+  unaffected — this only matters for a network being created for the first
+  time.
+  """
   @spec create_network(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def create_network(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
     zone = Keyword.get(opts, :network_zone) || "eu-central"
+    index = Keyword.get(opts, :network_index, 0)
 
     payload = %{
       name: name,
-      ip_range: @network_range,
-      subnets: [%{type: "cloud", network_zone: zone, ip_range: @subnet_range}]
+      ip_range: network_range(index),
+      subnets: [%{type: "cloud", network_zone: zone, ip_range: subnet_range(index)}]
     }
 
     with {:ok, %{"network" => network}} <- request(scope, :post, "/networks", json: payload) do
       {:ok, network}
     end
   end
+
+  defp network_range(0), do: @network_range
+  defp network_range(index) when is_integer(index) and index > 0, do: "10.#{index}.0.0/16"
+
+  defp subnet_range(0), do: @subnet_range
+  defp subnet_range(index) when is_integer(index) and index > 0, do: "10.#{index}.0.0/24"
 
   @doc "List every private network in the account."
   @spec list_networks(Scope.t()) :: {:ok, [body()]} | error()

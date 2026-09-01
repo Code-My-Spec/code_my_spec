@@ -3946,15 +3946,26 @@ defmodule CodeMySpec.Provisioning.Steps do
   # always one entry; a second only appears for a project like MarketMySpec
   # whose environments predate this platform's own provisioning and were
   # never put in the same zone.
+  #
+  # The primary zone sorts first, so it always gets `network_index: 0` —
+  # `Hetzner.create_network/3`'s original, unindexed range — leaving every
+  # project's existing network completely untouched. Every other zone gets
+  # the next index instead of colliding with it: Hetzner refuses a network
+  # whose range overlaps another's in the same project regardless of zone,
+  # and every network here defaulted to the same hardcoded range before
+  # `:network_index` existed. Confirmed live against MarketMySpec:
+  # `networks_overlap` on the very first attempt to create a second one.
   defp ensure_zone_networks(scope, servers, name, primary_zone) do
     servers
     |> Enum.map(&get_in(&1, ["location", "name"]))
     |> Enum.map(&Hetzner.network_zone/1)
     |> Enum.uniq()
-    |> Enum.reduce_while({:ok, %{}}, fn zone, {:ok, acc} ->
+    |> Enum.sort_by(&(&1 != primary_zone))
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, %{}}, fn {zone, index}, {:ok, acc} ->
       network_name = network_name_for_zone(name, zone, primary_zone)
 
-      case Hetzner.ensure_network(scope, network_name, network_zone: zone) do
+      case Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index) do
         {:ok, network} -> {:cont, {:ok, Map.put(acc, zone, network)}}
         {:error, reason} -> {:halt, {:error, reason}}
       end

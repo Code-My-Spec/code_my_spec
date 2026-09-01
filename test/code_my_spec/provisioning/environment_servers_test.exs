@@ -240,15 +240,30 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
 
-    zones_asked_for =
+    network_creates =
       collect_requests([])
       |> Enum.filter(fn {method, path, _payload} -> method == "POST" and path == "/v1/networks" end)
-      |> Enum.map(fn {_method, _path, payload} ->
-        get_in(payload, ["subnets", Access.at(0), "network_zone"])
-      end)
+      |> Enum.map(fn {_method, _path, payload} -> payload end)
+
+    zones_asked_for =
+      Enum.map(network_creates, &get_in(&1, ["subnets", Access.at(0), "network_zone"]))
 
     assert Enum.sort(zones_asked_for) == ["eu-central", "us-east"],
            "expected one network per zone this project's boxes actually sit in, got #{inspect(zones_asked_for)}"
+
+    # The actual bug, live: both networks defaulted to the identical
+    # hardcoded 10.0.0.0/16 before `create_network/3` took an index, and
+    # Hetzner refused the second one outright ("networks_overlap") — same
+    # failure family as the zone mismatch, one layer further in.
+    ranges_asked_for = Enum.map(network_creates, & &1["ip_range"])
+
+    assert ranges_asked_for == Enum.uniq(ranges_asked_for),
+           "expected two non-overlapping ranges, got the same range asked for twice: " <>
+             inspect(ranges_asked_for)
+
+    assert "10.0.0.0/16" in ranges_asked_for,
+           "expected the primary zone to keep the project's original, already-created range, " <>
+             "got #{inspect(ranges_asked_for)}"
 
     assert Enum.any?(resources, &(&1.kind == "registry" and &1.identifier =~ "environment=prod")),
            "expected prod's registry to be recorded, got #{inspect(resources)}"
