@@ -142,6 +142,11 @@ defmodule CodeMySpec.Provisioning.Builder do
     with {:ok, spec} <- builder_spec(architecture),
          opts = with_builder_image(scope, architecture, opts),
          {:ok, server} <- start_builder(scope, ref, spec, opts) do
+      Logger.info(
+        "[Builder] #{architecture} builder #{server_name(server)} is up " <>
+          "(image #{inspect(Keyword.get(opts, :builder_image, @builder_image))}) — building #{ref}"
+      )
+
       # A builder outlives a raise, a non-zero exit and an early return alike,
       # and each of those leaves a box nobody is watching on an invoice
       # somebody is paying. So every path destroys.
@@ -152,6 +157,7 @@ defmodule CodeMySpec.Provisioning.Builder do
       # paths still only have to destroy, since there is no result to decorate.
       try do
         result = run(scope, server, ref, architecture, opts)
+        log_build_outcome(result, server)
         record_disposition(result, server, destroy(scope, server, opts), opts)
       rescue
         error ->
@@ -163,6 +169,18 @@ defmodule CodeMySpec.Provisioning.Builder do
           :erlang.raise(kind, value, __STACKTRACE__)
       end
     end
+  end
+
+  # The only line that says a build actually finished, one way or the other
+  # — without it, "silence" and "still going" read identically in the logs,
+  # which is the exact question there was no way to answer live against
+  # MarketMySpec's own first real runs through this path.
+  defp log_build_outcome({:ok, %Build{} = build}, server) do
+    Logger.info("[Builder] #{server_name(server)} built #{build.image}")
+  end
+
+  defp log_build_outcome({:error, reason}, server) do
+    Logger.warning("[Builder] #{server_name(server)} failed: #{inspect(reason)}")
   end
 
   defp record_disposition({:ok, %Build{} = build}, _server, disposition, opts) do

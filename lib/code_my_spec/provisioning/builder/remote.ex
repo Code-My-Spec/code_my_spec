@@ -14,6 +14,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   produced the wrong one is caught by the check rather than waved through it.
   """
 
+  require Logger
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Wait
 
@@ -45,10 +47,18 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     dir = Keyword.get(opts, :build_dir, "/build")
 
+    # One line per phase — the only signal, short of SSHing in by hand, that
+    # a build is still moving rather than stuck. Confirmed live: nothing here
+    # logged anything between "started" and "done or failed", so a long real
+    # build and a hung one were indistinguishable from the outside.
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
+         _ = Logger.info("[Builder] ssh reachable, delivering #{ref}"),
          :ok <- deliver_source(deliver, ref, dir, opts),
+         _ = Logger.info("[Builder] source delivered, running docker build"),
          :ok <- docker_build(run, reference, ref, dir, opts),
+         _ = Logger.info("[Builder] docker build finished, pushing #{reference}"),
          :ok <- maybe_push(run, reference, opts),
+         _ = Logger.info("[Builder] pushed #{reference}, reading back its architecture"),
          {:ok, architecture} <- built_architecture(run, reference) do
       {:ok, %{reference: reference, architecture: architecture}}
     end

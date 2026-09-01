@@ -35,6 +35,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
   `CodeMySpec.Generators` guards on the other side).
   """
 
+  require Logger
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Transport
   alias CodeMySpec.Provisioning.Wait
@@ -92,12 +94,26 @@ defmodule CodeMySpec.Provisioning.Deploy do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     script = deploy_script(env, opts)
 
+    Logger.info("[Deploy] migrating #{environment}")
+
+    # One line per phase, same reason `Builder.Remote.build/4` just grew
+    # them: nothing here logged anything between "started" and "done or
+    # failed", so a slow migrate/health-check/swap and a stuck one looked
+    # identical from the outside.
     with {:ok, migrate_out, result} <- migrate(env, environment, script, now, opts),
+         _ = Logger.info("[Deploy] #{environment} migrated, checking health"),
          {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out)),
+         _ = Logger.info("[Deploy] #{environment} healthy, swapping"),
          {:ok, result} <- swap(env, environment, script, result, now, opts) do
+      Logger.info("[Deploy] #{environment} swapped")
       %{result | output: migrate_out, live_version: :new}
     else
-      {:error, %Result{} = refused} -> refused
+      {:error, %Result{} = refused} ->
+        Logger.warning(
+          "[Deploy] #{environment} refused at #{refused.failed_phase}: #{refused.reason}"
+        )
+
+        refused
     end
   end
 
