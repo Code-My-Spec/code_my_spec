@@ -47,7 +47,14 @@ defmodule CodeMySpecSpex.Story985.Criterion3034Spex do
       given_ :context_spec_task_started
 
       given_ "a stop where the compile failed and the analyzers were skipped because of it", context do
-        {:ok, given_a_main_checkout(context, "the main checkout")}
+        context = given_a_main_checkout(context, "the main checkout")
+
+        # Opening the conversation is what brings the project's agent into
+        # being — `given_a_main_checkout/2` designates the checkout and stops
+        # there. Without this the hook fires while `main_agent/1` is still nil,
+        # the recorder correctly does nothing, and the `then_` reads as the
+        # feature being absent when the premise never held.
+        {:ok, Map.put(context, :conversation_path, main_conversation_path(context))}
       end
 
       when_ "I read the transcript", context do
@@ -69,7 +76,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3034Spex do
                  "the stop hook did not answer: #{conn.status}"
         end)
 
-        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
+        {:ok, _live, html} = live(context.conn, context.conversation_path)
 
         {:ok, Map.put(context, :transcript, html)}
       end

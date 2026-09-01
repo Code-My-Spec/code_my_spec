@@ -16,6 +16,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Conversations
+
   require Logger
 
   alias CodeMySpec.Components
@@ -168,6 +171,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp handle_existing(%{status: :prepared} = task, scope, session, _req, agent_id, frame) do
     case Sessions.activate_task(scope, session, task.id, agent_id) do
       {:ok, _updated} ->
+        # Activation is the hand-over, whichever way the task got here. A
+        # session prepares its whole chain up front, so most work an agent is
+        # given was a row before it was given — noting only creation would miss
+        # every ordinary case and catch only the first.
+        note_handover(scope, agent_id, task)
         return_prompt(task, scope, frame)
 
       {:error, reason} ->
@@ -194,6 +202,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     case session |> Session.add_task(task_attrs) |> Repo.update() do
       {:ok, updated_session} ->
         task = Session.find_task(updated_session, task_attrs.id)
+        note_handover(scope, agent_id, requirement)
         return_prompt(task, scope, frame)
 
       {:error, reason} ->
@@ -201,6 +210,29 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
         {:reply, TasksMapper.error("Failed to create task: #{inspect(reason)}"), frame}
     end
   end
+
+  # The agent being given work, on its own thread. Story 985: an agent that
+  # suddenly starts on something new had no visible cause, because the thing
+  # that gave it the work is the orchestrator rather than anything the agent
+  # said.
+  #
+  # No count: handing over a requirement has no quantity, and a blank number
+  # renders as one that means nothing.
+  defp note_handover(scope, agent_id, work) do
+    Conversations.record_orchestrator_action(
+      agent_id || Agents.main_agent(scope),
+      "Gave you the next requirement: #{handover_name(work)}."
+    )
+  rescue
+    error ->
+      Logger.warning("[StartTask] could not record the hand-over: " <> Exception.message(error))
+      :ok
+  end
+
+  # A requirement names itself; a task names the requirement it satisfies.
+  defp handover_name(%{name: name}) when is_binary(name), do: name
+  defp handover_name(%{requirement_name: name}) when is_binary(name), do: name
+  defp handover_name(_work), do: "work"
 
   defp build_task_attrs(scope, requirement, agent_id) do
     {component_id, component_module_name, story_id} = build_entity_refs(scope, requirement)

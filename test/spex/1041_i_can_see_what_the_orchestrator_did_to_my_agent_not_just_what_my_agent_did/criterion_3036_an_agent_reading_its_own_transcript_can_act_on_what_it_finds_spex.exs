@@ -57,7 +57,14 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
       given_ :context_spec_task_started
 
       given_ "an agent reading back the conversation it is in", context do
-        {:ok, given_a_main_checkout(context, "the main checkout")}
+        context = given_a_main_checkout(context, "the main checkout")
+
+        # Opening the conversation is what brings the project's agent into
+        # being — `given_a_main_checkout/2` designates the checkout and stops
+        # there. Without this the hook fires while `main_agent/1` is still nil,
+        # the recorder correctly does nothing, and the `then_` reads as the
+        # feature being absent when the premise never held.
+        {:ok, Map.put(context, :conversation_path, main_conversation_path(context))}
       end
 
       when_ "it reaches an orchestrator action that summarises something", context do
@@ -65,7 +72,14 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
         |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
-          "session_id" => context.session_id
+          "session_id" => context.session_id,
+          # A stop that found nothing has nothing to count, and this criterion
+          # is about what an action says when there *is* something. Fed the
+          # same way the 555 spex feed analyzer output, so the problems are
+          # real records rather than a number written into the assertion.
+          "test_output_files" => %{
+            "compile" => Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
+          }
         })
         |> then(fn conn ->
           # A `when_` whose own action quietly did nothing produces a `then_`
@@ -75,7 +89,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
                  "the stop hook did not answer: #{conn.status}"
         end)
 
-        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
+        {:ok, _live, html} = live(context.conn, context.conversation_path)
 
         {:ok, Map.put(context, :transcript, html)}
       end
@@ -90,7 +104,16 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
       end
 
       then_ "and not a link, which it cannot follow", context do
-        refute context.transcript =~ ~r{href="[^"]*problems},
+        # The action's own markup, not the page's. The sidebar has a Problems
+        # link and always will — what matters is whether the *action* offers a
+        # click where it should offer a call.
+        action =
+          case Regex.run(~r{<div[^>]*data-test="orchestrator-action".*?</div>}s, context.transcript) do
+            [markup] -> markup
+            nil -> flunk("no orchestrator action to read")
+          end
+
+        refute action =~ ~r{<a\s},
                "the action points at a page. A person clicks it and an agent cannot, " <>
                  "and both are reading this transcript."
 

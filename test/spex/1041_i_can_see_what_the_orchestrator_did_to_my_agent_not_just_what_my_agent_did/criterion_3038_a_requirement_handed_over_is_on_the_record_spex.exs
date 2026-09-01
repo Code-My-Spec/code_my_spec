@@ -58,11 +58,22 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
       when_ "the orchestrator gives it the next requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        # The same shape `:context_spec_task_started` uses. A start_task with no
+        # entity id is refused before it ever hands anything over, and a `when_`
+        # that does not check its own reply turns that into a `then_` failing
+        # for the wrong reason.
+        {:reply, response, _frame} =
           CodeMySpec.McpServers.Tasks.Tools.StartTask.execute(
-            %{requirement_name: "component_design", entity_type: "component"},
+            %{
+              requirement_name: "test_file",
+              entity_type: "component",
+              entity_id: to_string(context.component.id),
+              session_id: context.session_id
+            },
             frame
           )
+
+        refute response.isError, "start_task refused: #{inspect(response)}"
 
         {:ok, _live, html} = live(context.conn, main_conversation_path(context))
 
