@@ -51,8 +51,41 @@ e2e? = System.get_env("CMS_E2E") in ~w(1 true)
 #
 # The primary checkout keeps the bare name, and an explicit
 # MIX_TEST_PARTITION still wins.
+# The working copy's own recorded value first, and the environment after it.
+#
+# That order is the whole point of the variable. It exists so each worktree gets
+# its own schema, and it was resolved environment-first — so a session whose
+# shell inherited another worktree's value ran every `mix test` against that
+# worktree's database. Two sessions, one schema, each migrating past the other:
+# `mix ecto.migrate` answers "already up" truthfully while `\d stories` disagrees
+# with what `schema_migrations` says was applied. Issue 63265687, where the
+# reporter and the other session turned out to be the same pair of worktrees.
+#
+# Same inversion as `CMS_PROJECT_ID` (a08f3d09) and `CMS_HARNESS_ID` (1db9c15c),
+# for the same reason: a working copy knows what it is, and the environment
+# belongs to whatever launched the shell.
+#
+# The recorded value is the one onboarding wrote and the one the harness reads
+# through `TestDatabase.partition_for/1`, so preferring it also stops config and
+# harness disagreeing — the cwd fallback below answers `_phx-new-generator`
+# where the recording says `h789652af`, which is a third database again.
+#
+# Read with a regex rather than a JSON decoder: this file is evaluated before
+# the application is compiled, and a config that cannot be read must degrade to
+# the fallback rather than fail to load.
+recorded_partition =
+  with {:ok, contents} <- File.read(Path.join(File.cwd!(), ".claude/settings.local.json")),
+       [_, value] <- Regex.run(~r/"MIX_TEST_PARTITION"\s*:\s*"([^"]+)"/, contents) do
+    value
+  else
+    _ -> nil
+  end
+
+# In a linked worktree `.git` is a file pointing at the real git dir rather than
+# a directory. The primary checkout keeps the bare name.
 partition =
-  System.get_env("MIX_TEST_PARTITION") ||
+  recorded_partition ||
+    System.get_env("MIX_TEST_PARTITION") ||
     if File.regular?(Path.join(File.cwd!(), ".git")),
       do: "_" <> Path.basename(File.cwd!()),
       else: ""
