@@ -142,6 +142,17 @@ defmodule CodeMySpec.Projects.Project do
     timestamps(type: :utc_datetime)
   end
 
+  @doc """
+  A fresh deploy key.
+
+  Here rather than in `Projects`, because two callers now mint one — creation
+  and `ensure_deploy_key/2` — and a credential generated two ways eventually
+  gets generated two lengths.
+  """
+  @spec mint_deploy_key() :: String.t()
+  def mint_deploy_key,
+    do: "dk_" <> (32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+
   @doc false
   def changeset(project, attrs, user_scope) do
     project

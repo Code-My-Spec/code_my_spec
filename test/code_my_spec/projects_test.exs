@@ -222,6 +222,41 @@ defmodule CodeMySpec.ProjectsTest do
       assert project.account_id == account.id
     end
 
+    # A key is what a harness presents to join a project's channel, so a project
+    # without one has a first checkout that cannot join: the daemon falls back
+    # to whatever key it was started with, which belongs to a different project,
+    # and the join is refused. QA 963 hit exactly that on a project made through
+    # the form, and nothing on the way named the missing key.
+    test "create_project/2 mints a deploy key, so the project's first checkout can join" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      assert {:ok, %Project{} = project} =
+               Projects.create_project(scope, %{name: "keyed", module_name: "Keyed"})
+
+      assert is_binary(project.deploy_key) and project.deploy_key != "",
+             "a project created with no key has a checkout that cannot authenticate as it"
+
+      assert String.starts_with?(project.deploy_key, "dk_")
+    end
+
+    test "create_project/2 keeps a deploy key the caller supplied" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      assert {:ok, %Project{} = project} =
+               Projects.create_project(scope, %{
+                 name: "byo",
+                 module_name: "Byo",
+                 deploy_key: "dk_supplied"
+               })
+
+      assert project.deploy_key == "dk_supplied",
+             "minting over a key the caller gave would invalidate whatever already holds it"
+    end
+
     test "create_project/2 with invalid data returns error changeset" do
       user = user_fixture()
       account = account_with_owner_fixture(user)

@@ -285,9 +285,7 @@ defmodule CodeMySpec.Projects do
       do: {:ok, project}
 
   def ensure_deploy_key(%Scope{} = scope, %Project{} = project) do
-    key = "dk_" <> (32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
-
-    update_project(scope, project, %{deploy_key: key})
+    update_project(scope, project, %{deploy_key: Project.mint_deploy_key()})
   end
 
   @doc """
@@ -357,10 +355,50 @@ defmodule CodeMySpec.Projects do
   def create_project(%Scope{} = scope, attrs) do
     with {:ok, project = %Project{}} <-
            %Project{}
-           |> Project.changeset(attrs, scope)
+           |> Project.changeset(with_deploy_key(attrs), scope)
            |> Repo.insert() do
       broadcast(scope, {:created, project})
       {:ok, project}
+    end
+  end
+
+  # Every project needs one, so it gets one here rather than the first time
+  # something happens to ask.
+  #
+  # A key is what a harness presents to join a project's channel. Without one a
+  # project's first checkout cannot join at all: the daemon falls back to
+  # whatever key it was started with, which belongs to a different project, and
+  # the join is refused. QA 963 walked into that — a project made through the
+  # form, a checkout onboarded onto it, and a first message that could not be
+  # delivered — and nothing on the way named a missing key.
+  #
+  # `ensure_deploy_key/2` existed and had one caller, `Workspaces`, which mints
+  # lazily at the moment an instance needs a credential. Lazy is right there and
+  # wrong here: joining is not an occasion anybody triggers, it is what a
+  # checkout does the moment it exists.
+  #
+  # Minted into the insert rather than by an update afterwards, so a listener
+  # never sees `{:updated, …}` for a project it has not seen created. The
+  # Generate control on the form is a rotate now, which is what it always read
+  # as.
+  defp with_deploy_key(attrs) do
+    case deploy_key_in(attrs) do
+      key when is_binary(key) and key != "" -> attrs
+      _ -> put_attr(attrs, "deploy_key", Project.mint_deploy_key())
+    end
+  end
+
+  defp deploy_key_in(attrs) when is_map(attrs),
+    do: Map.get(attrs, "deploy_key") || Map.get(attrs, :deploy_key)
+
+  defp deploy_key_in(_attrs), do: nil
+
+  # Whichever key style the caller used. A form sends strings and a fixture
+  # sends atoms, and mixing them in one map means the changeset reads only half.
+  defp put_attr(attrs, key, value) when is_map(attrs) do
+    case Enum.any?(Map.keys(attrs), &is_atom/1) do
+      true -> Map.put(attrs, String.to_existing_atom(key), value)
+      false -> Map.put(attrs, key, value)
     end
   end
 
