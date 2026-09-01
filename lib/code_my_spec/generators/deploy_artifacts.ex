@@ -524,21 +524,6 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     fi
 
     migrate() {
-      # `kamal app exec` loads env/roles/<role>.env from the host, and kamal
-      # writes that file only as part of booting a container — so a host
-      # that has never had a successful deploy has never booted, and has no
-      # env file at all. Confirmed live against MarketMySpec's uat, the
-      # first environment this pipeline ever reached a real migrate against:
-      # `docker: open .kamal/apps/.../env/roles/web.env: no such file or
-      # directory`, exit 125, before the migration even started. `swap`
-      # would have created it, but swap runs after migrate specifically so a
-      # migration failure never moves traffic (see this script's own
-      # header) — so migrate cannot depend on the thing only swap creates.
-      # `kamal env push` writes the file without booting anything, which is
-      # exactly what a first deploy is missing. Idempotent on every
-      # later deploy too: it just rewrites the same file kamal already wrote.
-      kamal env push --config-file "$CONFIG" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}"
-
       # `-e`, so the migration carries the key instead of reading the host's
       # copy. `kamal app exec` loads env/roles/<role>.env from the host, and
       # kamal writes that only when it boots a container — so the migration
