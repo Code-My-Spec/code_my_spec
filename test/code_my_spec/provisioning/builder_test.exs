@@ -642,7 +642,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     test "clears the orphan and retries the create" do
       owner = self()
       name = "builder-abc123"
-      orphan = %{"id" => 999, "name" => name}
+      orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
 
       create = fn _scope, _name, _create_opts ->
         case Process.get(:create_calls, 0) do
@@ -665,16 +665,52 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         {:ok, %{reference: "img", architecture: arch}}
       end
 
+      # `now` is well past the orphan's `created` — past `@orphan_max_age_minutes`,
+      # so it reads as abandoned rather than somebody's live build.
       assert {:ok, _} =
                Builder.build(
                  scope(),
                  "abc123",
-                 opts(create: create, find: find, destroy: destroy, build_fun: build)
+                 opts(
+                   create: create,
+                   find: find,
+                   destroy: destroy,
+                   build_fun: build,
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
                )
 
       # The orphan goes, and so does the box this run actually built on.
       assert_received {:destroyed, 999}
       assert_received {:destroyed, 42}
+    end
+
+    test "leaves a same-named collision alone when it is younger than the age cutoff" do
+      name = "builder-abc123"
+      recent = %{"id" => 999, "name" => name, "created" => "2026-08-03T01:50:00Z"}
+
+      create = fn _scope, _name, _create_opts ->
+        {:error,
+         {:hetzner_error, 409,
+          %{"error" => %{"code" => "uniqueness_error", "message" => "server name #{name} is already used"}}}}
+      end
+
+      find = fn _scope, ^name -> {:ok, recent} end
+
+      # No `:destroy` fake — a destroy call here would raise the default
+      # `Keyword.get(opts, :destroy, ...)` real Hetzner call and fail the
+      # test, which is exactly the point: nothing this young should be
+      # destroyed on a name collision alone.
+      assert {:error, {:orphaned_builder, message}} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 Keyword.merge(opts(create: create, find: find),
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
+               )
+
+      assert message =~ "too recent"
     end
 
     test "retries the create when the orphan is gone by the time it looks" do
@@ -701,7 +737,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
     test "surfaces a clear, distinguishing error when the orphan cannot be removed" do
       name = "builder-abc123"
-      orphan = %{"id" => 999, "name" => name}
+      orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
 
       create = fn _scope, _name, _create_opts ->
         {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
@@ -711,7 +747,16 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       destroy = fn _scope, 999 -> {:error, {:hetzner_error, 423, %{"error" => %{"code" => "locked"}}}} end
 
       assert {:error, {:orphaned_builder, message}} =
-               Builder.build(scope(), "abc123", opts(create: create, find: find, destroy: destroy))
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   create: create,
+                   find: find,
+                   destroy: destroy,
+                   now: fn -> ~U[2026-08-03 02:00:00Z] end
+                 )
+               )
 
       assert message =~ "already exists at Hetzner"
       assert message =~ "could not be removed"

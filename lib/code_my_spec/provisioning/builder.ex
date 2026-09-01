@@ -493,28 +493,37 @@ defmodule CodeMySpec.Provisioning.Builder do
   end
 
   # The name is deterministic from `ref` (criterion: same commit always
-  # builds on the same box name), so a collision here is not two callers
-  # racing — RunLock already serializes runs per project — it is a box an
-  # earlier run created and never reached `destroy/3` for: a crash, a kill, an
-  # MCP transport timeout (issue faaf76b6).
+  # builds on the same box name), so RunLock (project.id-keyed) rules out two
+  # runs of *this* project racing each other onto it. It does not rule out
+  # everything else the account can do to the same name: a different project
+  # whose own ref happens to collide, a manual retry issued outside
+  # `run_provisioning_step`, anything else with a Hetzner token for this
+  # account. Confirmed live against MarketMySpec: a builder mid-deploy — SSH
+  # reachable, image already pushed, migrate about to run against it — was
+  # destroyed out from under a build that owned it, and there was no crash,
+  # no kill, nothing RunLock would have seen, to explain it. The only honest
+  # read left was that this destroyed it: unconditionally, on nothing but a
+  # name match, with no check that the thing at that name was actually dead.
   #
   # `Hetzner.ensure_server/3` would adopt a same-named collision, and that is
-  # right for a server meant to live for months. It is wrong here: a builder
-  # is single-use and destroyed at the end of every build specifically so one
-  # customer's source never sits on a box that held another's (see
-  # moduledoc). A box that survived to collide is not a peer to build on top
-  # of — it may hold a half-finished push or a docker daemon left mid-crash
-  # from whatever killed the run that made it. So this clears the orphan and
-  # retries the create once, rather than adopting.
+  # right for a server meant to live for months. Adopting is wrong here — a
+  # builder is single-use and destroyed at the end of every build specifically
+  # so one customer's source never sits on a box that held another's (see
+  # moduledoc) — but destroying on sight is just as wrong when the box is new
+  # enough to plausibly still be somebody's live build. `stale_orphan?`'s own
+  # age threshold is the line already drawn elsewhere in this module between
+  # "abandoned" and "still running" (see `reap_orphaned_builders/2`); this is
+  # the same line, so a name collision destroys only what age already marks a
+  # crash, a kill, or an MCP transport timeout (issue faaf76b6) — and refuses,
+  # loud, rather than kill something too young to be one of those.
   defp reclaim_orphan(scope, name, create, create_opts, opts) do
     find = Keyword.get(opts, :find, &Hetzner.find_server/2)
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
+    cutoff = DateTime.add(now.(), -@orphan_max_age_minutes * 60, :second)
 
     case find.(scope, name) do
       {:ok, orphan} ->
-        case destroy(scope, orphan, opts) do
-          :ok -> create.(scope, name, create_opts)
-          other -> orphan_undestroyable_error(name, other)
-        end
+        reclaim_if_stale(scope, orphan, cutoff, name, create, create_opts, opts)
 
       {:error, :not_found} ->
         # Destroyed between the 409 and this lookup — by another cleanup, or
@@ -528,6 +537,25 @@ defmodule CodeMySpec.Provisioning.Builder do
           "A builder named #{name} already exists at Hetzner, left over from an earlier " <>
             "interrupted run, but looking it up to clear it failed: #{inspect(reason)}."}}
     end
+  end
+
+  defp reclaim_if_stale(scope, orphan, cutoff, name, create, create_opts, opts) do
+    if created_before?(orphan, cutoff) do
+      case destroy(scope, orphan, opts) do
+        :ok -> create.(scope, name, create_opts)
+        other -> orphan_undestroyable_error(name, other)
+      end
+    else
+      too_young_to_reclaim_error(name)
+    end
+  end
+
+  defp too_young_to_reclaim_error(name) do
+    {:error,
+     {:orphaned_builder,
+      "A builder named #{name} already exists at Hetzner and is too recent to be an " <>
+        "abandoned run — most likely a live build using it right now. Refusing to destroy " <>
+        "it; retry once that build finishes."}}
   end
 
   defp orphan_undestroyable_error(name, reason) do
