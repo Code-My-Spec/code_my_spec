@@ -565,13 +565,22 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # the whole string as `sh -c`'s single argument is what makes the timeout
   # apply to the chain as a whole, not just its first word.
   #
+  # `-k 10`: `timeout` alone only sends SIGTERM, and SIGTERM is a request, not
+  # a guarantee — `docker build` (or something under it: a buildx subprocess,
+  # BuildKit's own daemon) can outlive the shell `timeout` actually killed,
+  # holding the ssh channel open behind it. Confirmed live against
+  # MarketMySpec: a build ran *past* its own 30-minute bound with no error,
+  # which only makes sense if `timeout` fired and something underneath it
+  # kept running anyway. `-k 10` escalates to SIGKILL — uncatchable — 10
+  # seconds after SIGTERM if the process group is still alive by then.
+  #
   # `@doc false`: exists so the exact wrapping is assertable without a real ssh
   # connection, the same reason `image_tag/2` and
   # `commit_generated_configuration/1` are public.
   @doc false
   @spec wrap_with_timeout(String.t(), pos_integer()) :: String.t()
   def wrap_with_timeout(command, timeout_s) do
-    "timeout #{timeout_s} sh -c #{shell_quote(command)}"
+    "timeout -k 10 #{timeout_s} sh -c #{shell_quote(command)}"
   end
 
   # Shared by the runner and by `ssh_deliver/2`, which reaches the same box on

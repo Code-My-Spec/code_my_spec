@@ -413,7 +413,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       wrapped = Remote.wrap_with_timeout("cd /tmp && docker build . && docker push x", 1800)
 
       assert wrapped ==
-               "timeout 1800 sh -c 'cd /tmp && docker build . && docker push x'"
+               "timeout -k 10 1800 sh -c 'cd /tmp && docker build . && docker push x'"
     end
 
     # A command containing its own single quotes (a shell_escape'd password, a
@@ -422,7 +422,19 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     test "quotes a command that already contains single quotes" do
       wrapped = Remote.wrap_with_timeout("echo it's here", 60)
 
-      assert wrapped == "timeout 60 sh -c 'echo it'\\''s here'"
+      assert wrapped == "timeout -k 10 60 sh -c 'echo it'\\''s here'"
+    end
+
+    # The actual gap this closes: SIGTERM alone is a request a process can
+    # outlive, not a guarantee. Confirmed live against MarketMySpec — a build
+    # ran *past* its own 30-minute bound with no error, which only makes
+    # sense if `timeout` fired and something underneath the shell it killed
+    # (a buildx subprocess, BuildKit's own daemon) kept running anyway,
+    # holding the ssh channel open behind it.
+    test "escalates to SIGKILL if the command outlives its own SIGTERM" do
+      wrapped = Remote.wrap_with_timeout("docker build .", 600)
+
+      assert wrapped =~ ~r/^timeout -k 10 600 /
     end
   end
 end
