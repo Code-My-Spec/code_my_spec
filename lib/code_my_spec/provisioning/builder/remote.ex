@@ -511,10 +511,13 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp architecture("x86_64"), do: {:ok, :x86}
   defp architecture(other), do: {:error, {:unknown_architecture, other}}
 
-  # 30 minutes: generous next to the ~15-20 minutes a real build+push+migrate+swap
-  # takes end to end, tight enough that a hang stops costing a human their own
-  # attention to notice and kill.
-  @default_remote_timeout_s 1800
+  # 10 minutes. The first real end-to-end run against MarketMySpec — build,
+  # push, migrate, health check, swap — finished in under 7; this bounds the
+  # single slowest step among those (the docker build) at roughly 1.5x that
+  # whole pipeline, not the ~20-minute guess made before any real run had
+  # happened. A wider margin just makes a genuine hang cost more attention to
+  # notice, which is the exact failure this exists to bound.
+  @default_remote_timeout_s 600
 
   # One SSH invocation per command, which is slower than holding a session open
   # and much easier to reason about: every command is independently visible in
