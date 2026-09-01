@@ -16,6 +16,8 @@ defmodule CodeMySpec.Provisioning.Builder do
   Publishing is `Registry`'s. This owns the box and the build.
   """
 
+  require Logger
+
   alias CodeMySpec.Integrations
   alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Deploy
@@ -298,8 +300,31 @@ defmodule CodeMySpec.Provisioning.Builder do
         {:ok, image["id"]}
       end
 
-    _ = destroy.(scope, server_id(server))
+    destroy_temp_server(destroy, scope, server, architecture)
     result
+  end
+
+  # `_ = destroy.(...)` was the original shape here, and it is exactly the
+  # kind of silent discard this codebase warns against elsewhere: a refused
+  # or failed delete left no trace anywhere a caller — or a log — could ever
+  # see it, so a temp bootstrap box stuck on an account's invoice looked
+  # identical to one that was cleanly destroyed. Logged loudly rather than
+  # threaded into the return value, the same reason `Builder.destroy/3`
+  # itself is best-effort: a cleanup failure must not turn a successful
+  # image build into a failed one, but it must not vanish either.
+  defp destroy_temp_server(destroy, scope, server, architecture) do
+    case destroy.(scope, server_id(server)) do
+      {:ok, _} ->
+        :ok
+
+      other ->
+        Logger.error(
+          "[Builder] could not destroy temporary #{architecture} bootstrap server " <>
+            "#{server_id(server)} after building its image: #{inspect(other)}. " <>
+            "It is still running and being billed; delete it manually or via " <>
+            "mix cms.provisioning_leaks."
+        )
+    end
   end
 
   # Same shape as `Remote.await_ssh/4` — a plain poll for the observable

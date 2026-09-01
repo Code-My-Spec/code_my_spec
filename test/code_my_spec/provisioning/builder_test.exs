@@ -14,6 +14,8 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   """
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.Deploy
@@ -338,6 +340,40 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                )
 
       assert_received :destroyed
+    end
+
+    # `_ = destroy.(...)` used to discard this outright — a refused or
+    # failed delete left no trace anywhere, so a temp box stuck on the
+    # account's invoice looked identical to one cleanly destroyed.
+    test "logs loudly, rather than silently, when the temp box cannot be destroyed" do
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, _opts ->
+        n = Agent.get_and_update(counter, &{&1, &1 + 1})
+        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+      destroy = fn _scope, 42 -> {:error, {:hetzner_error, 423, %{}}} end
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 777} =
+                   Builder.ensure_builder_image(scope(), :x86,
+                     list_images: list_images,
+                     create: create,
+                     run: run,
+                     create_image: create_image,
+                     destroy: destroy,
+                     image_poll_interval_ms: 0
+                   )
+        end)
+
+      assert log =~ "could not destroy temporary x86 bootstrap server"
+      assert log =~ "42"
+      assert log =~ "still running and being billed"
     end
 
     test "destroys the temp box even when the bootstrap fails" do
