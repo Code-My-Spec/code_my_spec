@@ -156,10 +156,21 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # it" and then invited you to message it. The moduledoc above is the argument:
   # a box with no lane behind it accepts text and drops it, which is worse than
   # no box, and an *offer* to open one is the same promise one click earlier.
-  defp chattable?(%{chats: []}), do: false
+  defp chattable?(row), do: reachable_chats(row) != []
 
-  defp chattable?(%{chats: chats}),
-    do: Enum.any?(chats, &(&1.agent.engine == :pi and &1.agent.status == :running))
+  # The lanes a message would actually reach, and the only ones offered a
+  # button.
+  #
+  # This existed as a predicate over the whole row while the buttons were drawn
+  # from the unfiltered list, so the two disagreed and the page rendered both
+  # halves of the disagreement: "Open agent chat" for a lane, and underneath it
+  # "there is nothing joined to receive a message". One function now, because
+  # the question "can this be talked to" has one answer per chat and the offer
+  # and the explanation are the same decision seen from two sides.
+  defp reachable_chats(%{chats: chats}) when is_list(chats),
+    do: Enum.filter(chats, &(&1.agent.engine == :pi and &1.agent.status == :running))
+
+  defp reachable_chats(_row), do: []
 
   # Why there is nothing to talk to, in the terms of this copy rather than in
   # general. "A Claude Code agent reports over hooks" is a true sentence and the
@@ -311,7 +322,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           </p>
 
           <div
-            :for={chat <- @row.chats}
+            :for={chat <- reachable_chats(@row)}
             class="mt-3 flex items-center gap-3"
             data-test="agent-chat"
           >
