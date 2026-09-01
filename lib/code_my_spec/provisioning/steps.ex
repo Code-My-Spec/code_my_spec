@@ -3455,11 +3455,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   # command..."/"INFO [...] Running docker login..." progress line ahead of
   # it, but not every tool this reaches agrees — a `gem` crash is a Ruby
   # exception whose own "ERROR: ..." line comes *before* the backtrace it
-  # raises, not after. Confirmed live against MarketMySpec, three times now
-  # in three different failure shapes (an install log, an SSHKit exception,
-  # a bare Ruby backtrace) — a single-ended slice got two of those right and
-  # the third wrong, because it guessed the tool's convention instead of
-  # keeping enough of the message to not need to.
+  # raises, not after. Confirmed live against MarketMySpec, four times now in
+  # four different failure shapes (an install log, an SSHKit exception, a
+  # bare Ruby backtrace, then a Ruby backtrace long enough that even *both*
+  # ends of a 200-character budget missed the description sitting between
+  # them) — a single-ended slice guessed wrong on direction, and a small
+  # two-ended one still guessed wrong on size. `Truncate`'s own default is
+  # wide enough that a real backtrace fits inside it whole; deferred to
+  # rather than repeated here so the two never drift apart again.
   #
   # Public for its own test, same reason as `image_tag/2`: reaching this
   # through `run(:deploy, ...)` means driving a whole failed deploy just to
@@ -3469,7 +3472,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   def with_output(reason, output) when is_binary(output) do
     case String.trim(output) do
       "" -> reason
-      trimmed -> reason <> "\n\n" <> Truncate.head_and_tail(trimmed, 200)
+      trimmed -> reason <> "\n\n" <> Truncate.head_and_tail(trimmed)
     end
   end
 

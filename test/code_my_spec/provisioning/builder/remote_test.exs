@@ -337,7 +337,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
 
     test "keeps both ends of a long failure — apt/needrestart bury theirs at the tail" do
-      noise = String.duplicate("Restarting services...\n", 30)
+      noise = String.duplicate("Restarting services...\n", 200)
 
       run =
         recorder(

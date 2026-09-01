@@ -148,11 +148,10 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   `ruby-full` on a stock Debian image triggers `needrestart`'s own apt hook,
   and its default interactive mode prints a page of "Restarting
   services.../No containers need to be restarted" chatter ahead of whatever
-  actually failed. `devops_status` reports a failure's first 300 characters
-  — confirmed live, that chatter alone pushed the real error (a follow-up
-  `apt-get`/`gem` failure) past the cutoff, reading as truncated nonsense
-  instead of a cause. `-y` alone does not suppress it; needrestart reads its
-  own env var.
+  actually failed — confirmed live, that chatter alone pushed the real error
+  (a follow-up `apt-get`/`gem` failure) past every truncation budget tried
+  so far (see `Truncate`), reading as noise instead of a cause. `-y` alone
+  does not suppress it; needrestart reads its own env var.
 
   `build-essential` is there for `ed25519` — a native-extension gem `kamal`
   pulls in transitively through `net-ssh`, whose `extconf`/`mkmf` step needs

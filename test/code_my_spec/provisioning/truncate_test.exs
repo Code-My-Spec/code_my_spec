@@ -31,8 +31,16 @@ defmodule CodeMySpec.Provisioning.TruncateTest do
     assert result =~ "\n…\n"
   end
 
-  test "defaults to a 300-character budget" do
-    text = String.duplicate("x", 1000)
+  test "defaults to a wide enough budget that a real backtrace fits whole" do
+    # Roughly the length of the multi-frame Ruby backtrace that first showed
+    # both ends of a 300-character budget still missing the line in between.
+    text = String.duplicate("\tfrom /usr/lib/ruby/vendor_ruby/rubygems/x.rb:1:in `y'\n", 15)
+
+    assert Truncate.head_and_tail(text) == text
+  end
+
+  test "still truncates something genuinely larger than the default budget" do
+    text = String.duplicate("x", 5000)
 
     assert String.length(Truncate.head_and_tail(text)) < String.length(text)
   end
