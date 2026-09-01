@@ -635,6 +635,26 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         # ago.
         "-o",
         "ConnectTimeout=10",
+        # `ConnectTimeout` only bounds the initial handshake — once connected,
+        # ssh has no way on its own to notice the connection has gone silent.
+        # `wrap_with_timeout/2` bounds how long the *remote* command runs, but
+        # that does nothing if the TCP connection itself dies quietly after
+        # the command starts (a dropped NAT mapping, a path that stops
+        # delivering packets with no RST or FIN) — the remote `timeout` can
+        # fire, kill the command, and try to report an exit status, and none
+        # of that ever reaches a client with nothing left to receive it on.
+        # Confirmed live against MarketMySpec: a build outlived its own
+        # 10-minute bound (with the SIGKILL escalation already in place) by
+        # over ten minutes with zero signal either way — consistent with the
+        # remote side having finished and nothing carrying the news back.
+        # These make the *client* notice: a probe every 15s of silence, and
+        # ssh gives up after 4 straight go unanswered — 60s to detect a truly
+        # dead connection, not the tens of minutes `System.cmd/3`'s own total
+        # absence of a timeout would otherwise wait.
+        "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=4",
         "-i",
         key,
         "root@#{ip(server)}"
