@@ -276,6 +276,51 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
+    # The bug this guards: `create_image` snapshots the block device as it is
+    # the instant it is called — a process exiting 0 says its writes were
+    # issued, not that the kernel has flushed them off the page cache and
+    # onto it. Confirmed live against MarketMySpec: `gem install kamal` ran
+    # to completion and every gemspec it had just written came back
+    # corrupted in the resulting snapshot, reused across every later build
+    # from it. `sync` has to run, and run *before* the snapshot, not after.
+    test "syncs the disk before snapshotting, not after" do
+      owner = self()
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, _opts ->
+        n = Agent.get_and_update(counter, &{&1, &1 + 1})
+        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+
+      run = fn
+        ["command -v kamal"] -> {"", 1}
+        ["sync"] -> send(owner, :synced) && {"", 0}
+        [_command] -> {"", 0}
+      end
+
+      create_image = fn _scope, 42, _image_opts ->
+        # By the time the snapshot is taken, the disk must already have been
+        # synced — asserted here, at the one call that matters, rather than
+        # on call order overall.
+        assert_received :synced
+        {:ok, %{"image" => %{"id" => 777}}}
+      end
+
+      destroy = fn _scope, 42 -> {:ok, %{}} end
+
+      assert {:ok, 777} =
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+    end
+
     test "the source server is not destroyed while Hetzner is still creating the snapshot" do
       owner = self()
       {:ok, counter} = Agent.start_link(fn -> 0 end)

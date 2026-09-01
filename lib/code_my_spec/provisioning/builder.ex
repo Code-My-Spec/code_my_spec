@@ -309,6 +309,7 @@ defmodule CodeMySpec.Provisioning.Builder do
     result =
       with :ok <- Remote.await_ssh(run, attempts, opts),
            :ok <- Remote.ensure_kamal(run),
+           :ok <- sync_disk(run),
            {:ok, %{"image" => image}} <-
              create_image.(scope, server_id(server),
                description: "CodeMySpec builder (#{architecture})",
@@ -320,6 +321,36 @@ defmodule CodeMySpec.Provisioning.Builder do
 
     destroy_temp_server(destroy, scope, server, architecture)
     result
+  end
+
+  # A process exiting 0 says its writes were issued, not that they have
+  # reached disk — the kernel buffers and flushes them lazily, on its own
+  # schedule. `create_image` snapshots the block device as it is at that
+  # instant, with no coordination with the filesystem, so anything still
+  # sitting in the page cache is what a torn, crash-consistent snapshot
+  # loses. Confirmed live against MarketMySpec: every gemspec `gem install
+  # kamal` had just written came back "isn't a Gem::Specification (NilClass
+  # instead)" — a real gem install that ran to completion, snapshotted a few
+  # seconds too early. `sync` forces the flush `ensure_kamal`'s own exit
+  # status can't promise, the same reason every cloud provider's own
+  # snapshot guidance says to run it first.
+  #
+  # Never fatal to the build — `sync` failing is rare enough, and stopping
+  # the whole bootstrap over it would refuse a snapshot that might still be
+  # fine, when logging loudly and proceeding costs nothing a caller cannot
+  # already see for itself in the image it gets back.
+  defp sync_disk(run) do
+    case run.(["sync"]) do
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        Logger.warning(
+          "[Builder] sync before snapshot reported exit #{status}: #{String.trim(output)}"
+        )
+
+        :ok
+    end
   end
 
   # `_ = destroy.(...)` was the original shape here, and it is exactly the
