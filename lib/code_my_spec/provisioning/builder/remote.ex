@@ -17,6 +17,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   require Logger
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Provisioning.Wait
 
   # A freshly created box answers the API long before it answers SSH. Polled
@@ -177,11 +178,14 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     case run.([command]) do
       {_, 0} -> :ok
-      # The tail, not the head: `devops_status` keeps only the first 300
-      # characters of whatever reason this becomes, and apt/gem both put
-      # their actual failure at the end of their output, after everything
-      # that went fine. The head is the least useful part to keep.
-      {output, status} -> {:error, {status, output |> trim() |> String.slice(-300, 300)}}
+      # Both ends, not just the tail: apt/needrestart bury their real
+      # failure at the end, after everything that went fine, but a `gem`
+      # crash is a Ruby exception — its own "ERROR: ..." line comes *before*
+      # the backtrace it raises, not after. A tail-only slice confirmed live
+      # against MarketMySpec: it surfaced apt's real cause correctly and,
+      # for a later gem-runner crash, surfaced nothing but backtrace frames
+      # with the one line that said what went wrong left outside the window.
+      {output, status} -> {:error, {status, output |> trim() |> Truncate.head_and_tail()}}
     end
   end
 

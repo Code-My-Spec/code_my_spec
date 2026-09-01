@@ -74,14 +74,14 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   # backtrace never reached devops_status at all, only the label and exit
   # code in front of it.
   describe "missing_line/1" do
-    test "keeps the tail of a long reason, not the head" do
-      tail = String.duplicate("x", 300)
-      detail = String.duplicate("head that must not survive ", 20) <> tail
+    test "keeps both ends of a long reason, not just one" do
+      detail = "the reason starts here" <> String.duplicate("m", 2000) <> "the conclusion ends here"
 
       line = DevopsStatus.missing_line(%{project_name: "Market My Spec", key: "deploy", detail: detail})
 
-      assert String.ends_with?(line, tail)
-      refute line =~ "head that must not survive"
+      assert line =~ "the reason starts here"
+      assert line =~ "the conclusion ends here"
+      assert String.length(line) < String.length(detail)
     end
 
     test "a short reason is unaffected" do

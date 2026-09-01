@@ -336,7 +336,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert command =~ "NEEDRESTART_MODE=a"
     end
 
-    test "keeps the tail of a long failure, where apt and gem put the real cause" do
+    test "keeps both ends of a long failure — apt/needrestart bury theirs at the tail" do
       noise = String.duplicate("Restarting services...\n", 30)
 
       run =
@@ -348,7 +348,28 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert {:error, {1, output}} = Remote.ensure_kamal(run)
 
       assert output =~ "ERROR: the real cause"
-      assert String.length(output) <= 300
+      assert String.length(output) < String.length(noise)
+    end
+
+    # The bug found live, after the tail-only fix above shipped: a Ruby
+    # `gem` crash puts its own "ERROR: ..." line *before* the backtrace it
+    # raises, the opposite of apt/needrestart's convention. A tail-only
+    # slice kept nothing but backtrace frames and lost the one line that
+    # said what went wrong.
+    test "keeps both ends of a long failure — a gem crash puts theirs at the head" do
+      backtrace = String.duplicate("\tfrom /usr/lib/ruby/vendor_ruby/rubygems/x.rb:1\n", 30)
+
+      run =
+        recorder(
+          self(),
+          Map.merge(kamal_missing(), %{
+            "gem install" => {"ERROR: Loading command failed" <> backtrace, 1}
+          })
+        )
+
+      assert {:error, {1, output}} = Remote.ensure_kamal(run)
+
+      assert output =~ "ERROR: Loading command failed"
     end
   end
 

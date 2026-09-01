@@ -39,6 +39,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Resources
 
   schema do
@@ -104,24 +105,23 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   # Truncated because a provider error can be a page of JSON, and the point here
   # is which step and why, not the whole body.
   #
-  # The tail, not the head. Callers below this (`Remote.install_kamal/1`,
-  # `Steps.with_output/2`) already learned to keep the tail of *their own*
-  # output for the same reason — apt/gem/SSHKit chatter buries the actual
-  # error first and its own conclusion last — but this slice sits outside all
-  # of them, on the fully composed "<label> (exit N): <their already-trimmed
-  # tail>" string. A head slice here re-truncates an already-correct tail
-  # right back off the end, discarding exactly what the inner fix kept.
-  # Confirmed live: a kamal-install failure whose real cause was a Ruby gem
-  # backtrace arrived at this layer pre-trimmed to its own last 300
-  # characters, and this then kept only the first 300 of *that* — the label
-  # and exit code, and none of the backtrace the inner fix had preserved.
+  # Both ends, not the head and not just the tail either. Callers below this
+  # (`Remote.install_kamal/1`, `Steps.with_output/2`) already learned that a
+  # single-ended slice guesses which convention the failing tool follows —
+  # apt/gem/SSHKit chatter buries its real cause at the end, but a Ruby `gem`
+  # crash puts its own "ERROR: ..." line *before* the backtrace it raises.
+  # This slice sits outside all of them, on top of whatever they already
+  # composed, so it inherits the same problem one layer up: a head-only (or
+  # tail-only) slice here can re-truncate an already-correct choice right
+  # back off, discarding exactly what the inner fix kept. Confirmed live,
+  # across the same incident, in both directions.
   #
-  # `@doc false`: exists so the slice direction is assertable without
-  # standing up a real failing provider, the same reason `wrap_with_timeout/2`
-  # and `image_tag/2` are public.
+  # `@doc false`: exists so the slice is assertable without standing up a
+  # real failing provider, the same reason `wrap_with_timeout/2` and
+  # `image_tag/2` are public.
   @doc false
   def missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
-    do: "#{entry.project_name}/#{entry.key} — #{String.slice(detail, -300, 300)}"
+    do: "#{entry.project_name}/#{entry.key} — #{Truncate.head_and_tail(detail)}"
 
   def missing_line(entry), do: "#{entry.project_name}/#{entry.key}"
 

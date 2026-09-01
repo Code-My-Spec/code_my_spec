@@ -71,6 +71,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     StepRepository,
     Storage,
     Transport,
+    Truncate,
     Wait,
     Widget
   }
@@ -3449,13 +3450,16 @@ defmodule CodeMySpec.Provisioning.Steps do
   # (8009). A failure keeps its resources via the partial-resource path, so
   # the record shows what happened rather than just an error string.
   #
-  # The tail of `output`, not the whole thing: `devops_status` keeps only the
-  # first 300 characters of whatever this becomes, and kamal's own output
-  # always puts the real exception last, after every "Launching command..."/
-  # "INFO [...] Running docker login..." progress line that came before it.
-  # Confirmed live against MarketMySpec, twice, in two different failure
-  # shapes (an install log, then an SSHKit exception) — both cut off exactly
-  # where the actual cause would have started.
+  # Both ends of `output`, not the whole thing and not just one end: kamal's
+  # own output puts the real exception last, after every "Launching
+  # command..."/"INFO [...] Running docker login..." progress line ahead of
+  # it, but not every tool this reaches agrees — a `gem` crash is a Ruby
+  # exception whose own "ERROR: ..." line comes *before* the backtrace it
+  # raises, not after. Confirmed live against MarketMySpec, three times now
+  # in three different failure shapes (an install log, an SSHKit exception,
+  # a bare Ruby backtrace) — a single-ended slice got two of those right and
+  # the third wrong, because it guessed the tool's convention instead of
+  # keeping enough of the message to not need to.
   #
   # Public for its own test, same reason as `image_tag/2`: reaching this
   # through `run(:deploy, ...)` means driving a whole failed deploy just to
@@ -3465,7 +3469,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   def with_output(reason, output) when is_binary(output) do
     case String.trim(output) do
       "" -> reason
-      trimmed -> reason <> "\n\n" <> String.slice(trimmed, -200, 200)
+      trimmed -> reason <> "\n\n" <> Truncate.head_and_tail(trimmed, 200)
     end
   end
 

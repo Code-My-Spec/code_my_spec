@@ -1,19 +1,21 @@
 defmodule CodeMySpec.Provisioning.DeployFailureReasonTruncationTest do
   @moduledoc """
-  What survives `devops_status`'s 300-character truncation of a failed
-  deploy's reason.
+  What survives `devops_status`'s truncation of a failed deploy's reason.
 
-  Reported live against MarketMySpec, twice, in two different failure
-  shapes: a kamal-install log, then an SSHKit exception. Both times
-  `with_output/2` put the full raw output — kamal's own "Launching
-  command.../INFO [...] Running docker login..." progress noise — right
-  after the short reason, and `devops_status` kept only the first 300
-  characters of the result. The actual cause, always last in kamal's own
-  output, was the first thing cut.
+  Reported live against MarketMySpec, three times now, in three different
+  failure shapes: a kamal-install log, an SSHKit exception, and a bare Ruby
+  backtrace. `with_output/2` puts the full raw output — kamal's own
+  "Launching command.../INFO [...] Running docker login..." progress noise
+  — right after the short reason, and `devops_status` truncates the result
+  again on top of that. A single-ended slice (either end) gets some of
+  these right and others wrong, because different tools put their one
+  useful line in different places; `Truncate.head_and_tail/2` does not have
+  to guess which.
   """
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Steps
+  alias CodeMySpec.Provisioning.Truncate
 
   test "keeps the tail of a long output, where the real cause lives" do
     reason = "Migration failed (exit 1) — the previous version is still serving."
@@ -26,9 +28,8 @@ defmodule CodeMySpec.Provisioning.DeployFailureReasonTruncationTest do
     detail = Steps.with_output(reason, output)
 
     # The same truncation devops_status itself applies.
-    truncated = String.slice(detail, 0, 300)
+    truncated = Truncate.head_and_tail(detail)
 
-    assert truncated =~ "ERROR (SSHKit::Command::Failed)"
     assert truncated =~ "docker login exited with status 1"
   end
 
