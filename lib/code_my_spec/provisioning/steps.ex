@@ -2082,11 +2082,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts)
     box = server_name(scope, opts, environment)
 
-    # Found, not created. The server step owns this network now — a build is
-    # not what a network's lifetime should be tied to, and creating one here
-    # is why a failed build used to leave one behind.
-    with {:ok, network} <- find_baseline_network(scope, name),
-         {:ok, server} <- Hetzner.find_server(scope, box),
+    # The server first, not the network — which network this box belongs on
+    # depends on which zone it is in, and the zone is the server's to say.
+    # `network_name_for_zone/3`: the project's shared network keeps its bare
+    # name for whichever zone got there first (the common case: every
+    # environment in one zone, unaffected by any of this); a box outside that
+    # zone gets a network of its own, because a Hetzner private network's
+    # subnet lives in exactly one zone for its life — MarketMySpec's prod
+    # (ash) and uat (nbg1) predate this platform's own provisioning and were
+    # never going to share one.
+    with {:ok, server} <- Hetzner.find_server(scope, box),
+         location = get_in(server, ["location", "name"]),
+         zone = Hetzner.network_zone(location),
+         network_name = network_name_for_zone(name, zone, primary_network_zone(scope, opts)),
+         # Found, not created. The server step owns this network now — a build
+         # is not what a network's lifetime should be tied to, and creating one
+         # here is why a failed build used to leave one behind.
+         {:ok, network} <- find_baseline_network(scope, network_name),
          # Attached here as well, because a box added after the baseline ran
          # would otherwise never join. `attach_to_network/3` treats an existing
          # attachment as success.
@@ -2094,10 +2106,6 @@ defmodule CodeMySpec.Provisioning.Steps do
          # Re-read, because the attach does not report the address it assigned
          # and the copy we already hold predates it.
          {:ok, joined} <- Hetzner.find_server(scope, box),
-         # Top level, not under `datacenter`. Read the wrong way it is always
-         # nil, and every caller quietly falls back to its default — which is
-         # how a fix for a zone mismatch changed nothing at all.
-         location <- get_in(joined, ["location", "name"]),
          {:ok, ip} <- Hetzner.private_ip(joined, network["id"]) do
       {:ok,
        opts
@@ -2113,7 +2121,7 @@ defmodule CodeMySpec.Provisioning.Steps do
        |> Keyword.put(:builder_location, location)
        |> Keyword.put(:registry_bind, ip)
        |> Keyword.put(:registry_host, "#{ip}:#{Registry.port()}")
-       |> Keyword.put(:network_resource, network_resource(name, network))}
+       |> Keyword.put(:network_resource, network_resource(network["name"], network))}
     else
       # Named, because every one of these is a lookup and `:not_found` on its
       # own reads as "not found" — a whole step's failure rendered as two words
@@ -2121,7 +2129,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, :not_found} ->
         {:error,
          "cannot build for #{environment}: no server named #{box}, and no private network " <>
-           "named #{name} to reach a registry on"}
+           "to reach a registry on"}
 
       {:error, reason} ->
         {:error, "cannot build for #{environment} on #{box}: #{format(reason)}"}
@@ -2688,6 +2696,44 @@ defmodule CodeMySpec.Provisioning.Steps do
         error
     end
   end
+
+  # The zone the project's shared, bare-named network is bound to: whichever
+  # environment resolves a server first, in the same stable order
+  # `permitted_environment_rows/1` already gives everything else here.
+  # Environments without a server yet are skipped rather than treated as
+  # "no primary zone" — a project mid-provisioning still has one real zone
+  # once its first box exists.
+  #
+  # Derived from servers rather than the network's own subnet data on
+  # purpose: every other lookup here already reads a server's own location,
+  # and asking Hetzner's network object for its zone back would be a second,
+  # independent way to answer the same question that this and
+  # `join_baseline_network/4` have to agree on.
+  defp primary_network_zone(scope, opts) do
+    scope
+    |> permitted_environment_rows()
+    |> Enum.find_value(fn environment ->
+      case Hetzner.find_server(scope, server_name(scope, opts, environment.name)) do
+        {:ok, %{"location" => %{"name" => location}}} -> Hetzner.network_zone(location)
+        _ -> nil
+      end
+    end)
+  end
+
+  # The bare name for whichever zone is primary (including when there is no
+  # primary yet — a project's first environment has nothing to differ from).
+  # Every other zone gets a network of its own: a Hetzner private network's
+  # subnet lives in exactly one zone for its life, and a server outside it
+  # is refused outright ("networks must be in the same network zone"), not
+  # merely slow to join. Confirmed live against MarketMySpec: prod's box is
+  # in ash, uat's is in nbg1 — one predating the platform's own
+  # provisioning, the other never going to share ash's network no matter how
+  # this is named.
+  defp network_name_for_zone(name, zone, primary_zone)
+       when zone == primary_zone or is_nil(primary_zone),
+       do: name
+
+  defp network_name_for_zone(name, zone, _primary_zone), do: "#{name}-#{zone}"
 
   # Kamal evaluates ERB in its config, so a host written that way is decided
   # when the deploy runs rather than when the file was committed.
@@ -3882,11 +3928,11 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts)
     servers = environment_servers(scope, opts, environments)
 
-    with {:ok, [%{"location" => %{"name" => location}} | _] = servers} <- servers,
-         {:ok, network} <-
-           Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
-         :ok <- attach_all(scope, servers, network) do
-      finish_baseline_network(scope, servers, network, opts, environments, name, made)
+    with {:ok, [_ | _] = servers} <- servers,
+         primary_zone = primary_network_zone(scope, opts),
+         {:ok, networks} <- ensure_zone_networks(scope, servers, name, primary_zone),
+         :ok <- attach_zone_networks(scope, servers, networks) do
+      finish_baseline_network(scope, servers, networks, opts, environments, made)
     else
       {:ok, []} -> {:ok, made}
       {:error, reason} -> {:error, format(reason), made}
@@ -3895,16 +3941,54 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp join_baseline_network(other, _scope, _opts, _environments), do: other
 
-  # Split from `join_baseline_network/4` only so `network` is a plain
+  # One network per zone this project's servers actually sit in, not one
+  # network for the whole project — see `network_name_for_zone/3`. Almost
+  # always one entry; a second only appears for a project like MarketMySpec
+  # whose environments predate this platform's own provisioning and were
+  # never put in the same zone.
+  defp ensure_zone_networks(scope, servers, name, primary_zone) do
+    servers
+    |> Enum.map(&get_in(&1, ["location", "name"]))
+    |> Enum.map(&Hetzner.network_zone/1)
+    |> Enum.uniq()
+    |> Enum.reduce_while({:ok, %{}}, fn zone, {:ok, acc} ->
+      network_name = network_name_for_zone(name, zone, primary_zone)
+
+      case Hetzner.ensure_network(scope, network_name, network_zone: zone) do
+        {:ok, network} -> {:cont, {:ok, Map.put(acc, zone, network)}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp attach_zone_networks(scope, servers, networks) do
+    Enum.reduce_while(servers, :ok, fn server, :ok ->
+      case Hetzner.attach_to_network(scope, server["id"], network_for(server, networks)["id"]) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # Which of `ensure_zone_networks/4`'s networks a given server actually
+  # belongs on — its own zone, not the project's primary one.
+  defp network_for(server, networks) do
+    zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
+    Map.fetch!(networks, zone)
+  end
+
+  # Split from `join_baseline_network/4` only so `networks` is a plain
   # parameter here rather than a `with`-bound variable an `else` clause
   # cannot see — `serve_registries/5` can fail two different ways
   # (`{:ok, []}`-shaped nothing-to-do doesn't apply to it; it is either
   # `{:ok, registries}` or `{:error, reason, registries}`) and both need
-  # `network` to build the network's own resource entry.
-  defp finish_baseline_network(scope, servers, network, opts, environments, name, made) do
-    case serve_registries(scope, servers, network, opts, environments) do
+  # `networks` to build each network's own resource entry.
+  defp finish_baseline_network(scope, servers, networks, opts, environments, made) do
+    network_records = for {_zone, network} <- networks, do: network_resource(network["name"], network)
+
+    case serve_registries(scope, servers, networks, opts, environments) do
       {:ok, registries} ->
-        {:ok, registries ++ [network_resource(name, network) | made]}
+        {:ok, registries ++ network_records ++ made}
 
       # One environment's registry/database failing is not evidence about
       # any other environment's — `serve_registries/5` already tried every
@@ -3916,7 +4000,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       # never be created as long as prod kept failing first, because two
       # genuinely independent boxes were treated as one dependent sequence.
       {:error, reason, registries} ->
-        {:error, format(reason), registries ++ [network_resource(name, network) | made]}
+        {:error, format(reason), registries ++ network_records ++ made}
     end
   end
 
@@ -3943,8 +4027,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # first. Servers do not depend on each other the way pipeline steps do;
   # nothing here should stop uat from ever being attempted because prod keeps
   # erroring.
-  defp serve_registries(scope, servers, network, opts, environments) do
-    results = Enum.map(servers, &{&1, serve_one_registry(scope, &1, network, opts, environments)})
+  defp serve_registries(scope, servers, networks, opts, environments) do
+    results = Enum.map(servers, &{&1, serve_one_registry(scope, &1, networks, opts, environments)})
 
     resources = for {_server, {:ok, resources}} <- results, resource <- resources, do: resource
 
@@ -3962,8 +4046,9 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp serve_one_registry(scope, server, network, opts, environments) do
+  defp serve_one_registry(scope, server, networks, opts, environments) do
     environment = environment_of(scope, server, opts, environments)
+    network = network_for(server, networks)
 
     with {:ok, server} <- Hetzner.find_server(scope, server["name"]),
          {:ok, ip} <- Hetzner.private_ip(server, network["id"]),
@@ -4114,15 +4199,6 @@ defmodule CodeMySpec.Provisioning.Steps do
            " — the server step reported creating them, so they were made and then " <>
            "could not be read back"}
     end
-  end
-
-  defp attach_all(scope, servers, network) do
-    Enum.reduce_while(servers, :ok, fn server, :ok ->
-      case Hetzner.attach_to_network(scope, server["id"], network["id"]) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
   end
 
   defp ensure_environment_server(environment, {:ok, acc}, scope, opts) do

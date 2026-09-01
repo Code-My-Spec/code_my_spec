@@ -223,6 +223,44 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
              "phase this fix does not touch — only its registry and database should be absent)"
   end
 
+  # The bug this guards: `join_baseline_network/4` used to derive one zone
+  # from the *first* server and attach every environment's server to a
+  # network in that zone. Hetzner refuses that outright for any server
+  # whose own zone differs — a private network's subnet lives in exactly
+  # one zone for its life — which is exactly MarketMySpec's real shape:
+  # prod in ash (us-east), uat in fsn1 (eu-central), predating this
+  # platform's own provisioning and never going to share one network.
+  test "environments in different zones each get a network their own box can join", ctx do
+    record_zoned_requests(self(), Repository.default_name(ctx.scope.active_project))
+
+    opts = [
+      run: succeeding_run(),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
+
+    zones_asked_for =
+      collect_requests([])
+      |> Enum.filter(fn {method, path, _payload} -> method == "POST" and path == "/v1/networks" end)
+      |> Enum.map(fn {_method, _path, payload} ->
+        get_in(payload, ["subnets", Access.at(0), "network_zone"])
+      end)
+
+    assert Enum.sort(zones_asked_for) == ["eu-central", "us-east"],
+           "expected one network per zone this project's boxes actually sit in, got #{inspect(zones_asked_for)}"
+
+    assert Enum.any?(resources, &(&1.kind == "registry" and &1.identifier =~ "environment=prod")),
+           "expected prod's registry to be recorded, got #{inspect(resources)}"
+
+    assert Enum.any?(resources, &(&1.kind == "registry" and &1.identifier =~ "environment=uat")),
+           "expected uat's registry to be recorded despite sitting in a zone of its own, " <>
+             "got #{inspect(resources)}"
+
+    assert length(Enum.filter(resources, &(&1.kind == "network"))) == 2,
+           "expected two recorded networks, one per zone, got #{inspect(resources)}"
+  end
+
   # A `:run` that fails only for commands naming the given private IP —
   # the registry container binds to it (`trust_command/1`), so this reaches
   # every command in that one server's own sequence and none of the other's,
@@ -234,6 +272,90 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
       else
         {"", 0}
       end
+    end
+  end
+
+  # Succeeds unconditionally — the zone test's claim is about which networks
+  # get asked for and which servers land on them, not about any one remote
+  # command, so nothing here needs to distinguish one server's commands from
+  # the other's the way `refusing_run/1` does.
+  defp succeeding_run, do: fn [_command] -> {"", 0} end
+
+  # Like `record_full_requests/2`, but the two servers sit in different
+  # zones (ash/us-east and fsn1/eu-central — the same pairing as
+  # MarketMySpec's real prod/uat) and every network creation is answered
+  # with an id matching whichever zone the request actually named, rather
+  # than one fixed id for the whole project. `GET /v1/networks` still
+  # answers `[]`: the claim under test is what gets *created*, and adopting
+  # an existing network is `find_baseline_network/2`'s own, already-covered
+  # path.
+  defp record_zoned_requests(owner, project_name) do
+    servers = [
+      %{
+        "id" => 201,
+        "name" => "#{project_name}-prod",
+        "location" => %{"name" => "ash"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
+        "private_net" => [%{"network" => 11, "ip" => "10.0.0.10"}]
+      },
+      %{
+        "id" => 202,
+        "name" => "#{project_name}-uat",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
+        "private_net" => [%{"network" => 12, "ip" => "10.0.0.99"}]
+      }
+    ]
+
+    # Zone -> the id its network is fixed to holding, so the id a create
+    # request gets back always matches what the fixture's own server data
+    # above already claims to be attached to.
+    network_ids = %{"us-east" => 11, "eu-central" => 12}
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = decode(body)
+      send(owner, {:ran, conn.method, conn.request_path, payload})
+      zoned_reply(conn, conn.method, conn.request_path, payload, servers, network_ids)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
+
+  defp zoned_reply(conn, "GET", "/v1/servers", _payload, servers, _ids), do: json(conn, %{"servers" => servers})
+  defp zoned_reply(conn, "GET", "/v1/firewalls", _payload, _servers, _ids), do: json(conn, %{"firewalls" => []})
+  defp zoned_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers, _ids), do: json(conn, %{"ssh_keys" => []})
+  defp zoned_reply(conn, "GET", "/v1/networks", _payload, _servers, _ids), do: json(conn, %{"networks" => []})
+
+  defp zoned_reply(conn, "POST", "/v1/firewalls", payload, _servers, _ids) do
+    json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
+  end
+
+  defp zoned_reply(conn, "POST", "/v1/ssh_keys", _payload, _servers, _ids) do
+    json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
+  end
+
+  defp zoned_reply(conn, "POST", "/v1/servers/" <> _rest, _payload, _servers, _ids) do
+    json(conn, %{"action" => %{"status" => "success"}})
+  end
+
+  defp zoned_reply(conn, "POST", "/v1/networks", payload, _servers, ids) do
+    zone = get_in(payload, ["subnets", Access.at(0), "network_zone"])
+    json(conn, %{"network" => %{"id" => Map.fetch!(ids, zone), "name" => payload["name"]}})
+  end
+
+  # Everything else this run touches but does not care about the shape of —
+  # firewall/ssh-key attach actions among them, fire-and-forget the same way
+  # `full_reply/5`'s own catch-all treats them.
+  defp zoned_reply(conn, _method, _path, payload, _servers, _ids) do
+    json(conn, %{"network" => %{"id" => 4, "name" => payload["name"]}})
+  end
+
+  defp collect_requests(acc) do
+    receive do
+      {:ran, method, path, payload} -> collect_requests([{method, path, payload} | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 
