@@ -58,6 +58,36 @@ defmodule CodeMySpecWeb.AccountLive.AgentsDefaultsTest do
              "and the form sends the first for every untouched row on every save."
   end
 
+  test "submitting with everything left alone writes nothing", %{conn: conn, scope: scope} do
+    {:ok, _} = Agents.put_model_setting(scope, :qa, "anthropic", "some-model")
+    {:ok, live, _} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
+
+    # What the form posts when nobody touches it: every provider blank, which is
+    # now "use the default" rather than a missing field.
+    blank = Map.new(Agents.roles(), &{to_string(&1), %{"provider" => "", "model" => ""}})
+
+    live |> element("[data-test=agent-models-form]") |> render_submit(blank)
+
+    assert pinned(scope) == [],
+           "the issue's second reproduction, exactly: a save that changes nothing used " <>
+             "to write a row for every type."
+  end
+
+  test "submitting one choice writes that one and no others", %{conn: conn, scope: scope} do
+    {:ok, live, _} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
+
+    params =
+      Agents.roles()
+      |> Map.new(&{to_string(&1), %{"provider" => "", "model" => ""}})
+      |> Map.put("qa", %{"provider" => "anthropic", "model" => "claude-haiku-4-5-20251001"})
+
+    live |> element("[data-test=agent-models-form]") |> render_submit(params)
+
+    assert pinned(scope) == [:qa],
+           "guarding the untouched rows must not stop a deliberate choice being written, " <>
+             "which is the whole point of the page."
+  end
+
   test "the form offers the default as a choice", %{conn: conn, scope: scope} do
     {:ok, _live, html} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
 
