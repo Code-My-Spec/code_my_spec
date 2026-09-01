@@ -586,12 +586,19 @@ defmodule CmsHarness.Agents.Engine do
   What an agent of this type carries.
 
   Two project tools, not ninety-eight. The rest are reachable through
-  `run_script` — which is the whole of this story: the model reads two schemas
+  `run_script` — which is the whole of story 982: the model reads two schemas
   per turn instead of a catalogue it has already read, and the ninety-eight are
   a lookup rather than a preamble.
 
+  Three more that a script may not have. `CodeMode.Catalog` excludes
+  `start_agent`, `stop_agent` and `assign_subagent` because a loop around a
+  spawn is a fleet — an argument about loops, not about an agent making one
+  call. Carried here, the agent that story 963 says hands work over can actually
+  hand it over; left out, it described the hand-over accurately and named a
+  coordinator that was itself. See `CmsHarness.Agents.Tools.Direct`.
+
   Public because "what does this agent carry" is a question about a running
-  agent, not about a list in this file. A constant naming two modules is true
+  agent, not about a list in this file. A constant naming five modules is true
   of the constant.
   """
   @spec tools(keyword()) :: [module()]
@@ -602,7 +609,10 @@ defmodule CmsHarness.Agents.Engine do
       Alloy.Tool.Core.Edit,
       Alloy.Tool.Core.Bash,
       CmsHarness.Agents.Tools.RunScript,
-      CmsHarness.Agents.Tools.ToolDocs
+      CmsHarness.Agents.Tools.ToolDocs,
+      CmsHarness.Agents.Tools.StartAgent,
+      CmsHarness.Agents.Tools.StopAgent,
+      CmsHarness.Agents.Tools.AssignSubagent
     ]
   end
 

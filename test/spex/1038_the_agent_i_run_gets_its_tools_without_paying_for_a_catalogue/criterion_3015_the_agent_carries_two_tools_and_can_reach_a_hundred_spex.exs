@@ -48,11 +48,24 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
 
         project_tools = Enum.reject(names, &(&1 in ~w(read write edit bash)))
 
-        assert length(project_tools) == 2,
-               "the agent carries #{length(project_tools)} project tools rather than " <>
-                 "two: #{inspect(project_tools)}. Every one past the second is a " <>
-                 "schema the model reads on every turn to learn something it could " <>
-                 "have looked up once."
+        # The rule is that the catalogue is a lookup, not a preamble — so what
+        # must not be carried is anything a script could have reached. Counting
+        # to two said that correctly right up until story 963 needed the agent
+        # to hand work over: `start_agent`, `stop_agent` and `assign_subagent`
+        # are refused to scripts by `CodeMode.Catalog`, so carrying them adds
+        # nothing to the lookup and removing them leaves the agent describing a
+        # hand-over it cannot make.
+        #
+        # Asserted as "nothing carried is scriptable" rather than as a number,
+        # which is the invariant the number was standing in for and does not go
+        # stale the next time an unscriptable tool is needed.
+        scriptable = project_tools -- ~w(start_agent stop_agent assign_subagent)
+
+        assert scriptable == ~w(run_script tool_docs),
+               "the agent carries #{inspect(scriptable)} beyond run_script and " <>
+                 "tool_docs, and every one of those is reachable from a script. Each " <>
+                 "is a schema the model reads on every turn to learn something it " <>
+                 "could have looked up once."
 
         {:ok, context}
       end
