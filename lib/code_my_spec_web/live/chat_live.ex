@@ -66,10 +66,23 @@ defmodule CodeMySpecWeb.ChatLive do
     |> assign(:conversation, conversation)
     |> assign(:page_title, "#{project.name} — Chat")
     |> assign(:thinking?, false)
+    |> assign(:turn, nil)
     |> assign(:editing?, false)
     |> assign_story(scope)
     |> stream(:messages, Conversations.list_messages(conversation), reset: true)
   end
+
+  # Everything the end of a turn settles, in one place so the async and inline
+  # paths cannot answer differently.
+  defp finish_turn(socket) do
+    socket
+    |> assign(:thinking?, false)
+    |> assign(:turn, nil)
+    |> assign_story(socket.assigns.scope)
+    |> stream(:messages, Conversations.list_messages(socket.assigns.conversation), reset: true)
+  end
+
+  defp async?, do: Application.get_env(:code_my_spec, :chat_turn_async, true)
 
   # The story under discussion, if the conversation has made one yet. Read from
   # the project rather than tracked in assigns so an edit made anywhere shows
@@ -86,17 +99,40 @@ defmodule CodeMySpecWeb.ChatLive do
     |> assign(:story_form, story && to_form(Stories.change_story(scope, story, %{})))
   end
 
+  # The turn runs somewhere else, and the page says so while it does.
+  #
+  # `Runner.run/2` is the whole server-side agent loop — up to twelve provider
+  # round trips — and it used to run here, in the LiveView's own process. That
+  # meant no re-render, no other event, and no progress until it finished: on
+  # `/app/projects/:id/chat`, the first surface after signup, somebody typed,
+  # pressed send, and watched a still page for as long as the model took.
+  # "Thinking" and "broken" looked the same, and `:thinking?` — the assign that
+  # exists to tell them apart — was written `false` twice and `true` nowhere.
   @impl true
   def handle_event("send", %{"message" => text}, socket) when text != "" do
     conversation = socket.assigns.conversation
 
-    :ok = Runner.run(conversation, text)
+    if async?() do
+      # `async_nolink` rather than `start_child` and a hand-rolled message: a
+      # turn that crashes must still end the wait. With a plain send at the
+      # bottom of the task, a raise skips it and the page says "Working…" for
+      # ever — an indicator that is wrong rather than merely absent, which is
+      # worse than the freeze this replaces.
+      #
+      # The monitor gives both endings for free: `{ref, :ok}` when the turn
+      # returns, `{:DOWN, ...}` when it dies, and both clear the indicator.
+      task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+        Runner.run(conversation, text)
+      end)
 
-    {:noreply,
-     socket
-     |> assign(:thinking?, false)
-     |> assign_story(socket.assigns.scope)
-     |> stream(:messages, Conversations.list_messages(conversation), reset: true)}
+      {:noreply, socket |> assign(:thinking?, true) |> assign(:turn, task.ref)}
+    else
+      # Inline in test, where a task in another process cannot see the sandbox's
+      # transaction. Same reasoning as `intake_shaping_async` — and the state a
+      # test wants to assert is the finished turn rather than a race toward it.
+      :ok = Runner.run(conversation, text)
+      {:noreply, finish_turn(socket)}
+    end
   end
 
   def handle_event("send", _params, socket), do: {:noreply, socket}
@@ -141,6 +177,23 @@ defmodule CodeMySpecWeb.ChatLive do
   @impl true
   def handle_info({:new_message, message}, socket) do
     {:noreply, stream_insert(socket, :messages, message)}
+  end
+
+  # The turn is over, whatever it produced. `Conversations` broadcasts each
+  # message as it lands, so the transcript is already current by now — what this
+  # carries is the end of the wait, plus the story, which the turn may have
+  # created or changed and which nothing broadcasts.
+  def handle_info({ref, _result}, %{assigns: %{turn: ref}} = socket) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, finish_turn(socket)}
+  end
+
+  # The turn died. The same ending, because from the page's side it is: nobody
+  # is working on this any more, and continuing to say otherwise is the one
+  # outcome worse than saying nothing. What went wrong is in the transcript if
+  # the runner got far enough to write it, and in the logs if it did not.
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{assigns: %{turn: ref}} = socket) do
+    {:noreply, finish_turn(socket)}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}

@@ -464,3 +464,8 @@ config :code_my_spec, intake_shaping_async: false
 # Guided intake conversations run inline in test; ConversationTest exercises
 # the real process with an explicit sandbox grant.
 config :code_my_spec, intake_conversation_process: false
+
+# The story-interview chat runs its turn inline in test, for the same reason as
+# `intake_shaping_async` above. The tests that are *about* the async path turn
+# this back on for themselves and assert on the assign rather than on the turn.
+config :code_my_spec, chat_turn_async: false
