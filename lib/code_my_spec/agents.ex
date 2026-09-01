@@ -159,9 +159,34 @@ defmodule CodeMySpec.Agents do
   # it by making the same call twice, once with the copy named and once
   # without — refused, then allowed.
   defp put_destination(%Scope{} = scope, attrs) do
+    root = Map.get(attrs, :working_copy) || scope.cwd
+
     attrs
-    |> Map.put(:working_copy, Map.get(attrs, :working_copy) || scope.cwd)
-    |> Map.put(:working_copy_id, Map.get(attrs, :working_copy_id) || scope.active_working_copy_id)
+    |> Map.put(:working_copy, root)
+    |> Map.put(:working_copy_id, Map.get(attrs, :working_copy_id) || id_for(scope, root))
+  end
+
+  # The id has to come from the root when a root was named, not from the caller.
+  #
+  # Defaulting both fields from scope was one field too many. Every ordinary
+  # `start_agent` names a root and no id, so the id became the *caller's*
+  # checkout — and `names?/2` tests the id first, so the main-copy guard fired on
+  # starts that named somewhere else entirely. With an agent on the main copy,
+  # nothing could be started anywhere, and the refusal named a checkout the
+  # caller had not mentioned.
+  #
+  # It also placed the agent wrongly when the guard let it through: the row's
+  # `working_copy_id` is what the working copies page groups by, so an agent
+  # asked for on one copy was recorded on another.
+  #
+  # Falls back to the caller's own copy only when the root is the caller's own
+  # or names nothing we recognise — an unknown root is not a reason to refuse,
+  # because a checkout that has never joined has no row to find.
+  defp id_for(%Scope{} = scope, root) do
+    case WorkingCopies.by_root(scope, root) do
+      %{id: id} -> id
+      nil -> scope.active_working_copy_id
+    end
   end
 
   # By id or by root, because callers name a checkout both ways and a guard

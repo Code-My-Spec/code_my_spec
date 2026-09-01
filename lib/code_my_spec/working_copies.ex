@@ -80,6 +80,34 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
+  @doc """
+  The checkout at this root on the caller's own machine, or `nil`.
+
+  Naming a root is how every caller outside a harness names a checkout — the MCP
+  `start_agent` tool passes one and no id — and until this existed the id was
+  filled in from the caller's scope instead. That put the agent's row on the
+  caller's copy however far away the named root was, and made the main-copy guard
+  fire on starts that named somewhere else entirely.
+
+  Scoped to the caller's device on purpose: one root can exist on two machines,
+  `/workspace/app` is every container's default, and a lookup by root alone would
+  have to guess between them. A caller naming a path means the path on the box
+  they are on.
+  """
+  @spec by_root(Scope.t(), String.t()) :: WorkingCopy.t() | nil
+  def by_root(%Scope{active_project_id: project_id} = scope, root)
+      when is_binary(project_id) and is_binary(root) and root != "" do
+    case fetch(scope.active_working_copy_id) do
+      {:ok, %{device_id: device_id}} when is_binary(device_id) ->
+        recognised(project_id, device_id, Path.expand(root))
+
+      _ ->
+        nil
+    end
+  end
+
+  def by_root(_scope, _root), do: nil
+
   defp recognised(_project_id, nil, _root), do: nil
   defp recognised(_project_id, _device, nil), do: nil
   defp recognised(_project_id, _device, ""), do: nil
