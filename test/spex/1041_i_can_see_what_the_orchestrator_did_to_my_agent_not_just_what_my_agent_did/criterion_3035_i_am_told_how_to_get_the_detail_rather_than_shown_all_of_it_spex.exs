@@ -61,6 +61,13 @@ defmodule CodeMySpecSpex.Story985.Criterion3035Spex do
         |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
           "session_id" => context.session_id
         })
+        |> then(fn conn ->
+          # A `when_` whose own action quietly did nothing produces a `then_`
+          # that fails for the wrong reason, and reads as the feature being
+          # missing rather than the step never having run.
+          assert conn.status == 200,
+                 "the stop hook did not answer: #{conn.status}"
+        end)
 
         {:ok, _live, html} = live(context.conn, main_conversation_path(context))
 

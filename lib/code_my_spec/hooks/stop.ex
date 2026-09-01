@@ -28,6 +28,8 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
@@ -68,6 +70,63 @@ defmodule CodeMySpec.Hooks.Stop do
     scope
     |> do_decide(session_id, session, active_task, validation_opts, req_id)
     |> note_config_edits(session_id)
+    |> note_on_conversation(scope)
+  end
+
+  # The decision, on the conversation of the agent it was about.
+  #
+  # Story 985: the transcript recorded what the agent did and nothing done to
+  # it, so a conversation that changed direction between one turn and the next
+  # had no explanation in it — and a stop is the commonest cause of that change.
+  #
+  # Here rather than beside the block, because *both* verdicts are decisions. An
+  # allow is the agent being let go, which is exactly as much a thing that
+  # happened to it, and a reader who only ever saw the blocks would think the
+  # analyzers ran once.
+  #
+  # One action per decision, not one per analyzer — John's call. A stop where
+  # compile failed and three analyzers were skipped is one thing that happened;
+  # three entries saying `skipped_compile_errors` is the log rather than the
+  # story.
+  defp note_on_conversation(response, scope) do
+    Conversations.record_orchestrator_action(
+      Agents.main_agent(scope),
+      stop_sentence(response),
+      count: problem_count(scope),
+      tool: "list_problems"
+    )
+
+    response
+  rescue
+    # Never the reason a stop fails. The hook's job is the verdict; the note is
+    # so somebody can read why later, and a note able to break the verdict would
+    # be worse than no note.
+    error ->
+      Logger.warning(
+        "[StopHook] could not record the decision on the conversation: " <>
+          Exception.message(error)
+      )
+
+      response
+  end
+
+  defp stop_sentence(%{"decision" => "block", "reason" => reason}),
+    do: "Stopped you: " <> first_line(reason)
+
+  defp stop_sentence(_allowed), do: "Ran the analyzers and let you stop."
+
+  defp first_line(reason) do
+    reason |> to_string() |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 160)
+  end
+
+  defp problem_count(scope) do
+    case Problems.list_project_problems(scope) do
+      [] -> nil
+      problems when is_list(problems) -> "#{length(problems)} problems"
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   # There was a second half to this, and it is gone: a `note_stale_config/1`
@@ -421,8 +480,10 @@ defmodule CodeMySpec.Hooks.Stop do
     # three of forty costs nothing, losing the directive costs the whole point.
     reason_budget = @total_response_cap - byte_size(hint) - byte_size(menu)
     capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
+
     %{"decision" => "block", "reason" => capped_reason <> menu <> hint}
   end
+
 
   # R9 — every block-with-feedback reason carries a one-line affordance
   # pointing the agent at the framework-issue surface so harness friction

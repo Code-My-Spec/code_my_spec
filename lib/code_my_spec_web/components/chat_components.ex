@@ -51,6 +51,53 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
+  # What the orchestrator did, in the same stream as what the agent did.
+  #
+  # Before this clause the transcript recorded only the agent's own turns, so a
+  # conversation that changed direction between one turn and the next carried no
+  # explanation — the reason lived in a log on another machine. Story 985.
+  #
+  # Deliberately not a `tool_call`. The agent did not call this, and drawing it
+  # as a call would say it did: a reader would take the stop as the agent's own
+  # judgement rather than as something done to it.
+  #
+  # The count and the tool name are the rule John settled: say what happened,
+  # how much of it there is, and which tool answers for the rest. A tool name
+  # rather than a link, because half the readers of an agent's transcript are
+  # agents and an agent cannot follow a link.
+  def turn(%{message: %{role: :orchestrator}} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      data-test="orchestrator-action"
+      data-role="orchestrator"
+      class="flex items-start gap-2 rounded-box border border-info/30 bg-info/5 px-3 py-2 text-sm"
+    >
+      <.icon name="hero-adjustments-horizontal" class="size-4 shrink-0 opacity-60" />
+
+      <div class="min-w-0">
+        <span>{Message.text(@message)}</span>
+
+        <span
+          :if={orchestrator_count(@message)}
+          data-test="orchestrator-action-count"
+          class="ml-1 font-medium"
+        >
+          {orchestrator_count(@message)}
+        </span>
+
+        <span
+          :if={orchestrator_tool(@message)}
+          data-test="orchestrator-action-tool"
+          class="ml-1 opacity-70"
+        >
+          — run <code>{orchestrator_tool(@message)}</code> for the detail
+        </span>
+      </div>
+    </div>
+    """
+  end
+
   def turn(%{message: %{tool_calls: calls}} = assigns) when is_list(calls) and calls != [] do
     ~H"""
     <div id={@id} class="space-y-1">
@@ -557,6 +604,26 @@ defmodule CodeMySpecWeb.ChatComponents do
 
     {items, results}
   end
+
+  # Carried on the message's own parts rather than in the sentence, so the view
+  # can render them distinctly and a test can assert them without parsing prose.
+  defp orchestrator_count(%{content: parts}) when is_list(parts) do
+    Enum.find_value(parts, fn
+      %{"type" => "count", "text" => text} -> text
+      _ -> nil
+    end)
+  end
+
+  defp orchestrator_count(_message), do: nil
+
+  defp orchestrator_tool(%{content: parts}) when is_list(parts) do
+    Enum.find_value(parts, fn
+      %{"type" => "tool", "text" => text} -> text
+      _ -> nil
+    end)
+  end
+
+  defp orchestrator_tool(_message), do: nil
 
   # Results keyed by the call they answer, so a call can render its own.
   defp results_by_call_id(messages) do

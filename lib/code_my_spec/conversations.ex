@@ -285,6 +285,70 @@ defmodule CodeMySpec.Conversations do
     })
   end
 
+  @doc """
+  Record something the orchestrator did to an agent, on that agent's own thread.
+
+  Story 985. The transcript recorded what the *agent* did and nothing the
+  harness did to it, so a conversation that changed direction between one turn
+  and the next had no explanation in it — the reason lived in a log on another
+  machine.
+
+  `what` is the sentence somebody reads. `count` and `tool` are the other two
+  thirds of the rule John settled: say what happened, how much of it there is,
+  and which tool answers for the rest. Both optional, because not every action
+  has a quantity — handing over a requirement has none.
+
+  A tool *name* rather than a link, deliberately. Half the readers of an agent's
+  transcript are agents, and an agent cannot follow a link; what it can do is
+  call the thing it is told about.
+
+  Carried as typed parts rather than baked into the sentence so the view renders
+  them distinctly and a reader — human or otherwise — is not parsing prose for
+  a number.
+
+  Silent when the agent has no conversation. An orchestrator acting on an agent
+  nobody is watching is not an error, and refusing here would make recording an
+  action able to fail the action itself.
+  """
+  @spec record_orchestrator_action(Agent.t() | nil, String.t(), keyword()) ::
+          {:ok, Message.t()} | :ok
+  def record_orchestrator_action(agent, what, opts \\ [])
+
+  def record_orchestrator_action(nil, _what, _opts), do: :ok
+
+  def record_orchestrator_action(%{id: agent_id}, what, opts) when is_binary(what) do
+    case Repo.get_by(Conversation, agent_id: agent_id) do
+      nil ->
+        :ok
+
+      conversation ->
+        agent_turn(conversation, %{
+          role: :orchestrator,
+          content: orchestrator_parts(what, opts)
+        })
+    end
+  end
+
+  # By id as well as by struct: most call sites hold one or the other, and a
+  # lookup at every one of them is a lookup that can be forgotten at one of them.
+  def record_orchestrator_action(agent_id, what, opts) when is_binary(agent_id) do
+    record_orchestrator_action(%{id: agent_id}, what, opts)
+  end
+
+  def record_orchestrator_action(_agent, _what, _opts), do: :ok
+
+  defp orchestrator_parts(what, opts) do
+    [%{"type" => "text", "text" => what}]
+    |> maybe_part("count", opts[:count])
+    |> maybe_part("tool", opts[:tool])
+  end
+
+  defp maybe_part(parts, _type, nil), do: parts
+  defp maybe_part(parts, _type, ""), do: parts
+
+  defp maybe_part(parts, type, value),
+    do: parts ++ [%{"type" => type, "text" => to_string(value)}]
+
   defp agent_turn(conversation, attrs) do
     %Message{}
     |> Message.agent_changeset(Map.put(attrs, :conversation_id, conversation.id))

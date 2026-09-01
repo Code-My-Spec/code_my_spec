@@ -28,12 +28,25 @@ defmodule CodeMySpec.Conversations.Message do
 
   @type t :: %__MODULE__{}
 
-  @part_types ~w(text image file thinking)
+  # `count` and `tool` belong to orchestrator actions: how much of a thing there
+  # is, and the name of the tool that lists the rest. Typed parts rather than a
+  # sentence, so the view renders them distinctly and no reader — person or
+  # agent — is parsing prose for a number. Story 985.
+  @part_types ~w(text image file thinking count tool)
 
   schema "conversation_messages" do
     # Typed parts, in order. See @part_types for what a part may be.
     field :content, {:array, :map}, default: []
-    field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool]
+    # `:orchestrator` is what was done *to* this agent rather than by it — a
+    # stop decision, a requirement handed over, a task finished on its behalf.
+    # A fourth value here rather than a table of its own, which is John's call
+    # in 985's Three Amigos: the transcript is one stream ordered by
+    # `inserted_at`, and interleaving is the whole point. A second table means
+    # every reader merges two ordered streams and has to get ties right.
+    #
+    # No migration: the column is a varchar with the enum in the schema, which
+    # is what issue 42b32a6e argues for and is why this costs one line.
+    field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool, :orchestrator]
     field :sender_id, :string
     # The speaking lane for agent transcripts: manager / product / spec_writer
     # / coding / qa. nil for human (user/operator) messages.
