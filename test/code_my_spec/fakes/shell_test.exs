@@ -142,6 +142,41 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     assert String.trim(output) == "amd64"
   end
 
+  # `Remote.ssh_runner/2` wraps its command as `timeout N sh -c '<command>'`
+  # since a hang needs a way to end — this fake has to see through that
+  # wrapper the same way a real remote shell parses it back out, or every
+  # match below is checking text that no longer appears where it expects to.
+  test "the wrapper around a command does not stop the fake from reading it", %{env: env} do
+    assert {output, 0} =
+             Environments.cmd(env, "ssh", [
+               "root@box",
+               "timeout 1800 sh -c 'docker image inspect --format '\\''{{.Architecture}}'\\'' app:abc'"
+             ])
+
+    assert String.trim(output) == "amd64"
+  end
+
+  # The regression this guards: `backup_args/1` splits on `"bin/backup"` and
+  # takes the rest of the string as argv. Left wrapped, the wrapper's own
+  # closing quote is the last character of that string — it landed on the
+  # environment name, turning `uat` into `uat'` and filing every dump under an
+  # environment nothing ever asks about.
+  test "a wrapped bin/backup dump still lands under the real environment name", %{env: env} do
+    previous = Application.get_env(:code_my_spec, :memory_shell_storage)
+    {:ok, agent} = Agent.start_link(&Fakes.Storage.new/0)
+    Application.put_env(:code_my_spec, :memory_shell_storage, agent)
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_storage, previous) end)
+
+    command =
+      "timeout 1800 sh -c 'cd /opt/app && BACKUP_BUCKET='\\''b'\\'' bin/backup dump uat'"
+
+    assert {output, 0} = Environments.cmd(env, "ssh", ["root@box", command])
+    assert [_, key] = Regex.run(~r/key=(\S+)/, output)
+
+    assert key =~ ~r{^dumps/uat/}
+    assert %{buckets: %{"b" => %{^key => _}}} = Agent.get(agent, & &1)
+  end
+
   test "git rev-parse answers a sha", %{env: env} do
     assert {output, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"])
     assert String.trim(output) =~ ~r/^[0-9a-f]{16}$/

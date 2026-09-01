@@ -130,7 +130,17 @@ defmodule CodeMySpecSpex.Fakes.Shell do
 
   # -- ssh: a box that answers. What it answers *about* is the drill's --
 
-  defp run(_env, "ssh", args, _opts), do: {remote_answer(Enum.join(args, " ")), 0}
+  # `Remote.ssh_runner/2` wraps its command as `timeout N sh -c '<command>'`
+  # (a hang has to end somewhere), so the last element of `args` is no longer
+  # the command text this fake was written against — it is that text inside
+  # one more layer of shell quoting. Unwrapped here, once, so every existing
+  # match below (`bin/backup`, `{{.Architecture}}`, …) still sees the same
+  # text a real remote shell would hand the script after parsing `sh -c`'s
+  # argument. Left wrapped, `bin/backup`'s own naive split on `"bin/backup"`
+  # picked up the wrapper's closing quote as part of its last argument —
+  # `uat` arrived as `uat'`, and every dump landed under the wrong
+  # environment.
+  defp run(_env, "ssh", args, _opts), do: {remote_answer(Enum.join(unwrap_last(args), " ")), 0}
   defp run(_env, "scp", _args, _opts), do: {"", 0}
 
   # `sh -c "git archive … | ssh … tar -x"` is how a tree reaches a box. The
@@ -314,6 +324,20 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     |> String.split("bin/backup", parts: 2)
     |> List.last()
     |> String.split(~r/\s+/, trim: true)
+  end
+
+  # Reverses `Remote.wrap_with_timeout/2`'s exact shape so `run/4`'s "ssh"
+  # clause sees the command a real remote shell parses out of `sh -c`'s
+  # single argument, not the wrapper around it. Left as-is (not every ssh
+  # invocation goes through the wrapper — none in this fake's own tests do),
+  # since a command this does not recognise as wrapped is just itself.
+  defp unwrap_last(args), do: List.update_at(args, -1, &unwrap_timeout/1)
+
+  defp unwrap_timeout(command) do
+    case Regex.run(~r/^timeout \d+ sh -c '(.*)'$/s, command) do
+      [_, inner] -> String.replace(inner, "'\\''", "'")
+      nil -> command
+    end
   end
 
   # Loudly, so a gap in this shell is a gap rather than a pass.
