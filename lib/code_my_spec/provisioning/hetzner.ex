@@ -445,6 +445,48 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @spec delete_server(Scope.t(), integer() | String.t()) :: {:ok, body()} | error()
   def delete_server(%Scope{} = scope, id), do: request(scope, :delete, "/servers/#{id}", [])
 
+  ## Images
+
+  @doc """
+  Snapshot a server into a reusable image.
+
+  Hetzner's own create-server flow already returns the new server
+  synchronously and readiness is checked by polling SSH directly (see
+  `Builder.Remote.await_ssh/4`) rather than a Hetzner action's own status —
+  the same shape applies here: the caller polls `list_images/2` for the new
+  image to actually appear rather than watching an action id.
+  """
+  @spec create_image(Scope.t(), integer() | String.t(), keyword()) :: {:ok, body()} | error()
+  def create_image(%Scope{} = scope, server_id, opts \\ []) do
+    body =
+      %{type: "snapshot"}
+      |> maybe_put(:description, Keyword.get(opts, :description))
+      |> maybe_put(:labels, Keyword.get(opts, :labels))
+
+    request(scope, :post, "/servers/#{server_id}/actions/create_image", json: body)
+  end
+
+  @doc """
+  Images matching a label selector — how a custom builder image is found
+  again without storing its id anywhere this account could lose track of.
+
+  `label_selector` is Hetzner's own query syntax (`"key=value"`), the same
+  mechanism `create_image/3` writes labels with.
+  """
+  @spec list_images(Scope.t(), keyword()) :: {:ok, [body()]} | error()
+  def list_images(%Scope{} = scope, opts \\ []) do
+    query =
+      %{}
+      |> maybe_put("type", Keyword.get(opts, :type))
+      |> maybe_put("label_selector", Keyword.get(opts, :label_selector))
+      |> maybe_put("status", Keyword.get(opts, :status))
+      |> URI.encode_query()
+
+    with {:ok, %{"images" => images}} <- request(scope, :get, "/images?#{query}", []) do
+      {:ok, images}
+    end
+  end
+
   ## Private networks
 
   # 10.0.0.0/16 with one 10.0.0.0/24 subnet. Hetzner requires a subnet before a

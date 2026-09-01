@@ -338,6 +338,67 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     end
   end
 
+  describe "create_image/3" do
+    test "snapshots a server with the given description and labels", ctx do
+      stub(fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert conn.method == "POST"
+        assert conn.request_path == "/v1/servers/42/actions/create_image"
+        assert body["type"] == "snapshot"
+        assert body["description"] == "CodeMySpec builder (x86)"
+        assert body["labels"] == %{"cms-builder-role" => "x86"}
+
+        json(conn, 201, %{"image" => %{"id" => 99}, "action" => %{"status" => "running"}})
+      end)
+
+      assert {:ok, %{"image" => %{"id" => 99}}} =
+               Hetzner.create_image(ctx.scope, 42,
+                 description: "CodeMySpec builder (x86)",
+                 labels: %{"cms-builder-role" => "x86"}
+               )
+    end
+
+    test "omits description and labels entirely when neither is given", ctx do
+      stub(fn conn ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = Jason.decode!(raw)
+
+        assert body == %{"type" => "snapshot"}
+
+        json(conn, 201, %{"image" => %{"id" => 1}})
+      end)
+
+      assert {:ok, _} = Hetzner.create_image(ctx.scope, 42)
+    end
+  end
+
+  describe "list_images/2" do
+    test "filters by type and label selector", ctx do
+      stub(fn conn ->
+        assert conn.method == "GET"
+        assert conn.request_path == "/v1/images"
+
+        assert URI.decode_query(conn.query_string) == %{
+                 "type" => "snapshot",
+                 "label_selector" => "cms-builder-role=x86"
+               }
+
+        json(conn, 200, %{"images" => [%{"id" => 99, "status" => "available"}]})
+      end)
+
+      assert {:ok, [%{"id" => 99}]} =
+               Hetzner.list_images(ctx.scope, type: "snapshot", label_selector: "cms-builder-role=x86")
+    end
+
+    test "no matching image is an empty list, not an error", ctx do
+      stub(fn conn -> json(conn, 200, %{"images" => []}) end)
+
+      assert {:ok, []} = Hetzner.list_images(ctx.scope, label_selector: "cms-builder-role=x86")
+    end
+  end
+
   describe "credentials" do
     # A different project, carrying no Hetzner secret — rather than deleting the
     # ambient config, which is node-wide and was the whole reason this file was

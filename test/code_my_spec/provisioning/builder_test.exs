@@ -210,6 +210,158 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
+  # Every ordinary build used to pay `apt-get install ruby-full build-essential
+  # && gem install kamal` fresh, on the stock image, every single time. This is
+  # the box that stops paying it — built once, found by label after that.
+  describe "ensure_builder_image/3" do
+    test "finds an existing image by label rather than building a new one" do
+      list_images = fn _scope, opts ->
+        assert opts[:label_selector] == "cms-builder-role=x86"
+        {:ok, [%{"id" => 555}]}
+      end
+
+      create = fn _scope, _name, _create_opts ->
+        flunk("a matching image already exists — nothing should be created")
+      end
+
+      assert {:ok, 555} =
+               Builder.ensure_builder_image(scope(), :x86, list_images: list_images, create: create)
+    end
+
+    test "builds one from scratch when none exists yet, then destroys the temp box" do
+      owner = self()
+
+      list_images = fn _scope, _opts -> {:ok, []} end
+
+      create = fn _scope, name, create_opts ->
+        assert name =~ "cms-builder-bootstrap-x86-"
+        assert create_opts[:image] == "docker-ce"
+        {:ok, server()}
+      end
+
+      run = fn
+        ["command -v kamal"] -> {"", 1}
+        [_command] -> {"", 0}
+      end
+
+      create_image = fn _scope, 42, image_opts ->
+        assert image_opts[:labels] == %{"cms-builder-role" => "x86"}
+        {:ok, %{"image" => %{"id" => 777}}}
+      end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:ok, 777} =
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 create_image: create_image,
+                 destroy: destroy
+               )
+
+      assert_received :destroyed
+    end
+
+    test "destroys the temp box even when the bootstrap fails" do
+      owner = self()
+
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"connection refused", 255} end
+      destroy = fn _scope, 42 -> send(owner, :destroyed); {:ok, %{}} end
+
+      assert {:error, {:builder_unreachable, _seconds, _last}} =
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 destroy: destroy,
+                 ssh_attempts: 1,
+                 ssh_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    test "an unknown architecture is refused rather than building the wrong box" do
+      list_images = fn _scope, _opts -> {:ok, []} end
+
+      assert {:error, {:unknown_architecture, :sparc}} =
+               Builder.ensure_builder_image(scope(), :sparc, list_images: list_images)
+    end
+  end
+
+  # `build/3` never fails because the optimization failed — the stock image
+  # plus `Remote.ensure_kamal/1`'s own install is the path that has worked
+  # all along, and an account with no Hetzner token configured yet must not
+  # lose the ability to deploy while this resolves.
+  describe "build/3 picks up a custom builder image automatically" do
+    test "uses the found image instead of the stock one, with no caller involvement" do
+      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+
+      list_images = fn _scope, _opts -> {:ok, [%{"id" => 555}]} end
+
+      create = fn _scope, _name, create_opts ->
+        assert create_opts[:image] == 555
+        {:ok, server()}
+      end
+
+      assert {:ok, _build} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(build_fun: build, create: create, list_images: list_images)
+               )
+    end
+
+    test "an explicit :builder_image always wins, even with a custom image available" do
+      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+
+      list_images = fn _scope, _opts ->
+        flunk("an explicit :builder_image must not trigger a lookup at all")
+      end
+
+      create = fn _scope, _name, create_opts ->
+        assert create_opts[:image] == "a-specific-image"
+        {:ok, server()}
+      end
+
+      assert {:ok, _build} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   build_fun: build,
+                   create: create,
+                   list_images: list_images,
+                   builder_image: "a-specific-image"
+                 )
+               )
+    end
+
+    test "an unconfigured account falls back to the stock image, not a failed build" do
+      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+
+      list_images = fn _scope, _opts -> {:error, :hetzner_not_configured} end
+
+      create = fn _scope, _name, create_opts ->
+        assert create_opts[:image] == "docker-ce"
+        {:ok, server()}
+      end
+
+      assert {:ok, _build} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(build_fun: build, create: create, list_images: list_images)
+               )
+    end
+  end
+
   # `opts[:then]` is what lets a deploy run on the same box the image was
   # just built and pushed on — never a second box, and never the environment
   # of whichever caller triggered the run. `Build.deploy` carries back
@@ -308,6 +460,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       then_fun = fn _run, _dir -> flunk("then_fun must not run when kamal never installed") end
 
       run = fn
+        ["command -v kamal"] -> {"", 1}
         ["apt-get" <> _ = _command] -> {"E: Unable to locate package ruby-full", 100}
         [_command] -> {"", 0}
       end

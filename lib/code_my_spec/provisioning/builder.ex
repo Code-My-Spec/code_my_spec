@@ -107,6 +107,11 @@ defmodule CodeMySpec.Provisioning.Builder do
   # depend on it recognizing the same boxes.
   @builder_prefix "builder-"
 
+  # How a custom builder image is found again without storing its id
+  # anywhere this account could lose track of — a Hetzner label, the same
+  # mechanism `create_image/3` writes it with.
+  @builder_image_label "cms-builder-role"
+
   # How old a `builder-*` box has to be before it stops being read as
   # in-flight. A build either finishes or fails in minutes (see moduledoc);
   # nothing here is legitimately long-lived, so a box past this age is not
@@ -132,6 +137,7 @@ defmodule CodeMySpec.Provisioning.Builder do
     architecture = Keyword.get(opts, :architecture, :arm)
 
     with {:ok, spec} <- builder_spec(architecture),
+         opts = with_builder_image(scope, architecture, opts),
          {:ok, server} <- start_builder(scope, ref, spec, opts) do
       # A builder outlives a raise, a non-zero exit and an early return alike,
       # and each of those leaves a box nobody is watching on an invoice
@@ -185,6 +191,100 @@ defmodule CodeMySpec.Provisioning.Builder do
       {:ok, spec} -> {:ok, spec}
       :error -> {:error, {:unknown_architecture, architecture}}
     end
+  end
+
+  # An explicit `:builder_image` always wins — a caller that already knows
+  # which image it wants (a test, a drill, a caller mid-migration off this
+  # entirely) is answering a question this has no business re-deciding.
+  # Otherwise this is where `docker-ce` quietly becomes whichever custom
+  # image `ensure_builder_image/3` finds or builds — `start_builder/4`
+  # already reads `opts[:builder_image]` unconditionally, so nothing else
+  # has to change to pick it up.
+  #
+  # Never fails the build. An account with no Hetzner token configured, or a
+  # real provider error resolving the image, falls back to the stock image
+  # and `Remote.ensure_kamal/1`'s own full install — slower, but the same
+  # path that has worked all along. An optimization is not allowed to be the
+  # reason a deploy that would otherwise have succeeded does not.
+  defp with_builder_image(scope, architecture, opts) do
+    if Keyword.has_key?(opts, :builder_image) do
+      opts
+    else
+      case ensure_builder_image(scope, architecture, opts) do
+        {:ok, image_id} -> Keyword.put(opts, :builder_image, image_id)
+        {:error, _reason} -> opts
+      end
+    end
+  end
+
+  @doc """
+  A builder image for `architecture` with kamal already on it — found by
+  label if one already exists, built once if not.
+
+  Every ordinary build used to pay `apt-get install ruby-full build-essential
+  && gem install kamal` fresh, on the stock `docker-ce` image, every single
+  time — 30-90s of apt-mirror-dependent work on every deploy, for a toolchain
+  that never changes between builds. This is the box that stops paying it:
+  built once from the same stock image and the same `Remote.ensure_kamal/1`
+  every ordinary builder already runs, then kept and labelled so the next
+  build finds it instead of re-paying the bootstrap.
+  """
+  @spec ensure_builder_image(Scope.t(), :arm | :x86, keyword()) ::
+          {:ok, String.t() | integer()} | {:error, term()}
+  def ensure_builder_image(%Scope{} = scope, architecture, opts \\ []) do
+    list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    selector = "#{@builder_image_label}=#{architecture}"
+
+    case list_images.(scope, label_selector: selector, status: "available") do
+      {:ok, [image | _]} -> {:ok, image["id"]}
+      {:ok, []} -> build_builder_image(scope, architecture, opts)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # A temporary box, bootstrapped exactly like an ordinary builder, snapshot
+  # and gone either way — the same "every path destroys" discipline
+  # `build/3` itself follows, for the same reason: a box this leaves behind
+  # is one nobody is watching on an invoice somebody pays.
+  defp build_builder_image(scope, architecture, opts) do
+    with {:ok, spec} <- builder_spec(architecture) do
+      create = Keyword.get(opts, :create, &Hetzner.create_server/3)
+      destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
+      create_image = Keyword.get(opts, :create_image, &Hetzner.create_image/3)
+      name = "cms-builder-bootstrap-#{architecture}-#{System.unique_integer([:positive])}"
+
+      create_opts = [
+        server_type: spec.server_type,
+        location: Keyword.get(opts, :builder_location) || spec.location,
+        image: @builder_image,
+        ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
+        network_ids: Keyword.get(opts, :network_ids)
+      ]
+
+      case create.(scope, name, create_opts) do
+        {:ok, server} -> bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
+        {:error, _reason} = error -> error
+      end
+    end
+  end
+
+  defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
+    run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
+    attempts = Keyword.get(opts, :ssh_attempts, 90)
+
+    result =
+      with :ok <- Remote.await_ssh(run, attempts, opts),
+           :ok <- Remote.ensure_kamal(run),
+           {:ok, %{"image" => image}} <-
+             create_image.(scope, server_id(server),
+               description: "CodeMySpec builder (#{architecture})",
+               labels: %{@builder_image_label => to_string(architecture)}
+             ) do
+        {:ok, image["id"]}
+      end
+
+    _ = destroy.(scope, server_id(server))
+    result
   end
 
   defp start_builder(scope, ref, spec, opts) do

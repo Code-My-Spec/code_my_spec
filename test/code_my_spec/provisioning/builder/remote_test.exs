@@ -281,18 +281,42 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
   # MarketMySpec: `kamal: command not found` (exit 127), the first real
   # harness-only deploy to get far enough to invoke it.
   describe "ensure_kamal/1" do
-    test "installs ruby and the kamal gem" do
-      run = recorder(self(), %{})
+    # kamal not being on PATH yet, for every test below that exercises the
+    # install path — the default `recorder/2` response otherwise reports
+    # "found" and the install command is never even reached.
+    defp kamal_missing, do: %{"command -v kamal" => {"", 1}}
+
+    # A custom builder image (`Builder.ensure_builder_image/2`) already has
+    # kamal baked in — the whole reason it exists is to skip this dance on
+    # every ordinary deploy.
+    test "does nothing when kamal is already on the box" do
+      run = recorder(self(), %{"command -v kamal" => {"/usr/local/bin/kamal", 0}})
 
       assert :ok = Remote.ensure_kamal(run)
 
+      assert_received {:ran, "command -v kamal"}
+      refute_received {:ran, "apt-get" <> _}
+    end
+
+    test "installs ruby and the kamal gem" do
+      run = recorder(self(), kamal_missing())
+
+      assert :ok = Remote.ensure_kamal(run)
+
+      assert_received {:ran, "command -v kamal"}
       assert_received {:ran, command}
       assert command =~ "apt-get install -y -qq ruby-full build-essential"
       assert command =~ "gem install kamal --no-document"
     end
 
     test "reports a real failure rather than proceeding without kamal" do
-      run = recorder(self(), %{"gem install" => {"ERROR:  Could not find a valid gem", 1}})
+      run =
+        recorder(
+          self(),
+          Map.merge(kamal_missing(), %{
+            "gem install" => {"ERROR:  Could not find a valid gem", 1}
+          })
+        )
 
       assert {:error, {1, output}} = Remote.ensure_kamal(run)
       assert output =~ "Could not find a valid gem"
@@ -304,16 +328,22 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     # devops_status keeps only the first 300 characters of whatever this
     # becomes. That chatter alone pushed the real cause past the cutoff.
     test "suppresses needrestart's own restart-service chatter" do
-      run = recorder(self(), %{})
+      run = recorder(self(), kamal_missing())
       Remote.ensure_kamal(run)
 
+      assert_received {:ran, "command -v kamal"}
       assert_received {:ran, command}
       assert command =~ "NEEDRESTART_MODE=a"
     end
 
     test "keeps the tail of a long failure, where apt and gem put the real cause" do
       noise = String.duplicate("Restarting services...\n", 30)
-      run = recorder(self(), %{"gem install" => {noise <> "ERROR: the real cause", 1}})
+
+      run =
+        recorder(
+          self(),
+          Map.merge(kamal_missing(), %{"gem install" => {noise <> "ERROR: the real cause", 1}})
+        )
 
       assert {:error, {1, output}} = Remote.ensure_kamal(run)
 

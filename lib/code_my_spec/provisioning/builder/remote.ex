@@ -116,15 +116,22 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   end
 
   @doc """
-  Install kamal on the builder before it orchestrates a deploy over it.
+  Install kamal on the builder before it orchestrates a deploy over it,
+  unless it is already there.
 
-  Every builder is single-use and destroyed after one build (see `Builder`'s
-  own moduledoc), so there is never an "already installed" case to check
-  for — the box is always fresh. Ruby is not part of the `docker-ce` base
-  image, and nothing installed it before tonight: nothing had gotten a real
-  harness-only project's deploy far enough to actually invoke `bin/deploy
-  migrate` and find `kamal: command not found` (exit 127) — confirmed live
-  against MarketMySpec, the first deploy through this path to get this far.
+  Checked first rather than assumed either way: `Builder.custom_image?/1`
+  builders come from a snapshot with kamal already baked in (built once by
+  `Builder.ensure_builder_image/2`, exactly to skip this on every ordinary
+  deploy), but the stock `docker-ce` fallback — used until that snapshot
+  exists, or if it is ever unavailable — still needs it installed fresh
+  every time. One `command -v` check makes this correct under both without
+  the caller having to know which box it got.
+
+  Ruby is not part of the `docker-ce` base image, and nothing installed it
+  before one particular night: nothing had gotten a real harness-only
+  project's deploy far enough to actually invoke `bin/deploy migrate` and
+  find `kamal: command not found` (exit 127) — confirmed live against
+  MarketMySpec, the first deploy through this path to get this far.
 
   `NEEDRESTART_MODE=a` is load-bearing, not decoration: installing
   `ruby-full` on a stock Debian image triggers `needrestart`'s own apt hook,
@@ -145,6 +152,13 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
           :ok | {:error, {non_neg_integer(), String.t()}}
   def ensure_kamal(run) do
+    case run.(["command -v kamal"]) do
+      {_, 0} -> :ok
+      _ -> install_kamal(run)
+    end
+  end
+
+  defp install_kamal(run) do
     command =
       "apt-get update -qq && " <>
         "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
