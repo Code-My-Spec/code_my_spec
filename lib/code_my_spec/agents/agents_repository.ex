@@ -116,4 +116,23 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     |> ModelSetting.changeset(attrs)
     |> Repo.insert_or_update()
   end
+
+  @doc """
+  Forget a type's setting, so it resolves from the defaults again.
+
+  The way back. Without it a row is one-way — a person who set a model once had
+  no way to say "actually, whatever is sensible", and `ModelSetting`'s own
+  moduledoc is about not being stuck with last year's cheap model.
+
+  `:ok` when there was nothing to forget, because "leave it as the default" and
+  "it already was" are the same instruction.
+  """
+  @spec clear_model_setting(Scope.t(), atom()) :: :ok
+  def clear_model_setting(%Scope{user: %{id: user_id}}, role) do
+    ModelSetting
+    |> where([s], s.user_id == ^user_id and s.role == ^role)
+    |> Repo.delete_all()
+
+    :ok
+  end
 end

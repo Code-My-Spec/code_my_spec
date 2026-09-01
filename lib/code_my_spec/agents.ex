@@ -1059,6 +1059,22 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Let a type resolve from the defaults again.
+
+  The counterpart to `put_model_setting/4`, and the thing whose absence made
+  issue c6f5acce expensive: the settings form posts all four types at once, an
+  untouched select posts the default's own value, so one Save converted every
+  type from "whatever is sensible" to "this exact model, chosen deliberately" —
+  and there was no way back.
+
+  `ModelSetting`'s moduledoc argues against writing a default row at account
+  creation, because it would freeze whatever the defaults were that day. Writing
+  one on the first Save has the same effect; this is how it is undone.
+  """
+  @spec clear_model_setting(Scope.t(), atom()) :: :ok
+  defdelegate clear_model_setting(scope, role), to: AgentsRepository
+
   # The type an agent is being started as. Refused rather than defaulted when it
   # names one that does not exist: `Agent.role` is an enum, and a caller asking
   # for a type nobody defined is a caller with the wrong idea about what exists.

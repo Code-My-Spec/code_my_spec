@@ -97,10 +97,19 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
                   <label class="form-control">
                     <span class="label-text">Provider</span>
                     <select name={"#{row.role}[provider]"} class="select w-full text-base-content">
+                      <%!-- The way to leave a type alone, and the way back to
+                            leaving it alone. Without this the select renders the
+                            resolved default as its value, so an untouched row
+                            posts that value and Save writes it down as a
+                            deliberate choice — issue c6f5acce, where one click
+                            froze all four types at that day's defaults. --%>
+                      <option value="" selected={row.source == :default} data-test="use-default">
+                        Use the default{if row.provider, do: " (#{row.provider})"}
+                      </option>
                       <option
                         :for={provider <- @providers}
                         value={provider}
-                        selected={provider == row.provider}
+                        selected={row.source != :default and provider == row.provider}
                         disabled={provider not in @connected}
                         data-test={"provider-#{provider}"}
                       >
@@ -154,13 +163,21 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
     # Every type in one submit: the page is a table of four decisions and
     # saving one at a time would make "QA cheap, coder not" two round trips to
     # express one thought.
+    # A blank provider is "use the default", which is a real instruction rather
+    # than a missing field — and it is the way back, so a type that was pinned
+    # can go back to resolving. Skipping blanks instead, which is what this did,
+    # made a row one-way and made Save mean "pin everything".
     results =
       for role <- Agents.roles(),
           choice = params[to_string(role)],
-          is_map(choice),
-          provider = choice["provider"],
-          provider not in [nil, ""] do
-        Agents.put_model_setting(scope, role, provider, blank_to_nil(choice["model"]))
+          is_map(choice) do
+        case choice["provider"] do
+          blank when blank in [nil, ""] ->
+            Agents.clear_model_setting(scope, role)
+
+          provider ->
+            Agents.put_model_setting(scope, role, provider, blank_to_nil(choice["model"]))
+        end
       end
 
     case Enum.find(results, &match?({:error, _}, &1)) do
