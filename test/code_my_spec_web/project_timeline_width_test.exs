@@ -55,27 +55,37 @@ defmodule CodeMySpecWeb.ProjectTimelineWidthTest do
   end
 
   test "a phase name never renders as visible text in the strip" do
+    # Only what is inside the ~H heredoc. Splitting on the opening quotes and
+    # taking the rest swept up the module's own helpers, so `phase_tip/1`
+    # building a hover string read as markup printing a name.
     markup =
       "lib/code_my_spec_web/project_timeline.ex"
       |> File.read!()
       |> String.split("~H\"\"\"")
       |> Enum.at(1)
       |> to_string()
+      |> String.split(~s(\n    """))
+      |> List.first()
+      |> to_string()
 
     offenders =
       markup
       |> String.split("\n")
       |> Enum.filter(&String.contains?(&1, "phase.label"))
-      # The two places a name is free: the hover title, and a screen-reader span
-      # that is visually hidden. Both were deliberate — the name still reaches
-      # anyone who needs it, without occupying a pixel.
-      |> Enum.reject(&(String.contains?(&1, "title=") or String.contains?(&1, "sr-only")))
+      # The places a name is free: the hover title, a DaisyUI tooltip's
+      # `data-tip`, and a visually-hidden span. All three are read by a person
+      # who asks for them and none occupies a pixel until they do.
+      |> Enum.reject(
+        &(String.contains?(&1, "title=") or String.contains?(&1, "data-tip") or
+            String.contains?(&1, "sr-only"))
+      )
 
     assert offenders == [],
            "a phase name is being rendered as visible text again: #{inspect(offenders)}. " <>
              "That is what made the strip overflow at 390px — SHAPING, its steps, then " <>
              "DI, and BUILDING, CHECKING and PROVING off-screen with nothing saying so. " <>
-             "The name belongs in the title or an sr-only span, where it costs no width."
+             "The name belongs in a title, a data-tip or an sr-only span, none of " <>
+             "which costs width until somebody asks for it."
   end
 
   test "the two free places are still there, so the name is not simply gone" do

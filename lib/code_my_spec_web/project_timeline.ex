@@ -88,7 +88,11 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.link
             navigate={phase_path(phase)}
             title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done"}
-            class="flex shrink-0 items-center gap-1"
+            data-tip={phase_tip(phase)}
+            class={[
+              "flex shrink-0 items-center gap-1",
+              phase_tip(phase) && "tooltip tooltip-bottom"
+            ]}
           >
             <%!-- No pie on the phase you are in. Its dots already say which
             steps are done and which one you are on, one mark per step, so a pie
@@ -128,7 +132,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             data-state={step.state}
             class={[not phase.expanded? && "sr-only"]}
           >
-            <.link navigate={step.path} title={step.title} class="flex h-4 items-center">
+            <.link
+              navigate={step.path}
+              title={step.title}
+              class={[
+                "flex h-4 items-center",
+                phase.expanded? and step.detail not in [nil, ""] and "tooltip tooltip-bottom"
+              ]}
+              data-tip={phase.expanded? && step.detail}
+            >
               <%!-- The step you are on is a pill with its short name inside;
               the rest of the phase is dots. That is the one place the strip
               spends words, and it spends them on the only thing a glance is
@@ -223,6 +235,18 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       }
     end)
     |> Enum.reject(&(&1.steps == []))
+  end
+
+  # Progress and meaning in one string, because they are one hover.
+  #
+  # `nil` when the phase has no description, which collapses the tooltip classes
+  # away rather than opening an empty bubble — the same choice
+  # `PlainLanguage.fetch/1` makes for a step.
+  defp phase_tip(phase) do
+    case PlainLanguage.phase_detail(phase.key) do
+      nil -> nil
+      detail -> "#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done. #{detail}"
+    end
   end
 
   defp steps_in_phase(key, project, satisfied, current) do

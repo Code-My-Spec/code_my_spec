@@ -176,9 +176,48 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
   @spec order() :: [String.t()]
   def order, do: @order
 
+  # What a phase is, in the same voice as its steps: second person, no jargon,
+  # two sentences at most.
+  #
+  # A collapsed phase draws as one pie and nothing else — that is what makes the
+  # strip fit a phone. The name reaches a reader through the hover, and John
+  # asked for the sentences to reach them the same way: "we could write one or
+  # two sentence description of the summary groups as well and mouse over all of
+  # them, that would be the best thing."
+  #
+  # Written per phase rather than stitched from its steps. Five step details
+  # concatenated is not a summary, it is five details, and the phase is the level
+  # at which somebody who does not want the steps is looking.
+  @phase_details %{
+    shaping:
+      "We are working out what your software is for and who it is for. " <>
+        "Nothing is being built yet, and everything built later follows from this.",
+    design:
+      "We are deciding how the pieces fit together before writing them. " <>
+        "It is the part that is cheapest to change now and most expensive to change later.",
+    building:
+      "Your software is being written. This is the longest stretch, " <>
+        "and the one where you will see the most going on.",
+    checking:
+      "We are looking for what went wrong before you have to find it. " <>
+        "Anything worth fixing gets fixed here rather than after you are using it.",
+    proving:
+      "We are making sure it really works, by using it the way you would. " <>
+        "This is the last thing between the software and you."
+  }
+
   @doc "The phases, in order, with the name a person reads."
   @spec phases() :: [{atom(), String.t()}]
   def phases, do: @phases
+
+  @doc """
+  What a phase is, in a sentence or two, or `nil` for one nobody has described.
+
+  `nil` rather than a fallback, on the same reasoning as `fetch/1`: a phase
+  carrying invented text reads as though somebody wrote it about this project.
+  """
+  @spec phase_detail(atom()) :: String.t() | nil
+  def phase_detail(key), do: Map.get(@phase_details, key)
 
   @doc """
   What this requirement means in plain language, or `nil` if it has none.
