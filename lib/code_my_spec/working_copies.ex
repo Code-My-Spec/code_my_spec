@@ -564,8 +564,11 @@ defmodule CodeMySpec.WorkingCopies do
   # no device cannot be recognised by the next one either — the same checkout
   # onboarded twice is two rows, which is the duplicate this whole lookup exists
   # to prevent.
-  # Refused rather than minted machine-less, because `device_id` is `NOT NULL`
-  # and a constraint violation here reads as a crash rather than as an answer.
+  # Refused rather than minted machine-less. A row that is ever seen must name a
+  # device — `seen_copies_are_on_a_machine`, `device_id IS NOT NULL OR
+  # last_seen_at IS NULL` — so minting one without would defer the failure to
+  # the first connection, where a constraint violation reads as a crash rather
+  # than as an answer.
   #
   # Both callers can say which machine they are. A harness join carries it in
   # the payload; onboarding reads the identity this machine already holds and

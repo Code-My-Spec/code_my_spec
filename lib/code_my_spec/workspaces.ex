@@ -207,7 +207,9 @@ defmodule CodeMySpec.Workspaces do
   # is after this runs.
   # The machine a cloud copy is on, which is not anybody's laptop.
   #
-  # `working_copies.device_id` is `NOT NULL` — a checkout is identified by
+  # A seen `working_copies` row must name its device — the check constraint is
+  # `device_id IS NOT NULL OR last_seen_at IS NULL`, not a plain NOT NULL — and a
+  # cloud copy is seen the moment it connects. A checkout is identified by
   # {project, device, root}, and `/workspace/<app>` is a path every container
   # shares, so without a device two visitors' instances are one indistinguishable
   # row. This is also the only place `kind: :cloud` is written from, and it is

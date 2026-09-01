@@ -137,7 +137,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # enough to predate devices — and a checkout is identified by
       # {project, device, root}, which cannot be answered without one. Minting
       # anyway is what left this project with rows nothing could attribute to a
-      # machine, and `device_id` is `NOT NULL` now.
+      # machine, and a copy that has been seen must now name one:
+      # `seen_copies_are_on_a_machine` is `device_id IS NOT NULL OR last_seen_at
+      # IS NULL`, so an unseen row may still have none.
       {:error, :no_device} ->
         {:error,
          %{
