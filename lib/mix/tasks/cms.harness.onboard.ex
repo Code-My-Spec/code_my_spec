@@ -1014,7 +1014,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       app: target_app(root),
       harness_id: id,
       relay_model_turns: relay_model_turns?,
-      deploy_key: deploy_key_for(root)
+      deploy_key: deploy_key_for(root),
+      # Passed as well as written by `mint/2`, so the two writers of this file
+      # agree. `mint/2` only runs when a copy has no id yet; every re-onboard
+      # goes straight here, and a run that recorded nothing would leave a copy
+      # minted before this existed without an answer forever.
+      server_url: Config.server_url()
     ]
 
     opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
