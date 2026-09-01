@@ -20,6 +20,7 @@ defmodule CodeMySpec.Provisioning.Builder do
   alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
   defmodule Build do
@@ -262,15 +263,28 @@ defmodule CodeMySpec.Provisioning.Builder do
       ]
 
       case create.(scope, name, create_opts) do
-        {:ok, server} -> bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
-        {:error, _reason} = error -> error
+        {:ok, server} ->
+          bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
+
+        {:error, _reason} = error ->
+          error
       end
     end
   end
 
+  # The source server is not destroyed until the snapshot Hetzner is taking
+  # *of* it is confirmed done. `create_image/3`'s own moduledoc says the
+  # caller polls for the image to actually appear rather than trusting a
+  # bare "accepted" response — this used to say that and not do it: the
+  # image the initial response names is `status: "creating"`, and deleting
+  # its source while Hetzner is still reading from it is exactly the timing
+  # bug this discipline exists to close. `Builder.build/3`'s own "every path
+  # destroys" only ever meant "eventually", not "before the thing being
+  # destroyed still owes something to a request already in flight."
   defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
     run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
     attempts = Keyword.get(opts, :ssh_attempts, 90)
+    list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
 
     result =
       with :ok <- Remote.await_ssh(run, attempts, opts),
@@ -279,12 +293,42 @@ defmodule CodeMySpec.Provisioning.Builder do
              create_image.(scope, server_id(server),
                description: "CodeMySpec builder (#{architecture})",
                labels: %{@builder_image_label => to_string(architecture)}
-             ) do
+             ),
+           :ok <- await_image_ready(list_images, scope, image["id"], architecture, opts) do
         {:ok, image["id"]}
       end
 
     _ = destroy.(scope, server_id(server))
     result
+  end
+
+  # Same shape as `Remote.await_ssh/4` — a plain poll for the observable
+  # effect, not an action id. Hetzner reports a snapshot as `status:
+  # "creating"` for a real span (bigger disks take longer), and nothing
+  # downstream — `Hetzner.create_server/3` asked to build from this image,
+  # or the source server this function is about to let its caller delete —
+  # is safe to run against an image still in that state.
+  defp await_image_ready(list_images, scope, image_id, architecture, opts, attempts \\ 30)
+
+  defp await_image_ready(_list_images, _scope, image_id, _architecture, _opts, 0) do
+    {:error, {:image_not_ready, image_id}}
+  end
+
+  defp await_image_ready(list_images, scope, image_id, architecture, opts, attempts) do
+    selector = "#{@builder_image_label}=#{architecture}"
+
+    case list_images.(scope, label_selector: selector, status: "available") do
+      {:ok, images} ->
+        if Enum.any?(images, &(&1["id"] == image_id)) do
+          :ok
+        else
+          Wait.sleep(Keyword.get(opts, :image_poll_interval_ms, 3_000))
+          await_image_ready(list_images, scope, image_id, architecture, opts, attempts - 1)
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   defp start_builder(scope, ref, spec, opts) do

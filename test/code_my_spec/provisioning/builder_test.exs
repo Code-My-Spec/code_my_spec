@@ -230,8 +230,15 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
     test "builds one from scratch when none exists yet, then destroys the temp box" do
       owner = self()
+      # The first call answers the "does one already exist" lookup with
+      # nothing; every call after that is `await_image_ready/6` polling for
+      # the same image to actually finish — real by then, per Hetzner.
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
 
-      list_images = fn _scope, _opts -> {:ok, []} end
+      list_images = fn _scope, _opts ->
+        n = Agent.get_and_update(counter, &{&1, &1 + 1})
+        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+      end
 
       create = fn _scope, name, create_opts ->
         assert name =~ "cms-builder-bootstrap-x86-"
@@ -260,7 +267,71 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  create: create,
                  run: run,
                  create_image: create_image,
-                 destroy: destroy
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    test "the source server is not destroyed while Hetzner is still creating the snapshot" do
+      owner = self()
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, _opts ->
+        n = Agent.get_and_update(counter, &{&1, &1 + 1})
+
+        cond do
+          n == 0 -> {:ok, []}
+          n < 3 -> {:ok, []}
+          true -> {:ok, [%{"id" => 777}]}
+        end
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+
+      destroy = fn _scope, 42 ->
+        # By the time this runs, the image must already show as available —
+        # asserted via the counter directly rather than timing, so this
+        # fails loudly instead of flaking.
+        assert Agent.get(counter, & &1) >= 4,
+               "the source server was destroyed before the snapshot was confirmed done"
+
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:ok, 777} =
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    test "gives up and still destroys the source if the image never becomes available" do
+      owner = self()
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+      destroy = fn _scope, 42 -> send(owner, :destroyed); {:ok, %{}} end
+
+      assert {:error, {:image_not_ready, 777}} =
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
                )
 
       assert_received :destroyed
