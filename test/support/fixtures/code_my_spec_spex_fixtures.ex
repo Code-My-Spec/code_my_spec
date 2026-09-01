@@ -837,6 +837,18 @@ defmodule CodeMySpecSpex.Fixtures do
   def fetch_agent(%Scope{} = scope, id), do: CodeMySpec.Agents.fetch_agent(scope, id)
 
   @doc """
+  Every agent the server believes is running, for a criterion whose claim is
+  that there is not one.
+
+  An absence is the awkward thing to assert through a surface: a page that shows
+  no agent looks the same whether none was started or the page never shows them.
+  Criterion 2930 needs exactly that — agreeing to an epic must not start
+  anything — so it asks the record, through here rather than around the
+  boundary.
+  """
+  def running_agents(%Scope{} = scope), do: CodeMySpec.Agents.list_running(scope)
+
+  @doc """
   A row for an agent the server believes is running.
 
   It used to take a process handle, because an agent was a detached OS process
