@@ -425,14 +425,48 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # exactly as it did before this existed, and a copy served by a daemon holding
   # that project's key already works.
   defp ensure_local_credential(project_id) do
-    if blank?(System.get_env("CMS_DEPLOY_KEY")) do
-      case local_project_deploy_key(project_id) do
-        key when is_binary(key) and key != "" -> System.put_env("CMS_DEPLOY_KEY", key)
-        _ -> :ok
-      end
-    end
+    cond do
+      not blank?(System.get_env("CMS_DEPLOY_KEY")) ->
+        :ok
 
-    :ok
+      not local_server?(Config.server_url()) ->
+        # The database this reads is on this machine, and it backs a server on
+        # this machine. Asked about a project id that belongs to a remote
+        # CodeMySpec it can only answer "never heard of it", which is true of the
+        # database and says nothing about the credential.
+        #
+        # Silence there cost a diagnosis: onboarding against production with a
+        # production project id failed `:no_credential`, and that was read as
+        # "production's project has no key" — true, and not the reason. Nothing
+        # in this path asks production for anything.
+        Mix.shell().info([
+          :yellow,
+          "Not reading a deploy key from the local database: this is onboarding " <>
+            "against #{Config.server_url()}, whose projects are not in it. Export " <>
+            "CMS_DEPLOY_KEY with a key from that server if the mint is refused.",
+          :reset
+        ])
+
+        :ok
+
+      true ->
+        case local_project_deploy_key(project_id) do
+          key when is_binary(key) and key != "" -> System.put_env("CMS_DEPLOY_KEY", key)
+          _ -> :ok
+        end
+    end
+  end
+
+  # Does this machine's database back the server being posted to?
+  #
+  # Host, not the whole URL: the port distinguishes the dev app from the
+  # packaged one and both read `code_my_spec_dev` on this machine, so a port
+  # comparison would skip a lookup that is fine.
+  defp local_server?(url) do
+    case URI.parse(url) do
+      %URI{host: host} when host in ["localhost", "127.0.0.1", "::1"] -> true
+      _ -> false
+    end
   end
 
   defp blank?(nil), do: true
@@ -829,6 +863,28 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          Put a `project_id` in .code_my_spec/config.yml. In a fresh worktree the
          submodule is usually just not checked out: `git submodule update --init
          .code_my_spec`.
+         """}
+
+      # Named, because the generic version sent a reader to the wrong place.
+      # `:no_credential` reads as "you have no credential"; when onboarding
+      # against a server this machine's database does not back, the truth is
+      # "your credential is for another server, and nothing here can find it".
+      # The devops agent read it the first way and was about to send an operator
+      # to generate a key that would not have helped.
+      {:error, :no_credential} ->
+        {:error,
+         """
+         No credential to mint a harness id for #{root} against #{Config.server_url()}.
+
+         A deploy key reaches exactly one project on exactly one server. This task
+         reads one from this machine's database, which only holds projects for a
+         CodeMySpec running here — so onboarding against anything else needs the
+         key passed in:
+
+             CMS_DEPLOY_KEY=<a key from that server> \\
+               mix cms.harness.onboard #{root} --project <that server's project id>
+
+         Generate one on that server's project page if it has none.
          """}
 
       other ->
