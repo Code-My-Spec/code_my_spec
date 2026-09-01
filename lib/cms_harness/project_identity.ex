@@ -248,6 +248,34 @@ defmodule CmsHarness.ProjectIdentity do
   @spec config_path(String.t()) :: String.t()
   def config_path(root), do: Path.join(Path.expand(root), @config_path)
 
+  @doc """
+  The CodeMySpec this project belongs to, as the project's own checkout says.
+
+  Read from `.code_my_spec/config.yml`, which is committed, so every clone
+  inherits it and a checkout nobody has onboarded yet still knows where its id
+  has to be minted. That is the one case `--server-url` exists for and the one
+  `.cms_harness.json` cannot answer, because that file does not exist yet.
+
+  Below the harness config on purpose. A project served by dev.codemyspec.com on
+  one machine and codemyspec.com on another cannot have one right answer in a
+  tracked file, and the copy is where that difference lives — so the committed
+  value is the project's default and the copy's record is what actually happened.
+
+  `nil` for a project that names none, which is every project until somebody
+  sets it: the build's own default is the answer then, exactly as before.
+  """
+  @spec server_url(String.t()) :: String.t() | nil
+  def server_url(root) do
+    with {:ok, contents} <- read(config_path(root)),
+         {:ok, parsed} <- parse(contents),
+         url when is_binary(url) <- parsed["server_url"],
+         trimmed when trimmed != "" <- String.trim(url) do
+      trimmed
+    else
+      _ -> nil
+    end
+  end
+
   defp from_config(root) do
     path = config_path(root)
 

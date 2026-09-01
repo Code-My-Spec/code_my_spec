@@ -46,6 +46,44 @@ defmodule CmsHarness.ProjectIdentityTest do
     assert {:ok, %{id: "712"}} = ProjectIdentity.resolve(project.root)
   end
 
+  describe "server_url/1" do
+    # The tier that answers before a copy exists. `--server-url` and the copy's
+    # own `.cms_harness.json` both come after this in `cms.harness.onboard`, and
+    # neither can help the *first* onboard of a checkout somebody else's build is
+    # pointed at — the file is not written yet and nobody typed anything. A
+    # committed key every clone inherits is the only thing that can (a6d07cf3).
+    test "a project names the server its ids are minted against" do
+      project = project_dir(project_id: 712)
+
+      File.write!(
+        Path.join(project.root, ".code_my_spec/config.yml"),
+        """
+        project_id: 712
+        server_url: "https://project.example"
+        description: "a hand-written block
+        that spans several lines and must not be re-serialised"
+        """
+      )
+
+      assert ProjectIdentity.server_url(project.root) == "https://project.example",
+             "a checkout that says which CodeMySpec it belongs to was ignored, so " <>
+               "its id gets minted against whichever build ran the command"
+    end
+
+    # `nil` rather than a guess, because the tier below it — the build's own
+    # default — is the right answer for every project that has never set this,
+    # which is all of them today.
+    test "a project that names none says so" do
+      project = project_dir(project_id: 712)
+
+      assert ProjectIdentity.server_url(project.root) == nil
+    end
+
+    test "a directory with no config at all says so" do
+      assert ProjectIdentity.server_url("/nonexistent/checkout") == nil
+    end
+  end
+
   # The inverted version of the test that used to live here. It asserted that
   # an exported id wins over a checkout's own config, which is the shape that
   # let one harness attribute every copy it serves to whichever project the

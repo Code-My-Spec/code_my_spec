@@ -702,12 +702,20 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # names its server. `.code_my_spec/config.yml` carries `client_api_url`, which
   # is where the *deployed app* talks — this repo's says codemyspec.com while
   # its harness is localhost — so reading it would be confidently wrong.
-  # The flag first, then what the copy already recorded. A copy onboarded once
-  # knows which server issued its id, so every run after the first is right
-  # without anybody typing anything — and the flag is still there for the first,
-  # which is the only moment nothing can know.
+  # Four tiers, most specific first: what the caller typed, what this copy
+  # recorded when its id was minted, what the project says in its committed
+  # config, and failing all of those the build's own default.
+  #
+  # The copy above the project because a project served by dev.codemyspec.com on
+  # one machine and codemyspec.com on another cannot have one right answer in a
+  # tracked file — the committed value is the project's default and the copy's
+  # record is what actually happened. And the project above the build's default
+  # because it is the only tier that can answer *before* a copy exists, which is
+  # the first onboard of a foreign root: the case the flag exists for, now with
+  # something to fall back on when nobody typed it.
   defp put_server_url_flag(args, root) do
-    case flag(args, "--server-url") || recorded_server_url(root) do
+    case flag(args, "--server-url") || recorded_server_url(root) ||
+           ProjectIdentity.server_url(root) do
       nil -> Application.delete_env(:code_my_spec, :harness_server_url_override)
       url -> Application.put_env(:code_my_spec, :harness_server_url_override, url)
     end
