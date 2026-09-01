@@ -24,6 +24,7 @@ defmodule CodeMySpec.WorkingCopies do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -937,6 +938,7 @@ defmodule CodeMySpec.WorkingCopies do
     end)
     |> case do
       {:ok, counts} ->
+        tell_the_machine(id)
         {:ok, counts}
 
       {:error, reason} ->
@@ -945,6 +947,32 @@ defmodule CodeMySpec.WorkingCopies do
         # had nothing to remove — and that is the failure this story exists to
         # remove, reproduced inside its own fix.
         raise "offboard failed for working copy #{id}: #{inspect(reason)}"
+    end
+  end
+
+  # Offboarding is the one operation that should release the machine's channel
+  # and watchers, and it was the one that did not.
+  #
+  # A copy removed here stayed served there forever: still joined, still holding
+  # a project supervisor, still scanning a directory that no longer exists — and
+  # logging "This is a harness fault — a wrong working directory or an unreadable
+  # checkout" on every cycle, which is a correct guard and exactly the wrong
+  # description of a copy somebody retired on purpose. Nothing but a restart
+  # cleared it, which is why it went unnoticed. Issue 03ea1ee5.
+  #
+  # Best-effort, after the transaction, and never able to fail the offboard. The
+  # machine may be off, and a copy whose machine is gone is precisely the one an
+  # operator most needs to remove. A push that does not land costs a stale
+  # subtree until that harness next restarts — the state before this existed, so
+  # the floor is unchanged.
+  #
+  # Fire-and-forget rather than the `ref`-and-await shape `stop_agent` uses, for
+  # the same reason: there is nothing to learn from the answer that would change
+  # what we do, and waiting would hand an offboard a way to hang.
+  defp tell_the_machine(working_copy_id) do
+    case Analysis.executor_holder(working_copy_id) do
+      {:ok, pid, _instance} -> send(pid, {:offboarded, working_copy_id})
+      _ -> :ok
     end
   end
 

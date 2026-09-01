@@ -1074,6 +1074,21 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # This copy was offboarded, so tell the machine to stop serving it.
+  #
+  # `WorkingCopies.offboard/2` sends this after the transaction commits, so the
+  # row is already gone by the time it arrives — which is why the push carries
+  # nothing to look up. The harness knows which root this channel is for.
+  #
+  # Pushed and forgotten. An offboard has to work on a machine that is off, and
+  # a copy whose machine is gone is precisely the one an operator most needs to
+  # remove — so nothing here may wait, and nothing may fail the offboard that
+  # has already happened. Issue 03ea1ee5.
+  def handle_info({:offboarded, _working_copy_id}, socket) do
+    push(socket, "offboard", %{})
+    {:noreply, socket}
+  end
+
   # The counts the harness used to receive in its reply. Logged here instead,
   # because the reply now leaves before they exist.
   def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do

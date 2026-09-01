@@ -31,6 +31,42 @@ defmodule CodeMySpec.WorkingCopiesTest do
     %{scope: full_scope_fixture()}
   end
 
+  describe "offboard/2 tells the machine" do
+    # Offboarding is the one operation that should release the machine's channel
+    # and watchers, and it was the one that did not. A copy removed here stayed
+    # served there forever — still joined, still scanning a directory that no
+    # longer exists, logging "This is a harness fault — a wrong working
+    # directory or an unreadable checkout" every cycle, which is a correct guard
+    # and exactly the wrong description of a copy somebody retired on purpose.
+    # Only a restart cleared it. Issue 03ea1ee5.
+    test "the channel holding the copy is told", %{scope: scope} do
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/served")
+
+      :ok = CodeMySpec.Analysis.register_executor(copy.id, "instance", "/a/served")
+
+      {:ok, _counts} = WorkingCopies.offboard(scope, copy)
+
+      assert_receive {:offboarded, id}, 1_000
+      assert id == copy.id
+    end
+
+    # The machine may be off, and a copy whose machine is gone is precisely the
+    # one an operator most needs to remove. So this must not raise, must not
+    # wait, and must not report failure — a push that does not land costs a
+    # stale subtree until that harness restarts, which is the floor this
+    # replaced rather than a regression.
+    test "and an offboard still succeeds when nothing is listening", %{scope: scope} do
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/unreachable")
+
+      assert {:ok, counts} = WorkingCopies.offboard(scope, copy)
+      assert is_map(counts)
+
+      refute_receive {:offboarded, _}, 100
+    end
+  end
+
   describe "issue/3" do
     # A checkout's own `.code_my_spec/` registered itself as a second working
     # copy on the same project and reconnected for days. Analysis routed to it —

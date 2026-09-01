@@ -65,18 +65,26 @@ defmodule CmsHarness.Sync do
 
         :ok
 
-      # Sent, not refused. A tree that walks clean and yields nothing is a real
-      # state — delete a project's last tracked file and this is what it looks
-      # like — and refusing here would leave the server holding rows for files
-      # that are gone, which is the defect this manifest design exists to
-      # prevent. Said at `:error` because for an established project it is
-      # almost always a wrong or unreadable root, and it is about to remove
-      # every row.
+      # Handed on, not refused here. A tree that walks clean and yields nothing
+      # is a real state — delete a project's last tracked file and this is what
+      # it looks like — and refusing at this level would leave the server
+      # holding rows for files that are gone, which is the defect this manifest
+      # design exists to prevent. Said at `:error` because for an established
+      # project it is almost always a wrong or unreadable root.
+      #
+      # It does not claim the manifest was sent. `ChannelClient` has its own
+      # guard on `{:observations, []}` and usually refuses, so this used to
+      # announce "Sending the empty manifest, which will remove every row"
+      # immediately before the next line said "so nothing was sent" — one of
+      # them was always wrong, and a reader had to know which layer won to tell
+      # which. Issue 03ea1ee5. Say what was found; let the layer that decides
+      # say what it decided.
       {:ok, []} ->
         Logger.error(
-          "[CmsHarness] scanned #{project.root} and found no trackable files. Sending " <>
-            "the empty manifest, which will remove every row the server holds for this " <>
-            "working copy. If that is not what you expect, check the root and the sync roots."
+          "[CmsHarness] scanned #{project.root} and found no trackable files. For an " <>
+            "established project that is almost always a wrong or unreadable root — " <>
+            "check the root and the sync roots. Whether an empty manifest is sent is " <>
+            "the channel's call, and it says so on the next line."
         )
 
         ChannelClient.deliver_observations(project.root, [])

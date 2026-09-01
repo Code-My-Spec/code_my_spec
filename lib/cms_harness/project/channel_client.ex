@@ -1046,6 +1046,28 @@ defmodule CmsHarness.Project.ChannelClient do
   # this process, so the cast is to self, which is fine and keeps the scan out of
   # the socket process either way.
   @impl Slipstream
+  # This copy was offboarded on the server, so stop serving it.
+  #
+  # No `ref` and no reply: an offboard must not be able to fail because the
+  # machine is unreachable or slow, so the server pushes and does not wait.
+  # Missing this message costs a stale subtree until the next restart, which is
+  # exactly the state this fixes and no worse than it.
+  #
+  # Terminated from another process on purpose. The subtree being stopped
+  # contains *this* one — asking a supervisor to kill the caller's own ancestor
+  # from inside a callback would take the callback with it, before it returns.
+  # `Task.start/1` lets this return `{:ok, socket}` and die a moment later,
+  # which is the ordering Slipstream expects.
+  def handle_message(_topic, "offboard", _payload, socket) do
+    root = socket.assigns.project.root
+
+    Logger.info("[CmsHarness] server offboarded #{root} — releasing its channel and watchers")
+
+    Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "rescan", _payload, socket) do
     Logger.info("[CmsHarness] server asked for a rescan of #{socket.assigns.project.root}")
 

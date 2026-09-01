@@ -138,4 +138,33 @@ defmodule CmsHarness.Projects do
   """
   @spec connected?(String.t()) :: boolean()
   def connected?(root), do: ChannelClient.connected?(root)
+
+  @doc """
+  Stop serving a working copy, releasing its channel and its watchers.
+
+  The counterpart to `ensure_started/1`, and until now there wasn't one. A copy
+  offboarded on the server stayed served here forever: still joined, still
+  holding a project supervisor, still scanning a directory that no longer
+  exists. Every cycle it logged "the scan of … found no files at all … This is
+  a harness fault — a wrong working directory or an unreadable checkout" —
+  correct as a guard, and exactly wrong as a description of a copy somebody
+  deliberately removed. It repeats indefinitely, so whoever reads the log later
+  goes looking for a broken checkout that was retired on purpose. Issue
+  03ea1ee5.
+
+  `:not_serving` rather than an error: being asked to stop something already
+  stopped is the request being satisfied, and an offboard must not fail because
+  it arrived twice.
+  """
+  @spec stop_serving(String.t()) :: :ok | {:error, :not_serving}
+  def stop_serving(root) when is_binary(root) do
+    case Registry.lookup(CmsHarness.Registry, {:project, Path.expand(root)}) do
+      [{pid, _}] ->
+        Logger.info("[CmsHarness] no longer serving #{root} — offboarded on the server")
+        DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+
+      [] ->
+        {:error, :not_serving}
+    end
+  end
 end
