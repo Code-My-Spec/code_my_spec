@@ -773,7 +773,38 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp device_flag([_arg | rest]), do: device_flag(rest)
   defp device_flag([]), do: nil
 
-  defp target_root(args), do: args |> drop_flags() |> first_path()
+  # A checkout's own `.code_my_spec/` is where its specs live, not a checkout.
+  #
+  # Onboarding it registers a second working copy on the same project, and that
+  # copy then takes analysis runs the real root should have had — every one of
+  # which dies with no `mix.exs` a level down, while the real root's staleness
+  # never clears. It reconnected for days before anybody traced it (49e8340e).
+  #
+  # Caught here as well as server-side because `cd .code_my_spec && mix
+  # cms.harness.onboard` is how somebody gets there, and a refusal at the point
+  # of the mistake can name the directory to use instead. `Path.expand/1` first
+  # so `.code_my_spec/.` and a trailing slash are the same answer.
+  defp target_root(args) do
+    root = args |> drop_flags() |> first_path()
+
+    case Path.basename(root) do
+      ".code_my_spec" ->
+        Mix.raise("""
+        #{root} is a checkout's own .code_my_spec directory, not a checkout.
+
+        Onboarded, it becomes a second working copy on this project and takes
+        analysis runs meant for the real root — which then fail, because there is
+        no mix.exs here.
+
+        Onboard the checkout instead:
+
+            mix cms.harness.onboard #{Path.dirname(root)}
+        """)
+
+      _ ->
+        root
+    end
+  end
 
   defp drop_flags(["--project", _id | rest]), do: drop_flags(rest)
   # Same shape as `--project`: the value is not a path, and without this clause

@@ -48,11 +48,50 @@ defmodule CodeMySpec.WorkingCopies do
       when is_binary(project_id) do
     label = Keyword.get(opts, :label)
 
-    case existing(project_id, working_copy_id) do
-      nil -> recognise_or_create(project_id, label, opts)
-      harness -> touch(harness, label)
+    with :ok <- refuse_metadata_dir(opts[:root]) do
+      case existing(project_id, working_copy_id) do
+        nil -> recognise_or_create(project_id, label, opts)
+        harness -> touch(harness, label)
+      end
     end
   end
+
+  # A checkout's own `.code_my_spec/` is not a checkout.
+  #
+  # One registered itself as a second working copy on this project and
+  # reconnected for days. Analysis routed to it — it is a legitimate row on the
+  # right project — and every spex run died as `(Mix) The task "spex" could not
+  # be found`, because there is no `mix.exs` a level down. The real root's
+  # staleness never cleared, so a stop hook reported spex files as "stale, no
+  # rerun running" long after they were verified green, with nothing an agent
+  # could do to force a correctly-routed run. Issue 49e8340e.
+  #
+  # The harness diagnosed it out loud and carried on: "nothing to watch under
+  # …/.code_my_spec — no lib/, test/ or .code_my_spec/. Is this the right
+  # working directory?" A self-diagnosis nothing acts on is a log line.
+  #
+  # Refused rather than normalised to the parent, because a caller offering this
+  # root is confused about what it is holding and quietly registering it as
+  # something else would hide that. Refused *server*-side because every client
+  # reaches here, including a harness too old to carry a client-side guard.
+  defp refuse_metadata_dir(root) when is_binary(root) do
+    case Path.basename(String.trim_trailing(root, "/")) do
+      ".code_my_spec" ->
+        {:error,
+         %{
+           reason:
+             "#{root} is a checkout's own .code_my_spec directory, not a checkout. " <>
+               "Registered as a working copy it takes analysis runs the real root " <>
+               "should have had, and they fail with no mix.exs to run. Onboard the " <>
+               "directory above it."
+         }}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp refuse_metadata_dir(_root), do: :ok
 
   # Before minting, ask whether this checkout is already known.
   #

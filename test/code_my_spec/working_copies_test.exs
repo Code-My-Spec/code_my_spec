@@ -32,6 +32,48 @@ defmodule CodeMySpec.WorkingCopiesTest do
   end
 
   describe "issue/3" do
+    # A checkout's own `.code_my_spec/` registered itself as a second working
+    # copy on the same project and reconnected for days. Analysis routed to it —
+    # a legitimate row on the right project — and every spex run died with no
+    # `mix.exs` a level down, so the real root's staleness never cleared and a
+    # stop hook reported spex files as "stale, no rerun running" long after they
+    # were green. Issue 49e8340e.
+    #
+    # Refused server-side, not only in the onboarding task: every client reaches
+    # here, including a harness too old to carry the client-side guard.
+    test "a checkout's own .code_my_spec directory is refused", %{scope: scope} do
+      assert {:error, %{reason: reason}} =
+               WorkingCopies.issue(scope, nil,
+                 label: "the harness at /a/.code_my_spec",
+                 device: device_fixture(scope),
+                 root: "/a/.code_my_spec"
+               )
+
+      assert reason =~ "not a checkout",
+             "registering it takes analysis runs the real root should have had, and " <>
+               "they fail with nothing to run"
+
+      assert reason =~ "directory above it"
+    end
+
+    test "a trailing slash does not get it past the refusal", %{scope: scope} do
+      assert {:error, %{}} =
+               WorkingCopies.issue(scope, nil,
+                 device: device_fixture(scope),
+                 root: "/a/.code_my_spec/"
+               )
+    end
+
+    # The guard is on the basename, so a checkout that merely *contains* the
+    # directory — which is every checkout — is untouched.
+    test "an ordinary root holding a .code_my_spec is fine", %{scope: scope} do
+      assert {:ok, _harness} =
+               WorkingCopies.issue(scope, nil,
+                 device: device_fixture(scope),
+                 root: "/a/real_checkout"
+               )
+    end
+
     test "a checkout that has never connected is minted one", %{scope: scope} do
       assert {:ok, harness} =
                WorkingCopies.issue(scope, nil,
