@@ -2709,7 +2709,29 @@ defmodule CodeMySpec.Provisioning.Steps do
   # and asking Hetzner's network object for its zone back would be a second,
   # independent way to answer the same question that this and
   # `join_baseline_network/4` have to agree on.
+  # The existing network's own zone wins when there is one — read directly
+  # off its subnet, not guessed at. A row-order guess ("whichever environment
+  # comes back first") was tried here first and is exactly what broke on
+  # MarketMySpec: `EnvironmentRepository.list/1` has no ordering guarantee
+  # tying "first" to "prod", so the guess named eu-central (uat's zone)
+  # primary while the project's real, already-created network was us-east —
+  # `ensure_zone_networks/4` then handed the *existing* network's own zone
+  # index 1 and the *new* one index 0, recreating the exact 10.0.0.0/16
+  # collision this was supposed to prevent. Only a project with no network
+  # yet — its very first "server" step run — has nothing to read back, and
+  # falls to the row-order guess, where "first" is as good a seed as any
+  # since nothing exists yet to disagree with it.
   defp primary_network_zone(scope, opts) do
+    case Hetzner.find_network(scope, server_name(scope, opts)) do
+      {:ok, network} -> existing_network_zone(network) || primary_network_zone_guess(scope, opts)
+      {:error, _} -> primary_network_zone_guess(scope, opts)
+    end
+  end
+
+  defp existing_network_zone(%{"subnets" => [%{"network_zone" => zone} | _]}), do: zone
+  defp existing_network_zone(_network), do: nil
+
+  defp primary_network_zone_guess(scope, opts) do
     scope
     |> permitted_environment_rows()
     |> Enum.find_value(fn environment ->

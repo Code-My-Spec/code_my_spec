@@ -276,6 +276,45 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
            "expected two recorded networks, one per zone, got #{inspect(resources)}"
   end
 
+  # The bug this guards, found live against MarketMySpec on the fix above's
+  # own first real run: "primary zone" was guessed from whichever
+  # environment `permitted_environment_rows/1` happened to return first —
+  # `EnvironmentRepository.list/1` ties nothing to "prod comes first" — and
+  # the guess landed on uat's zone. `ensure_zone_networks/4` then handed the
+  # project's real, already-existing network (us-east) index 1 and the new
+  # one index 0, recreating the exact `10.0.0.0/16` collision this was
+  # supposed to prevent — Hetzner adopted the already-existing network
+  # unchanged and created the new one at the *wrong* index instead of a
+  # genuinely different range.
+  #
+  # Reading the existing network's own zone back removes the guess
+  # entirely for a project that already has one — this asserts the new
+  # network gets a non-zero index without needing to control which
+  # environment the test fixture happens to answer first.
+  test "an existing network's own zone is primary, not whichever environment answers first", ctx do
+    record_zoned_requests_with_existing_network(
+      self(),
+      Repository.default_name(ctx.scope.active_project)
+    )
+
+    opts = [
+      run: succeeding_run(),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:ok, _resources} = Steps.run(:server, ctx.scope, opts)
+
+    [{_method, _path, payload}] =
+      collect_requests([])
+      |> Enum.filter(fn {method, path, _payload} -> method == "POST" and path == "/v1/networks" end)
+
+    assert get_in(payload, ["subnets", Access.at(0), "network_zone"]) == "eu-central",
+           "expected the only network *created* to be uat's (the one that does not already exist)"
+
+    refute payload["ip_range"] == "10.0.0.0/16",
+           "expected the new network to avoid the existing us-east network's range, got #{inspect(payload)}"
+  end
+
   # A `:run` that fails only for commands naming the given private IP —
   # the registry container binds to it (`trust_command/1`), so this reaches
   # every command in that one server's own sequence and none of the other's,
@@ -332,6 +371,51 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
       payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
       zoned_reply(conn, conn.method, conn.request_path, payload, servers, network_ids)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
+
+  # Like `record_zoned_requests/2`, but `GET /v1/networks` answers with the
+  # project's real, already-created network (us-east, `10.0.0.0/16`) instead
+  # of `[]` — the exact shape MarketMySpec's account was in when the primary
+  # zone was still guessed from environment order rather than read back.
+  defp record_zoned_requests_with_existing_network(owner, project_name) do
+    servers = [
+      %{
+        "id" => 201,
+        "name" => "#{project_name}-prod",
+        "location" => %{"name" => "ash"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
+        "private_net" => [%{"network" => 11, "ip" => "10.0.0.10"}]
+      },
+      %{
+        "id" => 202,
+        "name" => "#{project_name}-uat",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
+        "private_net" => [%{"network" => 12, "ip" => "10.0.0.99"}]
+      }
+    ]
+
+    existing_network = %{
+      "id" => 11,
+      "name" => project_name,
+      "ip_range" => "10.0.0.0/16",
+      "subnets" => [%{"network_zone" => "us-east", "ip_range" => "10.0.0.0/24"}]
+    }
+
+    network_ids = %{"eu-central" => 12}
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = decode(body)
+      send(owner, {:ran, conn.method, conn.request_path, payload})
+
+      case {conn.method, conn.request_path} do
+        {"GET", "/v1/networks"} -> json(conn, %{"networks" => [existing_network]})
+        _ -> zoned_reply(conn, conn.method, conn.request_path, payload, servers, network_ids)
+      end
     end
 
     Req.Test.stub(Hetzner, plug)
