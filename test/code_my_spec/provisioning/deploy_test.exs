@@ -182,6 +182,106 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     end
   end
 
+  # `migrate` fails this exact way on a host that has never had a successful
+  # deploy: kamal writes env/roles/<role>.env only as a side effect of
+  # booting a container, so a virgin host has no such file, and `kamal app
+  # exec` refuses before the migration itself ever runs. Confirmed live
+  # against MarketMySpec's uat. The counter file is what lets a real
+  # subprocess (a new OS process per invocation, sharing no Elixir state)
+  # behave differently the second time `migrate` runs.
+  defp bootstrap_deploy_script(dir, opts) do
+    retry_migrate_exit = Keyword.get(opts, :retry_migrate_exit, 0)
+    swap_exit = Keyword.get(opts, :swap_exit, 0)
+    path = Path.join(dir, "fake_deploy")
+    counter = Path.join(dir, "migrate_calls")
+
+    File.write!(path, """
+    #!/bin/sh
+    case "$1" in
+      migrate)
+        COUNT=0
+        [ -f #{counter} ] && COUNT=$(cat #{counter})
+        COUNT=$((COUNT + 1))
+        echo $COUNT > #{counter}
+        if [ "$COUNT" -eq 1 ]; then
+          echo "docker: open .kamal/apps/app/env/roles/web.env: no such file or directory"
+          exit 125
+        fi
+        echo "migrate $2"
+        exit #{retry_migrate_exit}
+        ;;
+      swap)
+        echo "swap $2"
+        exit #{swap_exit}
+        ;;
+    esac
+    exit 0
+    """)
+
+    File.chmod!(path, 0o755)
+    path
+  end
+
+  describe "a first deploy that has never booted at all" do
+    # The env file is what migrate is missing, and only a boot writes one —
+    # so bootstrapping means swap runs once, early, purely to create it.
+    test "bootstraps with a swap, then migrates, health-checks, and swaps again", %{env: env} = ctx do
+      script = bootstrap_deploy_script(ctx.env.cwd, [])
+
+      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+
+      assert %DateTime{} = result.bootstrapped_at
+      assert %DateTime{} = result.migrated_at
+      assert %DateTime{} = result.swapped_at
+      assert result.live_version == :new
+      assert result.failed_phase == nil
+    end
+
+    # Nothing was serving before the bootstrap, so there is nothing for the
+    # health check to have protected — the same reprieve an ordinary first
+    # deploy already gets (see "is not run at all when nothing has ever been
+    # deployed" above), reached by a different route this time.
+    test "skips the health check, same as any other first deploy", %{env: env} = ctx do
+      script = bootstrap_deploy_script(ctx.env.cwd, [])
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: script,
+          host: "app.example.com",
+          probe: fn _host, _opts -> flunk("probed a host with nothing serving on it yet") end
+        )
+
+      assert %DateTime{} = result.swapped_at
+    end
+
+    # The bootstrap itself is what moved traffic — there is no previous
+    # version for the ordinary migrate-failure wording to be talking about,
+    # so this gets its own phase and its own honest reason.
+    test "reports a failed bootstrap as its own phase, not an ordinary migrate failure", %{env: env} = ctx do
+      script = bootstrap_deploy_script(ctx.env.cwd, swap_exit: 1)
+
+      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+
+      assert result.failed_phase == :bootstrap
+      assert result.swapped_at == nil
+      assert result.reason =~ "never served anything"
+    end
+
+    # A double failure: the bootstrap succeeds (traffic already moved), but
+    # the migration retried against it genuinely fails too. "the previous
+    # version is still serving" would be a lie here — nothing was previous.
+    test "names what actually happened when the retried migration also fails", %{env: env} = ctx do
+      script = bootstrap_deploy_script(ctx.env.cwd, retry_migrate_exit: 1)
+
+      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+
+      assert result.failed_phase == :migrate
+      assert result.live_version == :new
+      assert result.swapped_at == nil
+      assert result.reason =~ "no previous version to fall back to"
+    end
+  end
+
   describe "Result" do
     # There is deliberately no :done field. swapped_at is the only evidence a
     # deploy completed, so a caller cannot report success for a refused run by

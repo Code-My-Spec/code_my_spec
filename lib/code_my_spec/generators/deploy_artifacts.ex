@@ -523,6 +523,21 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       VERSION="$(git rev-parse HEAD)"
     fi
 
+    swap() {
+      # `--skip-push`: by the time this runs, the image is already on the
+      # registry — setup's own builder pushed it (the automated path) or
+      # `wait for CI to publish it` already did (the human "all" path).
+      # Without this flag, `kamal deploy` rebuilds and re-pushes the image
+      # itself before pulling it back down, and that redundant push's
+      # blob-existence check (verifying blobs the FIRST push already
+      # uploaded) is a different code path in buildx's registry client than
+      # uploading new content — one that ignores the daemon's
+      # insecure-registries config and always assumes HTTPS. Confirmed live
+      # against MarketMySpec: a self-hosted HTTP-only registry accepted the
+      # first push fine and only failed on kamal's own redundant second one.
+      kamal deploy --config-file "$CONFIG" --version "$VERSION" --skip-push
+    }
+
     migrate() {
       # `-e`, so the migration carries the key instead of reading the host's
       # copy. `kamal app exec` loads env/roles/<role>.env from the host, and
@@ -537,22 +552,15 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       # `--config "$CONFIG"` into `app exec`'s own CMD positional, so runc
       # tried to exec the literal string "--config" as the container's
       # entrypoint. Confirmed live against MarketMySpec on kamal 2.11.0.
+      #
+      # A host with no successful deploy in its history has no env file at
+      # all yet — kamal only ever writes one as a side effect of booting a
+      # container. `CodeMySpec.Provisioning.Deploy.run/3` is what handles
+      # that case (an explicit, logged "bootstrap" phase before retrying
+      # migrate), not this script: `bin/deploy migrate` just fails here, the
+      # same as any other migrate failure, and the caller decides what a
+      # missing env file means.
       kamal app exec --config-file "$CONFIG" --version "$VERSION" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
-    }
-
-    swap() {
-      # `--skip-push`: by the time this runs, the image is already on the
-      # registry — setup's own builder pushed it (the automated path) or
-      # `wait for CI to publish it` already did (the human "all" path).
-      # Without this flag, `kamal deploy` rebuilds and re-pushes the image
-      # itself before pulling it back down, and that redundant push's
-      # blob-existence check (verifying blobs the FIRST push already
-      # uploaded) is a different code path in buildx's registry client than
-      # uploading new content — one that ignores the daemon's
-      # insecure-registries config and always assumes HTTPS. Confirmed live
-      # against MarketMySpec: a self-hosted HTTP-only registry accepted the
-      # first push fine and only failed on kamal's own redundant second one.
-      kamal deploy --config-file "$CONFIG" --version "$VERSION" --skip-push
     }
 
     case "$PHASE" in

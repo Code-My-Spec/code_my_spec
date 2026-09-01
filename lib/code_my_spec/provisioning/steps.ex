@@ -3481,6 +3481,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp deploy_outcome(result, environment, host) do
     phases =
       [
+        # Only present the one time this environment has never had a
+        # successful deploy before — kamal needs a boot to write the env
+        # file migrate reads, so this runs once, ahead of migrate, and the
+        # page should say so rather than leave it invisible inside migrate's
+        # own timing.
+        result.bootstrapped_at &&
+          %{kind: "deploy_phase", location: "bootstrap", identifier: iso(result.bootstrapped_at)},
         result.migrated_at &&
           %{kind: "deploy_phase", location: "migrate", identifier: iso(result.migrated_at)},
         result.health_ok_at &&

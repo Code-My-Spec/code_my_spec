@@ -41,7 +41,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   alias CodeMySpec.Provisioning.Transport
   alias CodeMySpec.Provisioning.Wait
 
-  @type phase :: :build | :migrate | :health | :swap
+  @type phase :: :build | :bootstrap | :migrate | :health | :swap
 
   defmodule Result do
     @moduledoc """
@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     """
 
     @type t :: %__MODULE__{
+            bootstrapped_at: DateTime.t() | nil,
             migrated_at: DateTime.t() | nil,
             health_ok_at: DateTime.t() | nil,
             swapped_at: DateTime.t() | nil,
@@ -62,7 +63,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
             output: String.t() | nil
           }
 
-    defstruct migrated_at: nil,
+    defstruct bootstrapped_at: nil,
+              migrated_at: nil,
               health_ok_at: nil,
               swapped_at: nil,
               live_version: :previous,
@@ -100,9 +102,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
     # them: nothing here logged anything between "started" and "done or
     # failed", so a slow migrate/health-check/swap and a stuck one looked
     # identical from the outside.
-    with {:ok, migrate_out, result} <- migrate(env, environment, script, now, opts),
+    with {:ok, migrate_out, result} <- migrate_with_bootstrap(env, environment, script, now, opts),
          _ = Logger.info("[Deploy] #{environment} migrated, checking health"),
-         {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out)),
+         {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out) || result.bootstrapped_at != nil),
          _ = Logger.info("[Deploy] #{environment} healthy, swapping"),
          {:ok, result} <- swap(env, environment, script, result, now, opts) do
       Logger.info("[Deploy] #{environment} swapped")
@@ -114,6 +116,85 @@ defmodule CodeMySpec.Provisioning.Deploy do
         )
 
         refused
+    end
+  end
+
+  # `kamal app exec` (what `migrate` runs) loads env/roles/<role>.env off the
+  # host, and kamal only ever writes that file as a side effect of booting a
+  # container — never on its own. A host with no successful deploy in its
+  # history has no such file yet, so migrate refuses before the migration
+  # itself ever runs: not a migration failure, there is nothing here yet for
+  # one to run against. Confirmed live against MarketMySpec's uat, the first
+  # environment this pipeline ever reached a genuine first deploy on — every
+  # other project so far already had deploy history before it was onboarded,
+  # so nothing before tonight ever exercised this path.
+  #
+  # `swap` is what boots the app, and booting is what writes the file — so it
+  # runs once, explicitly and logged as its own phase, before migrate is
+  # retried for real. A bad migration has nothing to endanger here: nothing
+  # is serving yet for this pipeline to protect, the same reasoning `health/4`
+  # already applies to skip its own check on a first deploy. Every deploy
+  # after this one finds the file already there and never takes this branch
+  # again — detected live against the real error each time, not remembered
+  # from a flag, because a stale flag saying "already bootstrapped" would be
+  # exactly wrong the one time it matters: right after this exact failure.
+  defp migrate_with_bootstrap(env, environment, script, now, opts) do
+    case migrate(env, environment, script, now, opts) do
+      {:ok, _migrate_out, _result} = success ->
+        success
+
+      {:error, %Result{output: output} = refused} ->
+        if missing_env_file?(output) do
+          bootstrap(env, environment, script, now, opts, refused)
+        else
+          {:error, refused}
+        end
+    end
+  end
+
+  defp missing_env_file?(output) when is_binary(output),
+    do: String.contains?(output, "env/roles/") and String.contains?(output, "no such file or directory")
+
+  defp missing_env_file?(_output), do: false
+
+  defp bootstrap(env, environment, script, now, opts, refused) do
+    Logger.info("[Deploy] #{environment} has never been deployed — bootstrapping before migrate")
+
+    case swap(env, environment, script, %Result{}, now, opts) do
+      {:ok, %Result{swapped_at: swapped_at}} ->
+        Logger.info("[Deploy] #{environment} bootstrapped, retrying migrate")
+
+        case migrate(env, environment, script, now, opts) do
+          {:ok, migrate_out, result} ->
+            {:ok, migrate_out, %{result | bootstrapped_at: swapped_at}}
+
+          {:error, %Result{} = still_refused} ->
+            # The bootstrap already moved traffic — there is no "previous
+            # version" to have stayed on, so the ordinary migrate-failure
+            # wording would be a lie here. Named for what actually happened
+            # instead: an unmigrated version is live because nothing else
+            # could have written the file migrate needed.
+            {:error,
+             %{
+               still_refused
+               | live_version: :new,
+                 reason:
+                   "Bootstrap deploy succeeded, but the migration that followed it failed — " <>
+                     "#{environment} has never served anything before, so there is no previous " <>
+                     "version to fall back to. #{still_refused.reason}"
+             }}
+        end
+
+      {:error, %Result{} = bootstrap_failed} ->
+        {:error,
+         %{
+           refused
+           | failed_phase: :bootstrap,
+             reason:
+               "Bootstrap deploy failed (#{bootstrap_failed.reason}) — #{environment} has never " <>
+                 "served anything before, so migrate has nothing to run against yet.",
+             output: bootstrap_failed.output
+         }}
     end
   end
 
