@@ -638,10 +638,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       "That is #{cap} messages on our account, which is where the free conversation ends. " <>
         "Connect your own provider in Settings and the agent picks straight back up."
 
+  # What is known, which is less than this used to claim. `:harness_not_connected`
+  # means nothing is registered for the copy, and there are two ways to get
+  # there: a machine that is off, and a machine that is here and had its channel
+  # refused. QA 963 hit the second — the daemon was serving four other roots
+  # while this one presented a deploy key belonging to another project — and
+  # read "not reachable from here", which sends a person to the network.
+  #
+  # The refusal's own wording is good and lives in the harness's log; the server
+  # only ever sends `unauthorized`, so the page cannot repeat it. Naming both
+  # causes is what it can honestly do. Filed as 1da05ada.
   defp undelivered(:harness_not_connected),
     do:
-      "That message could not be delivered: the machine holding this working copy " <>
-        "is not reachable from here, so the agent has not been told."
+      "That message could not be delivered: nothing here is holding that working " <>
+        "copy. Either its machine is not running, or its channel was refused — a " <>
+        "copy on a new project usually has no deploy key of its own yet."
 
   defp undelivered(:not_running),
     do: "That message could not be delivered: the agent is no longer running."
