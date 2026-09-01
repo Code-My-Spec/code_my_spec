@@ -93,7 +93,7 @@ defmodule CodeMySpec.Hooks.Stop do
     Conversations.record_orchestrator_action(
       Agents.main_agent(scope),
       stop_sentence(response),
-      count: problem_count(scope),
+      count: decision_count(response),
       tool: "list_problems",
       kind: "decision"
     )
@@ -117,6 +117,11 @@ defmodule CodeMySpec.Hooks.Stop do
   #
   # John, on why the orchestrator must not do it: "the agent should be nudged to
   # complete its own task ... it should always be at the agent's discretion."
+  #
+  # The nudge carries the whole call, task id and all, because the agent is
+  # being told to make it — "run `evaluate_task` for the detail" described its
+  # own next act as somewhere to go reading (QA 985). Precedent is
+  # `TasksMapper`, which footers a started task with its id for the same reason.
   # Completing work for an agent decides on its behalf whether the work is done,
   # which is the one judgement the agent is there to make.
   #
@@ -133,7 +138,7 @@ defmodule CodeMySpec.Hooks.Stop do
           Map.get(task, :agent_id) || Agents.main_agent(scope),
           "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
             "it is done — nothing will do it for you.",
-          tool: "evaluate_task",
+          tool: ~s(evaluate_task task_id: "#{task.id}"),
           kind: "nudge"
         )
     end
@@ -152,15 +157,25 @@ defmodule CodeMySpec.Hooks.Stop do
     reason |> to_string() |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 160)
   end
 
-  defp problem_count(scope) do
-    case Problems.list_project_problems(scope) do
-      [] -> nil
-      problems when is_list(problems) -> "#{length(problems)} problems"
-      _ -> nil
+  # How much of *this* decision, not how much is on the board.
+  #
+  # It was `Problems.list_project_problems/1`, so an allow that found nothing
+  # rendered "476 problems" — and an hour later, "500". A reader concluded the
+  # stop had found 476 problems and waved the agent through anyway. QA 985: the
+  # number a decision reports has to be the decision's own claim.
+  #
+  # Off the same per-source counts the log line reads, because the reason was
+  # built from exactly them. An allow has nothing to count, and `nil` omits the
+  # part rather than drawing an empty one.
+  defp decision_count(%{"decision" => "block", "reason" => reason}) do
+    case reason |> blocking_counts() |> Enum.reduce(0, fn {_source, n}, acc -> acc + n end) do
+      0 -> nil
+      1 -> "1 problem"
+      n -> "#{n} problems"
     end
-  rescue
-    _ -> nil
   end
+
+  defp decision_count(_allowed), do: nil
 
   # There was a second half to this, and it is gone: a `note_stale_config/1`
   # that compared the sha this server booted at against the sha on disk and
@@ -564,13 +579,22 @@ defmodule CodeMySpec.Hooks.Stop do
   #
   # This is the field that answers the question worth asking about an
   # onboarding agent: not "did it get blocked" but "on what, repeatedly".
-  def blocking_summary(reason) when is_binary(reason) do
-    ~r/^\s*(\w+) \((\d+)\)/m
-    |> Regex.scan(reason)
-    |> Enum.map_join(",", fn [_, source, count] -> "#{source}=#{count}" end)
+  def blocking_summary(reason) do
+    reason
+    |> blocking_counts()
+    |> Enum.map_join(",", fn {source, count} -> "#{source}=#{count}" end)
   end
 
-  def blocking_summary(_), do: ""
+  # The per-source counts a block's reason was built from. Two readers now: the
+  # log line above, and the count on the transcript entry, which has to be this
+  # decision's own finding rather than the project's standing backlog (QA 985).
+  defp blocking_counts(reason) when is_binary(reason) do
+    ~r/^\s*(\w+) \((\d+)\)/m
+    |> Regex.scan(reason)
+    |> Enum.map(fn [_, source, count] -> {source, String.to_integer(count)} end)
+  end
+
+  defp blocking_counts(_), do: []
 
   defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
 

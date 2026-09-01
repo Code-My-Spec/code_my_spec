@@ -92,7 +92,7 @@ defmodule CodeMySpecWeb.ChatComponents do
           data-test="orchestrator-action-tool"
           class="ml-1 opacity-70"
         >
-          — run <code>{orchestrator_tool(@message)}</code> for the detail
+          — {tool_lead(@message)} <code>{orchestrator_tool(@message)}</code>{tool_tail(@message)}
         </span>
       </div>
     </div>
@@ -637,6 +637,14 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   defp orchestrator_kind(_message), do: nil
+
+  # A decision points at where the rest of it is; a nudge names the act to
+  # perform. One template said "run X for the detail" for both, which told an
+  # agent its own next call was somewhere to go reading (QA 985).
+  defp tool_lead(message), do: if(orchestrator_kind(message) == "nudge", do: "call", else: "run")
+
+  defp tool_tail(message),
+    do: if(orchestrator_kind(message) == "nudge", do: "", else: " for the detail")
 
   # Results keyed by the call they answer, so a call can render its own.
   defp results_by_call_id(messages) do

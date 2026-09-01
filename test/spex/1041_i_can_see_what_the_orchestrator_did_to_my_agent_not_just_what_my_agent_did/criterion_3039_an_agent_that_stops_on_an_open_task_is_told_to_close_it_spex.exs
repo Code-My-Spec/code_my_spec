@@ -110,6 +110,18 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
                  "something open, with no name for the act that closes it, has been " <>
                  "given a complaint rather than an instruction."
 
+        # And it carries the whole call, task id included. John: "you should be
+        # able to send it the precise evaluate task call with the task id."
+        #
+        # The shape rather than one particular id: the agent has more than one
+        # task open here and the hook nudges about the oldest, which is its own
+        # question. What this criterion turns on is that the agent is handed
+        # something it can call, not a tool name and a puzzle.
+        assert context.transcript =~ ~r/evaluate_task task_id: (&quot;|")[0-9a-f-]{36}\1/,
+               "the nudge names the tool but not the task. The agent is left to " <>
+                 "work out which of its tasks was meant by something that already " <>
+                 "knew, which is how an instruction turns back into a complaint."
+
         {:ok, context}
       end
 
