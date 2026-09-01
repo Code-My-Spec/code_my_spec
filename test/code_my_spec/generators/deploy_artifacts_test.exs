@@ -182,9 +182,26 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
                ])
 
       logged = File.read!(log)
+      assert logged =~ "env push --config-file config/deploy.yml"
       assert logged =~ "app exec --config-file config/deploy.yml --version abc123"
       assert logged =~ "SOPS_AGE_KEY:test-key"
       refute logged =~ "deploy --config"
+    end
+
+    test "migrate pushes the env before running it, so a host that has never booted still has one", %{
+      script_path: script_path,
+      fake_bin_dir: fake_bin_dir
+    } do
+      log = Path.join(fake_bin_dir, "kamal.log")
+      fake_command(fake_bin_dir, "kamal", "echo \"$*\" >> #{log}\n")
+
+      assert {_output, 0} =
+               run_deploy(script_path, fake_bin_dir, ["migrate", "prod"], [
+                 {"CMS_IMAGE", "localhost:5000/market-my-spec:abc123"}
+               ])
+
+      [first_call | _] = File.read!(log) |> String.split("\n", trim: true)
+      assert first_call =~ "env push"
     end
 
     test "swap deploys the exact version migrate just ran against", %{
@@ -265,6 +282,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       logged = File.read!(log)
       assert logged =~ "gh run list --commit #{head}"
       assert logged =~ "gh run watch --exit-status 999"
+      assert logged =~ "kamal env push --config-file config/deploy.yml"
       assert logged =~ "kamal app exec --config-file config/deploy.yml --version #{head}"
       assert logged =~ "kamal deploy --config-file config/deploy.yml --version #{head} --skip-push"
 
