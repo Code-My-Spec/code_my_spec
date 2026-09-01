@@ -497,7 +497,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/files", FilesLive
       live "/projects/:project_id/next-task", Tasks.NextTaskLive
       live "/projects/:project_id/tasks", Tasks.TaskQueueLive
-      live "/projects/:project_id/progress", AgentProgressLive
       live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
       live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
       live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces

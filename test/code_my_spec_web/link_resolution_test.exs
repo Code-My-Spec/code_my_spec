@@ -289,8 +289,6 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/setup",
     # TaskQueueLive. Nothing links it in either app.
     "/app/projects/:project_id/tasks",
-    # AgentProgressLive — story 813, parked before it was wired into nav.
-    "/app/projects/:project_id/progress",
     # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
     "/app/projects/:project_id/provisioning",
     # Reached from their own list page's actions, not from the sidebar — a nav

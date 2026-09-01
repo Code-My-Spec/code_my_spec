@@ -91,7 +91,6 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/files", FilesLive
       live "/app/projects/:project_id/next-task", Tasks.NextTaskLive
       live "/app/projects/:project_id/tasks", Tasks.TaskQueueLive
-      live "/app/projects/:project_id/progress", AgentProgressLive
       live "/app/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
       live "/app/projects/:project_id/architecture/overview", ArchitectureLive, :overview
       live "/app/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces

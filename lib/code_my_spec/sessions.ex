@@ -18,9 +18,9 @@ defmodule CodeMySpec.Sessions do
   # A session reads as "active" if it was touched within this window — status
   # alone never goes stale on its own (nothing flips a session back to
   # inactive when it ends), so recency is what keeps "active" meaning "right
-  # now" rather than "at some point". Shared with AgentProgressLive, whose own
-  # timeline derives liveness the same way; one constant so the two
-  # definitions of "active" can't drift apart.
+  # now" rather than "at some point". One constant, so every reader's idea of
+  # "active" moves together — it was shared with the progress view that story
+  # 864 deleted, and 965's timeline derives liveness the same way.
   @active_window_seconds 300
 
   @doc "The recency window (seconds) a session must be touched within to read as active."
@@ -482,7 +482,7 @@ defmodule CodeMySpec.Sessions do
   count is what the warning this function drives actually said, on every
   call, regardless of how much real concurrency existed — so it's also
   filtered to sessions touched within `active_window_seconds/0`, the same
-  recency window `AgentProgressLive` already uses to mean the same thing.
+  recency window the deleted progress view used to mean the same thing.
   """
   @spec concurrent_sessions(Scope.t(), String.t()) :: [Session.t()]
   def concurrent_sessions(%Scope{active_project_id: project_id}, external_id)
