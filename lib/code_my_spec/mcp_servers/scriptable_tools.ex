@@ -100,6 +100,13 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.TagStories)
   component(CodeMySpec.McpServers.Stories.Tools.CreateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ProposeEpic)
+
+  # Placement, kept apart from approval on purpose — John: "let's have these as
+  # separate actions, creating the working copy and assigning an epic to a
+  # working copy". Listing exists so that choosing between copies can be a
+  # judgement rather than a default.
+  component(CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies)
+  component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
   component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
