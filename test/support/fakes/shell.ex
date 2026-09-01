@@ -333,8 +333,14 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # since a command this does not recognise as wrapped is just itself.
   defp unwrap_last(args), do: List.update_at(args, -1, &unwrap_timeout/1)
 
+  # Matches whatever sits between `timeout` and `sh -c` rather than a fixed
+  # `\d+` for the duration alone — `-k 10 600` broke the old `\d+`-only
+  # pattern the moment `wrap_with_timeout/2` grew a `-k` flag, silently
+  # falling through to "not wrapped" and reintroducing the exact bug this
+  # unwrap exists to prevent. Non-greedy so it stops at the first `sh -c`
+  # rather than a later one the command's own contents might happen to have.
   defp unwrap_timeout(command) do
-    case Regex.run(~r/^timeout \d+ sh -c '(.*)'$/s, command) do
+    case Regex.run(~r/^timeout(?:\s+\S+)*?\s+sh -c '(.*)'$/s, command) do
       [_, inner] -> String.replace(inner, "'\\''", "'")
       nil -> command
     end

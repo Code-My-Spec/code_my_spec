@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   use ExUnit.Case, async: false
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpecSpex.Fakes
 
@@ -142,17 +143,23 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     assert String.trim(output) == "amd64"
   end
 
-  # `Remote.ssh_runner/2` wraps its command as `timeout N sh -c '<command>'`
+  # `Remote.ssh_runner/2` wraps its command as `timeout ... sh -c '<command>'`
   # since a hang needs a way to end — this fake has to see through that
   # wrapper the same way a real remote shell parses it back out, or every
   # match below is checking text that no longer appears where it expects to.
+  #
+  # Built through `Remote.wrap_with_timeout/2` itself rather than a literal
+  # string: a hand-written literal is exactly what let `-k 10` slip past this
+  # suite once already — the wrapper's own shape changed, the hardcoded test
+  # input did not, and the fake silently stopped unwrapping anything at all.
   test "the wrapper around a command does not stop the fake from reading it", %{env: env} do
-    assert {output, 0} =
-             Environments.cmd(env, "ssh", [
-               "root@box",
-               "timeout 1800 sh -c 'docker image inspect --format '\\''{{.Architecture}}'\\'' app:abc'"
-             ])
+    wrapped =
+      Remote.wrap_with_timeout(
+        "docker image inspect --format '{{.Architecture}}' app:abc",
+        1800
+      )
 
+    assert {output, 0} = Environments.cmd(env, "ssh", ["root@box", wrapped])
     assert String.trim(output) == "amd64"
   end
 
@@ -168,7 +175,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_storage, previous) end)
 
     command =
-      "timeout 1800 sh -c 'cd /opt/app && BACKUP_BUCKET='\\''b'\\'' bin/backup dump uat'"
+      Remote.wrap_with_timeout("cd /opt/app && BACKUP_BUCKET='b' bin/backup dump uat", 1800)
 
     assert {output, 0} = Environments.cmd(env, "ssh", ["root@box", command])
     assert [_, key] = Regex.run(~r/key=(\S+)/, output)
