@@ -52,7 +52,14 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
       given_ :context_spec_task_started
 
       given_ "an agent that has just finished something", context do
-        {:ok, given_a_main_checkout(context, "the main checkout")}
+        context = given_a_main_checkout(context, "the main checkout")
+
+        # Opening the conversation is what brings the project's agent into
+        # being — `given_a_main_checkout/2` designates the checkout and stops
+        # there. Without this the orchestrator acts while `main_agent/1` is
+        # still nil, the recorder correctly does nothing, and the `then_` reads
+        # as the feature being absent when the premise never held.
+        {:ok, Map.put(context, :conversation_path, main_conversation_path(context))}
       end
 
       when_ "the orchestrator gives it the next requirement", context do
@@ -65,9 +72,14 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
         {:reply, response, _frame} =
           CodeMySpec.McpServers.Tasks.Tools.StartTask.execute(
             %{
-              requirement_name: "test_file",
-              entity_type: "component",
-              entity_id: to_string(context.component.id),
+              # Work the session has not already handed over. The shared given
+              # starts the component's own chain, and re-reading the prompt for
+              # a task that is already active is not a hand-over — noting that
+              # would put an action on the thread every time an agent looked at
+              # its own instructions again.
+              requirement_name: "stories_exist",
+              entity_type: "project",
+              entity_id: context.project.id,
               session_id: context.session_id
             },
             frame
@@ -75,7 +87,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
 
         refute response.isError, "start_task refused: #{inspect(response)}"
 
-        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
+        {:ok, _live, html} = live(context.conn, context.conversation_path)
 
         {:ok, Map.put(context, :transcript, html)}
       end

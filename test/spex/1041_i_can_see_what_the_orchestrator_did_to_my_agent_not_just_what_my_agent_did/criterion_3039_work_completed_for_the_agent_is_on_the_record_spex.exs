@@ -49,10 +49,21 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
   spex "Stopping the agent, giving it work, and finishing work on its behalf are all recorded" do
     scenario "Work completed for the agent is on the record" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :story_linked_to_component
+      # This one produces `task_id`, which is what evaluate_task acts on — the
+      # spec-file given produces a session and no task handle, so a scenario
+      # about finishing a task had nothing to finish.
+      given_ :bdd_task_started
 
       given_ "an agent working on a task", context do
-        {:ok, given_a_main_checkout(context, "the main checkout")}
+        context = given_a_main_checkout(context, "the main checkout")
+
+        # Opening the conversation is what brings the project's agent into
+        # being — `given_a_main_checkout/2` designates the checkout and stops
+        # there. Without this the orchestrator acts while `main_agent/1` is
+        # still nil, the recorder correctly does nothing, and the `then_` reads
+        # as the feature being absent when the premise never held.
+        {:ok, Map.put(context, :conversation_path, main_conversation_path(context))}
       end
 
       when_ "the orchestrator completes that task on its behalf", context do
@@ -64,7 +75,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
             frame
           )
 
-        {:ok, _live, html} = live(context.conn, main_conversation_path(context))
+        {:ok, _live, html} = live(context.conn, context.conversation_path)
 
         {:ok, Map.put(context, :transcript, html)}
       end
