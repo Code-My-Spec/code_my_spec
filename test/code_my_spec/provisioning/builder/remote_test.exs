@@ -307,6 +307,11 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert_received {:ran, command}
       assert command =~ "apt-get install -y -qq ruby-full build-essential"
       assert command =~ "gem install kamal --no-document"
+      # Without it, RubyGems can print a bare backtrace on some failures and
+      # never attach the exception's own message or class anywhere in the
+      # output — confirmed live, a fully captured, untruncated failure from
+      # this exact command had nothing in it but "from ..." frames.
+      assert command =~ "--backtrace"
     end
 
     test "reports a real failure rather than proceeding without kamal" do

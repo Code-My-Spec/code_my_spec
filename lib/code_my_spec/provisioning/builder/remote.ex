@@ -173,7 +173,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       "apt-get update -qq && " <>
         "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
         "apt-get install -y -qq ruby-full build-essential >/dev/null && " <>
-        "gem install kamal --no-document"
+        "gem install kamal --no-document --backtrace"
 
     case run.([command]) do
       {_, 0} -> :ok
@@ -184,6 +184,13 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       # against MarketMySpec: it surfaced apt's real cause correctly and,
       # for a later gem-runner crash, surfaced nothing but backtrace frames
       # with the one line that said what went wrong left outside the window.
+      #
+      # `--backtrace` on the gem invocation itself: found needed after that
+      # fix — a captured, complete, untruncated failure still had nothing
+      # but backtrace frames in it, no exception message or class anywhere.
+      # RubyGems only attaches the message consistently with this flag set;
+      # without it, some failure paths print bare frames and let the
+      # message go missing before anything downstream ever sees it.
       {output, status} -> {:error, {status, output |> trim() |> Truncate.head_and_tail()}}
     end
   end
