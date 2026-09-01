@@ -103,10 +103,27 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   #
   # Truncated because a provider error can be a page of JSON, and the point here
   # is which step and why, not the whole body.
-  defp missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
-    do: "#{entry.project_name}/#{entry.key} — #{String.slice(detail, 0, 300)}"
+  #
+  # The tail, not the head. Callers below this (`Remote.install_kamal/1`,
+  # `Steps.with_output/2`) already learned to keep the tail of *their own*
+  # output for the same reason — apt/gem/SSHKit chatter buries the actual
+  # error first and its own conclusion last — but this slice sits outside all
+  # of them, on the fully composed "<label> (exit N): <their already-trimmed
+  # tail>" string. A head slice here re-truncates an already-correct tail
+  # right back off the end, discarding exactly what the inner fix kept.
+  # Confirmed live: a kamal-install failure whose real cause was a Ruby gem
+  # backtrace arrived at this layer pre-trimmed to its own last 300
+  # characters, and this then kept only the first 300 of *that* — the label
+  # and exit code, and none of the backtrace the inner fix had preserved.
+  #
+  # `@doc false`: exists so the slice direction is assertable without
+  # standing up a real failing provider, the same reason `wrap_with_timeout/2`
+  # and `image_tag/2` are public.
+  @doc false
+  def missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
+    do: "#{entry.project_name}/#{entry.key} — #{String.slice(detail, -300, 300)}"
 
-  defp missing_line(entry), do: "#{entry.project_name}/#{entry.key}"
+  def missing_line(entry), do: "#{entry.project_name}/#{entry.key}"
 
   defp section(_label, [], _fmt), do: ""
 

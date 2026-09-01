@@ -64,6 +64,33 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
     end
   end
 
+  # The bug this guards: a step's own error is trimmed to its most useful
+  # tail before it ever reaches here (`Remote.install_kamal/1`,
+  # `Steps.with_output/2` — apt/gem/SSHKit chatter buries the real cause
+  # first and its own conclusion last), but this line's slice used to keep
+  # the *head* of the fully composed "key — reason" string instead, cutting
+  # the already-correct tail right back off and losing exactly what the
+  # inner fix preserved. Confirmed live: a kamal-install failure's real Ruby
+  # backtrace never reached devops_status at all, only the label and exit
+  # code in front of it.
+  describe "missing_line/1" do
+    test "keeps the tail of a long reason, not the head" do
+      tail = String.duplicate("x", 300)
+      detail = String.duplicate("head that must not survive ", 20) <> tail
+
+      line = DevopsStatus.missing_line(%{project_name: "Market My Spec", key: "deploy", detail: detail})
+
+      assert String.ends_with?(line, tail)
+      refute line =~ "head that must not survive"
+    end
+
+    test "a short reason is unaffected" do
+      line = DevopsStatus.missing_line(%{project_name: "Market My Spec", key: "deploy", detail: "no server named x"})
+
+      assert line == "Market My Spec/deploy — no server named x"
+    end
+  end
+
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
