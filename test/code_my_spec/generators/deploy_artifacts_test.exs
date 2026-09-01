@@ -266,7 +266,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       assert logged =~ "gh run list --commit #{head}"
       assert logged =~ "gh run watch --exit-status 999"
       assert logged =~ "kamal app exec --config-file config/deploy.yml --version #{head}"
-      assert logged =~ "kamal deploy --config-file config/deploy.yml --version #{head}"
+      assert logged =~ "kamal deploy --config-file config/deploy.yml --version #{head} --skip-push"
 
       {branches, 0} = System.cmd("git", ["branch", "-a"], cd: bare)
       assert branches =~ "main" or branches =~ "master"

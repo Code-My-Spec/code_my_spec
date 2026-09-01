@@ -541,7 +541,18 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     }
 
     swap() {
-      kamal deploy --config-file "$CONFIG" --version "$VERSION"
+      # `--skip-push`: by the time this runs, the image is already on the
+      # registry — setup's own builder pushed it (the automated path) or
+      # `wait for CI to publish it` already did (the human "all" path).
+      # Without this flag, `kamal deploy` rebuilds and re-pushes the image
+      # itself before pulling it back down, and that redundant push's
+      # blob-existence check (verifying blobs the FIRST push already
+      # uploaded) is a different code path in buildx's registry client than
+      # uploading new content — one that ignores the daemon's
+      # insecure-registries config and always assumes HTTPS. Confirmed live
+      # against MarketMySpec: a self-hosted HTTP-only registry accepted the
+      # first push fine and only failed on kamal's own redundant second one.
+      kamal deploy --config-file "$CONFIG" --version "$VERSION" --skip-push
     }
 
     case "$PHASE" in
