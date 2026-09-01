@@ -511,6 +511,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp architecture("x86_64"), do: {:ok, :x86}
   defp architecture(other), do: {:error, {:unknown_architecture, other}}
 
+  # 30 minutes: generous next to the ~15-20 minutes a real build+push+migrate+swap
+  # takes end to end, tight enough that a hang stops costing a human their own
+  # attention to notice and kill.
+  @default_remote_timeout_s 1800
+
   # One SSH invocation per command, which is slower than holding a session open
   # and much easier to reason about: every command is independently visible in
   # a log and independently replaceable in a test.
@@ -522,15 +527,48 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   and that is the same question with a different address. Duplicating the flag
   set was the alternative, and `IdentitiesOnly` is exactly the kind of thing
   one copy learns and the other does not.
+
+  Every command is wrapped in `timeout`, on the *remote* side. `ssh_args/2`'s
+  own `ConnectTimeout` only bounds the initial TCP handshake — once connected,
+  ssh has no `ServerAliveInterval` and `System.cmd/3` has no timeout of its
+  own, so nothing anywhere would ever notice a connection that goes quiet or a
+  remote command that blocks (a Dockerfile `RUN` step prompting for input with
+  no TTY to answer it is a real way to do this silently). Confirmed live
+  against MarketMySpec, twice: a stuck build ran for 30+ minutes with zero
+  output and no error, recoverable only by a human killing the box by hand.
+  `timeout` on the remote shell turns that into a clean, bounded failure — a
+  real exit code (124) and whatever output the command had produced — instead
+  of a wait with no end. `:remote_command_timeout_s` overrides the default for
+  a caller that genuinely expects to run longer.
   """
   @spec ssh_runner(map(), keyword()) :: (list() -> {String.t(), non_neg_integer()})
   def ssh_runner(server, opts) do
     env = Keyword.fetch!(opts, :env)
     args = ssh_args(server, opts)
+    timeout = Keyword.get(opts, :remote_command_timeout_s, @default_remote_timeout_s)
 
     fn [command] ->
-      Environments.cmd(env, "ssh", args ++ [command], stderr_to_stdout: true)
+      Environments.cmd(env, "ssh", args ++ [wrap_with_timeout(command, timeout)],
+        stderr_to_stdout: true
+      )
     end
+  end
+
+  # `sh -c`, not a bare prefix: `command` is a full shell one-liner already,
+  # often chained with `&&`/`|` (delivering the source, then building, then
+  # pushing, all in one string). `timeout N docker build ...` would only ever
+  # bound `docker` in a chain like `cd dir && docker build ... && docker push
+  # ...` — `cd` is what runs, everything after it is unbounded again. Wrapping
+  # the whole string as `sh -c`'s single argument is what makes the timeout
+  # apply to the chain as a whole, not just its first word.
+  #
+  # `@doc false`: exists so the exact wrapping is assertable without a real ssh
+  # connection, the same reason `image_tag/2` and
+  # `commit_generated_configuration/1` are public.
+  @doc false
+  @spec wrap_with_timeout(String.t(), pos_integer()) :: String.t()
+  def wrap_with_timeout(command, timeout_s) do
+    "timeout #{timeout_s} sh -c #{shell_quote(command)}"
   end
 
   # Shared by the runner and by `ssh_deliver/2`, which reaches the same box on

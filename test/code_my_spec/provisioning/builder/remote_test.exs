@@ -407,4 +407,22 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       command
     end
   end
+
+  describe "wrap_with_timeout/2" do
+    test "bounds the whole command, not just its first word" do
+      wrapped = Remote.wrap_with_timeout("cd /tmp && docker build . && docker push x", 1800)
+
+      assert wrapped ==
+               "timeout 1800 sh -c 'cd /tmp && docker build . && docker push x'"
+    end
+
+    # A command containing its own single quotes (a shell_escape'd password, a
+    # `-c '...'` of its own) has to survive being re-quoted as sh -c's single
+    # argument, or wrapping a command changes what it does.
+    test "quotes a command that already contains single quotes" do
+      wrapped = Remote.wrap_with_timeout("echo it's here", 60)
+
+      assert wrapped == "timeout 60 sh -c 'echo it'\\''s here'"
+    end
+  end
 end
