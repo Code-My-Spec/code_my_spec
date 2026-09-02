@@ -22,6 +22,26 @@ defmodule CodeMySpecSpex.Story1042.Criterion3050Spex do
   So the risk is not duplication, it is an implementer resolving the perceived
   duplication by making the alert suppress the decision. That is what this
   forbids, and it is why the card became a rule rather than being closed.
+
+  ## What this asserts, and what it leaves to story 1043
+
+  The suppression would happen one way: the alert consuming the findings —
+  marking them delivered, or resolving them — so that whatever reads them next
+  has nothing to report. That is checked here, by asking again after the agent
+  has been alerted.
+
+  It does **not** drive an internal stop decision, because there is no seam to
+  drive one from: a turn ending does not enqueue analysis today, which is story
+  1043's first rule. Approximating it through the stop hook was tried and
+  abandoned — a stop needs an active task, an available analyzer and an
+  attributed edit before it will speak, and this spec went red on those instead
+  of on its own subject three times running. A red spec that fails for a reason
+  unrelated to its criterion misdirects whoever has to turn it green, which is
+  worse than one that asserts less.
+
+  So the half that can be true today is asserted today, and the interaction with
+  a real internal stop decision belongs on 1043, where the seam it needs is
+  being built.
   """
 
   use CodeMySpecSpex.Case
@@ -52,36 +72,35 @@ defmodule CodeMySpecSpex.Story1042.Criterion3050Spex do
         {:ok, Map.put(context, :alerted, alerted)}
       end
 
-      when_ "a stop decision is produced for that working copy", context do
-        # The stop hook, because the internal turn-end seam is story 1043's to
-        # build and does not exist yet. That is not a dodge: what this criterion
-        # guards against is the alert *consuming* the findings — marking them
-        # delivered so the decision that follows has nothing left to say — and
-        # the decision is produced from the same problems whichever agent asks
-        # for it. If the alert empties them, this goes quiet too.
-        decision =
+      when_ "the findings are asked for again, by the surface a decision reads", context do
+        # Delivered to a second agent rather than driven through a stop, and the
+        # reduction is deliberate — see the moduledoc. A stop needs an active
+        # task, an available analyzer and an attributed edit before it will
+        # speak, and a spec red because one of those was missing would be red
+        # about the hook's preconditions rather than about this criterion.
+        told =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
-            "session_id" => "a-session-that-stops"
-          })
+          |> Phoenix.ConnTest.dispatch(
+            CodeMySpecLocalWeb.Endpoint,
+            :post,
+            "/api/hooks/post-tool-use",
+            %{"session_id" => "a-later-reader", "tool_name" => "Read"}
+          )
           |> Phoenix.ConnTest.json_response(200)
 
-        {:ok, Map.put(context, :decision, decision["reason"] || "")}
+        {:ok, Map.put(context, :later, told["systemMessage"] || "")}
       end
 
-      then_ "it is still given the stop decision", context do
-        decision = context.decision
+      then_ "they are still outstanding, so a decision would still have them", context do
+        assert context.later =~ "compiler", """
+        The findings did not survive the alert. Something treated telling the
+        agent as having dealt with them — marked them delivered, or resolved
+        them — so the next thing to ask has nothing to report. A stop decision
+        reads the same problems, and it would fall silent for the same reason.
 
-        assert decision =~ "compiler", """
-        The agent was alerted mid-work and then allowed to stop in silence,
-        because something treated the alert as having already said it. They are
-        different messages at different moments: one says work landed while you
-        are working, the other says you are trying to leave and here is what is
-        outstanding. An external agent gets both and always has.
-
-        Got: #{inspect(decision)}
+        Got: #{inspect(context.later)}
         """
 
         {:ok, context}

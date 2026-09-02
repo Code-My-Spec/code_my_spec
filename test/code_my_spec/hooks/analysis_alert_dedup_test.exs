@@ -85,7 +85,21 @@ defmodule CodeMySpec.Hooks.AnalysisAlertDedupTest do
            "the watermark moved and the agent was not told, so the dedup is silencing real news"
   end
 
-  test "no session id is still nothing to say", %{scope: scope} do
-    refute AnalysisAlert.check(scope, nil, "subagent-a")
+  # This asserted the opposite until story 1042, and the change was the point
+  # rather than a regression: an agent running under Alloy has an `agent_id` and
+  # no session at all, so requiring the session meant `check/3` answered `nil`
+  # for every internal agent no matter what its analyzers had found. Either
+  # identity is now enough to be a recipient; neither is still nobody.
+  test "an agent id alone is enough to be told" do
+    scope = full_scope_fixture()
+    problem_fixture(scope, %{message: "something broke", source: "credo"})
+    copy = scope.active_working_copy_id
+    on_exit(fn -> :persistent_term.erase({AnalysisAlert, {copy, nil, "an-alloy-agent"}}) end)
+
+    assert AnalysisAlert.check(scope, nil, "an-alloy-agent")
+  end
+
+  test "and naming neither is nobody to have told", %{scope: scope} do
+    refute AnalysisAlert.check(scope, nil, nil)
   end
 end

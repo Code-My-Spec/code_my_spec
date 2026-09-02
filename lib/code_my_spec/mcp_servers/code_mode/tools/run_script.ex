@@ -28,6 +28,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
 
   alias Anubis.Server.Response
   alias CodeMySpec.CodeMode
+  alias CodeMySpec.McpServers.AgentAlert
   alias CodeMySpec.CodeMode.Result
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.Validators
@@ -59,7 +60,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
             agent_kind: kind
           )
 
-        {:reply, render(result), frame}
+        {:reply, render(result, scope, params), frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
@@ -84,10 +85,16 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
     end
   end
 
-  defp render(%Result{} = result) do
+  # The alert rides the answer, on success and on failure alike. A script that
+  # blew up is exactly when knowing the tree is broken matters most, and an
+  # agent told only on the happy path finds out least often when it counts.
+  defp render(%Result{} = result, scope, params) do
     case Result.failed?(result) do
-      true -> Response.tool() |> Response.error(failure(result))
-      false -> Response.tool() |> Response.text(success(result))
+      true ->
+        Response.tool() |> Response.error(AgentAlert.append(failure(result), scope, params))
+
+      false ->
+        Response.tool() |> Response.text(AgentAlert.append(success(result), scope, params))
     end
   end
 
