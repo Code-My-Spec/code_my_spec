@@ -102,6 +102,19 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Before the dispatch, because delivery can fail — a halted agent has
     # nobody to tell — and what the orchestrator decided is true whether or not
     # anyone was there to hear it.
+    #
+    # The conversation is opened first, and that is not a formality.
+    # `record_orchestrator_action/3` looks the conversation up by agent and
+    # answers `:ok` when there is none — correct for a caller that must not
+    # crash, and silent. An agent that has never spoken has no conversation, so
+    # its very first decision is exactly the one that would vanish. Every turn
+    # event already opens one for the same reason.
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      agent.id
+    )
+
     Conversations.record_orchestrator_action(agent, message, kind: "decision")
 
     ref = "stop-decision-" <> Ecto.UUID.generate()
