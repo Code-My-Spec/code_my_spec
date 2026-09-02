@@ -26,6 +26,13 @@ defmodule CodeMySpec.Provisioning.Environment do
     rather than one the server step created for it. Null is the common case.
     Story 879 deferred this exact re-grain: a box cannot be shared between
     projects, or adopted, while `server_name`/`ip` are the only record of it.
+  - `first_deployed_at` — when a deploy for this environment first actually
+    swapped. Null means exactly what it says: nothing has ever gone live
+    here, which is what `Deploy.run/3` needs to know to tell "refuse this
+    health check, something live might be at risk" apart from "there is
+    nothing here yet to protect" — a question kamal's own bookkeeping
+    cannot answer, since it writes a side effect on every boot attempt,
+    successful or not. Set once and never touched again after.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -38,7 +45,8 @@ defmodule CodeMySpec.Provisioning.Environment do
           host: String.t() | nil,
           server_name: String.t() | nil,
           ip: String.t() | nil,
-          server_id: Ecto.UUID.t() | nil
+          server_id: Ecto.UUID.t() | nil,
+          first_deployed_at: DateTime.t() | nil
         }
 
   schema "provisioning_environments" do
@@ -46,6 +54,7 @@ defmodule CodeMySpec.Provisioning.Environment do
     field :host, :string
     field :server_name, :string
     field :ip, :string
+    field :first_deployed_at, :utc_datetime_usec
 
     belongs_to :project, CodeMySpec.Projects.Project
     belongs_to :server, CodeMySpec.Servers.Server

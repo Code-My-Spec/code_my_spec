@@ -81,6 +81,32 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   end
 
   @doc """
+  Record that this environment's first deploy just swapped, if it had not
+  already.
+
+  Idempotent and one-directional on purpose: once something has gone live
+  here, that fact does not un-happen because a later deploy fails, and a
+  second successful deploy is not a *first* one. Called from the one place
+  that has already confirmed a swap succeeded (`Steps.deploy_environment/3`)
+  — this does not itself decide what counts as a first deploy, only records
+  the answer once given it.
+  """
+  @spec mark_first_deployed(Scope.t(), String.t()) :: :ok
+  def mark_first_deployed(%Scope{} = scope, name) do
+    case get(scope, name) do
+      %Environment{first_deployed_at: nil} = environment ->
+        environment
+        |> Ecto.Changeset.change(first_deployed_at: DateTime.utc_now())
+        |> Repo.update()
+
+      _ ->
+        :ok
+    end
+
+    :ok
+  end
+
+  @doc """
   Remove an environment row.
 
   The row only; what it pointed at is `Provisioning.remove_environment/2`'s

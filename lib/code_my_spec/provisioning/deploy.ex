@@ -104,7 +104,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     # identical from the outside.
     with {:ok, migrate_out, result} <- migrate_with_bootstrap(env, environment, script, now, opts),
          _ = Logger.info("[Deploy] #{environment} migrated, checking health"),
-         {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out) || result.bootstrapped_at != nil),
+         {:ok, result} <- health(result, opts, now, skip_health?(migrate_out, result, opts)),
          _ = Logger.info("[Deploy] #{environment} healthy, swapping"),
          {:ok, result} <- swap(env, environment, script, result, now, opts) do
       Logger.info("[Deploy] #{environment} swapped")
@@ -267,6 +267,32 @@ defmodule CodeMySpec.Provisioning.Deploy do
     do: String.contains?(migrate_output, "first_deploy=1")
 
   defp first_deploy?(_migrate_output), do: false
+
+  # A third, independent signal, and none of the first two are reliable
+  # enough alone. `bootstrapped_at`/`first_deploy?` both infer "nothing to
+  # protect" from a side effect of *this run's own* migrate — kamal writes
+  # `env/roles/<role>.env` as a side effect of any container booting, not of
+  # one succeeding, and never removes it when that boot then crashes or gets
+  # rolled back. A crashed first attempt leaves the file behind, so every
+  # later run reads "not a first deploy" and health-checks a previous version
+  # that was never actually live — refusing to swap forever, since a health
+  # check against nothing can never pass. Confirmed live: broken_oaths'
+  # first UAT boot crashed inside its own secrets loader after kamal had
+  # already written the env file, and every retry after fixing that crash
+  # kept failing health against a host with zero routes ever registered.
+  #
+  # `opts[:environment_previously_deployed]` is the platform's own answer,
+  # set once a deploy for this environment has actually swapped
+  # successfully (`Steps.deploy_environment/3`) — not inferred from any
+  # side effect a partial run can leave behind. Defaulting to `true` when
+  # absent keeps existing behaviour (protect what might be live) for any
+  # caller that does not thread it through, which is the safe direction to
+  # default in: skipping a health check that should have run is worse than
+  # running one that did not strictly need to.
+  defp skip_health?(migrate_out, result, opts) do
+    first_deploy?(migrate_out) || result.bootstrapped_at != nil ||
+      not Keyword.get(opts, :environment_previously_deployed, true)
+  end
 
   defp await_health(probe, host, opts, attempts) do
     case probe.(host, opts) do

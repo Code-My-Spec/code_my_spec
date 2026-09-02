@@ -2527,10 +2527,25 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)
       |> with_registry_credential_for_deploy(scope)
+      |> Keyword.put(:environment_previously_deployed, previously_deployed?(scope, environment))
 
     Keyword.put(opts, :then, fn run, dir ->
       Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
     end)
+  end
+
+  # `Deploy.run/3`'s own signal for whether a failing health check is
+  # protecting something live or refusing a first deploy for no reason —
+  # see its `skip_health?/3` moduledoc comment for why this cannot be
+  # inferred from kamal's own env-file side effect. Absent/unknown reads as
+  # `true` (protect it), the same safe default `Deploy` itself falls back
+  # to when this opt is missing entirely.
+  defp previously_deployed?(scope, environment) do
+    case EnvironmentRepository.get(scope, environment) do
+      %{first_deployed_at: nil} -> false
+      %{first_deployed_at: %DateTime{}} -> true
+      _ -> true
+    end
   end
 
   # Retention's claim is proven by what just happened, not assumed from
@@ -3668,6 +3683,15 @@ defmodule CodeMySpec.Provisioning.Steps do
               environment,
               deploy_record_attrs(image, version)
             )
+
+          # Same success branch, a different question: `Deploys` is keyed by
+          # story, so a project with nothing yet cleared for QA — any legacy
+          # app just onboarded, before it has a single CodeMySpec-tracked
+          # story — records nothing there no matter how many times this
+          # actually succeeds. `previously_deployed?/2` needs an answer
+          # regardless of story linkage, so it lives on the environment
+          # itself.
+          :ok = EnvironmentRepository.mark_first_deployed(scope, environment)
 
           {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
 

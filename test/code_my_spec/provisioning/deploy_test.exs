@@ -151,6 +151,34 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert result.failed_phase == nil
     end
 
+    # Confirmed live against broken_oaths: kamal writes env/roles/<role>.env
+    # as a side effect of a container *attempting* to boot, not of one
+    # succeeding, and never removes it when that boot then crashes. A
+    # crashed first attempt leaves migrate's own "first_deploy=1" signal
+    # silent on every later run (the file already exists, so bin/deploy
+    # never reprints it) even though nothing has ever actually gone live —
+    # a deadlock, since the health check this then runs can never pass.
+    # `environment_previously_deployed: false` is the platform's own,
+    # independent answer, and it has to be enough on its own to skip health
+    # even when the script-output signal disagrees.
+    test "is also skipped when the platform's own record says nothing has ever gone live, even if the script's own signal disagrees",
+         %{env: env} = ctx do
+      script = deploy_script(ctx.env.cwd, first_deploy: false)
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: script,
+          host: "app.example.com",
+          environment_previously_deployed: false,
+          probe: fn _host, _opts ->
+            flunk("probed a host the platform has never recorded a deploy for")
+          end
+        )
+
+      assert %DateTime{} = result.swapped_at
+      assert result.failed_phase == nil
+    end
+
     # And the reprieve is only for that case: an existing deployment still
     # refuses to swap onto an unhealthy site.
     test "still guards a deployment that already exists", %{env: env} = ctx do
