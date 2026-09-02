@@ -404,45 +404,6 @@ defmodule CodeMySpec.Resources do
     %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
   end
 
-  # The caller's own connected working copy is the most specific answer there
-  # is to "where is this project's checkout" — more specific than
-  # `local_path`, which nothing sets for a project that has only ever been
-  # reached through its own harness connection and never through any other
-  # onboarding flow. `Scope.for_local_project/1`'s own registry check is
-  # spex-test-only (`CodeMySpec.Environments.register/2`'s own doc says so),
-  # so in production it always missed and fell straight to `local_path` —
-  # `nil` for a project like this, raising deep inside `Environments.Local.
-  # cmd/4` instead of ever finding the checkout that is live and connected
-  # right now. Confirmed live against Broken Oaths' real project: a harness
-  # joined with a known root, `local_path` empty, and `adopt_repository`
-  # died on "this environment has no working directory."
-  #
-  # Only trusted when the connected copy actually names *this* project,
-  # never a caller bound to project A iterating over project B — using A's
-  # checkout for B's steps is exactly the bug the surrounding clause exists
-  # to prevent, and a stale or wrong working-copy id must fall through to
-  # the same fallback a caller with none at all gets, not silently borrow
-  # the wrong root.
-  defp harness_environment(working_copy_id, %Project{id: project_id} = project)
-       when is_binary(working_copy_id) do
-    case WorkingCopies.fetch(working_copy_id) do
-      {:ok, %WorkingCopy{project_id: ^project_id, root: root}} when is_binary(root) and root != "" ->
-        Environment.new(:local, root)
-
-      _ ->
-        fallback_environment(project)
-    end
-  end
-
-  defp harness_environment(_working_copy_id, project), do: fallback_environment(project)
-
-  defp fallback_environment(project) do
-    case Scope.for_local_project(project) do
-      {:ok, %{environment: environment}} -> environment
-      {:error, _reason} -> Environment.new(:local, project.local_path)
-    end
-  end
-
   # A scope built from an HTTP session — `/app/resources`' own button, unlike
   # `ProvisioningLive`'s — carries no environment at all: `Scope.for_user/1`
   # never sets one. Left alone, every shelling-out step (repository push,
@@ -482,6 +443,45 @@ defmodule CodeMySpec.Resources do
 
   def project_scope(%Scope{} = scope, project) do
     %Scope{scope | active_project: project, active_project_id: project.id}
+  end
+
+  # The caller's own connected working copy is the most specific answer there
+  # is to "where is this project's checkout" — more specific than
+  # `local_path`, which nothing sets for a project that has only ever been
+  # reached through its own harness connection and never through any other
+  # onboarding flow. `Scope.for_local_project/1`'s own registry check is
+  # spex-test-only (`CodeMySpec.Environments.register/2`'s own doc says so),
+  # so in production it always missed and fell straight to `local_path` —
+  # `nil` for a project like this, raising deep inside `Environments.Local.
+  # cmd/4` instead of ever finding the checkout that is live and connected
+  # right now. Confirmed live against Broken Oaths' real project: a harness
+  # joined with a known root, `local_path` empty, and `adopt_repository`
+  # died on "this environment has no working directory."
+  #
+  # Only trusted when the connected copy actually names *this* project,
+  # never a caller bound to project A iterating over project B — using A's
+  # checkout for B's steps is exactly the bug the surrounding clause exists
+  # to prevent, and a stale or wrong working-copy id must fall through to
+  # the same fallback a caller with none at all gets, not silently borrow
+  # the wrong root.
+  defp harness_environment(working_copy_id, %Project{id: project_id} = project)
+       when is_binary(working_copy_id) do
+    case WorkingCopies.fetch(working_copy_id) do
+      {:ok, %WorkingCopy{project_id: ^project_id, root: root}} when is_binary(root) and root != "" ->
+        Environment.new(:local, root)
+
+      _ ->
+        fallback_environment(project)
+    end
+  end
+
+  defp harness_environment(_working_copy_id, project), do: fallback_environment(project)
+
+  defp fallback_environment(project) do
+    case Scope.for_local_project(project) do
+      {:ok, %{environment: environment}} -> environment
+      {:error, _reason} -> Environment.new(:local, project.local_path)
+    end
   end
 
   # Everything the cross-checks need, gathered once. Also the answer to an
