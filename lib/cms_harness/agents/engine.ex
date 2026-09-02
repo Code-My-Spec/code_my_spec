@@ -437,7 +437,32 @@ defmodule CmsHarness.Agents.Engine do
   defp settle(state, result) do
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
+    announce_turn_end(state)
     drain(%{state | turn: nil})
+  end
+
+  # The turn is over, said out loud.
+  #
+  # An external agent's turn ending fires Claude Code's Stop hook, which is
+  # where the orchestrator gets to run the analyzers and decide whether the
+  # agent should have stopped. This runtime fires no hooks, so nothing marked
+  # the moment at all — story 1043's first rule, and the reason a turn ending
+  # here enqueued no analysis and produced no decision.
+  #
+  # After the reply, deliberately. Whoever asked for this turn hears its answer
+  # first; the decision is about what to do *next* and must not sit in front of
+  # the thing that was asked for.
+  #
+  # On every turn end rather than only the last of a run. An agent with work
+  # queued is about to take another turn, and the analyzers enqueued now are
+  # about the tree as it stands — `Analysis` supersedes a duplicate rather than
+  # running it twice, so the cost of saying so early is a row, and the cost of
+  # staying quiet is a turn's worth of broken tree nobody mentioned.
+  defp announce_turn_end(%{on_event: nil}), do: :ok
+
+  defp announce_turn_end(state) do
+    state.on_event.(state.agent_id, %{event: :turn_ended})
+    :ok
   end
 
   # A turn that failed, said out loud.

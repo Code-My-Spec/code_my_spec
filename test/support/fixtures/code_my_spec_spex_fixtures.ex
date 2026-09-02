@@ -1317,6 +1317,41 @@ defmodule CodeMySpecSpex.Fixtures do
   server owns is what it does with a turn once it arrives, which is exactly
   what arrives on this channel. Same reasoning as `deliver_manifest/2`.
   """
+  @doc """
+  An agent's turn ending, as it arrives on the channel.
+
+  The same `agent_turn_event` push `CmsHarness.Agents.Engine` sends from
+  `settle/2` when a turn is over. A spec cannot run a real turn — that needs a
+  provider and a model — and what the server owns is what it does when one ends,
+  which is exactly what arrives here.
+
+  Same reasoning and same shape as `record_turn/4` above: the proxy that
+  produces the push lives in `cms_harness`, so a spec drives the channel's own
+  entry rather than a second version of it.
+  """
+  @doc "Whether the server is currently carrying analyzer work for this copy."
+  defdelegate analysis_runs_in_flight?(scope), to: CodeMySpec.Analysis, as: :runs_in_flight?
+
+  def end_turn(%Scope{} = scope, agent_id) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    # Both shapes, because this handler acknowledges and the sibling above does
+    # not. Matching only one turns a working push into a `MatchError` inside a
+    # `when_`, which reads as the feature failing rather than as the helper
+    # being wrong about the reply.
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{
+             "agent_id" => agent_id,
+             "event" => CmsHarness.Project.ChannelClient.encode_turn_event(%{event: :turn_ended})
+           },
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
   def record_turn(%Scope{} = scope, request, response, opts \\ []) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 

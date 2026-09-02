@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.ToolSets
@@ -642,6 +643,17 @@ defmodule CodeMySpec.Agents do
   a private function inside a channel handler cannot be driven at all.
   """
   @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  # A turn ending is not a step, so nothing is written to the transcript for it.
+  # It is the moment the orchestrator gets to speak — the internal equivalent of
+  # an external agent's Stop hook firing, which is the one thing this runtime
+  # never had. Story 1043.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}) do
+    case AgentsRepository.fetch_agent(scope, agent_id) do
+      {:ok, agent} -> StopDecision.deliver(scope, agent)
+      _ -> :ok
+    end
+  end
+
   def record_turn_event(%Scope{} = scope, agent_id, event) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
