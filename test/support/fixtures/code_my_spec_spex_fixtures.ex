@@ -938,9 +938,23 @@ defmodule CodeMySpecSpex.Fixtures do
         conversation
         |> CodeMySpec.Conversations.list_messages()
         |> Enum.filter(&(&1.role == :orchestrator))
-        |> Enum.map(& &1.body)
+        |> Enum.map(&message_text/1)
     end
   end
+
+  # A message's text, out of the parts it is stored as.
+  #
+  # `content` is a list of `%{"type" => ..., "text" => ...}` maps — an
+  # orchestrator action carries its sentence plus optional count, tool and kind
+  # parts. There is no flat `body`, and reading one raises `KeyError` at exactly
+  # the moment the feature starts working, which reads as the feature failing.
+  defp message_text(%{content: parts}) when is_list(parts) do
+    parts
+    |> Enum.filter(&(is_map(&1) and Map.get(&1, "type") == "text"))
+    |> Enum.map_join("\n", &Map.get(&1, "text", ""))
+  end
+
+  defp message_text(_message), do: ""
 
   @doc """
   The agents this working copy is supposed to be running.

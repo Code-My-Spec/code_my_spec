@@ -17,9 +17,12 @@ defmodule CodeMySpecSpex.Story1043.Criterion3052Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  @impl_path "lib/example_context.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,13 +30,30 @@ defmodule CodeMySpecSpex.Story1043.Criterion3052Spex do
   spex "When the run completes, the decision reaches the agent as a message" do
     scenario "The answer arrives when it exists, not when it was asked for" do
       given_ "an agent running under Alloy whose copy has problems outstanding", context do
-        Fixtures.deliver_manifest(context.scope)
+        # Lifted from story 988's criterion 8201, which is the proven recipe for
+        # a finding that actually blocks. Every step matters and I had been
+        # missing the last one: without a *fresh* analysis run credo is stale,
+        # and a stale source does not block — which is that story's whole
+        # subject and the reason four scenarios here allowed for a reason that
+        # had nothing to do with what they test.
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
-        Fixtures.record_problem(context.scope, "credo", %{
-          file_path: "lib/example_context.ex",
-          message: "Modules should have a @moduledoc tag"
-        })
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\nend\n"
+          )
+
+        Fixtures.deliver_manifest(context.scope)
+        Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
+        Fixtures.fresh_analysis_runs(context.scope, ["credo"])
+
+        # The premise, asserted. 8201 does this too, and for the reason it
+        # gives: if the finding does not block first, the scenario proves
+        # nothing about what the agent is told.
+        assert {:error, _} = Fixtures.validate_stop(context.scope),
+               "the finding must actually block first, or this scenario proves nothing"
 
         {:ok, Map.put(context, :agent_id, running_agent(context))}
       end
