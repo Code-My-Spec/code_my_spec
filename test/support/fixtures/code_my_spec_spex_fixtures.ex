@@ -1332,6 +1332,32 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Whether the server is currently carrying analyzer work for this copy."
   defdelegate analysis_runs_in_flight?(scope), to: CodeMySpec.Analysis, as: :runs_in_flight?
 
+  @doc """
+  What state each analyzer source is in for this copy.
+
+  For asking whether analysis was *asked for*, which `runs_in_flight?/1` cannot
+  answer here: a run is dispatched inline under test, so it has already finished
+  by the time a `then_` looks and "in flight" is false whether or not anything
+  was ever enqueued. The state map still remembers.
+  """
+  defdelegate analysis_status(scope), to: CodeMySpec.Analysis, as: :status
+
+  @doc """
+  An analyzer run for this copy that finished badly.
+
+  For premises about what a stop does next: `validate_stop/3` enqueues with
+  `only_failed: true` on the no-changed-files path, so a *failed* run is the
+  state that makes a stop re-run something and a completed one is not. Without
+  it a spec asserting "the turn end enqueued the analyzers" passes on runs an
+  earlier step already caused, and proves nothing.
+  """
+  def failed_analysis_run(%Scope{} = scope, source) do
+    CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
+      source: source,
+      status_override: :failed
+    })
+  end
+
   def end_turn(%Scope{} = scope, agent_id) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
