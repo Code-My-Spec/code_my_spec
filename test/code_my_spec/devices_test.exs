@@ -95,6 +95,51 @@ defmodule CodeMySpec.DevicesTest do
       assert {:ok, device} = Devices.announce(scope, "not-a-uuid", %{hostname: "h", kind: :local})
       assert device.id
     end
+
+    test "a machine's own well-formed id, never seen before, is created rather than replaced",
+         %{scope: scope} do
+      minted = Ecto.UUID.generate()
+
+      assert {:ok, device} =
+               Devices.announce(scope, minted, %{hostname: "a-new-laptop", kind: :local})
+
+      assert device.id == minted,
+             "the machine minted this id itself and presented it as a fact. Handing back " <>
+               "a different one on a first announce is the server re-asserting an identity " <>
+               "the client already settled — the exact behaviour that raced two daemons on " <>
+               "one box against a single shared device.json."
+    end
+
+    test "two daemons racing to create the same new id both land on one device",
+         %{scope: scope} do
+      minted = Ecto.UUID.generate()
+
+      {:ok, first} = Devices.announce(scope, minted, %{hostname: "daemon-a", kind: :local})
+
+      assert {:ok, second} =
+               Devices.announce(scope, minted, %{hostname: "daemon-b", kind: :local})
+
+      assert second.id == first.id,
+             "losing the race to create your own device is not a reason to be refused it"
+
+      assert Devices.list_devices(scope) |> Enum.count(&(&1.id == minted)) == 1
+    end
+
+    test "a machine's own id colliding with a different account's device gets a fresh one",
+         %{scope: scope} do
+      other = full_scope_fixture()
+      {:ok, theirs} = Devices.announce(other, nil, %{hostname: "not-yours", kind: :local})
+
+      assert {:ok, mine} =
+               Devices.announce(scope, theirs.id, %{hostname: "mine", kind: :local})
+
+      refute mine.id == theirs.id,
+             "a self-picked id is not guaranteed unique across accounts the way a " <>
+               "server-minted one was; a collision must not hand this announce " <>
+               "another account's device"
+
+      assert mine.account_id == scope.active_account_id
+    end
   end
 
   describe "a machine that belongs to nobody" do

@@ -7,23 +7,44 @@ defmodule CodeMySpec.Devices do
 
   ## Announcing, not registering
 
-  `announce/2` has the same two shapes `WorkingCopies.issue/3` has, for the same
-  reason: a machine that has never connected presents `nil` and is issued an id,
-  and one that has presents its id and is recognised. The daemon writes the id
-  to `~/.codemyspec/device.json` and presents it forever after.
+  `announce/2` has the same two shapes `WorkingCopies.issue/3` has: a machine
+  presenting an id we already know is recognised, and one presenting an id we
+  do not is created *using that id* — the machine minted it, this just takes
+  its word. The daemon writes the id to `~/.codemyspec/device.json` once and
+  presents it forever after; see `CmsHarness.Device`.
 
-  An id naming no device mints a new one rather than failing. The alternative is
-  a machine that cannot serve until somebody deletes a file it has no reason to
-  suspect — and the cost of a new id is that its copies re-attach on their next
-  join, which they do anyway.
+  A missing or malformed id still mints a fresh one rather than failing —
+  reached only by a client too old to send one, or one that could not
+  determine anything about the machine it is on at all.
 
-  ## Why the server issues it
+  ## Why the machine mints it, not the server
 
-  Every client-derived identity fails the case that matters. A hostname is
-  generated for exactly the containers that collide. A MAC address does not
-  survive a re-image. A path is not identity at all. This is the same argument
-  that made `WorkingCopies.issue/3` server-side, one level up, and it fails the
-  same way if you get it wrong: two machines answering as one, silently.
+  This used to be reversed, on the argument that every client-derived
+  identity fails the case that matters — a generated container hostname, a
+  MAC address that does not survive a re-image, a path that is not identity
+  at all. The argument was sound; the conclusion did not follow. What it
+  actually ruled out was *trusting* a client-derived id as globally unique,
+  not minting one client-side at all.
+
+  Server-issued turned out to have its own failure the client-side argument
+  missed: the id lives in one file per machine
+  (`~/.codemyspec/device.json`), and more than one daemon can run on one
+  box — a laptop's own dev harness alongside a separately installed
+  packaged service, each independently re-announcing on its own schedule.
+  Two writers sharing one file with no coordination raced it: each announce
+  asked the server "who am I", each got handed back whatever the *other*
+  daemon had most recently been told, and the file's content changed every
+  few minutes with no daemon ever settling on an identity long enough for a
+  channel join to still be holding it a moment later.
+
+  Asking a machine to assert its own identity instead — once, and only once
+  — removes the question that was being asked repeatedly and racily. The id
+  a fresh machine picks still is not guaranteed globally unique the way a
+  server-minted one was, so a presented id that collides with a *different*
+  account's device is not handed that device — see `create_or_recognise/3`.
+  What changed is who is trusted to hold the record of "who am I" between
+  asks: the machine's own file, not a question re-asked of the server on
+  every announce.
 
   ## A machine need not belong to anyone
 
@@ -52,7 +73,7 @@ defmodule CodeMySpec.Devices do
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
-  The device for this id, or a new one if the caller has none.
+  The device for this id, or a new one created using it if the caller has none.
 
   `attrs` is what the machine says about itself — `:hostname` and `:kind` — and
   is applied on every announce, not only at creation. A laptop that is
@@ -75,9 +96,62 @@ defmodule CodeMySpec.Devices do
       |> Map.put(:last_seen_at, DateTime.utc_now())
 
     case existing(account_id, device_id) do
+      nil -> create_or_recognise(account_id, device_id, attrs)
+      device -> device |> Device.changeset(attrs) |> Repo.update()
+    end
+  end
+
+  # Not found under this account, but the id it presented still matters: a
+  # machine that minted its own id and is announcing for the first time looks
+  # identical, from here, to two daemons on the same box racing to create the
+  # same id at once. Both are handled by trying the insert and, only on a
+  # primary-key collision, re-checking who actually holds it now.
+  #
+  # A well-formed id that fails to cast is not this machine's fault, so it
+  # still gets a device — just one minted here instead, same as the
+  # never-presented-anything case always has.
+  defp create_or_recognise(account_id, device_id, attrs) do
+    case Ecto.UUID.cast(device_id) do
+      {:ok, id} -> insert_or_reconcile(account_id, id, attrs)
+      :error -> %Device{} |> Device.changeset(attrs) |> Repo.insert()
+    end
+  end
+
+  defp insert_or_reconcile(account_id, id, attrs) do
+    case id |> Device.new_changeset(attrs) |> Repo.insert() do
+      {:ok, device} ->
+        {:ok, device}
+
+      {:error, changeset} ->
+        if unique_id_violation?(changeset) do
+          reconcile_after_conflict(account_id, id, attrs)
+        else
+          {:error, changeset}
+        end
+    end
+  end
+
+  # The id is already somebody's row by the time we look again. If it is
+  # *this* account's — the ordinary shape of the race, two daemons on one
+  # machine both announcing a brand-new id at once — recognise it: the other
+  # insert won, and losing a race to create your own device is not a reason
+  # to be refused it. If it belongs to a different account, this machine's
+  # self-picked id collided with somebody else's device entirely — vanishingly
+  # unlikely, but not a reason to hand this machine's announce to that
+  # account's row — so a fresh, server-minted id is issued instead, same as
+  # the no-id-presented case.
+  defp reconcile_after_conflict(account_id, id, attrs) do
+    case existing(account_id, id) do
       nil -> %Device{} |> Device.changeset(attrs) |> Repo.insert()
       device -> device |> Device.changeset(attrs) |> Repo.update()
     end
+  end
+
+  defp unique_id_violation?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:id, {_msg, opts}} -> Keyword.get(opts, :constraint) == :unique
+      _ -> false
+    end)
   end
 
   # Scoped by account as well as id. The id arrives from a machine and is

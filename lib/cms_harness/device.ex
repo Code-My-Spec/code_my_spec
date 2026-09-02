@@ -21,12 +21,26 @@ defmodule CmsHarness.Device do
   which turns that whole class into something the placement handles rather than
   something a guard has to catch.
 
-  ## The id is issued, never invented
+  ## The id is minted here, not issued by the server
 
-  Same argument as `WorkingCopies.issue/3`, one level up. A hostname is
-  generated for exactly the containers that would collide; a MAC address does
-  not survive a re-image; a path is not identity. So the machine announces what
-  it holds — or nothing — and keeps whatever it is told.
+  This used to be reversed — the machine announced what it held, or nothing,
+  and the server was the one to say who it was. See `CodeMySpec.Devices`'
+  moduledoc for why that turned out to have its own failure: the identity
+  lived in one file that more than one daemon on a single box could hold open
+  at once, each asking the server "who am I" on its own schedule and each
+  overwriting the file with whatever it was told. A question re-asked
+  repeatedly, with no coordination between the askers, does not have a stable
+  answer.
+
+  So the machine decides once, for itself, and never asks again: `fresh_id/0`
+  runs only the first time `recorded_id/0` finds nothing, `write/1` refuses to
+  move an id already on file, and a server reply that disagrees is logged and
+  ignored rather than adopted (see `announce/1`'s "This machine decides who it
+  is, once"). A hostname is still generated for exactly the containers that
+  would collide, and a bare filesystem path is still not identity — those
+  arguments hold — but a network interface's hardware address is a real
+  exception, which is what `fresh_id/0` prefers before falling back to a
+  locally-generated random id.
 
   ## Failure is soft on purpose
 
@@ -69,15 +83,34 @@ defmodule CmsHarness.Device do
   Computing the answer from that map alone would make a removed worktree
   *unreported* rather than reported missing — the one outcome the whole story
   exists to avoid. The memory lives in the reporter.
+
+  ## This machine decides who it is, once
+
+  The id presented is this machine's own — generated locally the first time
+  there is none on file, never re-asked-for after. Confirmed live: more than
+  one harness install can exist on a single box (a laptop running this
+  checkout's own dev harness alongside a separately installed `cms start`
+  serving other projects), and both used to treat `~/.codemyspec/device.json`
+  as something the *server* was free to rewrite on every call. Two installs
+  overwriting each other's belief of "who am I" is indistinguishable, from
+  the server's side, from one machine that cannot hold an identity for more
+  than a few seconds — every announce raced the last one, and the id a
+  channel join read back the next moment was already stale. `write/1` now
+  refuses to change an id already on file for exactly this reason: once
+  established, it is a fact about the machine, not a question this module
+  asks the server again.
   """
+
   @spec announce(%{optional(String.t()) => boolean()}) ::
           {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
           | {:error, term()}
   def announce(observations \\ %{}) do
+    id = recorded_id() || fresh_id()
+
     with {:ok, token} <- credential(),
-         {:ok, %{device_id: id} = reply} <- post(recorded_id(), token, observations) do
-      write(id)
-      Logger.info("[CmsHarness] this machine is device #{id}")
+         {:ok, %{device_id: confirmed} = reply} <- post(id, token, observations) do
+      write(confirmed || id)
+      Logger.info("[CmsHarness] this machine is device #{confirmed || id}")
       {:ok, reply}
     else
       {:error, reason} = error ->
@@ -98,6 +131,56 @@ defmodule CmsHarness.Device do
       id
     else
       _ -> nil
+    end
+  end
+
+  # Generated once, the first time this machine has no id at all. Preferred:
+  # something the hardware itself already answers, so a wiped or lost
+  # device.json still recomputes the same identity on the next boot instead
+  # of looking like a new machine to the server. Falls back to a plain random
+  # id wherever no such fingerprint is available (or the lookup fails) —
+  # still generated locally, still asserted rather than asked for, just
+  # without the self-healing property a hardware id would have added.
+  defp fresh_id do
+    machine_fingerprint() || Ecto.UUID.generate()
+  end
+
+  # `:inet.getifaddrs/0` rather than an OS-specific probe (macOS's `ioreg`,
+  # Linux's `/etc/machine-id`, ...): it is part of OTP's own `:kernel`
+  # application, answers identically on macOS, Linux and Windows, and needs
+  # no shelled-out command or per-platform file path to fail differently on
+  # each. A network interface's hardware address is burned into that
+  # interface, not the OS install, so it survives a reinstall the same way
+  # a firmware UUID would.
+  #
+  # Deliberately not "the interface getifaddrs happens to list first": that
+  # order is not guaranteed stable across runs, so the lowest MAC among the
+  # non-loopback, non-zero ones is picked instead — the same input always
+  # sorts to the same answer.
+  #
+  # A MAC is 48 bits and `devices.id` is a UUID column, so the raw address
+  # cannot be stored as-is — it is hashed into 16 bytes and loaded through
+  # `Ecto.UUID.load/1` (the same function that turns a raw `binary_id` column
+  # value into its dashed string form) purely to get UUID-shaped output.
+  # Nothing here claims RFC 4122 version/variant correctness; Postgres's uuid
+  # type and `Ecto.UUID.cast/1` both only check the string shape.
+  defp machine_fingerprint do
+    with {:ok, interfaces} <- :inet.getifaddrs(),
+         mac when is_binary(mac) <- interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
+         {:ok, uuid} <- mac |> then(&:crypto.hash(:md5, &1)) |> Ecto.UUID.load() do
+      uuid
+    else
+      _ -> nil
+    end
+  end
+
+  defp hwaddr({_name, opts}) do
+    with false <- :loopback in Keyword.get(opts, :flags, []),
+         [_ | _] = bytes <- Keyword.get(opts, :hwaddr, []),
+         false <- Enum.all?(bytes, &(&1 == 0)) do
+      [:binary.list_to_bin(bytes)]
+    else
+      _ -> []
     end
   end
 
@@ -153,7 +236,29 @@ defmodule CmsHarness.Device do
   # Merged over what is there rather than written fresh, so a field this version
   # does not know about survives a downgrade — the same rule `HarnessConfig.write/2`
   # follows for the per-checkout file.
+  # Refuses to move an id already on file. This is what makes the identity
+  # stable across two daemons on one box: whichever announced first settles
+  # it, and neither this call nor a differently-answering server reply after
+  # it can move the file again.
   defp write(id) do
+    case recorded_id() do
+      nil ->
+        persist(id)
+
+      ^id ->
+        :ok
+
+      other ->
+        Logger.warning(
+          "[CmsHarness] server confirmed device #{id} but this machine already " <>
+            "holds #{other}; keeping #{other}"
+        )
+
+        :ok
+    end
+  end
+
+  defp persist(id) do
     file = path()
     existing = if File.exists?(file), do: Jason.decode!(File.read!(file)), else: %{}
     body = existing |> Map.put("device_id", id) |> Jason.encode!(pretty: true)

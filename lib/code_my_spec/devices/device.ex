@@ -94,6 +94,25 @@ defmodule CodeMySpec.Devices.Device do
   end
 
   @doc """
+  Build a brand-new device that will insert under the machine's own id.
+
+  Separate from `changeset/2` on purpose: `:id` belongs in the *insert* path
+  only. Adding it to `changeset/2`'s cast list would let an `update` silently
+  move an existing row to a different primary key the moment `attrs` happened
+  to carry one — nothing calls it that way today, but nothing should have to
+  reason about it either. A fresh `%Device{}` has no id to protect, so setting
+  it here is safe by construction rather than by caller discipline.
+  """
+  @spec new_changeset(String.t(), map()) :: Ecto.Changeset.t()
+  def new_changeset(id, attrs) do
+    %__MODULE__{}
+    |> cast(attrs, [:hostname, :label, :kind, :account_id, :last_seen_at])
+    |> put_change(:id, id)
+    |> validate_required([:kind, :id])
+    |> unique_constraint(:id, name: :devices_pkey)
+  end
+
+  @doc """
   The shortest string that still identifies this machine.
 
   A name somebody chose wins; otherwise the hostname; otherwise the id's first

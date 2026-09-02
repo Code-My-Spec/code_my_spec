@@ -47,14 +47,25 @@ defmodule CodeMySpecWeb.DeviceController do
   has been deleted. Telling the device what it is carrying is what lets it look
   at the right places after a restart.
 
-  ## Announcing is idempotent, and unrecognised is not an error
+  ## Announcing is idempotent, and unrecognised is taken at its word
 
-  A machine presents the id it holds, or none. An id we do not recognise — from
-  another account, or from a database that has been rebuilt — puts the machine
-  in exactly the position of one presenting nothing: it needs an identity. So it
-  is issued its own rather than refused. Refusing would leave a real machine with
-  no way to onboard, and the failure would be silent at boot on somebody else's
-  hardware.
+  A machine presents the id it holds, or none. The id is minted client-side now
+  (see `CmsHarness.Device`) rather than asked for here, so an id we do not
+  recognise is the *ordinary* shape of a first announce, not an exceptional one
+  — `Devices.announce/3` creates the row using that id rather than minting a
+  different one, on the same reasoning `WorkingCopies.issue/3` already applies
+  one level down: the caller's own identifier is honoured unless there is a
+  concrete reason not to.
+
+  There is exactly one such reason: the id already names *another* account's
+  device. A self-picked id is not guaranteed globally unique the way a
+  server-minted one was — astronomically unlikely for a random id, more
+  plausible for one derived from shared hardware (a cloned VM image, say) — and
+  handing that announce a different account's machine would be a tenancy hole,
+  not idempotence. Only then does this fall back to minting a fresh id, which
+  puts the machine in exactly the position of one presenting nothing: it needs
+  an identity, and refusing outright would leave a real machine with no way to
+  onboard.
   """
 
   use CodeMySpecWeb, :controller

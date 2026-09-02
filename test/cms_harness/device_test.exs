@@ -1,0 +1,121 @@
+defmodule CmsHarness.DeviceTest do
+  @moduledoc """
+  The machine asserts who it is; the file that holds the answer is written once.
+
+  Confirmed live on 2026-08-31: more than one harness install on a single box
+  (a laptop's own dev harness alongside a separately-installed packaged
+  service) each independently called `Device.announce/1` on their own
+  schedule, and each treated `~/.codemyspec/device.json` as something the
+  *server's reply* was free to overwrite. Two writers racing one file with no
+  coordination meant the recorded id changed every few minutes, with no
+  daemon holding one long enough for a channel join to still find it a moment
+  later.
+
+  These test the fix at the client's own boundary — a stub `Device.Client`
+  standing in for the server, so what is under test is `CmsHarness.Device`'s
+  own decision about when to write, not the server's reconciliation logic
+  (covered separately in `CodeMySpec.DevicesTest`).
+  """
+
+  # Mutates node-global application env (:device_config_path, :device_client,
+  # :harness_token).
+  use ExUnit.Case, async: false
+
+  alias CmsHarness.Device
+
+  defmodule StubClient do
+    @moduledoc "Answers exactly what the test tells it to, never the network."
+    @behaviour CmsHarness.Device.Client
+
+    @impl true
+    def announce(device_id, _token, _attrs) do
+      case Process.get(:device_test_reply) do
+        nil -> {:ok, %{device_id: device_id, working_copies: %{}}}
+        reply -> reply
+      end
+    end
+  end
+
+  setup do
+    dir = Path.join(System.tmp_dir!(), "cms_device_test_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    file = Path.join(dir, "device.json")
+
+    previous = %{
+      path: Application.get_env(:code_my_spec, :device_config_path),
+      client: Application.get_env(:code_my_spec, :device_client),
+      token: Application.get_env(:code_my_spec, :harness_token)
+    }
+
+    Application.put_env(:code_my_spec, :device_config_path, file)
+    Application.put_env(:code_my_spec, :device_client, StubClient)
+    Application.put_env(:code_my_spec, :harness_token, "stub-token")
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, :device_config_path, previous.path)
+      Application.put_env(:code_my_spec, :device_client, previous.client)
+      Application.put_env(:code_my_spec, :harness_token, previous.token)
+      File.rm_rf(dir)
+    end)
+
+    %{device_file: file}
+  end
+
+  describe "a machine with no id yet" do
+    test "mints one itself and writes it down", %{device_file: file} do
+      refute File.exists?(file)
+
+      assert {:ok, %{device_id: id}} = Device.announce()
+
+      assert File.read!(file) =~ id,
+             "the machine presented an id nobody asked it for and the file does " <>
+               "not hold it — the next boot will mint another"
+
+      assert Device.recorded_id() == id
+    end
+
+    test "the same file is reused across repeated announces", %{device_file: file} do
+      {:ok, %{device_id: first}} = Device.announce()
+      {:ok, %{device_id: second}} = Device.announce()
+
+      assert first == second
+      assert File.read!(file) =~ first
+    end
+  end
+
+  describe "a machine that already holds an id" do
+    test "presents its own id rather than asking the server for one", %{device_file: file} do
+      File.write!(file, Jason.encode!(%{"device_id" => "established-id"}))
+
+      assert {:ok, %{device_id: "established-id"}} = Device.announce()
+      assert Device.recorded_id() == "established-id"
+    end
+
+    test "keeps its own id even when the server answers with a different one", %{
+      device_file: file
+    } do
+      File.write!(file, Jason.encode!(%{"device_id" => "established-id"}))
+      Process.put(:device_test_reply, {:ok, %{device_id: "a-different-id", working_copies: %{}}})
+
+      assert {:ok, %{device_id: "a-different-id"}} = Device.announce(),
+             "the reply itself is untouched — the module only decides whether to adopt it"
+
+      assert Device.recorded_id() == "established-id",
+             "the id already on file is a fact about this machine, not a question " <>
+               "re-asked of the server on every announce. Adopting whatever the reply " <>
+               "says is exactly the behaviour that let two daemons on one box overwrite " <>
+               "each other's belief of who they were."
+    end
+  end
+
+  describe "the machine fingerprint" do
+    test "a freshly minted id is always UUID-shaped" do
+      # `machine_fingerprint/0` is private, so exercised through its one
+      # observable effect: whether or not this environment exposes a usable
+      # hardware address, what a fresh machine presents has to be something
+      # the `devices.id` column — a UUID — will accept.
+      {:ok, %{device_id: id}} = Device.announce()
+      assert {:ok, _} = Ecto.UUID.cast(id)
+    end
+  end
+end
