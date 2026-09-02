@@ -486,6 +486,13 @@ defmodule CmsHarness.Project.ChannelClient do
        # `[]` from a machine with no browser, which is a state rather than a
        # failure — see `CmsHarness.Browser`.
        "machine_tools" => CmsHarness.Browser.tool_names(),
+       # And what each of them takes. Thirty kilobytes for all eighty-five,
+       # measured against this machine's vibium — sent once per join, so that
+       # `tool_docs` can answer for a browser tool without a round trip on the
+       # path an agent uses to decide what to call. That path is the one that
+       # queues behind sibling agents (35e5eb59), and documentation missing when
+       # the machine is busy is worse than documentation one join old.
+       "machine_tool_docs" => CmsHarness.Browser.tool_docs(),
        # Why that list is what it is. `[]` meant both "no browser here" and
        # "the browser is here and would not answer", and the second is the one
        # somebody can act on — see issue 02b03d04.

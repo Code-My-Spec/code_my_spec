@@ -79,6 +79,33 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   def call(client, tool, arguments, _opts), do: call(client, tool, arguments)
 
   @impl true
+  def list_tools({__MODULE__, :browser}) do
+    # The shape vibium really answers with, keys and all: `inputSchema` camel,
+    # a description, a required list. A stand-in that returned a tidier shape
+    # would let a bug in the reading of the real one through.
+    {:ok,
+     Enum.map(browser_tools(), fn name ->
+       %{
+         "name" => name,
+         "description" => "Stand-in for #{name} on this machine's browser.",
+         "inputSchema" => %{
+           "type" => "object",
+           "properties" => %{
+             "selector" => %{"type" => "string", "description" => "What to act on"}
+           },
+           "required" => ["selector"]
+         }
+       }
+     end)}
+  end
+
+  def list_tools({__MODULE__, _headers} = client) do
+    with {:ok, names} <- list_tool_names(client) do
+      {:ok, Enum.map(names, &%{"name" => &1, "description" => "", "inputSchema" => %{}})}
+    end
+  end
+
+  @impl true
   def list_tool_names({__MODULE__, :browser}), do: {:ok, browser_tools()}
 
   # Through the catalog rather than at `ScriptableTools`: which tools exist is

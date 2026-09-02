@@ -77,6 +77,16 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # actionable.
     field :machine_tools, {:array, :string}
 
+    # What each of those tools takes, keyed by name: a description and a JSON
+    # Schema, straight from the machine's own `tools/list`.
+    #
+    # Separate from the list beside it because the names are the *scoping* list
+    # — which tools an agent may call is read off them — and scoping must not
+    # depend on documentation being present. `nil` is a harness too old to send
+    # them; `tool_docs` then falls back to naming the tool and saying where it
+    # is called from, as it did for every machine before this column.
+    field :machine_tool_docs, :map
+
     # Why the list beside this is empty, because `[]` covered two machines: one
     # with no browser, and one whose browser is installed and could not be
     # reached. `"absent"` and `"unreachable"` respectively, `"ready"` when there
@@ -131,6 +141,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :root,
       :device_id,
       :machine_tools,
+      :machine_tool_docs,
       :browser_status,
       :browser_error,
       :main,

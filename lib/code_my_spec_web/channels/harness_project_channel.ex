@@ -85,7 +85,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          {:ok, harness} <- report_root(harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
-         :ok <- record_machine_tools(harness, payload["machine_tools"]),
+         :ok <-
+           record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
          :ok <- record_browser_status(harness, payload["browser_status"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
@@ -165,13 +166,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # says "this machine reported nothing", the other "this machine has no
   # browser". Both end with an agent that has no browser tools, and only the
   # second is a thing the operator can act on.
-  defp record_machine_tools(_harness, nil), do: :ok
+  defp record_machine_tools(_harness, nil, _docs), do: :ok
 
-  defp record_machine_tools(harness, names) when is_list(names) do
-    WorkingCopies.record_machine_tools(harness, names)
+  defp record_machine_tools(harness, names, docs) when is_list(names) do
+    WorkingCopies.record_machine_tools(harness, names, docs)
   end
 
-  defp record_machine_tools(_harness, _other), do: :ok
+  defp record_machine_tools(_harness, _other, _docs), do: :ok
 
   # Why the list was what it was. Absent from an older harness, which is the
   # `nil` the column already means — not an error, and not a reason to refuse a

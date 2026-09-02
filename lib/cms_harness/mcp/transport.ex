@@ -41,6 +41,17 @@ defmodule CmsHarness.Mcp.Transport do
   @callback list_tool_names(client()) :: {:ok, [String.t()]} | {:error, term()}
 
   @doc """
+  The same, with the schemas.
+
+  `tools/list` already carries a description and a JSON Schema for every tool;
+  `list_tool_names/1` maps the names out of them and drops the rest. Keeping
+  them is what lets `tool_docs` answer for a browser tool at all — the
+  alternative was a catalog entry whose description read "see tool_docs for its
+  arguments" pointing at a `tool_docs` that had nothing to say.
+  """
+  @callback list_tools(client()) :: {:ok, [map()]} | {:error, term()}
+
+  @doc """
   The configured transport.
 
   Defaults to the real one; tests set `:harness_mcp_transport`. Read at call

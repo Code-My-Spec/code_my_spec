@@ -50,7 +50,14 @@ defmodule CmsHarness.Browser do
   @protocol_version "2024-11-05"
 
   @session {:global, {__MODULE__, :session}}
-  @cached {__MODULE__, :tool_names}
+
+  # Renamed from `:tool_names` deliberately, and the rename is load-bearing
+  # rather than tidying. What is cached here used to be a list of strings and is
+  # now a list of descriptors, so a harness upgraded in place would read its own
+  # old entry with the new code and call `Access.get/2` on a binary. A new key
+  # means the first call after an upgrade re-asks, which is the only safe way to
+  # change the shape of something in `:persistent_term`.
+  @cached {__MODULE__, :tools}
 
   @doc """
   Start the browser's MCP server, or say why not.
@@ -86,13 +93,42 @@ defmodule CmsHarness.Browser do
   What this machine's browser offers, by name.
 
   `[]` when there is no browser, which is a state rather than a failure — see
-  the moduledoc. Names only: the arguments are what `tool_docs` is for, asked
-  once, after the agent has decided which one it wants.
+  the moduledoc. This is the scoping list: which tools an agent may call is read
+  off names. What each one takes is `tool_docs/0`, looked up once the agent has
+  decided which one it wants.
   """
   @spec tool_names() :: [String.t()]
   def tool_names do
-    {names, _status} = asked()
-    names
+    {tools, _status} = asked()
+    Enum.map(tools, & &1["name"])
+  end
+
+  @doc """
+  What each of them takes, keyed by name.
+
+  `tools/list` carries a description and a JSON Schema per tool and this used to
+  map the names out and drop the rest — on the reasoning above, that the
+  arguments are what `tool_docs` is for. Nothing built the asking, so the
+  catalog entry's description said "see tool_docs for its arguments" and
+  `tool_docs` had nothing to answer with: a pointer in a circle.
+
+  Reported with the manifest rather than fetched when asked. Thirty kilobytes
+  for all eighty-five, measured, against a round trip on the path an agent uses
+  to decide what to call — and that path is exactly the one that queues behind
+  sibling agents (35e5eb59). Documentation that is missing when the machine is
+  busy is worse than documentation that is a join old.
+  """
+  @spec tool_docs() :: %{optional(String.t()) => map()}
+  def tool_docs do
+    {tools, _status} = asked()
+
+    Map.new(tools, fn tool ->
+      {tool["name"],
+       %{
+         "description" => tool["description"],
+         "input_schema" => tool["inputSchema"] || tool["input_schema"]
+       }}
+    end)
   end
 
   @doc """
@@ -113,9 +149,9 @@ defmodule CmsHarness.Browser do
   defp asked do
     case :persistent_term.get(@cached, :unasked) do
       :unasked ->
-        {names, status} = ask()
-        :persistent_term.put(@cached, {names, status})
-        {names, status}
+        {tools, status} = ask()
+        :persistent_term.put(@cached, {tools, status})
+        {tools, status}
 
       cached ->
         cached
@@ -156,8 +192,8 @@ defmodule CmsHarness.Browser do
 
   defp ask_now do
     with {:ok, client} <- ensure_started(),
-         {:ok, names} <- Transport.impl().list_tool_names(client) do
-      {names, :ready}
+         {:ok, tools} <- Transport.impl().list_tools(client) do
+      {tools, :ready}
     else
       # The one empty answer that is not a failure — and still worth saying once,
       # because it is the quiet one. An agent here does not fail for want of a

@@ -368,14 +368,22 @@ defmodule CodeMySpec.WorkingCopies do
   an older harness sends nothing at all, and refusing its join over a browser
   would take the checkout down for the tools it does have.
   """
-  @spec record_machine_tools(WorkingCopy.t(), [String.t()]) :: :ok
-  def record_machine_tools(%WorkingCopy{} = harness, names) when is_list(names) do
+  @spec record_machine_tools(WorkingCopy.t(), [String.t()], map() | nil) :: :ok
+  def record_machine_tools(%WorkingCopy{} = harness, names, docs \\ nil) when is_list(names) do
     harness
-    |> WorkingCopy.changeset(%{machine_tools: names})
+    |> WorkingCopy.changeset(machine_attrs(names, docs))
     |> Repo.update()
 
     :ok
   end
+
+  # A harness too old to send documentation still sends its names, and the
+  # column is left alone rather than blanked: what is recorded is one join stale
+  # and better than nothing, which is what overwriting it with `nil` would leave.
+  defp machine_attrs(names, docs) when is_map(docs) and map_size(docs) > 0,
+    do: %{machine_tools: names, machine_tool_docs: docs}
+
+  defp machine_attrs(names, _docs), do: %{machine_tools: names}
 
   @doc """
   Why this machine's browser tool list is what it is.

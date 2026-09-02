@@ -85,9 +85,11 @@ defmodule CodeMySpec.McpServers.CodeMode do
   """
   @spec machine_catalog(Scope.t(), [String.t()] | nil, pos_integer()) :: Catalog.t()
   def machine_catalog(scope, allowed, timeout) do
+    docs = machine_tool_docs(scope)
+
     scope
     |> machine_tool_names(allowed)
-    |> Map.new(&{&1, machine_tool(scope, &1, timeout)})
+    |> Map.new(&{&1, machine_tool(scope, &1, docs[&1], timeout)})
   end
 
   @doc """
@@ -124,19 +126,38 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp machine_tools(_scope), do: []
 
+  # What the machine said each of its tools takes, reported with the manifest.
+  #
+  # `%{}` for a harness too old to have sent them, which is the case every entry
+  # below has to survive: the tool is still callable, and what it takes is a
+  # question only its own machine can answer.
+  defp machine_tool_docs(%{active_working_copy_id: id}) when is_binary(id) do
+    case CodeMySpec.WorkingCopies.fetch(id) do
+      {:ok, %{machine_tool_docs: docs}} when is_map(docs) -> docs
+      _ -> %{}
+    end
+  end
+
+  defp machine_tool_docs(_scope), do: %{}
+
   # The call gets the script's budget less a margin, so a hung tool reports as a
   # timeout instead of being taken out by the sandbox at the same instant. They
   # used to be the same number, which meant whichever fired first the caller
   # could not tell which, and the brutal kill could take the error with it.
   @machine_call_margin_ms 2_000
 
-  defp machine_tool(scope, name, timeout) do
+  defp machine_tool(scope, name, doc, timeout) do
     call_timeout = max(timeout - @machine_call_margin_ms, 1_000)
 
     %{
       name: name,
-      description: "Runs on this project's machine. See tool_docs for its arguments.",
-      input_schema: %{"type" => "object"},
+      description: description(doc),
+      # `:schema`, which is what `Catalog.describe/2` normalises `:input_schema`
+      # into and what `Docs` reads. These entries are built here rather than
+      # through `Catalog.from/3`, so the normalisation does not happen to them —
+      # and the old key meant `tool_docs({name = "browser_click"})` would have
+      # raised `KeyError` if anything had reached it.
+      schema: schema(doc),
       # Stated on the entry, not only closed over. The deadline is derived, and
       # a derivation nothing can read is how the inner call and the sandbox
       # around it came to be the same thirty seconds with nobody noticing.
@@ -151,6 +172,21 @@ defmodule CodeMySpec.McpServers.CodeMode do
       end
     }
   end
+
+  # The machine's own words when it sent them. The fallback is what every
+  # machine tool used to say — and it pointed at `tool_docs`, which had nothing
+  # to answer with, because the names arrived without the schemas beside them.
+  # Now that they arrive together, the pointer is only for a harness that has
+  # not reconnected since.
+  defp description(%{"description" => text}) when is_binary(text) and text != "", do: text
+
+  defp description(_doc) do
+    "Runs on this project's machine. This machine has not reported what it " <>
+      "takes — reconnect its harness, or call it and read what it asks for."
+  end
+
+  defp schema(%{"input_schema" => %{} = schema}) when map_size(schema) > 0, do: schema
+  defp schema(_doc), do: %{"type" => "object"}
 
   @doc "What this agent may not call, of the tools that exist."
   @spec out_of_scope([String.t()] | nil) :: [String.t()]

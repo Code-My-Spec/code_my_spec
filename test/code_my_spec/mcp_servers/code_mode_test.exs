@@ -274,4 +274,90 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       assert body =~ "run_browser_script"
     end
   end
+
+  describe "what the machine says its tools take" do
+    setup do
+      scope = full_scope_fixture()
+      {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+
+      # The shape a machine really reports, recorded the way the join records
+      # it: names for scoping, and a description plus a JSON Schema per name.
+      :ok =
+        CodeMySpec.WorkingCopies.record_machine_tools(copy, ~w(browser_wait_for_text), %{
+          "browser_wait_for_text" => %{
+            "description" => "Wait until specific text appears on the page",
+            "input_schema" => %{
+              "type" => "object",
+              "properties" => %{
+                "text" => %{"type" => "string", "description" => "Text to wait for on the page"},
+                "timeout" => %{"type" => "number", "description" => "Timeout in milliseconds"}
+              },
+              "required" => ["text"]
+            }
+          }
+        })
+
+      %{scope: scope, frame: %Frame{assigns: %{current_scope: scope}}}
+    end
+
+    test "reaches the catalog entry instead of a placeholder", %{scope: scope} do
+      tool = Layer.machine_catalog(scope, nil, 60_000)["browser_wait_for_text"]
+
+      assert tool.description == "Wait until specific text appears on the page"
+      assert tool.schema["required"] == ["text"]
+
+      refute tool.description =~ "tool_docs", """
+      The entry still points at tool_docs for its arguments, which is the circle
+      this closed: the description said to ask tool_docs, and tool_docs had
+      nothing to answer with because the schemas were mapped away in
+      `list_tool_names/1`.
+      """
+    end
+
+    test "and tool_docs renders them the way it renders ours", %{frame: frame} do
+      assert {:reply, response, ^frame} =
+               ToolDocs.execute(%{name: "browser_wait_for_text"}, frame)
+
+      body = text(response)
+
+      assert body =~ "# browser_wait_for_text"
+      assert body =~ "Wait until specific text appears on the page"
+      assert body =~ "text", "the argument it cannot be called without is not documented"
+      assert body =~ "timeout"
+
+      # Rendered by `Docs`, not by a paragraph written here — so the example is
+      # runnable and the required arguments are marked as such.
+      assert body =~ "```lua"
+      assert body =~ "run_browser_script"
+    end
+
+    test "a machine that has not reported them still gets a page", %{scope: scope} do
+      {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+      :ok = CodeMySpec.WorkingCopies.record_machine_tools(copy, ~w(browser_click), nil)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ToolDocs.execute(%{name: "browser_click"}, frame)
+
+      body = text(response)
+      assert body =~ "# browser_click"
+
+      assert body =~ "has not reported", """
+      A harness older than the docs column gets a page that says so. Silence
+      here reads as a tool with no arguments, which is a different and wrong
+      thing.
+      """
+    end
+
+    test "names still record when a harness sends no docs", %{scope: scope} do
+      {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+      :ok = CodeMySpec.WorkingCopies.record_machine_tools(copy, ~w(browser_click), nil)
+
+      # Scoping is read off the names, so an old harness must not lose them —
+      # and the docs it did send earlier are left alone rather than blanked.
+      assert Layer.machine_tool_names(scope) == ~w(browser_click)
+      {:ok, reread} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+      assert Map.has_key?(reread.machine_tool_docs, "browser_wait_for_text")
+    end
+  end
 end

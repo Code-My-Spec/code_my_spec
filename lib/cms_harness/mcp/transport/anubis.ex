@@ -207,8 +207,13 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   @impl true
   def list_tool_names(client) do
+    with {:ok, tools} <- list_tools(client), do: {:ok, Enum.map(tools, & &1["name"])}
+  end
+
+  @impl true
+  def list_tools(client) do
     case Anubis.Client.list_tools(client) do
-      {:ok, %{result: %{"tools" => tools}}} -> {:ok, Enum.map(tools, & &1["name"])}
+      {:ok, %{result: %{"tools" => tools}}} -> {:ok, tools}
       {:ok, other} -> {:error, {:unexpected_tool_list, other}}
       {:error, reason} -> {:error, reason}
     end
