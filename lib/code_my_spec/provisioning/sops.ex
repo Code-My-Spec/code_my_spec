@@ -41,6 +41,73 @@ defmodule CodeMySpec.Provisioning.Sops do
   variable, which the deploy tool injects. Nothing writes a key file to the
   host, so there is no key sitting on a box for someone to find, and rotating
   is a re-encrypt plus a redeploy rather than a file edit on a server.
+
+  ## Onboarding a legacy app off its own secrets store
+
+  A pre-CodeMySpec app almost always has its own boot-time secrets fetch —
+  AWS SSM Parameter Store, Varlock, a hand-rolled `.env` loader — reading a
+  provider this platform's own `Deploy.script_env/1` has no reason to know
+  about. That mismatch surfaces as the app crashing on boot with a
+  provider-auth error, well after `:server`/`:deploy` have already
+  succeeded: the box, the registry, and the image are all fine, and the
+  container simply can't fetch what it thinks it needs. Confirmed live
+  onboarding `broken_oaths` (its own AWS SSM fetch,
+  `BrokenOaths.Secrets.load!/1`) and planned identically for MarketMySpec.
+
+  Migrating the app onto this module's convention, rather than teaching
+  `Deploy.script_env/1` to carry an arbitrary provider's credentials
+  through Kamal's process env, is the right fix: `SOPS_AGE_KEY` is already
+  the one secret the deploy pipeline delivers to any box that runs it, by
+  design, so there is nothing new to plumb once the app decrypts locally
+  instead of calling out at boot.
+
+  1. **Read the legacy parameter names**, not just their values — the
+     STORE's own path (`/app_name/<env>/*` for SSM) names every key the
+     app's `config/runtime.exs` currently expects via `System.get_env/1`.
+  2. **Split what to bring over from what the platform already generated.**
+     `:secrets` already wrote `SECRET_KEY_BASE`, `DEPLOY_KEY`, and each
+     environment's age key before this ever starts — decrypt the existing
+     file first (`decrypt/3`) and skip any name already present rather than
+     clobbering a value this platform is itself the source of truth for.
+     `DATABASE_URL` is the sharpest version of this: the legacy value
+     points at the *old* box, and copying it verbatim would have the new
+     container migrating and serving against infrastructure nobody meant
+     it to touch. `read_database_url`-shaped functions (`Database.credential/2`
+     `Database.url/1`) already hold the correct one.
+  3. **Everything else migrates verbatim** via `put_secret/4` — API keys,
+     OAuth client credentials, and anything like a Cloak key that existing
+     *data* was encrypted under. A regenerated Cloak key doesn't fail loudly;
+     it just makes every already-encrypted row unreadable.
+  4. **Swap the app's own boot-time fetch for the decrypt-then-exec
+     pattern** `deploy_artifacts.ex` already generates natively
+     (`rel/overlays/bin/boot`: `exec sops exec-env "$ENV_FILE" "<start
+     command>"`) — add the same wrapper to `bin/migrate` if the app has
+     one, since a deploy's migrate phase runs as its own separate `kamal
+     app exec`, outside whatever `bin/boot` does. Carry `envs/` into the
+     release overlay (`COPY envs rel/overlays/envs` before `mix release`)
+     and `sops` itself into the runtime image, mirroring the generator's
+     own Dockerfile — a legacy app never had either. Delete the provider
+     call from `config/runtime.exs`; every other `System.get_env/1` read
+     in that file is already correct unchanged, because decryption now
+     happens before the release process starts rather than inside it.
+  5. **`config/deploy*.yml`'s own `env.secret` list carries the change**:
+     drop the old provider's bootstrap credentials and add `SOPS_AGE_KEY`
+     in their place, matching `.kamal/secrets-common`'s `${SOPS_AGE_KEY}`
+     interpolation — Kamal resolves that from its own process env, which
+     `Deploy.script_env/1` already populates for every deploy this
+     platform runs.
+
+  A production environment not yet deployed through this platform's own
+  pipeline is the one case this doesn't close by itself: its legacy manual
+  deploy script has no route to `SOPS_AGE_KEY` at all until it either
+  moves onto `run_provisioning_step`/`run_devops_setup` or gets a
+  dedicated way to read the key out — the same shape `read_database_url`
+  closed for the database credential. Migrating that environment's secret
+  *values* ahead of time is still worth doing (cheap, and `Deploy`'s own
+  health-check-gated swap means a boot failure from a missing key refuses
+  the deploy rather than taking the running version down) — but do not
+  point that environment's own deploy script at the new image until the
+  key can actually reach it.
   """
 
   alias CodeMySpec.Environments
