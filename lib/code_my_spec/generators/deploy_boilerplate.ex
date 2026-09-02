@@ -14,6 +14,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   """
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Users.Scope
 
@@ -29,7 +30,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       key: :dockerfile,
       path: "Dockerfile",
       description: "Dockerfile",
-      why: "the image is built in CI from this; without it the first push produces nothing to deploy"
+      why:
+        "the image is built in CI from this; without it the first push produces nothing to deploy"
     },
     %{
       key: :ci_workflow,
@@ -55,7 +57,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       key: :sops_rules,
       path: ".sops.yaml",
       description: "SOPS rules",
-      why: "declares one age recipient per environment, so UAT's key cannot open production's secrets"
+      why:
+        "declares one age recipient per environment, so UAT's key cannot open production's secrets"
     },
     %{
       key: :boot_overlay,
@@ -117,15 +120,88 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   end
 
   @doc """
-  Returns any plaintext environment files found in the project.
+  Returns any plaintext environment files the project would actually ship or
+  push.
 
-  Their presence is the failure — a generated project is meant to be safe to
-  push from its first commit, and a plaintext env file is the way that stops
-  being true.
+  A generated project is meant to be safe to push from its first commit, and
+  a plaintext env file is the way that stops being true — but only if it can
+  actually reach git or the image. One `.gitignore`d and `.dockerignore`d by
+  both, present or not, is a local convenience with no exposure path, not the
+  failure this exists to catch.
+
+  Found live adopting broken_oaths: it keeps a local `.env` for dev-only
+  secrets nothing else here has anywhere to put (`CODEMYSPEC_DEPLOY_KEY`,
+  Google OAuth), already excluded from both git and the built image. There is
+  no `envs/dev.enc.env` equivalent to migrate it to — devops levels only
+  cover uat/prod — so flagging mere presence blocked a real deploy over a
+  file that could never have shipped. Checked against both, not either: a
+  `.dockerignore` entry with no matching `.gitignore` line still reaches git
+  history, and the reverse still reaches the image.
   """
   @spec plaintext_env_files(Scope.t()) :: [String.t()]
-  def plaintext_env_files(scope) do
-    Enum.filter(@plaintext_env_names, &present?(scope, &1))
+  def plaintext_env_files(%Scope{environment: env} = scope) do
+    @plaintext_env_names
+    |> Enum.filter(&present?(scope, &1))
+    |> Enum.reject(&excluded_from_shipping?(env, &1))
+  end
+
+  # No proof of exclusion is not exclusion. A scope with no live checkout, a
+  # git that cannot answer, an unreadable `.dockerignore` — every one of
+  # those falls through to `false` below, same as a file this cannot rule out
+  # ever reaching git or the image at all.
+  #
+  # `cwd` checked before either question is asked, not caught after: a
+  # directoryless (harness-scoped) environment is a real, expected shape —
+  # the caller has no live checkout, only the project's own file-sync record
+  # — and `Environments.cmd/4` raises rather than erroring for exactly that
+  # shape, deliberately, so a caller cannot run a command "wherever it
+  # happens to be" and analyse the wrong project by accident. That guard is
+  # correct; this only has to not run into it.
+  defp excluded_from_shipping?(nil, _path), do: false
+
+  defp excluded_from_shipping?(%Environment{cwd: cwd}, _path)
+       when not is_binary(cwd) or cwd == "",
+       do: false
+
+  defp excluded_from_shipping?(env, path) do
+    git_ignores?(env, path) and docker_ignores?(env, path)
+  end
+
+  defp git_ignores?(env, path) do
+    match?({_, 0}, Environments.cmd(env, "git", ["check-ignore", "-q", path]))
+  end
+
+  defp docker_ignores?(env, path) do
+    case Environments.read_file(env, ".dockerignore") do
+      {:ok, body} ->
+        body |> String.split("\n") |> Enum.any?(&dockerignore_pattern_matches?(&1, path))
+
+      _ ->
+        false
+    end
+  end
+
+  # `.dockerignore` has no `check-ignore` to ask, so this reads its own
+  # patterns. Simple glob only — `*` and `?` — which is what every real
+  # pattern excluding a dotfile by name actually uses; full gitignore-style
+  # negation and directory-scoped rules are not something `.dockerignore`
+  # itself supports either.
+  defp dockerignore_pattern_matches?(line, path) do
+    case line |> String.trim() |> String.trim_leading("/") do
+      "" -> false
+      "#" <> _ -> false
+      pattern -> glob_match?(pattern, path)
+    end
+  end
+
+  defp glob_match?(pattern, path) do
+    regex =
+      pattern
+      |> Regex.escape()
+      |> String.replace("\\*", ".*")
+      |> String.replace("\\?", ".")
+
+    Regex.match?(~r/^#{regex}$/, path)
   end
 
   @doc """
