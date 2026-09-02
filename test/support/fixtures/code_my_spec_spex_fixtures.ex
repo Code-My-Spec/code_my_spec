@@ -1952,6 +1952,21 @@ defmodule CodeMySpecSpex.Fixtures do
   # `CodeMySpecSpex` is its own Boundary and cannot name `CmsHarness` directly.
   defdelegate launch_agent(request), to: CmsHarness.Agents, as: :launch
   defdelegate halt_agent(agent_id), to: CmsHarness.Agents, as: :halt
+
+  @doc "What one agent is doing right now — mid-turn, and how much is behind it."
+  defdelegate agent_status(agent_id), to: CmsHarness.Agents, as: :status
+
+  @doc """
+  Give an agent something to do without waiting for the turn.
+
+  `send_message/4` rather than `message/4`: a spec that waited would wait on a
+  model, and what these criteria are about is what happens to a *delivery* while
+  an agent is busy — which needs the agent busy, not the spec blocked.
+  """
+  def send_agent_message(agent_id, text) do
+    CmsHarness.Agents.send_message(agent_id, "spec-" <> Ecto.UUID.generate(), text)
+  end
+
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
   defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
 
