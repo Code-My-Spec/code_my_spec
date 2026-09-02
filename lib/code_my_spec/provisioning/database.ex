@@ -39,6 +39,36 @@ defmodule CodeMySpec.Provisioning.Database do
   The password is generated once into `ProjectSecrets` and the connection URL
   is written into that environment's encrypted env, so the app reads it the
   same way it reads everything else. Nothing puts it in the working tree.
+
+  ## The tenant role can create and drop its own databases
+
+  Backup restore-verification needs somewhere throwaway to restore a dump
+  into and prove it — a database this project's own role creates, checks,
+  and drops, never the live one (`Backups.restore_proof/3`'s whole reason
+  for existing). `deploy_artifacts.ex`'s generated `bin/backup restore`
+  assumes its own role can do exactly that, connecting to `postgres` (the
+  default maintenance database every role can already reach) to issue
+  `CREATE`/`DROP DATABASE` — which only an administrator, or a role with
+  the `CREATEDB` attribute, is allowed to do. Confirmed live: a plain
+  `LOGIN` role gets "permission denied to create database" doing exactly
+  this, on every project this box has ever served, not a broken_oaths
+  quirk.
+
+  `CREATEDB` is the narrow grant for this, not the admin credential
+  itself. A role with it can create databases and drop the ones it owns —
+  nothing more. It cannot read, alter, or drop a database it does not own,
+  so one tenant's role gaining this attribute discloses nothing about any
+  other tenant sharing the same box; the blast radius is "can make more
+  databases," not "can reach someone else's." Handing out the actual
+  administrator credential instead — the one `admin_credential/1` mints,
+  which *can* touch every tenant on the box — for a job that only ever
+  needed its own scratch space would have been the wrong trade, not a
+  more careful one.
+
+  Granted by an unconditional `ALTER ROLE ... CREATEDB` rather than only
+  on `CREATE ROLE`, so a role provisioned before this existed picks it up
+  the next time `serve/3` runs, without anyone having to know which
+  projects predate the fix.
   """
 
   require Logger
@@ -346,7 +376,13 @@ defmodule CodeMySpec.Provisioning.Database do
       "DO $$ BEGIN " <>
         "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = #{sql_escape(credential.username)}) THEN " <>
         "CREATE ROLE #{credential.username} LOGIN PASSWORD #{sql_escape(credential.password)}; " <>
-        "END IF; END $$;"
+        "END IF; END $$; " <>
+        # Unconditional, not folded into the `CREATE ROLE` above: a role
+        # provisioned before this attribute existed already skips that
+        # branch every later run, and would never pick it up otherwise.
+        # `ALTER ROLE ... CREATEDB` on a role that already has it is a
+        # no-op, so this costs nothing on the common path.
+        "ALTER ROLE #{credential.username} CREATEDB;"
 
     run_admin_sql(run, admin, sql, :database_role_not_ready)
   end

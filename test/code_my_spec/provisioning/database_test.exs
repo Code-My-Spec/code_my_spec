@@ -216,6 +216,20 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       assert Enum.any?(commands, &(&1 =~ "CREATE DATABASE app_sam_s_app_uat OWNER app_sam_s_app"))
     end
 
+    # Confirmed live, on every project this shared box has ever served, not
+    # a broken_oaths quirk: backup restore-verification connects as the
+    # app's own role and issues CREATE/DROP DATABASE for its scratch copy
+    # (deploy_artifacts.ex's generated bin/backup), which only CREATEDB or
+    # an administrator may do. Unconditional so a role provisioned before
+    # this existed picks it up on its next ordinary server-step run, not
+    # only a role created fresh after this shipped.
+    test "grants the role CREATEDB, for its own backup restore-verification scratch databases" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+      assert Enum.any?(commands, &(&1 =~ "ALTER ROLE app_sam_s_app CREATEDB"))
+    end
+
     # pgvector is not a trusted extension — a plain LOGIN role can never
     # install it itself, even as the owner of its own database. Confirmed
     # live: "permission denied to create extension ... Must be superuser".
