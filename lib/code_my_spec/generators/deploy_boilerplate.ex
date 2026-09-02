@@ -161,11 +161,32 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   @health_exclusion ~r/paths:\s*\[[^\]]*(health|up)/
 
   defp check_force_ssl(body, path) do
+    active = active_lines(body)
+
     cond do
-      not String.contains?(body, "force_ssl") -> :ok
-      Regex.match?(@health_exclusion, body) -> :ok
+      not String.contains?(active, "force_ssl") -> :ok
+      Regex.match?(@health_exclusion, active) -> :ok
       true -> {:error, {:force_ssl_without_health_exclusion, path}}
     end
+  end
+
+  # Full-line comments dropped before either check runs. `phx.new`'s own
+  # boilerplate ships `force_ssl` commented out in exactly this shape — the
+  # whole line prefixed with `#`, never enabled — and a raw substring match
+  # flagged it as an active, unexcluded redirect it was never going to send.
+  # Found live adopting broken_oaths: the string only ever appeared inside
+  # that inert block, config/runtime.exs configures no force_ssl at all, and
+  # this still refused the deploy.
+  #
+  # Whole lines only, not a trailing `# comment` after real code — mid-line
+  # stripping risks cutting a `#` that is part of a string value (a URL
+  # fragment, say) rather than a comment, and nothing about this check needs
+  # that case to work.
+  defp active_lines(body) do
+    body
+    |> String.split("\n")
+    |> Enum.reject(&(String.trim_leading(&1) |> String.starts_with?("#")))
+    |> Enum.join("\n")
   end
 
   @doc """
