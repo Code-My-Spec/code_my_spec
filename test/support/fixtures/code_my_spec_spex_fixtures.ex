@@ -916,6 +916,33 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  What the orchestrator has said to this agent, oldest first.
+
+  The transcript rather than the agent's mailbox, and deliberately: a message
+  dispatched to a live agent starts or queues a turn, so reading the queue is a
+  race and reading what was *recorded* is not. It is also the half story 1041
+  already shares — `record_orchestrator_action/3` takes an agent and knows
+  nothing about how it runs — so a criterion asserting here is asserting on the
+  surface a person actually sees.
+  """
+  def orchestrator_actions(%Scope{} = scope, agent_id) do
+    case CodeMySpec.Repo.get_by(CodeMySpec.Conversations.Conversation,
+           account_id: scope.active_account_id,
+           project_id: scope.active_project_id,
+           agent_id: agent_id
+         ) do
+      nil ->
+        []
+
+      conversation ->
+        conversation
+        |> CodeMySpec.Conversations.list_messages()
+        |> Enum.filter(&(&1.role == :orchestrator))
+        |> Enum.map(& &1.body)
+    end
+  end
+
+  @doc """
   The agents this working copy is supposed to be running.
 
   The desired state, which is what a harness is told on join — not what anything

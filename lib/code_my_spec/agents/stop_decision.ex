@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -89,6 +90,20 @@ defmodule CodeMySpec.Agents.StopDecision do
   # started-or-queued without running anything, and a decision that barged into
   # a turn in flight would lose whatever that turn was part-way through.
   defp send_to(scope, agent, message) do
+    # Recorded as well as sent, and recorded first.
+    #
+    # `Conversations.record_orchestrator_action/3` is the half story 1041
+    # already shares — it takes an agent and knows nothing about how that agent
+    # runs, which is why the handover shows up for both kinds today. The
+    # decision is the same sort of thing: something the orchestrator did *to*
+    # the agent, and a transcript that shows only what the agent did is the gap
+    # 1041 exists to close.
+    #
+    # Before the dispatch, because delivery can fail — a halted agent has
+    # nobody to tell — and what the orchestrator decided is true whether or not
+    # anyone was there to hear it.
+    Conversations.record_orchestrator_action(agent, message, kind: "decision")
+
     ref = "stop-decision-" <> Ecto.UUID.generate()
 
     case CodeMySpec.Agents.Transport.impl().dispatch_message(
