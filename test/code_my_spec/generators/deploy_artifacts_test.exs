@@ -122,6 +122,66 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       assert body =~ "image: localhost:5000/sam-s-app"
       refute body =~ "acme"
     end
+
+    # `Deploy.run/3`'s own `script_env/1` already sets `CMS_SSH_KEY_PATH` —
+    # this is the half that had gone nowhere: nothing in the generated config
+    # ever read it, so kamal fell back to offering every identity the ambient
+    # agent held, and a box with the default `MaxAuthTries 6` disconnected
+    # before ever reaching the right one. Found live adopting broken_oaths,
+    # but the template is shared, so a fresh `cms_new` project carried the
+    # identical gap.
+    test "reads the deploy ssh key from CMS_SSH_KEY_PATH, in both environments" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        body = config(path, @opts)
+
+        assert body =~ ~s(<% if ENV["CMS_SSH_KEY_PATH"] %>), path
+        assert body =~ ~s(keys: ["<%= ENV["CMS_SSH_KEY_PATH"] %>"]), path
+        assert body =~ "keys_only: true", path
+      end
+    end
+
+    # ERB, not Elixir interpolation — ordinary string assertions cannot tell
+    # a tag that renders from one kamal itself would refuse to parse. Real
+    # `kamal config` is what proved the earlier hand-written attempt correct
+    # (and caught a first draft that produced invalid YAML under `keys_only`'s
+    # indentation) — this is that same proof, kept.
+    test "kamal itself parses the ssh block into keys_only when the env var is set" do
+      {:ok, dir} = Briefly.create(directory: true)
+      path = Path.join(dir, "deploy.yml")
+      # Kamal validates the whole config; a fresh project's own generated
+      # `files/1` output does not include `builder:`, so one is added here
+      # purely to let `kamal config` finish resolving without raising on an
+      # unrelated, already-required field this test has nothing to say about.
+      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+
+      {output, 0} =
+        System.cmd("kamal", ["config", "--config-file", path],
+          env: [{"CMS_SSH_KEY_PATH", "/tmp/example_key"}],
+          stderr_to_stdout: true
+        )
+
+      assert output =~ ":keys_only: true"
+      assert output =~ ~s(- "/tmp/example_key")
+    end
+
+    test "kamal falls back to its own default ssh behavior when the env var is unset" do
+      {:ok, dir} = Briefly.create(directory: true)
+      path = Path.join(dir, "deploy.yml")
+      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+
+      # `nil`, not `""` — Ruby's `if` treats an empty string as truthy, and
+      # `Deploy.run/3`'s own `script_env/1` never sends one either
+      # (`is_binary(value) and value != ""` keeps a blank value out of the
+      # subprocess env entirely), so unset is the only shape this has to
+      # answer for.
+      {output, 0} =
+        System.cmd("kamal", ["config", "--config-file", path],
+          env: [{"CMS_SSH_KEY_PATH", nil}],
+          stderr_to_stdout: true
+        )
+
+      refute output =~ ":keys_only: true"
+    end
   end
 
   # Real shelling out, same reasoning `Deploy.run/3`'s own tests give for

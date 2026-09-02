@@ -293,12 +293,46 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   # credential as `KAMAL_REGISTRY_USERNAME`/`PASSWORD` at deploy time all
   # along — env var *names* Kamal reads regardless of which registry they
   # point at — so only the host Kamal logs into was ever wrong here.
+  # `CMS_SSH_KEY_PATH` is already read by `Deploy.run/3`'s own `script_env/1`
+  # and handed to `bin/deploy`'s environment — set by `with_builder_ssh` from
+  # the same account key `Servers.access_key/1` uploaded to every box this
+  # account owns. It went nowhere from there: nothing in the generated
+  # config or script ever consumed it, so kamal fell back to offering every
+  # identity the ambient agent held. A box with the default `MaxAuthTries 6`
+  # disconnects before ever reaching the right one, and kamal's own SSH
+  # library falls back to an interactive password prompt that crashes with
+  # `Errno::ENOTTY` the moment there is no tty to read one from — which is
+  # every non-interactive deploy this step ever runs.
+  #
+  # Found live adopting broken_oaths, but the gap is not specific to an
+  # adopted project — a fresh `cms_new` project carries this same template,
+  # so the same failure was one coincidentally-crowded agent away on any
+  # project this generator has ever produced.
+  #
+  # ERB, not Elixir string interpolation: kamal itself processes every config
+  # file through ERB before parsing YAML, so this renders at deploy time
+  # against whatever `CMS_SSH_KEY_PATH` names for *that* run, not once at
+  # generation time — the env var's value is only known at run time. Guarded
+  # rather than emitted unconditionally: a human running `bin/deploy` by hand,
+  # with no CodeMySpec provisioning step setting this, still gets kamal's own
+  # default (ambient agent) behavior instead of an empty `keys: []` doing
+  # something kamal was never asked to test against.
+  defp kamal_ssh_block do
+    """
+    <% if ENV["CMS_SSH_KEY_PATH"] %>
+    ssh:
+      keys: ["<%= ENV["CMS_SSH_KEY_PATH"] %>"]
+      keys_only: true
+    <% end %>
+    """
+  end
+
   defp kamal_config(app, image, host, environment, registry) do
     """
     # Kamal deploys #{environment} for #{app}.
     service: #{app}#{if environment == "prod", do: "", else: "-#{environment}"}
     image: #{image}
-
+    #{kamal_ssh_block()}
     servers:
       web:
         - #{host}

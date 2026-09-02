@@ -345,22 +345,40 @@ defmodule CodeMySpec.GeneratorsTest do
     # The whole tree, not just the file under suspicion: an unrendered tag is a
     # class of bug, and it hid in the one line nobody reads because everything
     # around it interpolated correctly.
+    #
+    # `kamal_config`'s own `ssh:` block is the one deliberate exception —
+    # ERB kamal itself renders at deploy time against `CMS_SSH_KEY_PATH`,
+    # which is only known then, not at generation time. That is a genuinely
+    # different thing from the bug this test exists to catch: this generator
+    # never uses EEx at all, so *any other* `<%= %>`/`<% %>` reaching the
+    # output is exactly the old failure — an Elixir interpolation, like
+    # `#{}_host`, that was never substituted — wearing the same syntax kamal
+    # happens to use for its own, later pass.
     test "no generated file carries an unrendered template tag", %{dir: dir} do
+      allowed = [~s(<% if ENV["CMS_SSH_KEY_PATH"] %>), ~s(<%= ENV["CMS_SSH_KEY_PATH"] %>), "<% end %>"]
+
       offenders =
         Path.wildcard(Path.join(dir, "**/*"))
         |> Enum.filter(fn path ->
-          File.regular?(path) and path |> File.read!() |> String.contains?("<%=")
+          File.regular?(path) and
+            path
+            |> File.read!()
+            |> String.split("\n")
+            |> Enum.reject(&Enum.any?(allowed, fn tag -> String.contains?(&1, tag) end))
+            |> Enum.any?(&(String.contains?(&1, "<%=") or String.contains?(&1, "<%")))
         end)
         |> Enum.map(&Path.relative_to(&1, dir))
 
       assert offenders == [],
              """
-             These generated files still contain EEx tags:
+             These generated files still contain EEx tags nothing renders:
 
              #{Enum.map_join(offenders, "\n", &("  " <> &1))}
 
-             Nothing renders these files — they are written as-is and handed to
-             kamal. A tag that survives generation names a host that cannot exist.
+             kamal's own config files are ERB, rendered by kamal itself at deploy
+             time against CMS_SSH_KEY_PATH — that one is expected. Anything else
+             here is this generator's own Elixir interpolation left unsubstituted,
+             and a tag that survives generation names a host that cannot exist.
              """
     end
 
