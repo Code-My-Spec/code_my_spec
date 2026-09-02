@@ -153,6 +153,21 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         && rm -rf /var/lib/apt/lists/*
     RUN mix local.hex --force && mix local.rebar --force
 
+    # A git-sourced mix dependency (phx.new's own default: heroicons via
+    # github:) fetches over smart-http, which is a GET followed by a POST
+    # negotiation — unlike the plain GET a health check or `curl` makes.
+    # This image's bundled git/curl breaks that POST specifically over
+    # HTTP/2 against GitHub, failing "could not read Username for
+    # 'https://github.com'" / "expected flush after ref listing" — a
+    # credential prompt and a corrupted pkt-line stream, neither a real
+    # symptom of what actually happened. Confirmed live: a plain `curl` GET
+    # to the same URL from the same box gets a clean 200, and forcing
+    # HTTP/1.1 clones the same repo cleanly where HTTP/2 fails every time.
+    # Global, not `-c http.version=...` on a single command, because Mix
+    # shells out to bare `git fetch`/`git clone` itself and has no flag of
+    # its own to carry the override through.
+    RUN git config --global http.version HTTP/1.1
+
     # sops, fetched here so the runtime stage needs no download tooling of its
     # own. The container decrypts its own environment at boot, which is what
     # makes SOPS_AGE_KEY the only secret the deploy has to carry.

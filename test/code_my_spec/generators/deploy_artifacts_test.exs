@@ -78,6 +78,27 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       assert body =~ "COPY --from=builder /usr/local/bin/sops /usr/local/bin/sops"
       assert body =~ "sops-v${SOPS_VERSION}.linux.$(dpkg --print-architecture)"
     end
+
+    # Confirmed live against broken_oaths: this image's git/curl breaks a
+    # git-sourced mix dependency's smart-http fetch over HTTP/2 against
+    # GitHub — "could not read Username for 'https://github.com'" /
+    # "expected flush after ref listing", neither a real credential or
+    # protocol problem. A plain curl GET to the same URL succeeds; forcing
+    # HTTP/1.1 clones the same repo cleanly every time HTTP/2 fails. Every
+    # generated project carries this risk on its first build, since
+    # heroicons via `github:` is phx.new's own default dependency.
+    test "forces HTTP/1.1 for git before fetching mix deps, so a git-sourced dependency's fetch does not break over HTTP/2" do
+      body = file("Dockerfile")
+      fix = "RUN git config --global http.version HTTP/1.1"
+
+      assert body =~ fix
+
+      fix_index = :binary.match(body, fix) |> elem(0)
+      deps_get_index = :binary.match(body, "RUN mix deps.get") |> elem(0)
+
+      assert fix_index < deps_get_index,
+             "git's http.version must be set before mix deps.get runs, not after"
+    end
   end
 
   describe "the kamal config" do
