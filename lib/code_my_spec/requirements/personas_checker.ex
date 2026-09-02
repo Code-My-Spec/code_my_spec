@@ -62,7 +62,11 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
 
       personas ->
         by_path = synced_persona_files(scope)
-        gaps = personas |> Enum.map(&check_persona(by_path, &1)) |> Enum.reject(&(&1 == :ok))
+
+        gaps =
+          personas
+          |> Enum.map(&check_persona(by_path, scope, &1))
+          |> Enum.reject(&(&1 == :ok))
 
         verdict(gaps)
     end
@@ -83,13 +87,14 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   end
 
   # Returns :ok or {slug, [gap_messages]}
-  defp check_persona(by_path, persona) do
+  defp check_persona(by_path, scope, persona) do
     slug = persona.slug
+    where = looked_in(scope)
 
     gaps =
       [
-        gap(by_path, Personas.summary_path(slug), "summary", "`summary.md` missing"),
-        gap(by_path, Personas.sources_path(slug), "sources", "`sources.md` missing")
+        gap(by_path, Personas.summary_path(slug), "summary", "`summary.md` missing" <> where),
+        gap(by_path, Personas.sources_path(slug), "sources", "`sources.md` missing" <> where)
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -106,6 +111,29 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
     case Map.get(by_path, path) do
       nil -> missing_message
       %FileRecord{validation_errors: errors} -> concern_error(errors, concern)
+    end
+  end
+
+  # Which checkout was searched, named in the refusal.
+  #
+  # `Files.list_files/1` is scoped to the caller's working copy, so a file
+  # written in one checkout is invisible to a scope bound to another — and
+  # "`summary.md` missing" then describes a file that exists, is valid, and has
+  # already been scanned. That wording sent an agent back to rewrite correct
+  # artifacts three times before anyone thought to ask *where* the checker was
+  # looking.
+  #
+  # The mismatch is not exotic. The MCP mount sends `X-Harness-Id` from
+  # `CMS_HARNESS_ID` in the environment, and a session that inherited that
+  # variable from one checkout while working in another carries the first one's
+  # id and writes the second one's files. Naming the root turns a silent
+  # contradiction into a one-line diagnosis.
+  defp looked_in(%Scope{active_working_copy_id: nil}), do: ""
+
+  defp looked_in(%Scope{active_working_copy_id: id}) do
+    case CodeMySpec.WorkingCopies.fetch(id) do
+      {:ok, %{root: root}} when is_binary(root) -> " from #{root}"
+      _ -> ""
     end
   end
 
