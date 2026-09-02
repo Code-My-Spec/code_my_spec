@@ -609,6 +609,7 @@ defmodule CmsHarness.Agents.Engine do
       Alloy.Tool.Core.Edit,
       Alloy.Tool.Core.Bash,
       CmsHarness.Agents.Tools.RunScript,
+      CmsHarness.Agents.Tools.RunBrowserScript,
       CmsHarness.Agents.Tools.ToolDocs,
       CmsHarness.Agents.Tools.StartAgent,
       CmsHarness.Agents.Tools.StopAgent,

@@ -40,6 +40,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.ScriptResult
+  alias CodeMySpec.Users.Scope
 
   @doc "The catalog of tools a script may call, acting as `scope`."
   @spec catalog(term()) :: Catalog.t()
@@ -55,7 +56,52 @@ defmodule CodeMySpec.McpServers.CodeMode do
   def catalog(scope, allowed) do
     ScriptableTools.__components__()
     |> Catalog.from(&invoker(&1, scope), allowed)
-    |> Map.merge(machine_catalog(scope, allowed))
+  end
+
+  @doc """
+  The machine's tools, as their own catalog.
+
+  Separated from ours because they are a different kind of thing under a wall
+  clock. Roughly eighty-five of the tools reachable from a script are the
+  browser's, and several of them *wait by design* — `browser_wait_for_text`,
+  `browser_wait_for_url`, `browser_sleep` all take a duration from the caller,
+  and `browser_start` has been seen taking the better part of an hour. Ours are
+  database reads.
+
+  One wall clock cannot be right for both, and the old arrangement made that
+  concrete: this catalog's calls were given a hardcoded 30s while the sandwich
+  around them was also 30s, so they expired together and a browser call that
+  used its budget left the script no time to do anything with the answer — if
+  the brutal kill even let the timeout's error return.
+
+  So they get their own sandbox, entered through `run_browser_script`, with a
+  deadline the caller sets. John's call: they have very different properties and
+  do not need to interact with our tools in one script.
+
+  Costs exactly one tool on the agent. Story 1038's criterion 3017 asks that a
+  third-party MCP server "arrives as one tool, not as its list" and the previous
+  design beat it by arriving as none; this gives that up and still satisfies the
+  rule, at one schema against eighty-five.
+  """
+  @spec machine_catalog(Scope.t(), [String.t()] | nil, pos_integer()) :: Catalog.t()
+  def machine_catalog(scope, allowed, timeout) do
+    scope
+    |> machine_tool_names(allowed)
+    |> Map.new(&{&1, machine_tool(scope, &1, timeout)})
+  end
+
+  @doc """
+  What the machine reports it can do, scoped to what this agent carries.
+
+  `tool_docs` wants the names without invokers built for them — its job is to
+  say a tool exists and where it is called from, and after the split the where
+  is an answer worth giving.
+  """
+  @spec machine_tool_names(Scope.t(), [String.t()] | nil) :: [String.t()]
+  def machine_tool_names(scope, allowed \\ nil) do
+    scope
+    |> machine_tools()
+    |> Enum.filter(&(is_nil(allowed) or &1 in allowed))
   end
 
   # The tools that live on the agent's machine — a browser, today.
@@ -68,12 +114,6 @@ defmodule CodeMySpec.McpServers.CodeMode do
   # Only the ones the agent carries. `allowed` is the list on its row, and a
   # machine tool it was not given is out of scope for the same reason one of
   # ours is.
-  defp machine_catalog(scope, allowed) do
-    scope
-    |> machine_tools()
-    |> Enum.filter(&(is_nil(allowed) or &1 in allowed))
-    |> Map.new(&{&1, machine_tool(scope, &1)})
-  end
 
   defp machine_tools(%{active_working_copy_id: id}) when is_binary(id) do
     case CodeMySpec.WorkingCopies.fetch(id) do
@@ -84,17 +124,29 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp machine_tools(_scope), do: []
 
-  defp machine_tool(scope, name) do
+  # The call gets the script's budget less a margin, so a hung tool reports as a
+  # timeout instead of being taken out by the sandbox at the same instant. They
+  # used to be the same number, which meant whichever fired first the caller
+  # could not tell which, and the brutal kill could take the error with it.
+  @machine_call_margin_ms 2_000
+
+  defp machine_tool(scope, name, timeout) do
+    call_timeout = max(timeout - @machine_call_margin_ms, 1_000)
+
     %{
       name: name,
       description: "Runs on this project's machine. See tool_docs for its arguments.",
       input_schema: %{"type" => "object"},
+      # Stated on the entry, not only closed over. The deadline is derived, and
+      # a derivation nothing can read is how the inner call and the sandbox
+      # around it came to be the same thirty seconds with nobody noticing.
+      timeout: call_timeout,
       invoke: fn args ->
         CodeMySpec.Agents.Transport.impl().call_machine_tool(
           scope.active_working_copy_id,
           name,
           args,
-          30_000
+          call_timeout
         )
       end
     }

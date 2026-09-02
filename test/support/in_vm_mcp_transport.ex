@@ -32,6 +32,7 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   @behaviour CmsHarness.Mcp.Transport
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
 
@@ -46,10 +47,13 @@ defmodule CodeMySpecTest.InVmMcpTransport do
     end
   end
 
-
   @impl true
   def call({__MODULE__, _headers}, "run_script", %{"script" => script} = arguments) do
     dispatch(RunScript, script_params(script, arguments))
+  end
+
+  def call({__MODULE__, _headers}, "run_browser_script", %{"script" => script} = arguments) do
+    dispatch(RunBrowserScript, browser_params(script, arguments))
   end
 
   def call({__MODULE__, _headers}, "tool_docs", arguments) do
@@ -66,6 +70,13 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   def call({__MODULE__, _headers}, tool, _arguments) do
     {:error, "This server has no tool called #{inspect(tool)}."}
   end
+
+  # The deadline is carried, not honoured. Nothing here waits, and a stand-in
+  # that slept for the caller's minute would make every criterion about the
+  # browser cost one. Where the derived number is checked is
+  # `CodeMySpec.McpServers.CodeModeTest`, off the catalog entry that states it.
+  @impl true
+  def call(client, tool, arguments, _opts), do: call(client, tool, arguments)
 
   @impl true
   def list_tool_names({__MODULE__, :browser}), do: {:ok, browser_tools()}
@@ -84,6 +95,13 @@ defmodule CodeMySpecTest.InVmMcpTransport do
     do: %{script: script, agent_id: id}
 
   defp script_params(script, _arguments), do: %{script: script}
+
+  defp browser_params(script, arguments) do
+    case Map.get(arguments, "timeout") do
+      ms when is_integer(ms) -> Map.put(script_params(script, arguments), :timeout, ms)
+      _ -> script_params(script, arguments)
+    end
+  end
 
   defp docs_params(%{"names" => names}) when is_list(names), do: %{names: names}
   defp docs_params(_arguments), do: %{}

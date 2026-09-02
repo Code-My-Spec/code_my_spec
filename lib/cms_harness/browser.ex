@@ -206,13 +206,24 @@ defmodule CmsHarness.Browser do
   @spec forget() :: :ok
   def forget, do: :persistent_term.erase(@cached) && :ok
 
-  @doc "Call one of them."
-  @spec call(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def call(tool, arguments) do
+  @doc """
+  Call one of them, within the caller's deadline.
+
+  The last hop before Chrome, and the one that used to cap everything: without
+  a timeout the MCP client applies its own thirty seconds, so a caller asking
+  for a minute got thirty seconds from here and an answer that did not say why.
+  `nil` still means that default, for a caller that has no opinion.
+  """
+  @spec call(String.t(), map(), pos_integer() | nil) :: {:ok, String.t()} | {:error, term()}
+  def call(tool, arguments, timeout \\ nil) do
     with {:ok, client} <- ensure_started() do
-      Transport.impl().call(client, tool, arguments)
+      Transport.impl().call(client, tool, arguments, opts(timeout))
     end
   end
+
+  defp opts(nil), do: []
+  defp opts(timeout) when is_integer(timeout) and timeout > 0, do: [timeout: timeout]
+  defp opts(_other), do: []
 
   # Configurable so a machine that keeps it somewhere unusual is not stuck, and
   # so a test can point at something that is not a browser.

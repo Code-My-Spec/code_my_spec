@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
 
   import CodeMySpecSpex.AgentToolsHelpers
 
-  
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -61,8 +60,14 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # stale the next time an unscriptable tool is needed.
         scriptable = project_tools -- ~w(start_agent stop_agent assign_subagent)
 
-        assert scriptable == ~w(run_script tool_docs),
-               "the agent carries #{inspect(scriptable)} beyond run_script and " <>
+        # `run_browser_script` is a second door, not a second catalogue. It is
+        # the entry to the machine's sandbox, which exists because browser tools
+        # wait by design where the project's answer immediately, and one wall
+        # clock cannot be right for both — so it is the same kind of thing as
+        # `run_script`, and eighty-five browser schemas stay behind it rather
+        # than on the agent. Criterion 3017 is where that is asserted.
+        assert scriptable == ~w(run_script run_browser_script tool_docs),
+               "the agent carries #{inspect(scriptable)} beyond the two ways in and " <>
                  "tool_docs, and every one of those is reachable from a script. Each " <>
                  "is a schema the model reads on every turn to learn something it " <>
                  "could have looked up once."

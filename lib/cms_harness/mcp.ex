@@ -79,8 +79,16 @@ defmodule CmsHarness.Mcp do
   hands a tool's result to the model as text — so a structured value here would
   be inspected into one anyway, at a layer with no idea what it is looking at.
   """
-  @spec call(term(), String.t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def call(client, tool, arguments), do: Transport.impl().call(client, tool, arguments)
+  @spec call(term(), String.t(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def call(client, tool, arguments, opts \\ [])
+
+  def call(client, tool, arguments, []), do: Transport.impl().call(client, tool, arguments)
+
+  # A caller with a deadline of its own. Without one the MCP client applies
+  # thirty seconds, which is right for every tool that answers from a database
+  # and wrong for the one sandbox whose calls wait on purpose.
+  def call(client, tool, arguments, opts),
+    do: Transport.impl().call(client, tool, arguments, opts)
 
   @doc "The names a server offers, without their schemas. See `Tools.Gateway`."
   @spec list_tool_names(term()) :: {:ok, [String.t()]} | {:error, term()}
@@ -97,5 +105,4 @@ defmodule CmsHarness.Mcp do
   defp name(agent_id, base_url) do
     {:via, Registry, {CmsHarness.Registry, {:mcp, agent_id, base_url}}}
   end
-
 end

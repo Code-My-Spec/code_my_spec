@@ -76,6 +76,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)
   component(CodeMySpec.McpServers.CodeMode.Tools.RunScript)
 
+  # The machine's tools — the browser's, mostly — get their own entry rather
+  # than sharing `run_script`'s. They wait by design where ours answer in
+  # milliseconds, so they need a deadline the caller sets; see the tool's own
+  # docs. One schema for eighty-five tools, which is still the trade story 971
+  # made.
+  component(CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript)
+
   # ── A client that connected before the spine ──────────────────────────────
   #
   # A tool list is cached at connect, so a session that joined before story 971

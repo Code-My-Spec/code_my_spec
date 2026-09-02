@@ -28,12 +28,61 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        docs = CodeMode.docs(Layer.catalog(scope), opts(params))
-        {:reply, Response.tool() |> Response.text(docs), frame}
+        {:reply, Response.tool() |> Response.text(docs(scope, params)), frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
     end
+  end
+
+  # Two sandboxes, one index. The machine's tools are not in `run_script`'s
+  # catalog any more, and leaving them out of here as well would make
+  # eighty-five tools undiscoverable — an agent has no other way to learn that
+  # `browser_wait_for_text` exists. So they are named, and named as belonging
+  # somewhere else, which is the part a bare listing would get wrong.
+  defp docs(scope, params) do
+    machine = Layer.machine_tool_names(scope)
+    name = Map.get(params, :name)
+
+    case name in machine do
+      true -> machine_page(name)
+      false -> CodeMode.docs(Layer.catalog(scope), opts(params)) <> machine_note(machine)
+    end
+  end
+
+  # No schema to render: the machine reports names, not arguments. Saying so is
+  # better than a page of empty headings, and the browser's own documentation is
+  # where the arguments actually are.
+  defp machine_page(name) do
+    """
+    # #{name}
+
+    Runs on this project's machine, in the browser sandbox. It is not callable
+    from `run_script` — call it from `run_browser_script`, which takes its own
+    `timeout` because browser tools wait where ours answer immediately.
+
+    ```lua
+    local result, err = #{name}({})
+    if result == nil then return "failed: " .. err.message end
+    return result
+    ```
+
+    The machine reports these tools by name only, so their arguments are not
+    described here. They are the browser's own — a selector, a url, a timeout —
+    and a call with the wrong ones answers with what it wanted.
+    """
+  end
+
+  defp machine_note([]), do: ""
+
+  defp machine_note(names) do
+    """
+
+    #{length(names)} more run on this project's machine, in a separate sandbox with
+    its own deadline. Call these from `run_browser_script`, not from `run_script`:
+
+    #{Enum.join(names, ", ")}
+    """
   end
 
   defp opts(params) do

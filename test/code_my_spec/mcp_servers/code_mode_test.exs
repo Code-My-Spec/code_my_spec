@@ -194,4 +194,84 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       assert text(response) =~ "epic"
     end
   end
+
+  describe "the browser's sandbox" do
+    setup do
+      scope = full_scope_fixture()
+      {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+      :ok = CodeMySpec.WorkingCopies.record_machine_tools(copy, ~w(browser_navigate browser_wait))
+
+      %{scope: scope, frame: %Frame{assigns: %{current_scope: scope}}}
+    end
+
+    test "is not the one run_script runs in", %{scope: scope} do
+      catalog = Layer.catalog(scope)
+
+      refute Map.has_key?(catalog, "browser_navigate"), """
+      A browser tool is in `run_script`'s catalog, so the two share a wall
+      clock again. They cannot: `browser_wait_for_text` waits for a duration
+      the caller passes and `list_stories` is a database read, and the number
+      that suits one starves the other.
+      """
+
+      assert Map.has_key?(Layer.machine_catalog(scope, nil, 60_000), "browser_navigate")
+    end
+
+    test "and reaches nothing of ours", %{scope: scope} do
+      catalog = Layer.machine_catalog(scope, nil, 60_000)
+
+      assert Map.keys(catalog) |> Enum.sort() == ~w(browser_navigate browser_wait)
+
+      refute Map.has_key?(catalog, "list_stories"),
+             "a script here can reach the project's tools, so nothing was actually " <>
+               "separated and the deadline is wrong for half of what it can call"
+    end
+
+    test "gives each call less than the script has, so a hang reports as one", %{scope: scope} do
+      # The bug the split exists to end, asserted as arithmetic rather than as
+      # a story: the inner call used to get a hardcoded 30s inside a script
+      # whose own limit was also 30s. They expired together, so the sandbox's
+      # brutal kill could take the timeout's own error with it and the caller
+      # was left unable to tell which of the two had fired.
+      for budget <- [5_000, 60_000, 300_000] do
+        %{timeout: given} = Layer.machine_catalog(scope, nil, budget)["browser_navigate"]
+
+        assert given < budget,
+               "the call got #{given}ms of a #{budget}ms script, so both clocks " <>
+                 "expire at once and neither answer survives the other"
+      end
+    end
+
+    test "a floor, because a script with almost no budget still gets a real call", %{scope: scope} do
+      %{timeout: given} = Layer.machine_catalog(scope, nil, 1_000)["browser_navigate"]
+
+      assert given >= 1_000,
+             "a call given #{given}ms cannot reach a browser at all — subtracting the " <>
+               "margin from a small budget must not leave a number below what a real " <>
+               "call takes"
+    end
+
+    test "tool_docs still names them, and says where they are called from", %{frame: frame} do
+      assert {:reply, response, ^frame} = ToolDocs.execute(%{}, frame)
+
+      body = text(response)
+
+      assert body =~ "browser_navigate", """
+      The browser's tools are out of `run_script`'s catalog and out of the
+      index, so an agent has no way left to learn that they exist. Cheaper is
+      not the same as smaller.
+      """
+
+      assert body =~ "run_browser_script",
+             "they are listed as though a script could call them, which it cannot"
+    end
+
+    test "and asking about one by name says so too", %{frame: frame} do
+      assert {:reply, response, ^frame} = ToolDocs.execute(%{name: "browser_navigate"}, frame)
+
+      body = text(response)
+      assert body =~ "# browser_navigate"
+      assert body =~ "run_browser_script"
+    end
+  end
 end

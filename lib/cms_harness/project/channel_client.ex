@@ -1197,15 +1197,22 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # A script on the server asked for something that lives here. The browser is
   # the only such thing today, and it is on this machine because Chrome is.
+  # Answered from a task, on the same reasoning as `message_agent` above and
+  # for a reason the browser split made unavoidable. This used to run inline,
+  # which held the channel for the length of the call — survivable while every
+  # such call was capped at thirty seconds, and not survivable now the caller
+  # sets the deadline: a `browser_wait_for_text` waiting a minute would stall
+  # this copy's reports, manifests and stops behind one page load, and a
+  # heartbeat missed that long reads to the server as a harness that died.
   def handle_message(_topic, "tool_call", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Browser.call(msg["tool"], msg["arguments"] || %{})
+    topic = socket.assigns.topic
+    parent = self()
 
-    push(
-      socket,
-      socket.assigns.topic,
-      "tool_call_result",
-      Map.put(encode_tool_result(result), "ref", ref)
-    )
+    Task.start(fn ->
+      result = CmsHarness.Browser.call(msg["tool"], msg["arguments"] || %{}, msg["timeout"])
+
+      send(parent, {:tool_call_result, topic, ref, result})
+    end)
 
     {:ok, socket}
   end
@@ -1489,6 +1496,12 @@ defmodule CmsHarness.Project.ChannelClient do
       "agent_message_result",
       Map.put(encode_message_result(result), "ref", ref)
     )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:tool_call_result, topic, ref, result}, socket) do
+    push(socket, topic, "tool_call_result", Map.put(encode_tool_result(result), "ref", ref))
 
     {:noreply, socket}
   end

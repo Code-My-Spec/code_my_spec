@@ -26,6 +26,17 @@ defmodule CmsHarness.Mcp.Transport do
   @callback call(client(), tool :: String.t(), arguments :: map()) ::
               {:ok, String.t()} | {:error, term()}
 
+  @doc """
+  The same, with the caller's deadline.
+
+  `opts` carries `:timeout` in milliseconds. Separate from `call/3` rather than
+  replacing it because most callers have no opinion and the client's own
+  default is the right one for them; a browser call is the exception, and it is
+  the whole reason this arity exists.
+  """
+  @callback call(client(), tool :: String.t(), arguments :: map(), opts :: keyword()) ::
+              {:ok, String.t()} | {:error, term()}
+
   @doc "The names a server offers, without their schemas."
   @callback list_tool_names(client()) :: {:ok, [String.t()]} | {:error, term()}
 

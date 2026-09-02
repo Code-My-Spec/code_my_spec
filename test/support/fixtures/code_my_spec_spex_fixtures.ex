@@ -1877,6 +1877,14 @@ defmodule CodeMySpecSpex.Fixtures do
   def run_script(script, context),
     do: CmsHarness.Agents.Tools.RunScript.execute(%{"script" => script}, context)
 
+  @doc "The same against the machine's own sandbox, which has its own deadline."
+  def run_browser_script(script, context, input \\ %{}),
+    do:
+      CmsHarness.Agents.Tools.RunBrowserScript.execute(
+        Map.put(input, "script", script),
+        context
+      )
+
   @doc "Ask what it may call, through the tool it carries."
   def tool_docs(input, context),
     do: CmsHarness.Agents.Tools.ToolDocs.execute(input, context)

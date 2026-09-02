@@ -70,14 +70,14 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   end
 
   defp start_client(name, opts, headers) do
-      Anubis.Client.start_link(
-        name: name,
-        transport_name: transport_name(name),
-        transport: transport(opts, headers),
-        client_info: client_info(name),
-        capabilities: %{},
-        protocol_version: Keyword.get(opts, :protocol_version, @protocol_version)
-      )
+    Anubis.Client.start_link(
+      name: name,
+      transport_name: transport_name(name),
+      transport: transport(opts, headers),
+      client_info: client_info(name),
+      capabilities: %{},
+      protocol_version: Keyword.get(opts, :protocol_version, @protocol_version)
+    )
   end
 
   # One `client_info["name"]` per session, because Anubis keys an ETS table on
@@ -101,7 +101,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # one working session per machine.
   @doc false
   @spec client_info(term()) :: map()
-  def client_info(name), do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
+  def client_info(name),
+    do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
 
   # Readable in a log line and unique per session. The agent id already is both,
   # and the browser's global name stands in for the one session that has no
@@ -193,8 +194,11 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   defp stdio_needs_none(opts), do: if(Keyword.get(opts, :command), do: %{}, else: nil)
 
   @impl true
-  def call(client, tool, arguments) do
-    case Anubis.Client.call_tool(client, tool, arguments) do
+  def call(client, tool, arguments), do: call(client, tool, arguments, [])
+
+  @impl true
+  def call(client, tool, arguments, opts) do
+    case Anubis.Client.call_tool(client, tool, arguments, opts) do
       {:ok, %{is_error: true} = response} -> {:error, text(response)}
       {:ok, response} -> {:ok, text(response)}
       {:error, reason} -> {:error, reason}

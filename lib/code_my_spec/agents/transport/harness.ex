@@ -74,30 +74,16 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   @impl true
-  @impl true
   def call_machine_tool(working_copy_id, tool, arguments, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} ->
         call(
           pid,
-          {:call_machine_tool, %{"tool" => tool, "arguments" => arguments}},
-          timeout,
-          :machine_tool_timed_out
-        )
-
-      :none ->
-        {:error, :harness_unreachable}
-    end
-  end
-
-  @impl true
-  @impl true
-  def call_machine_tool(working_copy_id, tool, arguments, timeout) do
-    case holder(working_copy_id) do
-      {:ok, pid} ->
-        call(
-          pid,
-          {:call_machine_tool, %{"tool" => tool, "arguments" => arguments}},
+          # The budget travels with the call. Every hop between here and Chrome
+          # used to supply its own thirty seconds, so a caller who asked for a
+          # minute got half of one from whichever hop was strictest — and no
+          # part of the answer said which. The machine gets told what it has.
+          {:call_machine_tool, %{"tool" => tool, "arguments" => arguments, "timeout" => timeout}},
           timeout,
           :machine_tool_timed_out
         )

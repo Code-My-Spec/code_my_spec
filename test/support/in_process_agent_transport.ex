@@ -61,12 +61,21 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     Machine.ensure_supervisor()
     Agents.withdraw(agent.id, ref)
   end
+
   @impl true
-  def call_machine_tool(_working_copy_id, tool, arguments, _timeout) do
+  def call_machine_tool(_working_copy_id, tool, arguments, timeout) do
     # In this VM the browser is whatever the local MCP transport was told to
     # offer, so the round trip is the part that is stood in for and the answer
     # is the one a criterion asserts on.
-    CodeMySpecTest.InVmMcpTransport.call({CodeMySpecTest.InVmMcpTransport, :browser}, tool, arguments)
+    #
+    # The deadline is passed on because the real transport passes it on, and a
+    # stand-in that dropped it would make the one hop this seam stands for the
+    # one hop nothing proves. Nothing in this VM waits for it.
+    CodeMySpecTest.InVmMcpTransport.call(
+      {CodeMySpecTest.InVmMcpTransport, :browser},
+      tool,
+      arguments,
+      timeout: timeout
+    )
   end
-
 end
