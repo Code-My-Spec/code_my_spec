@@ -53,12 +53,12 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
   call feel slow would be switched off, and a disabled gate ends where
   `split_unattributed` ended.
   """
-  @spec check(Scope.t(), String.t() | nil) :: String.t() | nil
-  def check(scope, session_id)
+  @spec check(Scope.t(), String.t() | nil, String.t() | nil) :: String.t() | nil
+  def check(scope, session_id, agent_id \\ nil)
 
-  def check(_scope, nil), do: nil
+  def check(_scope, nil, _agent_id), do: nil
 
-  def check(%Scope{active_working_copy_id: working_copy_id} = scope, session_id)
+  def check(%Scope{active_working_copy_id: working_copy_id} = scope, session_id, agent_id)
       when is_binary(working_copy_id) and is_binary(session_id) do
     # The cheap read: one indexed query for this working copy's problem count
     # and the most recent change among them. Nothing is loaded.
@@ -72,30 +72,42 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
         nil
 
       {_count, latest} = mark ->
-        if already_told?(working_copy_id, session_id, mark) do
+        who = {working_copy_id, session_id, agent_id}
+
+        if already_told?(who, mark) do
           nil
         else
-          record(working_copy_id, session_id, mark)
+          record(who, mark)
           message(scope, latest)
         end
     end
   end
 
-  def check(_scope, _session_id), do: nil
+  def check(_scope, _session_id, _agent_id), do: nil
 
-  # Per session, and deliberately not per working copy: two agents in one
+  # Per *agent*, and deliberately not per working copy: two agents in one
   # checkout are told independently. Dedup of *notification*, never filtering of
   # *content* — nothing is withheld, and no finding can hide behind "somebody
   # was already notified".
   #
+  # The agent id is in the key because a session id is not an agent identity. A
+  # Task-spawned subagent shares its parent's session — `PostToolUse` says so in
+  # its own moduledoc, and keys file edits on `(session_id, agent_id, file_path)`
+  # for exactly that reason — so keying on the session alone made a main agent
+  # and its subagent in one checkout collide: whichever was told first silenced
+  # the other until the watermark moved. Story 890's criteria 2340 and 2341 were
+  # false by construction, while this comment claimed the opposite.
+  #
+  # `nil` is the main agent's own key component, so it dedupes exactly as before.
+  #
   # In memory because it is worth exactly one duplicate alert after a restart,
   # which is cheaper than a column and a write on every tool call.
-  defp already_told?(working_copy_id, session_id, mark) do
-    :persistent_term.get({__MODULE__, working_copy_id, session_id}, nil) == mark
+  defp already_told?({_copy, _session, _agent} = who, mark) do
+    :persistent_term.get({__MODULE__, who}, nil) == mark
   end
 
-  defp record(working_copy_id, session_id, mark) do
-    :persistent_term.put({__MODULE__, working_copy_id, session_id}, mark)
+  defp record({_copy, _session, _agent} = who, mark) do
+    :persistent_term.put({__MODULE__, who}, mark)
   end
 
   # Sources named, counts only, no file paths. The detail is one `list_problems`

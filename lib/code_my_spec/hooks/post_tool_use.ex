@@ -54,7 +54,10 @@ defmodule CodeMySpec.Hooks.PostToolUse do
     # Every tool call carries it, not only the ones that write: scoping to edits
     # would reintroduce a "which tools count" judgement, and whichever tool is
     # the exception becomes the blind spot.
-    case AnalysisAlert.check(scope, params["session_id"]) do
+    # The agent, not just the session. A Task-spawned subagent shares its
+    # parent's session id — this module's own file-edit key says so — so passing
+    # the session alone let one silence the other.
+    case AnalysisAlert.check(scope, params["session_id"], params["agent_id"]) do
       nil -> {200, %{}}
       alert -> {200, %{"systemMessage" => alert}}
     end
@@ -90,7 +93,7 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   # this was written.
   #
   # Here rather than in `track_edit/1` for the reason the comment above
-  # `AnalysisAlert.check/2` already gives: scoping to the tools that write
+  # `AnalysisAlert.check/3` already gives: scoping to the tools that write
   # reintroduces a "which tools count" judgement, and whichever tool is the
   # exception becomes the blind spot. A sub-agent reading files is alive too.
   #
