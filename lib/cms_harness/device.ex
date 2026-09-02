@@ -192,7 +192,15 @@ defmodule CmsHarness.Device do
   """
   @spec path() :: String.t()
   def path do
-    Application.get_env(:code_my_spec, :device_config_path, @default_path)
+    # `||` rather than `get_env/3`'s own default: that default only fires when
+    # the key is *absent*, not when it is present and `nil` — which is exactly
+    # what a test that restores this env var with `Application.get_env/2`'s own
+    # bare, unset-means-nil result leaves behind. `Path.expand(nil)` raises,
+    # and `recorded_id/0` is on `ChannelClient.handle_connect/1`'s hot path —
+    # a background reconnect crashing on somebody else's test's leftover state
+    # is a worse failure than this function being lenient about which "unset"
+    # it was given.
+    (Application.get_env(:code_my_spec, :device_config_path) || @default_path)
     |> Path.expand()
   end
 

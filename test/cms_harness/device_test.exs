@@ -52,14 +52,23 @@ defmodule CmsHarness.DeviceTest do
     Application.put_env(:code_my_spec, :harness_token, "stub-token")
 
     on_exit(fn ->
-      Application.put_env(:code_my_spec, :device_config_path, previous.path)
-      Application.put_env(:code_my_spec, :device_client, previous.client)
-      Application.put_env(:code_my_spec, :harness_token, previous.token)
+      restore(:device_config_path, previous.path)
+      restore(:device_client, previous.client)
+      restore(:harness_token, previous.token)
       File.rm_rf(dir)
     end)
 
     %{device_file: file}
   end
+
+  # `Application.put_env(key, nil)` and the key never having been set are two
+  # different states — the former still answers `get_env/3`'s own default with
+  # `nil` rather than the default, which is exactly the crash `path/0` guards
+  # against now. Restoring "was unset" back to "unset" rather than to `nil`
+  # keeps this test from leaving that same landmine for whichever test runs
+  # next.
+  defp restore(key, nil), do: Application.delete_env(:code_my_spec, key)
+  defp restore(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   describe "a machine with no id yet" do
     test "mints one itself and writes it down", %{device_file: file} do
