@@ -672,6 +672,18 @@ defmodule CmsHarness.Agents.Engine do
          working_directory: working_copy,
          allowed_paths: [working_copy],
          bash_restricted: true,
+         # Which agent this is, and it has to be here rather than only in
+         # `Agents.tool_context/1` — that function had no production caller at
+         # all, so the shape it describes was one only the specs ever built.
+         #
+         # Without it `Tools.RunScript` sends a script the server cannot
+         # attribute, and the server reads an unattributed caller as one that
+         # "could already call everything": every real agent's script reached
+         # every scriptable tool whatever its row granted, while story 1038's
+         # scoping criteria passed against the specs' own context. Issue
+         # 33d707a2. It is also why the analyzer alert never reached a running
+         # agent — `AgentAlert` appends only for a caller that named itself.
+         agent_id: Keyword.fetch!(opts, :agent_id),
          # The agent's own MCP session, so a script it runs acts with exactly
          # its authority. Nil when the machine could not authenticate, which
          # the tools report rather than crashing on — an agent that can still
