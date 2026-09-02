@@ -2,12 +2,15 @@ defmodule CodeMySpec.ResourcesTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
+  import CodeMySpec.DevicesFixtures
+  import CodeMySpec.ProjectsFixtures
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.{RunLock, StepRepository}
   alias CodeMySpec.Resources
+  alias CodeMySpec.WorkingCopies
 
   # Fake providers only — these tests exist to prove the async handoff and
   # the lock, not to exercise real steps. `Resources.fix/2`/`fix_async/2`
@@ -209,6 +212,68 @@ defmodule CodeMySpec.ResourcesTest do
       resolved = Resources.project_scope(harness_scope, project)
 
       assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+    end
+
+    # Found live against Broken Oaths' real project: never onboarded through
+    # any local_path-setting flow, no spex-style registry entry (that
+    # mechanism is test-only — CodeMySpec.Environments.register/2's own doc
+    # says so), but a harness joined moments earlier with a real, known root.
+    # `adopt_repository` died on "this environment has no working directory"
+    # for a checkout that was live and connected the whole time.
+    test "a harness-typed scope uses the caller's own connected working copy when local_path and the registry both have nothing",
+         %{scope: scope} do
+      {:ok, checkout} = Briefly.create(directory: true)
+
+      {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: nil})
+
+      scoped = %{scope | active_project_id: project.id}
+
+      {:ok, working_copy} =
+        WorkingCopies.issue(scoped, nil, root: checkout, device: device_fixture(scoped))
+
+      {:ok, working_copy} = WorkingCopies.report_root(working_copy, checkout)
+
+      harness_scope = %{
+        scope
+        | environment: Environment.new(:harness, "/wherever/the/harness/runs"),
+          active_working_copy_id: working_copy.id
+      }
+
+      resolved = Resources.project_scope(harness_scope, project)
+
+      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+    end
+
+    # The connected copy only answers for its *own* project. A caller bound to
+    # one project's working copy asking about a different project must not
+    # borrow that root — same reasoning that already guards the module's
+    # "iterating over project B" case, just reached through a live connection
+    # instead of a stale one.
+    test "a harness-typed scope ignores the connected working copy when it belongs to a different project",
+         %{scope: scope} do
+      {:ok, own_checkout} = Briefly.create(directory: true)
+      {:ok, other_checkout} = Briefly.create(directory: true)
+
+      # The working copy belongs to the caller's own project (scope.active_project) —
+      # the one it is genuinely connected for.
+      {:ok, working_copy} =
+        WorkingCopies.issue(scope, nil, root: own_checkout, device: device_fixture(scope))
+
+      {:ok, working_copy} = WorkingCopies.report_root(working_copy, own_checkout)
+
+      # But the call asks about a completely different project — its own
+      # local_path is the only honest answer here, never the caller's checkout.
+      other_project = project_fixture(scope, %{local_path: other_checkout})
+
+      harness_scope = %{
+        scope
+        | environment: Environment.new(:harness, "/wherever/the/harness/runs"),
+          active_working_copy_id: working_copy.id
+      }
+
+      resolved = Resources.project_scope(harness_scope, other_project)
+
+      assert %Environment{type: :local, cwd: ^other_checkout} = resolved.environment
     end
   end
 
