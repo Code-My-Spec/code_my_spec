@@ -62,6 +62,24 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
       assert text =~ "repository for"
     end
 
+    # `Steps.run(:inbound, ...)` already accepts `opts[:inbound_probe_to]` —
+    # this tool never exposed a parameter to supply one. Proven without
+    # mocking Resend at all: an address on a *different* domain than the
+    # project's own is refused before any provider call, by
+    # `probe_address_on_domain/2`'s own check — a deterministic outcome that
+    # only fires if the parameter actually reached the step.
+    test "threads inbound_probe_to through to the step", %{scope: scope, project: project} do
+      {:ok, _project} = CodeMySpec.Projects.update_project(scope, project, %{domain: "example.com"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      params = %{step: "inbound", inbound_probe_to: "sam@somewhere-else.com"}
+
+      assert {:reply, response, ^frame} = RunProvisioningStep.execute(params, frame)
+
+      assert response_text(response) =~
+               "sam@somewhere-else.com is not on example.com, so delivering to it would prove nothing"
+    end
+
     test "refuses an unknown step name rather than guessing one", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
       params = %{step: "not_a_real_step"}

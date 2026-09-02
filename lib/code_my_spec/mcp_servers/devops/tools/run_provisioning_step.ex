@@ -23,6 +23,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   before `:server` genuinely exists is still that step's problem to refuse,
   not this tool's to prevent.
 
+  ## `inbound_probe_to` is the other gap `adopt_repository` already had
+
+  `Steps.run(:inbound, ...)` already accepts `opts[:inbound_probe_to]` — an
+  address on the project's own domain to prove receiving actually works,
+  since Resend accepts mail only to addresses configured for the domain and
+  offers no way to ask which those are. This tool never exposed a way to
+  supply one, so the step paused indefinitely asking for something a caller
+  had no parameter to give it — the same shape as `adopt_repository`'s
+  missing `:owner` before it could name an organisation's repository.
+
   ## This returns as soon as the step starts, not when it finishes
 
   Same reason `run_devops_setup` already documents this, for the same
@@ -51,6 +61,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
     field :step, :string,
       required: true,
       doc: "One of: #{Step.keys() |> Enum.map_join(", ", &to_string/1)}."
+
+    field :inbound_probe_to, :string,
+      doc:
+        "For the \"inbound\" step only: an address on the project's own domain to " <>
+          "prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only " <>
+          "to addresses configured for the domain, so this cannot be guessed."
   end
 
   @impl true
@@ -60,10 +76,17 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
          {:ok, key} <- find_step(step) do
       scope
       |> Resources.project_scope(project)
-      |> start_step_async(project, key)
+      |> start_step_async(project, key, run_opts(params))
       |> reply(step, project, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
+    end
+  end
+
+  defp run_opts(params) do
+    case Map.get(params, :inbound_probe_to) do
+      to when is_binary(to) and to != "" -> [inbound_probe_to: to]
+      _ -> []
     end
   end
 
@@ -79,10 +102,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   # genuinely different process, so under test it holds neither the caller's
   # Ecto Sandbox checkout nor its `Req.Test` stub allowances. Synchronous
   # under test shares those instead of racing the test's own lifetime.
-  defp start_step_async(scope, project, key) do
+  defp start_step_async(scope, project, key, opts) do
     case Application.get_env(:code_my_spec, :provisioning_run_async, true) do
-      true -> spawn_step_async(scope, project, key)
-      _ -> RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, key) end)
+      true -> spawn_step_async(scope, project, key, opts)
+      _ -> RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, key, opts) end)
     end
   end
 
@@ -93,7 +116,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   # itself. The step keeps running under `CodeMySpec.TaskSupervisor`, a
   # process this call's own transport timeout (or the sandbox's 30s wall
   # clock) cannot reach.
-  defp spawn_step_async(scope, project, key) do
+  defp spawn_step_async(scope, project, key, opts) do
     parent = self()
     ref = make_ref()
 
@@ -101,7 +124,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         RunLock.with_lock(project.id, fn ->
           send(parent, {ref, :locked})
-          Provisioning.run_step(scope, key)
+          Provisioning.run_step(scope, key, opts)
         end)
         |> case do
           {:error, {:already_running, _}} = refused -> send(parent, {ref, refused})
