@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -53,10 +54,35 @@ defmodule CodeMySpec.Agents.StopDecision do
   """
   @spec deliver(Scope.t(), Agent.t()) :: :ok
   def deliver(%Scope{} = scope, %Agent{} = agent) do
-    case decide(scope, agent) do
-      nil -> :ok
-      message -> send_to(scope, agent, message)
+    # Opened once, before anything is recorded into it, and that is not a
+    # formality. `record_orchestrator_action/3` looks the conversation up by
+    # agent and answers `:ok` when there is none — correct for a caller that
+    # must not crash, and silent. An agent that has never spoken has no
+    # conversation, so its very first thing to hear is exactly the one that
+    # would vanish. Every turn event already opens one for the same reason.
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      agent.id
+    )
+
+    case decide_with_key(scope, agent) do
+      {nil, _key} ->
+        :ok
+
+      {message, key} ->
+        case stuck?(agent, key) do
+          true -> :ok
+          false -> send_to(scope, agent, message)
+        end
     end
+
+    # Beside the decision, not instead of it. On the external path
+    # `nudge_open_task/2` fires via `tap/2` on every stop with an open task,
+    # independently of whether anything blocked — an agent that stops with a
+    # failing compile *and* work open has two different things to act on, and
+    # collapsing them loses one.
+    nudge_open_task(scope, agent)
   rescue
     error ->
       Logger.warning(
@@ -75,13 +101,89 @@ defmodule CodeMySpec.Agents.StopDecision do
   """
   @spec decide(Scope.t(), Agent.t()) :: String.t() | nil
   def decide(%Scope{} = scope, %Agent{} = agent) do
-    # No task: an internal agent has no session, and a session is where the
-    # external path finds one. Task-aware behaviour — the nudge about work left
-    # open — is the other half of story 1043 and wants the agent's own task
-    # rather than a session's.
+    {message, _key} = decide_with_key(scope, agent)
+    message
+  end
+
+  # Threshold and behaviour copied from `Hooks.Stop`'s R8 escape, which exists
+  # because eight consecutive blocks on a finding belonging to another story
+  # were observed spending a whole budget unattended.
+  #
+  # Keyed on the **agent**, not a session. The external counter lives on the
+  # session — `Sessions.record_eval_feedback/3` — and an agent under Alloy has
+  # none. John's call, and it is the same shift issue `927c2b78` wanted
+  # elsewhere: the session was never the right identity for "who was told".
+  #
+  # On the blocking *key* rather than the rendered sentence, because
+  # `Validation.blocking_key/1` is computed from the finding set. Counting the
+  # text would reset every time a count or an age changed inside an otherwise
+  # identical block, which is exactly what R8's key exists to avoid.
+  #
+  # In `:persistent_term` for the reason `Analysis.Alert` uses it: it is worth
+  # one duplicate after a restart, which is cheaper than a column and a write
+  # per turn.
+  @stuck_threshold 5
+
+  defp decide_with_key(%Scope{} = scope, %Agent{} = agent) do
     case Validation.validate_stop(scope, nil, agent_id: agent.id) do
-      {:error, reason, _key} -> reason <> Validation.Menu.render(scope)
-      {:ok, _result} -> nil
+      {:error, reason, key} -> {reason <> Validation.Menu.render(scope), key}
+      {:ok, _result} -> {nil, nil}
+    end
+  end
+
+  defp stuck?(%Agent{} = agent, key) do
+    slot = {__MODULE__, agent.id}
+    seen = :persistent_term.get(slot, nil)
+
+    count =
+      case seen do
+        {^key, n} -> n + 1
+        _ -> 1
+      end
+
+    :persistent_term.put(slot, {key, count})
+
+    if count > @stuck_threshold do
+      Logger.info(
+        "[StopDecision] agent #{agent.id} has been told the same thing #{count} times and " <>
+          "has not acted on it — leaving it alone until something else lands"
+      )
+
+      true
+    else
+      false
+    end
+  end
+
+  # The same nudge `Hooks.Stop` records, found a different way.
+  #
+  # The external path reads the task off the stopping session, which is where a
+  # task is embedded and where a hook's payload points. An agent under Alloy has
+  # no session — and can still hold a task, because an orchestrator assigns one
+  # naming its `agent_id` and the task lives on the orchestrator's session. So
+  # the lookup is by agent, and the wording is the hook's verbatim.
+  #
+  # John, on why the orchestrator must not simply close it: "the agent should be
+  # nudged to complete its own task ... it should always be at the agent's
+  # discretion." The whole call travels with it, task id included, because being
+  # told to make a call and being told to go read about one are different
+  # instructions — QA of story 985 found the second reads as somewhere to go
+  # looking.
+  defp nudge_open_task(scope, agent) do
+    case Sessions.open_task_for_agent(scope, agent.id) do
+      nil ->
+        :ok
+
+      task ->
+        Conversations.record_orchestrator_action(
+          agent,
+          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
+            "it is done — nothing will do it for you.",
+          tool: ~s(evaluate_task task_id: "#{task.id}"),
+          kind: "nudge"
+        )
+
+        :ok
     end
   end
 
@@ -101,20 +203,7 @@ defmodule CodeMySpec.Agents.StopDecision do
     #
     # Before the dispatch, because delivery can fail — a halted agent has
     # nobody to tell — and what the orchestrator decided is true whether or not
-    # anyone was there to hear it.
-    #
-    # The conversation is opened first, and that is not a formality.
-    # `record_orchestrator_action/3` looks the conversation up by agent and
-    # answers `:ok` when there is none — correct for a caller that must not
-    # crash, and silent. An agent that has never spoken has no conversation, so
-    # its very first decision is exactly the one that would vanish. Every turn
-    # event already opens one for the same reason.
-    Conversations.find_or_create_agent_conversation(
-      scope.active_account_id,
-      scope.active_project_id,
-      agent.id
-    )
-
+    # anyone was there to hear it. The conversation was opened by `deliver/2`.
     Conversations.record_orchestrator_action(agent, message, kind: "decision")
 
     ref = "stop-decision-" <> Ecto.UUID.generate()

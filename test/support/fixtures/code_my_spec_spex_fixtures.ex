@@ -949,9 +949,14 @@ defmodule CodeMySpecSpex.Fixtures do
   # parts. There is no flat `body`, and reading one raises `KeyError` at exactly
   # the moment the feature starts working, which reads as the feature failing.
   defp message_text(%{content: parts}) when is_list(parts) do
+    # Every part that carries text, not only the ones typed "text". An
+    # orchestrator action puts its sentence in one part and the call it wants
+    # made — `evaluate_task task_id: "…"` — in a part typed "tool". Keeping only
+    # "text" drops the half that says what to do, which is the half story 985's
+    # QA found agents need spelled out rather than described.
     parts
-    |> Enum.filter(&(is_map(&1) and Map.get(&1, "type") == "text"))
-    |> Enum.map_join("\n", &Map.get(&1, "text", ""))
+    |> Enum.filter(&(is_map(&1) and is_binary(Map.get(&1, "text"))))
+    |> Enum.map_join("\n", &Map.get(&1, "text"))
   end
 
   defp message_text(_message), do: ""
@@ -1370,6 +1375,9 @@ defmodule CodeMySpecSpex.Fixtures do
   produces the push lives in `cms_harness`, so a spec drives the channel's own
   entry rather than a second version of it.
   """
+  @doc "The open task an agent holds, wherever it lives. See `Sessions.open_task_for_agent/2`."
+  defdelegate open_task_for_agent(scope, agent_id), to: CodeMySpec.Sessions
+
   @doc "Whether the server is currently carrying analyzer work for this copy."
   defdelegate analysis_runs_in_flight?(scope), to: CodeMySpec.Analysis, as: :runs_in_flight?
 
@@ -2874,10 +2882,21 @@ defmodule CodeMySpecSpex.Fixtures do
           %{
             id: task_id,
             status: :active,
+            # Set, or the task does not survive being read back.
+            # `Sessions.maybe_prune_orphan_tasks/1` strips any task whose
+            # `session_type` is not a known module, and `nil` is an atom that
+            # is not one — so a task created without it is pruned on the next
+            # read and the fixture quietly produces a session with no tasks.
+            session_type: QaStory,
             requirement_name: "qa_complete",
             story_id: story.id,
             project_id: scope.active_project_id,
-            agent_id: "spex-agent",
+            # Nameable, because a task can belong to an agent that is not a
+            # Claude Code session at all — an orchestrator assigns one to an
+            # agent running under Alloy, and the task then lives on the
+            # orchestrator's session while naming the other agent. Story 1043's
+            # nudge is about exactly that shape.
+            agent_id: Keyword.get(opts, :agent_id, "spex-agent"),
             started_at: DateTime.utc_now()
           }
         ]

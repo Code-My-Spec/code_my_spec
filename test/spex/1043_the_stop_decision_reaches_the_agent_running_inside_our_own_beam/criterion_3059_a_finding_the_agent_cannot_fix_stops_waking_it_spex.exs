@@ -40,9 +40,12 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  @impl_path "lib/example_context.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -50,13 +53,22 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
   spex "An agent told the same thing it could not act on is eventually left alone" do
     scenario "A finding the agent cannot fix stops waking it" do
       given_ "an agent woken repeatedly for the same blocking finding", context do
-        Fixtures.deliver_manifest(context.scope)
+        # Story 988's criterion 8201's recipe. `fresh_analysis_runs/2` is what
+        # makes the finding block at all — without it credo is stale, nothing is
+        # ever delivered, and this scenario passes by counting zero against
+        # zero. It did exactly that until the delivery started working.
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
-        Fixtures.record_problem(context.scope, "credo", %{
-          file_path: "lib/example_context.ex",
-          message: "Modules should have a @moduledoc tag"
-        })
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\nend\n"
+          )
+
+        Fixtures.deliver_manifest(context.scope)
+        Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
+        Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
         agent_id = running_agent(context)
 

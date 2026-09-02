@@ -13,6 +13,7 @@ defmodule CodeMySpec.Sessions do
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Users.Scope
 
   # A session reads as "active" if it was touched within this window — status
@@ -111,6 +112,33 @@ defmodule CodeMySpec.Sessions do
     |> Repo.all()
     |> Enum.map(&maybe_prune_orphan_tasks/1)
   end
+
+  @doc """
+  The open task an agent is holding, wherever it lives.
+
+  Every other route to a task starts from a session, because that is where a
+  task is embedded and because the caller was a Claude Code hook that arrived
+  carrying a session id. An agent running under Alloy has no session and fires
+  no hooks, so it has no way in — and yet it can hold a task: an orchestrator
+  assigns one naming its `agent_id`, and the task sits on the *orchestrator's*
+  session rather than on anything the agent owns.
+
+  So the lookup is by agent across the project's active sessions. `nil` when
+  the agent holds nothing, which is the common answer and not a failure.
+  """
+  @spec open_task_for_agent(Scope.t(), String.t()) :: Task.t() | nil
+  def open_task_for_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+    scope
+    |> list_active_sessions()
+    |> Enum.find_value(fn session ->
+      case Session.find_task_by_agent(session, agent_id) do
+        %Task{status: status} = task when status not in [:completed, :cancelled] -> task
+        _ -> nil
+      end
+    end)
+  end
+
+  def open_task_for_agent(_scope, _agent_id), do: nil
 
   @doc "Find an active session by external conversation ID (Claude session ID)."
   def get_by_external_id(%Scope{} = scope, external_id) when is_binary(external_id) do

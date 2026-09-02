@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
   spex "An agent that ends a turn with a task still open is told so, whether or not anything else blocked" do
     scenario "A clean tree does not excuse an abandoned task" do
       given_ "an agent running under Alloy holding an open task, on a clean tree", context do
-        # The manifest is delivered and nothing else is: a clean tree is the
+        # The manifest is delivered and no finding is: a clean tree is the
         # absence of findings rather than a state to seed, and it is the half of
         # this criterion that makes it distinct. With problems present the agent
         # would be told anyway and the nudge would prove nothing.
@@ -43,7 +43,26 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
         # was right to.
         Fixtures.deliver_manifest(context.scope)
 
-        {:ok, Map.put(context, :agent_id, running_agent(context))}
+        agent_id = running_agent(context)
+
+        # The task names this agent and lives on somebody else's session, which
+        # is the only shape available: a task is embedded in a session, an agent
+        # under Alloy has none, and an orchestrator assigning work to one
+        # produces exactly this.
+        {_story, task_id, _session} =
+          Fixtures.qa_story_task_fixture(context.scope, agent_id: agent_id)
+
+        # The premise, asserted — story 988's criterion 8201 does the same and
+        # for the same reason. If the agent is not actually holding a task, the
+        # scenario proves nothing about being nudged, and a red here would read
+        # as the nudge being unbuilt when the setup never held.
+        assert Fixtures.open_task_for_agent(context.scope, agent_id),
+               "the agent holds no open task, so this scenario has nothing to nudge about"
+
+        {:ok,
+         context
+         |> Map.put(:agent_id, agent_id)
+         |> Map.put(:task_id, task_id)}
       end
 
       when_ "its turn ends", context do

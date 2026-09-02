@@ -19,9 +19,12 @@ defmodule CodeMySpecSpex.Story1043.Criterion3054Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  @impl_path "lib/example_context.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,13 +32,21 @@ defmodule CodeMySpecSpex.Story1043.Criterion3054Spex do
   spex "The decision is the same one an external agent gets — the problem summary and the directive" do
     scenario "One landing, one set of words, either kind of agent" do
       given_ "one working copy with problems outstanding and work available", context do
-        Fixtures.deliver_manifest(context.scope)
+        # Story 988's criterion 8201's recipe. `fresh_analysis_runs/2` is the
+        # step that makes a finding block at all: without it credo is stale, and
+        # a stale source is reported rather than enforced.
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
-        Fixtures.record_problem(context.scope, "credo", %{
-          file_path: "lib/example_context.ex",
-          message: "Modules should have a @moduledoc tag"
-        })
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\nend\n"
+          )
+
+        Fixtures.deliver_manifest(context.scope)
+        Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
+        Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
         {:ok, Map.put(context, :agent_id, running_agent(context))}
       end
