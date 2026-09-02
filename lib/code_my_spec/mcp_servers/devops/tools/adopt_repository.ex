@@ -16,6 +16,24 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   it — same push-and-prove behavior `run_devops_setup` would otherwise do,
   just aimed correctly.
 
+  ## `owner` is the other half of "the real repo"
+
+  A name alone still is not enough when the repository lives in an
+  organisation rather than the connected account's own login.
+  `Repository.ensure/3` looks up `owner || authenticated_owner(scope)` — the
+  authenticated user's own account — when nothing else is said, and this
+  tool had no way to say otherwise. Found live: a project whose real
+  repository is `Code-My-Spec/broken-oaths` adopted `johns10/broken-oaths`
+  instead — a *different*, genuinely existing repository that happened to
+  share the name under the account the OAuth token authenticates as — and
+  failed the push with "origin already points at
+  https://github.com/Code-My-Spec/broken-oaths.git, not
+  https://github.com/johns10/broken-oaths.git", which reads as the wrong
+  repository having been *found*, not as a parameter that was silently never
+  offered. `owner` here is passed straight through as `Repository.ensure/3`'s
+  own `:owner` opt, which already worked for both a personal account and an
+  organisation login — the gap was only ever this tool's schema.
+
   `push/3`'s default branch is `"main"`, which the repository step never
   overrides — a real checkout whose default branch is anything else (a
   pre-existing `master`, for instance) would push nothing, since `git push
@@ -60,6 +78,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
 
     field :branch, :string,
       doc: "The checkout's actual default branch, if it isn't \"main\" (e.g. \"master\")."
+
+    field :owner, :string,
+      doc:
+        "The account or organisation the repository actually lives under, if it " <>
+          "is not the connected account's own login (e.g. \"Code-My-Spec\")."
   end
 
   @impl true
@@ -94,6 +117,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   defp run_opts(repository_name, params) do
     [adopt: true, name: repository_name]
     |> maybe_put(:branch, Map.get(params, :branch))
+    |> maybe_put(:owner, Map.get(params, :owner))
   end
 
   defp maybe_put(opts, _key, nil), do: opts

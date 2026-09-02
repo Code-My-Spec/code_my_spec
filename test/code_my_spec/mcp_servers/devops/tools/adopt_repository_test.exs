@@ -134,6 +134,47 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       refute show =~ "cms_harness"
     end
 
+    # Found live: a project whose real repository is an organisation's, not
+    # the authenticated account's own. Without `owner`, the lookup falls to
+    # `authenticated_owner/1` and can find a *different*, genuinely existing
+    # repository under the wrong account that merely shares the name —
+    # adopted, and pushed to, in place of the real one.
+    test "looks under the given owner rather than the authenticated account", %{
+      scope: scope,
+      project: project,
+      bare_dir: bare_dir
+    } do
+      stub_github(fn
+        %{method: "GET", request_path: "/user"} = conn ->
+          json(conn, 200, %{"login" => "johns10"})
+
+        %{method: "GET", request_path: "/repos/johns10/broken-oaths"} = conn ->
+          flunk("looked up the authenticated account's own login instead of the given owner")
+          conn
+
+        %{method: "GET", request_path: "/repos/Code-My-Spec/broken-oaths"} = conn ->
+          json(conn, 200, %{"name" => "broken-oaths", "clone_url" => bare_dir})
+
+        %{method: "POST"} = conn ->
+          flunk("created a repository instead of adopting the real one")
+          conn
+      end)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      params = %{repository_name: "broken-oaths", owner: "Code-My-Spec"}
+
+      assert {:reply, response, ^frame} = AdoptRepository.execute(params, frame)
+
+      assert response.isError == false
+      assert response_text(response) =~ "broken-oaths"
+
+      assert {log, 0} = System.cmd("git", ["log", "--oneline"], cd: bare_dir)
+      assert log != ""
+
+      project = Projects.get_project!(scope, project.id)
+      assert project.code_repo == bare_dir
+    end
+
     # The exact confusion this is meant to prevent: a caller retrying blind
     # against an unchanged devops_status because the tool always said
     # "success" regardless of whether anything actually ran. A lock conflict
