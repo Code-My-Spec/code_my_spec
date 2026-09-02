@@ -23,6 +23,7 @@ Reference docs for infrastructure, deployment, and environment management.
 | Serve static images from a CDN | `s3-cloudflare-image-host.md` |
 | Migrate URLs without losing SEO link equity | `url-migration-redirects.md` |
 | Transactional email (Resend + Cloudflare DNS) | `cloudflare-resend-email-setup.md` |
+| Onboard an existing app with its own Kamal history onto CodeMySpec | `onboarding-existing-kamal-app.md` |
 
 ## Typical infrastructure layout
 
