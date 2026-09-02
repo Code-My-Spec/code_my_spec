@@ -65,7 +65,7 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
 
         gaps =
           personas
-          |> Enum.map(&check_persona(by_path, scope, &1))
+          |> Enum.map(&check_persona(by_path, &1))
           |> Enum.reject(&(&1 == :ok))
 
         verdict(gaps)
@@ -79,22 +79,36 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   defp verdict([]), do: {true, %{status: "all personas complete"}}
   defp verdict(gaps), do: {false, %{reason: format_gaps(gaps)}}
 
+  # Every checkout of the project, not just the caller's.
+  #
+  # A persona is project-scoped — `Personas.list_personas/1` above reads them
+  # that way — so its artifact is too. Which tree it was written in says nothing
+  # about whether the project's personas are researched, and scoping the lookup
+  # to one checkout made correct work invisible: a file present, valid and
+  # already scanned, reported as missing because the caller's scope named a
+  # different root.
+  #
+  # When several copies hold the same path, the valid one wins. Any checkout
+  # having a good version means the artifact exists; letting map ordering decide
+  # would make the verdict depend on which row came back first.
   defp synced_persona_files(scope) do
     scope
-    |> Files.list_files()
+    |> Files.list_project_files()
     |> Enum.filter(&(&1.role in [:persona_summary, :persona_sources]))
-    |> Map.new(&{&1.path, &1})
+    |> Enum.reduce(%{}, fn file, acc -> Map.update(acc, file.path, file, &better_of(&1, file)) end)
   end
 
+  defp better_of(%FileRecord{valid: true} = kept, _other), do: kept
+  defp better_of(_kept, %FileRecord{} = other), do: other
+
   # Returns :ok or {slug, [gap_messages]}
-  defp check_persona(by_path, scope, persona) do
+  defp check_persona(by_path, persona) do
     slug = persona.slug
-    where = looked_in(scope)
 
     gaps =
       [
-        gap(by_path, Personas.summary_path(slug), "summary", "`summary.md` missing" <> where),
-        gap(by_path, Personas.sources_path(slug), "sources", "`sources.md` missing" <> where)
+        gap(by_path, Personas.summary_path(slug), "summary", "`summary.md` missing"),
+        gap(by_path, Personas.sources_path(slug), "sources", "`sources.md` missing")
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -111,29 +125,6 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
     case Map.get(by_path, path) do
       nil -> missing_message
       %FileRecord{validation_errors: errors} -> concern_error(errors, concern)
-    end
-  end
-
-  # Which checkout was searched, named in the refusal.
-  #
-  # `Files.list_files/1` is scoped to the caller's working copy, so a file
-  # written in one checkout is invisible to a scope bound to another — and
-  # "`summary.md` missing" then describes a file that exists, is valid, and has
-  # already been scanned. That wording sent an agent back to rewrite correct
-  # artifacts three times before anyone thought to ask *where* the checker was
-  # looking.
-  #
-  # The mismatch is not exotic. The MCP mount sends `X-Harness-Id` from
-  # `CMS_HARNESS_ID` in the environment, and a session that inherited that
-  # variable from one checkout while working in another carries the first one's
-  # id and writes the second one's files. Naming the root turns a silent
-  # contradiction into a one-line diagnosis.
-  defp looked_in(%Scope{active_working_copy_id: nil}), do: ""
-
-  defp looked_in(%Scope{active_working_copy_id: id}) do
-    case CodeMySpec.WorkingCopies.fetch(id) do
-      {:ok, %{root: root}} when is_binary(root) -> " from #{root}"
-      _ -> ""
     end
   end
 

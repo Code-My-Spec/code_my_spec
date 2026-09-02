@@ -108,6 +108,35 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  The same, across every checkout of the project rather than the caller's.
+
+  For artifacts that belong to the **project** rather than to a working copy.
+  A persona is the standing case: "this project's personas are researched" has
+  no per-checkout meaning, and `.code_my_spec/personas/<slug>/summary.md`
+  describes the project whichever tree it was written in.
+
+  Deliberately narrow, and not a general-purpose lister. Reading every copy
+  together is wrong for source files — one present in one checkout and absent
+  in another reads as present, which is the reason `list_files/1` scopes to the
+  harness and the reason the requirement graph warns when it is built without
+  one. Reach for this only where the entity being checked is itself
+  project-scoped.
+
+  It exists because the alternative was silent and expensive: persona artifacts
+  written in a worktree are invisible to a scope bound to another checkout, so
+  a correct, validated, already-scanned file reported as missing. The MCP mount
+  takes `X-Harness-Id` from `CMS_HARNESS_ID` in the environment, so a session
+  that inherited one checkout's id while writing another's files hits this with
+  no indication of why.
+  """
+  @spec list_project_files(Scope.t()) :: [File.t()]
+  def list_project_files(%Scope{active_project_id: project_id}) do
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> Repo.all()
+  end
+
+  @doc """
   List files for the project with the owning component preloaded, ordered by
   path, with optional pagination and validity filtering.
 
