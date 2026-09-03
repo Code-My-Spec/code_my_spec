@@ -208,6 +208,31 @@ defmodule CodeMySpec.Agents.StopDecision do
 
     ref = "stop-decision-" <> Ecto.UUID.generate()
 
+    # Off this process, and that is not an optimisation.
+    #
+    # `message_agent` is a `GenServer.call` to the process holding the working
+    # copy, and that process runs the whole turn inside the call. The turn ends
+    # while it is still there, so `deliver/2` runs in it — and the dispatch is
+    # another call to the same pid. A process cannot call itself: it raised
+    # `:calling_self`, the decision was lost, and the operator's `message_agent`
+    # failed with a crash instead of a result. Issue `ad8c1213`, found the
+    # moment there was finally a decision to deliver.
+    #
+    # It is also what criterion 3053 asks for in the first place. "A busy agent
+    # is queued, not interrupted" cannot be true of a send made synchronously
+    # inside the turn it is about; the message has to join the agent's queue the
+    # way any other message does.
+    #
+    # Nothing is waiting on the answer. The record is already written above, and
+    # the only outcomes below are `:ok` and a line in the log.
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      dispatch(scope, agent, ref, message)
+    end)
+
+    :ok
+  end
+
+  defp dispatch(scope, agent, ref, message) do
     case CodeMySpec.Agents.Transport.impl().dispatch_message(
            scope.active_working_copy_id,
            agent,
