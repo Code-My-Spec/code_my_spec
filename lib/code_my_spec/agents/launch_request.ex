@@ -108,5 +108,37 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   # use for a token pair, and sending both would put a subscription on the wire
   # for a request that did not need it.
   defp credential_fields(%{"type" => "api_key", "key" => key}), do: %{"api_key" => key}
+
+  # A ChatGPT subscription, from the integration the user connected.
+  #
+  # This clause did not exist, so an oauth credential fell to the catch-all
+  # below and went out as `%{}`. `Credential.fetch/2` had already fetched the
+  # token, refreshed it if needed and derived the account id from the JWT — and
+  # all of it was dropped at the door. The harness then found no credential and
+  # `Provider.auth_path/1` fell back to `~/.codex/auth.json`, the operator's own
+  # CLI login on whatever machine the harness happened to be running on.
+  #
+  # So every `openai-codex` agent has been running on a local file nobody
+  # manages, which worked until that file aged past refresh and every agent
+  # started failing with `401 Unauthorized: Failed to refresh token`. The
+  # subscription the user actually connected was never used.
+  #
+  # `expires` is milliseconds since epoch, as `expires_ms/1` produces it, and
+  # `accountId` is present only when the token carried the claim — the same
+  # rule `put_account_id/2` applies, since an invented empty account id is worse
+  # than an absent one.
+  defp credential_fields(%{"type" => "oauth"} = credential) do
+    %{
+      "access" => credential["access"],
+      "refresh" => credential["refresh"],
+      "expires" => credential["expires"]
+    }
+    |> put_present("account_id", credential["accountId"])
+  end
+
   defp credential_fields(_credential), do: %{}
+
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, _key, ""), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
 end

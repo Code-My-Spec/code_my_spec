@@ -101,20 +101,35 @@ defmodule CmsHarness.HarnessConfigTest do
              "the file is the one that knows which working copy it is sitting in"
     end
 
-    test "answers a working copy that has no file — the case it exists for", %{root: root} do
+    # It no longer answers for a copy with no file, and that is the whole change.
+    #
+    # The variable belongs to whatever process started the daemon, and the
+    # daemon serves every checkout on the machine — so one stale value in one
+    # launching shell answered for all of them. Measured here: the daemon
+    # carried the main checkout's id while serving five roots that each name
+    # themselves correctly in their own file. Every requirement row a worktree
+    # computed was written against main, and reading its own answer back gave it
+    # main's, so a checkout whose spec files were sitting right there was told
+    # they did not exist (`5b538c8b`).
+    #
+    # A copy that has not written down which copy it is has not been onboarded,
+    # and `:none` is the honest answer rather than a guess inherited from a
+    # shell.
+    test "does not answer for a working copy that has no file", %{root: root} do
       System.put_env("CMS_HARNESS_ID", @other)
 
-      assert {:ok, %{working_copy_id: @other}} = HarnessConfig.read(root)
+      assert :none = HarnessConfig.read(root),
+             "an id inherited from the launching shell answered for a checkout that never " <>
+               "claimed it"
     end
 
-    test "reading it does not write it — an override that outlived itself would be worse",
-         %{root: root} do
+    test "still does not write anything while reading", %{root: root} do
       System.put_env("CMS_HARNESS_ID", @other)
 
-      assert {:ok, %{working_copy_id: @other}} = HarnessConfig.read(root)
+      assert :none = HarnessConfig.read(root)
 
       refute File.exists?(HarnessConfig.path(root)),
-             "a one-off override persisted to disk survives the run that set it"
+             "reading an identity minted one, which is how a wrong id becomes permanent"
     end
   end
 

@@ -77,14 +77,22 @@ defmodule CmsHarness.HarnessConfigPrecedenceTest do
     refute HarnessConfig.read(a) == HarnessConfig.read(b)
   end
 
-  test "the env still answers a checkout that has no file" do
-    # The case the override exists for: a container handed an id, with nowhere
-    # to have stored it. Removing the override entirely would break sprite boot,
-    # which is why this is a precedence change and not a deletion.
+  test "the env no longer answers a checkout that has no file" do
+    # This used to be the case the override existed for: a container handed an
+    # id with nowhere to have stored it. It has been deleted rather than
+    # re-ordered, because precedence was not enough — the variable belongs to
+    # whatever started the daemon, and the daemon serves every checkout on the
+    # machine, so one stale value answered for all of them however low its
+    # priority.
+    #
+    # The cost is real and is the point: a sprite must now write a
+    # `.cms_harness.json` at provision time rather than being handed an id it
+    # never records.
     injected = Ecto.UUID.generate()
     System.put_env("CMS_HARNESS_ID", injected)
 
-    assert {:ok, %{working_copy_id: ^injected}} = HarnessConfig.read(bare_checkout())
+    assert :none = HarnessConfig.read(bare_checkout()),
+           "a checkout that never wrote down which copy it is took one from the shell"
   end
 
   test "no file and no env is still :none, not an invented identity" do

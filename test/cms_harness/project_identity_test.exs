@@ -251,17 +251,30 @@ defmodule CmsHarness.ProjectIdentityTest do
     refute log =~ "CMS_PROJECT_ID says"
   end
 
-  # The genuine sprite: no config, no harness file of its own — the file the
-  # test above relies on to win is exactly what this one has none of, so the
-  # environment is the only answer there is.
-  test "a copy with neither config nor harness file falls through to the shell" do
+  # A copy that names no working copy of its own does not borrow one.
+  #
+  # `CMS_HARNESS_ID` used to answer here, which is what the sprite relied on:
+  # no config, no harness file, one VM, identity injected by whatever started
+  # it. That fallback is gone. The variable belongs to the launching process and
+  # the daemon serves every checkout on the machine, so one stale value answered
+  # for all of them — a worktree's requirement rows were written against the main
+  # checkout and read back as somebody else's verdict (`5b538c8b`).
+  #
+  # The project still resolves, because `CMS_PROJECT_ID` is a separate fallback
+  # and was not part of that failure. What a copy no longer gets is an identity
+  # it never wrote down.
+  #
+  # CONSEQUENCE, deliberately asserted rather than discovered: a sprite must now
+  # write a `.cms_harness.json` at provision time. Until it does, it resolves a
+  # project and no working copy.
+  test "a copy with neither config nor harness file gets no working copy" do
     System.put_env("CMS_PROJECT_ID", "999")
 
     previous = System.get_env("CMS_HARNESS_ID")
     System.put_env("CMS_HARNESS_ID", "sprite-issued-id")
     on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
-    assert {:ok, %{working_copy_id: "sprite-issued-id"}} =
+    assert {:ok, %{id: "999", working_copy_id: nil}} =
              ProjectIdentity.resolve(anonymous_dir())
   end
 

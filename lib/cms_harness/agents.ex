@@ -1,4 +1,5 @@
 defmodule CmsHarness.Agents do
+  require Logger
   @moduledoc """
   Agents running on this machine — start one, say which are running, stop one.
 
@@ -250,9 +251,60 @@ defmodule CmsHarness.Agents do
   # two drift apart.
   defp credential(request) do
     %{}
-    |> put_if(:auth_path, request["auth_path"] || request["config_dir"])
+    |> put_if(:auth_path, request["auth_path"] || request["config_dir"] || codex_auth(request))
     |> put_if(:api_key, request["api_key"])
   end
+
+  # The subscription, written where `codex exec` can read it.
+  #
+  # `Alloy.Provider.Codex` takes a path and copies it into an isolated
+  # `CODEX_HOME`; the CLI has no way to be handed a token directly. So a token
+  # on the wire has to become a file here, on the machine that will run the
+  # binary — which is the point: the credential comes from the integration the
+  # user connected, not from whatever `~/.codex/auth.json` happens to hold on
+  # this box. Falling back to that file is how every agent ended up running on
+  # an unmanaged local login that eventually stopped refreshing.
+  #
+  # Written per agent under the harness's own directory rather than to the
+  # user's `~/.codex`, so a running agent cannot disturb the operator's CLI
+  # login and two agents on different subscriptions cannot overwrite each
+  # other's.
+  #
+  # `0600`, because it is a bearer token on disk.
+  defp codex_auth(%{"access" => access} = request) when is_binary(access) and access != "" do
+    tokens =
+      %{"access_token" => access}
+      |> put_if_string("refresh_token", request["refresh"])
+      |> put_if_string("account_id", request["account_id"])
+
+    contents = Jason.encode!(%{"auth_mode" => "chatgpt", "tokens" => tokens})
+
+    dir = Path.join([System.tmp_dir!(), "cms-codex", request["agent_id"] || "unknown"])
+
+    with :ok <- File.mkdir_p(dir),
+         path = Path.join(dir, "auth.json"),
+         :ok <- File.write(path, contents),
+         :ok <- File.chmod(path, 0o600) do
+      path
+    else
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not write the codex credential for agent " <>
+            "#{inspect(request["agent_id"])}: #{inspect(reason)} — the agent will fall back to " <>
+            "this machine's own ~/.codex/auth.json, which is not the subscription the user " <>
+            "connected and may not be current"
+        )
+
+        nil
+    end
+  end
+
+  defp codex_auth(_request), do: nil
+
+  defp put_if_string(map, key, value) when is_binary(value) and value != "",
+    do: Map.put(map, key, value)
+
+  defp put_if_string(map, _key, _value), do: map
 
   defp put_if(map, _key, nil), do: map
   defp put_if(map, key, value), do: Map.put(map, key, value)

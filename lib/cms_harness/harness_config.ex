@@ -100,30 +100,32 @@ defmodule CmsHarness.HarnessConfig do
   def read(root) do
     root = Path.expand(root)
 
-    case from_file(root) do
-      {:ok, config} -> {:ok, config}
-      :none -> from_env_config(root)
-      {:error, reason} -> {:error, reason}
-    end
+    from_file(root)
   end
 
-  defp from_env_config(root) do
-    case from_env() do
-      {:ok, id} ->
-        {:ok,
-         %{
-           working_copy_id: id,
-           project_id: nil,
-           deploy_key: nil,
-           preview_url: nil,
-           server_url: nil,
-           root: root
-         }}
-
-      :none ->
-        :none
-    end
-  end
+  # There is no environment fallback, deliberately.
+  #
+  # `read/1` used to fall back to `CMS_HARNESS_ID` when a root named no id of
+  # its own. The variable belongs to whatever process started the daemon, and
+  # the daemon serves every checkout on the machine — so one stale value in one
+  # launching shell answered for all of them.
+  #
+  # That is not hypothetical. The daemon on this machine carried
+  # `CMS_HARNESS_ID=6c4a7be3…`, the main checkout, while serving five roots that
+  # each name themselves correctly in their own `.cms_harness.json`. Every
+  # requirement row a worktree computed was written against main, and reading
+  # its own answer back gave it main's — which is how a checkout whose spec
+  # files were sitting right there was told they did not exist (`5b538c8b`).
+  #
+  # A checkout's identity is what its own file says. If the file says nothing,
+  # that is a copy which has not been onboarded, and the honest answer is
+  # `:none` — not a guess inherited from somebody's shell.
+  #
+  # `CMS_HARNESS_ID` still exists for exactly one consumer, and only that one:
+  # the Claude Code MCP mount interpolates `${CMS_HARNESS_ID}` into an
+  # `X-Harness-Id` header (`plugin.json`), because an `mcpServers` entry can
+  # read an environment variable and cannot read a file. That client sends the
+  # id explicitly; nothing here reads it.
 
   @doc """
   What `.cms_harness.json` itself says about this working copy, ignoring
