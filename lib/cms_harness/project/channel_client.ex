@@ -1365,9 +1365,53 @@ defmodule CmsHarness.Project.ChannelClient do
       # Only a delivery event has one, and for that event it is the whole
       # message: this named thing is no longer withdrawable.
       "ref" => Map.get(envelope, :ref),
-      "text" => turn_event_text(envelope)
+      "text" => turn_event_text(envelope),
+      # The call as data, beside the sentence describing it.
+      #
+      # `text` is prose for a person watching, and it is all that used to
+      # travel: a tool call reached the transcript as its own name, arguments
+      # gone. Two things needed the structure. An agent's edits cannot be
+      # attributed from a rendered line, and `block_changed` therefore could
+      # never narrow for an agent with no session. And the page had nothing to
+      # render as a tool call, so it drew one as a chat message.
+      "tool" => tool_meta(envelope)
     }
   end
+
+  # Deliberately not the whole `input`.
+  #
+  # A `write` call's input carries the entire file body. Putting that on the
+  # wire and into a message row would grow the transcript by the size of
+  # everything the agent has ever written — the same unbounded-growth shape that
+  # filled this machine's disk on 2026-09-03, and the reason `agent_test_events`
+  # now has a byte cap. What is needed is the identity of the call and the path
+  # it touched; the body is already on disk, which is the point of a write.
+  defp tool_meta(%{payload: %{name: name} = payload}) when is_binary(name) do
+    %{
+      "id" => Map.get(payload, :id),
+      "name" => name,
+      "path" => touched_path(Map.get(payload, :input))
+    }
+  end
+
+  defp tool_meta(_envelope), do: nil
+
+  # The path a call names, when it names one.
+  #
+  # Narrower than `primary_argument/1`, which also answers for `command`,
+  # `pattern`, `query` and `url` — right for a human-readable line and wrong
+  # here, where a non-path would be recorded as a file this agent edited.
+  # String and atom keys both, for the reason given on `@naming_arguments`.
+  defp touched_path(input) when is_map(input) do
+    Enum.find_value([{"file_path", :file_path}, {"path", :path}], fn {string_key, atom_key} ->
+      case Map.get(input, string_key) || Map.get(input, atom_key) do
+        value when is_binary(value) -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  defp touched_path(_input), do: nil
 
   defp turn_event_text(envelope) do
     case envelope do

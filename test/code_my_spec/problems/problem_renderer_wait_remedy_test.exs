@@ -91,23 +91,32 @@ defmodule CodeMySpec.Problems.ProblemRendererWaitRemedyTest do
            "the agent was left with no account of what happens next:\n#{rendered}"
   end
 
-  test "the internal agent is not told its edits went unattributed" do
+  test "the internal agent is no longer told it owns the checkout" do
+    # Production always passes a `session_paths` set for an internal agent now:
+    # `Validation.session_paths/3` answers from `FileEdits` rather than `nil`,
+    # so the agent gets the same attribution note an external session gets.
+    #
+    # This asserts the claim that used to be made here is gone. While the
+    # internal path could not tell what an agent had edited, the note told it it
+    # owned the whole checkout — true of the code at the time and never true of
+    # a product agent, which is what handed one 160 findings it had never seen.
     rendered =
-      ProblemRenderer.render_stop_response([finding()], [], opts(internal_agent?: true))
+      ProblemRenderer.render_stop_response(
+        [finding()],
+        [],
+        opts(internal_agent?: true, session_paths: MapSet.new())
+      )
 
-    refute rendered =~ "nothing this session recorded", """
-    The internal agent was handed the session-attribution explainer. It has no
-    session and never will, so that paragraph describes the design as an
-    anomaly — and it rendered on every single internal decision. Got:
+    refute rendered =~ "owns the checkout it works in", """
+    The agent was told it owns the whole checkout. Ownership is decided by what
+    it edited now, not by which path the decision came down, and this sentence
+    outlived the rule it described.
 
     #{rendered}
     """
 
     refute rendered =~ "scope `framework`",
            "the agent was invited to file a framework issue about a state that is not a defect"
-
-    assert rendered =~ "owns the checkout it works in",
-           "the agent was left with no account of why everything blocks:\n#{rendered}"
   end
 
   test "both renderings still name the finding and that a rerun is in flight" do

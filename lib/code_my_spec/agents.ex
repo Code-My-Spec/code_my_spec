@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
+  alias CodeMySpec.FileEdits
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -732,6 +733,7 @@ defmodule CodeMySpec.Agents do
   def record_turn_event(%Scope{} = scope, agent_id, event) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
+      record_edit(agent, event)
       write_turn_event(conversation, agent, event)
     else
       # An agent that is not ours, or a step for one nobody can find. Dropped
@@ -788,6 +790,33 @@ defmodule CodeMySpec.Agents do
 
     :ok
   end
+
+  # What this agent wrote, as it writes it.
+  #
+  # `block_changed` narrows a source to the files the stopping agent touched,
+  # and it learned that only from PostToolUse — which an agent under Alloy never
+  # fires. Its edit set was therefore empty forever, so either every finding on
+  # the tree was its own (unusable: a product agent inherited 160 credo findings
+  # it had never seen) or none were (unusable: it was never told about the file
+  # it had just broken). Neither is a policy question; both came from not
+  # knowing what it had edited.
+  #
+  # Recorded here rather than in the harness because the harness has no
+  # database, and on the tool *call* rather than on its result: a write that
+  # failed still changed the file often enough that treating it as untouched is
+  # the more expensive mistake.
+  #
+  # Only `write` and `edit`. `read`, `bash` and the script tools name paths too
+  # — `bash` names a command — and recording those would make an agent
+  # answerable for every file it has ever looked at.
+  @writing_tools ~w(write edit)
+
+  defp record_edit(%Agent{id: agent_id}, %{"tool" => %{"name" => name, "path" => path}})
+       when name in @writing_tools and is_binary(path) and path != "" do
+    FileEdits.track_agent_edit(agent_id, path)
+  end
+
+  defp record_edit(_agent, _event), do: :ok
 
   # The kinds a conversation already renders. An event this server does not
   # know is still worth keeping — it is something the agent did — so it lands

@@ -53,6 +53,14 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
         agent_id = running_agent(context)
+        # The agent wrote the file the finding is about.
+        #
+        # Recorded because that is now what makes a finding its own:
+        # `block_changed` narrows to what the agent edited, and `FileEdits`
+        # learns that from its `write` and `edit` calls. Without this the
+        # finding belongs to nobody, is demoted to advisory, and everything
+        # below asserts against silence.
+        Fixtures.record_agent_edit(agent_id, @impl_path)
         for _ <- 1..8, do: :ok = Fixtures.end_turn(context.scope, agent_id)
 
         {:ok,
@@ -80,6 +88,12 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
           file_path: "lib/something_else.ex",
           message: "Function is too complex"
         })
+
+        # The agent wrote this one too, for the same reason it had to be
+        # recorded as writing the first: a finding on a file it never touched is
+        # demoted to advisory, so an unattributed "new finding" would leave the
+        # blocking key unchanged and the escape would look like a muzzle.
+        Fixtures.record_agent_edit(context.agent_id, "lib/something_else.ex")
 
         # Fresh again, for the same reason as the premise: a finding on a stale
         # source is reported and not enforced, so without this the "new finding"

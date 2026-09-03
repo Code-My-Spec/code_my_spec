@@ -147,7 +147,17 @@ defmodule CodeMySpec.Validation do
       changed_paths: sync_result.changed_paths
     )
 
-    all_changed = resolve_changed_files(scope, task, sync_result)
+    # An agent with no session names its own changed set, exactly as it does on
+    # the remote path. The scan's dirty list cannot stand in for it: by the time
+    # a turn-end decision runs, the file the agent just wrote has usually been
+    # synced already and is no longer dirty — which is how the internal path
+    # came to see an empty set and had to guess around it.
+    all_changed =
+      case agent_changed_files(scope, opts) do
+        [] -> resolve_changed_files(scope, task, sync_result)
+        edited -> edited
+      end
+
     changed_files = filter_by_session_attribution(all_changed, cwd, opts)
 
     config = Configurations.get_or_create(scope)
@@ -250,6 +260,30 @@ defmodule CodeMySpec.Validation do
       session_id when is_binary(session_id) ->
         session_id
         |> attributed_paths(Keyword.get(opts, :agent_id))
+        |> then(&Files.get_by_paths(scope, &1))
+
+      _ ->
+        agent_changed_files(scope, opts)
+    end
+  end
+
+  # The same answer, for an agent that has no session to record against.
+  #
+  # This clause used to be `[]`, and that empty list is the whole of why the
+  # internal path has been wrong twice. An empty changed set makes every
+  # `block_changed` source advisory, so an agent was never told about the file
+  # it had just broken; widening it to "owns the whole tree" then told a product
+  # agent about 160 findings it had never seen. Both were guesses standing in
+  # for a fact nobody was recording.
+  #
+  # `FileEdits.track_agent_edit/2` records it now, on every `write` and `edit`
+  # the agent makes, so this path answers exactly what the session path answers:
+  # the files this agent touched, resolved to their rows.
+  defp agent_changed_files(scope, opts) do
+    case Keyword.get(opts, :agent_id) do
+      agent_id when is_binary(agent_id) ->
+        agent_id
+        |> FileEdits.get_edited_files_for_agent()
         |> then(&Files.get_by_paths(scope, &1))
 
       _ ->
@@ -640,11 +674,39 @@ defmodule CodeMySpec.Validation do
         end
 
       _ ->
-        nil
+        agent_paths(scope, opts, project_changed?)
     end
   end
 
   defp session_paths(_scope, _opts, _project_changed?), do: nil
+
+  # What an agent with no session wrote.
+  #
+  # `session_paths/3` answers `nil` for a caller with no session, and `nil`
+  # means "attribution is unknown, do not demote anything" — which for an agent
+  # under Alloy meant it owned every finding on the tree. That was the only
+  # answer available while nothing recorded its edits. `FileEdits` records them
+  # now, on every `write` and `edit` it makes, so the honest answer is the same
+  # one an external session gets: these files, and no others.
+  #
+  # An empty set is a real answer here and not a missing one. An agent that has
+  # edited nothing this session owns nothing — and it is `split_unattributed/2`
+  # that turns that into "demoted to advisory", which is right: findings it did
+  # not make are still real and still somebody's.
+  defp agent_paths(%Scope{cwd: cwd} = scope, opts, project_changed?) do
+    case Keyword.get(opts, :agent_id) do
+      agent_id when is_binary(agent_id) ->
+        agent_id
+        |> FileEdits.get_edited_files_for_agent()
+        |> Enum.map(&relativize(&1, cwd))
+        |> then(fn recorded -> elem(split_by_working_copy(recorded, cwd), 0) end)
+        |> MapSet.new()
+        |> corroborate_with_disk(project_changed?)
+
+      _ ->
+        nil
+    end
+  end
 
   # Which recorded edits are edits to *this* working copy.
   #
@@ -856,25 +918,6 @@ defmodule CodeMySpec.Validation do
       |> Enum.group_by(& &1.source)
 
     scope_context = %{
-      # An agent running under Alloy owns the tree it works in.
-      #
-      # `block_changed` narrows a source to files the stopping session wrote,
-      # and it learns that from PostToolUse. An internal agent fires no hooks,
-      # so nothing is ever attributed to it and the changed set is empty by the
-      # time a turn-end decision runs — the watcher has already synced the very
-      # edit that ought to block. QA of story 988 watched an agent create a
-      # module with no `@moduledoc` and be told nothing: "2 advisory problem(s)
-      # not blocking" (issue 22f65e5b).
-      #
-      # John's call, and his reasoning: "the only dude really touching the code
-      # and subject to credo is the coding agent, who ultimately owns all those
-      # changes." So on this path the narrowing has nothing to narrow and is
-      # dropped, rather than being computed from a set that cannot be right.
-      #
-      # An `agent_id` with no `session_id` is what makes this path
-      # identifiable: `Hooks.Stop` and `Hooks.SubagentStop` both always send a
-      # session, and `StopDecision` — which has none to send — never does.
-      owns_tree?: owns_tree?(opts),
       changed_file_paths: Enum.map(changed_files, & &1.path),
       changed_component_ids:
         changed_files
@@ -1178,33 +1221,6 @@ defmodule CodeMySpec.Validation do
     is_binary(Keyword.get(opts, :agent_id)) and is_nil(Keyword.get(opts, :session_id))
   end
 
-  # Whose findings an internal agent is answerable for.
-  #
-  # Dropping `block_changed`'s narrowing on this path is right for an agent that
-  # writes code and wrong for one that does not. John's reasoning was specific:
-  # "the only dude really touching the code and subject to credo is the coding
-  # agent, who ultimately owns all those changes." A product agent is not that,
-  # and neither is a QA one.
-  #
-  # Watched happen rather than predicted. A product agent started on the war
-  # epic replied to its first message in a second, and 70ms after that turn
-  # ended the stop decision handed it 160 pre-existing credo findings in a
-  # codebase it was there to write stories about. It spent every turn after that
-  # running `mix credo suggest` on somebody else's refactor and re-earning the
-  # same block. The commit that widened this said the cost out loud — "an agent
-  # inherits pre-existing findings it did not make, on its first turn" — and
-  # this is that cost, landing on the agents it buys nothing for.
-  #
-  # `:main` keeps ownership: its job is the whole project and it edits code like
-  # any coding agent. The narrowing still applies to product and QA, which for
-  # an agent with no session means their `block_changed` sources go back to
-  # advisory — they are still blocked by a failing compile, suite or spex, none
-  # of which are scoped by changed files.
-  @code_owning_roles [:coding, :main]
-
-  defp owns_tree?(opts) do
-    internal_agent?(opts) and Keyword.get(opts, :agent_role) in @code_owning_roles
-  end
 
   defp active_blocking_sources(config) do
     configurable =
@@ -1347,10 +1363,6 @@ defmodule CodeMySpec.Validation do
   defp apply_mode(_problems, :off, _scope_fn, _ctx), do: {[], []}
   defp apply_mode(problems, :block_all, _scope_fn, _ctx), do: {problems, []}
   defp apply_mode(problems, :dont_block, _scope_fn, _ctx), do: {[], problems}
-
-  # The agent owns everything in its checkout, so "changed" cannot narrow it.
-  # Above the general clause because it is the more specific match.
-  defp apply_mode(problems, :block_changed, _scope_fn, %{owns_tree?: true}), do: {problems, []}
 
   defp apply_mode(problems, :block_changed, scope_fn, ctx) do
     Enum.split_with(problems, in_scope_fn(scope_fn, ctx))

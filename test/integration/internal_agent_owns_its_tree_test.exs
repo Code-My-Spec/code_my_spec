@@ -1,33 +1,27 @@
 defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
   @moduledoc """
-  Regression test: `block_changed` must not demote a finding for an agent
-  running under Alloy.
+  What an agent with no session is answerable for: the files it edited, and
+  those only.
 
-  `block_changed` narrows a source to files the stopping session wrote, and it
-  learns that from PostToolUse. An agent inside our own BEAM fires no hooks, so
-  nothing is ever attributed to it — and by the time a turn-end decision runs,
-  the harness's watcher has already synced the very edit that ought to block.
-  The changed set is therefore always empty on that path, which made every
-  `block_changed` source permanently advisory.
+  `block_changed` narrows a source to the files the stopping agent wrote, and it
+  learned that from PostToolUse — which an agent under Alloy never fires. Its
+  changed set was therefore empty forever, and the internal path got the answer
+  wrong twice in one night from guessing around that hole:
 
-  QA of story 988 watched it happen: a real Alloy agent created a module with
-  no `@moduledoc`, credo recorded the finding and reported `fresh, 2
-  problem(s)`, and the decision answered "2 advisory problem(s) not blocking"
-  and delivered nothing. Issue `22f65e5b`.
+    * Empty set, no widening: a real agent created a module with no `@moduledoc`
+      and was told "2 advisory problem(s) not blocking". Issue `22f65e5b`.
+    * Widened to the whole tree: a product agent on the war epic was handed 160
+      pre-existing credo findings 70ms after its first turn, and spent every
+      turn after that running `mix credo` on somebody else's refactor.
 
-  John's call, and his reasoning: "the only dude really touching the code and
-  subject to credo is the coding agent, who ultimately owns all those changes."
-  So on this path the narrowing has nothing to narrow and is dropped.
+  Neither was a policy question. Both came from not recording what the agent had
+  edited. `FileEdits.track_agent_edit/2` records it now, on every `write` and
+  `edit` it makes, so this path answers what the session path has always
+  answered — and the role table that stood in for it is gone.
 
-  The pair below is the whole point. Both turns run against the same tree with
-  the same persisted finding and the same `block_changed` configuration, and
-  differ only in whether a session is named — so a change that widened *both*
-  paths would fail the first assertion rather than pass silently.
-
-  `qa_validation` is the source used because it never writes a ledger row
+  `qa_validation` is the source under test because it never writes a ledger row
   (`Run.changeset/2` accepts only compiler/credo/exunit/spex), so it can never
-  be stale and freshness cannot quietly explain either outcome. See
-  `QaValidationNeverStaleTest`, whose setup this mirrors.
+  be stale and freshness cannot quietly explain any of these outcomes.
   """
 
   use ExUnit.Case, async: true
@@ -36,6 +30,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
   alias CodeMySpec.Validation
@@ -48,7 +43,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  test "an agent named without a session blocks on a finding a session would have had demoted" do
+  defp seeded_scope do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
@@ -96,10 +91,65 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:error, seeded, _key} =
              Validation.validate_stop(scope, nil, compile_output_file: compile_jsonl)
 
-    assert seeded =~ "qa_validation", "the finding must be persisted before either turn below"
+    assert seeded =~ "qa_validation", "the finding must be persisted before any turn below"
 
-    # Nothing changes from here. The finding stays on record; only who is
-    # asking changes.
+    {scope, compile_jsonl}
+  end
+
+  test "an agent that edited the file is answerable for it" do
+    {scope, compile_jsonl} = seeded_scope()
+
+    FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
+
+    assert {:error, reason, _key} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "an-agent",
+               compile_output_file: compile_jsonl
+             ),
+           """
+           The agent edited the file this finding is about and was let go. An
+           agent with no session records its edits through FileEdits precisely
+           so this case can be told from the one below.
+           """
+
+    assert reason =~ "qa_validation"
+  end
+
+  test "an agent that edited nothing is answerable for nothing" do
+    {scope, compile_jsonl} = seeded_scope()
+
+    assert {:ok, _result} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "an-idle-agent",
+               compile_output_file: compile_jsonl
+             ),
+           """
+           An agent that has edited nothing was blocked on a pre-existing
+           finding. This is the war-epic product agent's case: it had touched no
+           file, and being handed the tree's backlog made it spend every turn on
+           work that was never its own.
+           """
+  end
+
+  test "one agent's edits do not make another agent answerable" do
+    {scope, compile_jsonl} = seeded_scope()
+
+    FileEdits.track_agent_edit("the-editor", @broken_qa_brief_path)
+
+    assert {:ok, _result} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "the-bystander",
+               compile_output_file: compile_jsonl
+             ),
+           """
+           A finding was attributed to an agent that did not make the edit. Two
+           agents share a working copy routinely, and attribution that leaks
+           between them is the same failure as no attribution at all.
+           """
+  end
+
+  test "the external session path is untouched by any of this" do
+    {scope, compile_jsonl} = seeded_scope()
 
     assert {:ok, _result} =
              Validation.validate_stop(scope, nil,
@@ -108,75 +158,10 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
                compile_output_file: compile_jsonl
              ),
            """
-           The external path must still demote this. `block_changed` narrows to
-           what the session wrote, nothing was attributed to it, and that
-           narrowing is the whole of criteria 5100 and 5109. If this blocks,
-           the internal rule has widened both paths instead of one.
+           The external path must still demote a finding nothing was attributed
+           to. That narrowing is the whole of criteria 5100 and 5109; if this
+           blocks, the agent path has been wired into the session path rather
+           than beside it.
            """
-
-    assert {:error, internal, _key} =
-             Validation.validate_stop(scope, nil,
-               agent_id: "an-agent",
-               agent_role: :coding,
-               compile_output_file: compile_jsonl
-             ),
-           """
-           An agent running under Alloy was let go over a finding on its own
-           tree. It has no session, so nothing can ever be attributed to it and
-           `block_changed` would demote every finding it ever makes — including
-           the one it just introduced. It owns the checkout it works in.
-           """
-
-    assert internal =~ "qa_validation",
-           "the internal agent was blocked, but not about the finding: #{internal}"
-
-    # Through `validate_stop/3`, not against the renderer.
-    #
-    # `ProblemRendererWaitRemedyTest` asks the renderer for both renderings by
-    # handing it the option directly, and it passed for a build in which the
-    # option was never set: `decide/4` receives a freshly built keyword list, so
-    # reading `agent_id` inside it answered nil for every caller and the flag
-    # was false everywhere. A probe checked only where it cannot fail says
-    # nothing about the wiring, which is what this pair exists to cover.
-    refute internal =~ "nothing this session recorded", """
-    The internal agent was handed the session-attribution explainer, which
-    describes having no session as a failure to attribute. It has no session by
-    design, so this rendered on every internal decision — and it carries the
-    "stopping again ... clears this by itself" instruction with it.
-
-    #{internal}
-    """
-
-    assert internal =~ "owns the checkout it works in",
-           "the agent was told everything blocks and not why:\n#{internal}"
-
-    # Ownership follows the work, not merely the absence of a session.
-    #
-    # A product agent has no session either, so without a role test it inherits
-    # the same widening — and a real one did: 70ms after its first turn ended it
-    # was handed 160 pre-existing credo findings in a codebase it was there to
-    # write stories about, and spent every turn after that running `mix credo`
-    # on somebody else's refactor.
-    for role <- [:product, :qa] do
-      assert {:ok, _} =
-               Validation.validate_stop(scope, nil,
-                 agent_id: "an-agent",
-                 agent_role: role,
-                 compile_output_file: compile_jsonl
-               ),
-             """
-             A #{role} agent was blocked on a `block_changed` source. It does not
-             write the code these findings are about, so widening for it hands it
-             a backlog it did not make and cannot reasonably be asked to clear.
-             """
-    end
-
-    assert {:error, _reason, _key} =
-             Validation.validate_stop(scope, nil,
-               agent_id: "an-agent",
-               agent_role: :main,
-               compile_output_file: compile_jsonl
-             ),
-           "a main agent edits code like any coding agent and must keep ownership"
   end
 end

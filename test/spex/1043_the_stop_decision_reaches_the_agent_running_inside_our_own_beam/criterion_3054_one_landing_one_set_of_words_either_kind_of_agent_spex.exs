@@ -48,7 +48,17 @@ defmodule CodeMySpecSpex.Story1043.Criterion3054Spex do
         Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
-        {:ok, Map.put(context, :agent_id, running_agent(context))}
+        agent_id = running_agent(context)
+        # The agent wrote the file the finding is about.
+        #
+        # Recorded because that is now what makes a finding its own:
+        # `block_changed` narrows to what the agent edited, and `FileEdits`
+        # learns that from its `write` and `edit` calls. Without this the
+        # finding belongs to nobody, is demoted to advisory, and everything
+        # below asserts against silence.
+        Fixtures.record_agent_edit(agent_id, @impl_path)
+
+        {:ok, Map.put(context, :agent_id, agent_id)}
       end
 
       when_ "the decision is produced for an agent running under Claude Code", context do

@@ -3457,6 +3457,18 @@ defmodule CodeMySpecSpex.Fixtures do
   against the synthetic project.
   """
   @doc """
+  Record that `agent_id` wrote `path`.
+
+  What `FileEdits.track_agent_edit/2` records in production when an agent calls
+  `write` or `edit`. A criterion that seeds a finding and expects an agent to be
+  blocked by it has to say the agent made it — otherwise the finding belongs to
+  nobody, is demoted to advisory, and the scenario asserts against silence.
+  """
+  def record_agent_edit(agent_id, path) do
+    CodeMySpec.FileEdits.track_agent_edit(agent_id, path)
+  end
+
+  @doc """
   A completed run for `source` whose fingerprint no longer matches the tree.
 
   Stale is not the same state as never-ran, and the difference decides what the
