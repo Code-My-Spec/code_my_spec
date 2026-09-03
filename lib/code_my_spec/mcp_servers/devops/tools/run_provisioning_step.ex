@@ -33,6 +33,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   had no parameter to give it — the same shape as `adopt_repository`'s
   missing `:owner` before it could name an organisation's repository.
 
+  ## `confirm_apex_repoint` is the same gap, for `:dns`
+
+  `Steps.apex_repoint/4` refuses to move a live apex onto a freshly created
+  server without `opts[:confirm_apex_repoint]` — reasonable, since the apex
+  might be serving real traffic today. But that flag was only ever threaded
+  from `CodeMySpecWeb.ProvisioningLive`'s own `"confirm_apex_repoint"` event,
+  so an agent driving this tool instead of a human clicking a button had no
+  way to say yes: every retry re-detected the live apex and paused again,
+  identically, with `devops_status` never explaining why nothing progressed.
+  Confirmed live: a prod cutover the operator had already approved sat paused
+  through repeated retries because the only "confirm" that existed was a
+  LiveView click nothing here could reach.
+
   ## This returns as soon as the step starts, not when it finishes
 
   Same reason `run_devops_setup` already documents this, for the same
@@ -67,6 +80,14 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
         "For the \"inbound\" step only: an address on the project's own domain to " <>
           "prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only " <>
           "to addresses configured for the domain, so this cannot be guessed."
+
+    field :confirm_apex_repoint, :boolean,
+      doc:
+        "For the \"dns\" step only: the apex already resolves somewhere, and this run " <>
+          "would repoint it at a server it just created — which takes down whatever is " <>
+          "live there today. The step pauses and names the current and new address " <>
+          "instead of doing this silently; set this to true once that repoint is " <>
+          "actually wanted, and call the step again."
   end
 
   @impl true
@@ -84,10 +105,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   end
 
   defp run_opts(params) do
-    case Map.get(params, :inbound_probe_to) do
-      to when is_binary(to) and to != "" -> [inbound_probe_to: to]
-      _ -> []
-    end
+    inbound_opts =
+      case Map.get(params, :inbound_probe_to) do
+        to when is_binary(to) and to != "" -> [inbound_probe_to: to]
+        _ -> []
+      end
+
+    dns_opts =
+      case Map.get(params, :confirm_apex_repoint) do
+        true -> [confirm_apex_repoint: true]
+        _ -> []
+      end
+
+    inbound_opts ++ dns_opts
   end
 
   defp find_step(step) do
