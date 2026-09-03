@@ -327,6 +327,12 @@ defmodule CodeMySpec.Provisioning.Backups do
       {"AWS_SECRET_ACCESS_KEY", Keyword.get(credentials, :secret_access_key)},
       {"AWS_REGION", location},
       {"DATABASE_URL", Keyword.get(opts, :database_url)},
+      # `bin/backup restore`'s own credential for creating and dropping its
+      # scratch database — never the app's own, see `Database`'s moduledoc.
+      # Handed over here for the same reason `DATABASE_URL` is: the step
+      # already knows it, and the script's own sops fallback exists for a
+      # human running this by hand, not this path.
+      {"CMS_RESTORE_ADMIN_URL", Keyword.get(opts, :restore_admin_url)},
       # The script decrypts the environment file itself — `source <(sops -d
       # …)` — and sops takes its identity from this variable and nowhere else.
       # Without it the dump failed with "no identity matched any of the

@@ -65,6 +65,17 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
     test "the file's value wins over a passed database_url, so the key is the fix", ctx do
       if ctx[:skip], do: :ok, else: assert_file_wins(ctx)
     end
+
+    # Found live against broken_oaths: `put_database_url/3` (steps.ex) has
+    # always handed the connection string over directly rather than
+    # leaving it to be decrypted, and `restore_admin_url` was added
+    # without a matching `restore_admin_url:` slot in `script_env/1` — the
+    # encrypted file had the right value, the step just never passed it
+    # through, the same class of gap `assert_file_wins` already guards for
+    # `database_url`.
+    test "restore_admin_url reaches the script as CMS_RESTORE_ADMIN_URL", ctx do
+      if ctx[:skip], do: :ok, else: assert_restore_admin_url_passed(ctx)
+    end
   end
 
   defp assert_decrypts(ctx) do
@@ -107,6 +118,21 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
     assert key == "prod/#{@database_url}"
   end
 
+  defp assert_restore_admin_url_passed(ctx) do
+    assert {:error, message} =
+             Backups.restore_proof(ctx.env, "some-key", age_key: ctx.key, expected_rows: 3)
+
+    assert message =~ "no CMS_RESTORE_ADMIN_URL",
+           "restore_admin_url never reached the script as CMS_RESTORE_ADMIN_URL: #{message}"
+
+    assert {:ok, %{rows: 3}} =
+             Backups.restore_proof(ctx.env, "some-key",
+               age_key: ctx.key,
+               expected_rows: 3,
+               restore_admin_url: "ecto://restore@localhost/postgres"
+             )
+  end
+
   defp credentials, do: [access_key_id: "id", secret_access_key: "secret", region: "nbg1"]
 
   # Stands in for the generated script, decrypting with the same binary and the
@@ -128,6 +154,11 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
     file="envs/prod.enc.env"
     if command -v sops >/dev/null 2>&1; then eval "$(sops -d "$file")"; else source "$file"; fi
     if [ -z "${DATABASE_URL:-}" ]; then echo "no DATABASE_URL"; exit 1; fi
+    if [ "$1" = "restore" ]; then
+      if [ -z "${CMS_RESTORE_ADMIN_URL:-}" ]; then echo "no CMS_RESTORE_ADMIN_URL"; exit 1; fi
+      echo "rows=3"
+      exit 0
+    fi
     echo "key=$2/$DATABASE_URL"
     """)
 

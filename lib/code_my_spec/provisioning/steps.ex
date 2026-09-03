@@ -929,6 +929,7 @@ defmodule CodeMySpec.Provisioning.Steps do
             |> Keyword.put(:credentials, credentials)
             |> put_age_key(scope, environment)
             |> put_database_url(scope, environment)
+            |> put_restore_admin_url(scope, environment)
 
           with :ok <- require_script(scope, "bin/backup"),
                {:ok, environment_opts} <-
@@ -3562,6 +3563,21 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp put_database_url(opts, scope, environment) do
     case Database.credential(scope, environment) do
       {:ok, credential} -> Keyword.put_new(opts, :database_url, Database.url(credential))
+      _ -> opts
+    end
+  end
+
+  # Same reasoning as `put_database_url/3`, for the credential
+  # `bin/backup restore` actually uses to create and drop its scratch
+  # database. Its absence here is exactly what made this one hard to
+  # notice: `load_env`'s own fast path only checks for `DATABASE_URL` (plus
+  # the bucket and AWS keys) before deciding "nothing here to decrypt", so
+  # handing over `DATABASE_URL` without this reads as complete on its own
+  # terms and never falls through to sops — the encrypted file having the
+  # right value made no difference at all to what the script actually saw.
+  defp put_restore_admin_url(opts, scope, environment) do
+    case Database.restore_credential(scope, environment) do
+      {:ok, restore} -> Keyword.put_new(opts, :restore_admin_url, Database.restore_url(restore))
       _ -> opts
     end
   end
