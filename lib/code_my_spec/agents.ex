@@ -43,9 +43,9 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
-  alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
