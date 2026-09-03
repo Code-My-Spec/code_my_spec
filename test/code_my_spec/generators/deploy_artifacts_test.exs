@@ -221,6 +221,20 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       refute body =~ "admin_url=\"$(libpq_url \"${DATABASE_URL%/*}/postgres\")\""
     end
 
+    # Found live against broken_oaths, one restore step further than the
+    # test above ever exercised: `admin_url` (CREATE/DROP DATABASE) was
+    # fixed, but the actual data restore still connected to the fresh
+    # scratch database as the app's own role, which owns nothing there —
+    # "permission denied to create extension" on the dump's first CREATE
+    # EXTENSION statement, since only $target's actual owner (the restore
+    # role that just created it) has database-level CREATE.
+    test "restores the dump itself as the restore role too, not just the admin connection" do
+      body = file("bin/backup")
+
+      assert body =~ "target_url=\"$(libpq_url \"${CMS_RESTORE_ADMIN_URL%/*}/${target}\")\""
+      refute body =~ "target_url=\"$(libpq_url \"${DATABASE_URL%/*}/${target}\")\""
+    end
+
     test "names the missing credential explicitly rather than failing on an empty connection string" do
       assert file("bin/backup") =~ "\"${CMS_RESTORE_ADMIN_URL:?"
     end

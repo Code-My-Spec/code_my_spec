@@ -902,8 +902,15 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       pg psql -v ON_ERROR_STOP=1 -q "$admin_url" -c "DROP DATABASE IF EXISTS \\"$target\\";"
       pg psql -v ON_ERROR_STOP=1 -q "$admin_url" -c "CREATE DATABASE \\"$target\\";"
 
+      # The restore role, not the app's — it is what actually owns $target,
+      # having just created it, so it is the only credential with database-
+      # level CREATE there (needed for CREATE EXTENSION and every statement
+      # the dump runs). Connecting as the app's own role instead — this
+      # line's bug for one fix cycle — hit "permission denied to create
+      # extension" for exactly this reason: DATABASE_URL's role owns
+      # nothing in $target.
       local target_url
-      target_url="$(libpq_url "${DATABASE_URL%/*}/${target}")"
+      target_url="$(libpq_url "${CMS_RESTORE_ADMIN_URL%/*}/${target}")"
       gunzip -c "$TMPFILE" | pg psql -v ON_ERROR_STOP=1 -q "$target_url" >/dev/null
 
       # Row count across every user table. The question this answers is "did the
