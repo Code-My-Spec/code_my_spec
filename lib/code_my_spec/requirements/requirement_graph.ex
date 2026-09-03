@@ -202,97 +202,53 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # page view is exactly what `publish/3` already refuses to do for one `bytea`.
   defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
 
-  # Writes the read model, or says why it could not.
+  # Writes the read model. Atomically, and loudly.
   #
   # This used to `rescue` every exception, log it at warning and answer `:ok`.
   # The reasoning was sound as far as it went — the computation's return value is
   # the agent's next instruction and is correct whether or not the rows were
   # written, so failing the call would turn a projection bug into a stopped
-  # agent. What it actually produced was a projection that could silently stop
-  # being written while every caller was told it had been, which is the state
+  # agent. What it produced was a projection that could silently stop being
+  # written while every caller was told it had been, which is the state
   # `5b538c8b` was diagnosed in: rows missing for a whole checkout, and nothing
   # anywhere saying a write had failed.
   #
-  # So the outcome is returned rather than swallowed or raised. A caller that
-  # wants to carry on can, and one that wants to know can ask — but nothing
-  # answers `:ok` for a write that did not happen.
+  # ## Why there is no error tuple here
   #
-  # `Repo.transaction/1` gives that shape without catching anything: it answers
-  # `{:ok, _}` or `{:error, reason}` on its own. It also makes the write atomic,
-  # which it was not — `upsert_all/2` and `replace_edges/3` were two independent
-  # statements, so a failure between them left nodes without their edges and the
-  # next read served that as the graph.
+  # The first version of this fix wrapped the writes and matched on
+  # `{:ok, _} | {:error, reason}`, on the claim that `Repo.transaction/1`
+  # "answers those on its own". It does not. With a plain function it answers
+  # `{:error, _}` only when `Repo.rollback/1` is called inside, and neither
+  # `upsert_all/2` nor `replace_edges/3` calls it — a `Postgrex.Error` unwinds
+  # the transaction and keeps going. So that branch was unreachable and its
+  # logging never ran: a comment describing behaviour the code did not have,
+  # which is the same species of untruth as the rescue it replaced.
+  #
+  # What is left is deliberate rather than a fallback. Every failure reachable
+  # here is a constraint or schema error — a bug in ours — and the rest of this
+  # module now treats those the same way, having found that catching them is how
+  # a criterion stays green for months while the read model it asserts on is
+  # never written. An expected condition earns a tuple; a bug earns a stack
+  # trace.
+  #
+  # The transaction stays for the reason it was added: `upsert_all/2` and
+  # `replace_edges/3` were two independent statements, so a failure between them
+  # left nodes without their edges and the next read served that as the graph.
   defp persist_projection(:published, scope, ctx, nodes, edges) do
-    Repo.transaction(fn ->
-      ids_by_key = NodeRepository.upsert_all(scope, nodes)
-      NodeRepository.replace_edges(scope, edges, ids_by_key)
-    end)
-    |> case do
-      {:ok, _} ->
-        # Outside the transaction on purpose. Verification is a check *about*
-        # the write, not part of it — running it inside would let a failed check
-        # roll back rows that are correct, which is the opposite of what it is
-        # for.
-        verify_round_trip(scope, ctx, nodes, edges)
-        :ok
+    {:ok, _} =
+      Repo.transaction(fn ->
+        ids_by_key = NodeRepository.upsert_all(scope, nodes)
+        NodeRepository.replace_edges(scope, edges, ids_by_key)
+      end)
 
-      {:error, reason} ->
-        Logger.error(
-          "[Requirements] projection write failed for project " <>
-            "#{inspect(scope.active_project_id)}, working copy " <>
-            "#{inspect(scope.active_working_copy_id)}: #{inspect(reason)} — the graph this " <>
-            "returned is correct and was not written, so the next reader will be served the " <>
-            "previous projection"
-        )
+    # Outside the transaction on purpose. Verification is a check *about* the
+    # write, not part of it — running it inside would let a failed check roll
+    # back rows that are correct, which is the opposite of what it is for.
+    verify_round_trip(scope, ctx, nodes, edges)
 
-        {:error, reason}
-    end
+    :ok
   end
 
-  # Read the rows back and check they say what was just written.
-  #
-  # `served_graph/3` compares the two as well, but only on a cache *hit* — and a
-  # hit needs the inputs to have not moved since the last computation, which
-  # during active development is close to never. Measured: one comparison in
-  # 6h45m of logs, on a projection that disagreed with the payload on every
-  # single node count. The check that was supposed to prove the read model was
-  # running roughly once per working day.
-  #
-  # That is worse than not having it, because the criterion for deleting the
-  # payload was "the disagreement warning stays quiet" — and it stayed quiet by
-  # not running. Absence of evidence reading as evidence of absence.
-  #
-  # Here it runs on every real computation instead, which is where the writes
-  # are and where a write bug is one query away from being visible. The missing
-  # node deletion that served 1,426 phantom requirements would have surfaced on
-  # the first stop hook after it was introduced rather than weeks later.
-  #
-  # Publishes are gated on the fingerprint moving, so this costs one extra
-  # projection load per genuine change — not per read. It goes when the payload
-  # does; at that point the rows are the only copy and there is nothing to
-  # compare them against.
-  #
-  # ## Why this no longer rescues
-  #
-  # It used to catch everything and answer `:ok`, arguing that verification
-  # failing is not the write failing: the rows are committed, the return value
-  # is correct, and an agent should not be stopped because a check could not
-  # run. The first half of that is true and is why this call sits outside the
-  # transaction. The conclusion does not follow.
-  #
-  # This check exists because the previous one was satisfying its criterion by
-  # not running — see the paragraph above, and `GraphCache`'s moduledoc, where
-  # "the round-trip warning stays quiet" is the stated condition for deleting
-  # the payload column. A catch-all rescue reinstates that exact failure mode
-  # one level down: the check goes quiet by failing, the silence is read as
-  # evidence, and the column is deleted on it. A check whose silence is a
-  # deletion criterion must not be able to fall silent.
-  #
-  # Nor is there an exception to narrow to. A transaction committed a moment
-  # ago, so the connection is up; what can still raise is a bug in
-  # `Projection.load/2` or `Difference.describe/4`, which is the class of defect
-  # this is for. Not being able to name the expected failure is the tell that it
-  # was never a known condition.
   defp verify_round_trip(scope, ctx, nodes, edges) do
     {read_nodes, read_edges} = Projection.load(scope, ctx)
 
