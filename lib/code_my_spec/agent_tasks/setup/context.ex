@@ -52,6 +52,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
     files =
       FileRecord
       |> where([f], f.project_id == ^project_id and f.role in ^@setup_roles)
+      |> scope_to_working_copy(scope)
       |> Repo.all()
 
     %__MODULE__{
@@ -61,6 +62,31 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
       project_id: project_id
     }
   end
+
+  # One checkout's files, not every checkout's.
+  #
+  # This used to load by project alone and key the result by path with
+  # `Map.new/2`, which keeps the last of any duplicate — and every checkout of a
+  # project contributes its own `mix.exs`. Two of this project's working copies
+  # are *different applications* registered against it (QA fixtures), so
+  # `app_name/1` answered `qa_sandbox` for `code_my_spec` and
+  # `spex_boundary_ready` went looking for `qa_sandbox_spex_fixtures.ex` on a
+  # project with 1137 spex already passing. Which row won was decided by row
+  # order, so it could change on any sync. Issue `282428a3`.
+  #
+  # Every caller is a setup checker asking whether *this checkout* is configured
+  # — its mix.exs, its credo checks, its test support — so the working copy is
+  # the right grain, and it is the grain `Files.list_files/1` already uses for
+  # exactly this reason: "one present in one checkout and absent in another
+  # reads as present".
+  #
+  # No working copy in scope leaves the query as it was. A scope with no
+  # checkout is a mix task or the web UI, and narrowing to a copy it does not
+  # have would answer "nothing is set up" rather than "I cannot tell".
+  defp scope_to_working_copy(query, %Scope{active_working_copy_id: nil}), do: query
+
+  defp scope_to_working_copy(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [f], f.working_copy_id == ^working_copy_id)
 
   @doc """
   Look up a File record by path. Returns nil if not synced.
