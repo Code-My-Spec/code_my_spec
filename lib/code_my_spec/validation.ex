@@ -1351,7 +1351,7 @@ defmodule CodeMySpec.Validation do
         # no counterpart here, because this agent is a live process the answer
         # is delivered to. QA watched one obey the directive and spend its whole
         # turn re-curling the endpoint. Issue `778ab035`.
-        |> Keyword.put(:orchestrator_waits?, internal_agent?(opts))
+        |> Keyword.put(:internal_agent?, internal_agent?(opts))
       )
 
     {:error, reason, blocking_key(blocking)}

@@ -181,6 +181,15 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     overtaken = Keyword.get(opts, :overtaken, %{})
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
+
+    # One fact, read once, answering two questions.
+    #
+    # An agent running inside our own BEAM has no session and never will, and
+    # that changes both halves of the footer: it is not the one waiting on the
+    # rerun, and it is not failing to attribute its edits — it owns the whole
+    # checkout by design. Threaded as a single value because the two readings
+    # cannot legitimately disagree.
+    internal? = Keyword.get(opts, :internal_agent?, false)
     # One value rather than three positional arguments threaded four levels
     # down: they are only ever read together, and every question the footer asks
     # is about the same thing — what analysis is doing right now.
@@ -201,7 +210,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       # Whether somebody else is already waiting on this run. Defaults false,
       # because every caller until story 988 was an agent that had to wait for
       # itself.
-      orchestrator_waits?: Keyword.get(opts, :orchestrator_waits?, false)
+      orchestrator_waits?: internal?
     }
 
     header = "Fix these problems before stopping:\n\n"
@@ -224,7 +233,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         blocking_section <>
         advisory_section <>
         stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) <>
-        attribution_note(session_paths)
+        attribution_note(session_paths, internal?)
 
     enforce_total_cap(raw, blocking, advisory)
   end
@@ -916,7 +925,26 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # under `.code_my_spec/qa/`, which git ignores, so nothing it wrote is a file
   # here (a9e9caca). Being told it had no recorded edits, having just written
   # its brief, reads as the gate being broken.
-  defp attribution_note(%MapSet{} = session_paths) do
+  # An agent that owns its checkout is not failing to attribute anything.
+  #
+  # The note below this one explains why no finding could be matched to a
+  # session, offers "stopping again once the scan has run clears this by
+  # itself", and invites a framework issue. Every word of that is wrong here:
+  # there is no session, there never was one, and nothing about ending another
+  # turn changes it. Left as it was, the whole paragraph rendered on every
+  # single internal decision — describing the design as an anomaly and handing
+  # back the stop-again instruction that criterion 3056 exists to remove.
+  #
+  # Above the other clauses because it is the narrower match.
+  defp attribution_note(_session_paths, true) do
+    "\n\nNothing here was demoted. An agent running under Alloy owns the " <>
+      "checkout it works in, so every finding on this tree is yours to answer " <>
+      "for — including any that were already there when you started. If one " <>
+      "names a file you did not expect to touch, `git log -1 -- <path>` says " <>
+      "where it came from."
+  end
+
+  defp attribution_note(%MapSet{} = session_paths, _internal?) do
     if MapSet.size(session_paths) == 0 do
       "\n\nThis session changed no file this project tracks, so every finding was " <>
         "demoted to advisory — an agent that made no edits is blocked by nothing. " <>
@@ -949,7 +977,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # So it describes the state and orders the causes by how often they are it.
   # The invitation to report stays, narrowed to the case that is actually a
   # defect: paths that could never name a file here.
-  defp attribution_note(_session_paths) do
+  defp attribution_note(_session_paths, _internal?) do
     "\n\nFiles in this project changed while this task ran, and nothing this " <>
       "session recorded names a file the project has a record of — so no finding " <>
       "could be attributed, none were demoted, and all of them block, including " <>

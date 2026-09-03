@@ -66,7 +66,7 @@ defmodule CodeMySpec.Problems.ProblemRendererWaitRemedyTest do
 
   test "an agent the orchestrator is already waiting for is not told to wait" do
     rendered =
-      ProblemRenderer.render_stop_response([finding()], [], opts(orchestrator_waits?: true))
+      ProblemRenderer.render_stop_response([finding()], [], opts(internal_agent?: true))
 
     refute rendered =~ "analysis/wait", """
     The internal agent was handed the hook's wait directive. It is a live
@@ -91,8 +91,27 @@ defmodule CodeMySpec.Problems.ProblemRendererWaitRemedyTest do
            "the agent was left with no account of what happens next:\n#{rendered}"
   end
 
+  test "the internal agent is not told its edits went unattributed" do
+    rendered =
+      ProblemRenderer.render_stop_response([finding()], [], opts(internal_agent?: true))
+
+    refute rendered =~ "nothing this session recorded", """
+    The internal agent was handed the session-attribution explainer. It has no
+    session and never will, so that paragraph describes the design as an
+    anomaly — and it rendered on every single internal decision. Got:
+
+    #{rendered}
+    """
+
+    refute rendered =~ "scope `framework`",
+           "the agent was invited to file a framework issue about a state that is not a defect"
+
+    assert rendered =~ "owns the checkout it works in",
+           "the agent was left with no account of why everything blocks:\n#{rendered}"
+  end
+
   test "both renderings still name the finding and that a rerun is in flight" do
-    for extra <- [[], [orchestrator_waits?: true]] do
+    for extra <- [[], [internal_agent?: true]] do
       rendered = ProblemRenderer.render_stop_response([finding()], [], opts(extra))
 
       assert rendered =~ "Modules should have a @moduledoc tag.",
