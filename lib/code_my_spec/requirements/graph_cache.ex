@@ -68,8 +68,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
   alias CodeMySpec.Requirements.CachedGraph
   alias CodeMySpec.Users.Scope
 
-  require Logger
-
   @doc """
   Return the published graph when it was computed from `fingerprint` — i.e.
   when the snapshot still matches current inputs.
@@ -123,13 +121,23 @@ defmodule CodeMySpec.Requirements.GraphCache do
   def fetch_any(_scope), do: :miss
 
   @doc """
-  Publish a freshly computed graph. One row per project, replaced in place.
+  Publish a freshly computed graph. One row per project and working copy,
+  replaced in place.
 
-  Failures are logged and swallowed. This is a cache: a project whose graph
-  cannot be written still works, one recomputation at a time, and taking down
-  an agent's turn because a cache write lost a race would be a worse trade.
+  Answers `:published` when the row was written and `:unchanged` when the
+  fingerprint had not moved. A write that fails raises.
+
+  This used to log the failure and answer `:ok`, on the reasoning that a cache
+  a project can live without should not take down an agent's turn over a lost
+  race. Two things were wrong with it. There is no race to lose — the write is
+  a single `insert_all` with `on_conflict` against the index that would collide
+  — so the only failures left are constraint and schema errors, which are bugs.
+  And the caller does not treat this as a cache it can live without:
+  `RequirementGraph.persist_projection/5` keys the node and edge writes off this
+  return value, so answering `:published` for a row that was never written told
+  it a fingerprint check had been recorded that had not been.
   """
-  @spec publish(Scope.t(), String.t(), {list(), list()}) :: :ok
+  @spec publish(Scope.t(), String.t(), {list(), list()}) :: :published | :unchanged
   def publish(%Scope{active_project_id: project_id} = scope, fingerprint, {nodes, edges})
       when is_binary(project_id) and is_binary(fingerprint) do
     if current?(scope, fingerprint) do
@@ -218,10 +226,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
     )
 
     :ok
-  rescue
-    error ->
-      Logger.warning("[GraphCache] write failed: #{inspect(error)}")
-      :ok
   end
 
   # term_to_binary rather than JSON: nodes are Requirement structs and edge

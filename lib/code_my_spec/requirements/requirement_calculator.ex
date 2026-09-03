@@ -264,12 +264,23 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # does it 4×N times in one graph computation. Converting them one at a time
   # needs both shapes to work, and a checker that has not been converted is
   # exactly as correct as before.
+  #
+  # A raising checker is not caught. It used to become
+  # `{false, "delegate check failed: …"}`, which reads as protection and is not:
+  # every delegate module is ours — nine of them, all in this application — so a
+  # raise is a bug in our code rather than a condition to degrade around, and
+  # `false` is the verdict most nodes carry most of the time. A broken checker
+  # was therefore indistinguishable from an unsatisfied requirement in every
+  # view that counts nodes, and nothing logged. The reason string only surfaced
+  # if someone opened that one node's details.
+  #
+  # A checker with a condition it genuinely cannot evaluate says so in the
+  # result — `{false, %{reason: …}}` or `{:ok, :invalid, reason}` — which is the
+  # difference between an answer and a crash, and is what the shape is for.
   defp run_delegate(module, function, scope, entity, ctx) do
     module
     |> apply(function, delegate_args(module, function, scope, entity, ctx))
     |> normalize_delegate_result()
-  rescue
-    e -> {false, %{reason: "delegate check failed: #{Exception.message(e)}"}}
   end
 
   defp delegate_args(module, function, scope, entity, ctx) do

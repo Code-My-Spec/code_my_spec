@@ -165,6 +165,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # A genuine difference is served *from the rows* and logged loudly. Serving
   # the payload instead would hide the defect behind the thing being retired,
   # and leave the read model permanently unproven.
+  #
+  # Which is what the `rescue` that used to sit at the bottom of this function
+  # did, for every failure rather than a named one. It cannot have been
+  # protecting against the database: reaching here means `Preloader.load/1`,
+  # `Configurations.get_or_create/1` and `GraphCache.fetch/2` have all already
+  # returned in this same call, so a connection failure crashes upstream and
+  # never arrives. What is left is a bug in `Projection.load/2` or
+  # `Difference.describe/4` — exactly the defect the paragraph above says must
+  # not be hidden behind the payload.
   defp served_graph(scope, ctx, {nodes, edges} = cached) do
     case Projection.load(scope, ctx) do
       {[], _} when nodes != [] ->
@@ -186,13 +195,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         projected
     end
-  rescue
-    error ->
-      Logger.error(
-        "[Requirements] projection read failed, serving the payload: #{Exception.message(error)}"
-      )
-
-      cached
   end
 
   # Written behind the same fingerprint check that gates the payload. Readers
@@ -269,6 +271,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # projection load per genuine change — not per read. It goes when the payload
   # does; at that point the rows are the only copy and there is nothing to
   # compare them against.
+  #
+  # ## Why this no longer rescues
+  #
+  # It used to catch everything and answer `:ok`, arguing that verification
+  # failing is not the write failing: the rows are committed, the return value
+  # is correct, and an agent should not be stopped because a check could not
+  # run. The first half of that is true and is why this call sits outside the
+  # transaction. The conclusion does not follow.
+  #
+  # This check exists because the previous one was satisfying its criterion by
+  # not running — see the paragraph above, and `GraphCache`'s moduledoc, where
+  # "the round-trip warning stays quiet" is the stated condition for deleting
+  # the payload column. A catch-all rescue reinstates that exact failure mode
+  # one level down: the check goes quiet by failing, the silence is read as
+  # evidence, and the column is deleted on it. A check whose silence is a
+  # deletion criterion must not be able to fall silent.
+  #
+  # Nor is there an exception to narrow to. A transaction committed a moment
+  # ago, so the connection is up; what can still raise is a bug in
+  # `Projection.load/2` or `Difference.describe/4`, which is the class of defect
+  # this is for. Not being able to name the expected failure is the tell that it
+  # was never a known condition.
   defp verify_round_trip(scope, ctx, nodes, edges) do
     {read_nodes, read_edges} = Projection.load(scope, ctx)
 
@@ -282,16 +306,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             "written reads back different. " <> description
         )
     end
-  rescue
-    # Verification failing is not the write failing. The rows are written, the
-    # computation's return value is correct, and an agent must not be stopped
-    # because a check about a check could not run.
-    error ->
-      Logger.warning(
-        "[Requirements] projection round-trip check failed: #{Exception.message(error)}"
-      )
-
-      :ok
   end
 
   @doc """
