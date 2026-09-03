@@ -125,7 +125,12 @@ defmodule CodeMySpec.Agents.StopDecision do
   @stuck_threshold 5
 
   defp decide_with_key(%Scope{} = scope, %Agent{} = agent) do
-    case Validation.validate_stop(scope, nil, agent_id: agent.id) do
+    # The role travels with the id because the decision depends on it: whether a
+    # `block_changed` source is enforced for an agent with no session turns on
+    # whether that agent writes code. Passed from the struct rather than looked
+    # up again inside `Validation`, which has the id and would have to query for
+    # what the caller is already holding.
+    case Validation.validate_stop(scope, nil, agent_id: agent.id, agent_role: agent.role) do
       {:error, reason, key} -> {reason <> Validation.Menu.render(scope), key}
       {:ok, _result} -> {nil, nil}
     end

@@ -117,6 +117,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:error, internal, _key} =
              Validation.validate_stop(scope, nil,
                agent_id: "an-agent",
+               agent_role: :coding,
                compile_output_file: compile_jsonl
              ),
            """
@@ -148,5 +149,34 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
 
     assert internal =~ "owns the checkout it works in",
            "the agent was told everything blocks and not why:\n#{internal}"
+
+    # Ownership follows the work, not merely the absence of a session.
+    #
+    # A product agent has no session either, so without a role test it inherits
+    # the same widening — and a real one did: 70ms after its first turn ended it
+    # was handed 160 pre-existing credo findings in a codebase it was there to
+    # write stories about, and spent every turn after that running `mix credo`
+    # on somebody else's refactor.
+    for role <- [:product, :qa] do
+      assert {:ok, _} =
+               Validation.validate_stop(scope, nil,
+                 agent_id: "an-agent",
+                 agent_role: role,
+                 compile_output_file: compile_jsonl
+               ),
+             """
+             A #{role} agent was blocked on a `block_changed` source. It does not
+             write the code these findings are about, so widening for it hands it
+             a backlog it did not make and cannot reasonably be asked to clear.
+             """
+    end
+
+    assert {:error, _reason, _key} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "an-agent",
+               agent_role: :main,
+               compile_output_file: compile_jsonl
+             ),
+           "a main agent edits code like any coding agent and must keep ownership"
   end
 end

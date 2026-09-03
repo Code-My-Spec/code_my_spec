@@ -874,7 +874,7 @@ defmodule CodeMySpec.Validation do
       # An `agent_id` with no `session_id` is what makes this path
       # identifiable: `Hooks.Stop` and `Hooks.SubagentStop` both always send a
       # session, and `StopDecision` — which has none to send — never does.
-      owns_tree?: internal_agent?(opts),
+      owns_tree?: owns_tree?(opts),
       changed_file_paths: Enum.map(changed_files, & &1.path),
       changed_component_ids:
         changed_files
@@ -1176,6 +1176,34 @@ defmodule CodeMySpec.Validation do
   # Only `StopDecision` names an agent without naming a session.
   defp internal_agent?(opts) do
     is_binary(Keyword.get(opts, :agent_id)) and is_nil(Keyword.get(opts, :session_id))
+  end
+
+  # Whose findings an internal agent is answerable for.
+  #
+  # Dropping `block_changed`'s narrowing on this path is right for an agent that
+  # writes code and wrong for one that does not. John's reasoning was specific:
+  # "the only dude really touching the code and subject to credo is the coding
+  # agent, who ultimately owns all those changes." A product agent is not that,
+  # and neither is a QA one.
+  #
+  # Watched happen rather than predicted. A product agent started on the war
+  # epic replied to its first message in a second, and 70ms after that turn
+  # ended the stop decision handed it 160 pre-existing credo findings in a
+  # codebase it was there to write stories about. It spent every turn after that
+  # running `mix credo suggest` on somebody else's refactor and re-earning the
+  # same block. The commit that widened this said the cost out loud — "an agent
+  # inherits pre-existing findings it did not make, on its first turn" — and
+  # this is that cost, landing on the agents it buys nothing for.
+  #
+  # `:main` keeps ownership: its job is the whole project and it edits code like
+  # any coding agent. The narrowing still applies to product and QA, which for
+  # an agent with no session means their `block_changed` sources go back to
+  # advisory — they are still blocked by a failing compile, suite or spex, none
+  # of which are scoped by changed files.
+  @code_owning_roles [:coding, :main]
+
+  defp owns_tree?(opts) do
+    internal_agent?(opts) and Keyword.get(opts, :agent_role) in @code_owning_roles
   end
 
   defp active_blocking_sources(config) do
