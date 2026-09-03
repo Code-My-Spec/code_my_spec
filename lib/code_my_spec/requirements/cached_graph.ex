@@ -20,6 +20,12 @@ defmodule CodeMySpec.Requirements.CachedGraph do
 
     belongs_to :project, Project, type: :binary_id
 
+    # Whose view this graph is. A cached graph is not a property of a project:
+    # `Preloader.load/1` scopes its file query to one checkout, so the payload
+    # describes what *that* checkout could see. Nil is the blended UI vantage,
+    # which is a real one and gets its own row.
+    field :working_copy_id, :binary_id
+
     timestamps(type: :utc_datetime)
   end
 end

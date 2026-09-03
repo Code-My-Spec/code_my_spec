@@ -86,10 +86,11 @@ defmodule CodeMySpec.Requirements.GraphCache do
   when it was taken, even when it is current.
   """
   @spec fetch(Scope.t(), String.t()) :: {:ok, {list(), list()}, DateTime.t()} | :miss
-  def fetch(%Scope{active_project_id: project_id}, fingerprint)
+  def fetch(%Scope{active_project_id: project_id} = scope, fingerprint)
       when is_binary(project_id) and is_binary(fingerprint) do
     CachedGraph
     |> where([g], g.project_id == ^project_id and g.fingerprint == ^fingerprint)
+    |> for_copy(scope)
     |> select([g], {g.payload, g.computed_at})
     |> Repo.one()
     |> case do
@@ -138,7 +139,7 @@ defmodule CodeMySpec.Requirements.GraphCache do
       # One indexed SELECT is the cheaper half of that trade.
       :unchanged
     else
-      do_publish(project_id, fingerprint, {nodes, edges})
+      do_publish(project_id, scope.active_working_copy_id, fingerprint, {nodes, edges})
       :published
     end
   end
@@ -149,13 +150,33 @@ defmodule CodeMySpec.Requirements.GraphCache do
   # could disagree.
   def publish(_scope, _fingerprint, _graph), do: :unchanged
 
+  # One checkout's cache row, not the project's.
+  #
+  # The graph this caches is computed from one checkout's files —
+  # `Preloader.load/1` scopes them and warns when it cannot — and
+  # `NodeRepository.upsert_all/2` already writes and deletes per copy for
+  # exactly that reason. The cache kept the project grain, so a publish by one
+  # checkout made another checkout's computation answer `:unchanged`, and
+  # `persist_projection/5` wrote nothing for it: the second checkout ended up
+  # with no requirement rows at all and read the first one's verdict about files
+  # it does not have. Issue `5b538c8b`.
+  #
+  # `is_nil` rather than `== ^nil`, so the blended UI vantage matches its own row
+  # instead of matching nothing.
+  defp for_copy(query, %Scope{active_working_copy_id: nil}),
+    do: where(query, [g], is_nil(g.working_copy_id))
+
+  defp for_copy(query, %Scope{active_working_copy_id: working_copy_id}),
+    do: where(query, [g], g.working_copy_id == ^working_copy_id)
+
   defp current?(scope, fingerprint) do
     match?({:ok, _}, fetch_fingerprint(scope, fingerprint))
   end
 
-  defp fetch_fingerprint(%Scope{active_project_id: project_id}, fingerprint) do
+  defp fetch_fingerprint(%Scope{active_project_id: project_id} = scope, fingerprint) do
     CachedGraph
     |> where([g], g.project_id == ^project_id and g.fingerprint == ^fingerprint)
+    |> for_copy(scope)
     |> select([g], g.id)
     |> Repo.one()
     |> case do
@@ -164,12 +185,13 @@ defmodule CodeMySpec.Requirements.GraphCache do
     end
   end
 
-  defp do_publish(project_id, fingerprint, {nodes, edges}) do
+  defp do_publish(project_id, working_copy_id, fingerprint, {nodes, edges}) do
     now = DateTime.utc_now()
 
     attrs = %{
       id: Ecto.UUID.generate(),
       project_id: project_id,
+      working_copy_id: working_copy_id,
       fingerprint: fingerprint,
       payload: encode({nodes, edges}),
       node_count: length(nodes),
@@ -192,7 +214,7 @@ defmodule CodeMySpec.Requirements.GraphCache do
            :computed_at,
            :updated_at
          ]},
-      conflict_target: :project_id
+      conflict_target: [:project_id, :working_copy_id]
     )
 
     :ok
