@@ -187,10 +187,12 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
     Working copy id: #{id}
 
-    That id names no checkout this project owns — either a typo or another
-    project's copy — and neither is a reason to start somewhere unnamed. Check
-    it against list_working_copies, or name the checkout by its root instead;
-    a root that has never joined this project is still a valid destination.
+    That id names no checkout this project owns. It is usually not a typo —
+    most often it is a real checkout that belongs to a different project on
+    the same box, copied from the wrong list_working_copies output. Check it
+    against this project's own list_working_copies, or name the checkout by
+    its root instead; a root that has never joined this project is still a
+    valid destination.
     """)
   end
 
