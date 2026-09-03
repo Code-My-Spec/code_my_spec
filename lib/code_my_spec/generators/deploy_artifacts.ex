@@ -854,7 +854,17 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       key="dumps/${env_name}-${stamp}.sql.gz"
       TMPFILE=$(mktemp)
 
-      pg pg_dump --no-owner --no-acl "$(libpq_url "$DATABASE_URL")" | gzip -9 > "$TMPFILE"
+      # `--no-comments`: a restored comment on a shared, admin-installed
+      # extension (COMMENT ON EXTENSION vector IS '...', which pg_dump
+      # emits by default for anything that has one) needs to be that
+      # extension's *owner* to replay — the restore role legitimately
+      # never is, since vector is installed once, box-wide, into
+      # template1, by the admin, and no single tenant's role should own a
+      # resource every tenant shares. Comments are documentation, never
+      # functionally significant to the app, so dropping them from the
+      # dump entirely costs nothing a restore (verification or, someday,
+      # a real one) needs to prove.
+      pg pg_dump --no-owner --no-acl --no-comments "$(libpq_url "$DATABASE_URL")" | gzip -9 > "$TMPFILE"
 
       # A zero-byte dump uploads perfectly happily and restores into nothing.
       if [ ! -s "$TMPFILE" ]; then

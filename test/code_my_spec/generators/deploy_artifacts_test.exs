@@ -238,6 +238,19 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "names the missing credential explicitly rather than failing on an empty connection string" do
       assert file("bin/backup") =~ "\"${CMS_RESTORE_ADMIN_URL:?"
     end
+
+    # Found live against broken_oaths, past every prior fix in this
+    # describe block: the restore role can now create the scratch
+    # database, own it, and CREATE EXTENSION vector into it (already
+    # present via template1) — but the dump itself still failed, on
+    # "must be owner of extension vector". pg_dump emits a COMMENT ON
+    # EXTENSION statement for anything that has one, and replaying it
+    # needs the extension's actual owner — the box's admin, since vector
+    # is installed once, shared, into template1, and no single tenant's
+    # restore role should own a resource every tenant depends on.
+    test "dumps without comments, so a shared extension's admin-owned comment never blocks a restore" do
+      assert file("bin/backup") =~ "pg_dump --no-owner --no-acl --no-comments"
+    end
   end
 
   # Real shelling out, same reasoning `Deploy.run/3`'s own tests give for
