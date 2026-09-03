@@ -776,6 +776,52 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # A tool call is a tool call, not prose.
+  #
+  # `Conversations.add_tool_call/5` is what `Chat.Runner` and the sprite
+  # recorder already write, and `chat_components` renders that `tool_calls`
+  # array as call blocks. Internal agents went through `add_agent_message/4`
+  # instead, so their calls arrived as ordinary chat messages carrying the tool
+  # name as prose and nothing else — no arguments, no pairing, and the
+  # `tool_calls` column unused. Issue `2d5b2d4d`.
+  defp write_turn_event(conversation, agent, %{"kind" => "tool_start", "tool" => tool})
+       when is_map(tool) do
+    Conversations.add_tool_call(
+      conversation,
+      tool["id"],
+      tool["name"],
+      tool["input"] || %{},
+      to_string(agent.role || :main)
+    )
+
+    :ok
+  end
+
+  # The end of a call is worth its own row only when it failed.
+  #
+  # `tool_end` carries the error and no result text, so a success has nothing to
+  # record that the call itself did not already say — and writing one anyway is
+  # what put every call in the transcript twice.
+  defp write_turn_event(conversation, agent, %{"kind" => "tool_end", "tool" => tool})
+       when is_map(tool) do
+    case tool["error"] do
+      error when is_binary(error) and error != "" ->
+        Conversations.add_tool_result(
+          conversation,
+          tool["id"],
+          tool["name"],
+          error,
+          failed?: true,
+          agent_role: to_string(agent.role || :main)
+        )
+
+      _ ->
+        :ok
+    end
+
+    :ok
+  end
+
   defp write_turn_event(conversation, agent, event) do
     Conversations.add_agent_message(
       conversation,

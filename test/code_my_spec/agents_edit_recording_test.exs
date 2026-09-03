@@ -93,6 +93,88 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
            "an agent editing one file repeatedly must not grow its ledger without bound"
   end
 
+  describe "the transcript" do
+    alias CodeMySpec.Conversations
+
+    defp messages_for(scope, agent) do
+      {:ok, conversation} =
+        Conversations.find_or_create_agent_conversation(
+          scope.active_account_id,
+          scope.active_project_id,
+          agent.id
+        )
+
+      Conversations.list_messages(conversation)
+    end
+
+    test "a call is recorded as a tool call, with its arguments" do
+      scope = full_scope_fixture()
+      agent = running_agent(scope)
+
+      event = %{
+        "kind" => "tool_start",
+        "text" => "write lib/example.ex",
+        "tool" => %{
+          "id" => "call_1",
+          "name" => "write",
+          "path" => "lib/example.ex",
+          "input" => %{"file_path" => "lib/example.ex", "content" => "defmodule X do\nend\n"}
+        }
+      }
+
+      :ok = Agents.record_turn_event(scope, agent.id, event)
+
+      assert [message] = messages_for(scope, agent)
+
+      assert [%{"id" => "call_1", "name" => "write", "arguments" => args}] = message.tool_calls,
+             """
+             The call was written as prose rather than into the tool_calls
+             column, so the conversation view renders it as a chat message —
+             which is what it did for every internal agent. Got: #{inspect(message)}
+             """
+
+      assert args["file_path"] == "lib/example.ex",
+             "the arguments were dropped, which is most of what the call was"
+    end
+
+    test "a successful call is one row, not two" do
+      scope = full_scope_fixture()
+      agent = running_agent(scope)
+
+      tool = %{"id" => "call_1", "name" => "read", "path" => "mix.exs", "input" => %{}}
+
+      :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_start", "tool" => tool})
+      :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_end", "tool" => tool})
+
+      assert length(messages_for(scope, agent)) == 1, """
+      Both ends of one call were recorded, which is why every call appeared
+      twice in the transcript. `tool_end` carries no result text, so a success
+      has nothing to say the call did not.
+      """
+    end
+
+    test "a failed call records why, paired to the call" do
+      scope = full_scope_fixture()
+      agent = running_agent(scope)
+
+      tool = %{"id" => "call_9", "name" => "write", "path" => "lib/x.ex", "input" => %{}}
+
+      :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_start", "tool" => tool})
+
+      :ok =
+        Agents.record_turn_event(scope, agent.id, %{
+          "kind" => "tool_end",
+          "tool" => Map.put(tool, "error", "permission denied")
+        })
+
+      messages = messages_for(scope, agent)
+
+      assert result = Enum.find(messages, &(&1.role == :tool))
+      assert result.tool_call_id == "call_9", "the failure was not paired to its call"
+      assert result.tool_failed == true
+    end
+  end
+
   test "one agent's write is not recorded against another" do
     scope = full_scope_fixture()
     editor = running_agent(scope)

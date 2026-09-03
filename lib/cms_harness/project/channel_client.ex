@@ -1390,7 +1390,9 @@ defmodule CmsHarness.Project.ChannelClient do
     %{
       "id" => Map.get(payload, :id),
       "name" => name,
-      "path" => touched_path(Map.get(payload, :input))
+      "path" => touched_path(Map.get(payload, :input)),
+      "input" => bounded_input(Map.get(payload, :input)),
+      "error" => error_text(Map.get(payload, :error))
     }
   end
 
@@ -1412,6 +1414,40 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   defp touched_path(_input), do: nil
+
+  # The arguments, as `Conversations.add_tool_call/5` already stores them — the
+  # same `{id, name, arguments}` shape `Chat.Runner` and the sprite recorder
+  # write, so the conversation view renders an internal agent's calls the way it
+  # already renders everybody else's rather than as chat lines.
+  #
+  # Bounded per value, which the external path does not need to be: its
+  # arguments come back from the provider and are bounded by the model's own
+  # context. These come from a local tool, and a `write` call's `content` is the
+  # whole file — the difference between recording what an agent did and
+  # recording a second copy of the repository in the message table.
+  @max_argument_bytes 2_000
+
+  defp bounded_input(input) when is_map(input) do
+    Map.new(input, fn {key, value} -> {key, bound(value)} end)
+  end
+
+  defp bounded_input(_input), do: %{}
+
+  defp bound(value) when is_binary(value) and byte_size(value) > @max_argument_bytes do
+    kept = binary_part(value, 0, @max_argument_bytes)
+    dropped = byte_size(value) - @max_argument_bytes
+    kept <> "… (#{dropped} more bytes)"
+  end
+
+  defp bound(value), do: value
+
+  # Why a call failed, when it did. `tool_end` carries the error and no result
+  # text — the result itself goes back to the model in the message blocks, not
+  # through this channel — so a failure is the one outcome worth recording, and
+  # inventing a body for a success would be writing down something nobody said.
+  defp error_text(nil), do: nil
+  defp error_text(error) when is_binary(error), do: bound(error)
+  defp error_text(error), do: error |> inspect() |> bound()
 
   defp turn_event_text(envelope) do
     case envelope do
