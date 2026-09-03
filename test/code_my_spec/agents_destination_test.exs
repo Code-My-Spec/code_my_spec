@@ -71,6 +71,15 @@ defmodule CodeMySpec.AgentsDestinationTest do
     })
   end
 
+  defp start_on_id(scope, working_copy_id) do
+    Agents.start_agent(scope, %{
+      provider: "anthropic",
+      role: "coding",
+      engine: :pi,
+      working_copy_id: working_copy_id
+    })
+  end
+
   test "naming another checkout puts the agent there", %{scope: scope, other: other} do
     assert {:ok, agent} = start_on(scope, other.root)
 
@@ -103,6 +112,40 @@ defmodule CodeMySpec.AgentsDestinationTest do
            "the guard stopped firing. One agent on the main copy is the rule this " <>
              "fix must not have loosened — a second conversation there is " <>
              "indistinguishable from the project's own."
+
+    assert root == own.root
+  end
+
+  test "naming another checkout by id puts the agent there", %{scope: scope, other: other} do
+    assert {:ok, agent} = start_on_id(scope, other.id)
+
+    assert agent.working_copy_id == other.id,
+           "the agent was asked for by id and recorded against the caller's own copy " <>
+             "instead — root was defaulted from the caller's cwd independently of the " <>
+             "id that was actually given."
+  end
+
+  test "the main copy being busy does not block a start named by id", %{
+    scope: scope,
+    own: own,
+    other: other
+  } do
+    assert {:ok, _} = start_on(scope, own.root)
+
+    assert {:ok, agent} = start_on_id(scope, other.id),
+           "an id naming a different checkout was refused as though it named the " <>
+             "main copy. Root was defaulted to the caller's own cwd (main, since the " <>
+             "caller runs there) instead of being derived from the id, so the guard's " <>
+             "root branch matched main by accident."
+
+    assert agent.working_copy_id == other.id
+  end
+
+  test "the main copy still holds one agent when named by id", %{scope: scope, own: own} do
+    assert {:ok, _} = start_on(scope, own.root)
+
+    assert {:error, {:main_copy_occupied, root}} = start_on_id(scope, own.id),
+           "naming the main copy by its own id must still be caught by the guard"
 
     assert root == own.root
   end

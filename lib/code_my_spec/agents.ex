@@ -160,11 +160,40 @@ defmodule CodeMySpec.Agents do
   # it by making the same call twice, once with the copy named and once
   # without — refused, then allowed.
   defp put_destination(%Scope{} = scope, attrs) do
-    root = Map.get(attrs, :working_copy) || scope.cwd
+    {root, working_copy_id} = resolve_destination(scope, attrs)
 
     attrs
     |> Map.put(:working_copy, root)
-    |> Map.put(:working_copy_id, Map.get(attrs, :working_copy_id) || id_for(scope, root))
+    |> Map.put(:working_copy_id, working_copy_id)
+  end
+
+  # An id names a specific checkout unambiguously, so root has to be derived
+  # from it, not defaulted independently from the caller's own scope. The
+  # previous version always computed `root` as `attrs[:working_copy] ||
+  # scope.cwd` before ever looking at an id — so a caller who passed only an
+  # id (the identifier `list_working_copies` puts first) got that id kept
+  # correctly, but `root` silently became the CALLER'S OWN checkout. When the
+  # caller's own checkout is the main copy, `names?/2`'s root branch then
+  # matched main by accident, and `start_agent` refused a start on some other
+  # copy entirely while blaming the main checkout for it.
+  defp resolve_destination(scope, %{working_copy_id: id} = attrs)
+       when is_binary(id) and id != "" do
+    case owned_copy(scope, id) do
+      %{root: root} -> {root, id}
+      nil -> {Map.get(attrs, :working_copy) || scope.cwd, id}
+    end
+  end
+
+  defp resolve_destination(scope, attrs) do
+    root = Map.get(attrs, :working_copy) || scope.cwd
+    {root, id_for(scope, root)}
+  end
+
+  defp owned_copy(%Scope{active_project_id: project_id}, id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{project_id: ^project_id} = copy} -> copy
+      _ -> nil
+    end
   end
 
   # The id has to come from the root when a root was named, not from the caller.

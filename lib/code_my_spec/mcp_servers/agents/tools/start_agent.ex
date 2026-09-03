@@ -32,6 +32,10 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
 
     field :working_copy, :string,
       doc: "Root of the working copy to run in. Defaults to the caller's own."
+
+    field :working_copy_id, :string,
+      doc:
+        "Id of the working copy to run in, from list_working_copies. Takes priority over working_copy when both are given."
   end
 
   @impl true
@@ -49,7 +53,8 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
       role: params["role"] || params[:role] || "main",
       provider: provider(params),
       engine: engine(params),
-      working_copy: params["working_copy"] || params[:working_copy]
+      working_copy: params["working_copy"] || params[:working_copy],
+      working_copy_id: params["working_copy_id"] || params[:working_copy_id]
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
