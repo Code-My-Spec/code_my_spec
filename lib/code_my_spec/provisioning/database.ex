@@ -241,6 +241,7 @@ defmodule CodeMySpec.Provisioning.Database do
          {:ok, restore} <- serve_restore_credential(scope, environment, opts),
          :ok <- ensure_container(run, admin, opts),
          :ok <- await_ready(run, Keyword.get(opts, :database_attempts, 30)),
+         :ok <- ensure_template_vector_extension(run, admin),
          :ok <- ensure_tenant(run, admin, credential),
          :ok <- sync_password(run, credential),
          :ok <- ensure_restore_role(run, admin, restore),
@@ -491,6 +492,43 @@ defmodule CodeMySpec.Provisioning.Database do
     case run.([command]) do
       {_output, 0} -> :ok
       {output, status} -> {:error, {:database_role_not_ready, status, String.trim(output)}}
+    end
+  end
+
+  # Same wall as `ensure_vector_extension/3`, one layer deeper: that fix
+  # covers the app's own persistent database, installed once by the admin
+  # right after it is created. It does nothing for backup restore-
+  # verification's scratch database, which does not exist until a restore
+  # actually runs and is dropped again right after — there is no fixed
+  # database to have pre-installed the extension into ahead of time.
+  # Confirmed live against broken_oaths: past the CREATEDB and
+  # database-level-CREATE fixes, its own dump's `CREATE EXTENSION vector`
+  # still failed "must be superuser" — `CREATEDB` and owning a database
+  # are not superuser, and pgvector is not a trusted extension (unlike
+  # `citext`, which the same dump's earlier statement had already
+  # succeeded on for exactly that reason).
+  #
+  # `CREATE DATABASE` clones the *entire* catalog of `template1`, not just
+  # its schema ownership — so an extension installed into `template1`
+  # itself is already present, catalog and all, in every database created
+  # after, including one that will not exist for another six hours and
+  # get dropped five minutes later. Box-wide and unconditional, the same
+  # as `ensure_container/3`: this runs once per `serve/3` call regardless
+  # of which project triggered it, `IF NOT EXISTS` makes every call after
+  # the first a no-op, and the image already carries pgvector for every
+  # tenant on the box (`@image`'s own moduledoc) — this just also makes
+  # it register-able without a superuser once a database exists to
+  # register it in.
+  defp ensure_template_vector_extension(run, admin) do
+    sql = "CREATE EXTENSION IF NOT EXISTS vector"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+        "-d #{shell_escape("template1")} -c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_template_not_ready, status, String.trim(output)}}
     end
   end
 

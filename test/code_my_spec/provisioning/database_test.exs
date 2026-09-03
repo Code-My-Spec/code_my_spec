@@ -279,6 +279,29 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
              )
     end
 
+    # One layer deeper than the test above: that one covers the app's own
+    # persistent database. Backup restore-verification's scratch database
+    # does not exist ahead of time to install anything into — it is
+    # created and dropped by the *restore* itself, minutes or months
+    # later — so the extension has to already be in template1's own
+    # catalog for CREATE DATABASE to hand it to a database that will not
+    # exist until long after this `serve/3` call returns. Confirmed live
+    # against broken_oaths: past CREATEDB and the restore role's own
+    # database-level CREATE, `CREATE EXTENSION vector` in the dump itself
+    # still failed "must be superuser" — pgvector is not a trusted
+    # extension, so no privilege short of already having it installed
+    # gets a non-superuser role past this.
+    test "the vector extension is also installed into template1, box-wide" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ "-U 'postgres' -d 'template1' -c 'CREATE EXTENSION IF NOT EXISTS vector'")
+             )
+    end
+
     # Ensuring the database is a check-then-create, not a blind create — a
     # `CREATE DATABASE` on one that already exists is a Postgres error, and
     # that is the ordinary case for a project provisioning its second
