@@ -31,7 +31,24 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         # Two working copies, one project. What differs is the harness on the
         # scope; the project does not.
         first = context.scope
-        second = %{context.scope | active_working_copy_id: Ecto.UUID.generate()}
+        # A real second checkout, not an invented id.
+        #
+        # This was `Ecto.UUID.generate()`, naming a working copy with no row
+        # behind it — and `requirements.working_copy_id` has a foreign key, so
+        # every projection write for this agent failed. It passed anyway because
+        # `persist_projection/5` rescued the violation and answered `:ok`, so
+        # this criterion has been green while the read model it depends on was
+        # never written. Removing that rescue is what surfaced it.
+        # On its own device, because a copy is identified by {project, device,
+        # root} and `device_id` is required — two agents that share an identity
+        # are not two agents.
+        {:ok, second_copy} =
+          CodeMySpec.WorkingCopies.issue(context.scope, nil,
+            label: "the second agent's checkout",
+            device: CodeMySpec.DevicesFixtures.device_fixture(context.scope)
+          )
+
+        second = %{context.scope | active_working_copy_id: second_copy.id}
 
         {:ok, context |> Map.put(:first_agent, first) |> Map.put(:second_agent, second)}
       end

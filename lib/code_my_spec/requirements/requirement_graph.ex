@@ -22,6 +22,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
@@ -199,18 +200,51 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # page view is exactly what `publish/3` already refuses to do for one `bytea`.
   defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
 
+  # Writes the read model, or says why it could not.
+  #
+  # This used to `rescue` every exception, log it at warning and answer `:ok`.
+  # The reasoning was sound as far as it went — the computation's return value is
+  # the agent's next instruction and is correct whether or not the rows were
+  # written, so failing the call would turn a projection bug into a stopped
+  # agent. What it actually produced was a projection that could silently stop
+  # being written while every caller was told it had been, which is the state
+  # `5b538c8b` was diagnosed in: rows missing for a whole checkout, and nothing
+  # anywhere saying a write had failed.
+  #
+  # So the outcome is returned rather than swallowed or raised. A caller that
+  # wants to carry on can, and one that wants to know can ask — but nothing
+  # answers `:ok` for a write that did not happen.
+  #
+  # `Repo.transaction/1` gives that shape without catching anything: it answers
+  # `{:ok, _}` or `{:error, reason}` on its own. It also makes the write atomic,
+  # which it was not — `upsert_all/2` and `replace_edges/3` were two independent
+  # statements, so a failure between them left nodes without their edges and the
+  # next read served that as the graph.
   defp persist_projection(:published, scope, ctx, nodes, edges) do
-    ids_by_key = NodeRepository.upsert_all(scope, nodes)
-    NodeRepository.replace_edges(scope, edges, ids_by_key)
-    verify_round_trip(scope, ctx, nodes, edges)
-    :ok
-  rescue
-    # The computation's return value is the agent's next instruction, and it is
-    # correct whether or not the rows were written. Failing it over bookkeeping
-    # would turn a projection bug into a stopped agent.
-    error ->
-      Logger.warning("[Requirements] projection write failed: #{Exception.message(error)}")
-      :ok
+    Repo.transaction(fn ->
+      ids_by_key = NodeRepository.upsert_all(scope, nodes)
+      NodeRepository.replace_edges(scope, edges, ids_by_key)
+    end)
+    |> case do
+      {:ok, _} ->
+        # Outside the transaction on purpose. Verification is a check *about*
+        # the write, not part of it — running it inside would let a failed check
+        # roll back rows that are correct, which is the opposite of what it is
+        # for.
+        verify_round_trip(scope, ctx, nodes, edges)
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[Requirements] projection write failed for project " <>
+            "#{inspect(scope.active_project_id)}, working copy " <>
+            "#{inspect(scope.active_working_copy_id)}: #{inspect(reason)} — the graph this " <>
+            "returned is correct and was not written, so the next reader will be served the " <>
+            "previous projection"
+        )
+
+        {:error, reason}
+    end
   end
 
   # Read the rows back and check they say what was just written.
