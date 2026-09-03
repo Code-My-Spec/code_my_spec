@@ -128,5 +128,25 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
 
     assert internal =~ "qa_validation",
            "the internal agent was blocked, but not about the finding: #{internal}"
+
+    # Through `validate_stop/3`, not against the renderer.
+    #
+    # `ProblemRendererWaitRemedyTest` asks the renderer for both renderings by
+    # handing it the option directly, and it passed for a build in which the
+    # option was never set: `decide/4` receives a freshly built keyword list, so
+    # reading `agent_id` inside it answered nil for every caller and the flag
+    # was false everywhere. A probe checked only where it cannot fail says
+    # nothing about the wiring, which is what this pair exists to cover.
+    refute internal =~ "nothing this session recorded", """
+    The internal agent was handed the session-attribution explainer, which
+    describes having no session as a failure to attribute. It has no session by
+    design, so this rendered on every internal decision — and it carries the
+    "stopping again ... clears this by itself" instruction with it.
+
+    #{internal}
+    """
+
+    assert internal =~ "owns the checkout it works in",
+           "the agent was told everything blocks and not why:\n#{internal}"
   end
 end

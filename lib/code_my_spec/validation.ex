@@ -923,6 +923,15 @@ defmodule CodeMySpec.Validation do
     {last_ran, run_duration, overtaken} = run_timing(scope, stale_sources)
 
     decide(blocking, advisory, stale_sources,
+      # Computed here, from the opts that actually carry the identity.
+      #
+      # `decide/4` is handed this freshly built list rather than the caller's,
+      # so asking it about `agent_id` inside `decide/4` answers nil for every
+      # caller — the flag was always false and both renderings it governs were
+      # dead on arrival. They passed their unit test because that test hands the
+      # option straight to the renderer, which is exactly the instrument error
+      # of checking a probe only where it cannot fail.
+      internal_agent?: internal_agent?(opts),
       last_ran: last_ran,
       # Why a source that has never answered could not run. The analyzer's own
       # words are in `Run.output` and nothing read them back — `6f89b278` is
@@ -1343,15 +1352,14 @@ defmodule CodeMySpec.Validation do
       Problems.render_stop_response(
         blocking,
         advisory,
-        opts
-        |> Keyword.put(:stale_sources, stale_sources)
-        # An internal agent is not the one who waits. `Hooks.Stop`'s remedy for
-        # a stale source is "curl analysis/wait, then stop again", which is the
-        # only thing an external agent can do — and story 988 says it must have
-        # no counterpart here, because this agent is a live process the answer
-        # is delivered to. QA watched one obey the directive and spend its whole
-        # turn re-curling the endpoint. Issue `778ab035`.
-        |> Keyword.put(:internal_agent?, internal_agent?(opts))
+        # `:internal_agent?` is already here, set by `check_blocking_problems/5`
+        # from the opts that carry the identity. It decides two things the
+        # renderer cannot work out for itself: that this agent is not the one
+        # waiting on the rerun (story 988; the hook's "curl analysis/wait, then
+        # stop again" has no counterpart here, and QA watched an agent obey it
+        # and spend a whole turn re-curling — issue `778ab035`), and that its
+        # edits are not unattributed but simply its own.
+        Keyword.put(opts, :stale_sources, stale_sources)
       )
 
     {:error, reason, blocking_key(blocking)}
