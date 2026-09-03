@@ -148,6 +148,44 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
            """
   end
 
+  test "a block_all source is demoted too when the agent did not touch the file" do
+    {scope, compile_jsonl} = seeded_scope()
+
+    # `block_all` ignores changed files by design, so the role stopgap never
+    # covered it and a product agent kept being handed exunit failures to fix
+    # (issue 4799558c). Attribution runs after the mode partition, on whatever
+    # is left blocking, so edit tracking should reach this too — asserted rather
+    # than assumed, because "it should follow" is how the last two holes got in.
+    {:ok, _} = Configurations.update(scope, %{qa_validation: :block_all})
+
+    assert {:ok, _result} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "an-idle-agent",
+               compile_output_file: compile_jsonl
+             ),
+           """
+           A block_all finding on a file this agent never touched still blocked
+           it. That is the war-epic product agent's exunit case, and the reason
+           turning credo off did not help it.
+           """
+  end
+
+  test "a block_all source still blocks the agent that did touch the file" do
+    {scope, compile_jsonl} = seeded_scope()
+
+    {:ok, _} = Configurations.update(scope, %{qa_validation: :block_all})
+    FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
+
+    assert {:error, reason, _key} =
+             Validation.validate_stop(scope, nil,
+               agent_id: "an-agent",
+               compile_output_file: compile_jsonl
+             ),
+           "the agent broke it and was let go — demotion must not swallow its own findings"
+
+    assert reason =~ "qa_validation"
+  end
+
   test "the external session path is untouched by any of this" do
     {scope, compile_jsonl} = seeded_scope()
 
