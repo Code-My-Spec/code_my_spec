@@ -6,6 +6,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Files
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -34,8 +35,14 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}) :: {:ok, non_neg_integer()}
   def claim_spec_paths(_scope, paths) when map_size(paths) == 0, do: {:ok, 0}
 
-  def claim_spec_paths(%Scope{active_project_id: project_id}, paths) do
+  def claim_spec_paths(%Scope{active_project_id: project_id} = scope, paths) do
     ids = Map.keys(paths)
+
+    # Which files this checkout actually has.
+    #
+    # Read once, here, rather than asked per path — and read from the record
+    # rather than the disk. See `stale?/2`.
+    present = present_paths(scope, paths)
 
     # Unclaimed, plus claimed-but-stale.
     #
@@ -57,7 +64,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
         select: {c.id, c.spec_path}
       )
       |> Repo.all()
-      |> Enum.filter(fn {_id, path} -> stale?(path) end)
+      |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
       |> Enum.map(fn {id, previous} -> {id, previous, Map.fetch!(paths, id)} end)
 
     # And the ones the filename cannot name.
@@ -82,7 +89,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       )
       |> Repo.all()
       |> Enum.reject(fn {id, _} -> MapSet.member?(already, id) end)
-      |> Enum.filter(fn {_id, path} -> stale?(path) end)
+      |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
       |> Enum.flat_map(fn {id, previous} ->
         case embedded_id(previous) do
           nil ->
@@ -111,8 +118,58 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     {:ok, count}
   end
 
-  defp stale?(path) when is_nil(path) or path == "", do: true
-  defp stale?(path), do: not File.exists?(path)
+  # Whether a recorded path has gone, asked of the checkout the manifest came
+  # from rather than of whatever disk this process is sitting on.
+  #
+  # It used to be `not File.exists?(path)`, and `spec_path` is project-relative,
+  # so the question resolved against the server's own cwd — the main checkout.
+  # A manifest from any other working copy was therefore judged against a
+  # checkout it has nothing to do with. For a worktree whose spec files are not
+  # committed, every criterion read as stale, was repointed at the same relative
+  # path, and read as stale again on the next manifest: a repair that could not
+  # stick, because nothing it wrote could make `File.exists?` true somewhere
+  # else. `bdd_specs_exist` never satisfied, and restarting or re-running the
+  # task changed nothing, because the record was never what was wrong.
+  # Found by devops-q-ec; issue `5b538c8b`.
+  #
+  # The server owns the projection and has no business consulting a filesystem
+  # about a checkout it may not be in — the same mistake as `Setup.Context`
+  # deciding a project's app name from whichever checkout's mix.exs sorted last
+  # (`282428a3`).
+  defp stale?(path, _present) when is_nil(path) or path == "", do: true
+
+  # Evidence is additive: the record, then the disk. A path is gone only when
+  # neither can find it.
+  #
+  # The disk clause stays deliberately. It is wrong as the *only* answer, for
+  # the reason above, but it is the only thing that can speak for a path outside
+  # the scanned tree — a spex somebody moved somewhere deliberate, which
+  # `claim_spec_paths_test.exs` asserts must not be undone by the next scan.
+  # Consulting it second can only ever find a file present, never absent, so it
+  # cannot reintroduce the loop.
+  defp stale?(path, present) do
+    not MapSet.member?(present, path) and not File.exists?(path)
+  end
+
+  # Two sources, because neither alone is the whole picture at this moment.
+  #
+  # `Files.list_files/1` scopes to the caller's working copy and is the durable
+  # record — but this runs *before* the manifest it is processing is upserted,
+  # so a file appearing for the first time is not in it yet. The observations
+  # are that missing half: a path in this manifest is a file the harness has
+  # just seen on that checkout's disk.
+  #
+  # Union rather than either one, so a first sync does not read every existing
+  # criterion as stale, and a file present but not in this manifest is not
+  # mistaken for a deletion.
+  defp present_paths(%Scope{} = scope, paths) do
+    recorded = scope |> Files.list_files() |> MapSet.new(& &1.path)
+
+    paths
+    |> Map.values()
+    |> MapSet.new()
+    |> MapSet.union(recorded)
+  end
 
   defp embedded_id(path) do
     case Regex.run(~r/criterion_(\d+)_/, Path.basename(path)) do
