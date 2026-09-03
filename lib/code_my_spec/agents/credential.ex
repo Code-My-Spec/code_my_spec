@@ -191,8 +191,25 @@ defmodule CodeMySpec.Agents.Credential do
        "refresh" => integration.refresh_token || "",
        "expires" => expires_ms(integration.expires_at)
      }
-     |> put_account_id(token)}
+     |> put_account_id(token)
+     |> put_id_token(integration)}
   end
+
+  # The OIDC id token, carried because `codex exec` will not start without one.
+  #
+  # It reads its credentials from an `auth.json` and refuses a file that has no
+  # `id_token` — "missing field `id_token`", before any network call — so a
+  # subscription that reaches an agent without it cannot run a turn however
+  # valid the access and refresh tokens are.
+  #
+  # From `provider_metadata`, where `Integrations.keep_id_token/2` puts it. The
+  # refresh response carries one every time; it was simply being dropped, so
+  # every agent fell back to whatever `~/.codex/auth.json` held on that machine.
+  defp put_id_token(entry, %{provider_metadata: %{"id_token" => token}})
+       when is_binary(token) and token != "",
+       do: Map.put(entry, "idToken", token)
+
+  defp put_id_token(entry, _integration), do: entry
 
   defp oauth_entry({:error, reason}, _token), do: {:error, reason}
 

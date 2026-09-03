@@ -276,6 +276,7 @@ defmodule CmsHarness.Agents do
       %{"access_token" => access}
       |> put_if_string("refresh_token", request["refresh"])
       |> put_if_string("account_id", request["account_id"])
+      |> put_if_string("id_token", request["id_token"])
 
     contents = Jason.encode!(%{"auth_mode" => "chatgpt", "tokens" => tokens})
 

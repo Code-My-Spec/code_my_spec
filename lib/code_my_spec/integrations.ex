@@ -417,10 +417,37 @@ defmodule CodeMySpec.Integrations do
       refresh_token: token_response["refresh_token"] || integration.refresh_token,
       expires_at: calculate_expires_at(token_response),
       granted_scopes: refreshed_scopes(token_response, integration),
-      provider_metadata: integration.provider_metadata
+      provider_metadata: keep_id_token(integration.provider_metadata, token_response)
     }
 
     IntegrationRepository.upsert_integration(scope, provider, attrs)
+  end
+
+  # The OIDC id token, kept because one consumer cannot work without it.
+  #
+  # `codex exec` reads its credentials from an `auth.json` and refuses one that
+  # has no `id_token` — literally, "missing field `id_token`", before any
+  # network call. So a ChatGPT subscription that reaches an agent without it
+  # cannot run a turn, however valid the access and refresh tokens are.
+  # Established by running the binary against a hand-built file rather than
+  # inferred: without the field it is rejected outright, with it the file is
+  # accepted and proceeds to a real auth attempt.
+  #
+  # Kept in `provider_metadata` rather than given a column. It belongs to one
+  # provider, it is not a credential we present anywhere ourselves, and a column
+  # would invite every other provider to leave it null.
+  #
+  # Only when the response carries one. A refresh that returns no `id_token`
+  # leaves the stored one alone rather than blanking it: the previous one is
+  # still the identity of the same grant, and replacing it with nothing would
+  # break the agent on the next launch for no reason.
+  defp keep_id_token(metadata, token_response) do
+    metadata = metadata || %{}
+
+    case token_response["id_token"] do
+      token when is_binary(token) and token != "" -> Map.put(metadata, "id_token", token)
+      _ -> metadata
+    end
   end
 
   defp refreshed_scopes(token_response, integration) do
@@ -478,7 +505,7 @@ defmodule CodeMySpec.Integrations do
       refresh_token: token_response["refresh_token"] || (existing && existing.refresh_token),
       expires_at: calculate_expires_at(token_response),
       granted_scopes: merge_scopes(parse_scopes(token_response["scope"]), existing),
-      provider_metadata: normalized_user
+      provider_metadata: keep_id_token(normalized_user, token_response)
     }
 
     IntegrationRepository.upsert_integration(scope, provider, integration_attrs)
