@@ -205,6 +205,27 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
   end
 
+  describe "bin/backup" do
+    # Confirmed live, on every project the shared postgres box has ever
+    # served: the app's own role cannot CREATE/DROP DATABASE for restore-
+    # verification's scratch copy — Database.serve/3 deliberately never
+    # grants CREATEDB to it, since that role authenticates every live
+    # request and a standing ability to create databases is not a
+    # privilege a compromised request should inherit. A second, narrower
+    # role gets it instead, delivered as CMS_RESTORE_ADMIN_URL alongside
+    # DATABASE_URL in the same encrypted env.
+    test "restores using the dedicated restore-verification credential, not DATABASE_URL" do
+      body = file("bin/backup")
+
+      assert body =~ "admin_url=\"$(libpq_url \"$CMS_RESTORE_ADMIN_URL\")\""
+      refute body =~ "admin_url=\"$(libpq_url \"${DATABASE_URL%/*}/postgres\")\""
+    end
+
+    test "names the missing credential explicitly rather than failing on an empty connection string" do
+      assert file("bin/backup") =~ "\"${CMS_RESTORE_ADMIN_URL:?"
+    end
+  end
+
   # Real shelling out, same reasoning `Deploy.run/3`'s own tests give for
   # doing this rather than asserting on the string content: a script this
   # important is worth running for real, not just grepping.

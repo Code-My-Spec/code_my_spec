@@ -181,7 +181,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # box this walk just created, because the reproduced failure is a box
     # from an *earlier* run — nothing about this walk would distinguish it.
     if length(found) == length(environments) and found != [] and
-         Enum.all?(environments, &database_url_present?(scope, &1)) and
+         Enum.all?(environments, &database_secrets_present?(scope, &1)) and
          registries_reachable?(scope, name, environments, opts) do
       # The step also makes a firewall and an ssh_key, shared across
       # environments. A second run takes this satisfied path instead of
@@ -4183,9 +4183,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # else it needs to boot.
   defp serve_database(scope, environment, run, opts) do
     with {:ok, credential} <- Database.credential(scope, environment),
+         {:ok, restore} <- Database.restore_credential(scope, environment),
          {:ok, served} <-
            Database.serve(scope, environment, Keyword.put(opts, :run, run)),
-         :ok <- write_database_url(scope, environment, credential) do
+         :ok <- write_database_url(scope, environment, credential),
+         :ok <- write_restore_admin_url(scope, environment, restore) do
       {:ok,
        %{
          kind: "database",
@@ -4197,6 +4199,19 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp write_database_url(scope, environment, credential) do
     case put_secret(scope, environment, "DATABASE_URL", Database.url(credential)) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # `bin/backup restore`'s own scratch-database credential — see
+  # `Database`'s moduledoc for why this is a second role rather than an
+  # attribute on the app's own. Travels the same way `DATABASE_URL` does:
+  # written into the environment's encrypted env, read by `bin/backup`'s
+  # own generic `source <(sops -d …)`, nothing new to teach the deploy
+  # pipeline about delivering it.
+  defp write_restore_admin_url(scope, environment, restore) do
+    case put_secret(scope, environment, "CMS_RESTORE_ADMIN_URL", Database.restore_url(restore)) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -5328,7 +5343,20 @@ defmodule CodeMySpec.Provisioning.Steps do
   # re-serve a database and rewrite a connection string on the strength of a
   # local tooling failure. The secrets step is what reports a key that cannot
   # open its own file, and it says so in its own words.
-  defp database_url_present?(scope, environment) do
+  # `CMS_RESTORE_ADMIN_URL` joined `DATABASE_URL` here rather than getting a
+  # check of its own: a role provisioned before that credential existed
+  # verifies satisfied on the box-and-`DATABASE_URL` checks alone and
+  # `run/3` never executes again for it, the same gap `first_deployed_at`
+  # closed for `:deploy` — a side effect kamal wrote once is not evidence
+  # of anything about a role neither Kamal nor this step ever revisits.
+  # Checking for the secret's presence here is what makes a project
+  # provisioned before this shipped pick it up on its very next ordinary
+  # verify — a page load, not a manual re-run anyone has to know to ask
+  # for — since `{:ok, :absent}` sends this step through `run/3` again,
+  # and `Database.serve/3`'s own grant is unconditional every time it runs.
+  @database_secrets ["DATABASE_URL", "CMS_RESTORE_ADMIN_URL"]
+
+  defp database_secrets_present?(scope, environment) do
     # Nothing here can tell without sops, and without sops nothing works
     # anyway — the deploy cannot read the file either. Re-running the server
     # step on every page load of a machine that lacks the binaries would be a
@@ -5336,10 +5364,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     if Sops.available?() do
       with {:ok, private} <- fetch_age_key(scope, environment),
            {:ok, missing} <-
-             Sops.missing_secrets(env(scope), environment, private, ["DATABASE_URL"]) do
-        "DATABASE_URL" not in missing
+             Sops.missing_secrets(env(scope), environment, private, @database_secrets) do
+        missing == []
       else
-        # Anything short of proof that the value is there counts as absent.
+        # Anything short of proof that the values are there counts as absent.
         #
         # This read the other way first — a file that would not open was
         # "present", on the reasoning that a local failure is not evidence the

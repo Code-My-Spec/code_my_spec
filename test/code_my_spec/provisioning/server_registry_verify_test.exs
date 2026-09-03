@@ -41,6 +41,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     {public, _private} = key_for(scope, "uat")
     :ok = Sops.write_config(scope.environment, %{"uat" => public})
     put_secret(scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
+    put_secret(scope, "uat", "CMS_RESTORE_ADMIN_URL", "postgresql://u_restore:p@10.0.0.5:5432/postgres")
 
     {:ok, scope: scope}
   end
@@ -95,6 +96,38 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       assert_received {:ran, probe}
       assert probe =~ "curl"
       assert probe =~ "http://#{@private_ip}:5000/v2/"
+    end
+  end
+
+  # A role provisioned before `CMS_RESTORE_ADMIN_URL` existed is otherwise
+  # indistinguishable from one that has always had it: the box is there,
+  # `DATABASE_URL` is there, the registry answers. Nothing about those three
+  # checks changes when a role predates this credential. Reproduced without
+  # a real Hetzner box, the same way the registry gap above is: strip just
+  # this one secret back out and the rest of the setup still says "done" on
+  # its own three checks, which is exactly the shape that let a box with no
+  # registry read satisfied before c1d8eaff.
+  describe "the box exists, DATABASE_URL is present, and the registry answers, but CMS_RESTORE_ADMIN_URL predates the fix" do
+    setup ctx do
+      # There is no `sops unset` — the whole file is re-initialised instead,
+      # then given back only the one secret this describe block means to
+      # still have present, reproducing a role provisioned back when
+      # `CMS_RESTORE_ADMIN_URL` was never written at all.
+      :ok = CodeMySpec.Environments.delete_file(ctx.scope.environment, Sops.env_file("uat"))
+      put_secret(ctx.scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
+
+      :ok
+    end
+
+    test "verify(:server, …) reports absent, not satisfied", ctx do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 0}
+      end
+
+      assert {:ok, :absent} = Steps.verify(:server, ctx.scope, verify_opts(run)),
+             "a role missing its restore credential must not read as done — the box, " <>
+               "DATABASE_URL and the registry being fine says nothing about it"
     end
   end
 

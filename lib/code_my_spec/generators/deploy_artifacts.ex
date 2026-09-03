@@ -878,14 +878,27 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       local env_name="${3:-prod}"
       load_env "$env_name"
 
+      # Named explicitly rather than left to whatever `libpq_url ""` and an
+      # empty `-h` do to psql's own error — a role provisioned before this
+      # credential existed fails here with a clear reason instead of a
+      # connection error that names no missing variable at all.
+      : "${CMS_RESTORE_ADMIN_URL:?missing CMS_RESTORE_ADMIN_URL — re-run the server step to mint the restore-verification role}"
+
       TMPFILE=$(mktemp)
 
       s3 GET "$key" "$TMPFILE"
 
       # The target is dropped and recreated: restoring into a database that
       # already has rows would count someone else's data as proof.
+      #
+      # CMS_RESTORE_ADMIN_URL, not DATABASE_URL — CREATE/DROP DATABASE needs
+      # a role with CREATEDB, which the app's own role deliberately never
+      # carries (it authenticates every live request; a standing ability to
+      # create databases is not a privilege a compromised request should
+      # inherit). Setup mints and delivers a second, narrower role for
+      # exactly this, alongside DATABASE_URL in the same encrypted env.
       local admin_url
-      admin_url="$(libpq_url "${DATABASE_URL%/*}/postgres")"
+      admin_url="$(libpq_url "$CMS_RESTORE_ADMIN_URL")"
       pg psql -v ON_ERROR_STOP=1 -q "$admin_url" -c "DROP DATABASE IF EXISTS \\"$target\\";"
       pg psql -v ON_ERROR_STOP=1 -q "$admin_url" -c "CREATE DATABASE \\"$target\\";"
 

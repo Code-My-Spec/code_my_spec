@@ -31,6 +31,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
   defp credential, do: %{username: "app_sam_s_app", password: "pw", database: "app_sam_s_app_uat"}
   defp admin_credential, do: %{username: "postgres", password: "adminpw"}
+  defp restore_credential, do: %{username: "app_sam_s_app_restore", password: "restorepw"}
 
   defp serve(opts \\ []) do
     Database.serve(
@@ -40,7 +41,8 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         [
           run: recorder(self()),
           database_credential: credential(),
-          database_admin_credential: admin_credential()
+          database_admin_credential: admin_credential(),
+          database_restore_credential: restore_credential()
         ],
         opts
       )
@@ -217,17 +219,44 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
 
     # Confirmed live, on every project this shared box has ever served, not
-    # a broken_oaths quirk: backup restore-verification connects as the
-    # app's own role and issues CREATE/DROP DATABASE for its scratch copy
-    # (deploy_artifacts.ex's generated bin/backup), which only CREATEDB or
-    # an administrator may do. Unconditional so a role provisioned before
-    # this existed picks it up on its next ordinary server-step run, not
-    # only a role created fresh after this shipped.
-    test "grants the role CREATEDB, for its own backup restore-verification scratch databases" do
+    # a broken_oaths quirk: backup restore-verification needs CREATE/DROP
+    # DATABASE for its scratch copy (deploy_artifacts.ex's generated
+    # bin/backup), which only CREATEDB or an administrator may do — but a
+    # second, narrower role gets it, never the app's own. The running
+    # application authenticates with its own role on every request, and
+    # that is exactly the credential a SQL injection or a dependency
+    # vulnerability would first reach; a standing ability to create
+    # databases is a privilege the application itself never uses, so it
+    # never carries it.
+    test "grants a second, restore-only role CREATEDB — never the app's own role" do
       assert {:ok, _} = serve()
 
       commands = collect_commands()
-      assert Enum.any?(commands, &(&1 =~ "ALTER ROLE app_sam_s_app CREATEDB"))
+      assert Enum.any?(commands, &(&1 =~ "ALTER ROLE app_sam_s_app_restore CREATEDB"))
+      refute Enum.any?(commands, &(&1 =~ "ALTER ROLE app_sam_s_app CREATEDB"))
+    end
+
+    test "the restore role is created if it does not already exist, but owns no database of its own" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+      assert Enum.any?(commands, &(&1 =~ "CREATE ROLE app_sam_s_app_restore LOGIN"))
+      refute Enum.any?(commands, &(&1 =~ "CREATE DATABASE" and &1 =~ "app_sam_s_app_restore"))
+    end
+
+    # `sync_password/2`'s own reasoning: a rotated restore-role password
+    # left silently out of sync would fail the very next backup restore-
+    # verification with an authentication error, pointing at the wrong
+    # step.
+    test "keeps the restore role's password in sync on every run" do
+      assert {:ok, _} = serve()
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ "ALTER USER app_sam_s_app_restore WITH PASSWORD" and &1 =~ "-d postgres")
+             )
     end
 
     # pgvector is not a trusted extension — a plain LOGIN role can never

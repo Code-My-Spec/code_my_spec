@@ -40,35 +40,41 @@ defmodule CodeMySpec.Provisioning.Database do
   is written into that environment's encrypted env, so the app reads it the
   same way it reads everything else. Nothing puts it in the working tree.
 
-  ## The tenant role can create and drop its own databases
+  ## A second, narrower role exists only to make and drop scratch databases
 
   Backup restore-verification needs somewhere throwaway to restore a dump
-  into and prove it — a database this project's own role creates, checks,
-  and drops, never the live one (`Backups.restore_proof/3`'s whole reason
-  for existing). `deploy_artifacts.ex`'s generated `bin/backup restore`
-  assumes its own role can do exactly that, connecting to `postgres` (the
-  default maintenance database every role can already reach) to issue
-  `CREATE`/`DROP DATABASE` — which only an administrator, or a role with
-  the `CREATEDB` attribute, is allowed to do. Confirmed live: a plain
-  `LOGIN` role gets "permission denied to create database" doing exactly
-  this, on every project this box has ever served, not a broken_oaths
-  quirk.
+  into and prove it — a database created, checked, and dropped, never the
+  live one (`Backups.restore_proof/3`'s whole reason for existing).
+  `deploy_artifacts.ex`'s generated `bin/backup restore` does this by
+  connecting to `postgres` (the default maintenance database every role
+  can already reach) and issuing `CREATE`/`DROP DATABASE` — which only an
+  administrator, or a role with the `CREATEDB` attribute, is allowed to
+  do. Confirmed live: it currently tries this as the app's own role and
+  gets "permission denied to create database", on every project this box
+  has ever served, not a broken_oaths quirk — `serve/3` never granted
+  `CREATEDB` to anything.
 
-  `CREATEDB` is the narrow grant for this, not the admin credential
-  itself. A role with it can create databases and drop the ones it owns —
-  nothing more. It cannot read, alter, or drop a database it does not own,
-  so one tenant's role gaining this attribute discloses nothing about any
-  other tenant sharing the same box; the blast radius is "can make more
-  databases," not "can reach someone else's." Handing out the actual
-  administrator credential instead — the one `admin_credential/1` mints,
-  which *can* touch every tenant on the box — for a job that only ever
-  needed its own scratch space would have been the wrong trade, not a
-  more careful one.
+  The fix is not granting it to the app's own tenant role. That role is
+  what the running application authenticates with, on every request, and
+  hers is exactly the credential a SQL injection or a dependency
+  vulnerability would first reach — handing it a standing ability to
+  create arbitrary databases turns "the app got compromised" into "the
+  app got compromised *and* can flood the shared box with databases,"
+  for a privilege the running application itself never uses. `bin/backup
+  restore` runs at backup time, not at request time, and a credential it
+  never hands the application is a credential a compromised application
+  was never given.
 
-  Granted by an unconditional `ALTER ROLE ... CREATEDB` rather than only
-  on `CREATE ROLE`, so a role provisioned before this existed picks it up
-  the next time `serve/3` runs, without anyone having to know which
-  projects predate the fix.
+  `restore_credential/2`/`ensure_restore_role/3` mint a second role
+  instead — `<tenant>_restore`, `CREATEDB` and nothing else, no database
+  of its own to own or lose. It can create databases and drop the ones it
+  owns; it cannot read, alter, or drop a database — including the app's
+  own live one — that it does not own, so this discloses nothing about
+  any other tenant sharing the box, and nothing about this project's own
+  live data either. Its URL travels the same way `DATABASE_URL` does —
+  written into the environment's encrypted env, read by `bin/backup`
+  generically — so nothing new had to be taught to Kamal or the deploy
+  pipeline to deliver it.
   """
 
   require Logger
@@ -146,6 +152,31 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  @doc """
+  This environment's restore-verification credential, minted once.
+
+  A second role, not the app's own — see the moduledoc. It owns no fixed
+  database, only `CREATEDB`, so there is nothing for it to point `:database`
+  at.
+  """
+  @spec restore_credential(Scope.t(), String.t()) ::
+          {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
+  def restore_credential(%Scope{} = scope, environment) do
+    name = "database_restore_password_#{environment}"
+
+    case ProjectSecrets.fetch_value(scope, name) do
+      {:ok, password} when is_binary(password) and password != "" ->
+        {:ok, describe_restore(scope, password)}
+
+      _ ->
+        password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+        with {:ok, _} <- ProjectSecrets.put_value(scope, name, password) do
+          {:ok, describe_restore(scope, password)}
+        end
+    end
+  end
+
   # The administrator that can create and alter *any* project's role or
   # database on this box. Account-grained, like the server access key: it has
   # to open every box the account owns, not just the one the project that
@@ -177,6 +208,19 @@ defmodule CodeMySpec.Provisioning.Database do
   end
 
   @doc """
+  What `bin/backup restore` connects with to create and drop its own
+  scratch database.
+
+  Always `postgres`, the default maintenance database — this role does
+  not own a fixed one, so there is no other database name to point at
+  before the scratch one exists.
+  """
+  @spec restore_url(%{username: String.t(), password: String.t()}) :: String.t()
+  def restore_url(%{username: username, password: password}) do
+    "ecto://#{username}:#{password}@#{@container}/postgres"
+  end
+
+  @doc """
   Start this environment's database on its shared box.
 
   Idempotent at both grains: an already-running container is left alone
@@ -194,10 +238,13 @@ defmodule CodeMySpec.Provisioning.Database do
 
     with {:ok, admin} <- serve_admin_credential(scope, opts),
          {:ok, credential} <- serve_credential(scope, environment, opts),
+         {:ok, restore} <- serve_restore_credential(scope, environment, opts),
          :ok <- ensure_container(run, admin, opts),
          :ok <- await_ready(run, Keyword.get(opts, :database_attempts, 30)),
          :ok <- ensure_tenant(run, admin, credential),
-         :ok <- sync_password(run, credential) do
+         :ok <- sync_password(run, credential),
+         :ok <- ensure_restore_role(run, admin, restore),
+         :ok <- sync_restore_password(run, restore) do
       {:ok, %{host: @container, port: @port, database: credential.database}}
     end
   end
@@ -213,6 +260,13 @@ defmodule CodeMySpec.Provisioning.Database do
     case Keyword.get(opts, :database_credential) do
       %{username: _, password: _, database: _} = credential -> {:ok, credential}
       _ -> credential(scope, environment)
+    end
+  end
+
+  defp serve_restore_credential(scope, environment, opts) do
+    case Keyword.get(opts, :database_restore_credential) do
+      %{username: _, password: _} = restore -> {:ok, restore}
+      _ -> restore_credential(scope, environment)
     end
   end
 
@@ -376,13 +430,7 @@ defmodule CodeMySpec.Provisioning.Database do
       "DO $$ BEGIN " <>
         "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = #{sql_escape(credential.username)}) THEN " <>
         "CREATE ROLE #{credential.username} LOGIN PASSWORD #{sql_escape(credential.password)}; " <>
-        "END IF; END $$; " <>
-        # Unconditional, not folded into the `CREATE ROLE` above: a role
-        # provisioned before this attribute existed already skips that
-        # branch every later run, and would never pick it up otherwise.
-        # `ALTER ROLE ... CREATEDB` on a role that already has it is a
-        # no-op, so this costs nothing on the common path.
-        "ALTER ROLE #{credential.username} CREATEDB;"
+        "END IF; END $$;"
 
     run_admin_sql(run, admin, sql, :database_role_not_ready)
   end
@@ -477,9 +525,45 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  # Same shape as `ensure_role/3`, and unconditional for the same reason:
+  # a role provisioned before this one existed at all has to pick it up on
+  # an ordinary later `serve/3` run, not only ever get created fresh.
+  # `CREATEDB` here, never in `ensure_role/3` — see the moduledoc for why
+  # this is a second role and not an attribute on the app's own one.
+  defp ensure_restore_role(run, admin, restore) do
+    sql =
+      "DO $$ BEGIN " <>
+        "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = #{sql_escape(restore.username)}) THEN " <>
+        "CREATE ROLE #{restore.username} LOGIN PASSWORD #{sql_escape(restore.password)}; " <>
+        "END IF; END $$; " <>
+        "ALTER ROLE #{restore.username} CREATEDB;"
+
+    run_admin_sql(run, admin, sql, :database_restore_role_not_ready)
+  end
+
+  # `sync_password/2`'s own reasoning, restated for a role with no database
+  # of its own to connect through: `-d postgres` rather than `-d
+  # #{credential.database}`, since this role owns nothing fixed to name.
+  defp sync_restore_password(run, restore) do
+    sql = "ALTER USER #{restore.username} WITH PASSWORD #{sql_escape(restore.password)}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(restore.username)} " <>
+        "-d postgres -c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_restore_password_not_set, status, String.trim(output)}}
+    end
+  end
+
   defp describe(scope, password, environment) do
     slug = tenant_slug(scope)
     %{username: "app_#{slug}", password: password, database: "app_#{slug}_#{environment}"}
+  end
+
+  defp describe_restore(scope, password) do
+    %{username: "app_#{tenant_slug(scope)}_restore", password: password}
   end
 
   # Postgres identifiers built from the project's own name — `CREATE ROLE`
