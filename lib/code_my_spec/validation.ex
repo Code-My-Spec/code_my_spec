@@ -856,6 +856,25 @@ defmodule CodeMySpec.Validation do
       |> Enum.group_by(& &1.source)
 
     scope_context = %{
+      # An agent running under Alloy owns the tree it works in.
+      #
+      # `block_changed` narrows a source to files the stopping session wrote,
+      # and it learns that from PostToolUse. An internal agent fires no hooks,
+      # so nothing is ever attributed to it and the changed set is empty by the
+      # time a turn-end decision runs — the watcher has already synced the very
+      # edit that ought to block. QA of story 988 watched an agent create a
+      # module with no `@moduledoc` and be told nothing: "2 advisory problem(s)
+      # not blocking" (issue 22f65e5b).
+      #
+      # John's call, and his reasoning: "the only dude really touching the code
+      # and subject to credo is the coding agent, who ultimately owns all those
+      # changes." So on this path the narrowing has nothing to narrow and is
+      # dropped, rather than being computed from a set that cannot be right.
+      #
+      # An `agent_id` with no `session_id` is what makes this path
+      # identifiable: `Hooks.Stop` and `Hooks.SubagentStop` both always send a
+      # session, and `StopDecision` — which has none to send — never does.
+      owns_tree?: internal_agent?(opts),
       changed_file_paths: Enum.map(changed_files, & &1.path),
       changed_component_ids:
         changed_files
@@ -1145,6 +1164,11 @@ defmodule CodeMySpec.Validation do
 
   defp duration(_), do: nil
 
+  # Only `StopDecision` names an agent without naming a session.
+  defp internal_agent?(opts) do
+    is_binary(Keyword.get(opts, :agent_id)) and is_nil(Keyword.get(opts, :session_id))
+  end
+
   defp active_blocking_sources(config) do
     configurable =
       for {source, {field, _scope_fn}} <- @configurable_sources,
@@ -1286,6 +1310,10 @@ defmodule CodeMySpec.Validation do
   defp apply_mode(_problems, :off, _scope_fn, _ctx), do: {[], []}
   defp apply_mode(problems, :block_all, _scope_fn, _ctx), do: {problems, []}
   defp apply_mode(problems, :dont_block, _scope_fn, _ctx), do: {[], problems}
+
+  # The agent owns everything in its checkout, so "changed" cannot narrow it.
+  # Above the general clause because it is the more specific match.
+  defp apply_mode(problems, :block_changed, _scope_fn, %{owns_tree?: true}), do: {problems, []}
 
   defp apply_mode(problems, :block_changed, scope_fn, ctx) do
     Enum.split_with(problems, in_scope_fn(scope_fn, ctx))
