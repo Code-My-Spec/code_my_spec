@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @spec list_agents(Scope.t()) :: [Agent.t()]
   def list_agents(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -55,18 +56,42 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   defp wrap_agent(%Agent{} = agent), do: {:ok, agent}
 
   @spec create_agent(Scope.t(), map()) ::
-          {:ok, Agent.t()} | {:error, :missing_active_project | Ecto.Changeset.t()}
+          {:ok, Agent.t()}
+          | {:error, :missing_active_project | :cross_project_working_copy | Ecto.Changeset.t()}
   def create_agent(%Scope{active_project_id: nil}, _attrs), do: {:error, :missing_active_project}
 
   def create_agent(%Scope{} = scope, attrs) do
-    attrs =
-      attrs
-      |> Map.put(:project_id, scope.active_project_id)
-      |> Map.put(:account_id, scope.active_account_id)
+    with :ok <- validate_own_working_copy(scope, attrs) do
+      attrs =
+        attrs
+        |> Map.put(:project_id, scope.active_project_id)
+        |> Map.put(:account_id, scope.active_account_id)
 
-    %Agent{}
-    |> Agent.changeset(attrs)
-    |> Repo.insert()
+      %Agent{}
+      |> Agent.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  # `foreign_key_constraint(:working_copy_id)` on the changeset only proves the
+  # id exists *somewhere* in working_copies — it says nothing about whose
+  # project that row belongs to. `Agents.start_agent/2` already refuses an id
+  # this project does not own before it gets here, but this is the only writer
+  # of an agent row and that invariant deserves to hold for whatever calls it
+  # next, not just the one call path that happens to check today. Issue
+  # c0facd8e.
+  defp validate_own_working_copy(%Scope{active_project_id: project_id}, attrs) do
+    case Map.get(attrs, :working_copy_id) do
+      id when is_binary(id) and id != "" ->
+        case WorkingCopies.fetch(id) do
+          {:ok, %{project_id: ^project_id}} -> :ok
+          {:ok, %{}} -> {:error, :cross_project_working_copy}
+          {:error, _} -> :ok
+        end
+
+      _ ->
+        :ok
+    end
   end
 
   @spec update_agent(Scope.t(), Agent.t(), map()) ::

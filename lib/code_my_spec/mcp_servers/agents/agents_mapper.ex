@@ -181,6 +181,19 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  def error({:unknown_working_copy, id}, _provider) do
+    refuse("""
+    No working copy #{id} on this project, so no agent was started.
+
+    Working copy id: #{id}
+
+    That id names no checkout this project owns — either a typo or another
+    project's copy — and neither is a reason to start somewhere unnamed. Check
+    it against list_working_copies, or name the checkout by its root instead;
+    a root that has never joined this project is still a valid destination.
+    """)
+  end
+
   def error(:not_found, _provider), do: refuse("Agent not found on this project.")
 
   def error(:missing_active_project, _provider),

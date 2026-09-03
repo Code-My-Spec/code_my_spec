@@ -150,6 +150,23 @@ defmodule CodeMySpec.AgentsDestinationTest do
     assert root == own.root
   end
 
+  test "an id from another project refuses instead of defaulting to the caller's own tree", %{
+    scope: scope
+  } do
+    foreign_id = full_scope_fixture().active_working_copy_id
+
+    assert {:error, {:unknown_working_copy, ^foreign_id}} = start_on_id(scope, foreign_id),
+           "an id naming another project's checkout must not default to running the " <>
+             "agent in the caller's own tree while recording it against a copy that " <>
+             "tree has nothing to do with"
+  end
+
+  test "an id nothing owns refuses the same way", %{scope: scope} do
+    unknown_id = Ecto.UUID.generate()
+
+    assert {:error, {:unknown_working_copy, ^unknown_id}} = start_on_id(scope, unknown_id)
+  end
+
   test "naming nothing still means the caller's own checkout", %{scope: scope, own: own} do
     assert {:ok, agent} =
              Agents.start_agent(scope, %{provider: "anthropic", role: "coding", engine: :pi})

@@ -81,6 +81,7 @@ defmodule CodeMySpec.Agents do
           | :not_connected
           | :reconnect_required
           | :unknown_provider
+          | {:unknown_working_copy, String.t()}
           | Ecto.Changeset.t()
           | term()
 
@@ -113,7 +114,7 @@ defmodule CodeMySpec.Agents do
          {:ok, provider, model} <- provider_for(scope, role, attrs),
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
-         attrs = put_destination(scope, attrs),
+         {:ok, attrs} <- put_destination(scope, attrs),
          :ok <- main_copy_is_free(scope, attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
@@ -160,11 +161,16 @@ defmodule CodeMySpec.Agents do
   # it by making the same call twice, once with the copy named and once
   # without — refused, then allowed.
   defp put_destination(%Scope{} = scope, attrs) do
-    {root, working_copy_id} = resolve_destination(scope, attrs)
+    case resolve_destination(scope, attrs) do
+      {:ok, root, working_copy_id} ->
+        {:ok,
+         attrs
+         |> Map.put(:working_copy, root)
+         |> Map.put(:working_copy_id, working_copy_id)}
 
-    attrs
-    |> Map.put(:working_copy, root)
-    |> Map.put(:working_copy_id, working_copy_id)
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   # An id names a specific checkout unambiguously, so root has to be derived
@@ -176,17 +182,25 @@ defmodule CodeMySpec.Agents do
   # caller's own checkout is the main copy, `names?/2`'s root branch then
   # matched main by accident, and `start_agent` refused a start on some other
   # copy entirely while blaming the main checkout for it.
+  #
+  # An id this scope does not own is refused rather than defaulted, unlike an
+  # unresolved root. The two look similar but are not: a root that resolves to
+  # nothing is a checkout that has never joined and legitimately has no row
+  # yet, which is what that fallback exists for. An id that resolves to
+  # nothing — a typo, or another project's copy — has no such reading, and
+  # defaulting it ran an agent in the caller's own tree while recording it
+  # against a checkout from a different project entirely. Issue c0facd8e.
   defp resolve_destination(scope, %{working_copy_id: id} = attrs)
        when is_binary(id) and id != "" do
     case owned_copy(scope, id) do
-      %{root: root} -> {root, id}
-      nil -> {Map.get(attrs, :working_copy) || scope.cwd, id}
+      %{root: root} -> {:ok, root, id}
+      nil -> {:error, {:unknown_working_copy, id}}
     end
   end
 
   defp resolve_destination(scope, attrs) do
     root = Map.get(attrs, :working_copy) || scope.cwd
-    {root, id_for(scope, root)}
+    {:ok, root, id_for(scope, root)}
   end
 
   defp owned_copy(%Scope{active_project_id: project_id}, id) do
