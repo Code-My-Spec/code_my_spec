@@ -23,9 +23,12 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  @impl_path "lib/example_context.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,13 +36,65 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
   spex "The agent is never told to wait for the analyzers" do
     scenario "Waiting is the orchestrator's job, not the agent's" do
       given_ "an agent running under Alloy whose analyzers have not finished", context do
-        Fixtures.deliver_manifest(context.scope)
+        # Story 988's criterion 8201's recipe, plus the state this criterion is
+        # actually about.
+        #
+        # Two things have to be true at once, and neither is free. The finding
+        # must *block*, or nothing is delivered and every refutation below
+        # passes against an empty list — which is what this scenario did until
+        # QA found the directive live. And the source must be **stale**, because
+        # the wait remedy only appears in the footer a stale source produces; a
+        # fresh one renders no remedy at all and the refutes go vacuous a second
+        # way.
+        #
+        # `stale_analysis_run/2` is the difference between stale and never-ran:
+        # a completed run whose fingerprint has moved on still blocks and still
+        # explains itself, where a source with no run at all is simply not
+        # enforced.
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\nend\n"
+          )
+
+        Fixtures.deliver_manifest(context.scope)
+
         Fixtures.record_problem(context.scope, "credo", %{
-          file_path: "lib/example_context.ex",
+          file_path: @impl_path,
           message: "Modules should have a @moduledoc tag"
         })
+
+        Fixtures.stale_analysis_run(context.scope, "credo")
+
+        assert {:error, reason} = Fixtures.validate_stop(context.scope),
+               "the finding must block, or the refutations below assert against nothing"
+
+        assert reason =~ "stale",
+               """
+               The source is not stale, so the response carries no footer about
+               reruns at all and the refutations below would pass whatever the
+               code did. Got:
+
+               #{reason}
+               """
+
+        # What this scenario can and cannot reach.
+        #
+        # The `curl analysis/wait` remedy lives behind `wait_or_report/4`'s
+        # "a rerun is in flight" branch, and `Analysis.in_flight/1` reads the
+        # analysis Registry rather than the ledger — with no ProjectServer for
+        # this project the state is `:untracked`, so no ledger row can put a
+        # source in flight from here. The remedy's two renderings are asserted
+        # directly against `ProblemRenderer` in
+        # `test/code_my_spec/problems/problem_renderer_wait_remedy_test.exs`,
+        # which is a pure function and the honest place for it.
+        #
+        # What is left here is still worth having, and is the half that was
+        # missing: a decision really is delivered, and none of the hook's
+        # waiting vocabulary appears anywhere in it.
 
         {:ok, Map.put(context, :agent_id, running_agent(context))}
       end
@@ -47,8 +102,15 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
       when_ "its turn ends and it is next addressed", context do
         :ok = Fixtures.end_turn(context.scope, context.agent_id)
 
-        {:ok,
-         Map.put(context, :told, Fixtures.orchestrator_actions(context.scope, context.agent_id))}
+        told = Fixtures.orchestrator_actions(context.scope, context.agent_id)
+
+        assert told != [], """
+        The agent was told nothing at all, so the refutations below prove
+        nothing about what it was told. A blocking finding was established in
+        the premise precisely so there would be a message to inspect.
+        """
+
+        {:ok, Map.put(context, :told, told)}
       end
 
       then_ "it is not asked to wait for them", context do

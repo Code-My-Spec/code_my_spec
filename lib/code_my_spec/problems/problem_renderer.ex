@@ -197,7 +197,11 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       # The harness whose `analysis/wait` will block until the sweep lands, when
       # there is one to name. A scope with no harness gets the plain instruction
       # rather than a URL that would 404 — same rule as `Hooks.Stop`.
-      working_copy_id: Keyword.get(opts, :working_copy_id)
+      working_copy_id: Keyword.get(opts, :working_copy_id),
+      # Whether somebody else is already waiting on this run. Defaults false,
+      # because every caller until story 988 was an agent that had to wait for
+      # itself.
+      orchestrator_waits?: Keyword.get(opts, :orchestrator_waits?, false)
     }
 
     header = "Fix these problems before stopping:\n\n"
@@ -721,6 +725,18 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Run in the background: a sweep is 200-590s here and the agent is notified
   # when it returns, which is also why this is an HTTP endpoint rather than an
   # MCP tool (MCP caps a request at 30s).
+  # An agent inside our own BEAM is not the one waiting.
+  #
+  # It stops, the analyzers run, and the orchestrator delivers the answer as a
+  # message — so telling it to block on `analysis/wait` and stop again buys
+  # nothing and costs a turn. QA of story 988 watched an agent take the advice
+  # literally: it curled the endpoint, was notified, curled it again, and spent
+  # the turn on it. Above the general clause because it is the narrower match.
+  defp wait_remedy(%{orchestrator_waits?: true}) do
+    " You do not need to wait for it, or end another turn to find out — when the" <>
+      " run lands you will be told what it found."
+  end
+
   defp wait_remedy(%{working_copy_id: id}) when is_binary(id) do
     " Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait`" <>
       " — run that in the background and you will be notified when it returns — then" <>

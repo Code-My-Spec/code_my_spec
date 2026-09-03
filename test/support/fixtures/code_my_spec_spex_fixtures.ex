@@ -3456,6 +3456,23 @@ defmodule CodeMySpecSpex.Fixtures do
   stop time — the stamp would read stale and real analyzers would run
   against the synthetic project.
   """
+  @doc """
+  A completed run for `source` whose fingerprint no longer matches the tree.
+
+  Stale is not the same state as never-ran, and the difference decides what the
+  agent is told. A source with no completed run at all is simply not enforced;
+  a completed run against a fingerprint that has moved on still blocks, and the
+  response gains the footer explaining that a rerun is coming — which is where
+  the hook's "curl analysis/wait and stop again" remedy lives.
+  """
+  def stale_analysis_run(%Scope{} = scope, source) do
+    CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
+      source: source,
+      input_fingerprint: "stale-fingerprint",
+      status_override: :completed
+    })
+  end
+
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
     {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
     CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)

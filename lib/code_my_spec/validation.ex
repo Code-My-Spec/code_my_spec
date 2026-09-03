@@ -1343,7 +1343,15 @@ defmodule CodeMySpec.Validation do
       Problems.render_stop_response(
         blocking,
         advisory,
-        Keyword.put(opts, :stale_sources, stale_sources)
+        opts
+        |> Keyword.put(:stale_sources, stale_sources)
+        # An internal agent is not the one who waits. `Hooks.Stop`'s remedy for
+        # a stale source is "curl analysis/wait, then stop again", which is the
+        # only thing an external agent can do — and story 988 says it must have
+        # no counterpart here, because this agent is a live process the answer
+        # is delivered to. QA watched one obey the directive and spend its whole
+        # turn re-curling the endpoint. Issue `778ab035`.
+        |> Keyword.put(:orchestrator_waits?, internal_agent?(opts))
       )
 
     {:error, reason, blocking_key(blocking)}
