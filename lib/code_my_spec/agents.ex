@@ -185,9 +185,41 @@ defmodule CodeMySpec.Agents do
   # because a checkout that has never joined has no row to find.
   defp id_for(%Scope{} = scope, root) do
     case WorkingCopies.by_root(scope, root) do
-      %{id: id} -> id
-      nil -> scope.active_working_copy_id
+      %{id: id} ->
+        id
+
+      nil ->
+        warn_substitution(scope, root)
+        scope.active_working_copy_id
     end
+  end
+
+  # The fallback is deliberate — see above — but it used to be silent, and that
+  # is what made it dangerous rather than merely lossy.
+  #
+  # QA of story 988 named `.../qa_sandbox`, was answered "Working copy:
+  # .../qa_sandbox", and got a row pointing at the main checkout. The agent
+  # really did run in qa_sandbox; only its record disagreed. `by_root/2` matches
+  # project *and device* and root, and that root's row for this project sits on
+  # a stale device, so the lookup missed and the caller's own copy stood in.
+  # Issue `af85efc7`.
+  #
+  # It matters beyond a wrong column: the stop decision and the analyzer alert
+  # are both computed from this id, so an agent editing one tree is told about
+  # another. Nothing is moved here — rewriting the root would relocate the agent
+  # itself, and relocating it *into the framework's own checkout* is worse than
+  # the bug — so the substitution stands and is announced instead.
+  defp warn_substitution(%Scope{} = scope, root) do
+    if is_binary(root) and root != scope.cwd do
+      Logger.warning(
+        "[Agents] no working copy for #{root} on this device and project — recording the agent " <>
+          "against #{inspect(scope.active_working_copy_id)} instead. It will run where you said " <>
+          "and be judged where this points; if that is not what you meant, the copy at that root " <>
+          "has not joined this project from this machine."
+      )
+    end
+
+    :ok
   end
 
   # By id or by root, because callers name a checkout both ways and a guard

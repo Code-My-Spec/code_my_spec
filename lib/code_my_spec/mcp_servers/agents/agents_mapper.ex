@@ -17,6 +17,35 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.WorkingCopies
+
+  # Where the agent runs and where it is recorded are two different facts, and
+  # they only ever disagree by accident.
+  #
+  # `Agents.id_for/2` falls back to the caller's own copy when a named root
+  # resolves to no row for this device and project — deliberately, so a checkout
+  # that has never joined is not a refusal. But the reply printed the root that
+  # was asked for, so a caller who named one checkout and got a row on another
+  # was told nothing had gone wrong. QA of story 988 read "Working copy:
+  # .../qa_sandbox" off a row pointing at the main checkout. Issue `af85efc7`.
+  #
+  # Nothing is moved to fix it: the agent runs where it was told, because
+  # relocating it would put it in whichever checkout the caller happened to be
+  # in. The disagreement is simply no longer hidden — the stop decision and the
+  # analyzer alert are both computed from the recorded copy, so a reader needs
+  # to know which one that is.
+  defp recorded_against(%Agent{working_copy_id: id, working_copy: root})
+       when is_binary(id) and is_binary(root) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{root: ^root}} -> ""
+      {:ok, %{root: recorded}} -> "\n    Recorded against: #{recorded} — analysis and stop " <>
+        "decisions for this agent are computed from that copy, not the root above. The root you " <>
+        "named has not joined this project from this machine."
+      _ -> ""
+    end
+  end
+
+  defp recorded_against(_agent), do: ""
 
   @spec started(Agent.t()) :: Response.t()
   def started(%Agent{} = agent) do
@@ -29,7 +58,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Engine: #{agent.engine}
     Provider: #{agent.provider}
     Model: #{agent.model || "the provider's default"}
-    Working copy: #{agent.working_copy}
+    Working copy: #{agent.working_copy}#{recorded_against(agent)}
     Account: #{agent.account_id}
     Status: #{agent.status}
 
@@ -83,7 +112,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Agent: #{agent.id}
     Engine: #{agent.engine}
     Provider: #{agent.provider}
-    Working copy: #{agent.working_copy}
+    Working copy: #{agent.working_copy}#{recorded_against(agent)}
     Status: #{agent.status}
     """
   end
@@ -95,7 +124,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Agent stopped.
 
     Agent: #{agent.id}
-    Working copy: #{agent.working_copy}
+    Working copy: #{agent.working_copy}#{recorded_against(agent)}
     Status: #{agent.status}
     """)
   end
