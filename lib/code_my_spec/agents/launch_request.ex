@@ -29,7 +29,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential}
+  alias CodeMySpec.Agents.{Agent, Credential, RoleBrief}
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
 
@@ -66,6 +66,12 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "provider" => agent.provider,
       "working_copy" => agent.working_copy,
       "role" => agent.role,
+      # What this agent is for, in words, so the model gets it and not only the
+      # tool list. Resolved here rather than on the harness because role
+      # semantics are the framework's — `RoleBrief` keeps them beside the tool
+      # set that enforces them, and the harness has no opinion about what a QA
+      # agent may do.
+      "role_brief" => RoleBrief.for(agent.role),
       "messages" => agent.history || []
     }
     |> Map.merge(credential_fields(agent.credential))

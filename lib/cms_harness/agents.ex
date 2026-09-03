@@ -38,6 +38,9 @@ defmodule CmsHarness.Agents do
              provider: request["provider"],
              credential: credential(request),
              working_copy: request["working_copy"],
+             # Half of the system prompt; the engine composes it with the
+             # project's own guide, which only this side can read.
+             role_brief: request["role_brief"],
              # Which checkout this is, as the server knows it. The agent's own
              # MCP session is addressed by it — `x-harness-id` is what makes a
              # script act for this copy and no other — so an agent without it

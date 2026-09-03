@@ -47,6 +47,7 @@ defmodule CmsHarness.Agents.Engine do
 
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Provider
+  alias CmsHarness.Agents.SystemPrompt
 
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
@@ -692,6 +693,13 @@ defmodule CmsHarness.Agents.Engine do
        provider_opts
        |> Keyword.put(:tools, tools(opts))
        |> Keyword.put(:working_directory, working_copy)
+       # What this agent is for. Nothing set this before, so every agent came up
+       # with `system_prompt: nil` and knew only whatever message arrived next —
+       # its role chose its tools and told it nothing. Issue `0f022a10`.
+       |> Keyword.put(
+         :system_prompt,
+         SystemPrompt.compose(Keyword.get(opts, :role_brief), working_copy)
+       )
        |> Keyword.put(:middleware, [Compaction])
        |> Keyword.put(:context, %{
          working_directory: working_copy,
