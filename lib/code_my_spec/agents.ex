@@ -190,7 +190,7 @@ defmodule CodeMySpec.Agents do
   # nothing — a typo, or another project's copy — has no such reading, and
   # defaulting it ran an agent in the caller's own tree while recording it
   # against a checkout from a different project entirely. Issue c0facd8e.
-  defp resolve_destination(scope, %{working_copy_id: id} = attrs)
+  defp resolve_destination(scope, %{working_copy_id: id})
        when is_binary(id) and id != "" do
     case owned_copy(scope, id) do
       %{root: root} -> {:ok, root, id}
