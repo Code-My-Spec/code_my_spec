@@ -548,7 +548,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
       assert reachable(run: run) == true
 
-      assert_received {:ran, probe}
+      probe = collect_commands() |> find_command("curl")
       assert probe =~ "curl"
       assert probe =~ "/v2/"
     end
@@ -561,6 +561,8 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     # One curl, not `await_registry/5`'s fifteen — this is a caller asking
     # "is it up right now", not one waiting for a container that just started.
+    # The `docker port` readback ahead of it is a one-time check, not a
+    # retry loop, so it does not count against this claim.
     test "asks exactly once, with no retry wait" do
       run = fn [command] ->
         send(self(), {:ran, command})
@@ -568,8 +570,9 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       end
 
       assert reachable(run: run) == false
-      assert_received {:ran, _first}
-      refute_received {:ran, _second}
+
+      commands = collect_commands()
+      assert Enum.count(commands, &(&1 =~ "curl")) == 1
     end
 
     test "asks at the address it was told to bind" do
@@ -579,7 +582,8 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       end
 
       assert reachable(run: run, bind: "10.0.0.5") == true
-      assert_received {:ran, command}
+
+      command = collect_commands() |> find_command("curl")
       assert command =~ "http://10.0.0.5:5000/v2/"
     end
   end

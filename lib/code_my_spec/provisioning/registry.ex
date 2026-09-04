@@ -553,7 +553,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   @spec reachable?(Scope.t(), keyword()) :: boolean()
   def reachable?(%Scope{} = scope, opts) do
     run = Keyword.fetch!(opts, :run)
-    bind = Keyword.get(opts, :bind, "127.0.0.1")
+    bind = running_bind(run, Keyword.get(opts, :bind, "127.0.0.1"))
 
     case serve_credential(scope, opts) do
       {:ok, credential} -> probe(run, bind, credential) == :ok

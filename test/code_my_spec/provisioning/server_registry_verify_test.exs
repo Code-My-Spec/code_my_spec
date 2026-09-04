@@ -93,7 +93,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       assert Enum.any?(resources, &(&1.kind == "server"))
 
-      assert_received {:ran, probe}
+      probe = find_ran("curl")
       assert probe =~ "curl"
       assert probe =~ "http://#{@private_ip}:5000/v2/"
     end
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       assert {:ok, :satisfied, _resources} = Steps.verify(:server, ctx.scope, verify_opts(run))
 
-      assert_received {:ran, probe}
+      probe = find_ran("curl")
       assert probe =~ "http://#{@private_ip}:5000/v2/"
     end
   end
@@ -252,6 +252,18 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       assert reason =~ "working directory",
              "expected a clean, named reason rather than a raw exception message: #{reason}"
+    end
+  end
+
+  # `Registry.reachable?/2` sends a `docker port` command ahead of its curl
+  # probe now (`running_bind/2`'s correction), so the curl is no longer
+  # necessarily the first `:ran` message — drains the mailbox instead of
+  # grabbing just the next one.
+  defp find_ran(pattern, acc \\ []) do
+    receive do
+      {:ran, command} -> find_ran(pattern, [command | acc])
+    after
+      0 -> Enum.reverse(acc) |> Enum.find(&(&1 =~ pattern))
     end
   end
 
