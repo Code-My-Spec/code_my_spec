@@ -42,12 +42,21 @@ defmodule CmsHarness.Device do
   exception, which is what `fresh_id/0` prefers before falling back to a
   locally-generated random id.
 
-  ## Failure is soft on purpose
+  ## Failure is soft on purpose, and does not cost the identity
 
   A harness that cannot reach the server still has work to do: it watches files,
   runs analyzers and answers hooks against whatever it already knows. Refusing
   to boot because a machine could not announce itself would trade a cosmetic gap
   in a list for the whole harness, so this logs and carries on.
+
+  It carries on *knowing who it is*. The id is written when it is minted rather
+  than when a reply arrives — minting and recording are one act, because the id
+  is this machine's own and there is nothing for a server to confirm before it
+  counts. Deferring the write until the reply meant an unreachable server left
+  the machine holding no id at all, so the join payload `ChannelClient` builds
+  from `recorded_id/0` went out empty and came back "This harness did not say
+  which machine it is on" — a network failure wearing an identity failure's
+  error message (3bc0f683).
   """
 
   require Logger
@@ -105,7 +114,24 @@ defmodule CmsHarness.Device do
           {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
           | {:error, term()}
   def announce(observations \\ %{}) do
-    id = recorded_id() || fresh_id()
+    # Written before the round trip, not after it. Minting and recording are
+    # one act: the id is this machine's own, so there is nothing for a server
+    # to confirm before it counts.
+    #
+    # Deferring the write until a reply arrived meant a machine that could not
+    # reach the server held no id at all — it minted one on the line above,
+    # sent it, failed, and dropped it. `ChannelClient` builds its join payload
+    # from `recorded_id/0`, so the next join went out empty and the server
+    # answered "This harness did not say which machine it is on", 0.2s after
+    # that same daemon had announced. A network failure wearing an identity
+    # failure's error message (3bc0f683).
+    #
+    # Worse on the fallback path. `fresh_id/0` prefers a hardware address and
+    # recomputes the same value every time, but where there is none it falls
+    # back to a random UUID — so with the server down, every announce minted a
+    # different machine and kept none of them, and `WorkingCopyReporter` calls
+    # this on a schedule rather than once at boot.
+    id = ensure_id()
 
     with {:ok, token} <- credential(),
          {:ok, %{device_id: confirmed} = reply} <- post(id, token, observations) do
@@ -116,10 +142,30 @@ defmodule CmsHarness.Device do
       {:error, reason} = error ->
         Logger.warning(
           "[CmsHarness] could not announce this machine (#{inspect(reason)}); " <>
-            "it will not appear in the device list until the next start that reaches the server"
+            "it is device #{id} and knows it, but will not appear in the device " <>
+            "list until an announce reaches the server"
         )
 
         error
+    end
+  end
+
+  # The id on file, minting and recording one if there is none.
+  #
+  # `write/1` is what makes this safe to call from several daemons at once: it
+  # refuses to move an id already on file, so whichever process gets there
+  # first decides and the rest read that answer back rather than replacing it.
+  defp ensure_id do
+    case recorded_id() do
+      nil ->
+        minted = fresh_id()
+        write(minted)
+        # Re-read rather than returning `minted`: another daemon on this box
+        # may have written first, and its answer is the one that stands.
+        recorded_id() || minted
+
+      id ->
+        id
     end
   end
 

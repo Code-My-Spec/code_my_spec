@@ -117,6 +117,67 @@ defmodule CmsHarness.DeviceTest do
     end
   end
 
+  # The half the overwrite fix did not reach. `write/1` refusing to move an id
+  # closed the racing-writers story, but nothing was written at all until the
+  # server answered — so a machine that could not reach the server held no id,
+  # and the join payload `ChannelClient` builds from `recorded_id/0` went out
+  # empty. The harness had minted an id one line earlier and thrown it away.
+  #
+  # Which produced the error in 3bc0f683, at a moment that reads as nonsense:
+  # "This harness did not say which machine it is on", 0.2s after that same
+  # daemon announced. The moduledoc's own argument settles it — the id is
+  # generated locally and is not the server's to grant, so there is nothing to
+  # wait for before writing it down.
+  describe "a machine the server cannot be reached from" do
+    setup do
+      Process.put(:device_test_reply, {:error, :econnrefused})
+      :ok
+    end
+
+    test "still writes down the id it minted", %{device_file: file} do
+      assert {:error, :econnrefused} = Device.announce()
+
+      assert File.exists?(file),
+             "the machine minted an id, failed to announce it and discarded it. " <>
+               "Its next channel join says it does not know which machine it is on, " <>
+               "which is a network failure wearing an identity failure's error message."
+
+      assert Device.recorded_id() != nil
+    end
+
+    test "presents the same id on every attempt until the server comes back" do
+      {:error, _} = Device.announce()
+      first = Device.recorded_id()
+
+      # Explicitly, because `nil == nil` would pass this test on exactly the
+      # bug it exists to catch.
+      assert is_binary(first)
+
+      {:error, _} = Device.announce()
+      {:error, _} = Device.announce()
+
+      assert Device.recorded_id() == first,
+             "each attempt minted a fresh id and kept none. On a machine with no " <>
+               "usable hardware address `fresh_id/0` falls back to a random UUID, so " <>
+               "identity churned on every announce — and `WorkingCopyReporter` calls " <>
+               "this repeatedly, not once at boot."
+    end
+
+    test "the id survives into the successful announce that follows", %{device_file: file} do
+      {:error, _} = Device.announce()
+      minted = Device.recorded_id()
+
+      Process.delete(:device_test_reply)
+
+      assert {:ok, %{device_id: ^minted}} = Device.announce(),
+             "the machine changed its mind about who it was the moment the server " <>
+               "came back, which is the same instability from the server's side as " <>
+               "two daemons overwriting one file."
+
+      assert File.read!(file) =~ minted
+    end
+  end
+
   describe "the machine fingerprint" do
     test "a freshly minted id is always UUID-shaped" do
       # `machine_fingerprint/0` is private, so exercised through its one
