@@ -350,7 +350,7 @@ defmodule CodeMySpec.Provisioning.Registry do
     bucket = bucket_name(scope, opts)
 
     if container_running?(run) do
-      {:ok, %{bucket: bucket, bind: bind, port: port()}}
+      {:ok, %{bucket: bucket, bind: running_bind(run, bind), port: port()}}
     else
       with {:ok, credentials} <- credentials(scope, opts) do
         command = create_container_command(bucket, credentials, bind, location, opts)
@@ -394,6 +394,7 @@ defmodule CodeMySpec.Provisioning.Registry do
     bind = Keyword.get(opts, :bind, "127.0.0.1")
 
     with true <- container_running?(run) || {:error, :registry_not_provisioned},
+         bind = running_bind(run, bind),
          {:ok, credential} <- serve_credential(scope, opts),
          :ok <- ensure_htpasswd(run, credential, opts) do
       bucket = bucket_name(scope, opts)
@@ -403,6 +404,37 @@ defmodule CodeMySpec.Provisioning.Registry do
       run.([trust_command("#{bind}:#{port()}")])
 
       await_registry(run, bucket, bind, credential, Keyword.get(opts, :registry_attempts, 15))
+    end
+  end
+
+  # Corrects a caller-computed `:bind` against what the already-running
+  # container is actually published on. The caller's guess is only as good
+  # as whatever network-adoption logic produced it, and a box carrying more
+  # than one private network (a legacy one, another project's own, or both —
+  # confirmed live on fuellytics and fuellytics-prod, each attached to a
+  # `market-my-spec*` network from long before broken_oaths existed,
+  # alongside the one its own onboarding attached) makes that guess
+  # genuinely ambiguous: re-deriving "the" network from Hetzner's own
+  # account-wide list is not guaranteed to agree with which network the
+  # registry container was actually started on. The observed failure was
+  # `registry_not_listening` against an address nothing was bound to, while
+  # the real container was up and authenticating one interface over.
+  # `docker port`'s answer about a container that already exists cannot
+  # disagree with itself the way a freshly re-derived network id can.
+  # Falls back to the caller's own value when the answer cannot be parsed —
+  # a test double, `local_runner`, or a box old enough to predate this
+  # check — so every existing caller's behavior is unchanged when this has
+  # nothing better to offer.
+  defp running_bind(run, fallback) do
+    case run.(["docker port #{@container} #{port()}/tcp 2>&1"]) do
+      {output, 0} ->
+        case Regex.run(~r/(\S+):#{port()}\s*$/, String.trim(output)) do
+          [_, address] -> address
+          _ -> fallback
+        end
+
+      _ ->
+        fallback
     end
   end
 

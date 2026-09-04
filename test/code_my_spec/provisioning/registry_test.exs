@@ -245,6 +245,25 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert {:ok, _} = ensure_container(run: run)
     end
 
+    # A box can carry more than one private network — a legacy one from
+    # before this project ever touched it, another project's own, or both —
+    # so the network id a caller derives to compute `:bind` is only ever a
+    # guess. Confirmed live on fuellytics and fuellytics-prod: each already
+    # had an unrelated `market-my-spec*` network attached long before
+    # broken_oaths existed, and the computed bind pointed at that one
+    # instead of the address the container was actually published on.
+    # `docker port`'s answer about a container that already exists cannot
+    # disagree with itself the way a freshly re-derived network id can.
+    test "an already-running container's real published address wins over the caller's guess" do
+      run = fn
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
+        ["docker port" <> _] -> {"10.1.0.2:5000\n", 0}
+        [_] -> {"", 0}
+      end
+
+      assert {:ok, %{bind: "10.1.0.2"}} = ensure_container(run: run, bind: "10.0.0.4")
+    end
+
     # Found live against fuellytics-prod: ssh's own "Warning: Permanently
     # added ... to the list of known hosts" banner merges onto the same
     # stream as the command's real output (`UserKnownHostsFile=/dev/null`
@@ -400,6 +419,32 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       # server is the app. Only when the file actually changes.
       assert trust =~ "grep -qF"
       assert trust =~ "systemctl restart docker"
+    end
+
+    # Same correction as `ensure_container/2`'s, at the site the live bug
+    # actually surfaced: a computed `:bind` disagreeing with reality made
+    # `await_registry/5` probe an address nothing was listening on
+    # (`registry_not_listening`) while the real, already-running container
+    # answered correctly one interface over.
+    test "probes the container's real published address, not the caller's guess" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+
+        case command do
+          "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
+          "docker port" <> _ -> {"10.1.0.2:5000\n", 0}
+          _ -> {"", 0}
+        end
+      end
+
+      assert {:ok, _} = serve(run: run, bind: "10.0.0.4")
+
+      commands = collect_commands()
+      probe = find_command(commands, "curl")
+      trust = find_command(commands, "insecure-registries")
+
+      assert probe =~ "10.1.0.2:5000"
+      assert trust =~ "10.1.0.2:5000"
     end
 
     # `await_registry/5` probes the registry itself before reporting up —
