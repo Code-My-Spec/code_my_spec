@@ -96,6 +96,27 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     end
   end
 
+  # Exposed publicly for a caller writing a generated kamal config: kamal
+  # wants `image:` bare, with no host, and combines it with `registry:
+  # server:` itself — proven against real kamal in
+  # `deploy_artifacts_test.exs`. `image/2` stays the full "host/repository"
+  # shape a build/push command needs; this is the half of it a generated
+  # file's `image:` field should actually carry.
+  describe "repository/2" do
+    test "the bare path image/2 prepends a host onto" do
+      assert {:ok, repository} = Registry.repository(scope())
+      assert {:ok, image} = Registry.image(scope())
+
+      assert image =~ repository
+      assert repository == "sam-s-app"
+      refute repository =~ ":"
+    end
+
+    test "a project with no name cannot name a repository" do
+      assert {:error, :no_project} = Registry.repository(%Scope{})
+    end
+  end
+
   # The registry container is a box-wide singleton (`serve/2`), but what it
   # stores per project is not — a bucket, and a repository path, per project,
   # so the container being shared does not mean one project's images become

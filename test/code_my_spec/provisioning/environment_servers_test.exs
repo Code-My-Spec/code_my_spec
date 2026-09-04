@@ -257,6 +257,26 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
              "another project's servers still depend on"
   end
 
+  # Exposed publicly for a caller writing a generated file (`config/
+  # deploy.yml`'s `registry: server:`), not only for `run(:server, …)`'s own
+  # internal use. Two environments on these same two boxes get two different
+  # real addresses — a single project-wide default cannot be right for both.
+  test "registry_address/3 resolves each environment's own server, not one shared value", ctx do
+    record_two_independent_networks_requests(self())
+
+    link_environment(ctx.scope, "prod", "fuellytics-prod")
+    link_environment(ctx.scope, "uat", "fuellytics")
+
+    assert {:ok, "10.0.0.2:5000"} = Steps.registry_address(ctx.scope, "prod")
+    assert {:ok, "10.1.0.2:5000"} = Steps.registry_address(ctx.scope, "uat")
+  end
+
+  test "registry_address/3 reports not provisioned for an environment with no linked server", ctx do
+    record_two_independent_networks_requests(self())
+
+    assert {:error, :not_provisioned} = Steps.registry_address(ctx.scope, "prod")
+  end
+
   # fuellytics-prod on its own network (id 55) and fuellytics on a different
   # one (id 66) — both in the same zone (fsn1/eu-central), which is the
   # detail the bug turned on: same zone, different networks.

@@ -1771,7 +1771,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
            host: project.domain || "example.com",
            owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
            registry: Registry.default_host(),
-           image: registry_image(scope)
+           image: registry_image(scope),
+           kamal_image: registry_repository(scope),
+           prod_registry: registry_address(scope, "prod"),
+           uat_registry: registry_address(scope, "uat")
          ) do
       {:ok, []} ->
         {:noreply,
@@ -2380,6 +2383,32 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp registry_image(scope) do
     case Registry.image(scope) do
       {:ok, image} -> image
+      _ -> nil
+    end
+  end
+
+  # Kamal wants `image:` bare, with no host — it reads the host from
+  # `registry:server` separately and combines the two itself. A host baked
+  # into both fields doubles up into a repository path nothing actually
+  # serves, confirmed against real kamal in `deploy_artifacts_test.exs` and
+  # against a real, already-deployed config on a shared box.
+  defp registry_repository(scope) do
+    case Registry.repository(scope) do
+      {:ok, repository} -> repository
+      _ -> nil
+    end
+  end
+
+  # Per environment, never one project-wide value — two environments on two
+  # different boxes have two different registry addresses, and
+  # `Registry.default_host/0` ("localhost:5000") is only ever right for a
+  # registry bound to loopback, which is not true of a shared box's
+  # container today. `nil` on `:not_provisioned` lets `DeployArtifacts`
+  # fall back to its own `:registry` default instead of baking in an
+  # address nothing answers on.
+  defp registry_address(scope, environment) do
+    case Steps.registry_address(scope, environment) do
+      {:ok, address} -> address
       _ -> nil
     end
   end

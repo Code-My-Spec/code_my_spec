@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
   alias Anubis.Server.Response
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Provisioning.Registry
+  alias CodeMySpec.Provisioning.{Registry, Steps}
   alias CodeMySpec.Resources
 
   schema do
@@ -44,7 +44,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
       host: project.domain || "example.com",
       owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
       registry: Registry.default_host(),
-      image: registry_image(project_scope)
+      image: registry_image(project_scope),
+      kamal_image: registry_repository(project_scope),
+      prod_registry: registry_address(project_scope, "prod"),
+      uat_registry: registry_address(project_scope, "uat")
     )
   end
 
@@ -54,6 +57,34 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
   defp registry_image(scope) do
     case Registry.image(scope) do
       {:ok, image} -> image
+      _ -> nil
+    end
+  end
+
+  # Kamal wants `image:` bare, with no host — it reads the host from
+  # `registry:server` separately and combines the two itself. Confirmed
+  # against real kamal (`deploy_artifacts_test.exs`) and against a real,
+  # already-deployed config on a shared box: a host baked into `image:` as
+  # well as `registry:server` doubles up into a repository path nothing
+  # actually serves.
+  defp registry_repository(scope) do
+    case Registry.repository(scope) do
+      {:ok, repository} -> repository
+      _ -> nil
+    end
+  end
+
+  # Per environment, never one project-wide value — two environments on
+  # two different boxes have two different registry addresses, and
+  # `Registry.default_host/0` ("localhost:5000") is only ever right for a
+  # registry bound to loopback, which is not true of a shared box's
+  # container today. `nil` on `:not_provisioned` (no linked server yet, or
+  # a linked server with no private network yet) lets `DeployArtifacts`
+  # fall back to its own `:registry` default instead of baking in an
+  # address nothing answers on.
+  defp registry_address(scope, environment) do
+    case Steps.registry_address(scope, environment) do
+      {:ok, address} -> address
       _ -> nil
     end
   end

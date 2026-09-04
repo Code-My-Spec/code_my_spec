@@ -62,7 +62,16 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     owner = Keyword.get(opts, :owner, "your-org")
 
     artifacts =
-      files(app: app, host: host, registry: registry, owner: owner, image: Keyword.get(opts, :image))
+      files(
+        app: app,
+        host: host,
+        registry: registry,
+        owner: owner,
+        image: Keyword.get(opts, :image),
+        kamal_image: Keyword.get(opts, :kamal_image),
+        prod_registry: Keyword.get(opts, :prod_registry),
+        uat_registry: Keyword.get(opts, :uat_registry)
+      )
 
     artifacts
     |> Enum.reject(fn {path, _} -> present?(env, path) end)
@@ -111,6 +120,22 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   because each gets its own repository path, not because of an org name. A
   caller generating for that registry passes its own `Registry.image/2`
   rather than trusting this to guess it from `owner`/`app`.
+
+  `:kamal_image` is a second, separate field from `:image` because the two
+  templates below want different shapes of the same idea: the CI workflow
+  builds and pushes with `docker build -t <full reference>`, which needs the
+  host; kamal's own `image:` wants a bare repository path with no host at
+  all, reading the host from `registry.server` instead — confirmed against a
+  real, already-deployed config on a shared box
+  (`market_my_spec/config/deploy.yml`: `image: market-my-spec`, no host).
+  Defaults to `:image` for a project generated before it had a real
+  registry, where there is nothing better to offer.
+
+  `:prod_registry`/`:uat_registry` override `:registry` per environment —
+  two environments on two different boxes have two different registry
+  addresses, and a single project-wide value cannot be right for both.
+  Each defaults to `:registry` for a project with no server linked yet,
+  where neither address is knowable.
   """
   @spec files(keyword()) :: [{String.t(), String.t()}]
   def files(opts) do
@@ -119,12 +144,15 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     registry = Keyword.fetch!(opts, :registry)
     owner = Keyword.fetch!(opts, :owner)
     image = Keyword.get(opts, :image) || "#{registry}/#{owner}/#{app}"
+    kamal_image = Keyword.get(opts, :kamal_image) || image
+    prod_registry = Keyword.get(opts, :prod_registry) || registry
+    uat_registry = Keyword.get(opts, :uat_registry) || registry
 
     [
       {"Dockerfile", dockerfile(app)},
       {".github/workflows/build.yml", ci_workflow(image)},
-      {"config/deploy.yml", kamal_config(app, image, host, "prod", registry)},
-      {"config/deploy.uat.yml", kamal_config(app, image, "uat.#{host}", "uat", registry)},
+      {"config/deploy.yml", kamal_config(app, kamal_image, host, "prod", prod_registry)},
+      {"config/deploy.uat.yml", kamal_config(app, kamal_image, "uat.#{host}", "uat", uat_registry)},
       {".sops.yaml", sops_rules()},
       {"rel/overlays/bin/boot", boot_overlay(app)},
       {"rel/overlays/bin/migrate", migrate_overlay(app)},

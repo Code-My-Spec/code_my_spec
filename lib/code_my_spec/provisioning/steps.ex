@@ -1942,6 +1942,40 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc """
+  Where this environment's registry actually answers, right now.
+
+  The same resolution `run(:server, …)` and its own verify use to reach a
+  registry (each server's own adopted network, `existing_network_id/1`,
+  never one derived from the project's name) — exposed here for a caller
+  that needs to *write* the address into a generated file rather than only
+  probe it. `generate_deploy_files`/`ProvisioningLive`'s own "Generate
+  deploy files" used to fall back to a project-wide constant
+  (`Registry.default_host/0`, "localhost:5000") for this, which is only
+  ever right for a box the registry binds to loopback on — not true of a
+  shared box today, where the container publishes on a private address
+  instead. Confirmed live against broken_oaths: two environments, two
+  boxes, two different real addresses, neither of them loopback.
+
+  `{:error, :not_provisioned}` covers both "no server linked yet" and "a
+  linked server has no private network yet" — a caller writing a file
+  falls back to its own default in either case rather than baking in an
+  address nothing answers on.
+  """
+  @spec registry_address(Scope.t(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, :not_provisioned}
+  def registry_address(%Scope{} = scope, environment, opts \\ []) do
+    name = server_name(scope, opts, environment)
+
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         {:ok, network_id} <- existing_network_id(server),
+         {:ok, ip} <- Hetzner.private_ip(server, network_id) do
+      {:ok, "#{ip}:#{Registry.port()}"}
+    else
+      _ -> {:error, :not_provisioned}
+    end
+  end
+
   defp send_and_await(scope, to, token, opts) do
     # From a domain the account has already verified, whichever one that is.
     #

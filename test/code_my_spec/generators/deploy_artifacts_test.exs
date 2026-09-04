@@ -144,6 +144,89 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       refute body =~ "acme"
     end
 
+    # Kamal itself combines `registry.server` and `image:` into the
+    # reference it actually pulls (`:repository`/`:absolute_image` below) —
+    # a host baked into *both* fields, which `:image`/`Registry.image/2`
+    # compose for the ghcr.io-shaped default, doubles up and pulls from
+    # nowhere real. Proven against real kamal, not just asserted against the
+    # generated string, because this exact shape (host present in both
+    # fields) reads as ordinary YAML and gave no signal it was wrong until
+    # kamal itself resolved it.
+    test "kamal constructs a doubled, broken repository when :image also carries the registry host" do
+      opts = Keyword.merge(@opts, registry: "10.0.0.2:5000", image: "10.0.0.2:5000/acme/my_app")
+      write_and_resolve(config("config/deploy.yml", opts), fn resolved ->
+        assert resolved =~ ":repository: 10.0.0.2:5000/10.0.0.2:5000/acme/my_app"
+      end)
+    end
+
+    # `:kamal_image` is the fix: a bare repository path, independent of
+    # whatever `:image` carries for the CI workflow's own `docker build -t`.
+    # Confirmed against real kamal: this is the only shape that resolves to
+    # a single, correct repository.
+    test "kamal_image writes image: bare, and kamal resolves a single correct repository" do
+      opts =
+        Keyword.merge(@opts,
+          registry: "ghcr.io/acme/my_app",
+          kamal_image: "broken-oaths",
+          prod_registry: "10.0.0.2:5000"
+        )
+
+      body = config("config/deploy.yml", opts)
+      assert body =~ "image: broken-oaths"
+
+      write_and_resolve(body, fn resolved ->
+        assert resolved =~ ":repository: 10.0.0.2:5000/broken-oaths"
+        refute resolved =~ "10.0.0.2:5000/10.0.0.2:5000"
+      end)
+    end
+
+    # `:prod_registry`/`:uat_registry` let two environments on two different
+    # boxes carry two different registry addresses — a single project-wide
+    # `:registry` cannot be right for both once they are not colocated.
+    test "prod_registry and uat_registry are independent, each landing in its own file" do
+      opts =
+        Keyword.merge(@opts,
+          kamal_image: "broken-oaths",
+          prod_registry: "10.0.0.2:5000",
+          uat_registry: "10.1.0.2:5000"
+        )
+
+      prod = config("config/deploy.yml", opts)
+      uat = config("config/deploy.uat.yml", opts)
+
+      assert prod =~ "server: 10.0.0.2:5000"
+      refute prod =~ "10.1.0.2:5000"
+
+      assert uat =~ "server: 10.1.0.2:5000"
+      refute uat =~ "10.0.0.2:5000"
+    end
+
+    # Neither new option changes anything for a caller that only ever gave
+    # `:registry`/`:image` — the fresh-project path this generator has
+    # always served, where no server exists yet and there is nothing real
+    # to compute either field from.
+    test "prod_registry/uat_registry/kamal_image all default to the existing fields" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        body = config(path, @opts)
+        assert body =~ "server: ghcr.io", path
+        assert body =~ "image: ghcr.io/acme/my_app", path
+      end
+    end
+
+    defp write_and_resolve(body, assertion) do
+      {:ok, dir} = Briefly.create(directory: true)
+      path = Path.join(dir, "deploy.yml")
+      File.write!(path, body <> "\nbuilder:\n  arch: amd64\n")
+
+      {output, 0} =
+        System.cmd("kamal", ["config", "--config-file", path],
+          env: [{"KAMAL_REGISTRY_USERNAME", "u"}, {"KAMAL_REGISTRY_PASSWORD", "p"}],
+          stderr_to_stdout: true
+        )
+
+      assertion.(output)
+    end
+
     # `Deploy.run/3`'s own `script_env/1` already sets `CMS_SSH_KEY_PATH` —
     # this is the half that had gone nowhere: nothing in the generated config
     # ever read it, so kamal fell back to offering every identity the ambient

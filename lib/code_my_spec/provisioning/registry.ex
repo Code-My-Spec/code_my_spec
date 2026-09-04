@@ -227,7 +227,21 @@ defmodule CodeMySpec.Provisioning.Registry do
   defp configured_bucket,
     do: Application.get_env(:code_my_spec, __MODULE__, [])[:bucket]
 
-  defp repository(scope, opts) do
+  @doc """
+  This project's own path within the registry, with no host and no tag.
+
+  What `image/2` appends a host onto and `kamal_config`'s own `image:` field
+  should be written as verbatim — confirmed against a real, already-deployed
+  config on this same shared box (`market_my_spec/config/deploy.yml`):
+  kamal wants `image:` bare and reads the host from `registry.server`
+  separately, not the two concatenated. A generated file that instead wrote
+  `image: <host>/<repository>` (this project's own earlier mistake) is not
+  malformed to kamal so much as it silently duplicates the host if
+  `registry.server` is also set, and reads *some* value either way, so it
+  never surfaced as a failure to catch.
+  """
+  @spec repository(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def repository(%Scope{} = scope, opts \\ []) do
     case Keyword.get(opts, :repository) || project_slug(scope) do
       slug when is_binary(slug) and slug != "" -> {:ok, slug}
       _ -> {:error, :no_project}
