@@ -44,6 +44,39 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
   defp credential, do: %{username: "cms", password: "hunter2"}
 
+  # Supplied rather than resolved, the same way `database_credential:` already
+  # is throughout this file.
+  #
+  # `serve/3` falls back to `admin_credential/1`, which reads the account's
+  # `database_admin_password` secret and needs `active_account_id` to be a
+  # binary. This suite is `use ExUnit.Case` with no sandbox, so there is no
+  # account to read one from — every call crashed with a FunctionClauseError
+  # before reaching the docker work these tests exist to prove (2c63bf0d).
+  #
+  # It predates the shared-box work: fa2af563 added the AccountSecrets-backed
+  # admin credential, and this suite is `:docker`-tagged and excluded by
+  # default, so nothing caught it.
+  #
+  # Explicit beats a fixture account here. What these tests prove is that the
+  # commands work against real Postgres; where the admin password comes from is
+  # a different question, covered elsewhere, and threading a database fixture
+  # through a suite with no Repo would make the setup the hardest part of it.
+  #
+  # `postgres` is `@admin_username` in `Database`, and it is the role
+  # `POSTGRES_USER` creates at first boot — so this is the superuser the
+  # container actually has, not a stand-in.
+  defp admin_credential, do: %{username: "postgres", password: "postgres"}
+
+  # And the restore role, for the same reason one function further on.
+  #
+  # The issue found the admin credential and stopped there, because that is
+  # where the first crash was. Supplying it only moved the crash:
+  # `restore_credential/2` reaches `ProjectSecrets`, which wants
+  # `active_project_id` to be a binary, and this scope has no project row
+  # either. Both are the same gap — a scope built for a suite that predates
+  # both secret stores.
+  defp restore_credential, do: %{username: "app_baseline_restore", password: "restore-pw"}
+
   # Under the project rather than in the system temp directory. On macOS
   # `System.tmp_dir!/0` is `/var/folders/...`, which is a symlink to
   # `/private/var/folders/...`; Docker Desktop does not follow it, so the bind
@@ -70,6 +103,18 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
   describe "the registry we provision actually serves" do
     test "it starts, demands the credential, and round-trips an image" do
+      # Same split as the database: the container is account infrastructure,
+      # `serve/2` only configures this project against an already-running one.
+      assert {:ok, _} =
+               Registry.ensure_container(scope(),
+                 run: runner(),
+                 storage: :filesystem,
+                 credentials: [access_key_id: "unused", secret_access_key: "unused"],
+                 registry_credentials: credential(),
+                 bind: "127.0.0.1",
+                 auth_dir: auth_dir()
+               )
+
       assert {:ok, served} =
                Registry.serve(scope(),
                  run: runner(),
@@ -117,11 +162,31 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
     end
   end
 
+  # The container first, the tenant second — that is the split now.
+  #
+  # `serve/3` used to do both. It refuses rather than creating one now, because
+  # a project's own devops step does not get to stand up shared account
+  # infrastructure as a side effect of asking for its own role and database.
+  # This suite still called `serve/3` alone and got `:database_not_provisioned`
+  # from every test, which reads as "the container is broken" and means "nobody
+  # asked for one".
+  defp start_database do
+    assert {:ok, _} =
+             Database.ensure_container(scope(),
+               run: runner(),
+               database_admin_credential: admin_credential()
+             )
+  end
+
   describe "the database we provision actually accepts connections" do
     test "it starts, and the URL we write is the one that works" do
+      start_database()
+
       assert {:ok, served} =
                Database.serve(scope(), "uat",
                  run: runner(),
+                 database_admin_credential: admin_credential(),
+                 database_restore_credential: restore_credential(),
                  database_credential: %{username: "app", password: "pw", database: "app_uat"}
                )
 
@@ -158,8 +223,12 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
     end
 
     test "the data survives the container being replaced" do
+      start_database()
+
       opts = [
         run: runner(),
+        database_admin_credential: admin_credential(),
+        database_restore_credential: restore_credential(),
         database_credential: %{username: "app", password: "pw", database: "app_uat"}
       ]
 

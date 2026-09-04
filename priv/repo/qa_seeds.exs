@@ -275,6 +275,45 @@ project =
       project
   end
 
+# 4b. No main working copy.
+#
+# `designate_main/2` is the only writer and there is no undesignate control, so
+# testing "a project with no main checkout" consumes the premise: the first run
+# designates one and every run after it silently tests something else. Observed
+# on the 963 pass — the fixture went from three copies and none designated to
+# `d1540d93` designated, with no surface that could put it back (d05cd22e).
+#
+# One-way is right as product behaviour. Once somebody has a main checkout they
+# want one, and an "unset it" control invites a project with checkouts and no
+# agent for no reason. So the way back to the premise belongs here, in the seed
+# that owns the fixture's starting state, rather than in a product change.
+#
+# Written directly rather than through the context for the same reason: there
+# is no function for this, deliberately.
+main_copies_cleared =
+  case Ecto.Adapters.SQL.query(
+         Repo,
+         "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'working_copies' LIMIT 1"
+       ) do
+    {:ok, %{num_rows: n}} when n > 0 ->
+      {count, _} =
+        from(w in "working_copies",
+          where: w.project_id == type(^project.id, :binary_id) and w.main == true
+        )
+        |> Repo.update_all(set: [main: false])
+
+      count
+
+    _ ->
+      nil
+  end
+
+case main_copies_cleared do
+  nil -> IO.puts("  main copy: skipped (working_copies table not found)")
+  0 -> IO.puts("  main copy: none designated — the 2906 premise already holds")
+  n -> IO.puts("  main copy: cleared #{n} designation(s), back to the 2906 premise")
+end
+
 # 5. QA stories. Dedicated stories under the QA project — anything QA mutates
 #    (rules, scenarios, questions, criteria) lands on these instead of dev
 #    project stories. Add new entries to qa_stories below as new feature areas
