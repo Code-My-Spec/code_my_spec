@@ -221,6 +221,112 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
              "delete a network another project's servers still depend on"
   end
 
+  # The shape that survived the first fix's own test but not real Hetzner:
+  # fuellytics and fuellytics-prod each already had their *own* network
+  # before either was ever linked to a second project — never the same one,
+  # because nothing provisioned them together. The first attempt at this fix
+  # keyed adoption by zone and required every server in a zone to agree on
+  # one existing network before adopting anything; two servers in the same
+  # zone on two different pre-existing networks disagreed, so it fell
+  # through to create-and-collide — the exact bug, reproduced live on the
+  # second attempt to onboard broken_oaths. Per-server adoption has no such
+  # requirement.
+  test "two independently pre-existing servers each keep their own network, not one shared", ctx do
+    record_two_independent_networks_requests(self())
+
+    link_environment(ctx.scope, "prod", "fuellytics-prod")
+    link_environment(ctx.scope, "uat", "fuellytics")
+
+    opts = [
+      run: already_provisioned_run(succeeding_run()),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
+
+    refute_received {:ran, "POST", "/v1/networks", _payload},
+                     "expected both already-existing networks to be adopted, not a new one created"
+
+    network_resources = Enum.filter(resources, &(&1.kind == "network"))
+
+    assert length(network_resources) == 2,
+           "expected each server's own pre-existing network recorded separately, got #{inspect(network_resources)}"
+
+    assert Enum.all?(network_resources, &(&1.origin == "adopted")),
+           "expected both networks to record as adopted — teardown must never delete infrastructure " <>
+             "another project's servers still depend on"
+  end
+
+  # fuellytics-prod on its own network (id 55) and fuellytics on a different
+  # one (id 66) — both in the same zone (fsn1/eu-central), which is the
+  # detail the bug turned on: same zone, different networks.
+  defp record_two_independent_networks_requests(owner) do
+    servers = [
+      %{
+        "id" => 301,
+        "name" => "fuellytics-prod",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "178.156.143.212"}},
+        "private_net" => [%{"network" => 55, "ip" => "10.0.0.2"}]
+      },
+      %{
+        "id" => 302,
+        "name" => "fuellytics",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "46.225.105.88"}},
+        "private_net" => [%{"network" => 66, "ip" => "10.1.0.2"}]
+      }
+    ]
+
+    networks = [
+      %{
+        "id" => 55,
+        "name" => "fuellytics-prod",
+        "ip_range" => "10.0.0.0/16",
+        "subnets" => [%{"network_zone" => "eu-central", "ip_range" => "10.0.0.0/24"}]
+      },
+      %{
+        "id" => 66,
+        "name" => "fuellytics",
+        "ip_range" => "10.1.0.0/16",
+        "subnets" => [%{"network_zone" => "eu-central", "ip_range" => "10.1.0.0/24"}]
+      }
+    ]
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      send(owner, {:ran, conn.method, conn.request_path, payload})
+      two_networks_reply(conn, conn.method, conn.request_path, payload, servers, networks)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
+
+  defp two_networks_reply(conn, "GET", "/v1/servers", _payload, servers, _networks),
+    do: json(conn, %{"servers" => servers})
+
+  defp two_networks_reply(conn, "GET", "/v1/firewalls", _payload, _servers, _networks),
+    do: json(conn, %{"firewalls" => []})
+
+  defp two_networks_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers, _networks),
+    do: json(conn, %{"ssh_keys" => []})
+
+  defp two_networks_reply(conn, "GET", "/v1/networks", _payload, _servers, networks),
+    do: json(conn, %{"networks" => networks})
+
+  defp two_networks_reply(conn, "POST", "/v1/servers/" <> _rest, _payload, _servers, _networks),
+    do: json(conn, %{"action" => %{"status" => "success"}})
+
+  defp two_networks_reply(conn, "POST", "/v1/ssh_keys", _payload, _servers, _networks),
+    do: json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
+
+  defp two_networks_reply(conn, "POST", "/v1/firewalls", payload, _servers, _networks),
+    do: json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
+
+  defp two_networks_reply(conn, _method, _path, payload, _servers, _networks),
+    do: json(conn, %{"network" => %{"id" => 1, "name" => payload["name"]}})
+
   # Two already-existing servers on the account's one real network — the
   # opposite of every other fixture here, which starts servers with no
   # `private_net` at all and only puts one there once `attach_to_network` is

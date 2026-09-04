@@ -4054,11 +4054,72 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp join_baseline_network(other, _scope, _opts, _environments), do: other
 
-  # One network per zone this project's servers actually sit in, not one
-  # network for the whole project — see `network_name_for_zone/3`. Almost
-  # always one entry; a second only appears for a project like MarketMySpec
-  # whose environments predate this platform's own provisioning and were
-  # never put in the same zone.
+  # Keyed by server id, not by zone — two servers can sit in the same zone
+  # and still have arrived here on two genuinely different pre-existing
+  # networks. fuellytics and fuellytics-prod are exactly that: each already
+  # had its own network long before either was linked to a second project,
+  # never the same one. An earlier version of this keyed by zone and
+  # required every server in a zone to agree on one existing network before
+  # adopting anything — the moment they disagreed (the real shape here, not
+  # the rare edge case it looked like from a single shared box) it fell
+  # through to create-a-network-and-collide, the exact bug this exists to
+  # fix. Per-server adoption has no such requirement: each server that
+  # already has a network keeps its own, independently.
+  #
+  # Servers with no existing network of their own still share one *created*
+  # network per zone, same as before this fix — there is no reason two
+  # genuinely new boxes in the same zone should get two networks.
+  defp ensure_zone_networks(scope, servers, name, primary_zone) do
+    {with_network, without_network} = Enum.split_with(servers, &existing_network?/1)
+
+    with {:ok, adopted} <- adopt_existing_networks(scope, with_network),
+         {:ok, created} <- ensure_created_networks(scope, without_network, name, primary_zone) do
+      {:ok, Map.merge(adopted, created)}
+    end
+  end
+
+  defp existing_network?(server), do: match?({:ok, _}, existing_network_id(server))
+
+  defp existing_network_id(server) do
+    case server["private_net"] || [] do
+      [%{"network" => network_id} | _] when not is_nil(network_id) -> {:ok, network_id}
+      _ -> :error
+    end
+  end
+
+  # A linked server often already belongs to somebody else's network before
+  # this project ever touches it — fuellytics and fuellytics-prod had one
+  # long before broken_oaths linked onto them, under a name this project's
+  # own `network_name_for_zone/3` has no reason to guess. Looking one up by
+  # a derived name it was never going to match created a *second* network
+  # whose default index-0 range collided with the one already there
+  # (`networks_overlap`, confirmed live onboarding broken_oaths onto shared
+  # infrastructure). A server already wearing a private address answers
+  # this directly: read the network id straight off it and adopt that
+  # network, rather than deriving a name and finding either nothing or the
+  # wrong thing.
+  #
+  # `__adopted__` is stamped explicitly — `find_network_by_id/2` is a raw
+  # lookup, and without the mark this would read as *created*, which must
+  # never be true of a network another project's servers depend on:
+  # teardown skips anything marked adopted and deletes everything else.
+  defp adopt_existing_networks(scope, servers) do
+    Enum.reduce_while(servers, {:ok, %{}}, fn server, {:ok, acc} ->
+      {:ok, network_id} = existing_network_id(server)
+
+      case Hetzner.find_network_by_id(scope, network_id) do
+        {:ok, network} -> {:cont, {:ok, Map.put(acc, server["id"], Map.put(network, "__adopted__", true))}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp ensure_created_networks(_scope, [], _name, _primary_zone), do: {:ok, %{}}
+
+  # One network per zone among the servers that do not already have one —
+  # see `network_name_for_zone/3`. Almost always one entry; a second only
+  # appears for a project like MarketMySpec whose environments predate this
+  # platform's own provisioning and were never put in the same zone.
   #
   # The primary zone sorts first, so it always gets `network_index: 0` —
   # `Hetzner.create_network/3`'s original, unindexed range — leaving every
@@ -4068,67 +4129,33 @@ defmodule CodeMySpec.Provisioning.Steps do
   # and every network here defaulted to the same hardcoded range before
   # `:network_index` existed. Confirmed live against MarketMySpec:
   # `networks_overlap` on the very first attempt to create a second one.
-  defp ensure_zone_networks(scope, servers, name, primary_zone) do
-    servers
-    |> Enum.map(&get_in(&1, ["location", "name"]))
-    |> Enum.map(&Hetzner.network_zone/1)
-    |> Enum.uniq()
-    |> Enum.sort_by(&(&1 != primary_zone))
-    |> Enum.with_index()
-    |> Enum.reduce_while({:ok, %{}}, fn {zone, index}, {:ok, acc} ->
-      zone_servers = Enum.filter(servers, &(&1 |> get_in(["location", "name"]) |> Hetzner.network_zone() == zone))
+  defp ensure_created_networks(scope, servers, name, primary_zone) do
+    zones =
+      servers
+      |> Enum.map(&get_in(&1, ["location", "name"]))
+      |> Enum.map(&Hetzner.network_zone/1)
+      |> Enum.uniq()
+      |> Enum.sort_by(&(&1 != primary_zone))
+      |> Enum.with_index()
+
+    with {:ok, by_zone} <- ensure_zone_network_lookup(scope, zones, name, primary_zone) do
+      {:ok,
+       for server <- servers, into: %{} do
+         zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
+         {server["id"], Map.fetch!(by_zone, zone)}
+       end}
+    end
+  end
+
+  defp ensure_zone_network_lookup(scope, zones, name, primary_zone) do
+    Enum.reduce_while(zones, {:ok, %{}}, fn {zone, index}, {:ok, acc} ->
       network_name = network_name_for_zone(name, zone, primary_zone)
 
-      case zone_network(scope, zone_servers, network_name, zone, index) do
+      case Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index) do
         {:ok, network} -> {:cont, {:ok, Map.put(acc, zone, network)}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
-  end
-
-  # A linked server often already belongs to somebody else's network before
-  # this project ever touches it — fuellytics and fuellytics-prod had one
-  # long before broken_oaths linked onto them, under a name this project's
-  # own `network_name_for_zone/3` has no reason to guess. Looking one up by a
-  # derived name it was never going to match created a *second* network
-  # whose default index-0 range collided with the one already there
-  # (`networks_overlap`, confirmed live onboarding broken_oaths onto shared
-  # infrastructure). A server already wearing a private address answers this
-  # directly: read the network id straight off it and adopt that network,
-  # rather than deriving a name and finding either nothing or the wrong
-  # thing.
-  #
-  # `__adopted__` is stamped explicitly — `find_network_by_id/2` is a raw
-  # lookup, and without the mark this would read as *created*, which must
-  # never be true of a network another project's servers depend on:
-  # teardown skips anything marked adopted and deletes everything else.
-  #
-  # Two servers in one zone disagreeing about which network they are
-  # already on falls through to the create-or-find path unchanged — a
-  # genuinely ambiguous state with no single right answer here, left to
-  # surface the same way it always has rather than guessed at.
-  defp zone_network(scope, zone_servers, network_name, zone, index) do
-    case existing_network_id(zone_servers) do
-      {:ok, network_id} ->
-        with {:ok, network} <- Hetzner.find_network_by_id(scope, network_id) do
-          {:ok, Map.put(network, "__adopted__", true)}
-        end
-
-      :error ->
-        Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index)
-    end
-  end
-
-  defp existing_network_id(servers) do
-    servers
-    |> Enum.flat_map(&(&1["private_net"] || []))
-    |> Enum.map(& &1["network"])
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-    |> case do
-      [network_id] -> {:ok, network_id}
-      _ -> :error
-    end
   end
 
   defp attach_zone_networks(scope, servers, networks) do
@@ -4141,11 +4168,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   # Which of `ensure_zone_networks/4`'s networks a given server actually
-  # belongs on — its own zone, not the project's primary one.
-  defp network_for(server, networks) do
-    zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
-    Map.fetch!(networks, zone)
-  end
+  # belongs on — its own, by id, never shared with a server it merely
+  # happens to sit in the same zone as.
+  defp network_for(server, networks), do: Map.fetch!(networks, server["id"])
 
   # Split from `join_baseline_network/4` only so `networks` is a plain
   # parameter here rather than a `with`-bound variable an `else` clause
@@ -4154,7 +4179,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `{:ok, registries}` or `{:error, reason, registries}`) and both need
   # `networks` to build each network's own resource entry.
   defp finish_baseline_network(scope, servers, networks, opts, environments, made) do
-    network_records = for {_zone, network} <- networks, do: network_resource(network["name"], network)
+    # `networks` is keyed by server id, so two servers sharing one created
+    # (or, in principle, adopted) network would otherwise record it twice.
+    network_records =
+      networks
+      |> Map.values()
+      |> Enum.uniq_by(& &1["id"])
+      |> Enum.map(&network_resource(&1["name"], &1))
 
     case serve_registries(scope, servers, networks, opts, environments) do
       {:ok, registries} ->
