@@ -284,6 +284,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                   :for={agent <- row.agents}
                   data-test="agent-chip"
                   data-role={agent.role}
+                  data-agent-id={agent.id}
                   data-engine={agent.engine}
                   class="badge badge-ghost"
                 >
@@ -314,6 +315,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 <button
                   type="button"
                   data-test="offboard-working-copy"
+                  data-working-copy-id={row.harness.id}
                   class="btn btn-sm btn-ghost text-error"
                   phx-click={show_confirm("offboard-#{row.harness.id}")}
                 >

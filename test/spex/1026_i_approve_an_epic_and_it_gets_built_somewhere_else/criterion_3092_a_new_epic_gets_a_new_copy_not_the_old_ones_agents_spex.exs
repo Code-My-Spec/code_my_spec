@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -50,6 +51,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
   spex "A working copy is the boundary of the work" do
     scenario "A new epic gets a new copy, not the old one's agents" do
       given_ :synced_context_component
+
+      given_ "a connected provider for the agents to run on", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
+        {:ok, context}
+      end
 
       given_ "I have discarded the working copy for the last epic", context do
         context = EpicHelpers.dispatch_one(context, "The last epic", stories: 1)
@@ -79,7 +86,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
                  "that work is over, and it did not take."
 
         for role <- ~w(product coding qa) do
-          assert context.html =~ ~s(data-agent-role="#{role}"),
+          assert context.html =~ ~s(data-role="#{role}"),
                  "the new copy came up without a #{role} agent"
         end
 

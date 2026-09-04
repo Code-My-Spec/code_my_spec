@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -61,6 +62,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
   spex "A working copy comes up with its three agents" do
     scenario "The same three take the next epic" do
       given_ :synced_context_component
+
+      given_ "a connected provider for the agents to run on", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
+        {:ok, context}
+      end
 
       given_ "a working copy whose three agents have finished an epic", context do
         context = EpicHelpers.dispatch_one(context, "The first epic", stories: 1)

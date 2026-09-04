@@ -46,6 +46,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3088Spex do
 
   alias CodeMySpec.Agents
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -61,6 +62,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3088Spex do
   spex "A working copy comes up with its three agents" do
     scenario "An agent that never came up is not a copy that is ready" do
       given_ :synced_context_component
+
+      given_ "a connected provider for the agents to run on", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
+        {:ok, context}
+      end
 
       given_ "an epic placed on a working copy", context do
         {:ok, EpicHelpers.dispatch_one(context, "The war epic", stories: 1)}

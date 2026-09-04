@@ -46,6 +46,7 @@ defmodule CodeMySpec.EpicDispatch do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Agents
   alias CodeMySpec.WorkingCopies
 
   @type dispatch_state ::
@@ -105,11 +106,32 @@ defmodule CodeMySpec.EpicDispatch do
   # decision was the user's and it stands. `working_copy_id` is nil until a
   # checkout exists, which the page reports as waiting rather than as an error.
   defp dispatch(scope, epic) do
-    save(scope, epic, %{
-      status: :dispatched,
-      working_copy_id: destination(scope),
-      dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
-    })
+    copy = destination(scope)
+
+    result =
+      save(scope, epic, %{
+        status: :dispatched,
+        working_copy_id: copy && copy.id,
+        dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+    # Staffed on placement, because a copy with an epic and nobody on it is the
+    # state this story exists to stop producing. `EpicDispatch.dispatch/2` used
+    # to set a status and return — grepping `:dispatched` found the LiveView,
+    # the requirement checker and the schema, and no starter (28e838cc).
+    #
+    # After the save rather than inside it: the placement is the user's decision
+    # and it stands whether or not three agents could be started. A provider
+    # that is not connected is a reason to report an unstaffed copy, not to
+    # refuse an epic somebody agreed to.
+    #
+    # Idempotent by role, so a second epic onto the same copy starts nothing —
+    # the three that are there are the ones that take it.
+    with {:ok, _epic} <- result, %{} <- copy do
+      Agents.ensure_copy_agents(scope, copy)
+    end
+
+    result
   end
 
   # A checkout, or nothing.
@@ -123,12 +145,56 @@ defmodule CodeMySpec.EpicDispatch do
   # `nil` rather than a refusal, because the user agreed and that stands. The
   # epic is dispatched and waiting for somewhere to be built, which the page
   # says in those words.
+  # Returns the copy rather than its id: placing an epic now also staffs it, and
+  # `ensure_copy_agents/2` needs the root to start an agent in.
+  #
+  # A copy already carrying this project's work comes first. John, 2026-08-25:
+  # *"the agent decides. If an existing working copy and agent is appropriate —
+  # for example I've had you doing all the harness work — it gets assigned
+  # there."* Continuity of context is the reason, and it is a real one: the copy
+  # that has been doing the harness work knows the harness, and its three agents
+  # are already there, so a second epic costs nothing to staff.
+  #
+  # The main checkout is the fallback and not the preference, which is the
+  # opposite of what this did. It answered `WorkingCopies.main/1` for every
+  # epic on every project, so a project with a copy dedicated to a body of work
+  # sent that work's next epic to the main checkout instead — and staffing it
+  # there is refused outright, correctly: the main copy holds one agent and it
+  # is the project's own (`Agents.main_copy_is_free/2`). Two agents in one
+  # checkout are two processes editing one tree.
   defp destination(scope) do
-    case WorkingCopies.main(scope) do
-      %{root: root} = copy when is_binary(root) and root != "" -> copy.id
-      _ -> nil
-    end
+    carrying(scope) || checkout(WorkingCopies.main(scope))
   end
+
+  # The most recently dispatched epic's copy, when it is a real checkout and not
+  # the main one. Most recent because that is the work in flight; a copy that
+  # finished an epic months ago is not "where the context already is".
+  defp carrying(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    main_id = scope |> WorkingCopies.main() |> then(&(&1 && &1.id))
+
+    from(e in Epic,
+      where: e.project_id == ^project_id and not is_nil(e.working_copy_id),
+      order_by: [desc_nulls_last: e.dispatched_at],
+      select: e.working_copy_id,
+      limit: 5
+    )
+    |> Repo.all()
+    |> Enum.reject(&(&1 == main_id))
+    |> Enum.find_value(fn id ->
+      case WorkingCopies.fetch(id) do
+        {:ok, copy} -> checkout(copy)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp carrying(%Scope{}), do: nil
+
+  # A row is not a checkout until it reports a root. `ensure_default/1` mints a
+  # rootless nil-object row, and sending an epic there made the page say "Being
+  # built on your project's checkout" about a directory that does not exist.
+  defp checkout(%{root: root} = copy) when is_binary(root) and root != "", do: copy
+  defp checkout(_copy), do: nil
 
   @doc """
   Record a question a dispatched agent needs the user to answer.

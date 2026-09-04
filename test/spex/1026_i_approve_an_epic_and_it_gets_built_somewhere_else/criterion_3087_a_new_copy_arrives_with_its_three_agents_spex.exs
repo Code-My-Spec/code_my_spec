@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -55,6 +56,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
     scenario "A new copy arrives with its three agents" do
       given_ :synced_context_component
 
+      given_ "a connected provider for the agents to run on", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
+        {:ok, context}
+      end
+
       given_ "an epic I have agreed to build", context do
         {:ok, EpicHelpers.dispatch_one(context, "The war epic", stories: 2)}
       end
@@ -68,7 +75,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
 
       then_ "its product, coding and QA agents are on it", context do
         for role <- ~w(product coding qa) do
-          assert context.html =~ ~s(data-agent-role="#{role}"),
+          assert context.html =~ ~s(data-role="#{role}"),
                  "the copy came up without a #{role} agent. The roles exist in " <>
                    "`Agent`'s enum and nothing starts them, so a copy that was " <>
                    "given an epic has nobody on it to do the work. Got: " <>

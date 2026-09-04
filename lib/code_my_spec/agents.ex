@@ -53,6 +53,10 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
+  # The roster a working copy does its work with. Not `:main` — that one is the
+  # project's, there is one of it, and it lives on the main checkout.
+  @copy_roles [:product, :coding, :qa]
+
   # How long the machine is given to wind the agent down before it insists.
   # Bounded on purpose: an unbounded stop is one the meter outlives.
   # Bounded *below* the MCP transport's own 30s request timeout, so a slow turn
@@ -440,6 +444,89 @@ defmodule CodeMySpec.Agents do
       {_copy, %Agent{} = agent} -> {:ok, agent}
       {copy, nil} -> start_main_agent(scope, copy)
     end
+  end
+
+  @doc """
+  The three agents a working copy does its work with, started if they are not
+  there yet.
+
+  The roster belongs to the **copy**, not to the epic it was given. John,
+  2026-09-04: *"when we come up with a working copy the three agents are there,
+  and if that working copy is assigned more work it's gonna be the same three
+  agents ... those are gonna be the guys who are gonna be taking work off of the
+  graph."*
+
+  So this is idempotent by role: a copy that already has a coding agent gets no
+  second one, which is what makes a second epic cheaper than the first rather
+  than three more processes on the machine. It is also what keeps
+  `WorkingCopies.offboard/2` meaningful — if agents accumulated per epic,
+  discarding the copy would stop meaning that the work on it is over.
+
+  Product, coding and QA, and not `:main`. The main agent is the project's, is
+  one per project, and lives on the main checkout — `ensure_main_agent/1` owns
+  it. These are the ones that take work off the graph.
+
+  Best-effort per role, and deliberately not all-or-nothing. Each `start_agent/2`
+  records `:starting` and the machine confirms; a copy whose provider is
+  connected for one role and not another gets the agents it can have and reports
+  the ones it cannot, rather than refusing the whole roster over one. The caller
+  gets both lists so it can say which.
+  """
+  @spec ensure_copy_agents(Scope.t(), map()) ::
+          %{started: [Agent.t()], failed: [{atom(), term()}]}
+  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root})
+      when is_binary(copy_id) and is_binary(root) and root != "" do
+    present =
+      scope
+      |> AgentsRepository.list_agents()
+      |> Enum.filter(&(&1.working_copy_id == copy_id and &1.status != :stopped))
+      |> MapSet.new(& &1.role)
+
+    @copy_roles
+    |> Enum.reject(&MapSet.member?(present, &1))
+    |> Enum.reduce(%{started: [], failed: []}, fn role, acc ->
+      case start_copy_agent(scope, copy_id, root, role) do
+        {:ok, agent} -> %{acc | started: [agent | acc.started]}
+        {:error, reason} -> %{acc | failed: [{role, reason} | acc.failed]}
+      end
+    end)
+    |> then(&%{started: Enum.reverse(&1.started), failed: Enum.reverse(&1.failed)})
+  end
+
+  # A row with no root is not a checkout — the same rule `EpicDispatch`'s
+  # `destination/1` applies. Starting agents against a directory that does not
+  # exist produces three lanes that cannot run and a copy that looks staffed.
+  def ensure_copy_agents(%Scope{}, _copy), do: %{started: [], failed: [{:copy, :no_checkout}]}
+
+  defp start_copy_agent(scope, copy_id, root, role) do
+    with {:ok, provider, model} <- role_choice(scope, role) do
+      start_agent(scope, %{
+        provider: provider,
+        model: model,
+        working_copy: root,
+        working_copy_id: copy_id,
+        role: role
+      })
+    end
+  end
+
+  # Same shape as `main_choice/1`: an explicit setting for this role wins and is
+  # recorded, otherwise the role's own default order decides.
+  defp role_choice(scope, role) do
+    case resolve_model(scope, role) do
+      {:ok, {provider, model}, :set} ->
+        {:ok, provider, model}
+
+      _unset_or_nothing_connected ->
+        with {:ok, provider} <- connected_provider(scope) do
+          {:ok, provider, default_model_for(role, provider)}
+        end
+    end
+  end
+
+  defp default_model_for(role, provider) do
+    Defaults.for_role(role)
+    |> Enum.find_value(fn {candidate, model} -> candidate == provider && model end)
   end
 
   defp start_main_agent(scope, copy) do

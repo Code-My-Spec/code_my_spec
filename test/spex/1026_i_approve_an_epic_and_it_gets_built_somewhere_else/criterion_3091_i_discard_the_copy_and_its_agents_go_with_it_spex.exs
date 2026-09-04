@@ -40,6 +40,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -55,6 +56,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
   spex "A working copy is the boundary of the work" do
     scenario "I discard the copy and its agents go with it" do
       given_ :synced_context_component
+
+      given_ "a connected provider for the agents to run on", context do
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+
+        {:ok, context}
+      end
 
       given_ "a working copy whose epic is finished", context do
         context = EpicHelpers.dispatch_one(context, "The war epic", stories: 1)
