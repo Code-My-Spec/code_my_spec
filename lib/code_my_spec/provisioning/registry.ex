@@ -435,6 +435,16 @@ defmodule CodeMySpec.Provisioning.Registry do
   # `|| true` on the filter step: `grep -v` exits 1 when nothing survives the
   # filter (the file held only this project's line), which is not a failure
   # here, just an empty starting point for the line about to be appended.
+  #
+  # The final write is `cat tmp > path`, never `mv tmp path`. The registry
+  # container has this file bind-mounted, and a bind mount tracks the inode
+  # that was at `path` when the container started, not the path itself. `mv`
+  # (rename) points the path at the tmp file's *new* inode and detaches the
+  # old one — the host sees the update, but a container whose mount predates
+  # the rename keeps reading the orphaned original inode forever, with no
+  # error, no matter how many times the file is rewritten afterward. `cat >`
+  # truncates and rewrites the existing inode in place, so an already-running
+  # container's next read of the file picks up the change with no restart.
   defp ensure_htpasswd(run, credential, opts) do
     auth_dir = Keyword.get(opts, :auth_dir, "/etc/cms-registry")
     path = "#{auth_dir}/htpasswd"
@@ -444,7 +454,7 @@ defmodule CodeMySpec.Provisioning.Registry do
       "mkdir -p #{auth_dir} && touch #{path} && " <>
         "(grep -v #{shell_escape("^#{credential.username}:")} #{path} > #{path}.tmp || true) && " <>
         "printf '%s\\n' #{shell_escape(entry)} >> #{path}.tmp && " <>
-        "mv #{path}.tmp #{path} && chmod 600 #{path}"
+        "cat #{path}.tmp > #{path} && rm -f #{path}.tmp && chmod 600 #{path}"
 
     case run.([command]) do
       {_output, 0} -> :ok

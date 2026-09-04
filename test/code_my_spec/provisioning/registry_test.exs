@@ -456,7 +456,8 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # is shared the moment the box is, and an overwrite instead of an upsert
     # would lock out whichever project provisioned first. Only this
     # project's own prior line (if any) is ever targeted for removal, and
-    # every other line in the file is left for `mv` to carry forward.
+    # every other line in the file is left for the final write to carry
+    # forward.
     test "only this project's own htpasswd line is ever removed" do
       assert {:ok, _} = serve()
 
@@ -464,6 +465,22 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert command =~ "grep -v '^cms:'"
       refute command =~ "grep -v '^cms:.*$2b'",
              "must match on the username alone, not on a specific hash that would miss a rotated password"
+    end
+
+    # The registry container has this file bind-mounted. A bind mount tracks
+    # the inode present at `path` when the container started — `mv tmp path`
+    # (rename) would point the path at a *new* inode, orphaning the one the
+    # container is still reading, so an already-running container would never
+    # see the update. Writing into the existing inode (`cat tmp > path`)
+    # keeps the container's view live.
+    test "the final write preserves the file's inode instead of renaming over it" do
+      assert {:ok, _} = serve()
+
+      command = collect_commands() |> find_command("htpasswd")
+      refute command =~ ~r/\bmv\s+\S*htpasswd\.tmp\s+\S*htpasswd\b/,
+             "mv breaks a container's already-established bind mount on this file"
+      assert command =~ ~r/cat\s+\S*htpasswd\.tmp\s*>\s*\S*htpasswd\b/,
+             "the tmp file's content must be written into the existing htpasswd inode"
     end
   end
 
