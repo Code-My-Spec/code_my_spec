@@ -183,7 +183,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # from an *earlier* run — nothing about this walk would distinguish it.
     if length(found) == length(environments) and found != [] and
          Enum.all?(environments, &database_secrets_present?(scope, &1)) and
-         registries_reachable?(scope, name, environments, opts) do
+         registries_reachable?(scope, environments, opts) do
       # The step also makes a firewall and an ssh_key, shared across
       # environments. A second run takes this satisfied path instead of
       # `run/3`; returning only the servers would drop those two from the
@@ -5544,24 +5544,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   # cadence a build never has.
   #
   # No network, no registry to ask about: a project whose server step has
-  # never run has nothing `Hetzner.find_network/2` can find, and that is
-  # `{:ok, :absent}` already, by the same `found != []` guard this sits
-  # behind.
-  defp registries_reachable?(scope, name, environments, opts) do
+  # never run has nothing to check here, and that is `{:ok, :absent}`
+  # already, by the same `found != []` guard this sits behind.
+  defp registries_reachable?(scope, environments, opts) do
     case with_builder_ssh(scope, opts) do
-      {:ok, ssh_opts} -> registries_reachable_with_ssh(scope, name, environments, ssh_opts)
+      {:ok, ssh_opts} -> registries_reachable_with_ssh(scope, environments, ssh_opts)
       _ -> false
     end
   end
 
-  defp registries_reachable_with_ssh(scope, name, environments, ssh_opts) do
-    case Hetzner.find_network(scope, name) do
-      {:ok, network} ->
-        Enum.all?(environments, &registry_reachable?(scope, network, &1, ssh_opts))
-
-      _ ->
-        false
-    end
+  defp registries_reachable_with_ssh(scope, environments, ssh_opts) do
+    Enum.all?(environments, &registry_reachable?(scope, &1, ssh_opts))
   after
     case Keyword.get(ssh_opts, :builder_key_dir) do
       dir when is_binary(dir) -> File.rm_rf(dir)
@@ -5573,18 +5566,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # would answer on — the same two lookups `serve_one_registry/5` makes before
   # starting one, asked here to find out whether it already answers.
   #
+  # The network is each server's own adopted one (`existing_network_id/1`),
+  # never one derived from the project's name — this check used to ask
+  # Hetzner for a network by name, which is the exact bug
+  # `adopt_zone_networks/2` was already fixed for on the *run* side: a box
+  # can carry a network named after the project that nothing is actually
+  # attached to (or carry no such network at all), while its real, working
+  # registry sits on whichever network its own `private_net` genuinely
+  # lists. Confirmed live: `verify(:server, …)` never reported satisfied for
+  # broken_oaths even after both its registries were up and authenticating
+  # correctly, because this still resolved "the" network by name instead of
+  # reading what each server itself was actually on.
+  #
   # `Keyword.get(opts, :run)` wins over a runner built from the box's address,
   # for the same reason `serve_one_registry/5` and `prune_registry/3` check it
   # first: a caller standing in a local fleet, or a fake, for the box is
   # answering "how do I reach it" more specifically than an IP this scope
   # happens to have.
-  defp registry_reachable?(scope, network, environment, opts) do
+  defp registry_reachable?(scope, environment, opts) do
     name = server_name(scope, opts, environment)
 
     with {:ok, server} <- Hetzner.find_server(scope, name),
          public when is_binary(public) and public != "" <-
            get_in(server, ["public_net", "ipv4", "ip"]),
-         {:ok, bind} <- Hetzner.private_ip(server, network["id"]) do
+         {:ok, network_id} <- existing_network_id(server),
+         {:ok, bind} <- Hetzner.private_ip(server, network_id) do
       run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts)
       Registry.reachable?(scope, Keyword.merge(opts, run: run, bind: bind))
     else

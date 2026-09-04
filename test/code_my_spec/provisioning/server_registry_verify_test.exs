@@ -99,6 +99,53 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     end
   end
 
+  # c1d8eaff's own fix still asked Hetzner for a network by the project's
+  # name — the exact bug `adopt_zone_networks/2` was later fixed for on the
+  # *run* side, never carried over here. Confirmed live against
+  # broken_oaths: a shared box can carry a network that happens to be named
+  # after the project but is not the one the server is actually attached
+  # to (or attached to no such network at all), while the server's own real
+  # registry sits on whichever network its `private_net` genuinely lists.
+  describe "the box's private network is not the one a project-name lookup would have found" do
+    setup _ctx do
+      # `find_network(scope, "some-name")` — the project's own base name —
+      # would have matched this one; it is not what `private_net` lists.
+      Req.Test.stub(Hetzner, fn conn ->
+        server = %{
+          "id" => 1,
+          "name" => @server_name,
+          "location" => %{"name" => "fsn1"},
+          "public_net" => %{"ipv4" => %{"ip" => @public_ip}},
+          "private_net" => [%{"network" => @network_id, "ip" => @private_ip}]
+        }
+
+        decoy = %{"id" => 999, "name" => "some-name"}
+        real = %{"id" => @network_id, "name" => "unrelated-legacy-network"}
+
+        case {conn.method, conn.request_path} do
+          {"GET", "/v1/servers"} -> json(conn, %{"servers" => [server]})
+          {"GET", "/v1/networks"} -> json(conn, %{"networks" => [decoy, real]})
+          {"GET", "/v1/firewalls"} -> json(conn, %{"firewalls" => []})
+          {"GET", "/v1/ssh_keys"} -> json(conn, %{"ssh_keys" => []})
+        end
+      end)
+
+      :ok
+    end
+
+    test "verify(:server, …) reads the server's own attached network, not a name match", ctx do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 0}
+      end
+
+      assert {:ok, :satisfied, _resources} = Steps.verify(:server, ctx.scope, verify_opts(run))
+
+      assert_received {:ran, probe}
+      assert probe =~ "http://#{@private_ip}:5000/v2/"
+    end
+  end
+
   # A role provisioned before `CMS_RESTORE_ADMIN_URL` existed is otherwise
   # indistinguishable from one that has always had it: the box is there,
   # `DATABASE_URL` is there, the registry answers. Nothing about those three
