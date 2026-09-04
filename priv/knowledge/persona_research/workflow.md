@@ -91,8 +91,10 @@ All three must exist before stopping:
   `## Context`, `## Decision Drivers`, `## Evidence`. Optional H2:
   `## Jobs to Be Done`, `## Quotes`, `## Motivations`, `## Behaviors`,
   `## Anti-Patterns`. Any other section name fails validation.
-- **`.code_my_spec/personas/<slug>/sources.md`.** Link list with URL,
-  title, and access date per entry — one per line.
+- **`.code_my_spec/personas/<slug>/sources.md`.** One markdown list item
+  per source, each naming something you can go back to: a URL, or a path
+  in the repo (with the commit SHA, so it is reproducible). A title after
+  it, and an access date if it helps. Entries may wrap.
 
 ### 5. Link to a story, when there is one
 

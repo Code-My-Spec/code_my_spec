@@ -522,37 +522,75 @@ defmodule CodeMySpec.Files.Scanner do
     %{errors: %{summary: error}, data: %{}}
   end
 
-  # workflow.md: "Link list with URL, title, and access date per entry — one per
-  # line." Entries are markdown list items; each needs a URL and a YYYY-MM-DD
-  # date, with the title between them.
+  # Every entry names something you can go back to: a URL, or a path in the
+  # repo. That is the whole rule.
+  #
+  # It used to require a URL *and* a YYYY-MM-DD date on the same physical line,
+  # while the message said "URL or date" — so the message described a rule the
+  # code did not implement, and the code described one the playbook did not
+  # teach. `agent_personas.md` documents the expected format with a URL-less
+  # codebase citation that also wraps, which failed twice over: no URL, and only
+  # its first line was ever examined. Following the guide produced a file that
+  # could not validate (1d9bbf6a), and the fix applied at the time was to
+  # rewrite every sources file into URL-and-date form rather than to correct the
+  # rule.
+  #
+  # A date is no longer required. Most of what a persona cites is an agent
+  # definition, an MCP registration or a log observation, and for those the
+  # locator is the reproducible part — a path with a SHA beside it says more
+  # about what was read than the day somebody read it.
   defp validate_persona_sources(content) do
-    entries =
-      content
-      |> String.split("\n", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.filter(&(String.starts_with?(&1, "- ") or String.starts_with?(&1, "* ")))
-
-    invalid =
-      Enum.find(entries, fn line ->
-        not (Regex.match?(~r{https?://\S+}, line) and
-               Regex.match?(~r/\b\d{4}-\d{2}-\d{2}\b/, line))
-      end)
+    entries = source_entries(content)
+    invalid = Enum.find(entries, &(not locates_something?(&1)))
 
     error =
       cond do
         entries == [] ->
           "`sources.md` has no entries — expected one markdown list item per " <>
-            "source (URL — title — access date)"
+            "source, each naming a URL or a file path"
 
         invalid != nil ->
-          "`sources.md` entry missing URL or YYYY-MM-DD date: " <>
-            String.slice(invalid, 0, 80)
+          "`sources.md` entry names no URL or file path: " <> String.slice(invalid, 0, 80)
 
         true ->
           nil
       end
 
     %{errors: %{sources: error}, data: %{entry_count: length(entries)}}
+  end
+
+  # One bullet is one entry even when it wraps, which is what markdown means by
+  # a list item. Splitting on newlines alone made a wrapped citation into a
+  # first line the validator judged and a remainder it never saw.
+  defp source_entries(content) do
+    content
+    |> String.split("\n")
+    |> Enum.reduce([], fn line, acc ->
+      trimmed = String.trim(line)
+
+      cond do
+        String.starts_with?(trimmed, "- ") or String.starts_with?(trimmed, "* ") ->
+          [trimmed | acc]
+
+        # A continuation is an indented, non-blank line under an open bullet.
+        # Anything flush-left — a heading, a paragraph, a blank — ends it.
+        trimmed != "" and acc != [] and line != trimmed ->
+          [current | rest] = acc
+          [current <> " " <> trimmed | rest]
+
+        true ->
+          acc
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  # A URL, or something path-shaped: segments joined by `/` ending in a file
+  # extension. The extension is what keeps prose out — "and/or" has a slash and
+  # names nothing.
+  defp locates_something?(entry) do
+    Regex.match?(~r{https?://\S+}, entry) or
+      Regex.match?(~r{[\w.~-]+(?:/[\w.~-]+)+\.\w+}, entry)
   end
 
   defp component_data(content) do

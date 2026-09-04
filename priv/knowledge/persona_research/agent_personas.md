@@ -107,8 +107,13 @@ Optional: `Jobs to Be Done`, `Quotes`, `Motivations`, `Behaviors`,
 
 ### `.code_my_spec/personas/<slug>/sources.md`
 
-Link list per source. For codebase references, include the
-commit SHA at access time so the citation is reproducible:
+One list item per source, each naming a URL or a path in the repo —
+that locator is the requirement, and an entry that names neither is
+rejected at sync. For codebase references, include the commit SHA at
+access time so the citation is reproducible. An access date is welcome
+and not required; for an agent definition or a log observation, the
+path and the SHA say more about what was read than the day. Entries
+may wrap across lines.
 
 ```markdown
 - `CodeMySpec/agents/qa.md` @ a7a0bf53 — declared tool list and

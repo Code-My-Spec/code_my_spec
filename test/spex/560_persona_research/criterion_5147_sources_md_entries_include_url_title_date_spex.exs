@@ -3,13 +3,32 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
   Story 560 — Persona Research
   Criterion 5147 — sources.md entries include URL, title, and access date.
 
+  ## The criterion's wording is ahead of its rule, deliberately
+
+  The rule is now: every entry names a URL **or** a file path. The date is
+  optional. That is the owner's call on issue 1d9bbf6a — "I don't even care
+  about the date. I just have the URL or the file path."
+
+  The criterion text still says "URL, title, and access date", so it and this
+  spex disagree until story 560 gets a Three Amigos pass to re-word it. Recorded
+  here rather than fixed here, because re-wording a criterion is not a change to
+  make on the way past.
+
+  Why the rule moved: the checker demanded a URL *and* a date on the same
+  physical line, while its message said "URL or date" and the playbook
+  documented the format with a URL-less codebase citation that also wrapped. A
+  persona's sources are mostly agent definitions, MCP registrations and log
+  observations, which have no URL and never will — so following the guide
+  produced a file that could not validate, and `orchestrating-main-agent` sat at
+  23 failing entries with `personas_complete` unsatisfied.
+
   Two layers of the contract:
 
   1. The task prompt enumerates the required entry fields so an
      agent producing artifacts knows what shape they need to take.
-  2. The PersonasChecker rejects sources.md files whose entries are
-     missing a URL or a YYYY-MM-DD access date — pure non-empty
-     content no longer passes (was the gap behind issue c5bf0eda).
+  2. The PersonasChecker rejects sources.md files whose entries name
+     nothing you can go back to — pure non-empty content does not pass
+     (the gap behind issue c5bf0eda, which this rule keeps closed).
 
   Surface: the stop-hook pipeline via EvaluateTask. Each scenario
   writes artifacts and calls evaluate_task; the response text carries
@@ -160,8 +179,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
     end
   end
 
-  spex "sources.md entry missing date fails the checker" do
-    scenario "sources.md with entries missing an access date fails the checker" do
+  spex "a codebase citation with no URL passes the checker" do
+    scenario "an entry that names a file path is a source" do
       given_ :persona_exists
       given_ :persona_research_task_started
 
@@ -176,7 +195,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
         {:ok, context}
       end
 
-      given_ "sources.md has an entry with no date", context do
+      given_ "sources.md cites a file in the repo, with no URL and no date", context do
         :ok =
           Environments.write_file(
             context.environment,
@@ -184,7 +203,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
             """
             # Sources — Test Persona
 
-            - https://example.com/article — "Article Title" — (no date)
+            - `CodeMySpec/agents/qa.md` @ a7a0bf53 — declared tool list and
+              system prompt for the QA agent.
             """
           )
 
@@ -203,17 +223,15 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the feedback names sources.md and the URL or date gap", context do
+      then_ "the evaluate response is a pass", context do
         body = response_text(context.response)
 
-        assert body =~ ~r/Needs work|incomplete|missing|invalid/i,
-               "expected blocking feedback for missing date; got #{inspect(context.response)}"
-
-        assert body =~ ~r/sources\.md/i,
-               "expected feedback to name sources.md"
-
-        assert body =~ ~r/url|date/i,
-               "expected feedback to name the URL-or-date gap"
+        assert body =~ ~r/pass|complete|satisfied|done/i,
+               "a persona's sources are mostly agent definitions, MCP registrations " <>
+                 "and log observations, none of which have a URL. Rejecting them " <>
+                 "makes the playbook's own example unwritable — issue 1d9bbf6a, " <>
+                 "where orchestrating-main-agent sat at 23 failing entries. " <>
+                 "Got #{inspect(context.response)}"
 
         {:ok, context}
       end
