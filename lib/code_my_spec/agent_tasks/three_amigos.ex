@@ -31,6 +31,30 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     end
   end
 
+  # A stored `Sessions.Task` carries `story_id` and no `entity_id`, so it goes
+  # first.
+  #
+  # This is the same mistake `resolve_story/2` below already carries a comment
+  # about — the entity_type/entity_id clauses match the shape `start_task` is
+  # *called* with, not the shape that gets stored. That was found and fixed for
+  # the evaluate path and never applied here, so `command/2` fell through
+  # `entity_id` (absent), then through `requirement_name` (which on this route
+  # is "three_amigos_complete", not a story id), and answered
+  # `no_story_prompt/0`.
+  #
+  # Which is issue 989774cb, and the asymmetry in its report is the proof:
+  # `evaluate_task` on that same task sealed story 890 correctly while the
+  # prompt it had just been handed said the story was not provided. One resolver
+  # knew and the other did not. A prompt that says the story is unknown, on a
+  # task that knows it, teaches an agent to distrust the prompt.
+  defp resolve_command_story(scope, %{story_id: story_id}) when is_integer(story_id) do
+    Stories.get_story(scope, story_id)
+  end
+
+  defp resolve_command_story(scope, %{story_id: story_id}) when is_binary(story_id) do
+    fetch_story(scope, story_id)
+  end
+
   # The graph-dispatch route sets `entity_id` to the story id and
   # `requirement_name` to the requirement (e.g. "three_amigos_complete"),
   # so entity_id must win when both are present. The skill route
