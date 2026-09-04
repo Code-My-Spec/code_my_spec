@@ -600,6 +600,24 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
+  @doc """
+  Find a private network by id, as read off a server's own `private_net`.
+
+  A server can already carry a network no name-based lookup would find —
+  `find_network/2`'s caller derives a name from the project asking, and a
+  linked server's network belongs to whoever actually made it.
+  """
+  @spec find_network_by_id(Scope.t(), integer() | String.t()) ::
+          {:ok, body()} | {:error, :not_found} | error()
+  def find_network_by_id(%Scope{} = scope, id) do
+    with {:ok, networks} <- list_networks(scope) do
+      case Enum.find(networks, &(to_string(&1["id"]) == to_string(id))) do
+        nil -> {:error, :not_found}
+        network -> {:ok, network}
+      end
+    end
+  end
+
   @doc "Delete a private network by id."
   @spec delete_network(Scope.t(), integer() | String.t()) :: {:ok, body()} | error()
   def delete_network(%Scope{} = scope, id), do: request(scope, :delete, "/networks/#{id}", [])

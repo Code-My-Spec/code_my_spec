@@ -189,6 +189,107 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert length(names) == 2, "expected exactly one request per environment, got #{inspect(names)}"
   end
 
+  # Reproduces broken_oaths onboarding live: prod and uat linked to two
+  # already-existing, already-networked account servers (fuellytics,
+  # fuellytics-prod) that predate this project entirely and already carry a
+  # real private address the very first time this step asks about them —
+  # unlike every other test here, where the servers are fresh and only
+  # `with_private_nets/3`'s post-attach bookkeeping puts one there.
+  # `ensure_zone_networks/4` used to derive a network name from *this*
+  # project and either find nothing or find the wrong thing, then try to
+  # create one — colliding on the range the real network already held
+  # (`networks_overlap`, 422). The fix reads the network straight off an
+  # already-networked server and adopts it instead.
+  test "environments already networked on shared servers join that network instead of creating one", ctx do
+    record_shared_network_requests(self())
+
+    link_environment(ctx.scope, "prod", "fuellytics-prod")
+    link_environment(ctx.scope, "uat", "fuellytics")
+
+    opts = [
+      run: already_provisioned_run(succeeding_run()),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
+
+    refute_received {:ran, "POST", "/v1/networks", _payload},
+                     "expected the already-existing shared network to be adopted, not a new one created"
+
+    assert Enum.any?(resources, &(&1.kind == "network" and &1.origin == "adopted")),
+           "expected the network resource to record as adopted, not created — teardown must never " <>
+             "delete a network another project's servers still depend on"
+  end
+
+  # Two already-existing servers on the account's one real network — the
+  # opposite of every other fixture here, which starts servers with no
+  # `private_net` at all and only puts one there once `attach_to_network` is
+  # actually called (see `with_private_nets/3`'s own comment). fuellytics and
+  # fuellytics-prod predate broken_oaths; there is no "before it was
+  # attached" for this test to model.
+  defp record_shared_network_requests(owner) do
+    servers = [
+      %{
+        "id" => 301,
+        "name" => "fuellytics-prod",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "178.156.143.212"}},
+        "private_net" => [%{"network" => 55, "ip" => "10.0.0.2"}]
+      },
+      %{
+        "id" => 302,
+        "name" => "fuellytics",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "46.225.105.88"}},
+        "private_net" => [%{"network" => 55, "ip" => "10.0.0.3"}]
+      }
+    ]
+
+    network = %{
+      "id" => 55,
+      "name" => "fuellytics",
+      "ip_range" => "10.0.0.0/16",
+      "subnets" => [%{"network_zone" => "eu-central", "ip_range" => "10.0.0.0/24"}]
+    }
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      send(owner, {:ran, conn.method, conn.request_path, payload})
+      shared_reply(conn, conn.method, conn.request_path, payload, servers, network)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
+
+  defp shared_reply(conn, "GET", "/v1/servers", _payload, servers, _network),
+    do: json(conn, %{"servers" => servers})
+
+  defp shared_reply(conn, "GET", "/v1/firewalls", _payload, _servers, _network),
+    do: json(conn, %{"firewalls" => []})
+
+  defp shared_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers, _network),
+    do: json(conn, %{"ssh_keys" => []})
+
+  # Named "fuellytics", not anything derived from broken_oaths — proving
+  # adoption goes through the server's own `private_net` id, matched
+  # against this list by id (`find_network_by_id/2`), never by a name this
+  # project's own `network_name_for_zone/3` was never going to produce.
+  defp shared_reply(conn, "GET", "/v1/networks", _payload, _servers, network),
+    do: json(conn, %{"networks" => [network]})
+
+  defp shared_reply(conn, "POST", "/v1/servers/" <> _rest, _payload, _servers, _network),
+    do: json(conn, %{"action" => %{"status" => "success"}})
+
+  defp shared_reply(conn, "POST", "/v1/ssh_keys", _payload, _servers, _network),
+    do: json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
+
+  defp shared_reply(conn, "POST", "/v1/firewalls", payload, _servers, _network),
+    do: json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
+
+  defp shared_reply(conn, _method, _path, payload, _servers, _network),
+    do: json(conn, %{"network" => %{"id" => 1, "name" => payload["name"]}})
+
   test "refuses instead of reporting done when every environment is filtered out", ctx do
     {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
     {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
@@ -396,41 +497,82 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     end
   end
 
+  # A server's `private_net` is empty until `attach_to_network` actually
+  # happens — true at Hetzner, and now load-bearing here too:
+  # `ensure_zone_networks/4` reads a server's *own* `private_net` first, to
+  # adopt whatever network it is already on rather than derive a name and
+  # collide with one (`networks_overlap`, confirmed live onboarding
+  # broken_oaths onto a shared box). A server list that carried `private_net`
+  # from the first `GET /v1/servers` — true before this fix needed the
+  # distinction — would make every one of these "brand new server" fixtures
+  # read as already-networked and skip create entirely. Tracked per test via
+  # `attached`, populated only once the attach action for that server id has
+  # actually been sent, so the *early* read (before `attach_zone_networks`
+  # runs) sees nothing and the *later* one (`serve_one_registry`'s own
+  # re-fetch, after) sees exactly what got attached.
+  defp attach_to_network_target("POST", "/v1/servers/" <> rest) do
+    case String.split(rest, "/") do
+      [id_str, "actions", "attach_to_network"] -> {:ok, String.to_integer(id_str)}
+      _ -> :error
+    end
+  end
+
+  defp attach_to_network_target(_method, _path), do: :error
+
+  defp with_private_nets(servers, attached_ids, private_nets) do
+    Enum.map(servers, fn server ->
+      case MapSet.member?(attached_ids, server["id"]) and Map.get(private_nets, server["id"]) do
+        {network_id, ip} -> Map.put(server, "private_net", [%{"network" => network_id, "ip" => ip}])
+        _ -> server
+      end
+    end)
+  end
+
   # Like `record_full_requests/2`, but the two servers sit in different
   # zones (ash/us-east and fsn1/eu-central — the same pairing as
   # MarketMySpec's real prod/uat) and every network creation is answered
   # with an id matching whichever zone the request actually named, rather
   # than one fixed id for the whole project. `GET /v1/networks` still
   # answers `[]`: the claim under test is what gets *created*, and adopting
-  # an existing network is `find_baseline_network/2`'s own, already-covered
-  # path.
+  # an existing *named* network is `find_baseline_network/2`'s own,
+  # already-covered path (adopting one read off a server's own `private_net`
+  # is `with_private_nets/3`'s job above, and there is nothing to adopt here
+  # until the servers this test starts from have actually been attached).
   defp record_zoned_requests(owner, project_name) do
-    servers = [
+    base_servers = [
       %{
         "id" => 201,
         "name" => "#{project_name}-prod",
         "location" => %{"name" => "ash"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
-        "private_net" => [%{"network" => 11, "ip" => "10.0.0.10"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}}
       },
       %{
         "id" => 202,
         "name" => "#{project_name}-uat",
         "location" => %{"name" => "fsn1"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
-        "private_net" => [%{"network" => 12, "ip" => "10.0.0.99"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}}
       }
     ]
 
     # Zone -> the id its network is fixed to holding, so the id a create
-    # request gets back always matches what the fixture's own server data
-    # above already claims to be attached to.
+    # request gets back always matches what `with_private_nets/3` reports
+    # once that server has been attached.
     network_ids = %{"us-east" => 11, "eu-central" => 12}
+    private_nets = %{201 => {11, "10.0.0.10"}, 202 => {12, "10.0.0.99"}}
+
+    {:ok, attached} = Agent.start_link(fn -> MapSet.new() end)
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
+
+      case attach_to_network_target(conn.method, conn.request_path) do
+        {:ok, server_id} -> Agent.update(attached, &MapSet.put(&1, server_id))
+        :error -> :ok
+      end
+
+      servers = with_private_nets(base_servers, Agent.get(attached, & &1), private_nets)
       zoned_reply(conn, conn.method, conn.request_path, payload, servers, network_ids)
     end
 
@@ -442,20 +584,18 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # of `[]` — the exact shape MarketMySpec's account was in when the primary
   # zone was still guessed from environment order rather than read back.
   defp record_zoned_requests_with_existing_network(owner, project_name) do
-    servers = [
+    base_servers = [
       %{
         "id" => 201,
         "name" => "#{project_name}-prod",
         "location" => %{"name" => "ash"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
-        "private_net" => [%{"network" => 11, "ip" => "10.0.0.10"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}}
       },
       %{
         "id" => 202,
         "name" => "#{project_name}-uat",
         "location" => %{"name" => "fsn1"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
-        "private_net" => [%{"network" => 12, "ip" => "10.0.0.99"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}}
       }
     ]
 
@@ -467,11 +607,21 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     }
 
     network_ids = %{"eu-central" => 12}
+    private_nets = %{201 => {11, "10.0.0.10"}, 202 => {12, "10.0.0.99"}}
+
+    {:ok, attached} = Agent.start_link(fn -> MapSet.new() end)
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
+
+      case attach_to_network_target(conn.method, conn.request_path) do
+        {:ok, server_id} -> Agent.update(attached, &MapSet.put(&1, server_id))
+        :error -> :ok
+      end
+
+      servers = with_private_nets(base_servers, Agent.get(attached, & &1), private_nets)
 
       case {conn.method, conn.request_path} do
         {"GET", "/v1/networks"} -> json(conn, %{"networks" => [existing_network]})
@@ -526,26 +676,35 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # `record_requests/2`'s created-on-demand list, because this test's claim
   # is about what happens *after* both boxes already exist.
   defp record_full_requests(owner, project_name) do
-    servers = [
+    base_servers = [
       %{
         "id" => 101,
         "name" => "#{project_name}-prod",
         "location" => %{"name" => "fsn1"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}},
-        "private_net" => [%{"network" => 4, "ip" => "10.0.0.10"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}}
       },
       %{
         "id" => 102,
         "name" => "#{project_name}-uat",
         "location" => %{"name" => "fsn1"},
-        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}},
-        "private_net" => [%{"network" => 4, "ip" => "10.0.0.99"}]
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.99"}}
       }
     ]
+
+    private_nets = %{101 => {4, "10.0.0.10"}, 102 => {4, "10.0.0.99"}}
+
+    {:ok, attached} = Agent.start_link(fn -> MapSet.new() end)
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(owner, {:ran, conn.method, conn.request_path})
+
+      case attach_to_network_target(conn.method, conn.request_path) do
+        {:ok, server_id} -> Agent.update(attached, &MapSet.put(&1, server_id))
+        :error -> :ok
+      end
+
+      servers = with_private_nets(base_servers, Agent.get(attached, & &1), private_nets)
       full_reply(conn, conn.method, conn.request_path, decode(body), servers)
     end
 

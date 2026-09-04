@@ -4076,13 +4076,59 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> Enum.sort_by(&(&1 != primary_zone))
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, %{}}, fn {zone, index}, {:ok, acc} ->
+      zone_servers = Enum.filter(servers, &(&1 |> get_in(["location", "name"]) |> Hetzner.network_zone() == zone))
       network_name = network_name_for_zone(name, zone, primary_zone)
 
-      case Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index) do
+      case zone_network(scope, zone_servers, network_name, zone, index) do
         {:ok, network} -> {:cont, {:ok, Map.put(acc, zone, network)}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  # A linked server often already belongs to somebody else's network before
+  # this project ever touches it — fuellytics and fuellytics-prod had one
+  # long before broken_oaths linked onto them, under a name this project's
+  # own `network_name_for_zone/3` has no reason to guess. Looking one up by a
+  # derived name it was never going to match created a *second* network
+  # whose default index-0 range collided with the one already there
+  # (`networks_overlap`, confirmed live onboarding broken_oaths onto shared
+  # infrastructure). A server already wearing a private address answers this
+  # directly: read the network id straight off it and adopt that network,
+  # rather than deriving a name and finding either nothing or the wrong
+  # thing.
+  #
+  # `__adopted__` is stamped explicitly — `find_network_by_id/2` is a raw
+  # lookup, and without the mark this would read as *created*, which must
+  # never be true of a network another project's servers depend on:
+  # teardown skips anything marked adopted and deletes everything else.
+  #
+  # Two servers in one zone disagreeing about which network they are
+  # already on falls through to the create-or-find path unchanged — a
+  # genuinely ambiguous state with no single right answer here, left to
+  # surface the same way it always has rather than guessed at.
+  defp zone_network(scope, zone_servers, network_name, zone, index) do
+    case existing_network_id(zone_servers) do
+      {:ok, network_id} ->
+        with {:ok, network} <- Hetzner.find_network_by_id(scope, network_id) do
+          {:ok, Map.put(network, "__adopted__", true)}
+        end
+
+      :error ->
+        Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index)
+    end
+  end
+
+  defp existing_network_id(servers) do
+    servers
+    |> Enum.flat_map(&(&1["private_net"] || []))
+    |> Enum.map(& &1["network"])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> case do
+      [network_id] -> {:ok, network_id}
+      _ -> :error
+    end
   end
 
   defp attach_zone_networks(scope, servers, networks) do
