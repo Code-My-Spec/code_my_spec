@@ -13,6 +13,11 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The second run proceeds past the gate into the registry step for real —
+  # the network is adopted correctly (both servers here carry a
+  # `private_net`) — so without this it would go on to open a real SSH
+  # connection to a TEST-NET address and hang.
+  setup :fake_working_directory
 
   spex "Linking a server after a pause lets the next run through" do
     scenario "the first run pauses, and the run after linking proceeds" do
@@ -105,14 +110,16 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
           "name" => "shared-fleet-box",
           "status" => "running",
           "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}}
+          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
+          "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
         },
         %{
           "id" => 2,
           "name" => "steady-uat-box",
           "status" => "running",
           "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}}
+          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}},
+          "private_net" => [%{"network" => 99, "ip" => "10.0.0.2"}]
         }
       ]
     })
@@ -120,7 +127,17 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
   defp reply(conn, "GET", "/v1/firewalls"), do: json(conn, %{"firewalls" => []})
   defp reply(conn, "GET", "/v1/ssh_keys"), do: json(conn, %{"ssh_keys" => []})
-  defp reply(conn, "GET", "/v1/networks"), do: json(conn, %{"networks" => []})
+
+  # Populated — the network is account infrastructure now
+  # (`provision_account_server/3`'s job), already there by the time a
+  # project's own `:server` step ever reaches a linked server.
+  defp reply(conn, "GET", "/v1/networks") do
+    json(conn, %{
+      "networks" => [
+        %{"id" => 99, "name" => "shared", "ip_range" => "10.0.0.0/16", "subnets" => []}
+      ]
+    })
+  end
   defp reply(conn, "GET", "/v1/datacenters"), do: json(conn, %{"datacenters" => []})
   defp reply(conn, "GET", "/v1/server_types"), do: json(conn, %{"server_types" => []})
 

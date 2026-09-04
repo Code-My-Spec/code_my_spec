@@ -51,6 +51,8 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
     assert_received {:ran, "GET", "/v1/servers"}
     refute_received {:ran, "POST", "/v1/servers"}
+    refute_received {:ran, "POST", "/v1/networks"},
+                     "expected the box's own already-attached network to be adopted, not a new one created"
   end
 
   test "creates a new box when the provider has no server by that name", %{scope: scope} do
@@ -65,7 +67,71 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     assert server["name"] == "fresh-box"
 
     assert_received {:ran, "POST", "/v1/servers"}
+    assert_received {:ran, "POST", "/v1/networks"},
+                     "expected a network to be created for a genuinely new box"
   end
+
+  # The account, not just this one call, is what a network's range must not
+  # collide with — two other zones already hold index 0 and 1 (10.0.0.0/16,
+  # 10.1.0.0/16) from boxes this test never touches, so a fresh box's own
+  # zone has to land on index 2 or later. Reproduces the shape that mattered
+  # live: an account's *other* networks, not only the servers in front of
+  # this particular call, are what `networks_overlap` checks against.
+  test "a new box's network avoids ranges the account's other networks already hold", %{
+    scope: scope
+  } do
+    test_pid = self()
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      send(test_pid, {:ran, conn.method, conn.request_path, payload})
+      collision_reply(conn, conn.method, conn.request_path, payload)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+
+    opts = [
+      run: succeeding_run(),
+      credentials: [access_key_id: "unused", secret_access_key: "unused"]
+    ]
+
+    assert {:ok, _server} = Steps.provision_account_server(scope, "third-box", opts)
+
+    assert_receive {:ran, "POST", "/v1/networks", payload}
+    assert payload["ip_range"] == "10.2.0.0/16", "expected the next free index, got #{inspect(payload)}"
+  end
+
+  defp collision_reply(conn, "GET", "/v1/servers", _payload), do: json(conn, %{"servers" => []})
+  defp collision_reply(conn, "GET", "/v1/firewalls", _payload), do: json(conn, %{"firewalls" => []})
+  defp collision_reply(conn, "GET", "/v1/ssh_keys", _payload), do: json(conn, %{"ssh_keys" => []})
+
+  defp collision_reply(conn, "GET", "/v1/networks", _payload) do
+    json(conn, %{
+      "networks" => [
+        %{"id" => 90, "name" => "one", "ip_range" => "10.0.0.0/16", "subnets" => []},
+        %{"id" => 91, "name" => "two", "ip_range" => "10.1.0.0/16", "subnets" => []}
+      ]
+    })
+  end
+
+  defp collision_reply(conn, "POST", "/v1/ssh_keys", _payload),
+    do: json(conn, %{"ssh_key" => %{"id" => 1, "fingerprint" => "aa:bb"}})
+
+  defp collision_reply(conn, "POST", "/v1/servers", payload) do
+    json(conn, %{
+      "server" => %{
+        "id" => System.unique_integer([:positive]),
+        "name" => payload["name"],
+        "status" => "running",
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => "203.0.113.10"}}
+      }
+    })
+  end
+
+  defp collision_reply(conn, _method, _path, payload),
+    do: json(conn, %{"network" => %{"id" => 92, "name" => payload["name"]}})
 
   test "refuses when the box has no address to reach it at", %{scope: scope} do
     record_requests(self(), existing: false, no_address: true)
@@ -137,7 +203,8 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
           "name" => "acme-box",
           "status" => "running",
           "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => ip}}
+          "public_net" => %{"ipv4" => %{"ip" => ip}},
+          "private_net" => [%{"network" => 42, "ip" => "10.0.0.5"}]
         }
       ]
     })
@@ -153,7 +220,20 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
   defp reply(conn, "GET", "/v1/ssh_keys", _payload, _existing, _no_address, _refuse),
     do: json(conn, %{"ssh_keys" => []})
 
-  defp reply(conn, "GET", "/v1/networks", _payload, _existing, _no_address, _refuse),
+  defp reply(conn, "GET", "/v1/networks", _payload, true, _no_address, _refuse) do
+    json(conn, %{
+      "networks" => [
+        %{
+          "id" => 42,
+          "name" => "acme",
+          "ip_range" => "10.0.0.0/16",
+          "subnets" => [%{"network_zone" => "eu-central", "ip_range" => "10.0.0.0/24"}]
+        }
+      ]
+    })
+  end
+
+  defp reply(conn, "GET", "/v1/networks", _payload, false, _no_address, _refuse),
     do: json(conn, %{"networks" => []})
 
   defp reply(conn, "POST", "/v1/ssh_keys", _payload, _existing, _no_address, _refuse),

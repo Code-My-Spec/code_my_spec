@@ -959,19 +959,31 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   @doc """
   Bring up one account-owned server, ready for any project to link onto:
-  the box itself, plus the shared registry and database containers every
-  project's environment will find already running when it links here.
+  the box itself, its private network, plus the shared registry and
+  database containers every project's environment will find already
+  running when it links here.
 
   The only path that may reach `Hetzner.create_server/3` — called from the
   account-level provisioning tool, or from a human provisioning one through
   the servers page, never from a project's own devops step. See
   `server_creation_gate/3`, which refuses that path under any circumstance.
 
+  The network is account infrastructure for the same reason the registry
+  and database containers are: it belongs to the box, not to whichever
+  project happens to ask first. It used to be created by a project's own
+  `:server` step, deriving a name from that project — which either found
+  nothing (creating a *second* network that collided with the one a shared
+  box already had, `networks_overlap`, confirmed live onboarding
+  broken_oaths onto fuellytics/fuellytics-prod) or found the wrong thing
+  entirely. A project-scoped reader now only ever adopts what this already
+  put there (`Steps.run(:server, ...)`'s own network step) — never creates
+  on the account's behalf, same hard line as the server itself.
+
   The SSH key is `Servers.access_key/1`'s — the account's, already shared
-  by every box it owns. Firewall and network attachment stay where they
-  already were — project-scoped, applied idempotently the first time a
-  project's own `:server` step reaches a box, whether that box was just
-  created here or already existed.
+  by every box it owns. Firewall attachment stays where it already was —
+  project-scoped, applied idempotently the first time a project's own
+  `:server` step reaches a box, whether that box was just created here or
+  already existed.
   """
   @spec provision_account_server(Scope.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -980,6 +992,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts = Keyword.put_new(opts, :ssh_key_ids, ssh_key_ids),
          {:ok, server} <- Hetzner.ensure_server(scope, name, opts),
          public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
+         {:ok, server, _network} <- ensure_account_network(scope, server),
          {:ok, opts} <- with_builder_ssh(scope, opts),
          run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts),
          :ok <- await_box(run, opts),
@@ -992,6 +1005,69 @@ defmodule CodeMySpec.Provisioning.Steps do
       _ -> {:error, "the server has no address yet"}
     end
   end
+
+  # Adopts the box's own network if it already has one (a server linked in
+  # from an existing shared box, or a repeat call on one this already ran
+  # against) — read off its own `private_net`, by id, never by a name
+  # guessed from whichever project happens to be calling. Creates one for
+  # its zone only when it genuinely has none yet.
+  #
+  # `__adopted__` is stamped explicitly on the found branch — a raw lookup
+  # reads as *created* without it, which must never be true of a network a
+  # server already depended on before this call: teardown skips anything
+  # marked adopted and deletes everything else.
+  defp ensure_account_network(scope, server) do
+    case existing_network_id(server) do
+      {:ok, network_id} ->
+        with {:ok, network} <- Hetzner.find_network_by_id(scope, network_id) do
+          {:ok, server, Map.put(network, "__adopted__", true)}
+        end
+
+      :error ->
+        # No re-fetch after attach — unlike `attach_private_network/3`,
+        # nothing here reads the box's private IP off `server`; the public
+        # one was already resolved before this ever runs, and the registry
+        # and database containers reach it over `run`, not over the network
+        # `server` itself would need to reflect.
+        with {:ok, network} <- create_account_network(scope, server),
+             {:ok, _attached} <- Hetzner.attach_to_network(scope, server["id"], network["id"]) do
+          {:ok, server, network}
+        end
+    end
+  end
+
+  # `codemyspec-<zone>` rather than a project-derived name: this box may
+  # end up serving several projects over its life (fuellytics does today),
+  # and nothing about the network is any one of theirs. The index has to be
+  # picked from what the *account* already has, not just the servers in
+  # this one call — Hetzner refuses an overlapping range regardless of
+  # which zone or which of the account's other networks holds it.
+  defp create_account_network(scope, server) do
+    zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
+    index = next_available_network_index(scope)
+    Hetzner.ensure_network(scope, "codemyspec-#{zone}", network_zone: zone, network_index: index)
+  end
+
+  defp next_available_network_index(scope) do
+    used =
+      case Hetzner.list_networks(scope) do
+        {:ok, networks} -> networks |> Enum.map(&network_index_of/1) |> Enum.reject(&is_nil/1) |> MapSet.new()
+        _ -> MapSet.new()
+      end
+
+    Enum.find(0..255, &(not MapSet.member?(used, &1)))
+  end
+
+  defp network_index_of(%{"ip_range" => "10.0.0.0/16"}), do: 0
+
+  defp network_index_of(%{"ip_range" => "10." <> rest}) do
+    case Integer.parse(rest) do
+      {n, ".0.0/16"} -> n
+      _ -> nil
+    end
+  end
+
+  defp network_index_of(_network), do: nil
 
   # `Content.PullClient` (generated by `cms_gen.content`) reads the manifest
   # and blob back with the deployed app's own S3 credentials — deliberately,
@@ -2118,29 +2194,20 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp attach_private_network(scope, environment, opts) do
-    name = server_name(scope, opts)
     box = server_name(scope, opts, environment)
 
-    # The server first, not the network — which network this box belongs on
-    # depends on which zone it is in, and the zone is the server's to say.
-    # `network_name_for_zone/3`: the project's shared network keeps its bare
-    # name for whichever zone got there first (the common case: every
-    # environment in one zone, unaffected by any of this); a box outside that
-    # zone gets a network of its own, because a Hetzner private network's
-    # subnet lives in exactly one zone for its life — MarketMySpec's prod
-    # (ash) and uat (nbg1) predate this platform's own provisioning and were
-    # never going to share one.
+    # The network is account infrastructure — read off the box's own
+    # `private_net`, by id, never guessed at from a name derived from
+    # whichever project happens to be building. `provision_account_server/3`
+    # is what ensures a box has one at all; this only ever adopts it.
     with {:ok, server} <- Hetzner.find_server(scope, box),
          location = get_in(server, ["location", "name"]),
-         zone = Hetzner.network_zone(location),
-         network_name = network_name_for_zone(name, zone, primary_network_zone(scope, opts)),
-         # Found, not created. The server step owns this network now — a build
-         # is not what a network's lifetime should be tied to, and creating one
-         # here is why a failed build used to leave one behind.
-         {:ok, network} <- find_baseline_network(scope, network_name),
-         # Attached here as well, because a box added after the baseline ran
-         # would otherwise never join. `attach_to_network/3` treats an existing
-         # attachment as success.
+         {:ok, network_id} <- existing_network_id(server),
+         {:ok, network} <- Hetzner.find_network_by_id(scope, network_id),
+         # Re-attached even though the id just came from the server's own
+         # state — a box added to a zone's network by a *different* call
+         # than the one that created it would otherwise never join.
+         # `attach_to_network/3` treats an existing attachment as success.
          {:ok, _attached} <- Hetzner.attach_to_network(scope, server["id"], network["id"]),
          # Re-read, because the attach does not report the address it assigned
          # and the copy we already hold predates it.
@@ -2162,13 +2229,14 @@ defmodule CodeMySpec.Provisioning.Steps do
        |> Keyword.put(:registry_host, "#{ip}:#{Registry.port()}")
        |> Keyword.put(:network_resource, network_resource(network["name"], network))}
     else
-      # Named, because every one of these is a lookup and `:not_found` on its
-      # own reads as "not found" — a whole step's failure rendered as two words
-      # that say neither what was missing nor which environment wanted it.
       {:error, :not_found} ->
+        {:error, "cannot build for #{environment}: no server named #{box}"}
+
+      :error ->
         {:error,
-         "cannot build for #{environment}: no server named #{box}, and no private network " <>
-           "to reach a registry on"}
+         "cannot build for #{environment}: #{box} has no private network yet — provision it " <>
+           "from the account-level servers page first, a project's own devops step never " <>
+           "creates one"}
 
       {:error, reason} ->
         {:error, "cannot build for #{environment} on #{box}: #{format(reason)}"}
@@ -2734,82 +2802,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
 
   defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
-
-  # The baseline network, or a refusal that names the step which makes it.
-  defp find_baseline_network(scope, name) do
-    case Hetzner.find_network(scope, name) do
-      {:ok, network} ->
-        {:ok, network}
-
-      {:error, :not_found} ->
-        {:error,
-         "this project has no private network — the server step creates it, along with the " <>
-           "registry the deploy pulls from. Run the server step first."}
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  # The zone the project's shared, bare-named network is bound to: whichever
-  # environment resolves a server first, in the same stable order
-  # `permitted_environment_rows/1` already gives everything else here.
-  # Environments without a server yet are skipped rather than treated as
-  # "no primary zone" — a project mid-provisioning still has one real zone
-  # once its first box exists.
-  #
-  # Derived from servers rather than the network's own subnet data on
-  # purpose: every other lookup here already reads a server's own location,
-  # and asking Hetzner's network object for its zone back would be a second,
-  # independent way to answer the same question that this and
-  # `join_baseline_network/4` have to agree on.
-  # The existing network's own zone wins when there is one — read directly
-  # off its subnet, not guessed at. A row-order guess ("whichever environment
-  # comes back first") was tried here first and is exactly what broke on
-  # MarketMySpec: `EnvironmentRepository.list/1` has no ordering guarantee
-  # tying "first" to "prod", so the guess named eu-central (uat's zone)
-  # primary while the project's real, already-created network was us-east —
-  # `ensure_zone_networks/4` then handed the *existing* network's own zone
-  # index 1 and the *new* one index 0, recreating the exact 10.0.0.0/16
-  # collision this was supposed to prevent. Only a project with no network
-  # yet — its very first "server" step run — has nothing to read back, and
-  # falls to the row-order guess, where "first" is as good a seed as any
-  # since nothing exists yet to disagree with it.
-  defp primary_network_zone(scope, opts) do
-    case Hetzner.find_network(scope, server_name(scope, opts)) do
-      {:ok, network} -> existing_network_zone(network) || primary_network_zone_guess(scope, opts)
-      {:error, _} -> primary_network_zone_guess(scope, opts)
-    end
-  end
-
-  defp existing_network_zone(%{"subnets" => [%{"network_zone" => zone} | _]}), do: zone
-  defp existing_network_zone(_network), do: nil
-
-  defp primary_network_zone_guess(scope, opts) do
-    scope
-    |> permitted_environment_rows()
-    |> Enum.find_value(fn environment ->
-      case Hetzner.find_server(scope, server_name(scope, opts, environment.name)) do
-        {:ok, %{"location" => %{"name" => location}}} -> Hetzner.network_zone(location)
-        _ -> nil
-      end
-    end)
-  end
-
-  # The bare name for whichever zone is primary (including when there is no
-  # primary yet — a project's first environment has nothing to differ from).
-  # Every other zone gets a network of its own: a Hetzner private network's
-  # subnet lives in exactly one zone for its life, and a server outside it
-  # is refused outright ("networks must be in the same network zone"), not
-  # merely slow to join. Confirmed live against MarketMySpec: prod's box is
-  # in ash, uat's is in nbg1 — one predating the platform's own
-  # provisioning, the other never going to share ash's network no matter how
-  # this is named.
-  defp network_name_for_zone(name, zone, primary_zone)
-       when zone == primary_zone or is_nil(primary_zone),
-       do: name
-
-  defp network_name_for_zone(name, zone, _primary_zone), do: "#{name}-#{zone}"
 
   # Kamal evaluates ERB in its config, so a host written that way is decided
   # when the deploy runs rather than when the file was committed.
@@ -4029,25 +4021,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   # The private network the registry answers on, and the app's boxes reach it
-  # over. Baseline infrastructure, so it belongs to this step — it was created
-  # inside `build_image` before, which is why a failed build left one behind:
-  # a build is not what a network's lifetime should be tied to.
+  # over — account infrastructure now, the same as the box itself and its
+  # registry/database containers. `provision_account_server/3` is the only
+  # thing that creates one; this only ever reads what is already there.
   #
-  # After the servers rather than before, because a server's location is not
-  # known until it exists: `create_server/3` falls back to the other
-  # architecture when Hetzner has no capacity, and that fallback changes the
-  # location — and therefore the zone the subnet has to be in.
+  # After the servers rather than before, because which box (and therefore
+  # which zone, and therefore which network) an environment belongs to is
+  # only known once the server step above has resolved it.
   defp join_baseline_network({:ok, made}, scope, opts, environments) do
-    name = server_name(scope, opts)
     servers = environment_servers(scope, opts, environments)
 
     with {:ok, [_ | _] = servers} <- servers,
-         primary_zone = primary_network_zone(scope, opts),
-         {:ok, networks} <- ensure_zone_networks(scope, servers, name, primary_zone),
-         :ok <- attach_zone_networks(scope, servers, networks) do
+         {:ok, networks} <- adopt_zone_networks(scope, servers) do
       finish_baseline_network(scope, servers, networks, opts, environments, made)
     else
       {:ok, []} -> {:ok, made}
+      {:paused, message} -> {:paused, message}
       {:error, reason} -> {:error, format(reason), made}
     end
   end
@@ -4055,30 +4044,53 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp join_baseline_network(other, _scope, _opts, _environments), do: other
 
   # Keyed by server id, not by zone — two servers can sit in the same zone
-  # and still have arrived here on two genuinely different pre-existing
-  # networks. fuellytics and fuellytics-prod are exactly that: each already
-  # had its own network long before either was linked to a second project,
-  # never the same one. An earlier version of this keyed by zone and
-  # required every server in a zone to agree on one existing network before
-  # adopting anything — the moment they disagreed (the real shape here, not
-  # the rare edge case it looked like from a single shared box) it fell
-  # through to create-a-network-and-collide, the exact bug this exists to
-  # fix. Per-server adoption has no such requirement: each server that
-  # already has a network keeps its own, independently.
+  # and still be on two genuinely different pre-existing networks.
+  # fuellytics and fuellytics-prod are exactly that: each already had its
+  # own network long before either was linked to a second project, never
+  # the same one. An earlier version of this keyed by zone and required
+  # every server in a zone to agree on one existing network before adopting
+  # anything — the moment they disagreed (the real shape here, not the rare
+  # edge case it looked like from a single shared box) it fell through to
+  # create-a-network-and-collide (`networks_overlap`, confirmed live
+  # onboarding broken_oaths). Per-server adoption has no such requirement.
   #
-  # Servers with no existing network of their own still share one *created*
-  # network per zone, same as before this fix — there is no reason two
-  # genuinely new boxes in the same zone should get two networks.
-  defp ensure_zone_networks(scope, servers, name, primary_zone) do
-    {with_network, without_network} = Enum.split_with(servers, &existing_network?/1)
+  # No create path at all, unlike an earlier version of this fix — the
+  # network is account infrastructure, same as the server itself
+  # (`server_creation_gate/3`); a project-scoped step creating one on the
+  # account's behalf was the same category of mistake under a different
+  # name. A linked server with none yet — hand-built and never run through
+  # `provision_account_server/3` — pauses here instead, naming what to do
+  # about it, rather than doing the account's job for it.
+  #
+  # `__adopted__` is stamped explicitly — `find_network_by_id/2` is a raw
+  # lookup, and without the mark this would read as *created*, which must
+  # never be true of a network another project's servers depend on:
+  # teardown skips anything marked adopted and deletes everything else.
+  defp adopt_zone_networks(scope, servers) do
+    Enum.reduce_while(servers, {:ok, %{}}, fn server, {:ok, acc} ->
+      case existing_network_id(server) do
+        {:ok, network_id} ->
+          Logger.info("[Provisioning] #{server["name"]}: adopting its own network #{network_id}")
 
-    with {:ok, adopted} <- adopt_existing_networks(scope, with_network),
-         {:ok, created} <- ensure_created_networks(scope, without_network, name, primary_zone) do
-      {:ok, Map.merge(adopted, created)}
-    end
+          case Hetzner.find_network_by_id(scope, network_id) do
+            {:ok, network} ->
+              {:cont, {:ok, Map.put(acc, server["id"], Map.put(network, "__adopted__", true))}}
+
+            {:error, reason} ->
+              {:halt, {:error, reason}}
+          end
+
+        :error ->
+          {:halt, {:paused, no_account_network_message(server)}}
+      end
+    end)
   end
 
-  defp existing_network?(server), do: match?({:ok, _}, existing_network_id(server))
+  defp no_account_network_message(server) do
+    "#{server["name"]} has no private network yet — provision it from the account-level " <>
+      "servers page (or the account-level provisioning tool) first; a project's own devops " <>
+      "step never creates one."
+  end
 
   defp existing_network_id(server) do
     case server["private_net"] || [] do
@@ -4087,87 +4099,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # A linked server often already belongs to somebody else's network before
-  # this project ever touches it — fuellytics and fuellytics-prod had one
-  # long before broken_oaths linked onto them, under a name this project's
-  # own `network_name_for_zone/3` has no reason to guess. Looking one up by
-  # a derived name it was never going to match created a *second* network
-  # whose default index-0 range collided with the one already there
-  # (`networks_overlap`, confirmed live onboarding broken_oaths onto shared
-  # infrastructure). A server already wearing a private address answers
-  # this directly: read the network id straight off it and adopt that
-  # network, rather than deriving a name and finding either nothing or the
-  # wrong thing.
-  #
-  # `__adopted__` is stamped explicitly — `find_network_by_id/2` is a raw
-  # lookup, and without the mark this would read as *created*, which must
-  # never be true of a network another project's servers depend on:
-  # teardown skips anything marked adopted and deletes everything else.
-  defp adopt_existing_networks(scope, servers) do
-    Enum.reduce_while(servers, {:ok, %{}}, fn server, {:ok, acc} ->
-      {:ok, network_id} = existing_network_id(server)
-
-      case Hetzner.find_network_by_id(scope, network_id) do
-        {:ok, network} -> {:cont, {:ok, Map.put(acc, server["id"], Map.put(network, "__adopted__", true))}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp ensure_created_networks(_scope, [], _name, _primary_zone), do: {:ok, %{}}
-
-  # One network per zone among the servers that do not already have one —
-  # see `network_name_for_zone/3`. Almost always one entry; a second only
-  # appears for a project like MarketMySpec whose environments predate this
-  # platform's own provisioning and were never put in the same zone.
-  #
-  # The primary zone sorts first, so it always gets `network_index: 0` —
-  # `Hetzner.create_network/3`'s original, unindexed range — leaving every
-  # project's existing network completely untouched. Every other zone gets
-  # the next index instead of colliding with it: Hetzner refuses a network
-  # whose range overlaps another's in the same project regardless of zone,
-  # and every network here defaulted to the same hardcoded range before
-  # `:network_index` existed. Confirmed live against MarketMySpec:
-  # `networks_overlap` on the very first attempt to create a second one.
-  defp ensure_created_networks(scope, servers, name, primary_zone) do
-    zones =
-      servers
-      |> Enum.map(&get_in(&1, ["location", "name"]))
-      |> Enum.map(&Hetzner.network_zone/1)
-      |> Enum.uniq()
-      |> Enum.sort_by(&(&1 != primary_zone))
-      |> Enum.with_index()
-
-    with {:ok, by_zone} <- ensure_zone_network_lookup(scope, zones, name, primary_zone) do
-      {:ok,
-       for server <- servers, into: %{} do
-         zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
-         {server["id"], Map.fetch!(by_zone, zone)}
-       end}
-    end
-  end
-
-  defp ensure_zone_network_lookup(scope, zones, name, primary_zone) do
-    Enum.reduce_while(zones, {:ok, %{}}, fn {zone, index}, {:ok, acc} ->
-      network_name = network_name_for_zone(name, zone, primary_zone)
-
-      case Hetzner.ensure_network(scope, network_name, network_zone: zone, network_index: index) do
-        {:ok, network} -> {:cont, {:ok, Map.put(acc, zone, network)}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp attach_zone_networks(scope, servers, networks) do
-    Enum.reduce_while(servers, :ok, fn server, :ok ->
-      case Hetzner.attach_to_network(scope, server["id"], network_for(server, networks)["id"]) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  # Which of `ensure_zone_networks/4`'s networks a given server actually
+  # Which of `adopt_zone_networks/2`'s networks a given server actually
   # belongs on — its own, by id, never shared with a server it merely
   # happens to sit in the same zone as.
   defp network_for(server, networks), do: Map.fetch!(networks, server["id"])

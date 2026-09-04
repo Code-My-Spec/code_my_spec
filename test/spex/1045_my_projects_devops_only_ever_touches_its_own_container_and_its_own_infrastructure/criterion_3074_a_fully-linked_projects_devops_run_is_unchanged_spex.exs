@@ -13,6 +13,12 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # Reaching the registry step for real needs a fake shell, not a real one —
+  # the network is adopted correctly now (this criterion's servers carry a
+  # `private_net`, since that read happens before the gate this spec is
+  # actually about), so without this the run would go on to open a real SSH
+  # connection to a TEST-NET address and hang.
+  setup :fake_working_directory
 
   spex "A project whose environments are already linked behaves exactly as before" do
     scenario "the :server step finds the linked server and proceeds, no pause" do
@@ -63,14 +69,13 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
         refute text =~ "does not have",
                "expected both already-linked servers to be found on the provider, not reported missing"
 
-        # The run gets exactly as far as the registry step, which wants a
-        # private-network address this stub does not simulate — reaching it
-        # proves the already-linked server was found and adopted rather than
-        # treated as needing a new one, which is this criterion's subject. A
-        # working registry needs a real SSH-reachable box (see
-        # `CodeMySpecSpex.Case.fleet_box/1`), which is a different criterion's
-        # concern.
-        assert text =~ "no private address",
+        # The run gets exactly as far as the registry's own "is it running"
+        # check, refused since nothing here brought the shared container up
+        # — reaching it proves the already-linked server was found and
+        # adopted rather than treated as needing a new one, which is this
+        # criterion's subject. Actually bringing the registry up needs the
+        # account-level tool, a different criterion's concern.
+        assert text =~ "not provisioned",
                "expected the already-linked servers to be found and adopted, not paused or missing"
 
         {:ok, context}
@@ -86,14 +91,16 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
           "name" => "already-there-box",
           "status" => "running",
           "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}}
+          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
+          "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
         },
         %{
           "id" => 2,
           "name" => "already-there-uat-box",
           "status" => "running",
           "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}}
+          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}},
+          "private_net" => [%{"network" => 99, "ip" => "10.0.0.2"}]
         }
       ]
     })
@@ -101,7 +108,17 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
 
   defp reply(conn, "GET", "/v1/firewalls"), do: json(conn, %{"firewalls" => []})
   defp reply(conn, "GET", "/v1/ssh_keys"), do: json(conn, %{"ssh_keys" => []})
-  defp reply(conn, "GET", "/v1/networks"), do: json(conn, %{"networks" => []})
+
+  # Populated — the network is account infrastructure now
+  # (`provision_account_server/3`'s job), already there by the time a
+  # project's own `:server` step ever reaches a linked server.
+  defp reply(conn, "GET", "/v1/networks") do
+    json(conn, %{
+      "networks" => [
+        %{"id" => 99, "name" => "shared", "ip_range" => "10.0.0.0/16", "subnets" => []}
+      ]
+    })
+  end
   defp reply(conn, "GET", "/v1/datacenters"), do: json(conn, %{"datacenters" => []})
   defp reply(conn, "GET", "/v1/server_types"), do: json(conn, %{"server_types" => []})
 

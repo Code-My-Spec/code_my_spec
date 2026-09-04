@@ -13,6 +13,12 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # Reaching the registry step for real needs a fake shell, not a real one —
+  # the network is adopted correctly now (this criterion's servers carry a
+  # `private_net`, since that read happens before the gate this spec is
+  # actually about), so without this the run would go on to open a real SSH
+  # connection to a TEST-NET address and hang.
+  setup :fake_working_directory
 
   spex "A linked server that has vanished from the provider is not silently rebuilt" do
     scenario "the environment's server step pauses rather than recreating it under a guessed name" do
@@ -66,12 +72,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
         refute first_text =~ "paused",
                "expected the linked server to be found and adopted the first time, not paused"
 
-        # Reaching the registry step (which wants a private-network address
-        # this stub does not simulate) proves both servers were found and
+        # Reaching the registry's own "is it running" check (refused, since
+        # nothing here brought the shared container up — that is the
+        # account's job, not this spec's) proves both servers were found and
         # adopted while still present — the first half of this criterion.
-        # Completing registry setup for real needs an SSH-reachable box; see
-        # `CodeMySpecSpex.Case.fleet_box/1`.
-        assert first_text =~ "no private address",
+        # Actually bringing the registry up needs the account-level tool
+        # (`Fixtures.bootstrap_account_server/3`), a different criterion's
+        # concern.
+        assert first_text =~ "not provisioned",
                "expected the linked server to be found and adopted the first time"
 
         assert response_text(context.response) =~ "paused",
@@ -88,7 +96,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
       "name" => "steady-uat-box",
       "status" => "running",
       "location" => %{"name" => "fsn1"},
-      "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}}
+      "public_net" => %{"ipv4" => %{"ip" => "203.0.113.2"}},
+      "private_net" => [%{"network" => 99, "ip" => "10.0.0.2"}]
     }
 
     case Agent.get(state, & &1) do
@@ -100,7 +109,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
               "name" => "now-gone-box",
               "status" => "running",
               "location" => %{"name" => "fsn1"},
-              "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}}
+              "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
+              "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
             },
             steady_uat_box
           ]
@@ -113,7 +123,17 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
   defp reply(conn, "GET", "/v1/firewalls", _state), do: json(conn, %{"firewalls" => []})
   defp reply(conn, "GET", "/v1/ssh_keys", _state), do: json(conn, %{"ssh_keys" => []})
-  defp reply(conn, "GET", "/v1/networks", _state), do: json(conn, %{"networks" => []})
+
+  # Populated — the network is account infrastructure now
+  # (`provision_account_server/3`'s job), already there by the time a
+  # project's own `:server` step ever reaches a linked server.
+  defp reply(conn, "GET", "/v1/networks", _state) do
+    json(conn, %{
+      "networks" => [
+        %{"id" => 99, "name" => "shared", "ip_range" => "10.0.0.0/16", "subnets" => []}
+      ]
+    })
+  end
   defp reply(conn, "GET", "/v1/datacenters", _state), do: json(conn, %{"datacenters" => []})
   defp reply(conn, "GET", "/v1/server_types", _state), do: json(conn, %{"server_types" => []})
 
