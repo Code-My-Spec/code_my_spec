@@ -14,6 +14,7 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
@@ -24,6 +25,15 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "test-key-id")
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "test-secret")
+
+    # Pre-seeded rather than left for `Servers.access_key/1` to generate: its
+    # fallback shells out to a real `ssh-keygen`, and under this suite's own
+    # parallel load that occasionally lost a race against something else on
+    # the account secrets table, once in several dozen runs, isolated
+    # nowhere else. Nothing here ever opens a real connection with either
+    # key — every test already routes SSH through `succeeding_run/0`.
+    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_public_key", "ssh-ed25519 AAAAfake test-fixture")
+    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_private_key", "-----BEGIN FAKE KEY-----\nfixture\n-----END FAKE KEY-----\n")
 
     {:ok, scope: scope}
   end

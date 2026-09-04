@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ProvisionAccountServerTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.McpServers.Devops.Tools.ProvisionAccountServer
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
@@ -23,6 +24,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ProvisionAccountServerTest do
   setup do
     scope = full_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
+
+    # Pre-seeded so `Servers.access_key/1` never falls back to a real
+    # `ssh-keygen` — see the sibling `provision_account_server_test.exs` for
+    # why that matters under this suite's own parallel load.
+    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_public_key", "ssh-ed25519 AAAAfake test-fixture")
+    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_private_key", "-----BEGIN FAKE KEY-----\nfixture\n-----END FAKE KEY-----\n")
+
     {:ok, scope: scope}
   end
 
