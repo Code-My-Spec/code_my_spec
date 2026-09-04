@@ -201,7 +201,7 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
 
   defp maybe_add_persona_gap(gaps, []),
     do: [
-      "No personas linked to this story — call `add_persona` and `link_persona_to_story`." | gaps
+      "No personas linked to this story — call `create_persona` and `link_persona_to_story`." | gaps
     ]
 
   defp maybe_add_persona_gap(gaps, _personas), do: gaps

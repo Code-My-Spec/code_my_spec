@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   @moduledoc """
   Story 559 — Three Amigos
   Criterion 5888 — When Three Amigos runs on a story with no suitable
-  persona in the library, the agent calls `add_persona` to create a
+  persona in the library, the agent calls `create_persona` to create a
   lightweight record, completes the readiness work, and the graph
   surfaces `personas_complete` as the new research gap that blocks
   forward progress.
@@ -32,9 +32,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
       `:persona_research_task_started` for the new requirement name.
     - `personas_complete` graph node + `PersonasChecker.complete?/1`
       (exists per Story 560).
-    - `add_persona` is implemented as the existing `CreatePersona`
-      MCP tool (same record shape — identity + metadata, no research
-      artifacts). `link_persona` MCP tool may not exist yet; this
+    - the lightweight record is written by the `CreatePersona` MCP
+      tool — identity + metadata, no research artifacts. Several
+      prompts used to call this `add_persona`, a name that was never
+      registered anywhere (96206d1e); this spex always drove
+      `CreatePersona` directly, which is how the prose and the code
+      drifted apart unnoticed. `link_persona` MCP tool may not exist yet; this
       spec uses the `Personas` context call as a substitute, matching
       the `:persona_exists` shared given pattern.
   """
@@ -105,7 +108,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
 
       given_ :three_amigos_task_started
 
-      when_ "the agent calls add_persona for ops_lead", context do
+      when_ "the agent calls create_persona for ops_lead", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, create_response, _frame} =

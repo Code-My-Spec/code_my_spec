@@ -4,7 +4,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddRule do
 
   Rejects when the target story has no personas linked — Three Amigos
   enforces persona linkage before any rules or scenarios can land. The
-  agent should call `add_persona` (and `link_persona_to_story` if
+  agent should call `create_persona` (and `link_persona_to_story` if
   needed) before retrying.
   """
 

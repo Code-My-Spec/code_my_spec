@@ -22,9 +22,9 @@ Call `list_personas` to see what already exists on this project.
 
 - If a suitable persona exists → call `link_persona_to_story` with
   the story_id and persona_id.
-- If not → call `add_persona` (alias for `create_persona`) to add a
-  lightweight record (identity + metadata only — no research
-  artifacts), then `link_persona_to_story`.
+- If not → call `create_persona` to add a lightweight record
+  (identity + metadata only — no research artifacts), then
+  `link_persona_to_story`.
 
 Full persona research happens later as a separate
 `personas_complete` requirement on the next graph pass — don't try

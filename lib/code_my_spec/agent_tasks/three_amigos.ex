@@ -174,7 +174,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     **Developer** (constraints and dependencies), **QA** (failure modes
     and edge cases) — while the PM holds product intent.
 
-    Pass `story_id: #{story.id}` to every MCP tool call (`add_persona` is
+    Pass `story_id: #{story.id}` to every MCP tool call (`create_persona` is
     project-scoped and resolves the project from your working directory's
     scope — it doesn't need a story_id; everything else does).
 

@@ -6,7 +6,7 @@ defmodule CodeMySpec.Requirements.PersonasCheckerTest do
   A249095 relaxed this to "at least one," reasoning that a bare DB stub
   sitting beside a fully-researched persona shouldn't hold the requirement
   shut. That traded a graph-gridlock bug for a worse one: an agent could
-  create a lightweight persona during Three Amigos (`add_persona` — identity
+  create a lightweight persona during Three Amigos (`create_persona` — identity
   and metadata only, no research) and get no signal that research was still
   owed, because some other persona on the project already had it. Story
   559/criterion 5888 is exactly this case. An unresearched persona is

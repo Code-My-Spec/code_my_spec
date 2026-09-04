@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
   Criterion 5893 — When the agent calls `start_task` for
   `three_amigos_complete`, the returned prompt enumerates the
   available MCP tools (`add_rule`, `add_scenario`, `add_question`,
-  `add_persona`, `link_persona_to_story`) and points the agent at
+  `create_persona`, `link_persona_to_story`) and points the agent at
   the knowledge MCP for protocol guidance.
 
   Covers Rule 7 / Rule 9 from `specs.md`:
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
             context do
         prompt = response_text(context.start_response)
 
-        # The MCP tool surface (add_rule, add_scenario, add_question, add_persona,
+        # The MCP tool surface (add_rule, add_scenario, add_question, create_persona,
         # link_persona_to_story) is enumerated in
         # priv/knowledge/three_amigos/workflow.md, which the prompt routes the
         # agent to via `read_knowledge`. We assert on the route, not on inline

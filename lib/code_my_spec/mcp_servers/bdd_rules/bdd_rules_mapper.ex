@@ -113,7 +113,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
   def error(:persona_linkage_required) do
     Response.tool()
     |> Response.error(
-      "Cannot add a rule: this story has no personas linked. Call `add_persona` to create a lightweight persona record (or `link_persona_to_story` for an existing one), then retry."
+      "Cannot add a rule: this story has no personas linked. Call `create_persona` to create a lightweight persona record (or `link_persona_to_story` for an existing one), then retry."
     )
   end
 

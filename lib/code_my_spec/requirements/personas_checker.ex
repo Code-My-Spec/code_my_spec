@@ -14,7 +14,7 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   A249095 briefly relaxed this to "at least one persona researched," reasoning
   that a bare DB stub sitting beside a fully-researched persona shouldn't hold
   the requirement shut forever. That traded one problem for a worse one: an
-  agent that created a lightweight persona during Three Amigos (`add_persona`,
+  agent that created a lightweight persona during Three Amigos (`create_persona`,
   identity + metadata only, no research) got no signal that research was still
   owed, because some *other* persona on the project already had it — story
   559/criterion 5888 is exactly this case. A persona with no research on disk

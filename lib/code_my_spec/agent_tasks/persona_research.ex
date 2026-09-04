@@ -100,7 +100,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
 
     - `list_personas` — check for reuse before researching.
     - `get_persona` — fetch full persona detail by slug or id.
-    - `create_persona` (alias `add_persona`) — write the DB record.
+    - `create_persona` — write the DB record.
     - `evaluate_task` — manual validation trigger.
 
     ## Produced artifacts
