@@ -278,7 +278,18 @@ defmodule CmsHarness.Agents do
       |> put_if_string("account_id", request["account_id"])
       |> put_if_string("id_token", request["id_token"])
 
-    contents = Jason.encode!(%{"auth_mode" => "chatgpt", "tokens" => tokens})
+    # `last_refresh` and a null `OPENAI_API_KEY` because `codex exec` writes both
+    # and reads the first. Without `last_refresh` it has no evidence the token is
+    # current and refreshes on startup — which rotates the refresh token and
+    # invalidates every other copy of it, including the one in our database.
+    contents =
+      %{
+        "OPENAI_API_KEY" => nil,
+        "auth_mode" => "chatgpt",
+        "tokens" => tokens
+      }
+      |> put_if_string("last_refresh", request["last_refresh"])
+      |> Jason.encode!()
 
     dir = Path.join([System.tmp_dir!(), "cms-codex", request["agent_id"] || "unknown"])
 

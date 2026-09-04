@@ -192,8 +192,29 @@ defmodule CodeMySpec.Agents.Credential do
        "expires" => expires_ms(integration.expires_at)
      }
      |> put_account_id(token)
-     |> put_id_token(integration)}
+     |> put_id_token(integration)
+     |> put_refreshed_at(integration)}
   end
+
+  # When this token was last renewed, so the reader does not immediately renew it
+  # again.
+  #
+  # `codex exec` writes `last_refresh` into its own `auth.json` and reads it to
+  # decide whether the credential needs refreshing. Handed a file without one it
+  # has no evidence the token is current, so it refreshes on startup — and
+  # OpenAI rotates the refresh token on use, invalidating it for everyone else
+  # holding a copy. Every agent gets a copy of the same one, so the first to
+  # start burns it for every other agent *and* for the row in our database. That
+  # is the "your refresh token was already used" we kept arriving at, and why a
+  # token minutes old still came back 401.
+  #
+  # From the integration's own `updated_at`, which is when
+  # `persist_refreshed_token/4` last wrote it.
+  defp put_refreshed_at(entry, %{updated_at: %NaiveDateTime{} = at}) do
+    Map.put(entry, "refreshedAt", at |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_iso8601())
+  end
+
+  defp put_refreshed_at(entry, _integration), do: entry
 
   # The OIDC id token, carried because `codex exec` will not start without one.
   #

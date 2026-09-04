@@ -135,6 +135,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
     }
     |> put_present("account_id", credential["accountId"])
     |> put_present("id_token", credential["idToken"])
+    |> put_present("last_refresh", credential["refreshedAt"])
   end
 
   defp credential_fields(_credential), do: %{}
