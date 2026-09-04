@@ -16,11 +16,13 @@ defmodule CmsHarness.Agents.Tools.RunScript do
 
   alias CmsHarness.Mcp
 
-  # Big enough for a real answer, small enough that no single one becomes the
-  # turn. A browser page or an architecture dump arrives larger than everything
-  # the agent was going to think about, and the saving two tools were carried
-  # for is gone in one reply.
-  @max_result_chars 24_000
+  # One number, defined where both callers can reach it. This tool cut at
+  # 24,000 and said so; the server tool it calls through did not cut at all,
+  # and that is the path every Claude Code session reaches over the plugin's
+  # MCP mount — so the consumer with the tighter context window was the one
+  # with no cap (b9632bba). Two implementations of one rule is how they came
+  # to disagree.
+  @max_result_chars CodeMySpec.CodeMode.max_answer_bytes()
 
   @impl true
   def name, do: "run_script"
@@ -69,6 +71,7 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   def result_type, do: :text
 
   @doc "What a single answer may cost the turn. Public so a spec can ask."
+  @impl true
   @spec max_result_chars() :: pos_integer()
   def max_result_chars, do: @max_result_chars
 
@@ -95,12 +98,9 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   # Cut, and said so. Cutting silently is worse than not cutting: the agent
   # reasons about a fragment as though it were the whole answer, and nothing in
   # the transcript says otherwise.
-  defp truncate(text) when byte_size(text) <= @max_result_chars, do: text
-
-  defp truncate(text) do
-    note = "\n\n[truncated — the answer was longer than #{@max_result_chars} characters]"
-    kept = @max_result_chars - byte_size(note)
-
-    binary_part(text, 0, kept) <> note
-  end
+  #
+  # Delegated so there is one implementation as well as one number — this one
+  # split a binary on a byte boundary, which can land inside a multi-byte
+  # character and produce a reply that fails to encode.
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
 end

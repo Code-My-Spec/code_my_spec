@@ -54,6 +54,62 @@ defmodule CodeMySpec.CodeMode do
     |> interpret()
   end
 
+  # Big enough for a real answer, small enough that no single one becomes the
+  # turn. A browser page or an architecture dump arrives larger than everything
+  # the agent was going to think about, and the saving code mode is carried for
+  # is gone in one reply.
+  @max_answer_bytes 24_000
+
+  @doc "The largest answer a caller should hand back, in bytes."
+  @spec max_answer_bytes() :: pos_integer()
+  def max_answer_bytes, do: @max_answer_bytes
+
+  @doc """
+  Cuts a rendered answer to `max_answer_bytes/0`, and says it did.
+
+  Here rather than in each tool because there were two callers and one cap.
+  `CmsHarness.Agents.Tools.RunScript` cut at this number and said so; the
+  server tool this one calls through did not, and that is the path every Claude
+  Code session in a project reaches over the plugin's MCP mount. Sixty thousand
+  characters asked for, sixty thousand delivered, nothing in the transcript
+  saying the reply was large (b9632bba).
+
+  The moduledoc above has promised "cannot build an answer too big to carry"
+  the whole time. The sandbox bounds what a script may *build* — instruction
+  budget, call depth, Lua's own string limit — and none of those bound what it
+  may *return*: `string.rep("x", 60000)` breaks no limit while building.
+
+  Cutting silently would be worse than not cutting: the agent reasons about a
+  fragment as though it were the whole answer, and nothing says otherwise. So
+  the note is part of the contract, not decoration.
+  """
+  @spec cap(String.t()) :: String.t()
+  def cap(text) when is_binary(text) and byte_size(text) <= @max_answer_bytes, do: text
+
+  def cap(text) when is_binary(text) do
+    note = "\n\n[truncated — the answer was longer than #{@max_answer_bytes} characters]"
+
+    # `binary_part/3` splits on bytes, so a cut can land inside a multi-byte
+    # character and produce a binary that is no longer valid UTF-8 — which
+    # travels as far as the JSON encoder and fails there, turning a large
+    # answer into no answer at all.
+    text
+    |> binary_part(0, @max_answer_bytes - byte_size(note))
+    |> trim_to_valid_utf8()
+    |> Kernel.<>(note)
+  end
+
+  defp trim_to_valid_utf8(binary) do
+    if String.valid?(binary) do
+      binary
+    else
+      case binary do
+        <<>> -> <<>>
+        _ -> binary |> binary_part(0, byte_size(binary) - 1) |> trim_to_valid_utf8()
+      end
+    end
+  end
+
   @doc """
   Documentation for the catalog, on demand.
 

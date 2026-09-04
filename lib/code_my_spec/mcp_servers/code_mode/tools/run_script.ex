@@ -88,13 +88,17 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # The alert rides the answer, on success and on failure alike. A script that
   # blew up is exactly when knowing the tree is broken matters most, and an
   # agent told only on the happy path finds out least often when it counts.
+  # Capped before the alert is appended, not after: the alert is the part that
+  # says the tree is broken, and cutting the answer must not cut that off.
   defp render(%Result{} = result, scope, params) do
     case Result.failed?(result) do
       true ->
-        Response.tool() |> Response.error(AgentAlert.append(failure(result), scope, params))
+        text = AgentAlert.append(CodeMode.cap(failure(result)), scope, params)
+        Response.tool() |> Response.error(text)
 
       false ->
-        Response.tool() |> Response.text(AgentAlert.append(success(result), scope, params))
+        text = AgentAlert.append(CodeMode.cap(success(result)), scope, params)
+        Response.tool() |> Response.text(text)
     end
   end
 
