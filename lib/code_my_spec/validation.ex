@@ -693,7 +693,7 @@ defmodule CodeMySpec.Validation do
   # edited nothing this session owns nothing — and it is `split_unattributed/2`
   # that turns that into "demoted to advisory", which is right: findings it did
   # not make are still real and still somebody's.
-  defp agent_paths(%Scope{cwd: cwd} = scope, opts, project_changed?) do
+  defp agent_paths(%Scope{cwd: cwd}, opts, project_changed?) do
     case Keyword.get(opts, :agent_id) do
       agent_id when is_binary(agent_id) ->
         agent_id

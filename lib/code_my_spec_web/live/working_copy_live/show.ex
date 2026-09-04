@@ -158,36 +158,57 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # no box, and an *offer* to open one is the same promise one click earlier.
   defp chattable?(row), do: reachable_chats(row) != []
 
-  # The lanes a message would actually reach, and the only ones offered a
-  # button.
+  # The lanes there is something to say something to.
   #
   # This existed as a predicate over the whole row while the buttons were drawn
   # from the unfiltered list, so the two disagreed and the page rendered both
   # halves of the disagreement: "Open agent chat" for a lane, and underneath it
   # "there is nothing joined to receive a message". One function now, because
-  # the question "can this be talked to" has one answer per chat and the offer
-  # and the explanation are the same decision seen from two sides.
+  # the offer and the explanation are the same decision seen from two sides.
+  #
+  # One fact decides it: a thread with an agent nobody has stopped.
+  #
+  # It used to also require `status == :running`, and that is a status this
+  # deployment cannot produce. A row leaves `:starting` only through
+  # `record_reported/2`, driven by `LaneReporter`, which the light harness never
+  # starts — it runs `CmsHarness.Supervisor` alone: no Presence, no
+  # SocketSupervisor, no reporter. So nothing ever moved a row to `:running` and
+  # this panel hid every working agent behind it. The war-epic product agent
+  # answered a real turn while its row said `:starting` and the page offered no
+  # chat at all.
+  #
+  # Checking the harness connection here instead was the next wrong answer, and
+  # criterion 2896 is why: an agent whose machine cannot be reached must still
+  # get a send box, because the criterion is that the failure is *reported*. A
+  # box that is missing cannot tell you the machine is unreachable; it just
+  # looks like there was never an agent.
+  #
+  # That resolves what issue 90930fca was really about. Its complaint was a send
+  # that wrote the message and pushed it to a topic with nothing joined —
+  # silence indistinguishable from delivery. The fix belongs at the send, and is
+  # there: `Agents.dispatch_message/3` answers `{:error, :not_running}`. Once
+  # failure is honest, withholding the box buys nothing and costs the operator
+  # the explanation.
+  #
+  # `:stopped` still filters, because that one is reliable — the outcome of
+  # somebody asking, not an inference about a process.
   defp reachable_chats(%{chats: chats}) when is_list(chats),
-    do: Enum.filter(chats, &(&1.agent.engine == :pi and &1.agent.status == :running))
+    do: Enum.filter(chats, &(&1.agent.engine == :pi and &1.agent.status != :stopped))
 
   defp reachable_chats(_row), do: []
 
   # Why there is nothing to talk to, in the terms of this copy rather than in
   # general. "A Claude Code agent reports over hooks" is a true sentence and the
-  # wrong one in front of somebody looking at a Pi lane that has not come up
-  # yet — they would go and check the wrong thing.
+  # wrong one in front of somebody looking at a copy with no agents on it.
+  #
+  # The unconfirmed-lane branch went with the status gate. It said the chat
+  # "opens once the harness reports it" — a wait with no end on any machine
+  # running the light harness, since nothing reports.
   defp no_chat_reason(%{agents: []}), do: "Nothing is running on this copy to talk to."
 
-  defp no_chat_reason(%{agents: agents}) do
-    cond do
-      Enum.any?(agents, &(&1.engine == :pi and &1.status == :starting)) ->
-        "This copy's Pi lane has not confirmed yet. There is nothing joined to " <>
-          "receive a message, so the chat opens once the harness reports it."
-
-      true ->
-        "No lane to talk to on this copy. A Claude Code agent reports over hooks " <>
-          "and has no channel to receive a reply on."
-    end
+  defp no_chat_reason(%{agents: _agents}) do
+    "No lane to talk to on this copy. A Claude Code agent reports over hooks " <>
+      "and has no channel to receive a reply on."
   end
 
   @impl true

@@ -293,18 +293,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp emptiness(%{agent_id: agent_id}, []) when is_binary(agent_id), do: :nothing_yet
   defp emptiness(_conversation, []), do: :gap
 
-  # A conversation is answerable when its own agent is running.
+  # A conversation is answerable when its own agent has not been stopped.
   #
-  # Its own, not any agent on the copy. The old test was "a Pi lane the harness
-  # reports on `pi:<root>`", and that key outlives the agent that opened it —
-  # so the box appeared over sessions that had finished, which is the same
-  # broken promise as a box over something that never had a lane.
+  # Its own, not any agent on the copy. An older version keyed on "a Pi lane the
+  # harness reports on `pi:<root>`", and that key outlives the agent that opened
+  # it, so the box appeared over sessions that had finished.
+  #
+  # Then it asked `Agents.list_running/1` — the agents we asked for, filtered to
+  # `:running`. A row only reaches `:running` through `record_reported/2`, driven
+  # by `LaneReporter`, which the light harness never starts. On such a machine no
+  # row ever becomes `:running`, so this box never opened however alive the agent
+  # was.
+  #
+  # What is left is the fact the page can actually answer: there is an agent on
+  # this thread and nobody has stopped it. Reachability is deliberately not asked
+  # here — criterion 2896 requires that a message to an unreachable machine be
+  # *accepted and reported undelivered*, which needs the box present to say so.
+  # `send_message` dispatches through `Agents.dispatch_message/3`, which answers
+  # `{:error, :not_running}` rather than absorbing the message, so the report is
+  # real.
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    scope
-    |> Agents.list_running()
-    |> Enum.any?(&(&1.id == agent_id))
+    match?({:ok, %{status: status}} when status != :stopped, Agents.fetch_agent(scope, agent_id))
   end
 
   defp talkable?(_scope, _conversation), do: false
