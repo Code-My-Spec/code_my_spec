@@ -78,16 +78,31 @@ defmodule CodeMySpecWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <%!-- `min-h-dvh`, not `min-h-screen`: `100vh` is fixed to the largest
-    possible viewport on iOS Safari and does not shrink when the on-screen
-    keyboard opens, so a composer anchored to the bottom of this chain stayed
-    wherever the keyboard covered it. `dvh` tracks the *current* viewport, and
-    with `interactive-widget=resizes-content` in the root layout's viewport
-    meta, that now includes the keyboard. --%>
-    <div class="app-zone drawer lg:drawer-open min-h-dvh">
+    <%!-- `h-dvh`, not `min-h-dvh`: a *minimum* is a floor a tall page can stand
+    on and then exceed, which is exactly what let one oversized analyzer result
+    grow the whole document instead of scrolling inside its own pane. `h-dvh`
+    is a cap — `dvh` over `vh` for the same reason as before, so the cap itself
+    tracks the keyboard rather than sitting fixed to the largest viewport. --%>
+    <div class="app-zone drawer lg:drawer-open h-dvh">
       <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
 
-      <div class="drawer-content flex flex-col bg-base-100">
+      <%!-- daisyUI's `.drawer` is `display: grid`, and its own `.drawer-content`
+      rule resets `min-width` but never `min-height` — so a grid item here
+      still defaults to `min-height: auto` and refuses to shrink below its
+      content, the grid version of the flex `min-h-0` bug already fixed
+      further down this chain. Without this, the cap above does nothing: the
+      grid cell blows out past it before `overflow-y-auto` ever gets a
+      bounded box to scroll inside.
+
+      `overflow-y-auto` lands here rather than lower because most pages under
+      this layout have no scroll region of their own — a plain stories or
+      requirements list just grows past one screen and expects the page to
+      scroll. This is where that scroll now happens, in the one grid cell
+      `h-dvh` bounds, instead of on `<html>`. A page that *does* own its
+      viewport — this conversation, the chat surfaces — fills all of `main`
+      with its own `min-h-0`/`overflow-y-auto` region, so this outer one never
+      has anything left to scroll and stays inert underneath it. --%>
+      <div class="drawer-content flex min-h-0 flex-col overflow-y-auto bg-base-100">
         <div class="navbar bg-base-200 border-b border-base-300">
           <div class="flex-none lg:hidden">
             <label for="drawer-toggle" class="btn btn-square btn-ghost">
