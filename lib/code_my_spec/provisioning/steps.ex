@@ -4069,21 +4069,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp adopt_zone_networks(scope, servers) do
     Enum.reduce_while(servers, {:ok, %{}}, fn server, {:ok, acc} ->
       case existing_network_id(server) do
-        {:ok, network_id} ->
-          Logger.info("[Provisioning] #{server["name"]}: adopting its own network #{network_id}")
-
-          case Hetzner.find_network_by_id(scope, network_id) do
-            {:ok, network} ->
-              {:cont, {:ok, Map.put(acc, server["id"], Map.put(network, "__adopted__", true))}}
-
-            {:error, reason} ->
-              {:halt, {:error, reason}}
-          end
-
-        :error ->
-          {:halt, {:paused, no_account_network_message(server)}}
+        {:ok, network_id} -> adopt_network(scope, server, network_id, acc)
+        :error -> {:halt, {:paused, no_account_network_message(server)}}
       end
     end)
+  end
+
+  defp adopt_network(scope, server, network_id, acc) do
+    Logger.info("[Provisioning] #{server["name"]}: adopting its own network #{network_id}")
+
+    case Hetzner.find_network_by_id(scope, network_id) do
+      {:ok, network} ->
+        {:cont, {:ok, Map.put(acc, server["id"], Map.put(network, "__adopted__", true))}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
   end
 
   defp no_account_network_message(server) do
