@@ -767,6 +767,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       orders, and `flex-col-reverse` would put the panels on top while leaving
       the chat first in the document — which is a different thing for anyone
       reading the page rather than looking at it. --%>
+      <%!-- No `max-w-*` on the wide side. This is the one screen a founder is
+      meant to live on while an agent works — John: "it should be full width."
+      Capping it the way a reading-width page would fought the point of the
+      resizable panel beside it. Narrow keeps its cap; a phone is never wide
+      enough for it to matter. --%>
       <div
         id="conversation-layout"
         phx-hook="Viewport"
@@ -774,7 +779,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-layout={to_string(@screen)}
         class={[
           "mx-auto flex min-h-0 w-full flex-1 gap-4",
-          @screen == :wide && "max-w-7xl flex-row",
+          @screen == :wide && "flex-row",
           @screen == :narrow && "max-w-3xl flex-col"
         ]}
       >
@@ -931,7 +936,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               autocomplete="off"
               placeholder="say something to this agent"
               data-test="agent-message"
-              class="input input-sm input-bordered min-w-0 flex-1"
+              class="input input-bordered min-w-0 flex-1"
             />
             <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
           machine — up to the transport's patience if that machine is slow — and
@@ -949,6 +954,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           >
             This agent is not running, so there is nothing to send a message to.
           </p>
+        </div>
+
+        <%!-- The handle sets a CSS custom property on `<html>` rather than on
+        `#conversation-panels` itself. LiveView owns that div's `style`
+        attribute — it is part of the rendered template — so a patch here
+        would morphdom the JS-set width straight back to the server's value on
+        the next re-render, which happens on every message. `<html>` is never
+        part of what this LiveView renders, so nothing ever fights the hook
+        for it. --%>
+        <div
+          :if={@screen == :wide}
+          id="panel-resize-handle"
+          phx-hook="PanelResize"
+          data-target="conversation-panels"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panel"
+          class="w-1.5 shrink-0 cursor-col-resize rounded-full bg-base-300 transition-colors hover:bg-primary/50 active:bg-primary"
+        >
         </div>
 
         <.panels
@@ -1061,7 +1085,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     assigns = assign(assigns, :tabs, @panel_tabs)
 
     ~H"""
-    <div data-test="conversation-panels" class="flex w-96 shrink-0 flex-col gap-2 overflow-y-auto">
+    <%!-- Width comes from a CSS custom property `PanelResize` sets on `<html>`,
+    not from a class, so a person's drag survives this div being re-rendered on
+    every turn. `min-w-*`/`max-w-*` bound it in CSS so a stale or absent
+    property (JS not yet loaded, or never touched) still renders sanely at the
+    default in the `var()` fallback. --%>
+    <div
+      id="conversation-panels"
+      data-test="conversation-panels"
+      style="width: var(--panels-width, 24rem)"
+      class="flex min-w-64 max-w-2xl shrink-0 flex-col gap-2 overflow-y-auto"
+    >
       <div
         :for={{key, label} <- @tabs}
         data-test={"panel-#{key}"}

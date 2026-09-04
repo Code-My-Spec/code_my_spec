@@ -246,3 +246,17 @@ body {
     display: block;
     overflow-x: auto;
 }
+
+/* iOS Safari zooms the whole page in on focus when the focused field's
+ * font-size is under 16px. daisyUI's `.input`/`.textarea`/`.select` are 14px
+ * (0.875rem) at the default size and 12px at `-sm` — both trigger it. This is
+ * the one place that fixes it for every form control on a phone, rather than
+ * bumping sizes field-by-field wherever it gets noticed. Desktop keeps
+ * whichever size each surface chose. */
+@media (max-width: 767px) {
+    .input,
+    .textarea,
+    .select {
+        font-size: 1rem;
+    }
+}

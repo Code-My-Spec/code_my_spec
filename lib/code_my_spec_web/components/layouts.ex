@@ -78,7 +78,13 @@ defmodule CodeMySpecWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <div class="app-zone drawer lg:drawer-open min-h-screen">
+    <%!-- `min-h-dvh`, not `min-h-screen`: `100vh` is fixed to the largest
+    possible viewport on iOS Safari and does not shrink when the on-screen
+    keyboard opens, so a composer anchored to the bottom of this chain stayed
+    wherever the keyboard covered it. `dvh` tracks the *current* viewport, and
+    with `interactive-widget=resizes-content` in the root layout's viewport
+    meta, that now includes the keyboard. --%>
+    <div class="app-zone drawer lg:drawer-open min-h-dvh">
       <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
 
       <div class="drawer-content flex flex-col bg-base-100">

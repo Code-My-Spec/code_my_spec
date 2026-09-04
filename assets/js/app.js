@@ -87,6 +87,60 @@ let Hooks = {
       this.query.removeEventListener("change", this.report);
     },
   },
+  // A drag handle between the conversation and its side panel on a desk.
+  //
+  // Writes the width to a custom property on `<html>`, never on the panel
+  // element `phx-hook` is attached beside — LiveView re-renders that element
+  // on every message, and a width written to its own `style` attribute would
+  // be morphdom'd back to the server's value on the very next patch. `<html>`
+  // is outside anything this LiveView renders, so there is nothing to fight.
+  //
+  // Persisted per-browser rather than per-project: this is "how wide I like
+  // to work", the same kind of preference as a window size, not project state
+  // worth round-tripping to the server.
+  PanelResize: {
+    mounted() {
+      this.panel = document.getElementById(this.el.dataset.target);
+      this.min = 240;
+      this.max = 640;
+
+      const saved = parseFloat(localStorage.getItem("cms:panelWidth"));
+      if (!Number.isNaN(saved)) {
+        document.documentElement.style.setProperty("--panels-width", `${saved}px`);
+      }
+
+      this.onDown = (ev) => {
+        ev.preventDefault();
+        this.dragging = true;
+        this.startX = ev.clientX;
+        this.startWidth = this.panel.getBoundingClientRect().width;
+      };
+      // The handle sits to the left of the panel, so dragging left (negative
+      // clientX delta) is what widens it.
+      this.onMove = (ev) => {
+        if (!this.dragging) return;
+        const width = Math.min(
+          this.max,
+          Math.max(this.min, this.startWidth + (this.startX - ev.clientX)),
+        );
+        document.documentElement.style.setProperty("--panels-width", `${width}px`);
+      };
+      this.onUp = () => {
+        if (!this.dragging) return;
+        this.dragging = false;
+        const width = document.documentElement.style.getPropertyValue("--panels-width");
+        if (width) localStorage.setItem("cms:panelWidth", parseFloat(width));
+      };
+
+      this.el.addEventListener("pointerdown", this.onDown);
+      window.addEventListener("pointermove", this.onMove);
+      window.addEventListener("pointerup", this.onUp);
+    },
+    destroyed() {
+      window.removeEventListener("pointermove", this.onMove);
+      window.removeEventListener("pointerup", this.onUp);
+    },
+  },
   Copy: {
     mounted() {
       let { to } = this.el.dataset;

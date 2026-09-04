@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <%!-- `interactive-widget=resizes-content` is what makes the on-screen
+    keyboard actually shrink the layout viewport on iOS/Android, instead of
+    just floating on top of it. Without it `dvh` never changes when the
+    keyboard opens, so a `min-h-dvh` chain has nothing to react to and a
+    bottom-anchored composer stays wherever the keyboard covers it. --%>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
+    />
     <meta name="csrf-token" content={get_csrf_token()} />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
