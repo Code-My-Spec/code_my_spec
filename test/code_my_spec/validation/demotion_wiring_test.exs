@@ -29,6 +29,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Stories
   alias CodeMySpec.Validation
 
   @mine "lib/my_app/mine.ex"
@@ -85,13 +86,21 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       File.write!(Path.join(ctx.tmp, @spex_path), "defmodule S do\nend\n")
       {:ok, _} = FileSync.sync(ctx.scope, base_dir: ctx.tmp)
 
-      story = story_fixture(ctx.scope, %{specs_ready: true})
+      # Criterion first, latch second — the order the real lifecycle runs in.
+      # Adding a criterion now restarts the specs chain (issue 10e86fa2: a
+      # criterion that did not exist has never been green, so a red spex for it
+      # must not block on a latch the story earned before it), which means
+      # latching at `story_fixture` and adding a criterion afterwards leaves the
+      # story unlatched and this whole describe block testing nothing.
+      story = story_fixture(ctx.scope)
 
       {:ok, _criterion} =
         AcceptanceCriteria.create_criterion(ctx.scope, story, %{
           description: "a step reports its provider",
           spec_path: @spex_path
         })
+
+      {:ok, story} = Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
 
       Map.put(ctx, :story, story)
     end

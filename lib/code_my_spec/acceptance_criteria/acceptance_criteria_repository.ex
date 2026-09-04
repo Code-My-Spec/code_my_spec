@@ -8,6 +8,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Files
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -234,7 +235,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   @spec create_criterion(Scope.t(), Story.t(), map()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def create_criterion(%Scope{active_project: %{id: project_id}}, %Story{} = story, attrs) do
+  def create_criterion(%Scope{active_project: %{id: project_id}} = scope, %Story{} = story, attrs) do
     if story.project_id == project_id do
       attrs =
         attrs
@@ -244,6 +245,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       %Criterion{}
       |> Criterion.changeset(attrs)
       |> Repo.insert()
+      |> restart_specs_chain(scope, story)
     else
       {:error, :cross_project}
     end
@@ -252,7 +254,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @spec update_criterion(Scope.t(), Criterion.t(), map()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
   def update_criterion(
-        %Scope{active_project: %{id: project_id}},
+        %Scope{active_project: %{id: project_id}} = scope,
         %Criterion{project_id: cp_id} = criterion,
         attrs
       ) do
@@ -260,10 +262,59 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       criterion
       |> Criterion.changeset(attrs)
       |> Repo.update()
+      |> restart_specs_chain_on_move(scope, criterion)
     else
       {:error, :cross_project}
     end
   end
+
+  # A criterion that did not exist has never been green, so the story it lands
+  # on goes back to the top.
+  #
+  # `specs_ready` is the latch the spex gate reads: a red spex only blocks on a
+  # story where it is true, on the reasoning that such a red is a regression in
+  # this working copy rather than somebody else's in-flight work. That
+  # reasoning holds for a story whose criteria all went green together and
+  # breaks the moment one is added afterwards — the story *was* green once, and
+  # the new red is not a regression, it is work that has not happened yet.
+  #
+  # Which is issue 10e86fa2: a session writing seven criteria red-then-green on
+  # purpose blocked every other session in the project, on a story latched by an
+  # earlier pass. The stop hook re-fired the same block on every attempt and
+  # there was no way to record a human's "ignore this one".
+  #
+  # Same shape as `clear_specs_ready_on_readiness_change/1` in `Story`, and the
+  # same argument: releasing or parking a story sends it back to the top,
+  # because a latch earned on the previous pass says nothing about this one.
+  # Adding a criterion is that, one criterion at a time.
+  #
+  # The cost, chosen deliberately: while a new criterion is in flight, a genuine
+  # regression in an already-green criterion on that same story also stops
+  # blocking. The latch is per story and the red is per criterion; closing that
+  # gap properly means recording green per criterion, which is a separate piece
+  # of work.
+  defp restart_specs_chain({:ok, _criterion} = ok, scope, %Story{} = story) do
+    Stories.set_specs_ready(scope, story, false)
+    ok
+  end
+
+  defp restart_specs_chain(other, _scope, _story), do: other
+
+  # Moving a criterion into a story adds one to it, so the destination restarts
+  # for the same reason. The story it left is not touched: losing a criterion
+  # cannot make the remaining ones less green.
+  defp restart_specs_chain_on_move({:ok, updated}, scope, %Criterion{story_id: was}) do
+    if updated.story_id != was do
+      case Repo.get(Story, updated.story_id) do
+        nil -> :ok
+        story -> Stories.set_specs_ready(scope, story, false)
+      end
+    end
+
+    {:ok, updated}
+  end
+
+  defp restart_specs_chain_on_move(other, _scope, _criterion), do: other
 
   @spec delete_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}

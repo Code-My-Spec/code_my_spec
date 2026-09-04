@@ -1294,8 +1294,14 @@ defmodule CodeMySpec.Validation do
   # project's 25 spex problems join on it exactly.
   #
   # The filename parse stays as the fallback for a spex no criterion claims.
-  # There is no right answer for an orphan, and changing what happens to those
-  # is a separate decision from fixing the ones that do have an answer.
+  #
+  # An orphan blocks. That was an open question here — "there is no right answer
+  # for an orphan" — and it is settled: block *because* it is orphaned. The
+  # argument for the other side is that an unlatched spex should not block, and
+  # an orphan is unlatched by definition; the argument against, which wins, is
+  # that a spex whose story link has broken would then go quiet instead of loud,
+  # and a real regression could hide behind it. A broken link should surface as
+  # a block, not as silence.
   #
   # That fallback now resolves what it parses. The directory name is the story's
   # durable **number**, and it used to be handed straight to a set of primary
