@@ -26,16 +26,34 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+  import Phoenix.LiveViewTest
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpecSpex.Fixtures
 
+  @endpoint CodeMySpecWeb.Endpoint
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  defp created_id(text) do
+    case Regex.run(~r/^id: (\S+)/m, text) do
+      [_, id] -> id
+      _ -> ""
+    end
+  end
+
   spex "A working copy created this way comes up with its agents already on it" do
     scenario "The copy I asked for arrives staffed" do
+      given_ "a machine holding this project's repository", context do
+        copy = join_working_copy(context, "/tmp/spex_3097_host", "the machine with the disk")
+
+        {:ok, Map.put(context, :host, copy.working_copy_id)}
+      end
+
       given_ "a connected provider for the agents to run on", context do
         {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
 
@@ -70,11 +88,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
       end
 
       then_ "and I can reach each of them without doing anything else first", context do
+        # The copy's own page, not the index: the index lists copies and the
+        # chat is offered where a copy is shown. Its id comes out of the reply
+        # rather than a query, because what the agent was handed is what it has
+        # to be able to act on.
+        id = created_id(response_text(context.response))
+
         {:ok, _live, html} =
-          Phoenix.LiveViewTest.live(
-            context.conn,
-            "/app/projects/#{context.project.id}/working-copies"
-          )
+          live(context.conn, "/app/projects/#{context.project.id}/working-copies/#{id}")
 
         assert html =~ ~s(data-test="open-agent-chat"),
                "the agents are on the copy and there is no way to talk to any of " <>

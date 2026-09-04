@@ -31,6 +31,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3095Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
@@ -38,8 +40,21 @@ defmodule CodeMySpecSpex.Story1013.Criterion3095Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  defp created_id(text) do
+    case Regex.run(~r/^id: (\S+)/m, text) do
+      [_, id] -> id
+      _ -> ""
+    end
+  end
+
   spex "Creating a working copy and onboarding it are one act" do
     scenario "There is no half-made copy to find" do
+      given_ "a machine holding this project's repository", context do
+        copy = join_working_copy(context, "/tmp/spex_3095_host", "the machine with the disk")
+
+        {:ok, Map.put(context, :host, copy.working_copy_id)}
+      end
+
       given_ "an agent has asked for a working copy", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -67,13 +82,23 @@ defmodule CodeMySpecSpex.Story1013.Criterion3095Spex do
         {:ok, context}
       end
 
-      then_ "and the copies it does report are complete", context do
-        for copy <- context.copies do
-          assert is_binary(copy.root) and copy.root != "",
-                 "a listed working copy has no root. A row is not a checkout until " <>
-                   "it reports one, and `ensure_default/1`'s rootless nil-object row " <>
-                   "is exactly what `EpicDispatch` had to grow a guard against."
-        end
+      then_ "and the one just created is complete", context do
+        # The created copy, not every row on the project. A first draft asserted
+        # this of all of them and failed on `ensure_default/1`'s rootless
+        # nil-object row, which predates the request and is a different problem
+        # — one this criterion has no business reporting.
+        id = created_id(response_text(context.response))
+        created = Enum.find(context.copies, &(&1.id == id))
+
+        assert created, "the copy the reply named is not among the project's copies"
+
+        assert is_binary(created.root) and created.root != "",
+               "the created copy has no root. A row is not a checkout until it " <>
+                 "reports one, and a rootless row is exactly what `EpicDispatch` " <>
+                 "had to grow a guard against."
+
+        assert is_binary(created.device_id),
+               "the created copy does not say which machine it is on"
 
         {:ok, context}
       end

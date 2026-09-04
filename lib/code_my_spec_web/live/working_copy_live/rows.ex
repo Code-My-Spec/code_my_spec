@@ -38,6 +38,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   """
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
@@ -115,6 +116,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       last_message_at: latest,
       last_message: latest && Liveness.since(latest, now),
       liveness: Liveness.working_copy(on_this_copy, now),
+      # Whether anything is holding this checkout, read from the registry rather
+      # than from a column — the entry is live by construction, since Registry
+      # drops it when the channel dies.
+      #
+      # Distinct from liveness, which reports what the agents last said. A copy
+      # nothing is serving has no agent that can say anything, and until this
+      # existed the page showed no difference between that and a quiet one.
+      served: match?({:ok, _pid, _instance}, Analysis.executor_holder(harness.id)),
       missing: missing(harness, now)
     }
   end

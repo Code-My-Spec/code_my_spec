@@ -44,7 +44,6 @@ defmodule CodeMySpecSpex.Story964.Criterion3088Spex do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Agents
   alias CodeMySpecSpex.EpicHelpers
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -73,12 +72,17 @@ defmodule CodeMySpecSpex.Story964.Criterion3088Spex do
         {:ok, EpicHelpers.dispatch_one(context, "The war epic", stories: 1)}
       end
 
-      when_ "one of that copy's agents cannot be reached", context do
-        # Stopping one is how a lane becomes unreachable through the ordinary
-        # surface. What matters is that the copy has an agent it cannot run,
-        # not which way it got there.
-        [agent | _] = Agents.list_agents(context.scope)
-        {:ok, _} = Agents.stop_agent(context.scope, agent.id)
+      when_ "its agents have not come up", context do
+        # No stopping, no interference. An agent that was asked for and never
+        # confirmed is exactly the criterion's subject — `start_agent/2` records
+        # `:starting` and the machine confirms, and on a copy nothing is serving
+        # the confirmation never arrives. That is the state war-epic sat in for
+        # an hour.
+        agents = Fixtures.list_agents(context.scope)
+
+        refute agents == [],
+               "the premise needs agents on the copy that have not come up, and " <>
+                 "there are none at all"
 
         {:ok, _live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")

@@ -70,15 +70,27 @@ defmodule CmsHarness.WorkingCopies.Create do
   # branch, and an epic's copy sharing one with the main checkout would mean every
   # commit on either appears on both — the opposite of the boundary the copy
   # exists to draw.
+  # An error tuple, never a raise. `File.mkdir_p!/1` threw `File.Error` on a
+  # read-only path and it travelled all the way out as an exception — so the
+  # caller got a crash where it had asked a question, and the reply the agent
+  # was waiting for never came. Somewhere it cannot write is an ordinary answer
+  # here, not an exceptional one.
   defp add_worktree(root, target, name) do
-    File.mkdir_p!(Path.dirname(target))
+    with :ok <- make_parent(target) do
+      case System.cmd("git", ["worktree", "add", "-b", name, target],
+             cd: root,
+             stderr_to_stdout: true
+           ) do
+        {_out, 0} -> :ok
+        {out, status} -> {:error, {:worktree_failed, status, String.trim(out)}}
+      end
+    end
+  end
 
-    case System.cmd("git", ["worktree", "add", "-b", name, target],
-           cd: root,
-           stderr_to_stdout: true
-         ) do
-      {_out, 0} -> :ok
-      {out, status} -> {:error, {:worktree_failed, status, String.trim(out)}}
+  defp make_parent(target) do
+    case File.mkdir_p(Path.dirname(target)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:cannot_write_there, Path.dirname(target), reason}}
     end
   end
 

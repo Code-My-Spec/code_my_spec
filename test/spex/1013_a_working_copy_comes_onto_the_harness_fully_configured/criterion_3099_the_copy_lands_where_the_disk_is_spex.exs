@@ -41,6 +41,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion3099Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  defp created_id(text) do
+    case Regex.run(~r/^id: (\S+)/m, text) do
+      [_, id] -> id
+      _ -> ""
+    end
+  end
+
   spex "A working copy is created on a machine that is running a harness" do
     scenario "The copy lands where the disk is" do
       given_ "a project whose harness runs on one machine", context do
@@ -52,14 +59,20 @@ defmodule CodeMySpecSpex.Story1013.Criterion3099Spex do
       when_ "a working copy is created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        {:reply, response, _frame} =
           CreateWorkingCopy.execute(%{label: "on the harness's own disk"}, frame)
 
-        {:ok, Map.put(context, :copies, WorkingCopies.list_harnesses(context.scope))}
+        {:ok,
+         context
+         |> Map.put(:copies, WorkingCopies.list_harnesses(context.scope))
+         |> Map.put(:created, created_id(response_text(response)))}
       end
 
       then_ "the copy names the machine it is on", context do
-        created = List.last(context.copies)
+        # Found by id. `List.last/1` here passed against the *host* copy, which
+        # has a device because it joined — green while proving nothing about the
+        # copy that was created.
+        created = Enum.find(context.copies, &(&1.id == context.created))
 
         assert created && is_binary(created.device_id),
                "a created copy does not say which machine it is on. Two machines " <>

@@ -56,8 +56,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   @impl true
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
-      {:ok, scope} -> {:reply, create(scope, params), frame}
-      {:error, reason} -> {:reply, Response.tool() |> Response.error(inspect(reason)), frame}
+      {:ok, scope} ->
+        {:reply, create(scope, params), frame}
+
+      # A sentence, not the bare atom. `inspect(reason)` answered
+      # `:no_working_dir`, which names the problem to somebody who already knows
+      # the codebase and to nobody else — and this is a tool an agent calls, so
+      # the reply is the only thing standing between it and guessing.
+      {:error, reason} ->
+        {:reply, Response.tool() |> Response.error(scope_refusal(reason)), frame}
     end
   end
 
@@ -168,4 +175,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   end
 
   defp refusal(reason), do: "The working copy could not be created: #{inspect(reason)}"
+
+  defp scope_refusal(:no_working_dir) do
+    "This call names no project, so there is nothing to make a working copy for. " <>
+      "The project is resolved from the working directory the call came from. " <>
+      "Nothing was created and nothing was recorded."
+  end
+
+  defp scope_refusal(reason) do
+    "The working copy could not be created because this call has no usable project " <>
+      "scope (#{inspect(reason)}). Nothing was created and nothing was recorded."
+  end
 end

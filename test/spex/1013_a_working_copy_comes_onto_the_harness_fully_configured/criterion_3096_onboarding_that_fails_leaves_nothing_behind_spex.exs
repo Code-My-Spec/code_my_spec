@@ -35,6 +35,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3096Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
@@ -44,6 +46,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3096Spex do
 
   spex "Creating a working copy and onboarding it are one act" do
     scenario "Onboarding that fails leaves nothing behind" do
+      given_ "a machine holding this project's repository", context do
+        copy = join_working_copy(context, "/tmp/spex_3096_host", "the machine with the disk")
+
+        {:ok, Map.put(context, :host, copy.working_copy_id)}
+      end
+
       given_ "a request that cannot be completed", context do
         # A path the harness cannot make a checkout at is the reachable way to
         # fail the disk half. What matters is that one half fails, not which.

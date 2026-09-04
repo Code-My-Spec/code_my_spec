@@ -96,10 +96,23 @@ defmodule CodeMySpecSpex.Story1014.Criterion2872Spex do
 
       then_ "it asks the server what it is carrying, and answers for that copy on its next report",
             context do
-        assert context.first == %{},
-               "the premise is a harness that has served nothing; if it had " <>
-                 "something to say here it learned it somewhere this criterion " <>
-                 "is not testing. Got: #{inspect(context.first)}"
+        # About *this* copy, not about the machine holding none at all.
+        #
+        # It asserted `context.first == %{}` and that held only while nothing in
+        # the run had started `CmsHarness.Registry`. `WorkingCopyReporter`'s
+        # `current_roots/0` answers `%{}` until the registry is up and reads
+        # `CmsHarness.WorkingCopies.all/0` afterwards — which includes the
+        # checkout the suite is running in, because its own `.cms_harness.json`
+        # is right there. Any scenario that starts an agent brings the registry
+        # up, and it is unlinked on purpose so it outlives the one that did.
+        #
+        # So the old form was passing on ordering. The premise it exists to
+        # state is that the harness has never served *this* copy, and that is
+        # what is asserted now.
+        refute Map.has_key?(context.first, context.working_copy_id),
+               "the premise is a harness that has never served this copy; if it " <>
+                 "had something to say about it here it learned it somewhere this " <>
+                 "criterion is not testing. Got: #{inspect(context.first)}"
 
         assert context.second[context.working_copy_id] == false,
                "the harness never found out it was carrying this copy. Its own " <>

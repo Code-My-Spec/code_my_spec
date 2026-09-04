@@ -34,6 +34,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
@@ -42,8 +44,21 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  defp created_id(text) do
+    case Regex.run(~r/^id: (\S+)/m, text) do
+      [_, id] -> id
+      _ -> ""
+    end
+  end
+
   spex "The harness does the work on disk and the server does the work on the record" do
     scenario "One call, two halves" do
+      given_ "a machine holding this project's repository", context do
+        copy = join_working_copy(context, "/tmp/spex_3100_host", "the machine with the disk")
+
+        {:ok, Map.put(context, :host, copy.working_copy_id)}
+      end
+
       given_ "a connected provider", context do
         {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
 
@@ -61,7 +76,9 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
 
       then_ "the server has recorded the copy and its identity", context do
         copies = WorkingCopies.list_harnesses(context.scope)
-        created = List.last(copies)
+        # By id from the reply, not `List.last/1`: the project also holds the
+        # host copy and a rootless default row, and "last" picked one of those.
+        created = Enum.find(copies, &(&1.id == created_id(response_text(context.response))))
 
         assert created,
                "the call returned and the server recorded nothing. The caller made " <>

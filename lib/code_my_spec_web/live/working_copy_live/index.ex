@@ -257,6 +257,26 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 </div>
 
                 <div data-test="liveness" class="shrink-0 text-right">
+                  <%!-- Whether anything is actually serving this checkout, which
+                  is not what the liveness line answers. Liveness reports what
+                  the agents on the copy last said; this reports whether the
+                  copy is being served at all.
+
+                  They come apart exactly where it hurts. A harness adopts a
+                  copy on its first hook request, so a checkout nobody has
+                  opened a session in is served by nothing — and a worktree
+                  created *for an agent* has nobody to open one. On 2026-09-04
+                  a copy sat in that state for over an hour with an agent
+                  assigned to it, and the only thing that ever said so was a
+                  chat message failing to deliver. --%>
+                  <div
+                    :if={not row.served}
+                    data-test="copy-not-ready"
+                    class="badge badge-ghost badge-sm mb-1"
+                  >
+                    <.icon name="hero-signal-slash" class="size-3" /> Not being served
+                  </div>
+                  <span :if={row.served} data-test="copy-ready" class="sr-only">served</span>
                   <div
                     :if={row.missing}
                     data-test="path-missing"
