@@ -210,6 +210,14 @@ defmodule CodeMySpec.Agents.Credential do
   #
   # From the integration's own `updated_at`, which is when
   # `persist_refreshed_token/4` last wrote it.
+  # `Integration` uses `timestamps(type: :utc_datetime_usec)`, so this is a
+  # `DateTime`. The first version of this guarded on `%NaiveDateTime{}`, matched
+  # nothing, and fell through the catch-all without a word — the file went out
+  # with no `last_refresh` and the whole point of it was lost silently. Both are
+  # accepted now rather than one assumed.
+  defp put_refreshed_at(entry, %{updated_at: %DateTime{} = at}),
+    do: Map.put(entry, "refreshedAt", DateTime.to_iso8601(at))
+
   defp put_refreshed_at(entry, %{updated_at: %NaiveDateTime{} = at}) do
     Map.put(entry, "refreshedAt", at |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_iso8601())
   end
