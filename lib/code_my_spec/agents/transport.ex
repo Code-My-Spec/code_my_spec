@@ -127,6 +127,24 @@ defmodule CodeMySpec.Agents.Transport do
   @callback stop_agent(working_copy_id :: String.t(), agent :: Agent.t(), timeout()) ::
               :ok | {:error, term()}
 
+  @doc """
+  Make a checkout on a machine that is running a harness.
+
+  The one callback here that does not name a checkout, because it asks for one
+  to exist. The address is a machine instead, and any connected copy of the
+  project stands for the machine it is on — its harness holds the repository, so
+  it can make a sibling worktree beside it.
+
+  `{:error, :no_harness}` when nothing is connected. That is a refusal, not a
+  wait: a request for a checkout that cannot be satisfied is refused, and no row
+  is written for a directory nobody made.
+  """
+  @callback create_working_copy(
+              candidate_working_copy_ids :: [String.t()],
+              request :: map(),
+              timeout()
+            ) :: {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
+
   @doc "The configured transport. Defaults to the real channel."
   @spec impl() :: module()
   def impl, do: Application.get_env(:code_my_spec, :agent_transport, __MODULE__.Harness)

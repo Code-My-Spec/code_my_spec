@@ -62,6 +62,49 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     Agents.withdraw(agent.id, ref)
   end
 
+  # The real `Create`, against a real repository, without the wire — the same
+  # bargain the rest of this module strikes. A double that answered with a path
+  # and made no directory would assert nothing, and criteria about a copy being
+  # onboarded, staffed and reachable would all pass over an empty answer.
+  #
+  # The repository is made here because in-process there is no harness holding
+  # one. That is the only thing standing in for production: `git worktree add`
+  # is really run, `.cms_harness.json` is really written, and what comes back is
+  # a directory that exists.
+  @impl true
+  def create_working_copy([], _request, _timeout), do: {:error, :no_harness}
+
+  def create_working_copy(_candidate_ids, request, _timeout) do
+    CmsHarness.WorkingCopies.Create.run(host_repository(), request)
+  end
+
+  # One repository per test process, cleaned up with it.
+  defp host_repository do
+    case Process.get(__MODULE__) do
+      nil ->
+        root = CodeMySpec.TempFile.dir("in_process_host")
+        File.mkdir_p!(root)
+
+        {_, 0} = System.cmd("git", ["init", "--initial-branch=main", root], stderr_to_stdout: true)
+        File.write!(Path.join(root, "README.md"), "host\n")
+        {_, 0} = System.cmd("git", ["add", "."], cd: root, stderr_to_stdout: true)
+
+        {_, 0} =
+          System.cmd(
+            "git",
+            ["-c", "user.email=spex@example.com", "-c", "user.name=Spex", "commit", "-m", "root"],
+            cd: root,
+            stderr_to_stdout: true
+          )
+
+        Process.put(__MODULE__, root)
+        root
+
+      root ->
+        root
+    end
+  end
+
   @impl true
   def call_machine_tool(_working_copy_id, tool, arguments, timeout) do
     # In this VM the browser is whatever the local MCP transport was told to

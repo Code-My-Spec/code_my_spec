@@ -796,6 +796,39 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc """
+  A machine that can host a new working copy for this project, if one is
+  connected.
+
+  Every other request here is addressed to a checkout that exists —
+  `executor_holder/1` takes the id and the registry is keyed on it. Creating a
+  copy has no id yet, and the thing being asked for is not "do something to this
+  checkout" but "make one on your disk". So the address is a *machine*, and any
+  connected copy of the project stands for the machine it is on: its harness has
+  the repository, so it can make a sibling worktree beside it.
+
+  Any rather than a specific one, deliberately. Which checkout a harness happens
+  to be holding says nothing about its fitness to host another, and picking by
+  root or by last-seen is the inference story 963's designation rule exists to
+  rule out. What matters is that something is there.
+
+  `:none` when nothing is connected, which is a refusal rather than a wait: a
+  request for a checkout that cannot be satisfied is refused, and no row is
+  written for a directory nobody made (criterion 3094).
+  """
+  @spec host_holder([String.t()]) :: {:ok, pid(), String.t()} | :none
+  def host_holder(working_copy_ids) when is_list(working_copy_ids) do
+    Enum.find_value(working_copy_ids, :none, fn id ->
+      case Registry.lookup(HarnessRegistry, to_string(id)) do
+        [{pid, {_instance, root}} | _] when is_binary(root) and root != "" ->
+          {:ok, pid, root}
+
+        _ ->
+          nil
+      end
+    end)
+  end
+
   # Only from the same instance, and only when we know both — an unknown
   # instance on either side is not evidence of sameness, and guessing wrong
   # here is the `_build` corruption the lock exists to prevent.

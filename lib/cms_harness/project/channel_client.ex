@@ -1111,6 +1111,33 @@ defmodule CmsHarness.Project.ChannelClient do
   # and then reporting a stop that never happened.
   # Launch an agent here, because this is the machine that holds its working
   # copy — and an agent session is hundreds of tool calls against that copy.
+  # Make a checkout on this machine, because this is the machine with the disk.
+  #
+  # The server cannot run `git worktree add` — it is not on this filesystem and
+  # `fs_request` is scoped to `socket.assigns.project.root`, so it could not
+  # make a *sibling* even if it were. So the file half happens here and the
+  # record half happens there, and the caller made one call (story 891, rule
+  # "The harness does the work on disk and the server does the work on the
+  # record").
+  #
+  # Answered from a task: `git worktree add` fetches nothing but does walk the
+  # index, and onboarding after it writes several files. Holding the channel for
+  # that would stall this copy's reports and manifests behind somebody else's
+  # new checkout.
+  def handle_message(_topic, "create_working_copy", %{"ref" => ref} = msg, socket) do
+    topic = socket.assigns.topic
+    parent = self()
+    root = socket.assigns.project.root
+
+    Task.start(fn ->
+      result = CmsHarness.WorkingCopies.Create.run(root, msg)
+
+      send(parent, {:create_working_copy_result, topic, ref, result})
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
     result = CmsHarness.Agents.launch(msg)
 
@@ -1532,6 +1559,12 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_message_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
+  defp encode_create_result({:ok, %{root: root, working_copy_id: id}}),
+    do: %{"status" => "ok", "root" => root, "working_copy_id" => id}
+
+  defp encode_create_result({:error, reason}),
+    do: %{"status" => "error", "reason" => reason_text(reason)}
+
   defp encode_stop_result(:ok), do: %{"status" => "ok"}
 
   defp encode_stop_result({:error, reason}),
@@ -1582,6 +1615,17 @@ defmodule CmsHarness.Project.ChannelClient do
       topic,
       "agent_message_result",
       Map.put(encode_message_result(result), "ref", ref)
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:create_working_copy_result, topic, ref, result}, socket) do
+    push(
+      socket,
+      topic,
+      "create_working_copy_result",
+      Map.put(encode_create_result(result), "ref", ref)
     )
 
     {:noreply, socket}

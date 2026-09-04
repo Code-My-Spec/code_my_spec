@@ -17,6 +17,31 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   alias CodeMySpec.Analysis
 
   @impl true
+  @doc """
+  Ask a machine to make a working copy.
+
+  Not part of the `Transport` behaviour: every callback there names an agent and
+  a checkout that exists, and this asks for a checkout to exist. It lives here
+  because the mechanism is identical — find the pid holding a channel, call it,
+  let the reply come back correlated by `ref`.
+
+  `host_holder/1` rather than `holder/1`: there is no id yet, so the address is
+  a machine, and any connected copy of the project stands for the machine it is
+  on.
+  """
+  @spec create_working_copy([String.t()], map(), timeout()) ::
+          {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
+  def create_working_copy(candidate_ids, request, timeout) do
+    case Analysis.host_holder(candidate_ids) do
+      {:ok, pid, _root} ->
+        call(pid, {:create_working_copy, request}, timeout, :create_timed_out)
+
+      :none ->
+        {:error, :no_harness}
+    end
+  end
+
+  @impl true
   def start_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} -> call(pid, {:start_agent, LaunchRequest.for(agent)}, timeout, :start_timed_out)

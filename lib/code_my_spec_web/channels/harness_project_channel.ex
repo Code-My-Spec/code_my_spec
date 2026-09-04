@@ -650,6 +650,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
+  def handle_in("create_working_copy_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    if from, do: GenServer.reply(from, decode_create_result(msg))
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
   def handle_in("agent_message_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_message_result(msg))
@@ -791,6 +797,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_machine_tool, Map.put(pending_machine_tool(socket), ref, from))}
   end
 
+  # Make a checkout on this machine's disk.
+  #
+  # Every other request here names a checkout that exists. This one asks for one
+  # to exist, so the address is the machine rather than the copy — see
+  # `Analysis.host_holder/1`. The harness makes the worktree beside the
+  # repository it already holds and onboards it; the server records what comes
+  # back. The caller made one call (criterion 3100).
+  def handle_call({:create_working_copy, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "create_working_copy", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   def handle_call({:stop_agent, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -820,6 +842,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The id the machine confirms it is running. It used to be a process group id
   # and the boot it belonged to; a supervised agent needs neither, and the id
   # was already on the row.
+  # A created copy is its root and the identity written into it. Both, because
+  # neither alone lets the server record a checkout: the root without the id
+  # cannot be matched to the file the harness wrote, and the id without the root
+  # is a row that is not a checkout.
+  defp decode_create_result(%{"status" => "ok", "root" => root, "working_copy_id" => id})
+       when is_binary(root) and root != "" and is_binary(id),
+       do: {:ok, %{root: root, working_copy_id: id}}
+
+  defp decode_create_result(%{"status" => "error", "reason" => reason}),
+    do: {:error, decode_reason(reason)}
+
+  defp decode_create_result(other), do: {:error, {:unexpected_create_result, other}}
+
   defp decode_start_result(%{"status" => "ok", "agent_id" => agent_id})
        when is_binary(agent_id),
        do: {:ok, %{agent_id: agent_id}}

@@ -40,6 +40,16 @@ defmodule CodeMySpecSpex.Story1013.Criterion3093Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  defp created_path(text) do
+    # Stops at a comma or a period: the line reads "at <root>." when the copy is
+    # fully staffed and "at <root>, and it is not fully staffed." when it is
+    # not, and anchoring to end-of-line matched neither reliably.
+    case Regex.run(~r{Made a working copy at ([^\s,]+?)[.,]?(?:\s|$)}, text) do
+      [_, path] -> path
+      _ -> ""
+    end
+  end
+
   spex "An agent asks for a working copy and gets one it can work in" do
     scenario "I ask for a copy and get somewhere to work" do
       given_ "a project whose main checkout is on a machine running a harness",
@@ -71,9 +81,21 @@ defmodule CodeMySpecSpex.Story1013.Criterion3093Spex do
       then_ "and the agent is told where it is and can start work in it", context do
         text = response_text(context.response)
 
-        refute text =~ ~r/error|could not|failed/i,
+        # Deliberately narrow. A first draft refuted /error|could not|failed/i
+        # and caught the partial-staffing report's "could not start" — which is
+        # about the roster, not about whether there is somewhere to work. That
+        # belongs to criterion 3097, and asserting it here would make one
+        # failure fail two criteria and hide which.
+        assert text =~ "Made a working copy at",
                "asking for a working copy on a project that has a harness is the " <>
-                 "ordinary case, and it failed: #{text}"
+                 "ordinary case and it did not produce one: #{text}"
+
+        path = created_path(text)
+
+        assert File.dir?(path),
+               "the reply names a directory that is not there: #{inspect(path)}. A " <>
+                 "path the agent cannot cd into is worse than a refusal — it goes " <>
+                 "and works in it."
 
         {:ok, context}
       end
