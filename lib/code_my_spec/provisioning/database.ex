@@ -221,11 +221,42 @@ defmodule CodeMySpec.Provisioning.Database do
   end
 
   @doc """
-  Start this environment's database on its shared box.
+  Start the box-wide database container, account-side.
 
-  Idempotent at both grains: an already-running container is left alone
-  rather than restarted out from under whichever other project is connected
-  to it, and this project's own role/database are created only if they are
+  This is the half of what `serve/3` used to do unconditionally that has
+  nothing to do with any one project: the container itself, brought up once
+  per box regardless of which project's environment eventually connects to
+  it, plus the template-level `vector` extension every tenant database
+  inherits at creation. Idempotent — an already-running container is left
+  alone rather than restarted out from under whoever else is connected.
+
+  `:run` takes the command and returns `{output, status}`, so what we ask the
+  box to do is assertable without a box.
+  """
+  @spec ensure_container(Scope.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def ensure_container(%Scope{} = scope, opts \\ []) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, admin} <- serve_admin_credential(scope, opts),
+         :ok <- ensure_container(run, admin, opts),
+         :ok <- await_ready(run, Keyword.get(opts, :database_attempts, 30)),
+         :ok <- ensure_template_vector_extension(run, admin) do
+      {:ok, %{host: @container, port: @port}}
+    end
+  end
+
+  @doc """
+  Give this environment its own role and database on an already-running
+  shared container.
+
+  Project-side: never starts or touches the container itself — that is
+  `ensure_container/2`'s job, run once for the box regardless of which
+  project asks. Refuses instead of creating one if the container is not up
+  yet, the same shape `Steps.server_creation_gate/3` uses for the server
+  itself — a project's own devops step does not get to stand up shared
+  account infrastructure as a side effect of asking for its own tenant.
+
+  Idempotent: this project's own role/database are created only if they are
   not already there. Re-running setup must not be a way to lose data, or to
   interrupt someone else's.
 
@@ -239,9 +270,7 @@ defmodule CodeMySpec.Provisioning.Database do
     with {:ok, admin} <- serve_admin_credential(scope, opts),
          {:ok, credential} <- serve_credential(scope, environment, opts),
          {:ok, restore} <- serve_restore_credential(scope, environment, opts),
-         :ok <- ensure_container(run, admin, opts),
-         :ok <- await_ready(run, Keyword.get(opts, :database_attempts, 30)),
-         :ok <- ensure_template_vector_extension(run, admin),
+         true <- container_running?(run) || {:error, :database_not_provisioned},
          :ok <- ensure_tenant(run, admin, credential),
          :ok <- sync_password(run, credential),
          :ok <- ensure_restore_role(run, admin, restore),

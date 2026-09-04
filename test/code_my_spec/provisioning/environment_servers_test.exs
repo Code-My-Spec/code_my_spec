@@ -66,6 +66,13 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   test "asks for one server per environment, named for it", ctx do
     record_requests(self(), :always_available)
 
+    # `confirm_new_server` is gone — the hard line removed it, so an
+    # environment now reaches the provider only once the account has linked
+    # it to a name. Linking to the exact derived name it would have gotten
+    # anyway keeps this test's own claim ("one server per environment, named
+    # for it") the thing under test, not the linking gate.
+    link_derived_environments(ctx.scope, ["prod", "uat"])
+
     Steps.run(:server, ctx.scope, [])
 
     names = collect_names([])
@@ -88,6 +95,8 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     # always-available stub above passes without exercising that path, and the
     # path is where the drill lost UAT — so the sold-out answer is the test.
     record_requests(self(), :first_attempt_sold_out)
+
+    link_derived_environments(ctx.scope, ["prod", "uat"])
 
     Steps.run(:server, ctx.scope, [])
 
@@ -119,6 +128,11 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
     record_requests(self(), :always_available)
 
+    # Only uat — prod is filtered out by `devops: :uat` before the gate ever
+    # sees it, so linking it here would prove nothing the filter doesn't
+    # already guarantee.
+    link_derived_environments(ctx.scope, ["uat"])
+
     Steps.run(:server, ctx.scope, [])
 
     names = collect_names([])
@@ -147,14 +161,16 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   test "an environment linked to an account server is asked for by that server's own name", ctx do
     record_requests(self(), :always_available)
 
-    # Seeds the initial prod+uat pair first — `put/3` creates exactly the row
-    # it's given, unlike `list/1`, so linking straight off a fresh project
-    # would leave uat never created at all rather than merely unlinked.
-    _ = EnvironmentRepository.list(ctx.scope)
-
     {:ok, _} = Server.link(ctx.scope, %{name: "fuellytics-prod"})
     linked = Server.get_linked(ctx.scope, "fuellytics-prod")
     {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{server_id: linked.id})
+
+    # uat too — the escape hatch that used to let an unlinked environment
+    # through with a derived name is gone, so uat needs its own grant to
+    # reach the provider at all. Linked to its derived name rather than
+    # another arbitrary one, since the claim under test is prod's own name
+    # winning over its derived form, not whether uat can be named anything.
+    link_derived_environments(ctx.scope, ["uat"])
 
     Steps.run(:server, ctx.scope, [])
 
@@ -168,7 +184,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
              "(fuellytics-prod), not the derived #{derived_prod_name} — got #{inspect(names)}"
 
     assert Enum.any?(names, &String.ends_with?(&1, "-uat")),
-           "the unlinked uat environment should still get a derived name"
+           "expected uat, now linked to its own derived name, to still be asked for"
 
     assert length(names) == 2, "expected exactly one request per environment, got #{inspect(names)}"
   end
@@ -199,7 +215,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     record_full_requests(self(), Repository.default_name(ctx.scope.active_project))
 
     opts = [
-      run: refusing_run("10.0.0.99"),
+      run: already_provisioned_run(refusing_run("10.0.0.99")),
       credentials: [access_key_id: "unused", secret_access_key: "unused"]
     ]
 
@@ -234,7 +250,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     record_zoned_requests(self(), Repository.default_name(ctx.scope.active_project))
 
     opts = [
-      run: succeeding_run(),
+      run: already_provisioned_run(succeeding_run()),
       credentials: [access_key_id: "unused", secret_access_key: "unused"]
     ]
 
@@ -298,7 +314,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     )
 
     opts = [
-      run: succeeding_run(),
+      run: already_provisioned_run(succeeding_run()),
       credentials: [access_key_id: "unused", secret_access_key: "unused"]
     ]
 
@@ -313,6 +329,31 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     refute payload["ip_range"] == "10.0.0.0/16",
            "expected the new network to avoid the existing us-east network's range, got #{inspect(payload)}"
+  end
+
+  # Grants the account's link for one environment, the same way the account
+  # side of the hard line does it for real (`CodeMySpec.Servers.Server.link/2`
+  # then `EnvironmentRepository.put/3`). `confirm_new_server` used to let a
+  # project-scoped call reach the provider for a name nobody had approved —
+  # removed along with the outage it caused — so every test asserting a
+  # server actually gets created now has to grant that first, same as a
+  # human would through the servers page or the account agent would through
+  # its own tool.
+  defp link_environment(scope, environment, name) do
+    {:ok, _} = Server.link(scope, %{name: name})
+    linked = Server.get_linked(scope, name)
+    {:ok, _} = EnvironmentRepository.put(scope, environment, %{server_id: linked.id})
+  end
+
+  # Links each environment to the exact derived name `Steps.server_name/3`
+  # would have picked for it anyway, so a test asserting "one server per
+  # environment, named for it" is still testing that naming — not the
+  # linking gate that now stands in front of it.
+  defp link_derived_environments(scope, environments) do
+    for environment <- environments do
+      name = "#{Repository.default_name(scope.active_project)}-#{environment}"
+      link_environment(scope, environment, name)
+    end
   end
 
   # A `:run` that fails only for commands naming the given private IP —
@@ -334,6 +375,26 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # command, so nothing here needs to distinguish one server's commands from
   # the other's the way `refusing_run/1` does.
   defp succeeding_run, do: fn [_command] -> {"", 0} end
+
+  # Answers the registry/database "is it already running" checks as though
+  # the account had already brought both shared containers up — the hard
+  # line's own split moved that into `Steps.provision_account_server/3`, so
+  # this project-scoped step's `:server` run now only ever *finds* them
+  # (`Registry.serve/2`/`Database.serve/3` refuse to create either
+  # container themselves). Tests in this file are about the project step's
+  # own behavior — naming, firewall/network fan-out, one environment's
+  # tenant setup failing without blocking another's — not about container
+  # bootstrap, which `database_test.exs`/`registry_test.exs` already cover.
+  defp already_provisioned_run(base_run) do
+    fn [command] = args ->
+      cond do
+        command =~ "docker ps -q -f name=^/cms-registry$" -> {"c0ffeec0ffee\n", 0}
+        command =~ "docker ps -q -f name=^/cms-postgres$" -> {"c0ffeec0ffee\n", 0}
+        command =~ "docker inspect --format '{{.Config.Image}}' cms-postgres" -> {"pgvector/pgvector:pg18\n", 0}
+        true -> base_run.(args)
+      end
+    end
+  end
 
   # Like `record_full_requests/2`, but the two servers sit in different
   # zones (ash/us-east and fsn1/eu-central — the same pairing as

@@ -1944,6 +1944,61 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Grant every one of this project's environments a server, the same
+  permission a human grants by linking one through story 989's account-level
+  servers page (or, in the future, an account agent grants through story
+  991) — never something a project's own devops step may do for itself.
+
+  `Steps.server_creation_gate/3` pauses on an unlinked environment
+  unconditionally — the fix for broken_oaths silently creating duplicate
+  boxes instead of sharing the account's existing ones, and (after that
+  fix's own follow-up) not something any confirmation flag can route around
+  either. A spec whose premise is a genuinely new project provisioning its
+  own fresh infrastructure needs this granted explicitly now; before story
+  990 it was implicit in every run.
+
+  `CodeMySpecSpex.Fixtures.link_environment_to_server/3` records the grant
+  directly, the same way `seed_environment_ip/3` seeds an address — without
+  a provider round trip, because the criteria this backs are not about the
+  linking UI itself (story 989's own criteria already drive that for real).
+  The environment's *first* run against its now-linked, not-yet-real name
+  is what actually reaches the provider and creates it — the same "linked
+  but never yet succeeded" path a human granting a server through the UI
+  produces, not a bypass of it.
+  """
+  def confirm_new_servers(%{scope: scope} = context) do
+    project_slug = (context[:project] && context.project.name) || "spex-project"
+
+    # Only the environments the project's own devops level actually permits —
+    # `Fixtures.devops_environments/1` mirrors `Steps.permitted_environment_rows/1`'s
+    # filter. Bootstrapping prod unconditionally stood up a box for a project
+    # that opted out of it (devops: :uat), and `Fakes.Hetzner` then correctly
+    # reported one existed — failing 1962's "production was not built either"
+    # for a reason that had nothing to do with what it tests.
+    for environment <- Fixtures.devops_environments(scope) do
+      server_name = "#{project_slug}-#{environment}" |> String.replace(" ", "-")
+      {:ok, _} = Fixtures.link_environment_to_server(scope, environment, server_name)
+
+      # Linking is the account's grant; it is not the account having actually
+      # brought the box up yet. `bootstrap_account_server/3` is that other
+      # half — the one only the account-level tool (or, here, this fixture
+      # standing in for it) may do — so the project's own step finds a
+      # registry and database already running instead of refusing with
+      # `:registry_not_provisioned` / `:database_not_provisioned`.
+      #
+      # No explicit `:run` — this goes through the same `env`-routed
+      # `Remote.ssh_runner/2` the real pipeline uses, which a caller under
+      # `fake_working_directory`'s `:memory_shell` (`Fakes.Shell`) answers
+      # statefully. That statefulness is exactly the point: the container
+      # `Fakes.Shell` sees started here is the same one the project's own
+      # step checks for later, in the same test.
+      {:ok, _} = Fixtures.bootstrap_account_server(scope, server_name)
+    end
+
+    context
+  end
+
+  @doc """
   Run the backups step against the local fleet's app box.
 
       setup :backups_on_fleet_box

@@ -27,6 +27,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
   # earlier step wrote finds it — `ssh-keygen -f path` leaves a key at `path`
   # and `sops set` puts a secret somewhere `sops decrypt` can read it back.
   setup :fake_working_directory
+  # After fake_working_directory: it registers the memory environment with
+  # `Fakes.Shell` wired to `:memory_shell`, and `confirm_new_servers`
+  # bootstraps the account server's registry/database containers through
+  # that same modelled shell.
+  setup :confirm_new_servers
 
   spex "Opting out of prod completes setup UAT-only" do
     scenario "production is off, and setup still reaches done" do

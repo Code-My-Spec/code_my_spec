@@ -31,6 +31,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile, missing
   # CI build workflow", and the ten steps behind it reported nothing.
   setup :fake_working_directory
+  # After fake_working_directory, not before: it registers the memory
+  # environment with `Fakes.Shell` wired to `:memory_shell`, and
+  # `confirm_new_servers` bootstraps the account server's registry/database
+  # containers through that same modelled shell — stateful, so the project's
+  # own step later finds what this call started.
+  setup :confirm_new_servers
 
   # No `fleet_box`. It existed because the registry and database steps SSH to
   # the server address in the cassette, which was released weeks ago — but that

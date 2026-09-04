@@ -29,6 +29,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Provisioning.ServerView
   alias CodeMySpec.Servers
 
@@ -43,6 +44,8 @@ defmodule CodeMySpecWeb.ServerLive.Show do
          |> assign(:entries, ServerView.for_server(socket.assigns.current_scope, server.name))
          |> assign(:containers, :loading)
          |> assign(:containers_error, nil)
+         |> assign(:retire_error, nil)
+         |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
          |> read_containers(server)}
 
       {:error, :not_found} ->
@@ -52,6 +55,14 @@ defmodule CodeMySpecWeb.ServerLive.Show do
          |> push_navigate(to: ~p"/app/servers")}
     end
   end
+
+  # Same rule as `ServerLive.Index`: any member may view, only owner/admin
+  # may retire.
+  defp can_manage?(%{active_account_id: account_id} = scope) when is_binary(account_id) do
+    Accounts.own_role(scope, account_id) in [:owner, :admin]
+  end
+
+  defp can_manage?(_scope), do: false
 
   # Only once connected. The static render has nowhere to deliver the result
   # to, and starting a read that will be thrown away costs the box an SSH
@@ -89,6 +100,27 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     {:noreply,
      push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}?#{[app: app]}")}
   end
+
+  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+
+  def handle_event("retire", _params, socket) do
+    case Servers.retire(socket.assigns.current_scope, socket.assigns.server.name) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{socket.assigns.server.name} is no longer linked to this account.")
+         |> push_navigate(to: ~p"/app/servers")}
+
+      {:error, {:in_use, projects}} ->
+        {:noreply, assign(socket, :retire_error, in_use_message(projects))}
+
+      {:error, :not_found} ->
+        {:noreply, socket |> put_flash(:error, "That server is not linked to this account.") |> push_navigate(to: ~p"/app/servers")}
+    end
+  end
+
+  defp in_use_message(projects),
+    do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
 
   @impl true
   def handle_async(:containers, {:ok, {:ok, containers}}, socket) do
@@ -194,23 +226,49 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
+    >
       <div class="mx-auto max-w-5xl">
         <.link navigate={~p"/app/servers"} class="text-sm opacity-70">← Servers</.link>
 
         <div data-test="server-detail" data-name={@server.name} class="mt-2 mb-8">
-          <h1 class="text-2xl font-semibold flex items-center gap-2">
-            <span class="font-mono">{@server.name}</span>
-            <span :if={@server.environment} class="badge badge-primary badge-sm">
-              {@server.environment}
-            </span>
-          </h1>
+          <div class="flex items-center justify-between gap-4">
+            <h1 class="text-2xl font-semibold flex items-center gap-2">
+              <span class="font-mono">{@server.name}</span>
+              <span :if={@server.environment} class="badge badge-primary badge-sm">
+                {@server.environment}
+              </span>
+            </h1>
+
+            <button
+              :if={@can_manage}
+              type="button"
+              data-test="retire-server"
+              phx-click="retire"
+              class="btn btn-sm btn-ghost text-error"
+            >
+              Retire
+            </button>
+          </div>
           <p class="text-base-content/70 mt-1 text-sm">
             <span :if={@server.ip}>{@server.ip}</span>
             <span :if={@server.size} class="ml-2">{@server.size}</span>
             <span :if={@server.status} class="ml-2">{@server.status}</span>
             <span :if={@server.unverified} class="ml-2 text-warning">state unavailable</span>
           </p>
+
+          <div
+            :if={@retire_error}
+            data-test="retire-error"
+            role="alert"
+            class="alert alert-error alert-soft mt-3"
+          >
+            <span>{@retire_error}</span>
+          </div>
         </div>
 
         <section class="mb-10">

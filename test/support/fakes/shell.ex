@@ -140,7 +140,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # picked up the wrapper's closing quote as part of its last argument —
   # `uat` arrived as `uat'`, and every dump landed under the wrong
   # environment.
-  defp run(_env, "ssh", args, _opts), do: {remote_answer(Enum.join(unwrap_last(args), " ")), 0}
+  defp run(env, "ssh", args, _opts), do: {remote_answer(env, Enum.join(unwrap_last(args), " ")), 0}
   defp run(_env, "scp", _args, _opts), do: {"", 0}
 
   # `sh -c "git archive … | ssh … tar -x"` is how a tree reaches a box. The
@@ -301,7 +301,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   #
   # Matched on the command text because that is what crosses the wire — these
   # are shell strings rather than argv, composed by interpolation in `Remote`.
-  defp remote_answer(command) do
+  defp remote_answer(env, command) do
     cond do
       String.contains?(command, "{{.Architecture}}") -> "amd64\n"
       String.contains?(command, "/v2/") -> "< HTTP/1.1 200 OK\n"
@@ -313,9 +313,64 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       # the same story, which is what the step checks.
       String.contains?(command, "bin/backup") ->
         command |> backup_args() |> backup(bucket_from(command)) |> elem(0)
-      true -> ""
+      true -> docker_answer(env, command)
     end
   end
+
+  # `Registry`/`Database` split "is this box-wide container already up" from
+  # "make it up" the same way `Steps.server_creation_gate/3` splits a linked
+  # server from creating one — a project's own step now checks before it
+  # acts, where it used to just act. This fake has no docker daemon, so
+  # "already up" has to be modelled or every check reads as "never up" no
+  # matter how many times `docker run -d --name X` already answered success
+  # for it. A marker file in the environment's own memfs is the same
+  # mechanism `ssh-keygen`'s effect already uses — the next command to ask
+  # finds what an earlier one left.
+  #
+  # `docker rm -f X` never clears the marker: every `create_container`
+  # command chains `rm -f` immediately before its own `run -d --name X`, so
+  # the two always arrive together and the net effect is still "running".
+  defp docker_answer(env, command) do
+    cond do
+      match = Regex.run(~r/docker run -d --name (\S+)/, command) ->
+        [_, name] = match
+        Environments.write_file(env, container_marker(name), image_from_run(command))
+        ""
+
+      match = Regex.run(~r/docker ps -q -f name=\^\/(\S+)\$/, command) ->
+        [_, name] = match
+
+        if Environments.file_exists?(env, container_marker(name)) do
+          "#{hash(name)}\n"
+        else
+          ""
+        end
+
+      match = Regex.run(~r/docker inspect --format '\{\{\.Config\.Image\}\}' (\S+)/, command) ->
+        [_, name] = match
+
+        case Environments.read_file(env, container_marker(name)) do
+          {:ok, image} -> image
+          _ -> ""
+        end
+
+      true ->
+        ""
+    end
+  end
+
+  # The image `create_container_command`'s own `docker run -d ... <image>`
+  # line ends with — the marker records it, so a later `docker inspect`
+  # against the same container reports what actually "started" rather than
+  # a hardcoded guess that would drift the moment either image changes.
+  defp image_from_run(command) do
+    command
+    |> String.trim_trailing()
+    |> String.split(" ")
+    |> List.last()
+  end
+
+  defp container_marker(name), do: "/tmp/.fake-shell-container-#{name}"
 
   # `cd /build && export A=b … && bin/backup dump uat` — what follows the
   # script name is what it was called with.

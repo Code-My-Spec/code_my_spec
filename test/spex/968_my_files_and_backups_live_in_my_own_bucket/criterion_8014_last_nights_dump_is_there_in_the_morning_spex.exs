@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   # the effect this criterion reads.
   setup :fake_working_directory
   setup :fleet_backup_database
+  setup :confirm_new_servers
 
   spex "Last night's dump is there in the morning" do
     scenario "a dump dated from the scheduled run is in the bucket" do

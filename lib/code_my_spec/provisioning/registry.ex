@@ -329,18 +329,56 @@ defmodule CodeMySpec.Provisioning.Registry do
   end
 
   @doc """
-  Run the registry on a server, backed by this project's bucket.
+  Start the box-wide registry container, account-side.
 
-  `distribution` — the CNCF reference implementation of the registry API — as a
-  container, with its S3 driver pointed at the bucket `ensure/2` made. There is
-  nothing of ours in the serving path; this starts somebody else's daemon and
-  tells it where its blobs live.
+  The half of what `serve/2` used to do unconditionally that is not any one
+  project's concern: bringing up the `distribution` container itself,
+  backed by whichever bucket the *first* project to reach this box supplied
+  — sharing a box means sharing that registry process, the same as the
+  database. Idempotent: an already-running container is left alone rather
+  than restarted out from under whichever other project's app is pulling
+  from it right now.
 
-  Idempotent at both grains: an already-running container is left alone
-  rather than restarted out from under whichever other project's app is
-  pulling from it right now, and this project's own htpasswd entry is
-  upserted rather than assumed — the container may already be running with a
-  different project's entry the first time this one reaches it.
+  `:run` takes the command and returns `{output, status}`, which is what
+  makes the command assertable without a box.
+  """
+  @spec ensure_container(Scope.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def ensure_container(%Scope{} = scope, opts \\ []) do
+    run = Keyword.fetch!(opts, :run)
+    bind = Keyword.get(opts, :bind, "127.0.0.1")
+    location = Keyword.get(opts, :location, "fsn1")
+    bucket = bucket_name(scope, opts)
+
+    if container_running?(run) do
+      {:ok, %{bucket: bucket, bind: bind, port: port()}}
+    else
+      with {:ok, credentials} <- credentials(scope, opts) do
+        command = create_container_command(bucket, credentials, bind, location, opts)
+
+        case run.([command]) do
+          {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
+          {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
+        end
+      end
+    end
+  end
+
+  @doc """
+  Give this project its own credential on an already-running registry.
+
+  Project-side: never starts or touches the container itself — that is
+  `ensure_container/2`'s job, run once for the box regardless of which
+  project asks. Refuses instead of creating one if the container is not up
+  yet, the same shape `Steps.server_creation_gate/3` uses for the server
+  itself.
+
+  `distribution` — the CNCF reference implementation of the registry API.
+  There is nothing of ours in the serving path; this only tells an
+  already-running daemon about one more tenant.
+
+  Idempotent: this project's own htpasswd entry is upserted rather than
+  assumed — the container may already be running with a different
+  project's entry the first time this one reaches it.
 
   `:bind` is the address it listens on, loopback by default. That is the one
   knob the topology turns — a builder on another machine has to reach this
@@ -354,9 +392,8 @@ defmodule CodeMySpec.Provisioning.Registry do
   def serve(%Scope{} = scope, opts \\ []) do
     run = Keyword.fetch!(opts, :run)
     bind = Keyword.get(opts, :bind, "127.0.0.1")
-    location = Keyword.get(opts, :location, "fsn1")
 
-    with {:ok, credentials} <- credentials(scope, opts),
+    with true <- container_running?(run) || {:error, :registry_not_provisioned},
          {:ok, credential} <- serve_credential(scope, opts),
          :ok <- ensure_htpasswd(run, credential, opts) do
       bucket = bucket_name(scope, opts)
@@ -365,26 +402,7 @@ defmodule CodeMySpec.Provisioning.Registry do
       # same exemption the builder does.
       run.([trust_command("#{bind}:#{port()}")])
 
-      case ensure_container(run, bucket, credentials, bind, location, opts) do
-        :ok ->
-          await_registry(run, bucket, bind, credential, Keyword.get(opts, :registry_attempts, 15))
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-  end
-
-  defp ensure_container(run, bucket, credentials, bind, location, opts) do
-    if container_running?(run) do
-      :ok
-    else
-      command = create_container_command(bucket, credentials, bind, location, opts)
-
-      case run.([command]) do
-        {_output, 0} -> :ok
-        {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
-      end
+      await_registry(run, bucket, bind, credential, Keyword.get(opts, :registry_attempts, 15))
     end
   end
 

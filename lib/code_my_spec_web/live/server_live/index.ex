@@ -25,6 +25,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Servers
   alias CodeMySpecWeb.ServerLive.FormComponent
 
@@ -37,10 +38,22 @@ defmodule CodeMySpecWeb.ServerLive.Index do
      |> assign(:pending, nil)
      |> assign(:server, nil)
      |> assign(:provision_error, nil)
+     |> assign(:retire_error, nil)
+     |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
      |> load_servers()
      |> load_environments()
      |> load_options()}
   end
+
+  # Owner/admin only — story 989's own Three Amigos decision: any member may
+  # view this page, only owner/admin may create, link, or retire on it. Gated
+  # here too, not only in the render, since a hidden button is not the same
+  # control as one that would also refuse the event if clicked some other way.
+  defp can_manage?(%{active_account_id: account_id} = scope) when is_binary(account_id) do
+    Accounts.own_role(scope, account_id) in [:owner, :admin]
+  end
+
+  defp can_manage?(_scope), do: false
 
   @impl true
   def handle_params(params, _url, socket) do
@@ -75,10 +88,32 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   end
 
   @impl true
+  def handle_event("link", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+
   def handle_event("link", %{"name" => name}, socket) do
     case Servers.link(socket.assigns.current_scope, name) do
       {:ok, _server} -> {:noreply, load_servers(socket)}
       {:error, reason} -> {:noreply, assign(socket, :provider_error, describe(reason))}
+    end
+  end
+
+  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+
+  def handle_event("retire", %{"name" => name}, socket) do
+    case Servers.retire(socket.assigns.current_scope, name) do
+      :ok ->
+        # A patch, not a plain reassign: it is the page's own confirmation
+        # that the action completed without leaving `/app/servers` — the
+        # same trip the edit modal's own close button already makes.
+        {:noreply,
+         socket |> assign(:retire_error, nil) |> load_servers() |> push_patch(to: ~p"/app/servers")}
+
+      {:error, {:in_use, projects}} ->
+        {:noreply, assign(socket, :retire_error, %{name: name, message: in_use_message(projects)})}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket |> assign(:retire_error, nil) |> load_servers() |> push_patch(to: ~p"/app/servers")}
     end
   end
 
@@ -92,6 +127,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   def handle_event("choose", %{"server" => %{"location" => location}}, socket) do
     {:noreply, socket |> assign(:location, location) |> assign(:pending, nil)}
   end
+
+  def handle_event("stage", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
 
   # Choosing is free. This only stages what was chosen and shows the cost —
   # criterion 8267 is that nothing exists at the provider until Sam confirms.
@@ -110,6 +147,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         {:noreply, socket |> assign(:pending, pending) |> assign(:provision_error, nil)}
     end
   end
+
+  def handle_event("provision", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
 
   def handle_event("provision", _params, %{assigns: %{pending: nil}} = socket) do
     {:noreply, socket}
@@ -214,13 +253,21 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   defp describe_provision(reason, pending),
     do: "#{pending.size} in #{pending.location} could not be created: #{describe(reason)}"
 
+  defp in_use_message(projects),
+    do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
+
   defp linked(servers), do: Enum.filter(servers, & &1.linked)
   defp unlinked(servers), do: Enum.reject(servers, & &1.linked)
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
+    >
       <div class="mx-auto max-w-5xl">
         <h1 class="text-2xl font-semibold mb-1">Servers</h1>
         <p class="text-base-content/70 mb-6">
@@ -237,7 +284,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         </div>
 
         <div :for={server <- linked(@servers)} class="mb-2">
-          <.server_row server={server} />
+          <.server_row server={server} can_manage={@can_manage} retire_error={@retire_error} />
         </div>
 
         <p
@@ -261,11 +308,12 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
         <div :if={@show_unlinked} data-test="unlinked-servers">
           <div :for={server <- unlinked(@servers)} class="mb-2">
-            <.server_row server={server} />
+            <.server_row server={server} can_manage={@can_manage} retire_error={@retire_error} />
           </div>
         </div>
 
         <.provision_panel
+          :if={@can_manage}
           options={@options}
           location={@location}
           pending={@pending}
@@ -292,6 +340,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   end
 
   attr :server, :map, required: true
+  attr :can_manage, :boolean, default: false
+  attr :retire_error, :map, default: nil
 
   defp server_row(assigns) do
     ~H"""
@@ -352,7 +402,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         </div>
 
         <button
-          :if={not @server.linked}
+          :if={not @server.linked and @can_manage}
           type="button"
           data-test="link-server"
           phx-click="link"
@@ -362,18 +412,40 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           Link
         </button>
 
-        <%!--
-          Only on a linked box: the label is our record of Sam's answer, and a
-          server he has not claimed has nowhere to keep one.
-        --%>
-        <.link
-          :if={@server.linked}
-          patch={~p"/app/servers/#{@server.name}/edit"}
-          data-test="edit-server"
-          class="btn btn-sm btn-ghost"
-        >
-          Edit
-        </.link>
+        <div :if={@server.linked} class="flex items-center gap-2">
+          <%!--
+            The label is our record of Sam's answer, and a server he has not
+            claimed has nowhere to keep one — hence gated on @server.linked,
+            same as retiring.
+          --%>
+          <.link
+            patch={~p"/app/servers/#{@server.name}/edit"}
+            data-test="edit-server"
+            class="btn btn-sm btn-ghost"
+          >
+            Edit
+          </.link>
+
+          <button
+            :if={@can_manage}
+            type="button"
+            data-test="retire-server"
+            phx-click="retire"
+            phx-value-name={@server.name}
+            class="btn btn-sm btn-ghost text-error"
+          >
+            Retire
+          </button>
+        </div>
+      </div>
+
+      <div
+        :if={@retire_error && @retire_error.name == @server.name}
+        data-test="retire-error"
+        role="alert"
+        class="alert alert-error alert-soft mx-4 mb-3"
+      >
+        <span>{@retire_error.message}</span>
       </div>
     </div>
     """

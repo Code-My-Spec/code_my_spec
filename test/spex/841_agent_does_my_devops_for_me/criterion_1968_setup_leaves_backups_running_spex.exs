@@ -41,6 +41,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
   # systemd unit, which is why this sat parked; against fakes the dump and the
   # restore answer each other and there is no box to find.
   setup :fake_working_directory
+  # After fake_working_directory: it registers the memory environment with
+  # `Fakes.Shell` wired to `:memory_shell`, and `confirm_new_servers`
+  # bootstraps the account server's registry/database containers through
+  # that same modelled shell.
+  setup :confirm_new_servers
 
   spex "Setup leaves backups running" do
     scenario "setup has finished, and the dumps are landing" do

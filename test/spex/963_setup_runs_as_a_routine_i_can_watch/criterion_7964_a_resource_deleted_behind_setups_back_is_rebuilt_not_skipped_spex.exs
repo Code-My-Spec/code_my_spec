@@ -34,6 +34,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
   # that a step re-checks the provider rather than trusting its own record — is
   # a claim about our logic, and needs no box at all.
   setup :fake_working_directory
+  # After fake_working_directory: it registers the memory environment with
+  # `Fakes.Shell` wired to `:memory_shell`, and `confirm_new_servers`
+  # bootstraps the account server's registry/database containers through
+  # that same modelled shell.
+  setup :confirm_new_servers
 
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
     scenario "the server step runs again when the server is gone" do

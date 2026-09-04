@@ -144,6 +144,17 @@ defmodule CodeMySpec.Servers.Server do
   end
 
   @doc """
+  Remove the account's link to a server.
+
+  The provider box itself is untouched — linking never touched the machine,
+  and retiring does not either. Callers refuse this first when a project
+  still points at the server (`Servers.retire/2`); this is the mechanical
+  half once that check has already passed.
+  """
+  @spec delete(t()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def delete(%__MODULE__{} = server), do: Repo.delete(server)
+
+  @doc """
   What this account has linked, as `name => environment`.
 
   A map rather than a set because every caller that asks whether a box is

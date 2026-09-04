@@ -46,6 +46,17 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   through repeated retries because the only "confirm" that existed was a
   LiveView click nothing here could reach.
 
+  ## The `:server` step never creates a server here, under any circumstance
+
+  `Steps.server_creation_gate/3` used to accept `opts[:confirm_new_server]`
+  as a way to create a brand-new server for an unlinked environment anyway —
+  removed after `broken-oaths-uat` and `broken-oaths-prod` got created by
+  accident this way instead of sharing the account's existing
+  `fuellytics`/`fuellytics-prod` boxes. There is no escape hatch left: an
+  unlinked environment's `:server` step always pauses, naming what the
+  account would need to link first. Only `Steps.provision_account_server/3`,
+  reached through the account-level provisioning tool, may create one.
+
   ## This returns as soon as the step starts, not when it finishes
 
   Same reason `run_devops_setup` already documents this, for the same

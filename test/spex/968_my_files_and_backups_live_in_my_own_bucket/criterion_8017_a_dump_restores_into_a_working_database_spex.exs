@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
   setup :fake_working_directory
   setup :fake_providers
   setup :real_backup_database
+  setup :confirm_new_servers
 
   spex "A dump restores into a working database" do
     scenario "the restore completes and the source data is present" do

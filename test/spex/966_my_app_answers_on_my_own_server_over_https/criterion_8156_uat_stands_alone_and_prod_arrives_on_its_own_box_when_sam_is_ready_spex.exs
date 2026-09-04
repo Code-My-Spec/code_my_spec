@@ -33,6 +33,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   setup :fake_working_directory
   setup :fake_providers
   setup :account_access_key
+  setup :confirm_new_servers
 
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do
     scenario "turning production on adds a server and leaves UAT's alone" do

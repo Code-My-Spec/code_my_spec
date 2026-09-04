@@ -10,6 +10,14 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
   This step exists because nothing provisioned a database at all — `backups`
   ran `pg_dump` against one that did not exist, and the generated kamal config
   put the app on a `db_net` network with nothing else on it.
+
+  `ensure_container/2` (account-side: the box-wide container, run once
+  regardless of which project asks) and `serve/3` (project-side: this
+  project's own role and database on an already-running container) used to
+  be one function. Split so a project's own devops step can never stand up
+  shared account infrastructure as a side effect of asking for its own
+  tenant — the same reasoning `Steps.server_creation_gate/3` applies to the
+  server itself.
   """
   use ExUnit.Case, async: true
 
@@ -29,9 +37,33 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
   end
 
+  # The container already up and answered for, the shape every `serve/3` call
+  # sees in the ordinary case — someone else's (or this project's own
+  # earlier) `ensure_container/2` already ran.
+  defp running_recorder(owner, status \\ 0) do
+    fn [command] ->
+      send(owner, {:ran, command})
+
+      case command do
+        "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
+        _ -> {"", status}
+      end
+    end
+  end
+
   defp credential, do: %{username: "app_sam_s_app", password: "pw", database: "app_sam_s_app_uat"}
   defp admin_credential, do: %{username: "postgres", password: "adminpw"}
   defp restore_credential, do: %{username: "app_sam_s_app_restore", password: "restorepw"}
+
+  defp ensure_container(opts \\ []) do
+    Database.ensure_container(
+      scope(),
+      Keyword.merge(
+        [run: recorder(self()), database_admin_credential: admin_credential()],
+        opts
+      )
+    )
+  end
 
   defp serve(opts \\ []) do
     Database.serve(
@@ -39,7 +71,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       "uat",
       Keyword.merge(
         [
-          run: recorder(self()),
+          run: running_recorder(self()),
           database_credential: credential(),
           database_admin_credential: admin_credential(),
           database_restore_credential: restore_credential()
@@ -57,11 +89,11 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
   end
 
-  describe "serve/3" do
+  describe "ensure_container/2" do
     # The app and the database share a docker network, which is what the
     # generated kamal config already expects — `network: db_net`.
     test "joins the network the app is already on" do
-      assert {:ok, %{host: "cms-postgres"}} = serve()
+      assert {:ok, %{host: "cms-postgres"}} = ensure_container()
 
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "--network db_net"))
@@ -72,7 +104,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # rather than left for docker to generate — a generated one is orphaned
     # with the container it belonged to.
     test "the data outlives the container" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "-v cms-postgres-data:/var/lib/postgresql "))
@@ -87,7 +119,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # pgvector/pgvector:pg18 — the mount depth was the whole complaint.
     # docker-library/postgres#1259.
     test "the volume mounts where pg18 actually expects it, not one level deeper" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       refute Enum.any?(commands, &(&1 =~ "/var/lib/postgresql/data")),
@@ -106,7 +138,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         [_] -> {"", 0}
       end
 
-      assert {:ok, _} = serve(run: run)
+      assert {:ok, _} = ensure_container(run: run)
     end
 
     # Found live against fuellytics-prod: cms-postgres was started on plain
@@ -123,7 +155,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         [_] -> {"", 0}
       end
 
-      assert {:error, {:database_image_outdated, message}} = serve(run: run)
+      assert {:error, {:database_image_outdated, message}} = ensure_container(run: run)
       assert message =~ "postgres:17"
       assert message =~ "pgvector/pgvector:pg18"
     end
@@ -138,7 +170,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         [_] -> {"", 0}
       end
 
-      assert {:ok, _} = serve(run: run)
+      assert {:ok, _} = ensure_container(run: run)
     end
 
     # Found live against fuellytics-prod: ssh's own "Warning: Permanently
@@ -160,7 +192,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         end
       end
 
-      assert {:ok, _} = serve(run: run)
+      assert {:ok, _} = ensure_container(run: run)
       assert collect_commands() |> Enum.any?(&(&1 =~ "docker run -d --name cms-postgres"))
     end
 
@@ -168,7 +200,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # outside, and a database not listening on an address cannot be reached by
     # mistake.
     test "is not reachable from outside the box" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       refute Enum.any?(commands, &(&1 =~ "-p "))
@@ -178,18 +210,18 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # A database that silently changes major version between two runs of setup
     # is a data-loss event with a convenient explanation.
     test "the version is pinned" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "pgvector/pgvector:pg18"))
       refute Enum.any?(commands, &(&1 =~ "postgres:latest"))
     end
 
-    # The container is bootstrapped with the administrator, not the tenant —
-    # the tenant's own role does not exist yet on a box it has never reached
-    # before, so it cannot be the credential the image is created with.
+    # The container is bootstrapped with the administrator, not a tenant — no
+    # tenant role exists yet on a box nothing has reached before, so it
+    # cannot be the credential the image is created with.
     test "the container is bootstrapped with the administrator's credential" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "-e POSTGRES_USER='postgres'"))
@@ -201,10 +233,55 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # takes seconds more to accept connections, and a migration that arrives
     # first fails in a way that reads like a broken image.
     test "waits until it actually accepts connections" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
       assert Enum.any?(commands, &(&1 =~ "pg_isready"))
+    end
+
+    # pgvector is not a trusted extension — a plain LOGIN role can never
+    # install it itself, even as the owner of its own database. Confirmed
+    # live: "permission denied to create extension ... Must be superuser".
+    # Installed once here, by the admin, into template1 — so every tenant
+    # database `CREATE DATABASE` hands it to already carries the extension,
+    # and the app's own `CREATE EXTENSION IF NOT EXISTS vector` migration
+    # never has to ask for a privilege its own role could never hold.
+    test "the vector extension is installed into template1, box-wide, by the admin" do
+      assert {:ok, _} = ensure_container()
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ "-U 'postgres' -d 'template1' -c 'CREATE EXTENSION IF NOT EXISTS vector'")
+             )
+    end
+
+    test "a database that never comes up brings back its own logs" do
+      run = fn
+        ["docker exec" <> _] -> {"", 1}
+        ["docker logs" <> _] -> {"FATAL: data directory has wrong ownership", 0}
+        [_] -> {"", 0}
+      end
+
+      assert {:error, {:database_not_ready, "cms-postgres", logs}} =
+               ensure_container(run: run, database_attempts: 2)
+
+      assert logs =~ "wrong ownership"
+    end
+
+    test "a container that will not start is an error, not a success" do
+      assert {:error, {:database_start_failed, 125, _}} = ensure_container(run: recorder(self(), 125))
+    end
+  end
+
+  describe "serve/3" do
+    # A project's own devops step does not get to stand up shared account
+    # infrastructure as a side effect of asking for its own tenant — the same
+    # shape `Steps.server_creation_gate/3` uses for the server itself.
+    # `ensure_container/2` is the only thing that may create it.
+    test "refuses instead of creating the container if it is not already running" do
+      assert {:error, :database_not_provisioned} = serve(run: recorder(self()))
     end
 
     # The role and database are this project's own, created (not assumed)
@@ -262,11 +339,10 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # pgvector is not a trusted extension — a plain LOGIN role can never
     # install it itself, even as the owner of its own database. Confirmed
     # live: "permission denied to create extension ... Must be superuser".
-    # Installed once here, by the admin, so the app's own
-    # `CREATE EXTENSION IF NOT EXISTS vector` migration finds it already
-    # there and never has to ask for a privilege its own role could never
-    # hold — `IF NOT EXISTS` skips the permission check entirely once the
-    # extension exists, confirmed live too.
+    # `ensure_container/2` already installed it into template1, box-wide, so
+    # this project's own database inherits it at creation — but the
+    # extension is still asserted here explicitly, once, in case this
+    # project's database predates that box-wide install.
     test "the vector extension is installed by the admin, in this project's own database" do
       assert {:ok, _} = serve()
 
@@ -279,35 +355,15 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
              )
     end
 
-    # One layer deeper than the test above: that one covers the app's own
-    # persistent database. Backup restore-verification's scratch database
-    # does not exist ahead of time to install anything into — it is
-    # created and dropped by the *restore* itself, minutes or months
-    # later — so the extension has to already be in template1's own
-    # catalog for CREATE DATABASE to hand it to a database that will not
-    # exist until long after this `serve/3` call returns. Confirmed live
-    # against broken_oaths: past CREATEDB and the restore role's own
-    # database-level CREATE, `CREATE EXTENSION vector` in the dump itself
-    # still failed "must be superuser" — pgvector is not a trusted
-    # extension, so no privilege short of already having it installed
-    # gets a non-superuser role past this.
-    test "the vector extension is also installed into template1, box-wide" do
-      assert {:ok, _} = serve()
-
-      commands = collect_commands()
-
-      assert Enum.any?(
-               commands,
-               &(&1 =~ "-U 'postgres' -d 'template1' -c 'CREATE EXTENSION IF NOT EXISTS vector'")
-             )
-    end
-
     # Ensuring the database is a check-then-create, not a blind create — a
     # `CREATE DATABASE` on one that already exists is a Postgres error, and
     # that is the ordinary case for a project provisioning its second
     # environment against a box it already has a role on.
     test "does not try to create the database again once it already exists" do
       run = fn
+        ["docker ps -q -f name=" <> _] ->
+          {"c0ffeec0ffee", 0}
+
         ["docker exec" <> _ = cmd] ->
           if cmd =~ "SELECT 1 FROM pg_database" do
             {"1", 0}
@@ -320,23 +376,6 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       end
 
       assert {:ok, _} = serve(run: run)
-    end
-
-    test "a database that never comes up brings back its own logs" do
-      run = fn
-        ["docker exec" <> _] -> {"", 1}
-        ["docker logs" <> _] -> {"FATAL: data directory has wrong ownership", 0}
-        [_] -> {"", 0}
-      end
-
-      assert {:error, {:database_not_ready, "cms-postgres", logs}} =
-               serve(run: run, database_attempts: 2)
-
-      assert logs =~ "wrong ownership"
-    end
-
-    test "a container that will not start is an error, not a success" do
-      assert {:error, {:database_start_failed, 125, _}} = serve(run: recorder(self(), 125))
     end
   end
 

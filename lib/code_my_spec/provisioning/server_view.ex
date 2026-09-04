@@ -40,6 +40,7 @@ defmodule CodeMySpec.Provisioning.ServerView do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Environment
   alias CodeMySpec.Repo
+  alias CodeMySpec.Servers.Server
   alias CodeMySpec.Users.Scope
 
   @type entry :: %{
@@ -69,12 +70,62 @@ defmodule CodeMySpec.Provisioning.ServerView do
 
   def for_server(_scope, _server_name), do: []
 
+  @doc """
+  Names of the projects currently pointed at a server, deduplicated.
+
+  What retiring a server refuses against — cheaper than `for_server/2`, which
+  also walks each project's whole step plan to build the entries this only
+  needs the names out of.
+  """
+  @spec projects_using(Scope.t(), String.t()) :: [String.t()]
+  def projects_using(%Scope{active_account_id: account_id}, server_name)
+      when is_binary(account_id) and is_binary(server_name) do
+    account_id
+    |> environments_on(server_name)
+    |> Enum.map(& &1.project.name)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  def projects_using(_scope, _server_name), do: []
+
+  # Two ways an environment ends up pointed at this box, and both have to
+  # match. `e.server_name` is what a project's own successful run writes back
+  # (`record_environment_server/5`) — the truth once setup has actually
+  # reached the provider. `e.server_id` is what linking writes immediately
+  # (`LinkServer`/`EnvironmentRepository.put`), before any run has happened at
+  # all — the hard line's whole point is that a linked-but-not-yet-run
+  # environment is real and grantable, so this page has to see it too, not
+  # only the ones a run already touched.
   defp environments_on(account_id, server_name) do
-    Environment
-    |> join(:inner, [e], p in Project, on: p.id == e.project_id)
-    |> where([e, p], p.account_id == ^account_id and e.server_name == ^server_name)
-    |> select([e, p], %{project: p, environment: e.name})
+    base =
+      Environment
+      |> join(:inner, [e], p in Project, on: p.id == e.project_id)
+      |> select([e, p], %{project: p, environment: e.name})
+
+    base
+    |> by_name_or_id(account_id, server_name, server_id_for(account_id, server_name))
     |> Repo.all()
+  end
+
+  defp by_name_or_id(query, account_id, server_name, nil) do
+    where(query, [e, p], p.account_id == ^account_id and e.server_name == ^server_name)
+  end
+
+  defp by_name_or_id(query, account_id, server_name, server_id) do
+    where(
+      query,
+      [e, p],
+      p.account_id == ^account_id and
+        (e.server_name == ^server_name or e.server_id == ^server_id)
+    )
+  end
+
+  defp server_id_for(account_id, server_name) do
+    Server
+    |> where([s], s.account_id == ^account_id and s.name == ^server_name)
+    |> select([s], s.id)
+    |> Repo.one()
   end
 
   defp entry_for(%Scope{} = scope, %{project: project, environment: environment}) do

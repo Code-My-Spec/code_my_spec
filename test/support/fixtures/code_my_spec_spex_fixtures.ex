@@ -61,7 +61,13 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
+  alias CmsHarness.Agents.Tools.RunBrowserScript
+  alias CmsHarness.Agents.Tools.RunScript
+  alias CmsHarness.Agents.Tools.ToolDocs
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Architecture.SpecStub
@@ -74,8 +80,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
-  alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Mail.Email
@@ -103,6 +107,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
@@ -857,7 +863,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def running_agent(%Scope{} = scope, opts \\ []) do
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         engine: Keyword.get(opts, :engine, :pi),
         provider: Keyword.get(opts, :provider, "zai"),
         working_copy: Keyword.get(opts, :working_copy, scope.cwd || "/tmp/a-copy"),
@@ -888,7 +894,7 @@ defmodule CodeMySpecSpex.Fixtures do
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 
-  defp tool_set(role) when is_atom(role), do: CodeMySpec.Agents.ToolSets.for_role(role)
+  defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
 
   @doc """
   Every agent recorded on this project, read back from the database.
@@ -1001,6 +1007,25 @@ defmodule CodeMySpecSpex.Fixtures do
   def disconnect_provider(scope, provider) do
     CodeMySpec.Integrations.delete_integration(scope, provider)
     :ok
+  end
+
+  @doc """
+  Connects Hetzner for the active project, the same shape as
+  `connect_provider/3` for the OAuth providers — Hetzner authenticates with a
+  single account-level API token rather than an OAuth grant, so it has no
+  `Integrations` row to upsert; it lives as a project secret instead.
+
+  Also grants a placeholder object-storage key pair — `Steps.run(:server,
+  ...)` refuses before it reaches the provider at all without one
+  (`storage_credentials_ready/2`, since every box it makes serves the
+  registry and the registry needs them), which is a different pause than
+  anything about servers themselves and would otherwise mask it.
+  """
+  @spec connect_hetzner(Scope.t(), String.t()) :: {:ok, term()}
+  def connect_hetzner(scope, token \\ "spex-placeholder-hetzner-token") do
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "spex-placeholder-key-id")
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "spex-placeholder-secret")
+    ProjectSecrets.put_value(scope, "hetzner_api_token", token)
   end
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
@@ -1418,7 +1443,7 @@ defmodule CodeMySpecSpex.Fixtures do
            "agent_turn_event",
            %{
              "agent_id" => agent_id,
-             "event" => CmsHarness.Project.ChannelClient.encode_turn_event(%{event: :turn_ended})
+             "event" => ChannelClient.encode_turn_event(%{event: :turn_ended})
            },
            socket
          ) do
@@ -2000,22 +2025,22 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Run a script as this agent would, through the tool it carries."
   def run_script(script, context),
-    do: CmsHarness.Agents.Tools.RunScript.execute(%{"script" => script}, context)
+    do: RunScript.execute(%{"script" => script}, context)
 
   @doc "The same against the machine's own sandbox, which has its own deadline."
   def run_browser_script(script, context, input \\ %{}),
     do:
-      CmsHarness.Agents.Tools.RunBrowserScript.execute(
+      RunBrowserScript.execute(
         Map.put(input, "script", script),
         context
       )
 
   @doc "Ask what it may call, through the tool it carries."
   def tool_docs(input, context),
-    do: CmsHarness.Agents.Tools.ToolDocs.execute(input, context)
+    do: ToolDocs.execute(input, context)
 
   @doc "What one answer may cost the turn."
-  defdelegate max_result_chars(), to: CmsHarness.Agents.Tools.RunScript
+  defdelegate max_result_chars(), to: RunScript
 
   # -- Devices --
   #
@@ -2412,7 +2437,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec seal_three_amigos(term(), term()) :: :ok
   def seal_three_amigos(scope, story) do
     {:ok, :valid} =
-      CodeMySpec.AgentTasks.ThreeAmigos.evaluate(scope, %{
+      AgentTasks.ThreeAmigos.evaluate(scope, %{
         entity_type: :story,
         entity_id: to_string(story.id)
       })
@@ -3191,6 +3216,62 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Point an environment at an account server, without a provider round trip.
+
+  The real path — the servers page, or `link_server` — verifies the name
+  against the provider first (`Servers.link/2` calls `Hetzner.list_servers`),
+  because a human or an agent linking a server should not be able to point
+  at one that does not exist. A criterion whose subject is *further down the
+  pipeline* — what a project's own devops run does once its environment is
+  already linked — does not need that round trip re-proven every time; it
+  needs the linked state to already be true when the scenario starts, the
+  same reason `seed_environment_ip/3` exists.
+
+  Creates the account's `Server` row if this is the first environment
+  pointed at `server_name` (matching `Server.link/2`'s own `on_conflict:
+  :nothing`, so linking the same name twice is not an error), then points
+  `environment_name` at it.
+
+  Not for a criterion whose claim *is* the link itself — story 989's own
+  criteria drive that through the real UI, exactly as `seed_environment_ip/3`
+  is not for criteria whose claim is about DNS resolving a server that was
+  actually created.
+  """
+  @spec link_environment_to_server(Scope.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def link_environment_to_server(%Scope{} = scope, environment_name, server_name) do
+    alias CodeMySpec.Provisioning.EnvironmentRepository
+    alias CodeMySpec.Servers
+    alias CodeMySpec.Servers.Server
+
+    with {:ok, _} <- Server.link(scope, %{name: server_name}),
+         %{id: server_id} <- Servers.get_linked(scope, server_name) do
+      EnvironmentRepository.put(scope, environment_name, %{server_id: server_id})
+    else
+      nil -> {:error, :not_found}
+      error -> error
+    end
+  end
+
+  @doc """
+  Bring up an account server the way only the account-level surface may:
+  the box, its shared registry container, and its shared database
+  container. `CodeMySpecSpex` may not reach `CodeMySpec.Provisioning.Steps`
+  or `CodeMySpec.Servers` directly, which is why this bridges it — the
+  claim it backs is a project-scoped criterion's premise (the account
+  already granted and bootstrapped a server), not the bootstrap itself.
+  """
+  @spec bootstrap_account_server(Scope.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def bootstrap_account_server(%Scope{} = scope, server_name, opts \\ []) do
+    alias CodeMySpec.Provisioning.Steps
+    alias CodeMySpec.Servers
+
+    {:ok, _ssh_key_ids} = Servers.access_key(scope)
+    Steps.provision_account_server(scope, server_name, opts)
+  end
+
+  @doc """
   A runner that reaches the local fleet's app box instead of a provisioned one.
 
   The box-side steps — starting the registry, starting the database — build
@@ -3954,6 +4035,23 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: level})
 
     :ok
+  end
+
+  @doc """
+  The environments a project's own devops run is actually permitted to touch,
+  mirroring `Steps.permitted_environment_rows/1`'s own filter: `devops: :uat`
+  drops prod, anything else keeps both. A fixture that bootstraps servers for
+  every environment unconditionally stands up a prod box for a project that
+  opted out of prod — `Fakes.Hetzner`/`Fakes.Shell` then honestly report one
+  exists, and a criterion asserting "and production was not built either"
+  fails for real, just not for the reason it's testing.
+  """
+  @spec devops_environments(Scope.t()) :: [String.t()]
+  def devops_environments(%Scope{} = scope) do
+    case CodeMySpec.Configurations.get(scope) do
+      %{devops: :uat} -> ["uat"]
+      _ -> ["prod", "uat"]
+    end
   end
 
   @spec enable_devops(Scope.t(), String.t()) :: :ok

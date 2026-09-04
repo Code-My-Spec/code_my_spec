@@ -166,39 +166,56 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
   # returns `{output, status}`, so what we ask the box to do is assertable and
   # running it is not. Starting a real registry would make this a network test
   # and prove nothing about the command.
-  describe "serve/2" do
-    # Empty output, exit 0, for every command — the box has nothing on it yet:
-    # no container running, no htpasswd file.
-    defp recorder(owner, status \\ 0) do
-      fn [command] ->
-        send(owner, {:ran, command})
-        {"", status}
+  #
+  # `ensure_container/2` (account-side: the box-wide container, run once
+  # regardless of which project asks) and `serve/2` (project-side: this
+  # project's own credential on an already-running registry) used to be one
+  # function. Split so a project's own devops step can never stand up shared
+  # account infrastructure as a side effect of asking for its own tenant —
+  # the same reasoning `Steps.server_creation_gate/3` applies to the server
+  # itself.
+  defp recorder(owner, status \\ 0) do
+    fn [command] ->
+      send(owner, {:ran, command})
+      {"", status}
+    end
+  end
+
+  # The container already up and answered for, the shape every `serve/2`
+  # call sees in the ordinary case — someone else's (or this project's own
+  # earlier) `ensure_container/2` already ran.
+  defp running_recorder(owner, status \\ 0) do
+    fn [command] ->
+      send(owner, {:ran, command})
+
+      case command do
+        "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
+        _ -> {"", status}
       end
     end
+  end
 
-    defp creds, do: [access_key_id: "AKIA", secret_access_key: "s3cret", region: "fsn1"]
+  defp creds, do: [access_key_id: "AKIA", secret_access_key: "s3cret", region: "fsn1"]
 
-    defp registry_cred, do: %{username: "cms", password: "pw"}
+  defp registry_cred, do: %{username: "cms", password: "pw"}
 
-    defp serve(opts \\ []) do
-      Registry.serve(
+  defp collect_commands(acc \\ []) do
+    receive do
+      {:ran, command} -> collect_commands([command | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
+  defp find_command(commands, pattern), do: Enum.find(commands, &(&1 =~ pattern))
+
+  describe "ensure_container/2" do
+    defp ensure_container(opts \\ []) do
+      Registry.ensure_container(
         scope(),
-        Keyword.merge(
-          [run: recorder(self()), credentials: creds(), registry_credentials: registry_cred()],
-          opts
-        )
+        Keyword.merge([run: recorder(self()), credentials: creds()], opts)
       )
     end
-
-    defp collect_commands(acc \\ []) do
-      receive do
-        {:ran, command} -> collect_commands([command | acc])
-      after
-        0 -> Enum.reverse(acc)
-      end
-    end
-
-    defp find_command(commands, pattern), do: Enum.find(commands, &(&1 =~ pattern))
 
     # The default, and the reason is the provider rather than the design.
     # Backed by a Hetzner bucket, `docker push` failed with `unknown blob`:
@@ -207,7 +224,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # the box has none of that, and what it gives up — the registry surviving
     # the box — costs nothing, because images are rebuildable from a commit.
     test "keeps blobs in a volume on the box" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "REGISTRY_STORAGE='filesystem'"
@@ -225,12 +242,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         [_] -> {"", 0}
       end
 
-      assert {:ok, _} =
-               Registry.serve(scope(),
-                 run: run,
-                 credentials: creds(),
-                 registry_credentials: registry_cred()
-               )
+      assert {:ok, _} = ensure_container(run: run)
     end
 
     # Found live against fuellytics-prod: ssh's own "Warning: Permanently
@@ -252,13 +264,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         end
       end
 
-      assert {:ok, _} =
-               Registry.serve(scope(),
-                 run: run,
-                 credentials: creds(),
-                 registry_credentials: registry_cred()
-               )
-
+      assert {:ok, _} = ensure_container(run: run)
       assert collect_commands() |> find_command("docker run -d --name cms-registry")
     end
 
@@ -267,14 +273,14 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # — including the image the box is running, which is the one a rollback
     # needs.
     test "the volume outlives the container" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "-v cms-registry-data:/var/lib/registry"
     end
 
     test "points the registry at this project's bucket" do
-      assert {:ok, %{bucket: "sam-s-app-registry"}} = serve(storage: :s3)
+      assert {:ok, %{bucket: "sam-s-app-registry"}} = ensure_container(storage: :s3)
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "REGISTRY_STORAGE_S3_BUCKET='sam-s-app-registry'"
@@ -284,7 +290,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # style request reaches a bucket that does not exist rather than failing
     # usefully, which is the failure mode this flag exists to avoid.
     test "addresses the bucket path-style, which Hetzner requires" do
-      assert {:ok, _} = serve(storage: :s3)
+      assert {:ok, _} = ensure_container(storage: :s3)
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true'"
@@ -292,7 +298,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     end
 
     test "listens on loopback unless told otherwise" do
-      assert {:ok, %{bind: "127.0.0.1", port: 5000}} = serve()
+      assert {:ok, %{bind: "127.0.0.1", port: 5000}} = ensure_container()
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "-p 127.0.0.1:5000:5000"
@@ -302,7 +308,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # reach this port somehow, and where it binds decides whether that is a
     # tunnel or a private address.
     test "binds where it is told" do
-      assert {:ok, %{bind: "10.0.0.2"}} = serve(bind: "10.0.0.2")
+      assert {:ok, %{bind: "10.0.0.2"}} = ensure_container(bind: "10.0.0.2")
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "-p 10.0.0.2:5000:5000"
@@ -311,7 +317,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # Setup runs more than once, so the second run has to converge rather than
     # fail on a container name that is already taken.
     test "replaces the container rather than colliding with it" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "docker rm -f cms-registry"
@@ -322,10 +328,61 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # moment you need a rollback is not the moment to find the registry went
     # away with the last reboot.
     test "survives a reboot of the box it shares with the app" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = ensure_container()
 
       command = collect_commands() |> find_command("docker run")
       assert command =~ "--restart always"
+    end
+
+    # 9656c705: `distribution` answers a manifest DELETE with 405 unless
+    # started with this set — the image's baked-in config.yml claims
+    # `storage.delete.enabled: true` regardless, because that file is never
+    # rewritten by an env var override, only read once as the pre-override
+    # default. Confirmed against a real `registry:3` container: DELETE
+    # returns 405 without this flag, 202 with it.
+    test "delete is enabled, so prune/2 can actually reclaim space" do
+      assert {:ok, _} = ensure_container()
+
+      command = collect_commands() |> find_command("docker run")
+      assert command =~ "REGISTRY_STORAGE_DELETE_ENABLED=true"
+    end
+
+    test "a registry that will not start is an error, not a success" do
+      run = fn [cmd] ->
+        send(self(), {:ran, cmd})
+        if cmd =~ "docker run -d", do: {"", 125}, else: {"", 0}
+      end
+
+      assert {:error, {:registry_start_failed, 125, _}} = ensure_container(run: run)
+    end
+
+    test "without storage credentials there is nothing to back it with" do
+      assert {:error, :no_storage_credentials} =
+               ensure_container(run: recorder(self()), credentials: :none)
+
+      refute collect_commands() |> find_command("docker run"),
+             "must not attempt to create the container without credentials to back it"
+    end
+  end
+
+  describe "serve/2" do
+    defp serve(opts \\ []) do
+      Registry.serve(
+        scope(),
+        Keyword.merge(
+          [run: running_recorder(self()), registry_credentials: registry_cred()],
+          opts
+        )
+      )
+    end
+
+    # A project's own devops step does not get to stand up shared account
+    # infrastructure as a side effect of asking for its own tenant — the
+    # same shape `Steps.server_creation_gate/3` uses for the server itself.
+    # `ensure_container/2` is the only thing that may create it.
+    test "refuses instead of creating the container if it is not already running" do
+      assert {:error, :registry_not_provisioned} =
+               Registry.serve(scope(), run: recorder(self()), registry_credentials: registry_cred())
     end
 
     # Docker assumes HTTPS for every registry but `localhost`, and this one
@@ -345,23 +402,11 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert trust =~ "systemctl restart docker"
     end
 
-    # `docker run -d` returning 0 means the container was created, not that it
-    # is up. A bind to an address the interface does not carry yet fails after
-    # the daemon has answered, and the container exits behind a successful
-    # command — the push then times out against nothing, which reads as an
-    # unreachable host rather than a registry that died on startup.
+    # `await_registry/5` probes the registry itself before reporting up —
+    # a container that started (exit 0) is not necessarily one that is
+    # actually listening, and the push then times out against nothing.
     test "asks the registry itself before reporting it up" do
-      run = fn [command] ->
-        send(self(), {:ran, command})
-        {"", 0}
-      end
-
-      assert {:ok, _} =
-               Registry.serve(scope(),
-                 run: run,
-                 credentials: creds(),
-                 registry_credentials: registry_cred()
-               )
+      assert {:ok, _} = serve()
 
       probe = collect_commands() |> find_command("curl")
 
@@ -370,6 +415,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     test "a container that starts and dies is not a running registry" do
       run = fn
+        ["docker ps -q -f name=" <> _] -> {"c0ffeec0ffee", 0}
         ["curl" <> _] -> {"", 7}
         ["docker logs" <> _] -> {"level=fatal msg=\"cannot bind\"", 0}
         [_] -> {"", 0}
@@ -378,7 +424,6 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert {:error, {:registry_not_listening, "127.0.0.1:5000", logs}} =
                Registry.serve(scope(),
                  run: run,
-                 credentials: creds(),
                  registry_credentials: registry_cred(),
                  registry_attempts: 2
                )
@@ -397,11 +442,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert {:ok, _} = serve()
 
       commands = collect_commands()
-      run_command = find_command(commands, "docker run")
       htpasswd_command = find_command(commands, "htpasswd")
-
-      assert run_command =~ "REGISTRY_AUTH=htpasswd"
-      assert run_command =~ "REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd"
 
       # bcrypt, because `distribution` accepts nothing else — and generated
       # here because `htpasswd` is not installed on the box.
@@ -423,44 +464,6 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert command =~ "grep -v '^cms:'"
       refute command =~ "grep -v '^cms:.*$2b'",
              "must match on the username alone, not on a specific hash that would miss a rotated password"
-    end
-
-    # 9656c705: `distribution` answers a manifest DELETE with 405 unless
-    # started with this set — the image's baked-in config.yml claims
-    # `storage.delete.enabled: true` regardless, because that file is never
-    # rewritten by an env var override, only read once as the pre-override
-    # default. Confirmed against a real `registry:3` container: DELETE
-    # returns 405 without this flag, 202 with it.
-    test "delete is enabled, so prune/2 can actually reclaim space" do
-      assert {:ok, _} = serve()
-
-      command = collect_commands() |> find_command("docker run")
-      assert command =~ "REGISTRY_STORAGE_DELETE_ENABLED=true"
-    end
-
-    test "a registry that will not start is an error, not a success" do
-      run = fn [cmd] ->
-        send(self(), {:ran, cmd})
-        if cmd =~ "docker run -d", do: {"", 125}, else: {"", 0}
-      end
-
-      assert {:error, {:registry_start_failed, 125, _}} =
-               Registry.serve(scope(),
-                 run: run,
-                 credentials: creds(),
-                 registry_credentials: registry_cred()
-               )
-    end
-
-    test "without storage credentials there is nothing to back it with" do
-      assert {:error, :no_storage_credentials} =
-               Registry.serve(scope(),
-                 run: recorder(self()),
-                 credentials: :none,
-                 registry_credentials: registry_cred()
-               )
-
-      refute_received {:ran, _}
     end
   end
 

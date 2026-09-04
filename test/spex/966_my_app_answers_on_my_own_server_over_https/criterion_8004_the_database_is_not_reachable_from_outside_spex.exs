@@ -26,6 +26,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
   # subprocess that will never answer, which arrives as the whole test timing
   # out three minutes later with a stack in `Phoenix.LiveViewTest.call/2`.
   setup :fake_working_directory
+  # After fake_working_directory: it registers the memory environment with
+  # `Fakes.Shell` wired to `:memory_shell`, and `confirm_new_servers`
+  # bootstraps the account server's registry/database containers through
+  # that same modelled shell.
+  setup :confirm_new_servers
 
   spex "The database is not reachable from outside" do
     scenario "only the web ports are open at the network edge" do

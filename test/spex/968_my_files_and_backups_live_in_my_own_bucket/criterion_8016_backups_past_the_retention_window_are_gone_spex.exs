@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
   setup :fake_working_directory
   setup :fake_providers
   setup :fleet_backup_database
+  setup :confirm_new_servers
 
   spex "Backups past the retention window are gone" do
     scenario "no dump older than the retention window remains" do

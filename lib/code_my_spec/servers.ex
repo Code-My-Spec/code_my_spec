@@ -35,7 +35,7 @@ defmodule CodeMySpec.Servers do
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Hetzner, Repository}
+  alias CodeMySpec.Provisioning.{Hetzner, Repository, ServerView}
   alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
@@ -225,6 +225,30 @@ defmodule CodeMySpec.Servers do
   end
 
   defp service_of(_container), do: nil
+
+  @doc """
+  Remove the account's link to a server.
+
+  Refused while any project still points at it — retiring is not a way to
+  make "in use" stop being true, and doing it anyway would leave an
+  environment's `server_id`/`server_name` naming a link record that no
+  longer exists. Point the environment somewhere else (or off this server
+  entirely) first if it should stop serving it.
+  """
+  @spec retire(Scope.t(), String.t()) ::
+          :ok | {:error, {:in_use, [String.t()]}} | {:error, :not_found}
+  def retire(%Scope{} = scope, name) when is_binary(name) do
+    case ServerView.projects_using(scope, name) do
+      [] ->
+        case Server.get_linked(scope, name) do
+          nil -> {:error, :not_found}
+          server -> with {:ok, _} <- Server.delete(server), do: :ok
+        end
+
+      projects ->
+        {:error, {:in_use, projects}}
+    end
+  end
 
   @doc """
   The linked record for a name, or nil — what the edit form is built from.

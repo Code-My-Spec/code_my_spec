@@ -24,6 +24,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
   # A modelled shell over the memory filesystem, so a step reading what an
   # earlier step wrote finds it.
   setup :fake_working_directory
+  # After fake_working_directory: it registers the memory environment with
+  # `Fakes.Shell` wired to `:memory_shell`, and `confirm_new_servers`
+  # bootstraps the account server's registry/database containers through
+  # that same modelled shell.
+  setup :confirm_new_servers
 
   spex "Each environment answers on its domain over HTTPS" do
     scenario "every provisioned environment serves on its own host" do

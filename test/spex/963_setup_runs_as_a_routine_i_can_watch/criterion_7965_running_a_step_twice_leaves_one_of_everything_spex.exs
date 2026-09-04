@@ -43,6 +43,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
   setup :devops_on
   setup :fake_providers
   setup :fake_working_directory
+  setup :confirm_new_servers
 
   spex "Running a step twice leaves one of everything" do
     scenario "a second run of the server step converges instead of duplicating" do
