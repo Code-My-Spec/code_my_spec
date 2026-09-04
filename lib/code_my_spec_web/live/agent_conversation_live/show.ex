@@ -53,13 +53,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
-  alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
   alias CodeMySpec.Stories
-  alias CodeMySpec.Notifications
-  alias CodeMySpecWeb.ChatComponents
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecWeb.ChatComponents
+  alias CodeMySpecWeb.ProjectTimeline
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
