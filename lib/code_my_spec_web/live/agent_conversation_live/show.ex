@@ -963,16 +963,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         the next re-render, which happens on every message. `<html>` is never
         part of what this LiveView renders, so nothing ever fights the hook
         for it. --%>
+        <%!-- `w-3` is the hit area — a 6px bar was too thin to reliably catch a
+        pointer — with the visible line drawn at 2px in the middle of it via
+        the inner span, the same "wide target, thin mark" split a scrollbar
+        thumb uses. `select-none` alongside `preventDefault` in the hook: text
+        selection kicking in mid-drag is what a "resize does nothing" report
+        usually is. --%>
         <div
           :if={@screen == :wide}
           id="panel-resize-handle"
+          data-test="panel-resize-handle"
           phx-hook="PanelResize"
           data-target="conversation-panels"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize panel"
-          class="w-1.5 shrink-0 cursor-col-resize rounded-full bg-base-300 transition-colors hover:bg-primary/50 active:bg-primary"
+          class="group flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center"
         >
+          <span class="w-0.5 rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
+          </span>
         </div>
 
         <.panels
@@ -1090,11 +1099,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     every turn. `min-w-*`/`max-w-*` bound it in CSS so a stale or absent
     property (JS not yet loaded, or never touched) still renders sanely at the
     default in the `var()` fallback. --%>
+    <%!-- `min-h-0`: without it this flex-row child refuses to shrink below the
+    height its open panels want — a long story list or the preview iframe
+    stretched it past the row's own height, and since nothing above it clips,
+    that grew the whole page instead of scrolling in place. Same bug, same fix,
+    as the transcript column already has. --%>
     <div
       id="conversation-panels"
       data-test="conversation-panels"
       style="width: var(--panels-width, 24rem)"
-      class="flex min-w-64 max-w-2xl shrink-0 flex-col gap-2 overflow-y-auto"
+      class="flex min-h-0 min-w-64 max-w-2xl shrink-0 flex-col gap-2 overflow-y-auto"
     >
       <div
         :for={{key, label} <- @tabs}
