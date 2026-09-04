@@ -202,6 +202,81 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  # Two agents on one checkout are two rows, and the page has to say which is
+  # which. Issue 27b5350e: the conversation was keyed on `pi:<path>`, so every
+  # agent on a copy adopted the same thread — an agent started on a worktree
+  # silently picked up one from ten days earlier with two turns already on it.
+  #
+  # Keying on the agent fixed that and emptied the row's second line, which had
+  # been rendering `session_external_id` and so was carrying the checkout by
+  # accident. An index of identically-shaped rows with generated names and no
+  # distinguishing line is the problem the path was in the key to solve
+  # (18f50c87 — three copies, indistinguishable).
+  describe "telling two agents apart on the index" do
+    defp lane(scope, project, root, role) do
+      scope = %{scope | active_project: project, active_project_id: project.id}
+
+      {:ok, agent} =
+        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+          engine: :pi,
+          provider: "zai",
+          working_copy: root,
+          role: role,
+          working_copy_id: CodeMySpec.WorkingCopies.ensure_default(scope),
+          project_id: project.id,
+          account_id: scope.active_account_id,
+          status: :starting
+        })
+
+      {:ok, conversation} =
+        Conversations.find_or_create_agent_conversation(
+          scope.active_account_id,
+          project.id,
+          agent.id
+        )
+
+      {agent, conversation}
+    end
+
+    test "two lanes on one copy get their own conversations", %{scope: scope, project: project} do
+      {_a, first} = lane(scope, project, "/tmp/one-copy", "coding")
+      {_b, second} = lane(scope, project, "/tmp/one-copy", "qa")
+
+      refute first.id == second.id,
+             "both lanes adopted one thread, so their turns interleave with nothing " <>
+               "saying who spoke — and stopping one would look like stopping both."
+    end
+
+    test "each row names its checkout and role", %{conn: conn, scope: scope, project: project} do
+      lane(scope, project, "/tmp/copy-alpha", "coding")
+      lane(scope, project, "/tmp/copy-alpha", "qa")
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ "/tmp/copy-alpha · coding"
+
+      assert html =~ "/tmp/copy-alpha · qa",
+             "the rows carry generated names and nothing else, so an index of three " <>
+               "copies is three identical-looking rows. That is 18f50c87, which is why " <>
+               "the checkout was in the conversation key before it moved to the agent."
+    end
+
+    test "a Claude Code lane still shows its external id", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      # No agent row of its own — it arrives with an external id and is exactly
+      # the caller `find_or_create_session_conversation/3` was split out for.
+      agent_conversation(scope, project, "pi:/tmp/claude-code-lane")
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ "pi:/tmp/claude-code-lane",
+             "the left join dropped the row that has no agent, or blanked its line."
+    end
+  end
+
   describe "project resolution" do
     test "an unknown project name redirects with a flash instead of 404ing", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/app/projects", flash: %{"error" => error}}}} =

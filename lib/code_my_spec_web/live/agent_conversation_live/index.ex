@@ -80,6 +80,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
 
   defp main_summary(_), do: ""
 
+  # The line under the name, and the one thing on the row that tells two agents
+  # apart when their generated names do not.
+  #
+  # It was `session_external_id`, which read `pi:<path>` and so carried the
+  # checkout by accident. Keying a conversation on its agent emptied that column
+  # for every agent thread, and the line went blank — the page lost exactly the
+  # fact that distinguishes three copies of one project, which is the complaint
+  # (18f50c87) that put the path into the key in the first place.
+  #
+  # Now it says which checkout, and the role when there is one, because "qa" and
+  # "main" on the same copy is the case story 1023 is about. A Claude Code lane
+  # has no agent row and keeps its external id.
+  defp row_subtitle(%{working_copy: copy, role: role}) when is_binary(copy) do
+    case role do
+      nil -> copy
+      role -> "#{copy} · #{role}"
+    end
+  end
+
+  defp row_subtitle(%{conversation: %{session_external_id: id}}) when is_binary(id), do: id
+
+  defp row_subtitle(_row), do: ""
+
   defp load(socket, project) do
     scope = %{
       socket.assigns.current_scope
@@ -239,7 +262,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
                     {Conversations.display_name(row.conversation)}
                   </p>
                   <p class="truncate font-mono text-xs opacity-50">
-                    {row.conversation.session_external_id}
+                    {row_subtitle(row)}
                   </p>
                 </.link>
 

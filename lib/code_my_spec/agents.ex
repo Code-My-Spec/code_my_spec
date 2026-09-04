@@ -323,23 +323,23 @@ defmodule CodeMySpec.Agents do
   # `AgentHarness.relay_up/2` into this same conversation, which is why a Pi
   # agent and a Claude Code agent land on one surface instead of two.
   #
-  # Keyed by the working copy, not the agent id, because that is how a Pi lane
-  # keys itself: `CodeMySpecLocalWeb.HarnessSocket` uses `pi:<cwd>` and the
-  # conversation index renders it as `data-session`.
+  # Keyed on the agent, which is the thing the thread is about.
   #
-  # Keying on the agent id instead produced a row reading `agent:<uuid>`, which
-  # is unreadable the moment a project has more than one copy — QA had three at
-  # once and could not tell them apart (18f50c87). It also split one copy's
-  # transcript in two: the lane reporting over the channel wrote to
-  # `pi:<cwd>` while the tool that started it wrote somewhere else, so the
-  # agent's own turns did not land on the session that represented it.
+  # It was keyed on the working copy — `pi:<cwd>`, matching how a Pi lane keys
+  # itself on the socket — so every agent started on one checkout found the same
+  # row. A copy runs several lanes (story 1023's rule exists because of it), and
+  # their turns interleaved into a single transcript with nothing saying who
+  # spoke. Observed live: an agent started on a worktree silently adopted a
+  # conversation from ten days earlier that already had two turns on it.
   #
-  # One conversation per working copy matches the harness's own model, where
-  # every lane on a copy joins `harness:session:pi:<cwd>` and the whole team's
-  # transcript lands together.
-  # The agent's own thread. It was `pi:<working_copy>`, so every agent on a copy
-  # opened the same one and their turns interleaved with nothing saying who
-  # spoke.
+  # The two objections that put the key on the path in the first place are both
+  # answered elsewhere now. A row reading `agent:<uuid>` was unreadable across
+  # three copies — the rows carry generated names and the agent's own identity
+  # instead of a raw key. And the split transcript, where the lane reporting over
+  # the channel wrote to `pi:<cwd>` while the tool that started it wrote
+  # somewhere else, was a two-callers-one-function problem:
+  # `find_or_create_session_conversation/3` now answers for a Claude Code lane
+  # that has an external id and no agent row, and this answers for an agent.
   defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,

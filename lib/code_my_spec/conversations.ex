@@ -25,6 +25,7 @@ defmodule CodeMySpec.Conversations do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Conversations.Checkpoint
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
@@ -892,9 +893,22 @@ defmodule CodeMySpec.Conversations do
         }
       )
 
+    # The agent's checkout comes along because it is what tells two rows apart.
+    #
+    # The row's second line used to be `session_external_id`, which read
+    # `pi:<path>` and carried the path by accident. Keying the conversation on
+    # the agent emptied that column for every agent thread, so the line rendered
+    # blank — the page lost the one fact that distinguishes three copies of the
+    # same project, which is the complaint (18f50c87) that put the path in the
+    # key to begin with.
+    #
+    # A left join, because a Claude Code lane has an external id and no agent
+    # row, and still needs its line.
     from(c in Conversation,
       left_join: n in subquery(counts),
       on: n.conversation_id == c.id,
+      left_join: a in Agent,
+      on: a.id == c.agent_id,
       where: c.account_id == ^scope.active_account_id and c.project_id == ^project_id,
       where: c.type == :agent,
       where: not is_nil(c.agent_id) or not is_nil(c.session_external_id),
@@ -902,7 +916,9 @@ defmodule CodeMySpec.Conversations do
       select: %{
         conversation: c,
         message_count: coalesce(n.count, 0),
-        last_message_at: n.last_at
+        last_message_at: n.last_at,
+        working_copy: a.working_copy,
+        role: a.role
       }
     )
     |> Repo.all()
