@@ -176,25 +176,51 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   was present, correctly owned, and the right size — the box just could
   not use it, on a builder that had never needed to since the day its
   image was captured.
+
+  `gem list -i` is not enough of a check either, once it *was* the check —
+  it only asks RubyGems' own installed-spec registry whether a gem by that
+  name exists, never whether `require` actually succeeds. Both are
+  native-extension gems (`ed25519`, `bcrypt_pbkdf`), compiled fresh on every
+  ephemeral builder — a transient resource hiccup during that compile can
+  leave a gem RubyGems considers "installed" with no working `.so` behind
+  it. Confirmed live against broken_oaths: the very same fingerprint
+  problem this fix already resolved once still recurred on a later
+  attempt, on a builder where `gem list -i ed25519` would have reported
+  true — so the check now shells out to the same `require` kamal itself
+  needs to succeed, not a proxy for it. `--force` on the install: without
+  it, a retry after a broken compile just finds RubyGems' spec already
+  satisfied and skips reinstalling, never actually attempting the compile
+  again. Retried up to 3 times for the same reason `trust_host/1` retries
+  its scan — a fresh compile on infrastructure that did not exist a moment
+  ago is exactly the kind of thing that fails on one attempt and succeeds
+  on the next with nothing else different.
   """
+  @ed25519_usable_check "ruby -e \"require 'ed25519'; require 'bcrypt_pbkdf'\" >/dev/null 2>&1"
+
   @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
           :ok | {:error, {non_neg_integer(), String.t()}}
   def ensure_kamal(run) do
-    case run.(["command -v kamal && gem list -i ed25519 && gem list -i bcrypt_pbkdf"]) do
+    case run.(["command -v kamal && #{@ed25519_usable_check}"]) do
       {_, 0} -> :ok
-      _ -> install_kamal(run)
+      _ -> install_kamal(run, 3)
     end
   end
 
-  defp install_kamal(run) do
+  defp install_kamal(run, attempts_left) do
     command =
       "apt-get update -qq && " <>
         "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
         "apt-get install -y -qq ruby-full build-essential >/dev/null && " <>
-        "gem install kamal ed25519 bcrypt_pbkdf --no-document --backtrace"
+        "gem install kamal ed25519 bcrypt_pbkdf --force --no-document --backtrace && " <>
+        @ed25519_usable_check
 
     case run.([command]) do
-      {_, 0} -> :ok
+      {_, 0} ->
+        :ok
+
+      {_output, _status} when attempts_left > 1 ->
+        install_kamal(run, attempts_left - 1)
+
       # Both ends, not just the tail: apt/needrestart bury their real
       # failure at the end, after everything that went fine, but a `gem`
       # crash is a Ruby exception — its own "ERROR: ..." line comes *before*
@@ -209,7 +235,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       # RubyGems only attaches the message consistently with this flag set;
       # without it, some failure paths print bare frames and let the
       # message go missing before anything downstream ever sees it.
-      {output, status} -> {:error, {status, output |> trim() |> Truncate.head_and_tail()}}
+      {output, status} ->
+        {:error, {status, output |> trim() |> Truncate.head_and_tail()}}
     end
   end
 

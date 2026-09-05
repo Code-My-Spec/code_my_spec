@@ -293,7 +293,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     test "does nothing when kamal is already on the box" do
       run =
         recorder(self(), %{
-          "command -v kamal && gem list -i ed25519 && gem list -i bcrypt_pbkdf" => {"true", 0}
+          "command -v kamal && ruby -e" => {"", 0}
         })
 
       assert :ok = Remote.ensure_kamal(run)
@@ -310,12 +310,15 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert_received {:ran, "command -v kamal" <> _}
       assert_received {:ran, command}
       assert command =~ "apt-get install -y -qq ruby-full build-essential"
-      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --no-document"
+      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --force --no-document"
       # Without it, RubyGems can print a bare backtrace on some failures and
       # never attach the exception's own message or class anywhere in the
       # output — confirmed live, a fully captured, untruncated failure from
       # this exact command had nothing in it but "from ..." frames.
       assert command =~ "--backtrace"
+      # Proof the install is actually re-verified, not trusted on exit code
+      # alone — the same check that decided kamal needed reinstalling.
+      assert command =~ "require 'ed25519'"
     end
 
     # Confirmed live against broken_oaths: `command -v kamal` alone reported
@@ -326,14 +329,53 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     # revisits an already-installed gem's dependencies. `command -v kamal`
     # being true proves nothing about whether `ed25519`/`bcrypt_pbkdf` are
     # actually there.
-    test "reinstalls when kamal is present but ed25519 never landed" do
-      run = recorder(self(), %{"gem list -i ed25519" => {"false", 1}})
+    test "reinstalls when kamal is present but the ed25519 require fails" do
+      run = recorder(self(), %{"command -v kamal && ruby -e" => {"", 1}})
 
       assert :ok = Remote.ensure_kamal(run)
 
       assert_received {:ran, "command -v kamal" <> _}
       assert_received {:ran, command}
-      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --no-document"
+      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --force --no-document"
+    end
+
+    # `gem list -i` only asks RubyGems' own spec registry, never whether
+    # `require` actually succeeds — a native-extension compile that RubyGems
+    # considers finished can still leave no working `.so` behind it.
+    # Confirmed live against broken_oaths: the exact same fingerprint problem
+    # this fix already resolved once recurred on a later, fresh builder,
+    # which `gem list -i ed25519` alone would have reported as fine.
+    test "retries the install when a first compile leaves ed25519 unusable" do
+      test_pid = self()
+      counter = :counters.new(1, [])
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+
+        cond do
+          String.starts_with?(command, "command -v kamal") ->
+            {"", 1}
+
+          String.starts_with?(command, "apt-get") ->
+            :counters.add(counter, 1, 1)
+            if :counters.get(counter, 1) < 2, do: {"broken .so", 1}, else: {"", 0}
+        end
+      end
+
+      assert :ok = Remote.ensure_kamal(run)
+      assert :counters.get(counter, 1) == 2
+    end
+
+    test "gives up after repeated compile failures rather than retrying forever" do
+      run = fn [command] ->
+        cond do
+          String.starts_with?(command, "command -v kamal") -> {"", 1}
+          String.starts_with?(command, "apt-get") -> {"mkmf.log: extconf failed", 1}
+        end
+      end
+
+      assert {:error, {1, output}} = Remote.ensure_kamal(run)
+      assert output =~ "extconf failed"
     end
 
     test "reports a real failure rather than proceeding without kamal" do
