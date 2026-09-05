@@ -111,8 +111,14 @@ defmodule CodeMySpec.Provisioning.Deploy do
       %{result | output: migrate_out, live_version: :new}
     else
       {:error, %Result{} = refused} ->
+        # `reason` names the phase and exit code but never the actual output —
+        # that's what the comment above `migrate/5` calls "collected but never
+        # logged." A refusal with no visible output is unactionable from
+        # web.log alone; the tail carries the real error, kamal's summary
+        # line is usually near the end.
         Logger.warning(
-          "[Deploy] #{environment} refused at #{refused.failed_phase}: #{refused.reason}"
+          "[Deploy] #{environment} refused at #{refused.failed_phase}: #{refused.reason} " <>
+            "output=#{inspect(String.slice(refused.output || "", -1000, 1000))}"
         )
 
         refused
