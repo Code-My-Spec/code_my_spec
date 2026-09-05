@@ -68,18 +68,10 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
         {:ok, context}
       end
 
-      then_ "and the progress is there when I next open it", context do
-        html =
-          context.live
-          |> element(~s([data-test="panel-tab-activity"]))
-          |> render_click()
-
-        assert html =~ "finished three criteria",
-               "the progress was not recorded anywhere, so not raising a badge for it " <>
-                 "means losing it entirely"
-
-        {:ok, context}
-      end
+      # John, on redesigning this panel: it is working copies, their agents,
+      # and a question-waiting indicator now — not a feed. Ambient progress
+      # like this has nowhere to render inline any more; the badge assertion
+      # above is what this criterion still owns.
     end
   end
 end

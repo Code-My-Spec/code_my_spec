@@ -1416,35 +1416,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # them has a question waiting. Clicking an agent with a chat goes straight
   # to its transcript; that is the whole "fast way".
   defp panel_body(%{which: :activity} = assigns) do
-    # A question is not always an agent this project has a row for — this
-    # tool can be called from any session, tracked or not, and the tree can
-    # only badge the ones it can actually match to a conversation. The rest
-    # still have to be visible, or answering one means already knowing it
-    # exists.
-    matched =
-      for copy <- assigns.copies,
-          a <- copy.agents,
-          a.question?,
-          into: MapSet.new(),
-          do: a.chat.conversation.session_external_id
-
     assigns =
       assigns
       |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
       |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
-      |> assign(
-        :unmatched,
-        Enum.reject(assigns.waiting, &MapSet.member?(matched, &1.session_external_id))
-      )
 
     ~H"""
     <div class="space-y-3">
-      <p
-        :if={@copies == [] and @unmatched == [] and @activity == []}
-        data-test="team-empty"
-        class="opacity-70"
-      >
-        Nothing from the rest of the project yet.
+      <p :if={@copies == []} data-test="team-empty" class="opacity-70">
+        No working copies on this project yet.
       </p>
 
       <div :if={@copies != []} class="flex items-center justify-between gap-2 text-xs">
@@ -1466,20 +1446,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       </div>
 
       <div :for={copy <- @copies} data-test="team-copy" data-working-copy-id={copy.row.harness.id}>
+        <%!-- `heading`, not the raw `label` field: an unrenamed harness's
+        label is not blank, it is the auto-generated "the harness at <root>
+        on <host>" sentence — `WorkingCopies.display_name/1` is what
+        recognizes that shape and shortens it to the root's last segment,
+        the same function the working-copy Show page titles itself with. A
+        harness someone actually renamed passes straight through unchanged. --%>
         <div class="flex items-center gap-1.5 text-xs font-medium">
           <.icon
             :if={copy.row.harness.main}
             name="hero-star-solid"
             class="size-3 shrink-0 text-primary"
           />
-          <span :if={copy.row.harness.label} class="min-w-0 flex-1 truncate">
-            {copy.row.harness.label}
-          </span>
-          <.path_tail
-            :if={!copy.row.harness.label}
-            path={copy.row.harness.root}
-            class="min-w-0 flex-1"
-          />
+          <span class="min-w-0 flex-1 truncate">{copy.row.heading}</span>
           <span class="shrink-0 opacity-60">{copy.row.liveness.label}</span>
         </div>
 
@@ -1514,28 +1493,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
           <span class="shrink-0">{a.liveness.label}</span>
         </div>
-      </div>
-
-      <%!-- Questions from a session this project has no agent row for —
-      criterion 2953's "another working copy" can ask one without ever having
-      called `start_agent`. Same shape the tree uses for a matched one:
-      what's asked, and which copy it came from. --%>
-      <div :for={request <- @unmatched} data-test="team-copy" class="space-y-1">
-        <p data-test="activity-source" class="text-xs font-medium text-warning">
-          <.icon name="hero-question-mark-circle-solid" class="size-3 shrink-0" />
-          {request.session_external_id || "another working copy"}
-        </p>
-        <p :for={question <- request.questions} class="pl-4 text-xs">
-          {question["question"] || question[:question]}
-        </p>
-      </div>
-
-      <%!-- Ambient progress — never badges the tab (criterion 2954), but is
-      not thrown away either: it is the record of what an agent said it did,
-      and losing it once you close the tab reads as a bug, not a feature. --%>
-      <div :for={entry <- @activity} class="space-y-0.5">
-        <p data-test="activity-source" class="text-xs opacity-60">{entry.source}</p>
-        <p class="pl-4 text-xs opacity-80">{entry.message}</p>
       </div>
     </div>
     """

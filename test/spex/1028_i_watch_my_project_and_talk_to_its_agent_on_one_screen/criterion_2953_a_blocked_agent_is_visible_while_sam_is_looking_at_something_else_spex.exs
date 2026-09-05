@@ -91,21 +91,12 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
         {:ok, context}
       end
 
-      then_ "and opening it shows the question and which copy asked", context do
-        html =
-          context.live
-          |> element(~s([data-test="panel-tab-activity"]))
-          |> render_click()
-
-        assert html =~ "Which deploy key should I use?",
-               "the activity tab does not show the question that was asked"
-
-        assert html =~ ~s(data-test="activity-source"),
-               "the question does not say which working copy asked it, so answering " <>
-                 "it means guessing who it is for"
-
-        {:ok, context}
-      end
+      # John, on redesigning this panel: it should show working copies and
+      # their agents, and an indicator on an agent with a question waiting —
+      # not the question's text inline. A question with nowhere to point (no
+      # tracked agent, as here — this scenario never calls `start_agent`) is
+      # explicitly out of scope: "that goes somewhere else." The attention
+      # badge above is what this criterion still owns.
     end
   end
 end
