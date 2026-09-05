@@ -1,6 +1,8 @@
 defmodule CodeMySpec.Provisioning.DeployTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Deploy.Result
@@ -108,6 +110,38 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert result.health_ok_at == nil
       assert result.swapped_at == nil
+    end
+
+    # Confirmed live against broken_oaths: a docker-login failure's actual
+    # error ("Error response from daemon: ... http: server gave HTTP
+    # response to HTTPS client") was logged as nothing but trailing
+    # "sending keepalive"/"queueing packet" lines three refusals in a row —
+    # kamal's ssh trace keeps emitting debug noise well past the real error,
+    # so a plain tail of the output cuts it off entirely once the trailing
+    # noise passes the tail window's size.
+    test "logs the error itself, not the ssh trace noise that follows it", %{env: env} = ctx do
+      path = Path.join(ctx.env.cwd, "noisy_deploy")
+      trailing_noise = String.duplicate("D, [x] DEBUG -- socket[848]: queueing packet\n", 40)
+
+      File.write!(path, """
+      #!/bin/sh
+      cat <<'EOF'
+      INFO [x] Running docker login 10.1.0.2:5000 on uat.example.com
+      ERROR (SSHKit::Command::Failed): docker exit status: 1
+      Error response from daemon: Get "https://10.1.0.2:5000/v2/": http: server gave HTTP response to HTTPS client
+      #{trailing_noise}
+      EOF
+      exit 1
+      """)
+
+      File.chmod!(path, 0o755)
+
+      log =
+        capture_log(fn ->
+          Deploy.run(env, "uat", deploy_script: path, host: "uat.example.com", probe: healthy())
+        end)
+
+      assert log =~ "http: server gave HTTP response to HTTPS client"
     end
   end
 

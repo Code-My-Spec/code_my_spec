@@ -114,14 +114,50 @@ defmodule CodeMySpec.Provisioning.Deploy do
         # `reason` names the phase and exit code but never the actual output —
         # that's what the comment above `migrate/5` calls "collected but never
         # logged." A refusal with no visible output is unactionable from
-        # web.log alone; the tail carries the real error, kamal's summary
-        # line is usually near the end.
+        # web.log alone.
+        #
+        # A blind tail is not enough: `bin/deploy`'s ssh trace keeps emitting
+        # keepalive/channel-close debug lines *after* the real error, so the
+        # last N bytes are noise and the error itself scrolls out of the
+        # window. Anchor on the error marker instead and read forward from
+        # there. Confirmed live against broken_oaths — three refusals in a
+        # row each logged nothing but trailing "sending keepalive"/
+        # "queueing packet" lines before this.
         Logger.warning(
           "[Deploy] #{environment} refused at #{refused.failed_phase}: #{refused.reason} " <>
-            "output=#{inspect(String.slice(refused.output || "", -1000, 1000))}"
+            "output=#{inspect(error_excerpt(refused.output))}"
         )
 
         refused
+    end
+  end
+
+  @error_markers ["ERROR (", "Error response from daemon", "error response from daemon"]
+
+  # Anchors on whichever known error marker appears LAST (the trace can retry
+  # internally, and an earlier attempt's marker is not the one that mattered),
+  # then reads forward from there rather than from the very end — the ssh
+  # trace keeps logging keepalives and channel-close lines well past the
+  # actual failure.
+  defp error_excerpt(output) when is_binary(output) do
+    case last_marker_index(output) do
+      nil -> String.slice(output, -1000, 1000)
+      index -> String.slice(output, index, 2000)
+    end
+  end
+
+  defp error_excerpt(_output), do: ""
+
+  defp last_marker_index(output) do
+    @error_markers
+    |> Enum.flat_map(fn marker ->
+      output
+      |> :binary.matches(marker)
+      |> Enum.map(fn {index, _length} -> index end)
+    end)
+    |> case do
+      [] -> nil
+      indexes -> Enum.max(indexes)
     end
   end
 
