@@ -66,6 +66,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   require Logger
 
   alias CmsHarness.Device
+  alias CmsHarness.Projects
 
   # Slower than `LaneReporter`'s 30s, deliberately. Lanes come and go inside a
   # single sitting and the page renders them live; a checkout is removed rarely,
@@ -133,6 +134,7 @@ defmodule CmsHarness.WorkingCopyReporter do
     case Device.announce(observations) do
       {:ok, %{working_copies: from_server}} ->
         say(observations, last)
+        serve(from_server)
         {observations, %{state | known: Map.merge(known, from_server), last: observations}}
 
       {:error, reason} ->
@@ -146,6 +148,57 @@ defmodule CmsHarness.WorkingCopyReporter do
         # `last` is deliberately not advanced. The report did not land, so the
         # next one that does is news even if it says the same thing.
         {observations, %{state | known: known}}
+    end
+  end
+
+  # Pick up the copies the server says this machine is carrying.
+  #
+  # Until this existed, a copy was adopted only by `Projects.ensure_started/1`
+  # on its **first hook request** — so a checkout became served when somebody
+  # opened a session in it, and never otherwise. That is fine for a person and
+  # wrong for everything else: a background agent makes no hook requests, and a
+  # worktree created *for* an agent has nobody sitting in it to make one.
+  #
+  # The consequence is a harness restart. Every rebuild restarts it, and every
+  # restart silently dropped every copy without a live session in its directory
+  # — the agents on them kept their `running` rows and became unreachable, and
+  # the only thing that ever said so was a message failing to deliver. Three
+  # times in one day on this machine, twice against an agent the owner was
+  # actively trying to talk to.
+  #
+  # The server already answers this. `Device.announce/1` replies with the copies
+  # this device holds, and the reporter has always merged them into `known` and
+  # used them for nothing else. Story 1014's criterion 2872 is called "A harness
+  # looks where the server tells it, not only where it has been" — this is that
+  # sentence applied to serving rather than only to reporting.
+  #
+  # Only roots that are on disk. A copy the server remembers and the machine no
+  # longer has is exactly what the missing-checkout report is for, and starting
+  # a subtree to watch a directory that is not there would turn a clean answer
+  # into a crash loop.
+  # Only when there is somewhere to put a subtree. `current_roots/0` above
+  # guards the same way and for the same reason: this reporter runs in trees
+  # that do not have the whole harness under them, and reporting is useful
+  # without serving. Without the guard the `GenServer.call` into a supervisor
+  # that is not there kills the reporter — so a machine that could still have
+  # said which of its checkouts had gone silent stops saying anything.
+  defp serve(from_server) do
+    case Process.whereis(CmsHarness.ProjectSupervisor) do
+      nil ->
+        :ok
+
+      _pid ->
+        for {_id, root} <- from_server, is_binary(root), File.dir?(root) do
+          case Projects.ensure_started(root) do
+            {:ok, _project} ->
+              :ok
+
+            {:error, reason} ->
+              Logger.debug("[CmsHarness] could not pick up #{root}: #{inspect(reason)}")
+          end
+        end
+
+        :ok
     end
   end
 
