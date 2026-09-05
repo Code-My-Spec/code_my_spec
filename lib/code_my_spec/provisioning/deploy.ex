@@ -522,6 +522,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
       deliver_ssh_key(opts) <>
       diagnose_key_on_builder(opts) <>
       diagnose_net_ssh_lookup(opts) <>
+      diagnose_real_ssh_connection(opts) <>
       "cd #{shell_quote(dir)} && " <>
       diagnose_net_ssh_lookup_in_project_dir(opts) <>
       "#{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
@@ -605,6 +606,42 @@ defmodule CodeMySpec.Provisioning.Deploy do
       _ ->
         ""
     end
+  end
+
+  # Every probe so far replicated a *piece* of the mechanism — the
+  # known_hosts lookup — never the full path: a real handshake negotiating
+  # a real host-key algorithm against a real presented key, verified by
+  # whatever `Net::SSH::Verifiers` class kamal's SSHKit backend actually
+  # selects. Two lookup-only probes, before and after `cd`, agreed with
+  # each other and both found the exact key kamal then rejected — proof the
+  # lookup works, not proof the comparison consuming its result does. This
+  # attempts the real thing: an actual `Net::SSH.start` against the same
+  # host with the same delivered key, bypassing kamal and SSHKit entirely.
+  # If bare net-ssh reproduces `HostKeyMismatch` on its own, the bug is
+  # confirmed inside net-ssh's verification path, independent of anything
+  # this codebase or kamal does. If it connects cleanly, something specific
+  # to kamal's or SSHKit's own connection setup is still unaccounted for —
+  # either answer narrows this for real, unlike a fourth lookup-only probe.
+  defp diagnose_real_ssh_connection(opts) do
+    case {Keyword.get(opts, :host), Keyword.get(opts, :ssh_key_path)} do
+      {host, path} when is_binary(host) and host != "" and is_binary(path) ->
+        "ruby -e #{shell_quote(net_ssh_real_probe_script(host, path))}; "
+
+      _ ->
+        ""
+    end
+  end
+
+  defp net_ssh_real_probe_script(host, key_path) do
+    "require 'net/ssh'; " <>
+      "begin; " <>
+      "Net::SSH.start(#{inspect(host)}, 'root', keys: [#{inspect(key_path)}], keys_only: true, " <>
+      "timeout: 10, non_interactive: true){|s| puts 'net_ssh_real_probe connected'}; " <>
+      "rescue Net::SSH::HostKeyMismatch => e; " <>
+      "puts \"net_ssh_real_probe HostKeyMismatch: \#{e.message}\"; " <>
+      "rescue => e; " <>
+      "puts \"net_ssh_real_probe \#{e.class}: \#{e.message}\"; " <>
+      "end"
   end
 
   # A first probe (`diagnose_net_ssh_lookup/1`) called this exact method with

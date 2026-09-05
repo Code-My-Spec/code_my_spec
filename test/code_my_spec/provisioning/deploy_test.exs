@@ -737,6 +737,48 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "expected the in-directory probe to run after cd, before the script"
     end
 
+    # Every prior probe replicated only the known_hosts *lookup* — never a
+    # real handshake negotiating a real host-key algorithm against a real
+    # presented key, verified by whatever `Net::SSH::Verifiers` class
+    # kamal's SSHKit backend actually selects. Two lookup-only probes
+    # agreed with each other and both found the exact key kamal then
+    # rejected, which proves the lookup works, not that the comparison
+    # consuming its result does. This attempts a real `Net::SSH.start`
+    # against the same host with the same delivered key, bypassing kamal
+    # and SSHKit entirely — reproducing `HostKeyMismatch` here would
+    # confirm the bug is inside net-ssh's own verification path.
+    test "attempts a real Net::SSH connection, bypassing kamal and SSHKit entirely",
+         %{env: env} do
+      test_pid = self()
+      {:ok, key_dir} = Briefly.create(directory: true)
+      key_path = Path.join(key_dir, "id_ed25519")
+      File.write!(key_path, "fake key bytes")
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        ssh_key_path: key_path,
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "Net::SSH.start(\"app.example.com\""
+      assert migrate_command =~ "keys_only: true"
+      assert migrate_command =~ "Net::SSH::HostKeyMismatch"
+      assert migrate_command =~ "net_ssh_real_probe"
+
+      assert Regex.match?(~r/net_ssh_probe.*net_ssh_real_probe.*cd '\/build'/, migrate_command),
+             "expected the real-connection probe after the lookup-only probe, before the script"
+    end
+
     # `CMS_SSH_KEY_PATH` travels as an env var — only ever a path. Kamal
     # reads it on the builder to make its own, second outbound ssh
     # connection to the app host, which needs the key's actual bytes to be
