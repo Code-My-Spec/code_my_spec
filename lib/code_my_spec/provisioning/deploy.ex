@@ -513,19 +513,28 @@ defmodule CodeMySpec.Provisioning.Deploy do
       |> Enum.map_join(" ", fn {name, value} -> "#{name}=#{shell_quote(value)}" end)
 
     dir = Keyword.get(opts, :remote_dir, ".")
-    delivery = deliver_ssh_key(opts)
-
-    # Temporary, no secret material: just whether opts[:ssh_key_path] is
-    # present here (delivery is "" when it is not) and which env var names
-    # made it into the export list.
-    Logger.warning(
-      "[Deploy] DEBUG remote_command — delivers_key=#{inspect(delivery != "")} " <>
-        "export_names=#{inspect(opts |> script_env() |> Enum.map(&elem(&1, 0)))}"
-    )
 
     trust_host(opts) <>
-      delivery <>
+      deliver_ssh_key(opts) <>
+      diagnose_key_on_builder(opts) <>
       "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
+  end
+
+  # Temporary: every piece of this tested clean in isolation from this
+  # machine (the account key authenticates directly with `IdentitiesOnly`,
+  # kamal's own `kamal config` correctly resolves `keys`/`keys_only` from
+  # `CMS_SSH_KEY_PATH` into `:ssh_options`, and the exact base64 round-trip
+  # `deliver_ssh_key/1` uses reproduces a byte-identical, working key file)
+  # — yet the live deploy still falls back to password on the builder
+  # itself, which none of that can observe. `ls -la` on the delivered
+  # path, on the builder, right before the script runs: no secret
+  # material, just whether the file landed and with what permissions,
+  # folded into this run's own output instead of guessed at again.
+  defp diagnose_key_on_builder(opts) do
+    case Keyword.get(opts, :ssh_key_path) do
+      path when is_binary(path) -> "ls -la #{shell_quote(path)}; "
+      _ -> ""
+    end
   end
 
   # `CMS_SSH_KEY_PATH` travels as an env var (`script_env/1`), which is only

@@ -590,8 +590,45 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              |> String.trim("'")
              |> Base.decode64!() == File.read!(key_path)
 
-      assert Regex.match?(~r/base64 -d > .* && chmod 600 .* && cd/, migrate_command),
+      assert Regex.match?(~r/base64 -d > .* && chmod 600 .*; cd/, migrate_command),
              "the key must be written before bin/deploy ever runs"
+    end
+
+    # Temporary: everything about key delivery tested clean in isolation
+    # (this exact base64 round-trip reproduces a byte-identical, working
+    # key file; the account key authenticates directly with
+    # `IdentitiesOnly`; kamal's own `kamal config` correctly resolves
+    # `keys`/`keys_only` from this same env var) — yet the live deploy
+    # still falls back to password on the builder itself, which none of
+    # that isolated testing can observe. This confirms the diagnostic
+    # actually lands in the command kamal receives, not what it reports.
+    test "reports the delivered key's own permissions on the builder, before the script runs",
+         %{env: env} do
+      test_pid = self()
+      {:ok, key_dir} = Briefly.create(directory: true)
+      key_path = Path.join(key_dir, "id_ed25519")
+      File.write!(key_path, "fake key bytes")
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        ssh_key_path: key_path,
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "ls -la #{shell_quote(key_path)}"
+
+      assert Regex.match?(~r/chmod 600 .*&& ls -la .*; cd/, migrate_command),
+             "expected the permissions check after delivery, before the script runs"
     end
 
     defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
