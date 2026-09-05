@@ -500,8 +500,10 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # a mismatch — the same failure host-key verification exists to catch,
     # self-inflicted by a builder image nobody ever expected to carry state.
     # Confirmed live against broken_oaths: identical HostKeyMismatch, same
-    # fingerprint, on every attempt, because nothing had ever cleared this
-    # builder-side entry.
+    # fingerprint, recurring even with a targeted `ssh-keygen -R` removal in
+    # place beforehand — the box is destroyed after this one build either
+    # way, so a full wipe is what actually earns trust here, not whatever
+    # survived from the image it booted from.
     test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
       test_pid = self()
 
@@ -520,15 +522,15 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert_receive {:ran, migrate_command}
 
-      assert migrate_command =~ "ssh-keygen -R 'app.example.com'",
-             "expected any stale entry baked into the builder's own image to be cleared first"
+      assert migrate_command =~ "rm -f ~/.ssh/known_hosts",
+             "expected the builder's own known_hosts wiped before it is trusted again"
       assert migrate_command =~ "ssh-keyscan -H 'app.example.com' >> ~/.ssh/known_hosts"
 
       assert Regex.match?(
-               ~r/ssh-keygen -R 'app\.example\.com'.*; ssh-keyscan.*; cd '\/build'/,
+               ~r/rm -f ~\/\.ssh\/known_hosts.*; ssh-keyscan.*; cd '\/build'/,
                migrate_command
              ),
-             "expected the stale entry cleared, then the host key seeded, before the script runs"
+             "expected known_hosts wiped, then the host key seeded, before the script runs"
     end
 
     test "does not try to seed a host it was never given", %{env: env} do
