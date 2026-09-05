@@ -102,18 +102,24 @@ let Hooks = {
     mounted() {
       this.panel = document.getElementById(this.el.dataset.target);
       this.min = 240;
-      this.max = 640;
 
       const saved = parseFloat(localStorage.getItem("cms:panelWidth"));
       if (!Number.isNaN(saved)) {
         document.documentElement.style.setProperty("--panels-width", `${saved}px`);
       }
 
+      // A fixed max (640px) read as "stuck at 30%" the moment the layout went
+      // full width — 640px is generous on a laptop and a sliver on a desk
+      // monitor. Computed fresh per drag instead, off the window at that
+      // moment, so it scales with whatever screen this actually is. 384px
+      // (the CSS side's own floor, `min-w-64`) is what stays for the
+      // transcript — enough to read a turn, not enough to disappear.
       this.onDown = (ev) => {
         ev.preventDefault();
         this.dragging = true;
         this.startX = ev.clientX;
         this.startWidth = this.panel.getBoundingClientRect().width;
+        this.max = Math.max(this.min, window.innerWidth - 384);
       };
       // The handle sits to the left of the panel, so dragging left (negative
       // clientX delta) is what widens it.

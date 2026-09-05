@@ -1096,9 +1096,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     ~H"""
     <%!-- Width comes from a CSS custom property `PanelResize` sets on `<html>`,
     not from a class, so a person's drag survives this div being re-rendered on
-    every turn. `min-w-*`/`max-w-*` bound it in CSS so a stale or absent
-    property (JS not yet loaded, or never touched) still renders sanely at the
-    default in the `var()` fallback. --%>
+    every turn. `min-w-64` bounds it in CSS so a stale or absent property (JS
+    not yet loaded, or never touched) still renders sanely at the default in
+    the `var()` fallback. The max is `calc(100vw-24rem)` rather than a fixed
+    token: a fixed `max-w-2xl` (672px) was the actual ceiling on a full-width
+    desk — "pull it all the way across" needs the cap to scale with the
+    screen, leaving only the transcript's own floor (24rem, matching the JS
+    hook's margin) off the top. --%>
     <%!-- `min-h-0`: without it this flex-row child refuses to shrink below the
     height its open panels want — a long story list or the preview iframe
     stretched it past the row's own height, and since nothing above it clips,
@@ -1108,7 +1112,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       id="conversation-panels"
       data-test="conversation-panels"
       style="width: var(--panels-width, 24rem)"
-      class="flex min-h-0 min-w-64 max-w-2xl shrink-0 flex-col gap-2 overflow-y-auto"
+      class="flex min-h-0 min-w-64 max-w-[calc(100vw-24rem)] shrink-0 flex-col gap-2 overflow-y-auto"
     >
       <div
         :for={{key, label} <- @tabs}
