@@ -2667,7 +2667,10 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)
       |> with_registry_credential_for_deploy(scope)
+      |> with_deploy_ssh(scope)
       |> Keyword.put(:environment_previously_deployed, previously_deployed?(scope, environment))
+
+    forget_stale_host_key(deploy_opts)
 
     Keyword.put(opts, :then, fn run, dir ->
       Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
