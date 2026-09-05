@@ -98,7 +98,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         # A script that is not executable fails with :enoent, which reads as
         # "the generator never wrote it" rather than "it wrote it without the
         # bit that lets it run".
-        for path <- written, String.starts_with?(path, "bin/") or String.contains?(path, "overlays/bin/") do
+        for path <- written,
+            String.starts_with?(path, "bin/") or String.contains?(path, "overlays/bin/") do
           Environments.cmd(env, "chmod", ["+x", path])
         end
 
@@ -152,7 +153,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"Dockerfile", dockerfile(app)},
       {".github/workflows/build.yml", ci_workflow(image)},
       {"config/deploy.yml", kamal_config(app, kamal_image, host, "prod", prod_registry)},
-      {"config/deploy.uat.yml", kamal_config(app, kamal_image, "uat.#{host}", "uat", uat_registry)},
+      {"config/deploy.uat.yml",
+       kamal_config(app, kamal_image, "uat.#{host}", "uat", uat_registry)},
       {".sops.yaml", sops_rules()},
       {"rel/overlays/bin/boot", boot_overlay(app)},
       {"rel/overlays/bin/migrate", migrate_overlay(app)},
@@ -360,12 +362,26 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   # with no CodeMySpec provisioning step setting this, still gets kamal's own
   # default (ambient agent) behavior instead of an empty `keys: []` doing
   # something kamal was never asked to test against.
+  # `log_level: debug`, guarded by the same condition as `keys_only` — a
+  # human running `bin/deploy` by hand gets kamal's own default (`:fatal`,
+  # near-silent) instead of Net::SSH's verbose auth trace. Added live
+  # against broken_oaths: `keys_only: true` demonstrably works in an
+  # isolated `Net::SSH.start` using the same delivered key and the same
+  # host (clean `AuthenticationFailed`, never a password prompt), yet
+  # kamal's own connection for the exact same host still fell through to
+  # an interactive password prompt and died `Errno::ENOTTY` — a real
+  # divergence between kamal's actual connection and a bare probe, the
+  # same shape of gap the host-key-mismatch bug turned out to hide in.
+  # `:fatal` swallows whatever Net::SSH itself logs about why publickey
+  # auth was abandoned before it ever prints; this is the only way to see
+  # it without instrumenting Net::SSH or SSHKit directly.
   defp kamal_ssh_block do
     """
     <% if ENV["CMS_SSH_KEY_PATH"] %>
     ssh:
       keys: ["<%= ENV["CMS_SSH_KEY_PATH"] %>"]
       keys_only: true
+      log_level: debug
     <% end %>
     """
   end

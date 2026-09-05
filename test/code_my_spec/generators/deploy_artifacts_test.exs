@@ -154,6 +154,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     # kamal itself resolved it.
     test "kamal constructs a doubled, broken repository when :image also carries the registry host" do
       opts = Keyword.merge(@opts, registry: "10.0.0.2:5000", image: "10.0.0.2:5000/acme/my_app")
+
       write_and_resolve(config("config/deploy.yml", opts), fn resolved ->
         assert resolved =~ ":repository: 10.0.0.2:5000/10.0.0.2:5000/acme/my_app"
       end)
@@ -241,6 +242,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
         assert body =~ ~s(<% if ENV["CMS_SSH_KEY_PATH"] %>), path
         assert body =~ ~s(keys: ["<%= ENV["CMS_SSH_KEY_PATH"] %>"]), path
         assert body =~ "keys_only: true", path
+        assert body =~ "log_level: debug", path
       end
     end
 
@@ -266,6 +268,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
 
       assert output =~ ":keys_only: true"
       assert output =~ ~s(- "/tmp/example_key")
+      assert output =~ ":log_level: debug"
     end
 
     test "kamal falls back to its own default ssh behavior when the env var is unset" do
@@ -426,7 +429,17 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       {_, 0} =
         System.cmd(
           "git",
-          ["-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "x"],
+          [
+            "-c",
+            "user.email=a@b.c",
+            "-c",
+            "user.name=a",
+            "commit",
+            "--allow-empty",
+            "-q",
+            "-m",
+            "x"
+          ],
           cd: tmp
         )
 
@@ -453,7 +466,17 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       {_, 0} =
         System.cmd(
           "git",
-          ["-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "x"],
+          [
+            "-c",
+            "user.email=a@b.c",
+            "-c",
+            "user.name=a",
+            "commit",
+            "--allow-empty",
+            "-q",
+            "-m",
+            "x"
+          ],
           cd: tmp
         )
 
@@ -478,7 +501,9 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       assert logged =~ "gh run list --commit #{head}"
       assert logged =~ "gh run watch --exit-status 999"
       assert logged =~ "kamal app exec --config-file config/deploy.yml --version #{head}"
-      assert logged =~ "kamal deploy --config-file config/deploy.yml --version #{head} --skip-push"
+
+      assert logged =~
+               "kamal deploy --config-file config/deploy.yml --version #{head} --skip-push"
 
       {branches, 0} = System.cmd("git", ["branch", "-a"], cd: bare)
       assert branches =~ "main" or branches =~ "master"
