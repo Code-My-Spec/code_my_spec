@@ -758,6 +758,34 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # deleting it outright needs no `sudo`; deleting rather than truncating
   # is enough since `File.readable?` on a missing file short-circuits to no
   # keys at all instead of an empty-but-present one.
+  # Confirmed root cause, after every other theory was individually ruled
+  # out live against broken_oaths (algorithm, working directory, net-ssh
+  # version, /etc/ssh/ssh_config, and a bare `Net::SSH.start` that verified
+  # cleanly with the exact same key): SSHKit — not net-ssh, not kamal's own
+  # config — ships its own known_hosts reader
+  # (`SSHKit::Backend::Netssh::KnownHostsKeys#keys_for`,
+  # `sshkit/backends/netssh/known_hosts.rb`), installed as `Net::SSH.start`'s
+  # `:known_hosts` option ahead of net-ssh's own `Net::SSH::KnownHosts`. For
+  # a *hashed* entry, that method loops the parsed hash lines and
+  # `return`s on the FIRST one whose HMAC matches the host — discarding
+  # every other key type at that host outright, rather than collecting all
+  # of them the way net-ssh's own `KnownHosts.search_for` does (confirmed
+  # correct by direct standalone probe). Multiple key types in the known
+  # hosts file for one host means only one of them ever reaches
+  # `Verifiers::Always#verify`, in file order — whichever `ssh-keyscan`
+  # happened to write first, which is not a guaranteed order. If the
+  # negotiated algorithm is not that one surviving type, verification
+  # compares a real, correct key against the wrong stored type and raises
+  # `HostKeyMismatch` — explaining both fingerprints seen tonight (ed25519,
+  # then rsa) being independently correct and independently rejected, and
+  # the pattern never repeating the same way twice.
+  #
+  # The fix scans and allows exactly one key type end to end: `ssh-keyscan
+  # -t rsa` writes exactly one hashed line, so there is nothing left for
+  # SSHKit's `return`-on-first-match to discard.
+  # `restrict_host_key_algorithms/1` narrows the algorithms Net::SSH will
+  # even negotiate to that same family, so what gets negotiated and what
+  # got scanned can never disagree.
   defp trust_host(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
@@ -766,7 +794,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
         "rm -f ~/.ssh/known_hosts ~/.ssh/known_hosts2 " <>
           "/etc/ssh/ssh_known_hosts /etc/ssh/ssh_known_hosts2; " <>
           "for i in 1 2 3; do " <>
-          "ssh-keyscan -T 10 -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null " <>
+          "ssh-keyscan -t rsa -T 10 -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null " <>
           "&& [ -s ~/.ssh/known_hosts ] && break; sleep 2; done; "
 
       _ ->
@@ -774,21 +802,24 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # Sidesteps a comparison bug rather than fixing it: confirmed live against
-  # broken_oaths, `ensure_kamal/1`'s ed25519/bcrypt_pbkdf install (needed for
-  # the delivered *client* auth key) has a side effect nothing asked for —
-  # `ssh-ed25519` also joins the *host key* algorithms Net::SSH will accept,
-  # and once the server negotiates it instead of rsa/ecdsa, verification
-  # fails even against a known_hosts entry proven correct: the reported
-  # fingerprint matched an independent scan byte-for-byte, all three
-  # algorithm types were present, and `Net::SSH::Verifiers::Always` still
-  # raised `HostKeyMismatch`. Every earlier attempt tonight, before that
-  # gem existed on the box, negotiated rsa/ecdsa and never once mismatched —
-  # this restricts the client back to that same known-good set rather than
-  # attempting to fix net-ssh's own key comparison, which is out of this
-  # codebase's control. Client-key auth is unaffected: ed25519 stays loaded
-  # for that; this line only narrows which algorithms the *server's host
-  # key* is allowed to use for this one connection.
+  # The other half of `trust_host/1`'s fix: forces the algorithm Net::SSH
+  # negotiates to be one `ssh-keyscan -t rsa` actually wrote a hashed entry
+  # for. SSHKit's own known_hosts reader
+  # (`SSHKit::Backend::Netssh::KnownHostsKeys#keys_for`) returns only the
+  # FIRST hashed line that matches a host, silently discarding every other
+  # key type stored for it — confirmed by reading `sshkit/backends/netssh/
+  # known_hosts.rb` directly, after net-ssh's own equivalent
+  # (`KnownHosts.search_for`, which correctly collects every type) checked
+  # out clean via a standalone probe against the identical file. With only
+  # one type ever written, there is nothing left for that bug to discard;
+  # restricting negotiation here to the matching family means what gets
+  # negotiated and what got scanned can never disagree. `rsa-sha2-512`/
+  # `rsa-sha2-256` are signature-algorithm variants of the same RSA key,
+  # not separate key types — net-ssh's own `matching?` (`transport/kex/
+  # abstract.rb`) explicitly treats a `ssh-rsa`-typed stored key as
+  # matching either, so including them costs nothing here. Client-key auth
+  # is unaffected — the delivered key stays ed25519; this only narrows
+  # which algorithm the *server's host key* is allowed to use.
   #
   # Written to `~/.ssh/config`, not passed as a kamal/Net::SSH option
   # directly: `Kamal::Configuration::Ssh#options` has no `:host_key` key at
@@ -802,7 +833,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # since net-ssh's own config parser is a plain comma-split with none of
   # OpenSSH's `+`/`-`/`^` modifier support; a negation prefix would be
   # read as one literal (and invalid) algorithm name.
-  @safe_host_key_algorithms "ssh-rsa,rsa-sha2-512,rsa-sha2-256,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521"
+  @safe_host_key_algorithms "ssh-rsa,rsa-sha2-512,rsa-sha2-256"
 
   defp restrict_host_key_algorithms(opts) do
     case Keyword.get(opts, :host) do

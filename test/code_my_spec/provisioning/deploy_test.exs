@@ -525,6 +525,15 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # every earlier user-file-only fix and is what actually explained the
     # mismatch recurring with the identical fingerprint every time rather
     # than flapping.
+    #
+    # `-t rsa` only, not every type the server offers: the actual root
+    # cause, found only after every other theory was ruled out live —
+    # SSHKit's own known_hosts reader (`KnownHostsKeys#keys_for`, not
+    # net-ssh's) returns just the first hashed line that matches a host,
+    # silently discarding every other key type stored for it. Multiple
+    # types in the file means only one — whichever `ssh-keyscan` happened
+    # to write first, an unguaranteed order — ever reaches verification.
+    # One scanned type leaves nothing for that bug to discard.
     test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
       test_pid = self()
 
@@ -547,7 +556,8 @@ defmodule CodeMySpec.Provisioning.DeployTest do
                "rm -f ~/.ssh/known_hosts ~/.ssh/known_hosts2 /etc/ssh/ssh_known_hosts /etc/ssh/ssh_known_hosts2",
              "expected both the builder's user AND global known_hosts wiped before it is trusted again"
 
-      assert migrate_command =~ "ssh-keyscan -T 10 -H 'app.example.com' >> ~/.ssh/known_hosts"
+      assert migrate_command =~
+               "ssh-keyscan -t rsa -T 10 -H 'app.example.com' >> ~/.ssh/known_hosts"
 
       assert migrate_command =~ "[ -s ~/.ssh/known_hosts ] && break",
              "expected a retry loop rather than trusting one scan attempt"
@@ -559,16 +569,17 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "expected known_hosts wiped, then the host key seeded, before the script runs"
     end
 
-    # `ensure_kamal/1`'s ed25519/bcrypt_pbkdf install was only ever meant to
-    # let the delivered *client* key authenticate — it has an unasked-for
-    # side effect of also letting Net::SSH negotiate ed25519 as the *host
-    # key* algorithm. Confirmed live against broken_oaths: once it did, host
-    # key verification failed against a known_hosts entry independently
-    # proven correct (identical fingerprint, all three types present) —
-    # every attempt before that gem existed on the box negotiated rsa/ecdsa
-    # and never once mismatched. Restricting back to that known-good set
-    # sidesteps whatever the comparison bug actually is, without touching
-    # the delivered client key (still ed25519) or any shared secret.
+    # Root cause confirmed by reading SSHKit's own known_hosts reader
+    # (`sshkit/backends/netssh/known_hosts.rb`): unlike net-ssh's own
+    # `KnownHosts.search_for`, which collects every key type stored for a
+    # host, SSHKit's `KnownHostsKeys#keys_for` returns only the first
+    # hashed line that matches — silently discarding the rest. Scanning
+    # (`trust_host/1`, `-t rsa`) and negotiating more than one type for the
+    # same host means only one of them, in an unguaranteed file order, ever
+    # reaches verification. Restricting negotiation to the one family that
+    # was actually scanned closes the gap SSHKit's bug would otherwise open
+    # back up, without touching the delivered client key (still ed25519)
+    # or any shared secret.
     test "restricts the host key algorithms Net::SSH will accept back to the known-good set",
          %{env: env} do
       test_pid = self()
