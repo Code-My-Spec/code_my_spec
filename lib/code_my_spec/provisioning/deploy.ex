@@ -516,7 +516,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
     dir = Keyword.get(opts, :remote_dir, ".")
 
-    trust_host(opts) <>
+    diagnose_system_ssh_config(opts) <>
+      trust_host(opts) <>
       restrict_host_key_algorithms(opts) <>
       deliver_ssh_key(opts) <>
       diagnose_key_on_builder(opts) <>
@@ -561,6 +562,23 @@ defmodule CodeMySpec.Provisioning.Deploy do
       _ ->
         ""
     end
+  end
+
+  # `~/.ssh/config` is ours to wipe and control (`restrict_host_key_algorithms/1`
+  # already does); `/etc/ssh/ssh_config` is not — it ships with the image and
+  # net-ssh reads it by default regardless (`Config.default_files` includes
+  # it alongside `~/.ssh/config`, confirmed in source). Worth seeing rather
+  # than assuming empty: net-ssh 7.3.2's `UserKnownHostsFile` handling did
+  # not split a space-separated multi-path value at all (fixed in 7.3.3,
+  # confirmed by diffing the two `config.rb` — the fix adds an explicit
+  # `.split(/\s+/)`), which on the pre-fix version turns Debian/Ubuntu's own
+  # stock `UserKnownHostsFile ~/.ssh/known_hosts ~/.ssh/known_hosts2` line
+  # into one garbled, nonexistent path — silently emptying `host_keys` for
+  # every file that directive would otherwise have covered. Whether that
+  # applies here depends entirely on which net-ssh actually loads, which is
+  # what the version line in each probe below is for.
+  defp diagnose_system_ssh_config(_opts) do
+    "grep -iE 'UserKnownHostsFile|HostKeyAlgorithms' /etc/ssh/ssh_config /etc/ssh_config 2>/dev/null; "
   end
 
   # Every theory about *which* key or algorithm is wrong has now been
@@ -616,6 +634,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
   defp net_ssh_probe_script(host, label) do
     "require 'net/ssh'; require 'socket'; " <>
+      "puts \"#{label} net_ssh_version=\#{Net::SSH::Version::STRING}\"; " <>
       "host=#{inspect(host)}; " <>
       "ip=(TCPSocket.new(host,22).remote_address.ip_address rescue nil); " <>
       "target=ip ? \"\#{host},\#{ip}\" : host; " <>

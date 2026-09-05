@@ -619,7 +619,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert_receive {:ran, migrate_command}
       refute migrate_command =~ "ssh-keyscan"
-      refute migrate_command =~ "HostKeyAlgorithms"
+      refute migrate_command =~ "printf"
       refute migrate_command =~ "net_ssh_probe"
     end
 
@@ -656,9 +656,45 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert migrate_command =~ "host=\"app.example.com\""
       assert migrate_command =~ "Net::SSH::KnownHosts.search_for(target)"
       assert migrate_command =~ "net_ssh_probe"
+      assert migrate_command =~ "Net::SSH::Version::STRING"
 
       assert Regex.match?(~r/HostKeyAlgorithms.*ruby -e.*cd '\/build'/, migrate_command),
              "expected the probe to run after the config is written, before the script runs"
+    end
+
+    # `~/.ssh/config` is ours to wipe and control; `/etc/ssh/ssh_config`
+    # ships with the image and net-ssh reads it by default regardless
+    # (`Config.default_files` includes it). Confirmed by diffing net-ssh
+    # 7.3.2 against 7.3.3: the older version's `UserKnownHostsFile` handling
+    # never split a space-separated multi-path value, which on Debian/
+    # Ubuntu's own stock `UserKnownHostsFile ~/.ssh/known_hosts
+    # ~/.ssh/known_hosts2` line turns into one garbled, nonexistent path —
+    # silently emptying `host_keys` regardless of what we write to the real
+    # file. Whether that applies live depends on which net-ssh actually
+    # loads, which is exactly what the version line in each probe answers.
+    test "checks the system ssh_config this codebase never writes, unconditionally", %{
+      env: env
+    } do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "UserKnownHostsFile|HostKeyAlgorithms"
+      assert migrate_command =~ "/etc/ssh/ssh_config"
+      assert String.starts_with?(migrate_command, "grep -iE")
     end
 
     # The first probe (above) found and correctly fingerprinted the exact
