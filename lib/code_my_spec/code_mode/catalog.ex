@@ -66,7 +66,27 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "show_in_panel" => "it puts something in front of a person, who is not watching a script",
     "run_script" =>
       "you are already in one — a script starting a script nests a VM inside a tool call",
-    "tool_docs" => "read the documentation before writing the script, not from inside it"
+    "tool_docs" => "read the documentation before writing the script, not from inside it",
+
+    # The spine. These are on `LocalServer` rather than `ScriptableTools`, so a
+    # script never had them bound — and absence alone is exactly the failure the
+    # comment above describes. Observed 2026-09-05: a main agent wrote
+    # `get_next_requirement()` inside `run_script` and got
+    # "attempt to call a nil value (global 'get_next_requirement')", which says
+    # nothing about where the tool actually is.
+    #
+    # They are excluded for a different reason from the ones above — not "a
+    # script must not do this" but "you already have it directly, and going
+    # through Lua to reach it buys nothing". The reason says so, because an
+    # agent told the wrong reason looks in the wrong place.
+    "get_next_requirement" =>
+      "it is one of the four tools you already have directly — call it as a tool",
+    "sync_project" =>
+      "it is one of the four tools you already have directly — call it as a tool",
+    "start_task" =>
+      "it is one of the four tools you already have directly — call it as a tool",
+    "evaluate_task" =>
+      "it is one of the four tools you already have directly — call it as a tool"
   }
 
   @type invoke :: (map() -> {:ok, term()} | {:error, String.t()})

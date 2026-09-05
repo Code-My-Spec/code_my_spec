@@ -301,11 +301,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             Nothing is running on this copy.
           </p>
 
+          <%!-- `data-agent-id` carries identity, not just role. "The same three
+          took the next epic" and "three agents are here" are different claims,
+          and only the first says a second epic cost nothing to staff — which is
+          the whole reason a copy's roster belongs to the copy rather than to the
+          work. Story 964's criterion 3090 cannot tell them apart without it. --%>
           <ul class="mt-4 space-y-2">
             <li
               :for={agent <- @row.agents}
               data-test="agent"
               data-role={agent.role}
+              data-agent-id={agent.id}
               data-engine={agent.engine}
               class="card card-compact border border-base-300 bg-base-100"
             >

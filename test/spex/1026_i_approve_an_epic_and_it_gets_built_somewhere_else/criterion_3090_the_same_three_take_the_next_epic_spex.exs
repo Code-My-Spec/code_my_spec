@@ -46,15 +46,23 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
   end
 
   defp agent_ids(html) do
-    ~r/data-test="agent-chip"[^>]*data-agent-id="([^"]+)"/
+    ~r/data-test="agent"[^>]*data-agent-id="([^"]+)"/
     |> Regex.scan(html)
     |> Enum.map(&List.last/1)
     |> Enum.sort()
   end
 
+  # The copy's own page. The index used to carry an agent chip per copy and no
+  # longer does — 5412e124 moved the roster to where a copy is shown, which is
+  # the right place for it: the index is a list of copies, not of agents.
   defp copies_page(context) do
+    {:ok, _live, epics} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
+
+    [_, copy_id] =
+      Regex.run(~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/, epics)
+
     {:ok, _live, html} =
-      live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+      live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies/#{copy_id}")
 
     html
   end

@@ -90,10 +90,16 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
       given_ "a working copy whose epic is finished", context do
         context = EpicHelpers.dispatch_one(context, "The war epic", stories: 1)
 
+        # The copy's own page. The index carried an agent chip per copy until
+        # 5412e124 moved the roster to where a copy is shown — the index is a
+        # list of copies, not of agents.
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/working-copies/#{epic_copy(context)}"
+          )
 
-        assert html =~ ~s(data-test="agent-chip"),
+        assert html =~ ~s(data-test="agent"),
                "the premise needs a copy with agents on it to discard. " <>
                  "Criterion 3087 fails first."
 
@@ -107,7 +113,10 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
       end
 
       then_ "its three agents stop", context do
-        refute context.html =~ ~s(data-test="agent-chip"),
+        # The discard returns the index, where the copy no longer appears at
+        # all — which is the stronger statement: not "its agents are hidden"
+        # but "the copy is gone".
+        refute context.html =~ ~s(data-test="agent"),
                "the copy is gone and its agents are still listed as running. An " <>
                  "agent that outlives its checkout is a model held open against a " <>
                  "directory that is not there."

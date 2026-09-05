@@ -50,10 +50,13 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
   defp epic_copy(context) do
     {:ok, _live, epics} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
 
-    [_, id] =
-      Regex.run(~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/, epics)
-
-    id
+    # The most recent placement, not the first. This scenario discards a copy and
+    # then approves another epic, so the page carries both — and the older one's
+    # copy is the one that was thrown away.
+    ~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/
+    |> Regex.scan(epics)
+    |> Enum.map(&List.last/1)
+    |> List.last()
   end
 
   # Through the confirm dialog, which is how a person discards a copy — the
@@ -94,8 +97,13 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
       when_ "I start the next one", context do
         context = EpicHelpers.dispatch_one(Map.delete(context, :copy_id), "The next epic", stories: 1)
 
+        # The new copy's own page — the roster lives where a copy is shown, not
+        # on the index (5412e124).
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/working-copies/#{epic_copy(context)}"
+          )
 
         {:ok, Map.put(context, :html, html)}
       end
