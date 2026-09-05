@@ -536,10 +536,26 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # net-ssh falls to password) — both in one command string, so it is
   # necessarily the same session that runs the script right after. No
   # secret material either way.
+  # The known_hosts key-type dump earns its place here rather than being
+  # guessed at blind: the ed25519/bcrypt_pbkdf fix (`Remote.ensure_kamal/1`)
+  # changes which host-key algorithm Net::SSH is even able to negotiate —
+  # `ssh-ed25519` only joins `KnownHosts::SUPPORTED_TYPE` once that gem
+  # loads, so a builder that previously always fell back to rsa/ecdsa can
+  # now negotiate ed25519 instead. Confirmed live against broken_oaths: a
+  # host-key mismatch recurred immediately after that fix landed, on a
+  # builder that had deployed clean moments earlier on the identical code —
+  # exactly what a keyscan that only ever captured a subset of the server's
+  # algorithms would produce once a *different* one gets negotiated. Printed
+  # types only, never key material, so this is safe to leave on rather than
+  # add and remove per incident.
   defp diagnose_key_on_builder(opts) do
     case Keyword.get(opts, :ssh_key_path) do
-      path when is_binary(path) -> "ls -la #{shell_quote(path)}; whoami; "
-      _ -> ""
+      path when is_binary(path) ->
+        "ls -la #{shell_quote(path)}; whoami; " <>
+          "awk '{print $2}' ~/.ssh/known_hosts 2>/dev/null; "
+
+      _ ->
+        ""
     end
   end
 

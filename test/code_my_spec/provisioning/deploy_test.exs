@@ -657,8 +657,9 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert migrate_command =~ "ls -la #{shell_quote(key_path)}"
       assert migrate_command =~ "whoami"
+      assert migrate_command =~ "awk '{print $2}' ~/.ssh/known_hosts"
 
-      assert Regex.match?(~r/chmod 600 .*&& ls -la .*; whoami; cd/, migrate_command),
+      assert Regex.match?(~r/chmod 600 .*&& ls -la .*; whoami; awk .*; cd/, migrate_command),
              "expected the permissions check after delivery, before the script runs"
     end
 
