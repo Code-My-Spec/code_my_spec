@@ -527,12 +527,16 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # `deliver_ssh_key/1` uses reproduces a byte-identical, working key file)
   # — yet the live deploy still falls back to password on the builder
   # itself, which none of that can observe. `ls -la` on the delivered
-  # path, on the builder, right before the script runs: no secret
-  # material, just whether the file landed and with what permissions,
-  # folded into this run's own output instead of guessed at again.
+  # path confirmed live: `root:root`, `600`. `whoami` right after answers
+  # the question that finding actually raises — whether the shell about to
+  # invoke `bin/deploy`/kamal is that same owner (fine) or a different one
+  # entirely (unreadable, `keys_only: true` then has nothing to offer and
+  # net-ssh falls to password) — both in one command string, so it is
+  # necessarily the same session that runs the script right after. No
+  # secret material either way.
   defp diagnose_key_on_builder(opts) do
     case Keyword.get(opts, :ssh_key_path) do
-      path when is_binary(path) -> "ls -la #{shell_quote(path)}; "
+      path when is_binary(path) -> "ls -la #{shell_quote(path)}; whoami; "
       _ -> ""
     end
   end
