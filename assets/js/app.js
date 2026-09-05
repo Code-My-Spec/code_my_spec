@@ -81,10 +81,30 @@ let Hooks = {
       // Once on mount, so the first paint is right rather than right after the
       // first resize. A phone that is never resized would otherwise sit in the
       // desktop layout for the whole session.
-      this.report();
+      //
+      // Confirmed and retried, not fired once and trusted: `pushEvent` here
+      // is a push into a channel that may not have finished joining yet —
+      // most reliably reproduced by a server restart, which drops every open
+      // tab's socket at once and makes every one of them reconnect and mount
+      // this hook within the same few seconds. A push made in that window
+      // that never lands leaves the page on the disconnected render's
+      // default (narrow) for the rest of the session, with nothing else
+      // ever prompting a second attempt on a desk nobody resizes.
+      this.acked = false;
+      this.attempts = 0;
+      this.reportUntilAcked();
+    },
+    reportUntilAcked() {
+      if (this.acked || this.attempts >= 5) return;
+      this.attempts += 1;
+      this.pushEvent("viewport", { width: window.innerWidth }, () => {
+        this.acked = true;
+      });
+      this.retryTimer = setTimeout(() => this.reportUntilAcked(), 300 * this.attempts);
     },
     destroyed() {
       this.query.removeEventListener("change", this.report);
+      clearTimeout(this.retryTimer);
     },
   },
   // A drag handle between the conversation and its side panel on a desk.
