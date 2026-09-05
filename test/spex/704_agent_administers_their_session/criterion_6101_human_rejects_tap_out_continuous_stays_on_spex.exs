@@ -78,8 +78,13 @@ defmodule CodeMySpecSpex.Story704.Criterion6101Spex do
         assert response["decision"] == "block",
                "expected stop to still block in continuous mode after tap-out rejection, got: #{inspect(response)}"
 
-        assert response["reason"] =~ "start_task",
-               "expected the continuation directive in the block reason, got: #{inspect(response)}"
+        # The loop's own offer of the way out is the tell that it is still
+        # running — and it is the one this criterion is actually about. This
+        # asserted `start_task` until 2026-09-05, when R3 stopped the hook
+        # resolving work on the agent's behalf; that string was a proxy for the
+        # embedded directive, not for continuous mode.
+        assert response["reason"] =~ "tap_out",
+               "expected the running loop to still offer the way out of itself, got: #{inspect(response)}"
 
         {:ok, context}
       end

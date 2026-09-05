@@ -86,8 +86,17 @@ defmodule CodeMySpecSpex.Story538.Criterion5115Spex do
         assert response["decision"] == "block",
                "expected continuous mode to keep the loop running after a passing manual eval, got: #{inspect(response)}"
 
-        assert response["reason"] =~ "start_task",
-               "expected the loop-continuation reason to embed a start_task directive, got: #{inspect(response)}"
+        # The loop names a class and a tool call; it does not pick. R3 changed
+        # on 2026-09-05 and this assertion was incidental to what the criterion
+        # is about — a manual checkpoint resuming the loop, not the shape of the
+        # directive it resumes with.
+        assert response["reason"] =~ "get_next_requirement",
+               "expected the loop to hand back the menu so the agent can choose, got: #{inspect(response)}"
+
+        refute response["reason"] =~ "start_task",
+               "the loop named a requirement to start. The hook stopped resolving " <>
+                 "work on the agent's behalf — it offers the call that opens the class " <>
+                 "and the agent decides. Got: #{inspect(response)}"
 
         {:ok, context}
       end

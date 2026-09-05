@@ -1,42 +1,51 @@
 defmodule CodeMySpecSpex.Story538.Criterion5113Spex do
   @moduledoc """
   Story 538 — LLM Agent Autonomous Task Execution
-  Criterion 5113 — When the embedded directive points to a sub-agent
-  task type, the agent spawns a sub-agent instead of calling
-  `start_task` directly.
+  Criterion 5113 — When `get_next_requirement` names a sub-agent task
+  type, the agent spawns a sub-agent instead of calling `start_task`
+  itself.
 
-  Covers Rule R3 sub-clause: "based on the result; the agent then
-  calls start_task itself (or delegates to a sub-agent) based on the
-  result."
+  Covers R5(c): "the main agent may spawn a sub-agent based on
+  `get_next_requirement`'s response, which resolves the session's live
+  sub-agents and says whether to message one that exists or spawn a new
+  one."
+
+  ## Where the directive moved, and why it had to
+
+  This used to read the spawn instruction out of the stop hook's block
+  reason, which embedded the graph's pick. R3 changed on 2026-09-05 —
+  the hook names a class and a tool call and resolves nothing on the
+  agent's behalf — so there is no embedded directive left to inspect.
+
+  That is the fix rather than the loss. The embed never carried
+  sub-agent information at all: the hook called
+  `format_next_requirements/1` with one argument, so `active_subagents`
+  defaulted to empty, and no rendered directive it produced could ever
+  have said "message the one that is already alive". Only
+  `GetNextRequirement` resolves them. So the criterion asserts the
+  same behaviour against the response that actually carries it.
 
   ## What this asserts
 
-  For a sub-agent task in the next-actionable wave, the rendered
-  directive in the stop hook block reason must instruct the main
-  agent to **spawn** the sub-agent — not append the generic
-  "call `start_task` with requirement_name=..." footer that would
-  invite the main agent to call start_task directly and bypass the
-  sub-agent.
-
-  The per-task `orchestrate/1` callbacks already produce the
-  "Spawn a @<agent> sub-agent to call start_task ..." text. The
-  mapper's job is to NOT muddy that directive with a competing
-  call-start_task hint.
+  The agent, having been sent to `get_next_requirement` by the menu,
+  gets a directive telling it to **spawn** a sub-agent — not the
+  generic "call `start_task` with requirement_name=..." footer that
+  would have it bypass the sub-agent and do the work itself.
 
   ## Setup
 
-  Use the parent-chain fixture (same pattern as 5904) to get
-  component child-phase requirements (`test_file`, sub-agent
-  execution_type) into the actionable frontier. With continuous mode
-  on, the stop hook returns a block whose reason embeds the rendered
-  directive — which we then inspect.
+  The parent-chain fixture (same pattern as 5904) puts component
+  child-phase requirements (`test_file`, sub-agent execution_type) on
+  the actionable frontier.
   """
 
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -98,38 +107,55 @@ defmodule CodeMySpecSpex.Story538.Criterion5113Spex do
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
-      when_ "the stop hook fires", context do
-        response =
+      when_ "it asks what is next, and later stops", context do
+        # Asking first, because that is the order an agent works in and because
+        # the loop's own emptiness check reads the requirements read model —
+        # which `get_next_requirement` is what populates. A stop fired before
+        # anything has computed the graph sees no work and ends the loop, so
+        # this ordering is the realistic one rather than a convenience.
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        stop =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
 
-        {:ok, Map.put(context, :response, response)}
+        {:ok, context |> Map.put(:stop, stop) |> Map.put(:next, inspect(next))}
       end
 
-      then_ "the block reason tells the main agent to spawn a sub-agent", context do
-        reason = context.response["reason"]
-
-        assert is_binary(reason),
-               "expected a reason string, got: #{inspect(context.response)}"
-
-        assert reason =~ "Spawn" or reason =~ "sub-agent",
-               "expected the directive to instruct spawning a sub-agent, got reason:\n#{reason}"
+      then_ "what it is told to do next is spawn a sub-agent", context do
+        assert context.next =~ "Spawn" or context.next =~ "sub-agent",
+               "expected the directive to instruct spawning a sub-agent, got:\n#{context.next}"
 
         {:ok, context}
       end
 
-      and_ "the block reason does NOT append the generic call-start_task footer",
+      and_ "the directive does NOT append the generic call-start_task footer",
            context do
-        reason = context.response["reason"]
+        # The "— call `start_task` with requirement_name=..." footer is the
+        # main-agent path. If it appears on a sub-agent requirement, the main
+        # agent does the work itself and the sub-agent never runs.
+        refute context.next =~ "— call `start_task` with requirement_name=",
+               "expected NO direct-start_task footer on a sub-agent directive, got:\n#{context.next}"
 
-        # The "— call `start_task` with requirement_name=..." footer
-        # is the main-agent path. If it appears here, the main agent
-        # would call start_task directly and bypass the sub-agent.
-        refute reason =~ "— call `start_task` with requirement_name=",
-               "expected NO direct-start_task footer on a sub-agent directive, got reason:\n#{reason}"
+        {:ok, context}
+      end
+
+      and_ "the stop that sent it there picked nothing itself", context do
+        reason = context.stop["reason"] || ""
+
+        assert reason =~ "get_next_requirement",
+               "the loop refused the stop without offering the call that opens the " <>
+                 "work. Got:\n#{reason}"
+
+        refute reason =~ "Spawn",
+               "the hook resolved the requirement on the agent's behalf again. R3 " <>
+                 "moved that decision to the agent, and the hook cannot make it well " <>
+                 "anyway — it renders without the session's live sub-agents, so its " <>
+                 "directive could never say which one to message. Got:\n#{reason}"
 
         {:ok, context}
       end

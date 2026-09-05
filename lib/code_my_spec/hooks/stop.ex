@@ -26,12 +26,11 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
@@ -685,6 +684,38 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
+  # The loop keeps the agent working; it does not tell it what to work on.
+  #
+  # This used to inline `format_next_requirements/1` — the graph's own pick,
+  # rendered as "the next assignment". John, 2026-09-05: *"I'm dubious our
+  # orchestrator will make better decisions than the model with the upcoming
+  # requirements and some reasoning."*
+  #
+  # That is the right way round. The graph ranks by topology and knows nothing
+  # about what this agent just learned finishing the last task, what is
+  # half-written on disk, or which of four equally actionable requirements is
+  # the one whose context is already loaded. The model has all of that, and
+  # `list_requirements` and `get_next_requirement` are one call away.
+  #
+  # It also ends a contradiction the loop shipped with:
+  # `StartImplementation.command/2` opens continuous mode with "Call
+  # `get_next_requirement` to find your next task", and every stop after that
+  # took the decision back.
+  #
+  # So the refusal is `Menu.render/2` — story 894's main menu, the same one
+  # every other refusal uses. That gets the class ordering right for free
+  # (problems before issues before requirements, criterion 2400) rather than
+  # sending an agent to `get_next_requirement` while findings are outstanding,
+  # which is what a hand-written directive here would have done.
+  #
+  # `actionable_count/1` rather than `next_actionable/1`, and the difference is
+  # not tidiness. `Menu`'s own comment records why: `next_actionable/1`
+  # recomputes on a cache miss and globs the working copy, and for a
+  # harness-served project the stop decision runs *inside the channel process*
+  # — so the process that would serve the glob is the one waiting on it. The
+  # read model answers the same question without touching the filesystem, and
+  # it is the count `Menu` is about to render, so the decision and the message
+  # can no longer disagree.
   defp maybe_continue_with_next_task(scope, session, req_id) do
     cond do
       is_nil(session) ->
@@ -698,25 +729,20 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       true ->
-        case RequirementGraph.next_actionable(scope) do
-          [_ | _] = nodes ->
+        case NodeRepository.actionable_count(scope) do
+          n when n > 0 ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
             )
 
-            directive = RequirementsMapper.format_next_requirements(nodes)
-
             %{
               "decision" => "block",
               "reason" =>
-                """
-                Task completed successfully. Continuing the autonomous loop with the next assignment:
-
-                #{directive}
-                """ <> Menu.tap_out_offer(true)
+                "Task completed successfully, and the loop is still running." <>
+                  Menu.render(scope, true)
             }
 
-          [] ->
+          0 ->
             Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
             notify_complete()
             terminus_retrospective()
