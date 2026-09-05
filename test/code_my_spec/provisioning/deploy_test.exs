@@ -492,10 +492,16 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert Result.swapped?(result)
     end
 
-    # The box `opts[:run]` reaches is single-use and freshly created, so its
-    # known_hosts is always empty — kamal's own outbound ssh to the deploy
-    # target would otherwise fail host-key verification on every single
-    # deploy, not just the first one on a persistent machine.
+    # `opts[:run]`'s box is *not* actually bare here — it boots from a
+    # prebuilt image, and whatever known_hosts held when that image was
+    # captured comes back on every builder booted from it since. An append
+    # alone would leave that stale entry sitting alongside a fresh, correct
+    # one, and Net::SSH treats two disagreeing records for the same host as
+    # a mismatch — the same failure host-key verification exists to catch,
+    # self-inflicted by a builder image nobody ever expected to carry state.
+    # Confirmed live against broken_oaths: identical HostKeyMismatch, same
+    # fingerprint, on every attempt, because nothing had ever cleared this
+    # builder-side entry.
     test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
       test_pid = self()
 
@@ -514,9 +520,15 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert_receive {:ran, migrate_command}
 
+      assert migrate_command =~ "ssh-keygen -R 'app.example.com'",
+             "expected any stale entry baked into the builder's own image to be cleared first"
       assert migrate_command =~ "ssh-keyscan -H 'app.example.com' >> ~/.ssh/known_hosts"
-      assert Regex.match?(~r/ssh-keyscan.*; cd '\/build'/, migrate_command),
-             "expected the host key to be seeded before the script runs"
+
+      assert Regex.match?(
+               ~r/ssh-keygen -R 'app\.example\.com'.*; ssh-keyscan.*; cd '\/build'/,
+               migrate_command
+             ),
+             "expected the stale entry cleared, then the host key seeded, before the script runs"
     end
 
     test "does not try to seed a host it was never given", %{env: env} do

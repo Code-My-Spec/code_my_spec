@@ -552,16 +552,27 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # skip host-key checking. `Remote.ssh_args/2` set `StrictHostKeyChecking=no`
   # for the *delivery* ssh (this process reaching the box `opts[:run]` targets),
   # which says nothing about a *second*, independent ssh client Kamal starts on
-  # the far end. `opts[:run]`'s box is single-use and freshly created, so its
-  # `known_hosts` is always empty on the first deploy — never accumulated, the
-  # way a developer's own machine would. Net::SSH reads the standard file by
-  # default, so seeding it once here is the whole fix; nothing about Kamal's
-  # own config needs to change to get the same effect the delivery connection
-  # already has.
+  # the far end. Net::SSH reads the standard file by default, so seeding it
+  # once here is most of the fix; nothing about Kamal's own config needs to
+  # change to get the same effect the delivery connection already has.
+  #
+  # `ssh-keygen -R` first, not just an append: `opts[:run]`'s box is *not*
+  # actually freshly bare here — it boots from a prebuilt image
+  # (`[Builder] ... is up (image ...)`), and whatever was in that image's own
+  # `known_hosts` when it was captured comes back on every single builder
+  # booted from it since. Appending a fresh scan on top of a stale, baked-in
+  # entry gives Net::SSH two disagreeing records for the same host, which
+  # reads as `HostKeyMismatch` even though the server's own key never
+  # changed. Confirmed live against broken_oaths: identical mismatch,
+  # identical fingerprint, on every attempt regardless of what else was
+  # fixed elsewhere in this same deploy, because nothing had ever cleared
+  # this builder-side entry.
   defp trust_host(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
-        "ssh-keyscan -H #{shell_quote(host)} >> ~/.ssh/known_hosts 2>/dev/null; "
+        quoted = shell_quote(host)
+        "ssh-keygen -R #{quoted} >/dev/null 2>&1; " <>
+          "ssh-keyscan -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null; "
 
       _ ->
         ""
