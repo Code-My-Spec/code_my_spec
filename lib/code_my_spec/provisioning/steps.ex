@@ -2672,13 +2672,18 @@ defmodule CodeMySpec.Provisioning.Steps do
     Keyword.put(opts, :then, fn run, dir ->
       key_path = Keyword.get(deploy_opts, :ssh_key_path)
 
-      Logger.debug(
+      # `Logger.debug` never appeared in web.log — this level is filtered
+      # out — so this is `warning`, matching every other "[Provisioning]"/
+      # "[Deploy]" line that actually shows up.
+      Logger.warning(
         "[Provisioning] DEBUG with_deploy_execution :then — ssh_key_path=#{inspect(key_path)} " <>
           "exists_locally=#{inspect(is_binary(key_path) and File.exists?(key_path))} " <>
           "env=#{inspect(Keyword.get(deploy_opts, :env))}"
       )
 
-      Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
+      result = Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
+      Logger.warning("[Provisioning] DEBUG with_deploy_execution result — #{inspect(result)}")
+      result
     end)
   end
 
