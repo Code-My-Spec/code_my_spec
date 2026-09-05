@@ -1112,7 +1112,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       id="conversation-panels"
       data-test="conversation-panels"
       style="width: var(--panels-width, 24rem)"
-      class="flex min-h-0 min-w-64 max-w-[calc(100vw-24rem)] shrink-0 flex-col gap-2 overflow-y-auto"
+      class="flex min-h-0 min-w-64 max-w-[calc(100vw-24rem)] shrink-0 flex-col gap-1 overflow-y-auto"
     >
       <%!-- Headers, bodies and split handles are siblings directly under this
       flex-col, not nested one-per-tab — a body's `flex-grow` only competes for
@@ -1122,14 +1122,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       column between them. --%>
       <%= for {{key, label}, index} <- Enum.with_index(@tabs) do %>
         <div data-test={"panel-#{key}"} data-panel-open={to_string(key in @open)} class="shrink-0">
+          <%!-- John: "very minimal panel styling... just a hairline with a
+          down arrow that expands the panel" — no card, no box, a divider and
+          a chevron. The chevron carries the state instead of the border that
+          used to: rotated open, flat closed. --%>
           <button
             type="button"
             data-test={"panel-tab-#{key}"}
             phx-click="toggle_panel"
             phx-value-panel={key}
-            class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
+            class="flex w-full items-center gap-1.5 border-b border-base-300 py-1.5 text-sm"
           >
-            {label}
+            <.icon
+              name="hero-chevron-right-micro"
+              class={[
+                "size-3.5 shrink-0 opacity-50 transition-transform",
+                key in @open && "rotate-90"
+              ]}
+            />
+            <span class="flex-1 text-left">{label}</span>
             <.panel_attention :if={key == :activity} waiting={@waiting} />
             <.panel_offer :if={key == :dynamic} offer={@offer} />
           </button>
@@ -1151,7 +1162,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           data-panel-key={key}
           phx-hook="PanelHeight"
           style={"flex-grow: var(--panel-grow-#{key}, 1); flex-shrink: var(--panel-grow-#{key}, 1); flex-basis: var(--panel-h-#{key}, 0%)"}
-          class="min-h-0 overflow-y-auto rounded-box border border-base-300 p-3 text-sm"
+          class="min-h-0 overflow-y-auto py-2 text-sm"
         >
           <.panel_body
             which={key}
