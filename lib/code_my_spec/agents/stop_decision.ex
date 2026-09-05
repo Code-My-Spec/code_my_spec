@@ -70,6 +70,16 @@ defmodule CodeMySpec.Agents.StopDecision do
       {nil, _key} ->
         :ok
 
+      # A continuation is not a repeat. R8 counts identical *blocks* — the same
+      # findings refusing the same agent turn after turn — and a loop handing
+      # back the menu after a turn that passed is the opposite of that: work got
+      # done. Feeding it through `stuck?/2` would count five successful turns as
+      # five identical failures and end the loop silently at the fifth, which is
+      # the one failure mode a loop must not have. The escape is `tap_out`,
+      # offered in the menu itself.
+      {message, :continuing} ->
+        send_to(scope, agent, message)
+
       {message, key} ->
         case stuck?(agent, key) do
           true -> :ok
@@ -131,10 +141,38 @@ defmodule CodeMySpec.Agents.StopDecision do
     # up again inside `Validation`, which has the id and would have to query for
     # what the caller is already holding.
     case Validation.validate_stop(scope, nil, agent_id: agent.id, agent_role: agent.role) do
-      {:error, reason, key} -> {reason <> Validation.Menu.render(scope), key}
-      {:ok, _result} -> {nil, nil}
+      {:error, reason, key} ->
+        {reason <> Validation.Menu.render(scope, agent.continuous == true), key}
+
+      {:ok, _result} ->
+        keep_working(scope, agent)
     end
   end
+
+  # Nothing is blocking. Whether the agent hears anything depends on the mode it
+  # is in, and that is the whole of story 538's R2 on this path: continuous is a
+  # mode on the agent, and it decides what to do with the answer to "is there
+  # work", never whether the question is asked.
+  #
+  # An agent not in the loop is told nothing, and that is not the same silence
+  # the hook keeps. The hook is already answering a request, so a sentence there
+  # is free; here a message *wakes a process* and costs it a turn. This module's
+  # own rule — an agent woken to be told its tree is clean has been charged for
+  # no information — outranks reporting, so R11's "say what is outstanding"
+  # belongs to the hook's response and not to a message nobody asked for.
+  #
+  # `Menu.render/2` answers `""` when no class is live, which is the loop's
+  # terminus: nothing left to do, nothing said, the agent stops. That is R6
+  # arriving for free rather than as a second emptiness check that could
+  # disagree with the first.
+  defp keep_working(%Scope{} = scope, %Agent{continuous: true} = _agent) do
+    case Validation.Menu.render(scope, true) do
+      "" -> {nil, nil}
+      menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
+    end
+  end
+
+  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
 
   defp stuck?(%Agent{} = agent, key) do
     slot = {__MODULE__, agent.id}

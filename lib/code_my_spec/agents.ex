@@ -498,6 +498,29 @@ defmodule CodeMySpec.Agents do
   # exist produces three lanes that cannot run and a copy that looks staffed.
   def ensure_copy_agents(%Scope{}, _copy), do: %{started: [], failed: [{:copy, :no_checkout}]}
 
+  @doc """
+  Put a working copy's agents into continuous mode, or take them out of it.
+
+  Story 538's R13: continuous mode is turned on and off deliberately. Until this
+  the only way in was working the `start_implementation` task and the only way
+  out was `tap_out` — so a mode governing whether agents keep running had no
+  front door and no switch, and every agent in the database sat at `false`
+  because nothing had ever put one anywhere else.
+
+  Per copy rather than per agent, because that is the unit somebody actually
+  decides about: a checkout is working, or it is not. The three roles on it keep
+  their own mode column so a later change can stop one of them without stopping
+  the others — R6 lets a coding agent go home when coding work runs out while
+  product carries on.
+
+  Stopped agents are left alone. Putting a mode on a process that is gone
+  records an intention nothing will act on, and it would come back to life
+  looking like a running loop the next time the row was read.
+  """
+  @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defdelegate set_copy_continuous(scope, copy_id, continuous?), to: AgentsRepository
+
   defp start_copy_agent(scope, copy_id, root, role) do
     with {:ok, provider, model} <- role_choice(scope, role) do
       start_agent(scope, %{

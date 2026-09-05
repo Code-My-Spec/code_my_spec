@@ -81,6 +81,7 @@ defmodule CodeMySpec.Agents.Agent do
           os_pid: integer() | nil,
           os_boot_id: String.t() | nil,
           status: atom() | nil,
+          continuous: boolean() | nil,
           working_copy_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -124,6 +125,19 @@ defmodule CodeMySpec.Agents.Agent do
     field :os_pid, :integer
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting
+
+    # Whether this agent keeps working when its turn ends.
+    #
+    # Story 538's R2: a mode on the agent, not a property of the work. It
+    # decides what the stop hook does with the answer to "is there work of my
+    # role" — never whether that question gets asked, which is the conflation
+    # the rule was rewritten to end.
+    #
+    # False by default and entered deliberately. An agent staffed onto a working
+    # copy when an epic lands has not been asked to run a loop, and starting one
+    # on its behalf is the state `tap_out` exists to escape.
+    field :continuous, :boolean, default: false
+
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
 
@@ -156,6 +170,7 @@ defmodule CodeMySpec.Agents.Agent do
       :os_pid,
       :os_boot_id,
       :status,
+      :continuous,
       :working_copy_id,
       :project_id,
       :account_id

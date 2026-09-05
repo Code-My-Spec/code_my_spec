@@ -62,7 +62,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
     list_working_copies create_working_copy offboard_working_copy
-    assign_epic_to_working_copy
+    assign_epic_to_working_copy set_working_copy_loop
     link_criterion_to_rule start_three_amigos_session start_story_interview
     start_story_review get_story_gherkin show_story_requirements
     list_personas get_persona create_persona update_persona delete_persona

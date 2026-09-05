@@ -26,6 +26,37 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_agents(%Scope{}), do: []
 
   @doc """
+  Set continuous mode on every live agent of one working copy.
+
+  `update_all` rather than a changeset each: this is a mode being switched, not
+  a revision of what any agent is, and three rows moving together is the act
+  somebody performed. `updated_at` by hand because `update_all` does not touch
+  timestamps.
+
+  Stopped agents are excluded. A mode on a process that is gone records an
+  intention nothing can act on, and the row would read as a running loop the
+  next time somebody looked.
+  """
+  @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
+          {:ok, non_neg_integer()} | {:error, :no_project}
+  def set_copy_continuous(%Scope{active_project_id: project_id}, copy_id, continuous?)
+      when is_binary(project_id) and is_binary(copy_id) and is_boolean(continuous?) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {count, _} =
+      Agent
+      |> where(
+        [a],
+        a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.status != :stopped
+      )
+      |> Repo.update_all(set: [continuous: continuous?, updated_at: now])
+
+    {:ok, count}
+  end
+
+  def set_copy_continuous(%Scope{}, _copy_id, _continuous?), do: {:error, :no_project}
+
+  @doc """
   The agents this project believes are running.
 
   Separate from `list_agents/1` because "what is running" and "what has ever

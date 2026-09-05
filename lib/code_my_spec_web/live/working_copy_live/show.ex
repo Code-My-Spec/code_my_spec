@@ -131,6 +131,37 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
+  # Put the whole copy to work, or let it stop. Story 538's R13.
+  #
+  # Reads the current state off the rows rather than a toggle in assigns, so the
+  # control does what the page is showing even when something else moved it —
+  # `set_working_copy_loop` is the same switch reached from an agent.
+  #
+  # Re-loads afterwards for the reason `designate_main` does: the label, the
+  # state line and the button all read from the agents, and the page's copy of
+  # them is stale the moment this returns.
+  def handle_event("toggle_working", _params, socket) do
+    scope = socket.assigns.current_scope
+    working? = working?(socket.assigns.row.agents)
+
+    case Agents.set_copy_continuous(scope, socket.assigns.working_copy_id, not working?) do
+      {:ok, 0} ->
+        {:noreply, put_flash(socket, :error, "Nothing is running on this copy to put to work.")}
+
+      {:ok, _count} ->
+        {:noreply, load(socket, socket.assigns.project)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That could not be changed. Try again.")}
+    end
+  end
+
+  # A copy is working when any of its agents is. Deliberately not "all": the
+  # roles are allowed to diverge — R6 lets a coding agent stop when coding work
+  # runs out while product carries on — and a page that only said "working" once
+  # every role agreed would go quiet exactly when the first one finished.
+  defp working?(agents), do: Enum.any?(agents, &(&1.continuous == true))
+
   # The chat is only an offer where there is something on the other end of it.
   #
   # What an agent started here can look at, in the words somebody would use.
@@ -295,7 +326,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         now: a lane's transcript, when it has one, sits inside its own card
         rather than in a lookup exercise further down the page. --%>
         <section class="mt-8">
-          <h2 class="text-lg font-semibold">Agents on this copy</h2>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold">Agents on this copy</h2>
+
+            <%!-- Story 538's R13. Continuous mode decides whether these agents
+            keep working when a turn ends, and until this it had no switch: the
+            only way in was an agent happening to work the start_implementation
+            task, and the only way out was tap_out, which asks a human. --%>
+            <div :if={@row.agents != []} class="flex items-center gap-2">
+              <span data-test="loop-state" class="text-xs opacity-70">
+                {if working?(@row.agents),
+                  do: "Working — each agent picks its own next task",
+                  else: "Idle — agents stop at the end of a turn"}
+              </span>
+              <.button
+                type="button"
+                phx-click="toggle_working"
+                data-test="toggle-working"
+                class="btn btn-sm"
+              >
+                {if working?(@row.agents), do: "Let them stop", else: "Put to work"}
+              </.button>
+            </div>
+          </div>
 
           <p :if={@row.agents == []} data-test="no-agents" class="py-10 text-center opacity-60">
             Nothing is running on this copy.
