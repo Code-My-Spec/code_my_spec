@@ -2667,21 +2667,17 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)
       |> with_registry_credential_for_deploy(scope)
-      |> with_deploy_ssh(scope)
       |> Keyword.put(:environment_previously_deployed, previously_deployed?(scope, environment))
 
-    # Immediately before the connection, not here — `with_deploy_execution/4`
-    # itself only *sets up* `:then`; the build this is called from
-    # (`build_on_builder/4`) can take minutes before `:then` is actually
-    # invoked. Calling `forget_stale_host_key/1` at setup time, as this
-    # first did, wiped the correct entry and then left known_hosts empty for
-    # the whole build — long enough for kamal's own first connection to
-    # TOFU-add a differently-keyed entry (hostname alone, not "host,ip"),
-    # which the *next* connection in the same deploy then mismatched against
-    # — the identical symptom, freshly self-inflicted, confirmed live against
-    # broken_oaths on the very next retry after this was first wired in.
     Keyword.put(opts, :then, fn run, dir ->
-      forget_stale_host_key(deploy_opts)
+      key_path = Keyword.get(deploy_opts, :ssh_key_path)
+
+      Logger.debug(
+        "[Provisioning] DEBUG with_deploy_execution :then — ssh_key_path=#{inspect(key_path)} " <>
+          "exists_locally=#{inspect(is_binary(key_path) and File.exists?(key_path))} " <>
+          "env=#{inspect(Keyword.get(deploy_opts, :env))}"
+      )
+
       Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
     end)
   end
