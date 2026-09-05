@@ -43,6 +43,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Users.Scope
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
@@ -177,8 +178,9 @@ defmodule CodeMySpec.Validation do
 
     opts = Keyword.put(opts, :already_running, already_running)
 
-    with :ok <- check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
-      {:ok, %{changed_files: changed_files, analysis: analysis}}
+    with {:ok, note} <-
+           check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
+      {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
     end
   end
 
@@ -209,8 +211,9 @@ defmodule CodeMySpec.Validation do
 
     opts = Keyword.put(opts, :already_running, already_running)
 
-    with :ok <- check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
-      {:ok, %{changed_files: changed_files, analysis: analysis}}
+    with {:ok, note} <-
+           check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
+      {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
     end
   end
 
@@ -1018,6 +1021,15 @@ defmodule CodeMySpec.Validation do
       # again enqueues one" is a claim about the world, and an untracked project
       # cannot support it — nothing would report a run either way.
       tracked?: Analysis.in_flight_state(scope) != :untracked,
+      # Whose story each spex finding belongs to.
+      #
+      # Rule 3 of story 895: a working copy surfaces every finding about it,
+      # regardless of assignment — loud everywhere, and the response says who
+      # owns it rather than hiding it. Nothing here demotes anything; the latch
+      # still decides what blocks. This only supplies the sentence that tells an
+      # agent whether the red spex it is holding is its own work, the shared
+      # backlog's, or another checkout's.
+      story_assignment: story_assignments(scope, blocking ++ advisory, scope_context),
       # Which harness to wait on, so "a rerun is in flight" can name a way to
       # wait for it rather than only telling the agent to stop again.
       #
@@ -1221,7 +1233,6 @@ defmodule CodeMySpec.Validation do
     is_binary(Keyword.get(opts, :agent_id)) and is_nil(Keyword.get(opts, :session_id))
   end
 
-
   defp active_blocking_sources(config) do
     configurable =
       for {source, {field, _scope_fn}} <- @configurable_sources,
@@ -1366,6 +1377,69 @@ defmodule CodeMySpec.Validation do
     |> MapSet.new()
   end
 
+  # `%{file_path => :mine | :unassigned | {:elsewhere, label}}` for spex
+  # findings whose story can be identified.
+  #
+  # Spex only, because it is the only source with a story behind it — a credo
+  # finding is about a file and has no owner in this sense. Paths that resolve
+  # to no story are absent rather than `:unassigned`: "nobody has claimed this
+  # story" and "this path is not a story's spex at all" are different facts, and
+  # reporting the second as the first would tell an agent a directory is
+  # unassigned work.
+  #
+  # The label is the destination checkout's, so the sentence can name where the
+  # work is rather than printing a uuid at somebody.
+  defp story_assignments(scope, problems, ctx) do
+    %{criterion_story_ids: by_path, story_ids_by_number: by_number} = ctx
+
+    paths =
+      for %{source: "spex", file_path: path} <- problems, is_binary(path), uniq: true, do: path
+
+    case paths do
+      [] ->
+        %{}
+
+      paths ->
+        assigned = Stories.list_story_working_copy_ids(scope)
+        mine = scope.active_working_copy_id
+        labels = copy_labels(assigned)
+
+        # A project nobody has assigned anything on gets no note at all.
+        #
+        # "This story is unassigned" is only worth saying where assignment is in
+        # use — everywhere else it is true of every story in the project and
+        # tells the reader nothing, while adding a paragraph to every stop. The
+        # axis lands empty and changes nothing, and that has to include the
+        # wording.
+        if assigned == %{} do
+          %{}
+        else
+          for path <- paths,
+              story_id = Map.get(by_path, path) || story_id_from_path(path, by_number),
+              not is_nil(story_id),
+              into: %{} do
+            case Map.get(assigned, story_id) do
+              nil -> {path, :unassigned}
+              ^mine -> {path, :mine}
+              other -> {path, {:elsewhere, Map.get(labels, other, other)}}
+            end
+          end
+        end
+    end
+  end
+
+  defp copy_labels(assigned) do
+    assigned
+    |> Map.values()
+    |> Enum.uniq()
+    |> Enum.reduce(%{}, fn id, acc ->
+      case WorkingCopies.fetch(id) do
+        {:ok, copy} -> Map.put(acc, id, copy.label || copy.root || id)
+        _ -> acc
+      end
+    end)
+  end
+
   defp apply_mode(_problems, :off, _scope_fn, _ctx), do: {[], []}
   defp apply_mode(problems, :block_all, _scope_fn, _ctx), do: {problems, []}
   defp apply_mode(problems, :dont_block, _scope_fn, _ctx), do: {[], problems}
@@ -1382,11 +1456,25 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], [], _stale, _opts), do: :ok
+  defp decide([], [], _stale, _opts), do: {:ok, nil}
 
-  defp decide([], advisory, _stale, _opts) do
+  # Nothing blocks, and something is still worth saying.
+  #
+  # Story 895's rule 3: a working copy surfaces every finding about it,
+  # regardless of assignment. An allowed stop used to say nothing at all, so a
+  # finding on another checkout's story — advisory, correctly, because its specs
+  # have never gone green — was invisible to the agent standing in the checkout
+  # where it failed. Invisible is the one thing the rule rules out; the point of
+  # assignment is that the finding is *reported* here and *refused* elsewhere.
+  #
+  # Only the assignment sentence, and only when there is one. A list of advisory
+  # findings on every allowed stop is the wallpaper failure `Analysis.Alert`
+  # already argues against — an agent that reads a paragraph it cannot act on
+  # learns to skip the paragraph.
+  defp decide([], advisory, _stale, opts) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
-    :ok
+
+    {:ok, Problems.advisory_assignment_note(advisory, Keyword.get(opts, :story_assignment, %{}))}
   end
 
   defp decide(blocking, advisory, stale_sources, opts) do

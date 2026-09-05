@@ -14,7 +14,6 @@ defmodule CodeMySpec.Epics.Epic do
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           status: atom() | nil,
-          working_copy_id: Ecto.UUID.t() | nil,
           failure_reason: String.t() | nil,
           dispatched_at: DateTime.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -35,14 +34,17 @@ defmodule CodeMySpec.Epics.Epic do
     field :description, :string
     field :account_id, Ecto.UUID
     field :status, Ecto.Enum, values: @statuses, default: :draft
-    # Where it went, recorded at dispatch rather than derived. Which copy an
-    # epic runs on is the agent's choice at that moment, and asking again later
-    # would answer with today's idle copy instead of the one holding the work.
-    field :working_copy_id, Ecto.UUID
     field :failure_reason, :string
     field :dispatched_at, :utc_datetime
 
     belongs_to :project, Project, type: :binary_id
+
+    # An epic does not record which checkout it is built on. The stories do.
+    #
+    # It had a `working_copy_id` until 2026-09-05 and nothing ever read it for
+    # routing: the requirement graph has no notion of an epic, so the column
+    # named a hand-off it could not perform. `EpicDispatch.place/3` writes the
+    # copy onto these stories instead, and `progress/1` reads it back off them.
     has_many :stories, Story
 
     timestamps(type: :utc_datetime)
@@ -60,7 +62,6 @@ defmodule CodeMySpec.Epics.Epic do
       :name,
       :description,
       :status,
-      :working_copy_id,
       :failure_reason,
       :dispatched_at
     ])

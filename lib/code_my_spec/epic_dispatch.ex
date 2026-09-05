@@ -113,10 +113,17 @@ defmodule CodeMySpec.EpicDispatch do
     result =
       save(scope, epic, %{
         status: :dispatched,
-        working_copy_id: copy && copy.id,
         dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
       })
 
+    # Placed and staffed together, both after the save.
+    #
+    # The placement itself lands on the stories, not here. An epic is a
+    # convenience for acting on several stories at once, and the graph is
+    # grained on stories — so a copy recorded on the epic named a routing
+    # nothing performed, which is why an agent asked to release an epic could
+    # find no step that did it. `place/3` is that write-through.
+    #
     # Staffed on placement, because a copy with an epic and nobody on it is the
     # state this story exists to stop producing. `EpicDispatch.dispatch/2` used
     # to set a status and return — grepping `:dispatched` found the LiveView,
@@ -130,6 +137,7 @@ defmodule CodeMySpec.EpicDispatch do
     # Idempotent by role, so a second epic onto the same copy starts nothing —
     # the three that are there are the ones that take it.
     with {:ok, _epic} <- result, %{} <- copy do
+      place(scope, epic.id, copy.id)
       Agents.ensure_copy_agents(scope, copy)
     end
 
@@ -210,12 +218,15 @@ defmodule CodeMySpec.EpicDispatch do
     main_id = scope |> WorkingCopies.main() |> then(&(&1 && &1.id))
 
     from(e in Epic,
-      where: e.project_id == ^project_id and not is_nil(e.working_copy_id),
+      join: s in Story,
+      on: s.epic_id == e.id,
+      where: e.project_id == ^project_id and not is_nil(s.working_copy_id),
       order_by: [desc_nulls_last: e.dispatched_at],
-      select: e.working_copy_id,
-      limit: 5
+      select: s.working_copy_id,
+      limit: 25
     )
     |> Repo.all()
+    |> Enum.uniq()
     |> Enum.reject(&(&1 == main_id))
     |> Enum.find_value(fn id ->
       case WorkingCopies.fetch(id) do
@@ -232,6 +243,41 @@ defmodule CodeMySpec.EpicDispatch do
   # built on your project's checkout" about a directory that does not exist.
   defp checkout(%{root: root} = copy) when is_binary(root) and root != "", do: copy
   defp checkout(_copy), do: nil
+
+  @doc """
+  Put an epic's stories on a checkout.
+
+  The write-through that makes assigning an epic mean anything. An epic has no
+  place in the requirement graph — nothing in `RequirementCalculator` or
+  `Predicates` mentions one — so the binding has to reach the grain the graph
+  actually reads, which is the story.
+
+  John: *"an epic is just basically a convenience measure to act on multiple
+  stories ... these assignments need to go into the story because that's how the
+  graph works, and that's what the graph should be grained on anyway."*
+
+  So this is the convenience, and `stories.working_copy_id` is the axis. Passing
+  `nil` returns the epic's stories to the shared backlog, which is what a
+  checkout being torn down should do to the work that was on it.
+
+  `update_all` rather than a changeset per story: assignment is routing and not
+  a revision of the story's content, and nine PaperTrail versions saying
+  "assigned" would bury the edits that are actually about the work. `updated_at`
+  is set by hand because `update_all` does not touch timestamps.
+  """
+  @spec place(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: {:ok, non_neg_integer()}
+  def place(%Scope{active_project_id: project_id}, epic_id, working_copy_id)
+      when is_binary(project_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {count, _} =
+      from(s in Story, where: s.epic_id == ^epic_id and s.project_id == ^project_id)
+      |> Repo.update_all(set: [working_copy_id: working_copy_id, updated_at: now])
+
+    {:ok, count}
+  end
+
+  def place(%Scope{}, _epic_id, _working_copy_id), do: {:ok, 0}
 
   @doc """
   Record a question a dispatched agent needs the user to answer.
@@ -289,20 +335,40 @@ defmodule CodeMySpec.EpicDispatch do
   """
   @spec progress(Scope.t()) :: %{epics: [map()], source: :record}
   def progress(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    # Where each epic went, read back off its stories. An epic no longer records
+    # a copy of its own, so this is derived — and it can now legitimately be
+    # several, because two stories of one epic on two checkouts is expressible
+    # in the new shape and was not in the old one. Reported as the first by id
+    # so the answer is stable; `working_copy_ids` carries the whole set for a
+    # caller that cares.
+    copies_by_epic =
+      from(s in Story,
+        where:
+          s.project_id == ^project_id and not is_nil(s.working_copy_id) and
+            not is_nil(s.epic_id),
+        distinct: true,
+        select: {s.epic_id, s.working_copy_id}
+      )
+      |> Repo.all()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
     epics =
       Epic
       |> where([e], e.project_id == ^project_id and e.status in [:dispatched, :failed])
       |> order_by([e], asc: e.dispatched_at)
       |> Repo.all()
-      |> Enum.map(
-        &%{
-          id: &1.id,
-          name: &1.name,
-          status: to_string(&1.status),
-          working_copy_id: &1.working_copy_id,
-          reason: &1.failure_reason
+      |> Enum.map(fn epic ->
+        ids = copies_by_epic |> Map.get(epic.id, []) |> Enum.sort()
+
+        %{
+          id: epic.id,
+          name: epic.name,
+          status: to_string(epic.status),
+          working_copy_id: List.first(ids),
+          working_copy_ids: ids,
+          reason: epic.failure_reason
         }
-      )
+      end)
 
     %{epics: epics, source: :record}
   end

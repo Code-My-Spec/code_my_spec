@@ -167,9 +167,26 @@ defmodule CodeMySpec.Requirements.Preloader do
     #
     # Parked stories stay reachable through the backlog tools, which query
     # Stories directly rather than going through the graph.
+    #
+    # The assignment gate, and the reason story 895 exists. A copy is offered
+    # its own stories and every unassigned one, and never another copy's:
+    # *"if a harness is assigned stories, it should get its assigned stories
+    # and all unassigned stories. Unassigned stories should surface to all
+    # working copies."*
+    #
+    # Assignment narrows the backlog and never hides it. A project with no
+    # assignments anywhere behaves exactly as it did before the column existed,
+    # which is what makes the axis shippable empty — and it fails the safe way:
+    # if unassigned work were invisible until claimed, a fresh project would
+    # offer nobody anything.
+    #
+    # `nil` is the UI path, which blends every checkout deliberately (see the
+    # clause above) and must not be narrowed to the unassigned pool — the page
+    # is showing the project, not standing in a checkout.
     stories =
       Story
       |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+      |> assigned_here_or_unassigned(working_copy_id)
       |> Repo.all()
 
     story_ids = Enum.map(stories, & &1.id)
@@ -262,6 +279,12 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   defp scope_to_harness(query, working_copy_id),
     do: where(query, [f], f.working_copy_id == ^working_copy_id)
+
+  defp assigned_here_or_unassigned(query, nil), do: query
+
+  defp assigned_here_or_unassigned(query, working_copy_id) do
+    where(query, [s], is_nil(s.working_copy_id) or s.working_copy_id == ^working_copy_id)
+  end
 
   defp rules_by_story(project_id) do
     Rule

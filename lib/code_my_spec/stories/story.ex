@@ -16,6 +16,7 @@ defmodule CodeMySpec.Stories.Story do
           specs_ready: boolean(),
           three_amigos_sealed: boolean(),
           epic_id: Ecto.UUID.t() | nil,
+          working_copy_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
           tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
@@ -141,6 +142,21 @@ defmodule CodeMySpec.Stories.Story do
     belongs_to :component, CodeMySpec.Components.Component, type: :binary_id
     belongs_to :epic, CodeMySpec.Epics.Epic, type: :binary_id
 
+    # Which checkout this story is built on, or nil for the shared backlog.
+    #
+    # The grain the requirement graph is already built on, which is the whole
+    # reason the binding is here rather than on the epic: nothing in
+    # `RequirementCalculator` or `Predicates` has any notion of an epic, so a
+    # copy recorded up there could never be consulted when deciding what an
+    # agent is offered.
+    #
+    # Null is a state, not an omission — it means every working copy, not none.
+    # John: *"if a harness is assigned stories, it should get its assigned
+    # stories and all unassigned stories."* Assignment narrows what a copy is
+    # refused for; it never narrows the backlog a copy can see, which is what
+    # lets the column sit empty and change nothing.
+    belongs_to :working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
+
     timestamps(type: :utc_datetime)
   end
 
@@ -162,6 +178,7 @@ defmodule CodeMySpec.Stories.Story do
       :project_id,
       :component_id,
       :epic_id,
+      :working_copy_id,
       :migrated_from_id,
       :number
     ])

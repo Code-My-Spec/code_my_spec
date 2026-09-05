@@ -256,6 +256,23 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
 
   defp ready_count(epic), do: Enum.count(epic_stories(epic), &(&1.ready_for_dev == true))
 
+  # Which checkout an epic is being built on, read off its stories.
+  #
+  # Derived rather than stored since 2026-09-05: the epic's own column was never
+  # consulted for routing, so it recorded a hand-off nothing performed. The
+  # binding is `stories.working_copy_id` now, and this reads it back.
+  #
+  # Several is a real answer here — two stories of one epic can sit on two
+  # checkouts, which the old shape could not express. The page says so rather
+  # than picking one and looking definite about it.
+  defp epic_working_copy_ids(epic) do
+    epic
+    |> epic_stories()
+    |> Enum.map(& &1.working_copy_id)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
   # Readiness control for one story on the board.
 
   # One component for both columns because the board previously gave the same
@@ -352,13 +369,16 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                     <p
                       :if={epic.status in [:dispatched, :failed]}
                       data-test="epic-working-copy"
-                      data-working-copy-id={epic.working_copy_id}
+                      data-working-copy-id={List.first(epic_working_copy_ids(epic))}
                       class="text-xs opacity-70"
                     >
-                      <%= if epic.working_copy_id do %>
-                        Being built on your project's checkout
-                      <% else %>
-                        Agreed, and waiting for a checkout to build it on
+                      <%= case epic_working_copy_ids(epic) do %>
+                        <% [] -> %>
+                          Agreed, and waiting for a checkout to build it on
+                        <% [_one] -> %>
+                          Being built on your project's checkout
+                        <% many -> %>
+                          Being built across {length(many)} checkouts
                       <% end %>
                     </p>
 

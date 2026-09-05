@@ -60,6 +60,13 @@ defmodule CodeMySpec.Stories do
   def list_specs_ready_story_ids(scope), do: impl().list_specs_ready_story_ids(scope)
 
   @doc """
+  `%{story_id => working_copy_id}` for stories assigned to a checkout.
+
+  Absent means unassigned — the shared backlog every working copy can see.
+  """
+  def list_story_working_copy_ids(scope), do: impl().list_story_working_copy_ids(scope)
+
+  @doc """
   `%{number => id}` for the project's stories — resolves a spex
   directory name back to the story that owns it.
   """

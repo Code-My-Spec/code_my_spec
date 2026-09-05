@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     component_line = component_line(story.component)
 
     summary = """
-    ## #{story.title} (ID: #{story.id})
+    ## #{story.title} (ID: #{story.id})#{number_line(story)}
 
     #{story.story || story.description || "No story"}#{notes_line}#{component_line}
 
@@ -65,6 +65,21 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   defp story_tags(%{tags: tags} = story) do
     if Ecto.assoc_loaded?(story.tags), do: tags, else: []
   end
+
+  # The durable number, beside the primary key.
+  #
+  # Both, because they are different things and each is load-bearing somewhere:
+  # every tool takes the id, and the spex directory a story's specs live in is
+  # `test/spex/<number>_<slug>/` — which `Parser.derive_story_number/1` reads
+  # back to decide whose story a failing spec belongs to.
+  #
+  # Nothing exposed the number until now, so an agent told to write spex for a
+  # story had no way to learn the one part of the path that identifies it, and
+  # a directory named from the id points the gate at a different story or at
+  # none. `story_id_from_path/2`'s own comment records that going wrong:
+  # `test/spex/811_…` derives 811, a real but unrelated story.
+  defp number_line(%{number: number}) when is_integer(number), do: " · story #{number}"
+  defp number_line(_story), do: ""
 
   defp notes_line(nil), do: ""
   defp notes_line(""), do: ""

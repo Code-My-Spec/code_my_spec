@@ -139,9 +139,20 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
     %{
       id: String.to_integer(id_str),
+      number: parse_number(text),
       title: title,
       criteria: parse_criteria(text)
     }
+  end
+
+  # The durable number, which is what names a story's spex directory. Separate
+  # from the id and not interchangeable with it — see `number_line/1` in
+  # `StoriesMapper`.
+  defp parse_number(text) do
+    case Regex.run(~r/·\s*story\s*(\d+)/, text) do
+      [_, number] -> String.to_integer(number)
+      nil -> nil
+    end
   end
 
   defp parse_criteria(text) do

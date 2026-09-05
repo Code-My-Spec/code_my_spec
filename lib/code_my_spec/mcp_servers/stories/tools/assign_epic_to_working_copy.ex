@@ -18,6 +18,23 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy do
   already has an issue of its own (28e838cc), where an epic reported it was
   being built on a directory that did not exist.
 
+  ## What it writes
+
+  The epic's **stories**, not the epic. An epic has no place in the requirement
+  graph — nothing in `RequirementCalculator` or `Predicates` mentions one — so a
+  copy recorded on the epic was never consulted when deciding what an agent is
+  offered. The column named a routing nothing performed, and an agent told to
+  release an epic looked for the step that would do it and found none.
+
+  The binding lives on `stories.working_copy_id`, which is the grain
+  `get_next_requirement` actually reads. John: *"an epic is just basically a
+  convenience measure to act on multiple stories ... these assignments need to
+  go into the story because that's how the graph works."*
+
+  So this stays one call and one act, and it now has an effect: the epic's
+  stories go to that checkout, its agents are offered them, and no other copy
+  is.
+
   ## What this does not do
 
   It does not start an agent. Assigning and starting are separate for the same
@@ -29,6 +46,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
@@ -47,12 +65,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, epic} <- fetch_epic(scope, params.epic_id),
          {:ok, copy} <- fetch_rooted_copy(scope, params.working_copy_id),
-         {:ok, updated} <- Epics.update_epic(scope, epic, %{working_copy_id: copy.id}) do
+         {:ok, placed} <- EpicDispatch.place(scope, epic.id, copy.id) do
       {:reply,
        Response.text(
          Response.tool(),
-         "\"#{updated.name}\" will be built on #{copy.root}. Nothing is running there yet " <>
-           "unless something already was — assigning is not starting."
+         "#{placed} #{story_word(placed)} of \"#{epic.name}\" will be built on #{copy.root}. " <>
+           "Agents there are offered them now, and no other checkout is. Nothing is running " <>
+           "yet unless something already was — assigning is not starting."
        ), frame}
     else
       {:error, :rootless} ->
@@ -70,6 +89,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy do
         {:reply, StoriesMapper.error(atom), frame}
     end
   end
+
+  defp story_word(1), do: "story"
+  defp story_word(_), do: "stories"
 
   defp fetch_epic(scope, epic_id) do
     case Epics.get_epic(scope, epic_id) do

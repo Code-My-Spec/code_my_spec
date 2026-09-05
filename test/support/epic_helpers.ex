@@ -90,6 +90,17 @@ defmodule CodeMySpecSpex.EpicHelpers do
   end
 
   @doc """
+  The stories `propose/3` made for an epic.
+
+  Already recorded — `dispatch_one/3` reads the same value into its context. This
+  exposes it to a criterion that places an epic without approving it, which is
+  the ordinary case now that placement writes through to the stories and the
+  assertion is about where they landed.
+  """
+  @spec story_ids(String.t()) :: [integer()]
+  def story_ids(epic_id), do: Process.get({__MODULE__, :story_ids, epic_id}, [])
+
+  @doc """
   An epic proposed and then agreed to, through the control on the epics screen.
 
   Answers the context with `:epic` added. Approval goes through the page because

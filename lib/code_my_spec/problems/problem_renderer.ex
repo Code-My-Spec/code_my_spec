@@ -232,11 +232,127 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       header <>
         blocking_section <>
         advisory_section <>
+        assignment_note(blocking, advisory, Keyword.get(opts, :story_assignment, %{})) <>
         stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) <>
         attribution_note(session_paths, internal?)
 
     enforce_total_cap(raw, blocking, advisory)
   end
+
+  @doc """
+  What an allowed stop says about findings that are not blocking it.
+
+  Nothing blocked, so there is no findings list to hang a sentence under — which
+  is exactly the gap. Story 895's rule 3 says a working copy surfaces every
+  finding about it regardless of assignment, and until this an allowed stop said
+  nothing at all: a red spex on another checkout's story is advisory here,
+  correctly, and the agent standing in the checkout where it failed never heard
+  of it.
+
+  So this names them, one line each, with whose story each one is. `nil` when
+  there is nothing to say, so the caller can send no message rather than an
+  empty one.
+
+  Only the ones with an owner to report. A finding whose story is this
+  checkout's own is left out — an agent does not need telling that its own work
+  is its own — and `Validation` supplies no assignments at all on a project
+  where nobody has assigned anything, so an ordinary project sees none of this.
+  That is the guard against the wallpaper failure `Analysis.Alert` argues
+  against: a paragraph on every stop that nobody can act on is one the model
+  learns to skip.
+  """
+  @spec advisory_assignment_note([Problem.t()], map()) :: String.t() | nil
+  def advisory_assignment_note(advisory, assignment) when map_size(assignment) > 0 do
+    lines =
+      advisory
+      |> Enum.filter(&is_binary(&1.file_path))
+      |> Enum.uniq_by(& &1.file_path)
+      |> Enum.flat_map(fn problem ->
+        case Map.get(assignment, problem.file_path) do
+          {:elsewhere, label} -> ["  - #{problem.file_path} — assigned to #{label}"]
+          :unassigned -> ["  - #{problem.file_path} — assigned to no checkout"]
+          _ -> []
+        end
+      end)
+      |> Enum.take(@per_source_list_cap)
+
+    case lines do
+      [] ->
+        nil
+
+      lines ->
+        "Not blocking this stop, and still true here:\n" <>
+          Enum.join(lines, "\n") <>
+          "\n\nThey failed in this working copy, which is why you are seeing them. " <>
+          "Work assigned to another checkout is that checkout's to fix; work assigned " <>
+          "to none is everybody's, including yours."
+    end
+  end
+
+  def advisory_assignment_note(_advisory, _assignment), do: nil
+
+  # Who owns the stories behind these spex findings.
+  #
+  # Story 895's third rule: a working copy surfaces every finding about it,
+  # regardless of assignment. Nothing is hidden and nothing is demoted — what
+  # changes is that the response says whose work each one is, so an agent
+  # holding a red spex can tell "mine", "nobody's, so mine too" and "another
+  # checkout's" apart. Before this they read identically, and the only available
+  # reading was the discouraging one.
+  #
+  # Deliberately not a blocking decision. `specs_ready` still decides that, and
+  # it is the right gate: the latch is earned by a green run, so a red spex on a
+  # latched story is a regression whoever is stopping should care about — story
+  # 895's own rule 4, and 983's "blocks any agent in the working copy". This
+  # paragraph is orientation, not an escape hatch.
+  #
+  # Covers blocking and advisory together, because the sentence an agent needs
+  # most is about a finding that did *not* block: "assigned elsewhere, listed
+  # here, not yours to fix" is exactly the case that used to read as being stuck
+  # behind somebody.
+  defp assignment_note(_blocking, _advisory, assignment) when map_size(assignment) == 0, do: ""
+
+  defp assignment_note(blocking, advisory, assignment) do
+    paths =
+      (blocking ++ advisory)
+      |> Enum.map(& &1.file_path)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    elsewhere =
+      for path <- paths, match?({:elsewhere, _}, Map.get(assignment, path)), uniq: true do
+        {:elsewhere, label} = Map.get(assignment, path)
+        label
+      end
+
+    unassigned = Enum.filter(paths, &(Map.get(assignment, &1) == :unassigned))
+
+    case {elsewhere, unassigned} do
+      {[], []} ->
+        ""
+
+      {[], some} ->
+        "\n\n#{length(some)} of these #{if length(some) == 1, do: "is", else: "are"} on " <>
+          "stories assigned to no checkout at all. Unassigned work belongs to every " <>
+          "working copy rather than to none, so #{if length(some) == 1, do: "it is", else: "they are"} " <>
+          "yours as much as anybody's."
+
+      {labels, []} ->
+        "\n\nSome of these belong to stories assigned to #{join_labels(labels)}. They are " <>
+          "listed here because this checkout is where they failed, not because they are " <>
+          "yours to fix."
+
+      {labels, some} ->
+        "\n\nSome of these belong to stories assigned to #{join_labels(labels)} — listed " <>
+          "here because this is where they failed, not because they are yours. " <>
+          "#{length(some)} other#{if length(some) == 1, do: "", else: "s"} sit on stories " <>
+          "assigned to no checkout at all, which makes them everybody's, including yours."
+    end
+  end
+
+  defp join_labels([one]), do: one
+  defp join_labels([a, b]), do: "#{a} and #{b}"
+  defp join_labels(many), do: Enum.join(many, ", ")
 
   # `runs` carries what the ledger says about each source — age, duration,
   # whether an edit landed inside the window, and why it never completed. One

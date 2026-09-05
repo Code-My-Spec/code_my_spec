@@ -43,6 +43,22 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
+  `%{story_id => working_copy_id}` for the project's assigned stories.
+
+  Only the assigned ones. A story missing from this map is in the shared
+  backlog, which is the common case and the one worth keeping cheap — carrying a
+  nil for every unassigned story would make the map the size of the project to
+  say nothing about almost all of it.
+  """
+  def list_story_working_copy_ids(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and not is_nil(s.working_copy_id))
+    |> select([s], {s.id, s.working_copy_id})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   `%{number => id}` for the project's stories.
 
   Resolves a spex directory name back to a story. `test/spex/<n>_<slug>/`

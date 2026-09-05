@@ -330,12 +330,33 @@ defmodule CodeMySpec.Hooks.Stop do
       {:error, reason, key} ->
         maybe_terminate_stuck(scope, session_id, reason, req_id, key)
 
-      {:ok, _result} ->
-        if pending_analysis?(scope),
-          do: pending_response(scope, session, req_id),
-          else: evaluate_and_decide(scope, session_id, session, req_id)
+      {:ok, result} ->
+        response =
+          if pending_analysis?(scope),
+            do: pending_response(scope, session, req_id),
+            else: evaluate_and_decide(scope, session_id, session, req_id)
+
+        note_assignment(response, result)
     end
   end
+
+  # What an allowed stop says about findings that are not its problem.
+  #
+  # Story 895's rule 3 — a working copy surfaces every finding about it,
+  # regardless of assignment. A red spex on another checkout's story is advisory
+  # here, correctly, and until this the stop that let it through said nothing at
+  # all about it. That is the half of the rule that is easy to lose: assignment
+  # decides whose stop a finding refuses, never whether anybody hears about it.
+  #
+  # Only on an allow. A block already carries the same sentence inside its
+  # reason, and saying it twice in one response is worse than saying it once.
+  defp note_assignment(%{"decision" => "block"} = response, _result), do: response
+
+  defp note_assignment(response, %{advisory_note: note}) when is_binary(note) do
+    Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
+  end
+
+  defp note_assignment(response, _result), do: response
 
   defp evaluate_and_decide(scope, session_id, session, req_id) do
     case maybe_evaluate(scope, session_id, session) do
@@ -531,7 +552,6 @@ defmodule CodeMySpec.Hooks.Stop do
 
     %{"decision" => "block", "reason" => capped_reason <> menu <> hint}
   end
-
 
   # R9 — every block-with-feedback reason carries a one-line affordance
   # pointing the agent at the framework-issue surface so harness friction
