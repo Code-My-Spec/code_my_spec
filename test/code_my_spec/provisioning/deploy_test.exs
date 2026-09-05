@@ -596,7 +596,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "the allow-list must not include the algorithm being sidestepped"
 
       assert Regex.match?(
-               ~r/done; rm -f ~\/\.ssh\/config; printf .*>> ~\/\.ssh\/config; cd '\/build'/,
+               ~r/done; rm -f ~\/\.ssh\/config; printf .*>> ~\/\.ssh\/config; .*cd '\/build'/,
                migrate_command
              ),
              "expected the algorithm restriction written after known_hosts, before the script runs"
@@ -620,6 +620,45 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert_receive {:ran, migrate_command}
       refute migrate_command =~ "ssh-keyscan"
       refute migrate_command =~ "HostKeyAlgorithms"
+      refute migrate_command =~ "net_ssh_probe"
+    end
+
+    # Two independently-confirmed-correct keys (ed25519, then rsa — each an
+    # exact fingerprint match to an outside scan) still raised
+    # `HostKeyMismatch` live against broken_oaths, ruling out an
+    # algorithm-specific cause. This calls `Net::SSH::KnownHosts.search_for/1`
+    # directly — the same method `Transport::Session#host_keys` calls
+    # internally — against the same "host,ip" string Net::SSH itself builds
+    # (`host_as_string`), so the next failure shows whether net-ssh's own
+    # lookup finds the key kamal cannot, rather than guessing at another
+    # kamal-specific explanation.
+    test "probes Net::SSH's own known_hosts lookup directly, ahead of kamal's real connection",
+         %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "ruby -e"
+      assert migrate_command =~ "net/ssh"
+      assert migrate_command =~ "host=\"app.example.com\""
+      assert migrate_command =~ "Net::SSH::KnownHosts.search_for(target)"
+      assert migrate_command =~ "net_ssh_probe"
+
+      assert Regex.match?(~r/HostKeyAlgorithms.*ruby -e.*cd '\/build'/, migrate_command),
+             "expected the probe to run after the config is written, before the script runs"
     end
 
     # `CMS_SSH_KEY_PATH` travels as an env var — only ever a path. Kamal

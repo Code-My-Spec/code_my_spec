@@ -520,6 +520,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
       restrict_host_key_algorithms(opts) <>
       deliver_ssh_key(opts) <>
       diagnose_key_on_builder(opts) <>
+      diagnose_net_ssh_lookup(opts) <>
       "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
   end
 
@@ -558,6 +559,43 @@ defmodule CodeMySpec.Provisioning.Deploy do
       _ ->
         ""
     end
+  end
+
+  # Every theory about *which* key or algorithm is wrong has now been
+  # individually confirmed correct and individually ruled out as the cause —
+  # ed25519 first, then rsa, both with an exact independent fingerprint
+  # match, both still raising `HostKeyMismatch`. That is no longer evidence
+  # for an algorithm-specific bug; it is evidence the comparison itself,
+  # inside Net::SSH, is not seeing what our own diagnostics see. Rather than
+  # theorize about kamal's specific invocation from the outside again, this
+  # calls `Net::SSH::KnownHosts.search_for/1` directly — the exact method
+  # `Transport::Session#host_keys` calls internally — against the exact
+  # "host,ip" string Net::SSH itself builds (`host_as_string`, confirmed by
+  # reading `transport/session.rb`) and the exact known_hosts state kamal is
+  # about to see. If this standalone call also fails to find a matching key,
+  # the bug is confirmed inside net-ssh's own lookup, independent of kamal
+  # entirely. If it succeeds, kamal's own process differs from this one in
+  # some way still worth finding — either answer is decisive, unlike another
+  # guess about which algorithm or which file.
+  defp diagnose_net_ssh_lookup(opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        "ruby -e #{shell_quote(net_ssh_probe_script(host))}; "
+
+      _ ->
+        ""
+    end
+  end
+
+  defp net_ssh_probe_script(host) do
+    "require 'net/ssh'; require 'socket'; " <>
+      "host=#{inspect(host)}; " <>
+      "ip=(TCPSocket.new(host,22).remote_address.ip_address rescue nil); " <>
+      "target=ip ? \"\#{host},\#{ip}\" : host; " <>
+      "keys=Net::SSH::KnownHosts.search_for(target); " <>
+      "puts \"net_ssh_probe target=\#{target} found=\#{keys.to_a.size}\"; " <>
+      "keys.each{|k| puts \"net_ssh_probe \#{k.ssh_type} " <>
+      "\#{(Net::SSH::Authentication::PubKeyFingerprint.fingerprint(k.to_blob) rescue 'fp-error')}\"}"
   end
 
   # `CMS_SSH_KEY_PATH` travels as an env var (`script_env/1`), which is only
