@@ -1133,12 +1133,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             phx-value-panel={key}
             class="flex w-full items-center gap-1.5 border-b border-base-300 py-1.5 text-sm"
           >
+            <%!-- `icon/1` declares `class` as `:string` — unlike a plain
+            element it does not accept the `[base, cond && extra]` list form,
+            so the conditional is folded into one string here instead. --%>
             <.icon
               name="hero-chevron-right-micro"
-              class={[
-                "size-3.5 shrink-0 opacity-50 transition-transform",
-                key in @open && "rotate-90"
-              ]}
+              class={
+                "size-3.5 shrink-0 opacity-50 transition-transform" <>
+                  if(key in @open, do: " rotate-90", else: "")
+              }
             />
             <span class="flex-1 text-left">{label}</span>
             <.panel_attention :if={key == :activity} waiting={@waiting} />
