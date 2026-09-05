@@ -147,6 +147,77 @@ let Hooks = {
       window.removeEventListener("pointerup", this.onUp);
     },
   },
+  // Restores a panel body's remembered height, if it has one, the moment it
+  // mounts — which is every time it opens, not just on page load. Lives on
+  // the body itself rather than on `PanelSplit` because a panel can be the
+  // only one open, with no handle anywhere to have restored it.
+  PanelHeight: {
+    mounted() {
+      const key = this.el.dataset.panelKey;
+      const saved = parseFloat(localStorage.getItem(`cms:panelHeight:${key}`));
+      if (!Number.isNaN(saved)) {
+        const root = document.documentElement.style;
+        root.setProperty(`--panel-grow-${key}`, "0");
+        root.setProperty(`--panel-h-${key}`, `${saved}px`);
+      }
+    },
+  },
+  // The handle between two adjacent open panels in the side column.
+  //
+  // Freezes exactly the two panels either side of it to a fixed pixel height
+  // (`flex: 0 0 <px>`) and leaves every other open panel exactly as flexible
+  // as it already was. A handle only ever touches its own pair — reaching
+  // into a third panel's size to keep some global total exact is the kind of
+  // arithmetic that looks tidy and then double-counts the one panel that was
+  // touched by two drags in a row.
+  PanelSplit: {
+    mounted() {
+      this.above = document.getElementById(this.el.dataset.above);
+      this.below = document.getElementById(this.el.dataset.below);
+      this.aboveKey = this.el.dataset.aboveKey;
+      this.belowKey = this.el.dataset.belowKey;
+      this.min = 80;
+
+      this.onDown = (ev) => {
+        ev.preventDefault();
+        this.dragging = true;
+        this.startY = ev.clientY;
+        this.startAboveH = this.above.getBoundingClientRect().height;
+        this.startBelowH = this.below.getBoundingClientRect().height;
+      };
+      this.onMove = (ev) => {
+        if (!this.dragging) return;
+        const total = this.startAboveH + this.startBelowH;
+        const aboveH = Math.min(
+          total - this.min,
+          Math.max(this.min, this.startAboveH + (ev.clientY - this.startY)),
+        );
+        const belowH = total - aboveH;
+        const root = document.documentElement.style;
+        root.setProperty(`--panel-grow-${this.aboveKey}`, "0");
+        root.setProperty(`--panel-h-${this.aboveKey}`, `${aboveH}px`);
+        root.setProperty(`--panel-grow-${this.belowKey}`, "0");
+        root.setProperty(`--panel-h-${this.belowKey}`, `${belowH}px`);
+      };
+      this.onUp = () => {
+        if (!this.dragging) return;
+        this.dragging = false;
+        const root = document.documentElement.style;
+        const aboveH = parseFloat(root.getPropertyValue(`--panel-h-${this.aboveKey}`));
+        const belowH = parseFloat(root.getPropertyValue(`--panel-h-${this.belowKey}`));
+        if (!Number.isNaN(aboveH)) localStorage.setItem(`cms:panelHeight:${this.aboveKey}`, aboveH);
+        if (!Number.isNaN(belowH)) localStorage.setItem(`cms:panelHeight:${this.belowKey}`, belowH);
+      };
+
+      this.el.addEventListener("pointerdown", this.onDown);
+      window.addEventListener("pointermove", this.onMove);
+      window.addEventListener("pointerup", this.onUp);
+    },
+    destroyed() {
+      window.removeEventListener("pointermove", this.onMove);
+      window.removeEventListener("pointerup", this.onUp);
+    },
+  },
   Copy: {
     mounted() {
       let { to } = this.el.dataset;

@@ -1114,24 +1114,45 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       style="width: var(--panels-width, 24rem)"
       class="flex min-h-0 min-w-64 max-w-[calc(100vw-24rem)] shrink-0 flex-col gap-2 overflow-y-auto"
     >
-      <div
-        :for={{key, label} <- @tabs}
-        data-test={"panel-#{key}"}
-        data-panel-open={to_string(key in @open)}
-      >
-        <button
-          type="button"
-          data-test={"panel-tab-#{key}"}
-          phx-click="toggle_panel"
-          phx-value-panel={key}
-          class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
-        >
-          {label}
-          <.panel_attention :if={key == :activity} waiting={@waiting} />
-          <.panel_offer :if={key == :dynamic} offer={@offer} />
-        </button>
+      <%!-- Headers, bodies and split handles are siblings directly under this
+      flex-col, not nested one-per-tab — a body's `flex-grow` only competes for
+      space against things sharing its own flex context, and a body nested
+      inside a per-tab wrapper div shares nothing with the next tab's body.
+      Flattening is what lets two adjacent open panels actually divide the
+      column between them. --%>
+      <%= for {{key, label}, index} <- Enum.with_index(@tabs) do %>
+        <div data-test={"panel-#{key}"} data-panel-open={to_string(key in @open)} class="shrink-0">
+          <button
+            type="button"
+            data-test={"panel-tab-#{key}"}
+            phx-click="toggle_panel"
+            phx-value-panel={key}
+            class="flex w-full items-center justify-between rounded-box border border-base-300 px-3 py-2 text-sm"
+          >
+            {label}
+            <.panel_attention :if={key == :activity} waiting={@waiting} />
+            <.panel_offer :if={key == :dynamic} offer={@offer} />
+          </button>
+        </div>
 
-        <div :if={key in @open} class="rounded-box border border-base-300 p-3 text-sm">
+        <%!-- `flex-grow`/`flex-shrink` and `flex-basis` are both driven off
+        one CSS var, `--panel-grow-<key>`, set on `<html>` for the same reason
+        `--panels-width` is: this div is server-rendered every turn, and a
+        drag's result written to its own `style` would be morphdom'd away on
+        the next patch. Unset, it is `1 1 0%` — the standard equal-share
+        recipe, so untouched open panels simply split the column evenly.
+        `PanelSplit` freezes exactly the two panels either side of a drag to
+        `0 0 <px>`; everything else stays flexible and absorbs what is left,
+        which is the ordinary way a split pane behaves once you have resized
+        part of it. --%>
+        <div
+          :if={key in @open}
+          id={"panel-body-#{key}"}
+          data-panel-key={key}
+          phx-hook="PanelHeight"
+          style={"flex-grow: var(--panel-grow-#{key}, 1); flex-shrink: var(--panel-grow-#{key}, 1); flex-basis: var(--panel-h-#{key}, 0%)"}
+          class="min-h-0 overflow-y-auto rounded-box border border-base-300 p-3 text-sm"
+        >
           <.panel_body
             which={key}
             dynamic_view={@dynamic_view}
@@ -1143,9 +1164,43 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             preview_state={@preview_state}
           />
         </div>
-      </div>
+
+        <div
+          :if={key in @open and next_panel_open?(@tabs, @open, index)}
+          id={"panel-split-#{key}"}
+          data-test={"panel-split-#{key}"}
+          phx-hook="PanelSplit"
+          data-above={"panel-body-#{key}"}
+          data-below={"panel-body-#{next_panel_key(@tabs, index)}"}
+          data-above-key={key}
+          data-below-key={next_panel_key(@tabs, index)}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize panel"
+          class="group flex h-3 shrink-0 cursor-row-resize select-none flex-col items-center justify-center"
+        >
+          <span class="h-0.5 w-full rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
+          </span>
+        </div>
+      <% end %>
     </div>
     """
+  end
+
+  # The pair a split handle sits between, both drawn from the fixed tab order
+  # rather than from `@open` — `@open` records toggle order, and a handle
+  # between "whichever opened most recently" would jump to a different visual
+  # spot every time someone opened a third panel.
+  defp next_panel_open?(tabs, open, index) do
+    case Enum.at(tabs, index + 1) do
+      {next_key, _label} -> next_key in open
+      nil -> false
+    end
+  end
+
+  defp next_panel_key(tabs, index) do
+    {key, _label} = Enum.at(tabs, index + 1)
+    key
   end
 
   # On the tab header, so a shut tab can still raise it. On a phone the other
