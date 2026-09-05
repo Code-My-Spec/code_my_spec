@@ -60,6 +60,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.ProjectTimeline
+  alias CodeMySpecWeb.WorkingCopyLive.Liveness
+  alias CodeMySpecWeb.WorkingCopyLive.Rows
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
@@ -128,7 +130,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # project's: two people looking at one project have two screens, and a
       # broadcast that reached both would move one its owner never touched.
       ScreenState.subscribe(scope)
+
+      # The team-status panel is a live view of every working copy on the
+      # project, same as `WorkingCopyLive.Index` — without this it only ever
+      # reflects whatever was true at the last navigation.
+      Agents.subscribe(scope)
     end
+
+    # Computed once and reused: `team_status/3` cross-references the same
+    # pending questions `@waiting` already carries rather than asking a
+    # second time.
+    waiting = waiting_for(scope, conversation)
 
     socket
     |> assign(:current_scope, scope)
@@ -140,7 +152,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
-    |> assign(:waiting, waiting_for(scope, conversation))
+    |> assign(:waiting, waiting)
+    |> assign(:copies, team_status(scope, project, waiting))
     # `assign_new`, because this is the screen's own state rather than the
     # conversation's. This function runs again on every PubSub update, and
     # `assign/3` here would slam a panel shut under someone's hand every time
@@ -560,6 +573,41 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp fit([], :narrow), do: []
   defp fit(open, :narrow), do: [if(:preview in open, do: :preview, else: hd(open))]
 
+  # Every working copy on the project, its agents, and which of them (if any)
+  # has a question waiting — the same data `WorkingCopyLive.Index` shows, cut
+  # down to what a founder actually opens this panel to answer: John, "we have
+  # a place to see what agents need us, and a really fast way to get to the
+  # conversation so we can answer the question."
+  #
+  # Built from `Rows.list/3` rather than duplicating it — a second reading of
+  # "what is a working copy" would drift from the page that already owns that
+  # question the moment either one changes.
+  defp team_status(scope, project, waiting) do
+    now = DateTime.utc_now()
+    pending_sessions = MapSet.new(waiting, & &1.session_external_id)
+
+    scope
+    |> Rows.list(project, now)
+    |> Enum.map(&copy_status(&1, now, pending_sessions))
+  end
+
+  defp copy_status(row, now, pending_sessions) do
+    agents =
+      Enum.map(row.agents, fn agent ->
+        chat = Enum.find(row.chats, &(&1.agent.id == agent.id))
+        session = chat && chat.conversation.session_external_id
+
+        %{
+          agent: agent,
+          chat: chat,
+          liveness: Liveness.agent(agent, now),
+          question?: not is_nil(session) and MapSet.member?(pending_sessions, session)
+        }
+      end)
+
+    %{row: row, agents: agents, question?: Enum.any?(agents, & &1.question?)}
+  end
+
   # What is waiting on this person anywhere on the project, minus what this
   # thread already shows inline. An agent in a worktree nobody is watching is
   # precisely the one whose question goes unnoticed.
@@ -728,15 +776,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   def handle_info({:notifications_changed}, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :waiting,
-       waiting_for(socket.assigns.current_scope, socket.assigns.conversation)
-     )}
+    {:noreply, refresh_team_status(socket)}
+  end
+
+  # The team-status panel's whole claim is "what is running, and who needs
+  # you, right now" — the same news `WorkingCopyLive.Index` redraws on.
+  def handle_info({event, _payload}, socket)
+      when event in [:agents_reported, :agent_started, :agent_stopped] do
+    {:noreply, refresh_team_status(socket)}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp refresh_team_status(socket) do
+    scope = socket.assigns.current_scope
+    waiting = waiting_for(scope, socket.assigns.conversation)
+
+    socket
+    |> assign(:waiting, waiting)
+    |> assign(:copies, team_status(scope, socket.assigns.project, waiting))
+  end
 
   # -- Render -----------------------------------------------------------------
 
@@ -793,6 +852,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          copies={@copies}
+          project_id={@project.id}
           preview_src={@preview_src}
           preview_state={@preview_state}
         />
@@ -994,6 +1055,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          copies={@copies}
+          project_id={@project.id}
           preview_src={@preview_src}
           preview_state={@preview_state}
         />
@@ -1021,6 +1084,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
+  attr :copies, :list, required: true
+  attr :project_id, :string, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
 
@@ -1082,6 +1147,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
+          copies={@copies}
+          project_id={@project_id}
           preview_src={@preview_src}
           preview_state={@preview_state}
         />
@@ -1174,6 +1241,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             dynamic_story={@dynamic_story}
             activity={@activity}
             waiting={@waiting}
+            copies={@copies}
+            project_id={@project_id}
             preview_src={@preview_src}
             preview_state={@preview_state}
           />
@@ -1250,6 +1319,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
+  attr :copies, :list, required: true
+  attr :project_id, :string, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
 
@@ -1338,27 +1409,138 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     """
   end
 
+  # John: "the most important thing that comes out of here is that we have a
+  # place to see what agents need us, and a really fast way to get to the
+  # conversation so we can answer the question." A tree, not a feed: every
+  # working copy, its agents, and — the one thing worth a color — which of
+  # them has a question waiting. Clicking an agent with a chat goes straight
+  # to its transcript; that is the whole "fast way".
   defp panel_body(%{which: :activity} = assigns) do
+    # A question is not always an agent this project has a row for — this
+    # tool can be called from any session, tracked or not, and the tree can
+    # only badge the ones it can actually match to a conversation. The rest
+    # still have to be visible, or answering one means already knowing it
+    # exists.
+    matched =
+      for copy <- assigns.copies,
+          a <- copy.agents,
+          a.question?,
+          into: MapSet.new(),
+          do: a.chat.conversation.session_external_id
+
+    assigns =
+      assigns
+      |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
+      |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
+      |> assign(
+        :unmatched,
+        Enum.reject(assigns.waiting, &MapSet.member?(matched, &1.session_external_id))
+      )
+
     ~H"""
-    <div>
-      <p :if={@waiting == [] and @activity == []} class="opacity-70">
+    <div class="space-y-3">
+      <p
+        :if={@copies == [] and @unmatched == [] and @activity == []}
+        data-test="team-empty"
+        class="opacity-70"
+      >
         Nothing from the rest of the project yet.
       </p>
 
-      <div :for={request <- @waiting} class="mb-3">
-        <p data-test="activity-source" class="text-xs opacity-60">
+      <div :if={@copies != []} class="flex items-center justify-between gap-2 text-xs">
+        <span class="opacity-60">
+          {@agent_total} {noun(@agent_total, "agent", "agents")} on {length(@copies)} {noun(
+            length(@copies),
+            "copy",
+            "copies"
+          )}
+        </span>
+        <span
+          :if={@needing_you > 0}
+          data-test="needs-you"
+          class="badge badge-warning badge-sm shrink-0 gap-1"
+        >
+          <.icon name="hero-question-mark-circle-solid" class="size-3" />
+          {@needing_you} {noun(@needing_you, "needs", "need")} you
+        </span>
+      </div>
+
+      <div :for={copy <- @copies} data-test="team-copy" data-working-copy-id={copy.row.harness.id}>
+        <div class="flex items-center gap-1.5 text-xs font-medium">
+          <.icon
+            :if={copy.row.harness.main}
+            name="hero-star-solid"
+            class="size-3 shrink-0 text-primary"
+          />
+          <span :if={copy.row.harness.label} class="min-w-0 flex-1 truncate">
+            {copy.row.harness.label}
+          </span>
+          <.path_tail
+            :if={!copy.row.harness.label}
+            path={copy.row.harness.root}
+            class="min-w-0 flex-1"
+          />
+          <span class="shrink-0 opacity-60">{copy.row.liveness.label}</span>
+        </div>
+
+        <.link
+          :for={a <- copy.agents}
+          :if={a.chat}
+          navigate={~p"/app/projects/#{@project_id}/agent-conversation/#{a.chat.conversation.id}"}
+          data-test="team-agent"
+          data-agent-id={a.agent.id}
+          data-question={to_string(a.question?)}
+          class={[
+            "flex items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
+            a.question? && "font-semibold text-warning"
+          ]}
+        >
+          <.icon
+            :if={a.question?}
+            name="hero-question-mark-circle-solid"
+            class="size-3.5 shrink-0"
+          />
+          <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+          <span class="shrink-0 opacity-60">{a.liveness.label}</span>
+        </.link>
+
+        <div
+          :for={a <- copy.agents}
+          :if={!a.chat}
+          data-test="team-agent"
+          data-agent-id={a.agent.id}
+          class="flex items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
+        >
+          <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+          <span class="shrink-0">{a.liveness.label}</span>
+        </div>
+      </div>
+
+      <%!-- Questions from a session this project has no agent row for —
+      criterion 2953's "another working copy" can ask one without ever having
+      called `start_agent`. Same shape the tree uses for a matched one:
+      what's asked, and which copy it came from. --%>
+      <div :for={request <- @unmatched} data-test="team-copy" class="space-y-1">
+        <p data-test="activity-source" class="text-xs font-medium text-warning">
+          <.icon name="hero-question-mark-circle-solid" class="size-3 shrink-0" />
           {request.session_external_id || "another working copy"}
         </p>
-        <p :for={question <- request.questions} class="text-sm">
+        <p :for={question <- request.questions} class="pl-4 text-xs">
           {question["question"] || question[:question]}
         </p>
       </div>
 
-      <div :for={entry <- @activity} class="mb-2">
+      <%!-- Ambient progress — never badges the tab (criterion 2954), but is
+      not thrown away either: it is the record of what an agent said it did,
+      and losing it once you close the tab reads as a bug, not a feature. --%>
+      <div :for={entry <- @activity} class="space-y-0.5">
         <p data-test="activity-source" class="text-xs opacity-60">{entry.source}</p>
-        <p class="text-sm opacity-80">{entry.message}</p>
+        <p class="pl-4 text-xs opacity-80">{entry.message}</p>
       </div>
     </div>
     """
   end
+
+  defp noun(1, singular, _plural), do: singular
+  defp noun(_n, _singular, plural), do: plural
 end
