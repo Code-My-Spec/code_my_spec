@@ -44,7 +44,32 @@ let Hooks = {
   // the agent takes a turn.
   StickToBottom: {
     mounted() {
+      this.wasAtBottom = true;
       this.pin();
+
+      // `updated()` only fires when *this element's own* rendered content
+      // changes — a new message. The page loading in the narrow layout and
+      // then switching to wide a moment later (the ordinary sequence: the
+      // `Viewport` hook's report is a round trip, so the first paint is
+      // always narrow) reflows this column's width and therefore its
+      // scrollHeight, with nothing in its messages having changed at all —
+      // LiveView never calls `updated()` for that, so the scroll position
+      // pinned for the narrow layout's height went stale the moment the wide
+      // one settled, and stayed wherever that left it. A panel opening next
+      // to the transcript on a desk, or a plain window resize, reflow it the
+      // same way. `ResizeObserver` catches all three; a content-only check
+      // does not.
+      this.observer = new ResizeObserver(() => {
+        if (this.wasAtBottom) this.pin();
+      });
+      this.observer.observe(this.el);
+
+      // Tracked continuously rather than only in `beforeUpdate`, so a resize
+      // that lands between two LiveView patches still reads whether the
+      // person had scrolled away in the meantime, instead of trusting
+      // whatever `beforeUpdate` last computed.
+      this.onScroll = () => this.checkAtBottom();
+      this.el.addEventListener("scroll", this.onScroll, { passive: true });
     },
     updated() {
       if (this.wasAtBottom) this.pin();
@@ -53,11 +78,18 @@ let Hooks = {
       this.el.scrollTop = this.el.scrollHeight;
       this.wasAtBottom = true;
     },
-    beforeUpdate() {
+    checkAtBottom() {
       // 32px of slack: "at the bottom" should survive a stray pixel from a
       // rounded height, or following stops working for reasons nobody can see.
       const { scrollTop, scrollHeight, clientHeight } = this.el;
       this.wasAtBottom = scrollHeight - (scrollTop + clientHeight) < 32;
+    },
+    beforeUpdate() {
+      this.checkAtBottom();
+    },
+    destroyed() {
+      this.observer?.disconnect();
+      this.el.removeEventListener("scroll", this.onScroll);
     },
   },
   // Tells the server how wide the screen is, because it cannot see one and the
