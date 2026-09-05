@@ -49,6 +49,7 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
     # different criterion.
     previous = Application.get_env(:code_my_spec, Credential)
     Application.put_env(:code_my_spec, Credential, platform_api_key: "sk-platform-2972")
+
     on_exit(fn ->
       case previous do
         nil -> Application.delete_env(:code_my_spec, Credential)
@@ -86,7 +87,14 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
       end
 
       then_ "an agent is already running in that copy", context do
-        assert context.html =~ ~s(data-test="agent-chip"),
+        # Not `data-test="agent-chip"` — the per-agent chip row on this page
+        # was dropped as redundant with the liveness line directly above it,
+        # which already says how many agents and what they're doing. "no
+        # agent reported on this copy" is the one basis string
+        # `Liveness.working_copy/2` returns when there is nothing there; every
+        # other state (Starting, Running, Last heard from) means an agent
+        # exists, which is the actual claim this criterion makes.
+        refute context.html =~ "no agent reported on this copy",
                "the copy shows no agent, so nothing was started in the one that was " <>
                  "just provisioned. The visitor has spent all of intake in a " <>
                  "conversation and now has to press a button to continue one. " <>
