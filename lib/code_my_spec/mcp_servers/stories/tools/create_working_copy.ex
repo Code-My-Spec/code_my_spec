@@ -37,8 +37,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   require Logger
 
   alias Anubis.Server.Response
-  alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Projects
   alias CodeMySpec.WorkingCopies
@@ -68,75 +66,19 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
     end
   end
 
+  # Delegated. The sequence — ask a machine, record what came back, staff it —
+  # lives in `WorkingCopies.mint/2` because it has a second caller with nothing
+  # else in common: `EpicDispatch` placing an epic that has nowhere to go. It
+  # could not live here, since `McpServers` depends on that context and not the
+  # other way round.
+  #
+  # What stays here is the part that is this tool's: turning the answer into
+  # something an agent can read.
   defp create(scope, params) do
-    # Only copies that are checkouts. A row is not one until it reports a root
-    # — `ensure_default/1` mints a rootless nil-object row — and a machine is
-    # only a candidate host if it actually holds the repository. Passing those
-    # ids on would ask a harness that is not there.
-    candidates =
-      scope
-      |> WorkingCopies.list_harnesses()
-      |> Enum.filter(&(is_binary(&1.root) and &1.root != ""))
-      |> Enum.map(& &1.id)
-
-    case Transport.impl().create_working_copy(candidates, request(scope, params), 60_000) do
-      {:ok, made} -> record(scope, made, params)
+    case WorkingCopies.mint(scope, label: params[:label], root: params[:root]) do
+      {:ok, copy, staffed} -> Response.tool() |> Response.text(report(copy, staffed))
       {:error, reason} -> Response.tool() |> Response.error(refusal(reason))
     end
-  end
-
-  # The identity travels *to* the harness rather than back from it, so the file
-  # on disk and the row in the database hold the same value rather than two
-  # derivations of it. The deploy key goes with it because a copy that cannot
-  # authenticate is a copy that never joins.
-  defp request(scope, params) do
-    %{
-      "project_id" => scope.active_project_id,
-      "working_copy_id" => Ecto.UUID.generate(),
-      "label" => params[:label],
-      "root" => params[:root],
-      "deploy_key" => deploy_key(scope)
-    }
-  end
-
-  defp deploy_key(scope) do
-    case Projects.ensure_deploy_key(scope, scope.active_project_id) do
-      {:ok, key} when is_binary(key) -> key
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
-
-  # Recorded only once the disk half came back, and staffed only once the record
-  # exists. A row without a root is not a checkout, and agents cannot start
-  # against one — `start_agent/2` answers `:unknown_working_copy`.
-  defp record(scope, %{root: root, working_copy_id: id}, params) do
-    with {:ok, copy} <-
-           WorkingCopies.issue(scope, id, root: root, label: params[:label], device: device(scope)),
-         {:ok, copy} <- WorkingCopies.report_root(copy, root) do
-      staffed = Agents.ensure_copy_agents(scope, copy)
-
-      Response.tool() |> Response.text(report(copy, staffed))
-    else
-      {:error, reason} ->
-        Logger.warning("[CreateWorkingCopy] made #{root} and could not record it: #{inspect(reason)}")
-
-        Response.tool()
-        |> Response.error(
-          "The checkout was made at #{root} and could not be recorded (#{inspect(reason)}), " <>
-            "so this project does not have a working copy there. Nothing is claiming to be one."
-        )
-    end
-  end
-
-  # The machine the host copy is on. A created copy is on the same filesystem as
-  # the checkout it was made beside, so it is on the same device — and recording
-  # that is what stops two machines' copies at one path being confused.
-  defp device(scope) do
-    scope
-    |> WorkingCopies.list_harnesses()
-    |> Enum.find_value(fn copy -> copy.device_id end)
   end
 
   defp report(copy, %{started: started, failed: []}) do

@@ -27,10 +27,13 @@ defmodule CodeMySpec.WorkingCopies do
   require Logger
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.WorkingCopies.WorkingCopy
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -1003,6 +1006,87 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
+  @doc """
+  Make a working copy for this project and staff it.
+
+  One act with two halves in two places: the harness makes the checkout on its
+  own disk and writes the identity into it, and this records the copy and starts
+  the agents that will work in it. The caller makes one call.
+
+  Here rather than in the MCP tool because it has two callers with nothing else
+  in common — an agent asking for somewhere to work, and `EpicDispatch` placing
+  an epic that has nowhere to go. A tool cannot be the home of that: `McpServers`
+  depends on this context and not the other way round, so `EpicDispatch` calling
+  the tool would be the dependency backwards.
+
+  Answers `{:ok, copy, staffed}` where `staffed` is `ensure_copy_agents/2`'s
+  report, so the caller can say which agents came up and which did not. A copy
+  that could not be staffed is still a copy: the checkout exists and the failure
+  belongs in front of somebody, not in a rollback.
+  """
+  @spec mint(Scope.t(), keyword()) ::
+          {:ok, WorkingCopy.t(), map()} | {:error, term()}
+  def mint(%Scope{active_project_id: project_id} = scope, opts \\ [])
+      when is_binary(project_id) do
+    # Only copies that are checkouts. A row is not one until it reports a root —
+    # `ensure_default/1` mints a rootless nil-object row — and a machine is only
+    # a candidate host if it actually holds the repository.
+    candidates =
+      scope
+      |> list_harnesses()
+      |> Enum.filter(&(is_binary(&1.root) and &1.root != ""))
+      |> Enum.map(& &1.id)
+
+    request = %{
+      "project_id" => project_id,
+      # The identity travels *to* the harness rather than back from it, so the
+      # file on disk and the row here hold one value rather than two derivations
+      # of it — the failure story 891 exists to end.
+      "working_copy_id" => Ecto.UUID.generate(),
+      "label" => opts[:label],
+      "root" => opts[:root],
+      # A copy that cannot authenticate is a copy that never joins, so the key
+      # goes with it. `ensure_deploy_key/2` mints one if the project has none —
+      # a new project does not get one at creation, and everything that must
+      # authenticate as the project has to ask for it first.
+      "deploy_key" => opts[:deploy_key] || deploy_key(scope)
+    }
+
+    with {:ok, %{root: root, working_copy_id: id}} <-
+           Transport.impl().create_working_copy(candidates, request, 60_000),
+         {:ok, copy} <- issue(scope, id, root: root, label: opts[:label], device: host_device(scope)),
+         {:ok, copy} <- report_root(copy, root) do
+      {:ok, copy, Agents.ensure_copy_agents(scope, copy)}
+    end
+  end
+
+  # `ensure_deploy_key/2` takes the project and answers the project, minting a
+  # key onto it if it has none — a new project does not get one at creation, and
+  # everything that must authenticate as the project has to ask first.
+  #
+  # `nil` when there is no project in scope to ask about, which the harness
+  # handles: the copy is written without a key and joins on whatever the machine
+  # already holds. Not rescued — an unexpected shape here should be loud, and
+  # the version this replaced swallowed a FunctionClauseError for a whole
+  # session.
+  defp deploy_key(%Scope{active_project: %Project{} = project} = scope) do
+    case Projects.ensure_deploy_key(scope, project) do
+      {:ok, %Project{deploy_key: key}} when is_binary(key) and key != "" -> key
+      _ -> nil
+    end
+  end
+
+  defp deploy_key(%Scope{}), do: nil
+
+  # The machine the host copy is on. A created copy sits on the same filesystem
+  # as the checkout it was made beside, so it is on the same device — and
+  # recording that is what stops two machines' copies at one path being confused.
+  defp host_device(scope) do
+    scope
+    |> list_harnesses()
+    |> Enum.find_value(& &1.device_id)
+  end
 
   # Stop everything on this copy, and say what would not stop.
   #

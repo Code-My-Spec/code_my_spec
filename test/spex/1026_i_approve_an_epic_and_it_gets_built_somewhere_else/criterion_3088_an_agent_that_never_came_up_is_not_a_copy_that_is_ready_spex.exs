@@ -84,10 +84,24 @@ defmodule CodeMySpecSpex.Story964.Criterion3088Spex do
                "the premise needs agents on the copy that have not come up, and " <>
                  "there are none at all"
 
+        {:ok, _live, epics} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
+
+        [_, copy_id] =
+          Regex.run(~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/, epics)
+
         {:ok, _live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
 
-        {:ok, Map.put(context, :html, html)}
+        # That copy's row, not the page. The project's main checkout is on it
+        # too and is genuinely being served, so asserting against the whole page
+        # caught the host and said nothing about the copy the epic went to.
+        row =
+          html
+          |> Floki.parse_document!()
+          |> Floki.find(~s([data-test="working-copy"][data-working-copy-id="#{copy_id}"]))
+          |> Floki.raw_html()
+
+        {:ok, Map.put(context, :html, row)}
       end
 
       then_ "the copy is reported as not ready", context do

@@ -68,7 +68,18 @@ defmodule CodeMySpec.EpicDispatchDestinationTest do
              "for exactly this case keys on nil, so a non-nil id makes it unreachable."
   end
 
-  test "a rooted main checkout does receive it", %{scope: scope, epic: epic} do
+  # The intent is unchanged and the destination is not.
+  #
+  # This asserted the epic landed on the *main* checkout. It cannot now: the
+  # main copy holds exactly one agent and it is the project's own
+  # (`Agents.main_copy_is_free/2`), so an epic placed there could never be
+  # staffed — every roster start was refused, which is what kept story 964's
+  # criteria red. John, 2026-09-04: "the main copy just gets the main agent, and
+  # we would create a working copy to do the actual work on."
+  #
+  # So work still has to reach a real checkout, which is what this test is for.
+  # It reaches one made for it.
+  test "a rooted machine means the work reaches a real checkout", %{scope: scope, epic: epic} do
     {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
 
     copy
@@ -77,8 +88,19 @@ defmodule CodeMySpec.EpicDispatchDestinationTest do
 
     assert {:ok, dispatched} = EpicDispatch.approve(scope, epic.id)
 
-    assert dispatched.working_copy_id == copy.id,
+    assert dispatched.working_copy_id,
            "guarding the rootless case must not stop work reaching a real checkout, " <>
              "which is the whole story."
+
+    refute dispatched.working_copy_id == copy.id,
+           "the epic went to the main checkout, where a roster cannot be started. " <>
+             "A copy that cannot hold the agents the work needs is not somewhere " <>
+             "the work can happen."
+
+    {:ok, destination} = WorkingCopies.fetch(dispatched.working_copy_id)
+
+    assert is_binary(destination.root) and destination.root != "",
+           "the epic was pointed at a row with no checkout behind it, which is the " <>
+             "defect this whole file exists to guard."
   end
 end

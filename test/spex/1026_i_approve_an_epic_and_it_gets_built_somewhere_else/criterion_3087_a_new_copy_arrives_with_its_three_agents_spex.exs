@@ -67,8 +67,16 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
       end
 
       when_ "I look at the copy it was placed on", context do
+        # The copy the epic actually landed on, read off the epics page rather
+        # than assumed. It is not the main checkout: the main copy holds one
+        # agent and it is the project's own, so an epic gets one made for it.
+        {:ok, _live, epics} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
+
+        [_, copy_id] =
+          Regex.run(~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/, epics)
+
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies/#{copy_id}")
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -40,6 +40,8 @@ defmodule CodeMySpec.EpicDispatch do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias CodeMySpec.Conversations
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
@@ -162,8 +164,43 @@ defmodule CodeMySpec.EpicDispatch do
   # there is refused outright, correctly: the main copy holds one agent and it
   # is the project's own (`Agents.main_copy_is_free/2`). Two agents in one
   # checkout are two processes editing one tree.
+  # Reuse, then mint. The main checkout is not in the list, and that is the
+  # point.
+  #
+  # John, 2026-09-04, on how the boundary is meant to work: *"the main copy just
+  # gets the main agent, and we would create a working copy to do the actual
+  # work on."* The codebase already enforced half of it — `main_copy_is_free/2`
+  # keeps the main checkout to one agent, the project's own — so sending an epic
+  # there produced a copy that could never be staffed. Every epic went there,
+  # because `WorkingCopies.main/1` was the whole of this function.
+  #
+  # So an epic that has nowhere to go gets somewhere made for it. That is the
+  # last link in the chain: agree to build an epic, and a copy exists with the
+  # three agents that will build it.
   defp destination(scope) do
-    carrying(scope) || checkout(WorkingCopies.main(scope))
+    carrying(scope) || minted(scope)
+  end
+
+  # Nothing suitable exists, so make one.
+  #
+  # `nil` on failure rather than a refusal, keeping the rule this module already
+  # holds: "An epic with nowhere to go is still dispatched rather than refused —
+  # the decision was the user's and it stands." A machine that is off is a
+  # reason for the page to say the epic is waiting, not a reason to throw away
+  # somebody's approval.
+  defp minted(scope) do
+    case WorkingCopies.mint(scope, label: "an epic's working copy") do
+      {:ok, copy, _staffed} ->
+        copy
+
+      {:error, reason} ->
+        Logger.info(
+          "[EpicDispatch] no working copy could be made for this epic (#{inspect(reason)}); " <>
+            "it is dispatched and waiting for somewhere to be built"
+        )
+
+        nil
+    end
   end
 
   # The most recently dispatched epic's copy, when it is a real checkout and not

@@ -48,6 +48,30 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+
+  # The copy the epic actually landed on. Not `context.copy_id` — that is the
+  # project's main checkout, and an epic never goes there: the main copy holds
+  # one agent and it is the project's own, so an epic gets one made for it.
+  defp epic_copy(context) do
+    {:ok, _live, epics} = live(context.conn, ~p"/app/projects/#{context.project.id}/epics")
+
+    [_, id] =
+      Regex.run(~r/data-test="epic-working-copy"[^>]*data-working-copy-id="([^"]+)"/, epics)
+
+    id
+  end
+
+  # Through the confirm dialog, which is how a person discards a copy — the
+  # button opens it and the dialog's own control is what acts.
+  defp discard(context, copy_id) do
+    {:ok, live, _html} =
+      live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+
+    live
+    |> element("#offboard-#{copy_id} [data-role='confirm-confirm']")
+    |> render_click()
+  end
+
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
@@ -77,13 +101,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3091Spex do
       end
 
       when_ "I discard the copy", context do
-        {:ok, live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
-
-        html =
-          live
-          |> element(~s([data-test=offboard-working-copy][data-working-copy-id="#{context.copy_id}"]))
-          |> render_click()
+        html = discard(context, epic_copy(context))
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3086Spex do
 
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.EpicHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,15 +54,32 @@ defmodule CodeMySpecSpex.Story964.Criterion3086Spex do
     scenario "A fresh copy when nothing fits" do
       given_ :synced_context_component
 
+      given_ "a machine holding this project's repository", context do
+        copy = join_working_copy(context, "/tmp/spex_3086_main", "the project's checkout")
+
+        {:ok, Map.put(context, :main, copy.working_copy_id)}
+      end
+
       given_ "no existing working copy suits the epic", context do
         {:ok, _live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
 
-        refute html =~ ~s(data-test="working-copy"),
-               "the premise is a project with nowhere for the work to go, and this " <>
-                 "one already has a checkout"
+        # "Nothing suits it" is the ordinary state, not an exotic one. A project
+        # whose only checkout is its main one has nowhere an epic may go: the
+        # main copy holds exactly one agent and it is the project's own, so an
+        # epic placed there could never be staffed. John: "the main copy just
+        # gets the main agent, and we would create a working copy to do the
+        # actual work on."
+        carrying =
+          ~r/data-test="working-copy"[^>]*data-working-copy-id="([^"]+)"/
+          |> Regex.scan(html)
+          |> Enum.map(&List.last/1)
 
-        {:ok, context}
+        refute html =~ ~s(data-test="epic-working-copy"),
+               "a copy is already carrying an epic, so this project has somewhere " <>
+                 "suitable and the premise does not hold"
+
+        {:ok, Map.put(context, :before, carrying)}
       end
 
       when_ "I approve it", context do
@@ -78,6 +96,18 @@ defmodule CodeMySpecSpex.Story964.Criterion3086Spex do
       end
 
       then_ "the main agent mints a copy for it", context do
+        {:ok, _live, copies} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/working-copies")
+
+        after_ =
+          ~r/data-test="working-copy"[^>]*data-working-copy-id="([^"]+)"/
+          |> Regex.scan(copies)
+          |> Enum.map(&List.last/1)
+
+        assert length(after_) > length(context.before),
+               "no checkout was made. A project whose first epic has nowhere to go " <>
+                 "cannot start, and the main checkout is not somewhere it may go."
+
         assert context.html =~ ~s(data-test="epic-working-copy"),
                "the epic was approved and has nowhere to be built. The page reports " <>
                  "that honestly, which is right for an epic that cannot be placed — " <>
