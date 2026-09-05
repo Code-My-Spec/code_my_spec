@@ -837,9 +837,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test="conversation-layout"
         data-layout={to_string(@screen)}
         class={[
-          "mx-auto flex min-h-0 w-full flex-1 gap-4",
-          @screen == :wide && "flex-row",
-          @screen == :narrow && "max-w-3xl flex-col"
+          "mx-auto flex min-h-0 w-full flex-1",
+          @screen == :wide && "gap-0",
+          @screen == :narrow && "max-w-3xl flex-col gap-4"
         ]}
       >
         <.panels
@@ -858,210 +858,268 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           preview_state={@preview_state}
         />
 
-        <div
-          data-test="agent-conversation"
-          data-project-id={@project.id}
-          class="flex min-h-0 min-w-0 flex-1 flex-col"
-        >
-          <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
-            <.link
-              navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
-              class="btn btn-ghost btn-sm btn-square"
-              title="All agents"
-            >
-              <.icon name="hero-arrow-left" class="size-4" />
-            </.link>
-            <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
-            <h1 class="min-w-0 truncate text-lg font-semibold">
-              {@conversation && Conversations.display_name(@conversation)}
-            </h1>
-            <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
-              {short_session(@conversation)}
-            </span>
-          </header>
-
-          <%!-- `overflow-anchor` is what keeps your place when older turns are
-              prepended: without it the browser holds the scroll *offset*, so
-              inserting above jumps you backwards by exactly the height added.
-              `StickToBottom` opens at the newest turn and follows it only while
-              you are already down there. --%>
-          <div
-            id="agent-scroll"
-            data-test="conversation-scroll"
-            phx-hook="StickToBottom"
-            class="min-h-0 flex-1 overflow-y-auto py-4"
-            style="overflow-anchor: auto"
-          >
-            <p
-              :if={@conversation == nil}
-              data-test="agent-conversation-empty"
-              class="py-8 text-center opacity-60"
-            >
-              No agent activity recorded for this project yet.
-            </p>
-
-            <p
-              :if={@emptiness == :nothing_yet}
-              data-test="nothing-recorded-yet"
-              class="rounded-box border border-base-300 p-3 text-sm opacity-70"
-            >
-              Nothing recorded yet. Steps appear here as the agent takes them.
-            </p>
-
-            <p
-              :if={@emptiness == :gap}
-              data-test="recording-gap"
-              class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
-            >
-              Turns were taken but not recorded. What follows is incomplete —
-              treat gaps as missing evidence, not as an idle sprite.
-            </p>
-
-            <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
-              <ChatComponents.question
-                :for={request <- @questions}
-                id={"question-#{request.id}"}
-                request={request}
-                on_submit="answer_question"
-              />
-            </div>
-
-            <div
-              id="agent-turns"
-              class="space-y-2"
-              phx-viewport-top={@more_above? && "load_older"}
-              data-more-above={to_string(@more_above?)}
-            >
-              <p
-                :if={@more_above?}
-                data-test="loading-older"
-                class="py-2 text-center text-xs opacity-40"
-              >
-                loading earlier turns…
-              </p>
-              <ChatComponents.turn_item
-                :for={item <- @items}
-                id={"turn-#{item.id}"}
-                item={item}
-                results={@results}
-              />
-            </div>
-          </div>
-
-          <div
-            :for={message <- @pending}
-            data-test="agent-pending-message"
-            class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
-          >
-            <%!-- The text is not repeated here. It is already in the transcript above,
-          as the message it is — printing it again put the same sentence on the
-          page twice and read as the message having been sent twice, which is a
-          thing that can genuinely happen and must not be imitated by a status
-          line. This says what is true of it and offers the one action. --%>
-            <span class="opacity-60">
-              waiting for the agent to finish its turn
-            </span>
-            <button
-              type="button"
-              phx-click="withdraw_message"
-              phx-value-ref={message.delivery_ref}
-              data-test="agent-withdraw-message"
-              class="btn btn-xs btn-ghost"
-            >
-              Take it back
-            </button>
-          </div>
-
-          <form
-            :if={@talkable?}
-            data-test="agent-message-form"
-            phx-submit="send_message"
-            phx-change="draft"
-            class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
-          >
-            <%!-- A rendered value is load-bearing, which is not obvious and cost a
-          duplicate send in real use. Without one the DOM patch has nothing to
-          set, so what you typed survives the submit and sits in the box looking
-          unsent — and the next thing anyone does is send it again. `InboxLive`'s
-          message form has carried this attribute all along.
-
-          It is `@draft` rather than `""` because the panels made every toggle a
-          patch, and a hardcoded empty value threw away a half-written message
-          every time someone opened one. `send_message` clears `@draft` itself,
-          so the duplicate-send fix is still explicit rather than a side effect
-          of rendering nothing. --%>
-            <input
-              type="text"
-              name="message"
-              value={@draft}
-              autocomplete="off"
-              placeholder="say something to this agent"
-              data-test="agent-message"
-              class="input input-bordered min-w-0 flex-1"
-            />
-            <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
-          machine — up to the transport's patience if that machine is slow — and
-          a button that stays live through that invites the second click, which
-          is a second turn and a second answer rather than a wasted one. --%>
-            <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
-              Send
-            </button>
-          </form>
-
-          <p
-            :if={@conversation != nil and not @talkable?}
-            data-test="agent-not-talkable"
-            class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
-          >
-            This agent is not running, so there is nothing to send a message to.
-          </p>
-        </div>
-
-        <%!-- The handle sets a CSS custom property on `<html>` rather than on
-        `#conversation-panels` itself. LiveView owns that div's `style`
-        attribute — it is part of the rendered template — so a patch here
-        would morphdom the JS-set width straight back to the server's value on
-        the next re-render, which happens on every message. `<html>` is never
-        part of what this LiveView renders, so nothing ever fights the hook
-        for it. --%>
-        <%!-- `w-3` is the hit area — a 6px bar was too thin to reliably catch a
-        pointer — with the visible line drawn at 2px in the middle of it via
-        the inner span, the same "wide target, thin mark" split a scrollbar
-        thumb uses. `select-none` alongside `preventDefault` in the hook: text
-        selection kicking in mid-drag is what a "resize does nothing" report
-        usually is. --%>
-        <div
-          :if={@screen == :wide}
-          id="panel-resize-handle"
-          data-test="panel-resize-handle"
-          phx-hook="PanelResize"
-          data-target="conversation-panels"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize panel"
-          class="group flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center"
-        >
-          <span class="w-0.5 rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
-          </span>
-        </div>
-
-        <.panels
-          :if={@screen == :wide}
-          screen={@screen}
-          open={@open_panels}
-          dynamic_view={@dynamic_view}
-          dynamic_stories={@dynamic_stories}
-          dynamic_story={@dynamic_story}
-          offer={@offer}
-          activity={@activity}
-          waiting={@waiting}
-          copies={@copies}
-          project_id={@project.id}
-          preview_src={@preview_src}
-          preview_state={@preview_state}
+        <.conversation_column
+          :if={@screen == :narrow}
+          project={@project}
+          conversation={@conversation}
+          emptiness={@emptiness}
+          questions={@questions}
+          items={@items}
+          results={@results}
+          more_above?={@more_above?}
+          pending={@pending}
+          talkable?={@talkable?}
+          draft={@draft}
         />
+
+        <%!-- `auto_save` persists a person's drag to local storage keyed by
+        this group's own `id`, restoring it on the next visit — the same
+        "how wide I like to work" preference `PanelResize` used to hand-roll
+        against a CSS var on `<html>`. `gap-0` above on the layout: the group
+        already inserts its own resizer as a real flex child between the two
+        panes, so a `gap` here would double the space between them. --%>
+        <LivePane.group
+          :if={@screen == :wide}
+          id="conversation-panes"
+          auto_save={true}
+          class="min-h-0 w-full flex-1"
+        >
+          <%!-- `self-stretch` on every direct child of a `LivePane.group`:
+          the component hardcodes `items-center` regardless of direction, so
+          without it a pane sizes to its own content along the cross axis
+          (height, here) instead of filling the row — the same "the panel
+          grew instead of scrolling" bug the old `min-h-0` chain existed to
+          prevent. --%>
+          <LivePane.pane
+            group_id="conversation-panes"
+            id="conversation-pane"
+            min_size={40}
+            class="flex min-h-0 min-w-0 flex-col self-stretch"
+          >
+            <.conversation_column
+              project={@project}
+              conversation={@conversation}
+              emptiness={@emptiness}
+              questions={@questions}
+              items={@items}
+              results={@results}
+              more_above?={@more_above?}
+              pending={@pending}
+              talkable?={@talkable?}
+              draft={@draft}
+            />
+          </LivePane.pane>
+
+          <LivePane.resizer
+            group_id="conversation-panes"
+            id="conversation-panes-resizer"
+            class="group flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center self-stretch"
+          >
+            <span class="w-0.5 rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
+            </span>
+          </LivePane.resizer>
+
+          <LivePane.pane
+            group_id="conversation-panes"
+            id="conversation-panels"
+            data-test="conversation-panels"
+            min_size={15}
+            max_size={50}
+            starting_size={25}
+            class="flex min-h-0 min-w-64 flex-col self-stretch"
+          >
+            <.panels
+              screen={:wide}
+              open={@open_panels}
+              dynamic_view={@dynamic_view}
+              dynamic_stories={@dynamic_stories}
+              dynamic_story={@dynamic_story}
+              offer={@offer}
+              activity={@activity}
+              waiting={@waiting}
+              copies={@copies}
+              project_id={@project.id}
+              preview_src={@preview_src}
+              preview_state={@preview_state}
+            />
+          </LivePane.pane>
+        </LivePane.group>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :project, :any, required: true
+  attr :conversation, :any, required: true
+  attr :emptiness, :atom, required: true
+  attr :questions, :list, required: true
+  attr :items, :list, required: true
+  attr :results, :any, required: true
+  attr :more_above?, :boolean, required: true
+  attr :pending, :list, required: true
+  attr :talkable?, :boolean, required: true
+  attr :draft, :string, required: true
+
+  # The transcript, its composer, and the header above them — pulled out of
+  # `render/1` so a wide screen can put it inside a `LivePane.pane` and a
+  # narrow one can put it directly in the stacked column, without maintaining
+  # two copies of ~150 lines of chat markup.
+  defp conversation_column(assigns) do
+    ~H"""
+    <div
+      data-test="agent-conversation"
+      data-project-id={@project.id}
+      class="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
+      <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
+        <.link
+          navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
+          class="btn btn-ghost btn-sm btn-square"
+          title="All agents"
+        >
+          <.icon name="hero-arrow-left" class="size-4" />
+        </.link>
+        <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
+        <h1 class="min-w-0 truncate text-lg font-semibold">
+          {@conversation && Conversations.display_name(@conversation)}
+        </h1>
+        <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
+          {short_session(@conversation)}
+        </span>
+      </header>
+
+      <%!-- `overflow-anchor` is what keeps your place when older turns are
+          prepended: without it the browser holds the scroll *offset*, so
+          inserting above jumps you backwards by exactly the height added.
+          `StickToBottom` opens at the newest turn and follows it only while
+          you are already down there. --%>
+      <div
+        id="agent-scroll"
+        data-test="conversation-scroll"
+        phx-hook="StickToBottom"
+        class="min-h-0 flex-1 overflow-y-auto py-4"
+        style="overflow-anchor: auto"
+      >
+        <p
+          :if={@conversation == nil}
+          data-test="agent-conversation-empty"
+          class="py-8 text-center opacity-60"
+        >
+          No agent activity recorded for this project yet.
+        </p>
+
+        <p
+          :if={@emptiness == :nothing_yet}
+          data-test="nothing-recorded-yet"
+          class="rounded-box border border-base-300 p-3 text-sm opacity-70"
+        >
+          Nothing recorded yet. Steps appear here as the agent takes them.
+        </p>
+
+        <p
+          :if={@emptiness == :gap}
+          data-test="recording-gap"
+          class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+        >
+          Turns were taken but not recorded. What follows is incomplete —
+          treat gaps as missing evidence, not as an idle sprite.
+        </p>
+
+        <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
+          <ChatComponents.question
+            :for={request <- @questions}
+            id={"question-#{request.id}"}
+            request={request}
+            on_submit="answer_question"
+          />
+        </div>
+
+        <div
+          id="agent-turns"
+          class="space-y-2"
+          phx-viewport-top={@more_above? && "load_older"}
+          data-more-above={to_string(@more_above?)}
+        >
+          <p :if={@more_above?} data-test="loading-older" class="py-2 text-center text-xs opacity-40">
+            loading earlier turns…
+          </p>
+          <ChatComponents.turn_item
+            :for={item <- @items}
+            id={"turn-#{item.id}"}
+            item={item}
+            results={@results}
+          />
+        </div>
+      </div>
+
+      <div
+        :for={message <- @pending}
+        data-test="agent-pending-message"
+        class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
+      >
+        <%!-- The text is not repeated here. It is already in the transcript above,
+      as the message it is — printing it again put the same sentence on the
+      page twice and read as the message having been sent twice, which is a
+      thing that can genuinely happen and must not be imitated by a status
+      line. This says what is true of it and offers the one action. --%>
+        <span class="opacity-60">
+          waiting for the agent to finish its turn
+        </span>
+        <button
+          type="button"
+          phx-click="withdraw_message"
+          phx-value-ref={message.delivery_ref}
+          data-test="agent-withdraw-message"
+          class="btn btn-xs btn-ghost"
+        >
+          Take it back
+        </button>
+      </div>
+
+      <form
+        :if={@talkable?}
+        data-test="agent-message-form"
+        phx-submit="send_message"
+        phx-change="draft"
+        class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
+      >
+        <%!-- A rendered value is load-bearing, which is not obvious and cost a
+      duplicate send in real use. Without one the DOM patch has nothing to
+      set, so what you typed survives the submit and sits in the box looking
+      unsent — and the next thing anyone does is send it again. `InboxLive`'s
+      message form has carried this attribute all along.
+
+      It is `@draft` rather than `""` because the panels made every toggle a
+      patch, and a hardcoded empty value threw away a half-written message
+      every time someone opened one. `send_message` clears `@draft` itself,
+      so the duplicate-send fix is still explicit rather than a side effect
+      of rendering nothing. --%>
+        <input
+          type="text"
+          name="message"
+          value={@draft}
+          autocomplete="off"
+          placeholder="say something to this agent"
+          data-test="agent-message"
+          class="input input-bordered min-w-0 flex-1"
+        />
+        <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
+      machine — up to the transport's patience if that machine is slow — and
+      a button that stays live through that invites the second click, which
+      is a second turn and a second answer rather than a wasted one. --%>
+        <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
+          Send
+        </button>
+      </form>
+
+      <p
+        :if={@conversation != nil and not @talkable?}
+        data-test="agent-not-talkable"
+        class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
+      >
+        This agent is not running, so there is nothing to send a message to.
+      </p>
+    </div>
     """
   end
 
@@ -1157,38 +1215,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     """
   end
 
+  # The outer wrapping div is `LivePane.pane id="conversation-panels"` in
+  # `render/1` — this is that pane's content, not a second div of its own.
+  #
+  # Headers are plain, non-pane flex children living directly inside the
+  # vertical `LivePane.group` alongside the pane bodies and resizers, exactly
+  # as they were flattened siblings of one hand-rolled flex-col before: the
+  # group hook finds panes and resizers by `data-pane-*` attribute, not by
+  # walking its own DOM children, so an ordinary header div between them
+  # neither needs to be a pane itself nor breaks the ones that are.
   defp panels(assigns) do
     assigns = assign(assigns, :tabs, @panel_tabs)
 
     ~H"""
-    <%!-- Width comes from a CSS custom property `PanelResize` sets on `<html>`,
-    not from a class, so a person's drag survives this div being re-rendered on
-    every turn. `min-w-64` bounds it in CSS so a stale or absent property (JS
-    not yet loaded, or never touched) still renders sanely at the default in
-    the `var()` fallback. The max is `calc(100vw-24rem)` rather than a fixed
-    token: a fixed `max-w-2xl` (672px) was the actual ceiling on a full-width
-    desk — "pull it all the way across" needs the cap to scale with the
-    screen, leaving only the transcript's own floor (24rem, matching the JS
-    hook's margin) off the top. --%>
-    <%!-- `min-h-0`: without it this flex-row child refuses to shrink below the
-    height its open panels want — a long story list or the preview iframe
-    stretched it past the row's own height, and since nothing above it clips,
-    that grew the whole page instead of scrolling in place. Same bug, same fix,
-    as the transcript column already has. --%>
-    <div
-      id="conversation-panels"
-      data-test="conversation-panels"
-      style="width: var(--panels-width, 24rem)"
-      class="flex min-h-0 min-w-64 max-w-[calc(100vw-24rem)] shrink-0 flex-col gap-1 overflow-y-auto"
-    >
-      <%!-- Headers, bodies and split handles are siblings directly under this
-      flex-col, not nested one-per-tab — a body's `flex-grow` only competes for
-      space against things sharing its own flex context, and a body nested
-      inside a per-tab wrapper div shares nothing with the next tab's body.
-      Flattening is what lets two adjacent open panels actually divide the
-      column between them. --%>
+    <LivePane.group id="side-panels-body" direction="vertical" auto_save={true} class="min-h-0 flex-1">
       <%= for {{key, label}, index} <- Enum.with_index(@tabs) do %>
-        <div data-test={"panel-#{key}"} data-panel-open={to_string(key in @open)} class="shrink-0">
+        <div
+          data-test={"panel-#{key}"}
+          data-panel-open={to_string(key in @open)}
+          class="shrink-0 self-stretch"
+        >
           <%!-- John: "very minimal panel styling... just a hairline with a
           down arrow that expands the panel" — no card, no box, a divider and
           a chevron. The chevron carries the state instead of the border that
@@ -1216,74 +1262,71 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </button>
         </div>
 
-        <%!-- `flex-grow`/`flex-shrink` and `flex-basis` are both driven off
-        one CSS var, `--panel-grow-<key>`, set on `<html>` for the same reason
-        `--panels-width` is: this div is server-rendered every turn, and a
-        drag's result written to its own `style` would be morphdom'd away on
-        the next patch. Unset, it is `1 1 0%` — the standard equal-share
-        recipe, so untouched open panels simply split the column evenly.
-        `PanelSplit` freezes exactly the two panels either side of a drag to
-        `0 0 <px>`; everything else stays flexible and absorbs what is left,
-        which is the ordinary way a split pane behaves once you have resized
-        part of it. --%>
-        <div
+        <%!-- `order` is the fixed tab index rather than toggle order, for the
+        same reason the old `next_panel_open?/3` walked `@tabs` instead of
+        `@open`: a handle between "whichever opened most recently" would jump
+        to a different visual spot every time a third panel opened. The
+        library sorts registered panes by `order`, so this alone is what
+        keeps a reopened preview pane back in first position rather than
+        wherever it happened to mount.
+        Sizing (flex-grow/flex-basis) is inline style the pane hook computes
+        and writes itself — no CSS var on `<html>` to hand-roll any more, and
+        `auto_save` above persists a drag the same way. Left unset, untouched
+        panes simply split the column evenly, same as before. --%>
+        <%!-- The pane hook overwrites this element's own `style` wholesale on
+        every layout change (`el.style.cssText = ...`), inline `overflow:
+        hidden` included — a class here asking for `overflow-y-auto` would
+        lose to that every time. The scrolling lives one level in instead, on
+        a div the hook never touches. --%>
+        <LivePane.pane
           :if={key in @open}
+          group_id="side-panels-body"
           id={"panel-body-#{key}"}
-          data-panel-key={key}
-          phx-hook="PanelHeight"
-          style={"flex-grow: var(--panel-grow-#{key}, 1); flex-shrink: var(--panel-grow-#{key}, 1); flex-basis: var(--panel-h-#{key}, 0%)"}
-          class="min-h-0 overflow-y-auto py-2 text-sm"
+          order={index}
+          min_size={10}
+          class="min-h-0 self-stretch"
         >
-          <.panel_body
-            which={key}
-            dynamic_view={@dynamic_view}
-            dynamic_stories={@dynamic_stories}
-            dynamic_story={@dynamic_story}
-            activity={@activity}
-            waiting={@waiting}
-            copies={@copies}
-            project_id={@project_id}
-            preview_src={@preview_src}
-            preview_state={@preview_state}
-          />
-        </div>
+          <div class="h-full overflow-y-auto py-2 text-sm">
+            <.panel_body
+              which={key}
+              dynamic_view={@dynamic_view}
+              dynamic_stories={@dynamic_stories}
+              dynamic_story={@dynamic_story}
+              activity={@activity}
+              waiting={@waiting}
+              copies={@copies}
+              project_id={@project_id}
+              preview_src={@preview_src}
+              preview_state={@preview_state}
+            />
+          </div>
+        </LivePane.pane>
 
-        <div
+        <LivePane.resizer
           :if={key in @open and next_panel_open?(@tabs, @open, index)}
+          group_id="side-panels-body"
           id={"panel-split-#{key}"}
-          data-test={"panel-split-#{key}"}
-          phx-hook="PanelSplit"
-          data-above={"panel-body-#{key}"}
-          data-below={"panel-body-#{next_panel_key(@tabs, index)}"}
-          data-above-key={key}
-          data-below-key={next_panel_key(@tabs, index)}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize panel"
-          class="group flex h-3 shrink-0 cursor-row-resize select-none flex-col items-center justify-center"
+          class="group flex h-3 shrink-0 cursor-row-resize select-none flex-col items-center justify-center self-stretch"
         >
           <span class="h-0.5 w-full rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
           </span>
-        </div>
+        </LivePane.resizer>
       <% end %>
-    </div>
+    </LivePane.group>
     """
   end
 
-  # The pair a split handle sits between, both drawn from the fixed tab order
-  # rather than from `@open` — `@open` records toggle order, and a handle
-  # between "whichever opened most recently" would jump to a different visual
-  # spot every time someone opened a third panel.
+  # Whether a resizer belongs after this open panel — there needs to be one
+  # between each pair of currently-open panes, and none after the last of
+  # them. Drawn from the fixed tab order in `@tabs` rather than from `@open`
+  # — `@open` records toggle order, and a handle between "whichever opened
+  # most recently" would jump to a different visual spot every time someone
+  # opened a third panel.
   defp next_panel_open?(tabs, open, index) do
     case Enum.at(tabs, index + 1) do
       {next_key, _label} -> next_key in open
       nil -> false
     end
-  end
-
-  defp next_panel_key(tabs, index) do
-    {key, _label} = Enum.at(tabs, index + 1)
-    key
   end
 
   # On the tab header, so a shut tab can still raise it. On a phone the other

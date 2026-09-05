@@ -25,15 +25,22 @@ import { LiveSocket } from "phoenix_live_view"
 import { hooks as colocatedHooks } from "phoenix-colocated/code_my_spec"
 import { StripePaymentElement } from "./stripe_payment"
 import { SigmaGraph } from "./sigma_graph"
+import { createLivePaneHooks } from "live_pane"
 import topbar from "../vendor/topbar"
 import Sortable from "../vendor/Sortable.min.js"
 
 // Make Sortable available globally for colocated hooks
 window.Sortable = Sortable
 
+const { groupHook: live_pane_group, paneHook: live_pane, resizerHook: live_pane_resizer } =
+  createLivePaneHooks()
+
 let Hooks = {
   StripePaymentElement,
   SigmaGraph,
+  live_pane_group,
+  live_pane,
+  live_pane_resizer,
   // A transcript opens at its newest turn, like every other chat, and that is
   // also what makes "scroll up for older" mean anything: a page that opens at
   // the top of the last fifty starts you in the middle of the story with the
@@ -105,137 +112,6 @@ let Hooks = {
     destroyed() {
       this.query.removeEventListener("change", this.report);
       clearTimeout(this.retryTimer);
-    },
-  },
-  // A drag handle between the conversation and its side panel on a desk.
-  //
-  // Writes the width to a custom property on `<html>`, never on the panel
-  // element `phx-hook` is attached beside — LiveView re-renders that element
-  // on every message, and a width written to its own `style` attribute would
-  // be morphdom'd back to the server's value on the very next patch. `<html>`
-  // is outside anything this LiveView renders, so there is nothing to fight.
-  //
-  // Persisted per-browser rather than per-project: this is "how wide I like
-  // to work", the same kind of preference as a window size, not project state
-  // worth round-tripping to the server.
-  PanelResize: {
-    mounted() {
-      this.panel = document.getElementById(this.el.dataset.target);
-      this.min = 240;
-
-      const saved = parseFloat(localStorage.getItem("cms:panelWidth"));
-      if (!Number.isNaN(saved)) {
-        document.documentElement.style.setProperty("--panels-width", `${saved}px`);
-      }
-
-      // A fixed max (640px) read as "stuck at 30%" the moment the layout went
-      // full width — 640px is generous on a laptop and a sliver on a desk
-      // monitor. Computed fresh per drag instead, off the window at that
-      // moment, so it scales with whatever screen this actually is. 384px
-      // (the CSS side's own floor, `min-w-64`) is what stays for the
-      // transcript — enough to read a turn, not enough to disappear.
-      this.onDown = (ev) => {
-        ev.preventDefault();
-        this.dragging = true;
-        this.startX = ev.clientX;
-        this.startWidth = this.panel.getBoundingClientRect().width;
-        this.max = Math.max(this.min, window.innerWidth - 384);
-      };
-      // The handle sits to the left of the panel, so dragging left (negative
-      // clientX delta) is what widens it.
-      this.onMove = (ev) => {
-        if (!this.dragging) return;
-        const width = Math.min(
-          this.max,
-          Math.max(this.min, this.startWidth + (this.startX - ev.clientX)),
-        );
-        document.documentElement.style.setProperty("--panels-width", `${width}px`);
-      };
-      this.onUp = () => {
-        if (!this.dragging) return;
-        this.dragging = false;
-        const width = document.documentElement.style.getPropertyValue("--panels-width");
-        if (width) localStorage.setItem("cms:panelWidth", parseFloat(width));
-      };
-
-      this.el.addEventListener("pointerdown", this.onDown);
-      window.addEventListener("pointermove", this.onMove);
-      window.addEventListener("pointerup", this.onUp);
-    },
-    destroyed() {
-      window.removeEventListener("pointermove", this.onMove);
-      window.removeEventListener("pointerup", this.onUp);
-    },
-  },
-  // Restores a panel body's remembered height, if it has one, the moment it
-  // mounts — which is every time it opens, not just on page load. Lives on
-  // the body itself rather than on `PanelSplit` because a panel can be the
-  // only one open, with no handle anywhere to have restored it.
-  PanelHeight: {
-    mounted() {
-      const key = this.el.dataset.panelKey;
-      const saved = parseFloat(localStorage.getItem(`cms:panelHeight:${key}`));
-      if (!Number.isNaN(saved)) {
-        const root = document.documentElement.style;
-        root.setProperty(`--panel-grow-${key}`, "0");
-        root.setProperty(`--panel-h-${key}`, `${saved}px`);
-      }
-    },
-  },
-  // The handle between two adjacent open panels in the side column.
-  //
-  // Freezes exactly the two panels either side of it to a fixed pixel height
-  // (`flex: 0 0 <px>`) and leaves every other open panel exactly as flexible
-  // as it already was. A handle only ever touches its own pair — reaching
-  // into a third panel's size to keep some global total exact is the kind of
-  // arithmetic that looks tidy and then double-counts the one panel that was
-  // touched by two drags in a row.
-  PanelSplit: {
-    mounted() {
-      this.above = document.getElementById(this.el.dataset.above);
-      this.below = document.getElementById(this.el.dataset.below);
-      this.aboveKey = this.el.dataset.aboveKey;
-      this.belowKey = this.el.dataset.belowKey;
-      this.min = 80;
-
-      this.onDown = (ev) => {
-        ev.preventDefault();
-        this.dragging = true;
-        this.startY = ev.clientY;
-        this.startAboveH = this.above.getBoundingClientRect().height;
-        this.startBelowH = this.below.getBoundingClientRect().height;
-      };
-      this.onMove = (ev) => {
-        if (!this.dragging) return;
-        const total = this.startAboveH + this.startBelowH;
-        const aboveH = Math.min(
-          total - this.min,
-          Math.max(this.min, this.startAboveH + (ev.clientY - this.startY)),
-        );
-        const belowH = total - aboveH;
-        const root = document.documentElement.style;
-        root.setProperty(`--panel-grow-${this.aboveKey}`, "0");
-        root.setProperty(`--panel-h-${this.aboveKey}`, `${aboveH}px`);
-        root.setProperty(`--panel-grow-${this.belowKey}`, "0");
-        root.setProperty(`--panel-h-${this.belowKey}`, `${belowH}px`);
-      };
-      this.onUp = () => {
-        if (!this.dragging) return;
-        this.dragging = false;
-        const root = document.documentElement.style;
-        const aboveH = parseFloat(root.getPropertyValue(`--panel-h-${this.aboveKey}`));
-        const belowH = parseFloat(root.getPropertyValue(`--panel-h-${this.belowKey}`));
-        if (!Number.isNaN(aboveH)) localStorage.setItem(`cms:panelHeight:${this.aboveKey}`, aboveH);
-        if (!Number.isNaN(belowH)) localStorage.setItem(`cms:panelHeight:${this.belowKey}`, belowH);
-      };
-
-      this.el.addEventListener("pointerdown", this.onDown);
-      window.addEventListener("pointermove", this.onMove);
-      window.addEventListener("pointerup", this.onUp);
-    },
-    destroyed() {
-      window.removeEventListener("pointermove", this.onMove);
-      window.removeEventListener("pointerup", this.onUp);
     },
   },
   Copy: {

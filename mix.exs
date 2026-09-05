@@ -80,6 +80,11 @@ defmodule CodeMySpec.MixProject do
       {:phoenix_live_view, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
+      # Resizable panes for the agent-conversation screen. Replaces the
+      # hand-rolled PanelResize/PanelSplit/PanelHeight hooks, whose one
+      # ResizeObserver addition locked up mobile Safari — a maintained
+      # library is less to keep re-debugging by hand.
+      {:live_pane, "~> 0.6.6"},
       {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
       {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
       {:heroicons,

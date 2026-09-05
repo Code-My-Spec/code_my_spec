@@ -25,6 +25,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/code_my_spec_web";
+@source "../../deps/live_pane/lib";
 
 @plugin "@tailwindcss/typography";
 
