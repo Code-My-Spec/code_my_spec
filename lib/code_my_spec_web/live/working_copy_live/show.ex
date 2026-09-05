@@ -296,9 +296,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         rather than in a lookup exercise further down the page. --%>
         <section class="mt-8">
           <h2 class="text-lg font-semibold">Agents on this copy</h2>
-          <p class="mt-1 text-sm opacity-70">
-            One row per lane, its transcript alongside it when it has one.
-          </p>
 
           <p :if={@row.agents == []} data-test="no-agents" class="py-10 text-center opacity-60">
             Nothing is running on this copy.
