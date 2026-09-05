@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.UnconfirmedLaneOffersNoChatTest do
 
     {:ok, agent} =
       AgentsRepository.create_agent(context.scope, %{
-        engine: :pi,
+        engine: :alloy,
         provider: "zai",
         working_copy: root,
         role: "coding",

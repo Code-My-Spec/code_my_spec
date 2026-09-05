@@ -41,13 +41,13 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
 
         {:reply, first, _frame} =
           StartAgent.execute(
-            %{"engine" => "pi", "provider" => "openai-codex", "working_copy" => "copy-a"},
+            %{"engine" => "alloy", "provider" => "openai-codex", "working_copy" => "copy-a"},
             frame
           )
 
         {:reply, second, _frame} =
           StartAgent.execute(
-            %{"engine" => "pi", "provider" => "openai-codex", "working_copy" => "copy-b"},
+            %{"engine" => "alloy", "provider" => "openai-codex", "working_copy" => "copy-b"},
             frame
           )
 

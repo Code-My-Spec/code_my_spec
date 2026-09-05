@@ -65,7 +65,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
     test "the launch request carries the brief for the agent's role" do
       agent = %CodeMySpec.Agents.Agent{
         id: Ecto.UUID.generate(),
-        engine: :pi,
+        engine: :alloy,
         provider: "openai-codex",
         role: :product,
         working_copy: "/tmp/a-copy"
@@ -83,7 +83,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
     test "an agent whose role has no brief still produces a valid request" do
       agent = %CodeMySpec.Agents.Agent{
         id: Ecto.UUID.generate(),
-        engine: :pi,
+        engine: :alloy,
         provider: "openai-codex",
         role: nil,
         working_copy: "/tmp/a-copy"

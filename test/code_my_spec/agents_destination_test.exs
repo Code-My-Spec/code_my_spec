@@ -66,7 +66,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
     Agents.start_agent(scope, %{
       provider: "anthropic",
       role: "coding",
-      engine: :pi,
+      engine: :alloy,
       working_copy: root
     })
   end
@@ -75,7 +75,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
     Agents.start_agent(scope, %{
       provider: "anthropic",
       role: "coding",
-      engine: :pi,
+      engine: :alloy,
       working_copy_id: working_copy_id
     })
   end
@@ -169,7 +169,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
 
   test "naming nothing still means the caller's own checkout", %{scope: scope, own: own} do
     assert {:ok, agent} =
-             Agents.start_agent(scope, %{provider: "anthropic", role: "coding", engine: :pi})
+             Agents.start_agent(scope, %{provider: "anthropic", role: "coding", engine: :alloy})
 
     assert agent.working_copy_id == own.id,
            "a caller who names no checkout must land on their own. Losing that is how " <>

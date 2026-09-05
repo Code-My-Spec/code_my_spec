@@ -864,7 +864,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def running_agent(%Scope{} = scope, opts \\ []) do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
-        engine: Keyword.get(opts, :engine, :pi),
+        engine: Keyword.get(opts, :engine, :alloy),
         provider: Keyword.get(opts, :provider, "zai"),
         working_copy: Keyword.get(opts, :working_copy, scope.cwd || "/tmp/a-copy"),
         role: Keyword.get(opts, :role, "coding"),

@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2888Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "openai-codex"}, frame)
 
         refute response.isError, response_text(response)
 

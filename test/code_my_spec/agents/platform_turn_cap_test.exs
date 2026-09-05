@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
         provider: provider,
-        engine: :pi,
+        engine: :alloy,
         working_copy: "/tmp/cap-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id,
         role: "main"

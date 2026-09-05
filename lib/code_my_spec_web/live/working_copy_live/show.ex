@@ -193,7 +193,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # `:stopped` still filters, because that one is reliable — the outcome of
   # somebody asking, not an inference about a process.
   defp reachable_chats(%{chats: chats}) when is_list(chats),
-    do: Enum.filter(chats, &(&1.agent.engine == :pi and &1.agent.status != :stopped))
+    do: Enum.filter(chats, &(&1.agent.engine == :alloy and &1.agent.status != :stopped))
 
   defp reachable_chats(_row), do: []
 
@@ -289,11 +289,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           </:item>
         </.list>
 
+        <%!-- Agents and their transcripts used to be two sections — a list of
+        lanes, then underneath it a second list of the same lanes' chat
+        links, told apart only by matching role text between them. One list
+        now: a lane's transcript, when it has one, sits inside its own card
+        rather than in a lookup exercise further down the page. --%>
         <section class="mt-8">
           <h2 class="text-lg font-semibold">Agents on this copy</h2>
           <p class="mt-1 text-sm opacity-70">
-            One row per lane. A copy runs one or more, and the harness tells them apart
-            by role.
+            One row per lane, its transcript alongside it when it has one.
           </p>
 
           <p :if={@row.agents == []} data-test="no-agents" class="py-10 text-center opacity-60">
@@ -308,7 +312,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               data-engine={agent.engine}
               class="card card-compact border border-base-300 bg-base-100"
             >
-              <div class="card-body gap-1">
+              <div class="card-body gap-2">
                 <div class="flex items-center gap-3">
                   <div class="min-w-0 flex-1">
                     <div class="font-medium">{agent.role}</div>
@@ -330,36 +334,36 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
                     </div>
                   </div>
                 </div>
+
+                <div
+                  :if={chat_for(@row, agent)}
+                  class="flex items-center gap-3 border-t border-base-300 pt-2"
+                  data-test="agent-chat"
+                >
+                  <.button
+                    navigate={
+                      ~p"/app/projects/#{@project.id}/agent-conversation/#{chat_for(@row, agent).conversation.id}"
+                    }
+                    data-test="open-agent-chat"
+                    class="btn btn-xs btn-primary"
+                  >
+                    Open {Conversations.display_name(chat_for(@row, agent).conversation)}
+                  </.button>
+                  <span class="text-xs opacity-60">
+                    {chat_for(@row, agent).message_count} messages<span :if={
+                      chat_for(@row, agent).last_message_at
+                    }>, last {Liveness.since(chat_for(@row, agent).last_message_at, @now)}</span>
+                  </span>
+                </div>
               </div>
             </li>
           </ul>
-        </section>
 
-        <section class="mt-8">
-          <h2 class="text-lg font-semibold">Transcript</h2>
-          <p class="mt-1 text-sm opacity-70">
-            Each agent on this copy has its own transcript, which is where you watch it
-            work and talk back to it.
-          </p>
-
-          <div
-            :for={chat <- reachable_chats(@row)}
-            class="mt-3 flex items-center gap-3"
-            data-test="agent-chat"
+          <p
+            :if={not chattable?(@row)}
+            data-test="no-agent-chat"
+            class="mt-3 text-sm opacity-60"
           >
-            <.button
-              navigate={~p"/app/projects/#{@project.id}/agent-conversation/#{chat.conversation.id}"}
-              data-test="open-agent-chat"
-              class="btn btn-sm btn-primary"
-            >
-              Open {Conversations.display_name(chat.conversation)}
-            </.button>
-            <span class="text-xs opacity-60">
-              {chat.agent.role} · {chat.message_count} messages<span :if={chat.last_message_at}>, last {Liveness.since(chat.last_message_at, @now)}</span>
-            </span>
-          </div>
-
-          <p :if={not chattable?(@row)} data-test="no-agent-chat" class="mt-3 text-sm opacity-60">
             {no_chat_reason(@row)}
           </p>
         </section>
@@ -368,7 +372,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     """
   end
 
-  defp engine_name(:pi), do: "Pi"
+  defp chat_for(row, agent), do: Enum.find(row.chats, &(&1.agent.id == agent.id))
+
+  defp engine_name(:alloy), do: "Alloy"
   defp engine_name(:claude_code), do: "Claude Code"
   defp engine_name(other), do: to_string(other)
 end

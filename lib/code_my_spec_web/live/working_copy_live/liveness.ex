@@ -5,8 +5,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   Two engines produce two different facts, and the words have to keep them
   apart — that is rule 1 of story 957. But "Present" and "Idle" on their own
   are a verdict with the evidence removed: they read as the page having decided
-  something, and there is no way to tell a Pi lane that checked in two seconds
-  ago from one that checked in an hour ago, because both say Present.
+  something, and there is no way to tell an Alloy lane that checked in two
+  seconds ago from one that checked in an hour ago, because both say Present.
 
   So every summary carries three things:
 
@@ -16,8 +16,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
   ## The three signals
 
-  A **Pi lane** is tracked in Presence on the harness channel and joined for
-  exactly as long as its process lives, so its liveness is a fact about now.
+  An **Alloy lane** is tracked in Presence on the harness channel and joined
+  for exactly as long as its process lives, so its liveness is a fact about now.
   `record_reported/2` is a projection of that Presence, and it touches the row —
   which makes `updated_at` the moment the harness last confirmed the lane, and
   the honest thing to print next to "Running".
@@ -58,7 +58,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
-  def agent(%{engine: :pi} = agent, now) do
+  def agent(%{engine: :alloy} = agent, now) do
     %{
       label: "Running",
       basis: "present on the harness channel",
@@ -87,7 +87,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
   def working_copy(agents, now) do
     confirmed = Enum.filter(agents, &(&1.status != :starting))
-    summarize(Enum.filter(confirmed, &(&1.engine == :pi)), confirmed, agents, now)
+    summarize(Enum.filter(confirmed, &(&1.engine == :alloy)), confirmed, agents, now)
   end
 
   # A copy whose only agents are ones we asked for says so. Rolling them up as

@@ -24,7 +24,7 @@ defmodule CodeMySpec.ConversationsOrchestratorActionTest do
 
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-        engine: :pi,
+        engine: :alloy,
         provider: "anthropic",
         working_copy: "/workspace/app",
         role: "coding",
@@ -96,7 +96,7 @@ defmodule CodeMySpec.ConversationsOrchestratorActionTest do
   test "an agent with no conversation is not an error", %{scope: scope} do
     {:ok, unwatched} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-        engine: :pi,
+        engine: :alloy,
         provider: "anthropic",
         working_copy: "/workspace/unwatched",
         role: "coding",

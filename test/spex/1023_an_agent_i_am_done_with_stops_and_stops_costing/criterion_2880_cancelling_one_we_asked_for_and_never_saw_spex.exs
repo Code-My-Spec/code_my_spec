@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
 
         {:reply, started, _frame} =
           StartAgent.execute(
-            %{"engine" => "pi", "provider" => "zai", "working_copy" => "/tmp/never-came-up"},
+            %{"engine" => "alloy", "provider" => "zai", "working_copy" => "/tmp/never-came-up"},
             frame
           )
 

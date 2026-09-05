@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
   defp running_agent(scope) do
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-        engine: :pi,
+        engine: :alloy,
         provider: "zai",
         role: "coding",
         status: :running,

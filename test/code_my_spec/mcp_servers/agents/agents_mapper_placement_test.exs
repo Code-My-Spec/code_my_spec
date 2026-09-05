@@ -37,7 +37,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapperPlacementTest do
   defp agent_on(scope, root) do
     %Agent{
       id: Ecto.UUID.generate(),
-      engine: :pi,
+      engine: :alloy,
       provider: "openai-codex",
       role: "coding",
       status: :running,

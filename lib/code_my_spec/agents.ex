@@ -704,7 +704,7 @@ defmodule CodeMySpec.Agents do
   @spec turn_allowance(Scope.t(), Agent.t()) ::
           {non_neg_integer(), pos_integer()} | :uncapped
   def turn_allowance(%Scope{} = scope, %Agent{} = agent) do
-    # `provider`, not `engine`. The engine is `:pi` -- what runs -- and the
+    # `provider`, not `engine`. The engine is `:alloy` -- what runs -- and the
     # provider is whose subscription it spends. Asking Credential about the
     # engine returns `:none` for every agent, which means the cap compiles,
     # every credential test passes, and it never once binds.
@@ -1101,11 +1101,11 @@ defmodule CodeMySpec.Agents do
 
   # The harness says which engine it is running, and it matters downstream: the
   # engine decides whether an agent has presence or only a timestamp, and whether
-  # it can be talked to at all. Defaulting every report to `:pi` made a Claude
+  # it can be talked to at all. Defaulting every report to `:alloy` made a Claude
   # Code agent claim presence it does not have — caught by story 1019's criterion
   # 2830, which exists to keep those two facts apart.
   defp engine(%{"engine" => "claude_code"}), do: :claude_code
-  defp engine(_report), do: :pi
+  defp engine(_report), do: :alloy
 
   # A harness that names no lane is running one, and "main" is what that one is
   # called. Falling back keeps every report written before roles existed landing
@@ -1114,7 +1114,7 @@ defmodule CodeMySpec.Agents do
   defp role(%{"role" => role}) when is_binary(role) and role != "", do: role
   defp role(_report), do: "main"
 
-  # An adopted Pi lane gets the same transcript one we started gets.
+  # An adopted Alloy lane gets the same transcript one we started gets.
   #
   # `start_agent/2` opens the conversation as part of starting, on the reasoning
   # that an agent that cannot be watched is indistinguishable from one that
@@ -1125,7 +1125,7 @@ defmodule CodeMySpec.Agents do
   #
   # Keyed `pi:<working_copy>`, the same key the lane pushes under, so the
   # transcript opened here and the one written to are one thread.
-  defp ensure_conversation(%Scope{} = scope, %Agent{engine: :pi} = agent) do
+  defp ensure_conversation(%Scope{} = scope, %Agent{engine: :alloy} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
       scope.active_project_id,
@@ -1427,7 +1427,7 @@ defmodule CodeMySpec.Agents do
 
   defp base_attrs(%Scope{} = scope, attrs) do
     %{
-      engine: Map.get(attrs, :engine, :pi),
+      engine: Map.get(attrs, :engine, :alloy),
       provider: Map.fetch!(attrs, :provider),
       # Written down at start rather than derived at call time. A list on the
       # row survives a change to what a role means, answers "what may this

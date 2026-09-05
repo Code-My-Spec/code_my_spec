@@ -126,6 +126,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
     end
   end
 
+  # Designating this checkout as the one the project's own agent runs in.
+  #
+  # Lifted from `WorkingCopyLive.Show`, which still carries the same handler —
+  # there was previously no way to do this without opening a copy first.
+  def handle_event("designate_main", %{"id" => id}, socket) do
+    case WorkingCopies.designate_main(socket.assigns.current_scope, id) do
+      {:ok, _copy} ->
+        {:noreply, load(socket)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "That working copy is not on this project.")}
+
+      {:error, _changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "That copy could not be made the main one. Try again.")}
+    end
+  end
+
   # Says what went, in counts. "Offboarded" alone leaves the reader wondering
   # whether it did anything, and the numbers are the difference between a copy
   # that was holding the project up and one that was already empty.
@@ -208,10 +226,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
             ]}
           >
             <div class="card-body gap-3">
-              <%!-- The star, and nothing else. It used to be followed by "Your
-              project's main checkout — its agent runs here", which is a
-              sentence explaining a mark that already reads. Hover and assistive
-              text still carry the full meaning for anyone who wants it. --%>
+              <%!-- The star, and nothing else, for the copy that already holds
+              it. It used to be followed by "Your project's main checkout —
+              its agent runs here", which is a sentence explaining a mark that
+              already reads; hover and assistive text still carry the full
+              meaning for anyone who wants it. Every other row gets the same
+              star as a control instead — there was no way to change this
+              short of opening a copy and finding the button on its own page. --%>
               <div
                 :if={row.harness.main}
                 data-test="main-copy"
@@ -222,21 +243,36 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 <span class="sr-only">Your project's main checkout — its agent runs here</span>
               </div>
 
+              <button
+                :if={not row.harness.main}
+                type="button"
+                phx-click="designate_main"
+                phx-value-id={row.harness.id}
+                data-test="designate-main-copy"
+                class="-ml-2 flex items-center gap-1 self-start text-xs opacity-50 hover:opacity-100"
+              >
+                <.icon name="hero-star" class="size-4" /> Make main
+              </button>
+
               <div class="flex items-start gap-3">
                 <div class="min-w-0 flex-1">
+                  <%!-- `label` falls back to the raw root when nothing has
+                  named this copy, and a plain CSS `truncate` cuts the *end* of
+                  a string — keeping the part every checkout on this machine
+                  shares (`/Users/…/Documents/github/code_my_spec/…`) and
+                  hiding the one segment that tells two copies apart. Once
+                  named, the path adds nothing a rename didn't already say, so
+                  it is gone rather than kept underneath. --%>
                   <.link
                     navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}"}
                     data-test="open-working-copy"
-                    class="block truncate font-medium link link-hover"
+                    class="block min-w-0 font-medium link link-hover"
                   >
-                    {row.label}
-                  </.link>
-                  <div class="flex items-baseline gap-2 text-xs opacity-60">
-                    <span data-test="working-copy-id" class="shrink-0 font-mono">
-                      {short_id(row.harness.id)}
+                    <span :if={row.harness.label} class="block truncate">
+                      {row.harness.label}
                     </span>
-                    <.path_tail path={row.harness.root} />
-                  </div>
+                    <.path_tail :if={!row.harness.label} path={row.harness.root} class="font-medium" />
+                  </.link>
 
                   <%!-- Where this copy's preview answers. Only the copy that has
                   one shows one, which is the whole of "a worktree does not claim
@@ -318,21 +354,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 </div>
               </div>
 
-              <div class="flex flex-wrap items-center gap-2 text-xs">
-                <span
-                  :for={agent <- row.agents}
-                  data-test="agent-chip"
-                  data-role={agent.role}
-                  data-agent-id={agent.id}
-                  data-engine={agent.engine}
-                  class="badge badge-ghost"
-                >
-                  {agent.role} · {engine_name(agent.engine)}
-                </span>
-
-                <span :if={row.last_message} data-test="last-message" class="opacity-60">
-                  last message {row.last_message}
-                </span>
+              <%!-- Individual agent chips used to sit here, one per lane —
+              redundant with the liveness line above it, which already says
+              how many agents and what they are doing ("2 agents present on
+              the harness channel"). Per-agent detail belongs to Show, where
+              each lane gets its own row. --%>
+              <div :if={row.last_message} class="text-xs opacity-60">
+                <span data-test="last-message">last message {row.last_message}</span>
               </div>
 
               <div class="flex items-center gap-2">
@@ -380,21 +408,4 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
     </Layouts.app>
     """
   end
-
-  defp engine_name(:pi), do: "Pi"
-  defp engine_name(:claude_code), do: "Claude Code"
-  defp engine_name(other), do: to_string(other)
-
-  # The one thing on the row that is always unique.
-  #
-  # A checkout that joins without presenting an id is minted a new one, and it
-  # reports its root afterwards — so one real directory can hold several harness
-  # rows with the same generated label, the same path and the same status.
-  # Whether that should happen at all is a question about identity across
-  # machines and is not settled here; what is settled is that the page stops
-  # rendering rows a person cannot tell apart. Same reason
-  # `AgentConversationLive.Index` prints the session id beside the name: the
-  # name is a handle, and the id is what you go and grep for.
-  defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
-  defp short_id(_id), do: "????????"
 end

@@ -69,5 +69,5 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   end
 
   defp to_engine("claude_code"), do: :claude_code
-  defp to_engine(_other), do: :pi
+  defp to_engine(_other), do: :alloy
 end

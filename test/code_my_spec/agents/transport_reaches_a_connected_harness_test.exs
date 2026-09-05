@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.TransportReachesAConnectedHarnessTest do
       working_copy_id: scope.active_working_copy_id,
       os_pid: 4242,
       os_boot_id: "boot-abc",
-      engine: :pi,
+      engine: :alloy,
       provider: "zai",
       role: "coding",
       working_copy: "/tmp/a-copy"

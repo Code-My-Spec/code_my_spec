@@ -51,10 +51,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2825Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, oauth_response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "openai-codex"}, frame)
 
         {:reply, api_key_response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "zai"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "zai"}, frame)
 
         {:ok,
          context

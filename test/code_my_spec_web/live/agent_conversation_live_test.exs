@@ -218,7 +218,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       {:ok, agent} =
         CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-          engine: :pi,
+          engine: :alloy,
           provider: "zai",
           working_copy: root,
           role: role,

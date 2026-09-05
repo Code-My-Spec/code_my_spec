@@ -20,7 +20,7 @@ defmodule CodeMySpec.Agents.AgentsRepositoryWorkingCopyScopeTest do
 
   defp attrs(scope, working_copy_id) do
     %{
-      engine: :pi,
+      engine: :alloy,
       provider: "anthropic",
       role: :coding,
       working_copy: scope.cwd || "/workspace/main",

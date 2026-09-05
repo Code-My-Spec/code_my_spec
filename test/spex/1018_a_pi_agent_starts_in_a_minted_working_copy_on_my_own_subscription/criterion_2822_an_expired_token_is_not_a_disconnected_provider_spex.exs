@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2822Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "openai-codex"}, frame)
 
         {:ok, Map.put(context, :response, response)}
       end
@@ -116,7 +116,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2822Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          StartAgent.execute(%{"engine" => "pi", "provider" => "openai-codex"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "openai-codex"}, frame)
 
         {:ok, Map.put(context, :response, response)}
       end

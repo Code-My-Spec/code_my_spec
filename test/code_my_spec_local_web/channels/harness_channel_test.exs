@@ -93,7 +93,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     # not a sleep waiting for something to become true.
     assert_receive {:relay_up, "agents_running", %{"agents" => agents}}, 2_000
 
-    assert [%{"working_copy" => "/tmp/harness-test-proj", "role" => "coding", "engine" => "pi"}] =
+    assert [%{"working_copy" => "/tmp/harness-test-proj", "role" => "coding", "engine" => "alloy"}] =
              agents
   end
 
@@ -141,7 +141,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
       |> subscribe_and_join(
         CodeMySpecLocalWeb.HarnessChannel,
         "harness:session:#{@external_id}",
-        %{"role" => "product", "engine" => "pi", "provider" => "anthropic"}
+        %{"role" => "product", "engine" => "alloy", "provider" => "anthropic"}
       )
 
     :sys.get_state(declared.channel_pid)
@@ -158,7 +158,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
              "so a report that drops what it declared cannot answer the question " <>
              "the page exists for"
 
-    assert declared["engine"] == "pi"
+    assert declared["engine"] == "alloy"
   end
 
   test "a lane that declares nothing is still reported, as a Pi lane on an unknown provider",
@@ -169,7 +169,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
     agents = await_report(["coding"])
     coding = Enum.find(agents, &(&1["role"] == "coding"))
 
-    assert coding["engine"] == "pi" and coding["provider"] == "unknown",
+    assert coding["engine"] == "alloy" and coding["provider"] == "unknown",
            "identity used to belong to the session, so a lane written before " <>
              "that changed declares only its role. It still has to appear — " <>
              "dropping it would make the page quietly wrong rather than vague."

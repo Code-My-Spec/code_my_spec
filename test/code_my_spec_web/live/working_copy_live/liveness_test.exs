@@ -30,7 +30,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
 
   describe "an agent nobody has confirmed" do
     test "does not claim presence on a channel it never joined" do
-      summary = Liveness.agent(agent(:starting, :pi, 5), @now)
+      summary = Liveness.agent(agent(:starting, :alloy, 5), @now)
 
       refute summary.label =~ "Running",
              "a :starting row is a request, not a report. `start_agent/2` writes it " <>
@@ -43,14 +43,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
     end
 
     test "says what it is instead of going blank" do
-      summary = Liveness.agent(agent(:starting, :pi, 5), @now)
+      summary = Liveness.agent(agent(:starting, :alloy, 5), @now)
 
       assert summary.label == "Starting"
       assert summary.since == "5m ago"
     end
 
     test "does not roll up into a Running copy" do
-      summary = Liveness.working_copy([agent(:starting, :pi, 2)], @now)
+      summary = Liveness.working_copy([agent(:starting, :alloy, 2)], @now)
 
       refute summary.label =~ "Running",
              "the list summary is what most people read without opening anything, " <>
@@ -61,7 +61,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
 
     test "does not mask a lane that really is present beside it" do
       summary =
-        Liveness.working_copy([agent(:starting, :pi, 2), agent(:running, :pi, 1)], @now)
+        Liveness.working_copy([agent(:starting, :alloy, 2), agent(:running, :alloy, 1)], @now)
 
       assert summary.label == "Running"
       assert summary.basis == "1 agent present on the harness channel"
@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
 
   describe "a confirmed agent" do
     test "a running Pi lane is present, on the evidence of the channel" do
-      summary = Liveness.agent(agent(:running, :pi, 0), @now)
+      summary = Liveness.agent(agent(:running, :alloy, 0), @now)
 
       assert summary.label == "Running"
       assert summary.basis == "present on the harness channel"

@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
       "harness_id" => working_copy_id,
       "working_copy" => root,
       "provider" => "zai",
-      "engine" => "pi"
+      "engine" => "alloy"
     }
 
   @doc "One Claude Code agent on a copy, as a harness would report it."

@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2820Spex do
           for copy <- ["copy-a", "copy-b", "copy-c"] do
             {:reply, response, _frame} =
               StartAgent.execute(
-                %{"engine" => "pi", "provider" => "openai-codex", "working_copy" => copy},
+                %{"engine" => "alloy", "provider" => "openai-codex", "working_copy" => copy},
                 frame
               )
 

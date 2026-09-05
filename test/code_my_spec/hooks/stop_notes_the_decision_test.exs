@@ -39,7 +39,7 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
       Agents.start_agent(scope, %{
         provider: "anthropic",
         role: "coding",
-        engine: :pi,
+        engine: :alloy,
         working_copy: "/workspace/main"
       })
 

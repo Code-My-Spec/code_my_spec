@@ -38,7 +38,7 @@ defmodule CodeMySpec.McpServers.HandoverIsNotedTest do
       Agents.start_agent(scope, %{
         provider: "anthropic",
         role: "coding",
-        engine: :pi,
+        engine: :alloy,
         working_copy: root
       })
 

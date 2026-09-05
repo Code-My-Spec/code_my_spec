@@ -41,7 +41,7 @@ defmodule CodeMySpecLocalWeb.HookNotesTheDecisionTest do
       Agents.start_agent(scope, %{
         provider: "anthropic",
         role: "coding",
-        engine: :pi,
+        engine: :alloy,
         working_copy: root
       })
 

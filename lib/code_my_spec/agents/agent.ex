@@ -53,7 +53,12 @@ defmodule CodeMySpec.Agents.Agent do
   alias CodeMySpec.Projects.Project
 
   @statuses [:starting, :running, :stopped, :failed]
-  @engines [:pi, :claude_code]
+  # `:alloy` — renamed from `:pi`, John's call: "I completely backed out of
+  # that. We're not doing that." The value stayed `:pi` in the schema and the
+  # column after the product decision moved on, so "Pi" kept showing up
+  # everywhere this field was displayed. Migration
+  # `20260905000000_rename_pi_engine_to_alloy` updates existing rows.
+  @engines [:alloy, :claude_code]
 
   # An enum rather than a free string, because a role is a fixed set and a typo
   # in one was silent: a row nothing launches, a setting nothing reads, and no
@@ -87,7 +92,7 @@ defmodule CodeMySpec.Agents.Agent do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "agents" do
-    field :engine, Ecto.Enum, values: @engines, default: :pi
+    field :engine, Ecto.Enum, values: @engines, default: :alloy
     field :provider, :string
     # Which model this agent started on, recorded rather than looked up.
     # Story 983: pointing a type at a different model must not move an agent
