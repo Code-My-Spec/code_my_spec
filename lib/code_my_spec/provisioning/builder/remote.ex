@@ -158,11 +158,29 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   a C toolchain to compile against. `ruby-full`'s own dependency chain does
   not pull that in on Debian: confirmed live, the very next failure once
   `ruby-full` alone installed cleanly was `mkmf.log`/`extconf failed`.
+
+  `command -v kamal` alone is not enough of a check: a custom builder image
+  (`Builder.custom_image?/1`) has kamal baked in from whenever it was last
+  captured, and RubyGems does not revisit an already-installed gem's
+  dependencies — if that snapshot's `ed25519`/`bcrypt_pbkdf` never actually
+  landed (an older kamal version that did not yet depend on them, or a
+  build that satisfied `kamal` itself before failing on their native
+  extensions), the binary being on `PATH` proves nothing about whether it
+  can load an OpenSSH-format private key. `Net::SSH::KeyFactory` requires
+  `ed25519` to even *parse* that key format regardless of the key's own
+  algorithm (`ed25519_loader.rb`), and the load failure is caught and
+  logged at `error`, below kamal's own default `log_level: :fatal` — so it
+  never prints. What surfaces instead is authentication silently falling
+  through to keyboard-interactive, which has no TTY on this path and dies
+  `Errno::ENOTTY`. Confirmed live against broken_oaths: the delivered key
+  was present, correctly owned, and the right size — the box just could
+  not use it, on a builder that had never needed to since the day its
+  image was captured.
   """
   @spec ensure_kamal((list() -> {String.t(), non_neg_integer()})) ::
           :ok | {:error, {non_neg_integer(), String.t()}}
   def ensure_kamal(run) do
-    case run.(["command -v kamal"]) do
+    case run.(["command -v kamal && gem list -i ed25519 && gem list -i bcrypt_pbkdf"]) do
       {_, 0} -> :ok
       _ -> install_kamal(run)
     end
@@ -173,7 +191,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       "apt-get update -qq && " <>
         "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a " <>
         "apt-get install -y -qq ruby-full build-essential >/dev/null && " <>
-        "gem install kamal --no-document --backtrace"
+        "gem install kamal ed25519 bcrypt_pbkdf --no-document --backtrace"
 
     case run.([command]) do
       {_, 0} -> :ok

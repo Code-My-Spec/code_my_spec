@@ -227,7 +227,10 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       assert {:ok, 555} =
-               Builder.ensure_builder_image(scope(), :x86, list_images: list_images, create: create)
+               Builder.ensure_builder_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create
+               )
     end
 
     test "builds one from scratch when none exists yet, then destroys the temp box" do
@@ -249,7 +252,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       run = fn
-        ["command -v kamal"] -> {"", 1}
+        ["command -v kamal" <> _] -> {"", 1}
         [_command] -> {"", 0}
       end
 
@@ -295,7 +298,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
 
       run = fn
-        ["command -v kamal"] -> {"", 1}
+        ["command -v kamal" <> _] -> {"", 1}
         ["sync"] -> send(owner, :synced) && {"", 0}
         [_command] -> {"", 0}
       end
@@ -369,6 +372,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"", 0} end
       create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+
       destroy = fn _scope, 42 ->
         send(owner, :destroyed)
         {:ok, %{}}
@@ -427,6 +431,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       list_images = fn _scope, _opts -> {:ok, []} end
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"connection refused", 255} end
+
       destroy = fn _scope, 42 ->
         send(owner, :destroyed)
         {:ok, %{}}
@@ -618,7 +623,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       then_fun = fn _run, _dir -> flunk("then_fun must not run when kamal never installed") end
 
       run = fn
-        ["command -v kamal"] -> {"", 1}
+        ["command -v kamal" <> _] -> {"", 1}
         ["apt-get" <> _ = _command] -> {"E: Unable to locate package ruby-full", 100}
         [_command] -> {"", 0}
       end
@@ -651,7 +656,12 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
             {:error,
              {:hetzner_error, 409,
-              %{"error" => %{"code" => "uniqueness_error", "message" => "server name #{name} is already used"}}}}
+              %{
+                "error" => %{
+                  "code" => "uniqueness_error",
+                  "message" => "server name #{name} is already used"
+                }
+              }}}
 
           _ ->
             {:ok, server()}
@@ -692,7 +702,12 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       create = fn _scope, _name, _create_opts ->
         {:error,
          {:hetzner_error, 409,
-          %{"error" => %{"code" => "uniqueness_error", "message" => "server name #{name} is already used"}}}}
+          %{
+            "error" => %{
+              "code" => "uniqueness_error",
+              "message" => "server name #{name} is already used"
+            }
+          }}}
       end
 
       find = fn _scope, ^name -> {:ok, recent} end
@@ -718,7 +733,10 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         case Process.get(:create_calls, 0) do
           0 ->
             Process.put(:create_calls, 1)
-            {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+
+            {:error,
+             {:hetzner_error, 409,
+              %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
 
           _ ->
             {:ok, server()}
@@ -732,7 +750,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       assert {:ok, _} =
-               Builder.build(scope(), "abc123", opts(create: create, find: find, build_fun: build))
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(create: create, find: find, build_fun: build)
+               )
     end
 
     test "surfaces a clear, distinguishing error when the orphan cannot be removed" do
@@ -740,11 +762,16 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
 
       create = fn _scope, _name, _create_opts ->
-        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+        {:error,
+         {:hetzner_error, 409,
+          %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
       end
 
       find = fn _scope, ^name -> {:ok, orphan} end
-      destroy = fn _scope, 999 -> {:error, {:hetzner_error, 423, %{"error" => %{"code" => "locked"}}}} end
+
+      destroy = fn _scope, 999 ->
+        {:error, {:hetzner_error, 423, %{"error" => %{"code" => "locked"}}}}
+      end
 
       assert {:error, {:orphaned_builder, message}} =
                Builder.build(
@@ -764,7 +791,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
     test "surfaces a clear, distinguishing error when the orphan can't be looked up" do
       create = fn _scope, _name, _create_opts ->
-        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
+        {:error,
+         {:hetzner_error, 409,
+          %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
       end
 
       find = fn _scope, _name -> {:error, {:hetzner_error, 500, %{}}} end
@@ -802,7 +831,12 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
     test "reaps a stale builder-* box and retries the create" do
       owner = self()
-      stale = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T00:00:00Z"}
+
+      stale = %{
+        "id" => 501,
+        "name" => "builder-deadbeef0000",
+        "created" => "2026-08-03T00:00:00Z"
+      }
 
       create = fn _scope, _name, _create_opts ->
         case Process.get(:create_calls, 0) do
@@ -844,7 +878,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
 
     test "leaves a builder-* box alone when it is younger than the age cutoff" do
-      recent = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T01:50:00Z"}
+      recent = %{
+        "id" => 501,
+        "name" => "builder-deadbeef0000",
+        "created" => "2026-08-03T01:50:00Z"
+      }
 
       create = fn _scope, _name, _create_opts -> resource_limit_error() end
       list = fn _scope -> {:ok, [recent]} end
@@ -891,7 +929,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
 
     test "a retry that still fails surfaces its own error, not the original" do
-      stale = %{"id" => 501, "name" => "builder-deadbeef0000", "created" => "2026-08-03T00:00:00Z"}
+      stale = %{
+        "id" => 501,
+        "name" => "builder-deadbeef0000",
+        "created" => "2026-08-03T00:00:00Z"
+      }
 
       create = fn _scope, _name, _create_opts ->
         case Process.get(:create_calls, 0) do

@@ -187,7 +187,8 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     test "ssh's own greeting is not mistaken for the architecture" do
       run =
         recorder(self(), %{
-          "inspect" => {"Warning: Permanently added '1.2.3.4' to the list of known hosts.\namd64\n", 0}
+          "inspect" =>
+            {"Warning: Permanently added '1.2.3.4' to the list of known hosts.\namd64\n", 0}
         })
 
       assert {:ok, %{architecture: :x86}} =
@@ -290,11 +291,14 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     # kamal baked in — the whole reason it exists is to skip this dance on
     # every ordinary deploy.
     test "does nothing when kamal is already on the box" do
-      run = recorder(self(), %{"command -v kamal" => {"/usr/local/bin/kamal", 0}})
+      run =
+        recorder(self(), %{
+          "command -v kamal && gem list -i ed25519 && gem list -i bcrypt_pbkdf" => {"true", 0}
+        })
 
       assert :ok = Remote.ensure_kamal(run)
 
-      assert_received {:ran, "command -v kamal"}
+      assert_received {:ran, "command -v kamal" <> _}
       refute_received {:ran, "apt-get" <> _}
     end
 
@@ -303,15 +307,33 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
 
       assert :ok = Remote.ensure_kamal(run)
 
-      assert_received {:ran, "command -v kamal"}
+      assert_received {:ran, "command -v kamal" <> _}
       assert_received {:ran, command}
       assert command =~ "apt-get install -y -qq ruby-full build-essential"
-      assert command =~ "gem install kamal --no-document"
+      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --no-document"
       # Without it, RubyGems can print a bare backtrace on some failures and
       # never attach the exception's own message or class anywhere in the
       # output — confirmed live, a fully captured, untruncated failure from
       # this exact command had nothing in it but "from ..." frames.
       assert command =~ "--backtrace"
+    end
+
+    # Confirmed live against broken_oaths: `command -v kamal` alone reported
+    # success — the custom image's snapshot really did have the binary — but
+    # the delivered ed25519 deploy key still could not be used, and
+    # authentication fell through to a TTY-less password prompt instead
+    # (`Errno::ENOTTY`) with no louder error anywhere, because RubyGems never
+    # revisits an already-installed gem's dependencies. `command -v kamal`
+    # being true proves nothing about whether `ed25519`/`bcrypt_pbkdf` are
+    # actually there.
+    test "reinstalls when kamal is present but ed25519 never landed" do
+      run = recorder(self(), %{"gem list -i ed25519" => {"false", 1}})
+
+      assert :ok = Remote.ensure_kamal(run)
+
+      assert_received {:ran, "command -v kamal" <> _}
+      assert_received {:ran, command}
+      assert command =~ "gem install kamal ed25519 bcrypt_pbkdf --no-document"
     end
 
     test "reports a real failure rather than proceeding without kamal" do
@@ -336,7 +358,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       run = recorder(self(), kamal_missing())
       Remote.ensure_kamal(run)
 
-      assert_received {:ran, "command -v kamal"}
+      assert_received {:ran, "command -v kamal" <> _}
       assert_received {:ran, command}
       assert command =~ "NEEDRESTART_MODE=a"
     end
