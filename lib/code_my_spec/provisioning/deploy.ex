@@ -513,9 +513,18 @@ defmodule CodeMySpec.Provisioning.Deploy do
       |> Enum.map_join(" ", fn {name, value} -> "#{name}=#{shell_quote(value)}" end)
 
     dir = Keyword.get(opts, :remote_dir, ".")
+    delivery = deliver_ssh_key(opts)
+
+    # Temporary, no secret material: just whether opts[:ssh_key_path] is
+    # present here (delivery is "" when it is not) and which env var names
+    # made it into the export list.
+    Logger.warning(
+      "[Deploy] DEBUG remote_command — delivers_key=#{inspect(delivery != "")} " <>
+        "export_names=#{inspect(opts |> script_env() |> Enum.map(&elem(&1, 0)))}"
+    )
 
     trust_host(opts) <>
-      deliver_ssh_key(opts) <>
+      delivery <>
       "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
   end
 
