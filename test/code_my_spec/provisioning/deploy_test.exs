@@ -503,7 +503,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # fingerprint, recurring even with a targeted `ssh-keygen -R` removal in
     # place beforehand — the box is destroyed after this one build either
     # way, so a full wipe is what actually earns trust here, not whatever
-    # survived from the image it booted from.
+    # survived from the image it booted from. Looped, not a single
+    # attempt, because `2>/dev/null` was hiding whether the scan actually
+    # reached the host at all — confirmed live, the identical wipe+scan
+    # resolved the mismatch on some attempts and not others with nothing
+    # else different, which reads as a transient network hiccup between
+    # the builder and the app host rather than a deterministic bug.
     test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
       test_pid = self()
 
@@ -524,10 +529,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert migrate_command =~ "rm -f ~/.ssh/known_hosts",
              "expected the builder's own known_hosts wiped before it is trusted again"
-      assert migrate_command =~ "ssh-keyscan -H 'app.example.com' >> ~/.ssh/known_hosts"
+      assert migrate_command =~ "ssh-keyscan -T 10 -H 'app.example.com' >> ~/.ssh/known_hosts"
+      assert migrate_command =~ "[ -s ~/.ssh/known_hosts ] && break",
+             "expected a retry loop rather than trusting one scan attempt"
 
       assert Regex.match?(
-               ~r/rm -f ~\/\.ssh\/known_hosts.*; ssh-keyscan.*; cd '\/build'/,
+               ~r/rm -f ~\/\.ssh\/known_hosts.*; for i in 1 2 3; do ssh-keyscan.*; cd '\/build'/,
                migrate_command
              ),
              "expected known_hosts wiped, then the host key seeded, before the script runs"

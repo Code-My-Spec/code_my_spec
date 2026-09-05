@@ -594,11 +594,27 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # There is nothing else on a disposable box for a stale unrelated
   # known_hosts entry to protect; the fresh scan is what earns trust here,
   # not whatever survived from the image it booted from.
+  #
+  # Retried, not a single attempt: `2>/dev/null` was hiding whether
+  # `ssh-keyscan` actually reached the host at all — a wipe followed by a
+  # scan that silently timed out leaves known_hosts empty either way, and
+  # nothing here distinguished "seeded correctly" from "found nothing to
+  # write". Confirmed live: the exact same `rm` + scan resolved the mismatch
+  # on some attempts and not others with nothing else different between
+  # them, which is what a transient network hiccup between the ephemeral
+  # builder and the app host looks like, not a deterministic bug. Loops
+  # until the file is actually non-empty (the wipe guarantees it starts at
+  # zero bytes) rather than trusting one shot at a scan that may or may not
+  # have landed.
   defp trust_host(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
+        quoted = shell_quote(host)
+
         "rm -f ~/.ssh/known_hosts; " <>
-          "ssh-keyscan -H #{shell_quote(host)} >> ~/.ssh/known_hosts 2>/dev/null; "
+          "for i in 1 2 3; do " <>
+          "ssh-keyscan -T 10 -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null " <>
+          "&& [ -s ~/.ssh/known_hosts ] && break; sleep 2; done; "
 
       _ ->
         ""
