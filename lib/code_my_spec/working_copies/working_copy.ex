@@ -134,6 +134,16 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   def changeset(harness, attrs) do
     harness
     |> cast(attrs, [
+      # Castable so a caller that already knows this copy's id can insert under
+      # it. `WorkingCopies.mint/2` writes the id into the checkout's own
+      # `.cms_harness.json` before the server is told anything — the file and
+      # the row are supposed to hold one value, not two derivations of one — and
+      # without this the id was silently dropped and a fresh one generated.
+      #
+      # Only ever supplied on insert. Nothing passes it on update, and an id in
+      # an update's attrs would be a caller trying to move a row rather than
+      # change it.
+      :id,
       :label,
       :last_seen_at,
       :path_missing_since,

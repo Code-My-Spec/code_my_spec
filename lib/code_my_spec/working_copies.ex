@@ -121,7 +121,7 @@ defmodule CodeMySpec.WorkingCopies do
   # correct for a harness too old to say.
   defp recognise_or_create(project_id, label, opts) do
     case recognised(project_id, opts[:device], opts[:root]) do
-      nil -> create(project_id, label, opts[:device])
+      nil -> create(project_id, label, opts[:device], opts[:working_copy_id])
       harness -> touch(harness, label)
     end
   end
@@ -591,22 +591,39 @@ defmodule CodeMySpec.WorkingCopies do
   # to know about devices, and the useful thing to tell it is to update — not to
   # write a row that nothing can attribute and that `location/1` cannot answer
   # for.
-  defp create(project_id, label, device) do
+  defp create(project_id, label, device, working_copy_id \\ nil) do
     case device_id(device) do
       nil ->
         {:error, :no_device}
 
       id ->
-        %WorkingCopy{}
-        |> WorkingCopy.changeset(%{
+        attrs = %{
           project_id: project_id,
           label: label,
           device_id: id,
           last_seen_at: now()
-        })
+        }
+
+        # The caller's id when it has one, and only then.
+        #
+        # `mint/2` writes an id into the checkout's `.cms_harness.json` before
+        # the server is told anything, precisely so the file and the row hold
+        # one value rather than two derivations of it. This generated its own
+        # regardless, so a copy made by the tool had one id on disk and a
+        # different one in the database — and would present the file's on join,
+        # be recognised by nothing, and mint a third row.
+        #
+        # Found by running it once against a real harness. The in-process double
+        # asserts the tool's reply and never compares it to what was written,
+        # so every test passed over it.
+        %WorkingCopy{}
+        |> WorkingCopy.changeset(maybe_put_id(attrs, working_copy_id))
         |> Repo.insert()
     end
   end
+
+  defp maybe_put_id(attrs, id) when is_binary(id) and id != "", do: Map.put(attrs, :id, id)
+  defp maybe_put_id(attrs, _id), do: attrs
 
   defp device_id(%Device{id: id}), do: id
   defp device_id(id) when is_binary(id) and id != "", do: id
@@ -1032,10 +1049,28 @@ defmodule CodeMySpec.WorkingCopies do
     # Only copies that are checkouts. A row is not one until it reports a root —
     # `ensure_default/1` mints a rootless nil-object row — and a machine is only
     # a candidate host if it actually holds the repository.
-    candidates =
+    # The main checkout first, then anything else that is a checkout.
+    #
+    # Order matters and it is not a preference. A new copy is made *beside* the
+    # host — `.claude/worktrees/<name>` under its root — so a host that is
+    # itself a worktree nests one inside another. Run live once, the first copy
+    # this made landed at
+    # `…/worktrees/agent-conversation-ui/.claude/worktrees/live-smoke-test-one`,
+    # because `host_holder/1` takes whichever candidate is connected and the
+    # list happened to start with a worktree.
+    #
+    # The main checkout is the one place a sibling is a sibling. Everything else
+    # stays in the list because a project whose main copy is not connected
+    # should still be able to make one, and a nested worktree is worse than no
+    # worktree only in tidiness — it still works.
+    copies =
       scope
       |> list_harnesses()
       |> Enum.filter(&(is_binary(&1.root) and &1.root != ""))
+
+    candidates =
+      copies
+      |> Enum.sort_by(& &1.main, :desc)
       |> Enum.map(& &1.id)
 
     request = %{
@@ -1055,7 +1090,16 @@ defmodule CodeMySpec.WorkingCopies do
 
     with {:ok, %{root: root, working_copy_id: id}} <-
            Transport.impl().create_working_copy(candidates, request, 60_000),
-         {:ok, copy} <- issue(scope, id, root: root, label: opts[:label], device: host_device(scope)),
+         {:ok, copy} <-
+           issue(scope, id,
+             root: root,
+             label: opts[:label],
+             device: host_device(scope),
+             # Not a suggestion. This id is already written into the checkout's
+             # own config, and a row under a different one is a copy nothing can
+             # recognise.
+             working_copy_id: id
+           ),
          {:ok, copy} <- report_root(copy, root) do
       {:ok, copy, Agents.ensure_copy_agents(scope, copy)}
     end
