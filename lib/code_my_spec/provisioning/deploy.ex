@@ -153,7 +153,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
   end
 
   defp missing_env_file?(output) when is_binary(output),
-    do: String.contains?(output, "env/roles/") and String.contains?(output, "no such file or directory")
+    do:
+      String.contains?(output, "env/roles/") and
+        String.contains?(output, "no such file or directory")
 
   defp missing_env_file?(_output), do: false
 
@@ -599,19 +601,32 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # `ssh-keyscan` actually reached the host at all — a wipe followed by a
   # scan that silently timed out leaves known_hosts empty either way, and
   # nothing here distinguished "seeded correctly" from "found nothing to
-  # write". Confirmed live: the exact same `rm` + scan resolved the mismatch
-  # on some attempts and not others with nothing else different between
-  # them, which is what a transient network hiccup between the ephemeral
-  # builder and the app host looks like, not a deterministic bug. Loops
-  # until the file is actually non-empty (the wipe guarantees it starts at
-  # zero bytes) rather than trusting one shot at a scan that may or may not
-  # have landed.
+  # write". Loops until the file is actually non-empty (the wipe guarantees
+  # it starts at zero bytes) rather than trusting one shot at a scan that
+  # may or may not have landed.
+  #
+  # The retry loop alone did *not* clear it live against broken_oaths —
+  # identical `HostKeyMismatch`, identical fingerprint, on every attempt.
+  # Net::SSH doesn't only consult `~/.ssh/known_hosts`: `KnownHosts.hostfiles`
+  # merges keys found across the user files *and* the global
+  # `/etc/ssh/ssh_known_hosts[2]` (net-ssh 7.3.2, `known_hosts.rb`), and
+  # Kamal's own `Ssh#options` never sets `user_known_hosts_file` to narrow
+  # that (`kamal/configuration/ssh.rb` — no such key at all). A stale entry
+  # baked into the builder image's *global* file is exactly as poisonous as
+  # one in the user file, and it's root-owned state our earlier wipe never
+  # touched — which is also why it reproduced with the same fingerprint
+  # every single time rather than flapping: nothing about it was transient.
+  # `opts[:run]` is already confirmed `root` (the `whoami` diagnostic), so
+  # deleting it outright needs no `sudo`; deleting rather than truncating
+  # is enough since `File.readable?` on a missing file short-circuits to no
+  # keys at all instead of an empty-but-present one.
   defp trust_host(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
         quoted = shell_quote(host)
 
-        "rm -f ~/.ssh/known_hosts; " <>
+        "rm -f ~/.ssh/known_hosts ~/.ssh/known_hosts2 " <>
+          "/etc/ssh/ssh_known_hosts /etc/ssh/ssh_known_hosts2; " <>
           "for i in 1 2 3; do " <>
           "ssh-keyscan -T 10 -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null " <>
           "&& [ -s ~/.ssh/known_hosts ] && break; sleep 2; done; "

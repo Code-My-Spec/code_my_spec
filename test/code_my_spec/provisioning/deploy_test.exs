@@ -18,7 +18,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     swap_exit = Keyword.get(opts, :swap_exit, 0)
     # What `bin/deploy` prints when it finds no env files on the host — the
     # only signal that nothing has ever booted there.
-    first_deploy = Keyword.get(opts, :first_deploy, false) && "first_deploy=1" || ""
+    first_deploy = (Keyword.get(opts, :first_deploy, false) && "first_deploy=1") || ""
     path = Path.join(dir, "fake_deploy")
 
     File.write!(path, """
@@ -61,7 +61,8 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     test "migrates before it swaps", %{env: env} = ctx do
       script = deploy_script(ctx.env.cwd, [])
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert %Result{migrated_at: %DateTime{}, swapped_at: %DateTime{}} = result
       assert DateTime.compare(result.migrated_at, result.swapped_at) in [:lt, :eq]
@@ -70,7 +71,8 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     test "records the health check between the two", %{env: env} = ctx do
       script = deploy_script(ctx.env.cwd, [])
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert DateTime.compare(result.migrated_at, result.health_ok_at) in [:lt, :eq]
       assert DateTime.compare(result.health_ok_at, result.swapped_at) in [:lt, :eq]
@@ -83,7 +85,8 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     test "never swaps and leaves the previous version live", %{env: env} = ctx do
       script = deploy_script(ctx.env.cwd, migrate_exit: 1)
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert result.failed_phase == :migrate
       assert result.swapped_at == nil
@@ -253,10 +256,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
   describe "a first deploy that has never booted at all" do
     # The env file is what migrate is missing, and only a boot writes one —
     # so bootstrapping means swap runs once, early, purely to create it.
-    test "bootstraps with a swap, then migrates, health-checks, and swaps again", %{env: env} = ctx do
+    test "bootstraps with a swap, then migrates, health-checks, and swaps again",
+         %{env: env} = ctx do
       script = bootstrap_deploy_script(ctx.env.cwd, [])
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert %DateTime{} = result.bootstrapped_at
       assert %DateTime{} = result.migrated_at
@@ -285,10 +290,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # The bootstrap itself is what moved traffic — there is no previous
     # version for the ordinary migrate-failure wording to be talking about,
     # so this gets its own phase and its own honest reason.
-    test "reports a failed bootstrap as its own phase, not an ordinary migrate failure", %{env: env} = ctx do
+    test "reports a failed bootstrap as its own phase, not an ordinary migrate failure",
+         %{env: env} = ctx do
       script = bootstrap_deploy_script(ctx.env.cwd, swap_exit: 1)
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert result.failed_phase == :bootstrap
       assert result.swapped_at == nil
@@ -298,10 +305,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # A double failure: the bootstrap succeeds (traffic already moved), but
     # the migration retried against it genuinely fails too. "the previous
     # version is still serving" would be a lie here — nothing was previous.
-    test "names what actually happened when the retried migration also fails", %{env: env} = ctx do
+    test "names what actually happened when the retried migration also fails",
+         %{env: env} = ctx do
       script = bootstrap_deploy_script(ctx.env.cwd, retry_migrate_exit: 1)
 
-      result = Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
+      result =
+        Deploy.run(env, "prod", deploy_script: script, host: "app.example.com", probe: healthy())
 
       assert result.failed_phase == :migrate
       assert result.live_version == :new
@@ -316,7 +325,12 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # reading the wrong field.
     test "swapped?/1 is the single source of truth for completion" do
       refute Result.swapped?(%Result{})
-      refute Result.swapped?(%Result{migrated_at: DateTime.utc_now(), health_ok_at: DateTime.utc_now()})
+
+      refute Result.swapped?(%Result{
+               migrated_at: DateTime.utc_now(),
+               health_ok_at: DateTime.utc_now()
+             })
+
       assert Result.swapped?(%Result{swapped_at: DateTime.utc_now()})
     end
 
@@ -500,15 +514,17 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # a mismatch — the same failure host-key verification exists to catch,
     # self-inflicted by a builder image nobody ever expected to carry state.
     # Confirmed live against broken_oaths: identical HostKeyMismatch, same
-    # fingerprint, recurring even with a targeted `ssh-keygen -R` removal in
-    # place beforehand — the box is destroyed after this one build either
+    # fingerprint, recurring even with a targeted `ssh-keygen -R` removal,
+    # and then again even with a full wipe + retry loop on the *user*
+    # known_hosts alone — the box is destroyed after this one build either
     # way, so a full wipe is what actually earns trust here, not whatever
-    # survived from the image it booted from. Looped, not a single
-    # attempt, because `2>/dev/null` was hiding whether the scan actually
-    # reached the host at all — confirmed live, the identical wipe+scan
-    # resolved the mismatch on some attempts and not others with nothing
-    # else different, which reads as a transient network hiccup between
-    # the builder and the app host rather than a deterministic bug.
+    # survived from the image it booted from. Also wipes the *global*
+    # known_hosts files: Net::SSH's `KnownHosts.hostfiles` merges keys from
+    # `/etc/ssh/ssh_known_hosts[2]` right alongside the user files, and
+    # Kamal never narrows that — a stale, root-owned entry there survived
+    # every earlier user-file-only fix and is what actually explained the
+    # mismatch recurring with the identical fingerprint every time rather
+    # than flapping.
     test "seeds the target's host key before kamal ever tries to reach it", %{env: env} do
       test_pid = self()
 
@@ -527,14 +543,17 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert_receive {:ran, migrate_command}
 
-      assert migrate_command =~ "rm -f ~/.ssh/known_hosts",
-             "expected the builder's own known_hosts wiped before it is trusted again"
+      assert migrate_command =~
+               "rm -f ~/.ssh/known_hosts ~/.ssh/known_hosts2 /etc/ssh/ssh_known_hosts /etc/ssh/ssh_known_hosts2",
+             "expected both the builder's user AND global known_hosts wiped before it is trusted again"
+
       assert migrate_command =~ "ssh-keyscan -T 10 -H 'app.example.com' >> ~/.ssh/known_hosts"
+
       assert migrate_command =~ "[ -s ~/.ssh/known_hosts ] && break",
              "expected a retry loop rather than trusting one scan attempt"
 
       assert Regex.match?(
-               ~r/rm -f ~\/\.ssh\/known_hosts.*; for i in 1 2 3; do ssh-keyscan.*; cd '\/build'/,
+               ~r/rm -f ~\/\.ssh\/known_hosts.*ssh_known_hosts2; for i in 1 2 3; do ssh-keyscan.*; cd '\/build'/,
                migrate_command
              ),
              "expected known_hosts wiped, then the host key seeded, before the script runs"
@@ -568,7 +587,11 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       test_pid = self()
       {:ok, key_dir} = Briefly.create(directory: true)
       key_path = Path.join(key_dir, "id_ed25519")
-      File.write!(key_path, "-----BEGIN OPENSSH PRIVATE KEY-----\nfake+key/data==\n-----END OPENSSH PRIVATE KEY-----\n")
+
+      File.write!(
+        key_path,
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nfake+key/data==\n-----END OPENSSH PRIVATE KEY-----\n"
+      )
 
       run = fn [command] ->
         send(test_pid, {:ran, command})
@@ -663,6 +686,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       )
 
       assert_receive {:ran, command}
+
       refute command =~ ctx.env.cwd,
              "the local tmp dir leaked into a command meant for a different box"
     end
