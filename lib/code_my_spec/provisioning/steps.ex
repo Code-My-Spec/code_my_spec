@@ -1017,7 +1017,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # server already depended on before this call: teardown skips anything
   # marked adopted and deletes everything else.
   defp ensure_account_network(scope, server) do
-    case existing_network_id(server) do
+    case existing_network_id(scope, server) do
       {:ok, network_id} ->
         with {:ok, network} <- Hetzner.find_network_by_id(scope, network_id) do
           {:ok, server, Map.put(network, "__adopted__", true)}
@@ -1051,8 +1051,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp next_available_network_index(scope) do
     used =
       case Hetzner.list_networks(scope) do
-        {:ok, networks} -> networks |> Enum.map(&network_index_of/1) |> Enum.reject(&is_nil/1) |> MapSet.new()
-        _ -> MapSet.new()
+        {:ok, networks} ->
+          networks |> Enum.map(&network_index_of/1) |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+        _ ->
+          MapSet.new()
       end
 
     Enum.find(0..255, &(not MapSet.member?(used, &1)))
@@ -1968,7 +1971,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts, environment)
 
     with {:ok, server} <- Hetzner.find_server(scope, name),
-         {:ok, network_id} <- existing_network_id(server),
+         {:ok, network_id} <- existing_network_id(scope, server),
          {:ok, ip} <- Hetzner.private_ip(server, network_id) do
       {:ok, "#{ip}:#{Registry.port()}"}
     else
@@ -2236,7 +2239,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # is what ensures a box has one at all; this only ever adopts it.
     with {:ok, server} <- Hetzner.find_server(scope, box),
          location = get_in(server, ["location", "name"]),
-         {:ok, network_id} <- existing_network_id(server),
+         {:ok, network_id} <- existing_network_id(scope, server),
          {:ok, network} <- Hetzner.find_network_by_id(scope, network_id),
          # Re-attached even though the id just came from the server's own
          # state — a box added to a zone's network by a *different* call
@@ -4102,7 +4105,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # teardown skips anything marked adopted and deletes everything else.
   defp adopt_zone_networks(scope, servers) do
     Enum.reduce_while(servers, {:ok, %{}}, fn server, {:ok, acc} ->
-      case existing_network_id(server) do
+      case existing_network_id(scope, server) do
         {:ok, network_id} -> adopt_network(scope, server, network_id, acc)
         :error -> {:halt, {:paused, no_account_network_message(server)}}
       end
@@ -4127,10 +4130,50 @@ defmodule CodeMySpec.Provisioning.Steps do
       "step never creates one."
   end
 
-  defp existing_network_id(server) do
+  # The first entry is not always the right one. Confirmed live: `fuellytics`
+  # (location `nbg1`, zone eu-central) carries TWO attachments —
+  # `market-my-spec` (zone us-east) first in `private_net`, then
+  # `market-my-spec-eu-central` (zone eu-central) second — because it is
+  # shared with another project whose own history put a now-wrong-zone
+  # network first in the list. Blindly taking that first entry and handing
+  # it to a *new* Hetzner request (a builder, say) gets `networks must be
+  # in the same network zone`: Hetzner tolerates the mismatch on a server
+  # that already holds it, but refuses to create anything new with it.
+  # Matching the server's own location against each candidate's actual zone
+  # is what `attach_private_network/3`, `ensure_account_network/2` and
+  # `adopt_network/4` all needed anyway — they already fetch the network
+  # right after this returns, so this fetches the *same* ones to check,
+  # not new API traffic.
+  defp existing_network_id(scope, server) do
     case server["private_net"] || [] do
-      [%{"network" => network_id} | _] when not is_nil(network_id) -> {:ok, network_id}
-      _ -> :error
+      [] ->
+        :error
+
+      entries ->
+        zone = server |> get_in(["location", "name"]) |> Hetzner.network_zone()
+
+        entries
+        |> Enum.map(& &1["network"])
+        |> Enum.reject(&is_nil/1)
+        |> pick_zone_matching_network(scope, zone)
+    end
+  end
+
+  defp pick_zone_matching_network([], _scope, _zone), do: :error
+
+  defp pick_zone_matching_network([first | _] = ids, scope, zone) do
+    case Enum.find(ids, &network_in_zone?(scope, &1, zone)) do
+      nil -> {:ok, first}
+      network_id -> {:ok, network_id}
+    end
+  end
+
+  defp network_in_zone?(_scope, _network_id, nil), do: false
+
+  defp network_in_zone?(scope, network_id, zone) do
+    case Hetzner.find_network_by_id(scope, network_id) do
+      {:ok, network} -> Enum.any?(network["subnets"] || [], &(&1["network_zone"] == zone))
+      _ -> false
     end
   end
 
@@ -4196,7 +4239,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # nothing here should stop uat from ever being attempted because prod keeps
   # erroring.
   defp serve_registries(scope, servers, networks, opts, environments) do
-    results = Enum.map(servers, &{&1, serve_one_registry(scope, &1, networks, opts, environments)})
+    results =
+      Enum.map(servers, &{&1, serve_one_registry(scope, &1, networks, opts, environments)})
 
     resources = for {_server, {:ok, resources}} <- results, resource <- resources, do: resource
 
@@ -5623,7 +5667,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, server} <- Hetzner.find_server(scope, name),
          public when is_binary(public) and public != "" <-
            get_in(server, ["public_net", "ipv4", "ip"]),
-         {:ok, network_id} <- existing_network_id(server),
+         {:ok, network_id} <- existing_network_id(scope, server),
          {:ok, bind} <- Hetzner.private_ip(server, network_id) do
       run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts)
       Registry.reachable?(scope, Keyword.merge(opts, run: run, bind: bind))

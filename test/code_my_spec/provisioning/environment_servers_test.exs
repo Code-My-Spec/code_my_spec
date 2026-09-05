@@ -179,6 +179,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     derived_prod_name = "#{Repository.default_name(ctx.scope.active_project)}-prod"
 
     assert "fuellytics-prod" in names
+
     refute derived_prod_name in names,
            "expected the linked environment to be asked for by the server's own name " <>
              "(fuellytics-prod), not the derived #{derived_prod_name} — got #{inspect(names)}"
@@ -186,7 +187,8 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert Enum.any?(names, &String.ends_with?(&1, "-uat")),
            "expected uat, now linked to its own derived name, to still be asked for"
 
-    assert length(names) == 2, "expected exactly one request per environment, got #{inspect(names)}"
+    assert length(names) == 2,
+           "expected exactly one request per environment, got #{inspect(names)}"
   end
 
   # Reproduces broken_oaths onboarding live: prod and uat linked to two
@@ -200,7 +202,8 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # create one — colliding on the range the real network already held
   # (`networks_overlap`, 422). The fix reads the network straight off an
   # already-networked server and adopts it instead.
-  test "environments already networked on shared servers join that network instead of creating one", ctx do
+  test "environments already networked on shared servers join that network instead of creating one",
+       ctx do
     record_shared_network_requests(self())
 
     link_environment(ctx.scope, "prod", "fuellytics-prod")
@@ -214,7 +217,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
 
     refute_received {:ran, "POST", "/v1/networks", _payload},
-                     "expected the already-existing shared network to be adopted, not a new one created"
+                    "expected the already-existing shared network to be adopted, not a new one created"
 
     assert Enum.any?(resources, &(&1.kind == "network" and &1.origin == "adopted")),
            "expected the network resource to record as adopted, not created — teardown must never " <>
@@ -231,7 +234,8 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # through to create-and-collide — the exact bug, reproduced live on the
   # second attempt to onboard broken_oaths. Per-server adoption has no such
   # requirement.
-  test "two independently pre-existing servers each keep their own network, not one shared", ctx do
+  test "two independently pre-existing servers each keep their own network, not one shared",
+       ctx do
     record_two_independent_networks_requests(self())
 
     link_environment(ctx.scope, "prod", "fuellytics-prod")
@@ -245,7 +249,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert {:ok, resources} = Steps.run(:server, ctx.scope, opts)
 
     refute_received {:ran, "POST", "/v1/networks", _payload},
-                     "expected both already-existing networks to be adopted, not a new one created"
+                    "expected both already-existing networks to be adopted, not a new one created"
 
     network_resources = Enum.filter(resources, &(&1.kind == "network"))
 
@@ -271,10 +275,28 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert {:ok, "10.1.0.2:5000"} = Steps.registry_address(ctx.scope, "uat")
   end
 
-  test "registry_address/3 reports not provisioned for an environment with no linked server", ctx do
+  test "registry_address/3 reports not provisioned for an environment with no linked server",
+       ctx do
     record_two_independent_networks_requests(self())
 
     assert {:error, :not_provisioned} = Steps.registry_address(ctx.scope, "prod")
+  end
+
+  # Confirmed live against broken_oaths: `fuellytics` (location `nbg1`,
+  # zone eu-central) carries TWO network attachments — `market-my-spec`
+  # (zone us-east) first in `private_net`, from a different project's own
+  # history, then its real eu-central one second. Blindly taking the first
+  # entry handed a us-east network to a *new* Hetzner request built for an
+  # eu-central resource, and Hetzner refused it ("networks must be in the
+  # same network zone") — even though the existing, wrong-zone attachment
+  # is tolerated on the server that already holds it. The zone-matching
+  # entry, wherever it sits in the list, is the one that has to win.
+  test "registry_address/3 picks the network whose zone matches the server's own location, not just the first one",
+       ctx do
+    record_wrong_zone_first_requests(self())
+    link_environment(ctx.scope, "uat", "fuellytics")
+
+    assert {:ok, "10.1.0.2:5000"} = Steps.registry_address(ctx.scope, "uat")
   end
 
   # fuellytics-prod on its own network (id 55) and fuellytics on a different
@@ -346,6 +368,49 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   defp two_networks_reply(conn, _method, _path, payload, _servers, _networks),
     do: json(conn, %{"network" => %{"id" => 1, "name" => payload["name"]}})
+
+  # `fuellytics` in eu-central, carrying a us-east network FIRST in
+  # `private_net` and its own, real eu-central network second — the exact
+  # shape found live on the account, from a different project's network
+  # having been attached to this box before broken_oaths ever existed.
+  defp record_wrong_zone_first_requests(owner) do
+    servers = [
+      %{
+        "id" => 302,
+        "name" => "fuellytics",
+        "location" => %{"name" => "nbg1"},
+        "public_net" => %{"ipv4" => %{"ip" => "46.225.105.88"}},
+        "private_net" => [
+          %{"network" => 55, "ip" => "10.0.0.4"},
+          %{"network" => 66, "ip" => "10.1.0.2"}
+        ]
+      }
+    ]
+
+    networks = [
+      %{
+        "id" => 55,
+        "name" => "market-my-spec",
+        "ip_range" => "10.0.0.0/16",
+        "subnets" => [%{"network_zone" => "us-east", "ip_range" => "10.0.0.0/24"}]
+      },
+      %{
+        "id" => 66,
+        "name" => "market-my-spec-eu-central",
+        "ip_range" => "10.1.0.0/16",
+        "subnets" => [%{"network_zone" => "eu-central", "ip_range" => "10.1.0.0/24"}]
+      }
+    ]
+
+    plug = fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      send(owner, {:ran, conn.method, conn.request_path, payload})
+      two_networks_reply(conn, conn.method, conn.request_path, payload, servers, networks)
+    end
+
+    Req.Test.stub(Hetzner, plug)
+  end
 
   # Two already-existing servers on the account's one real network — the
   # opposite of every other fixture here, which starts servers with no
@@ -460,7 +525,10 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     assert Enum.any?(resources, &(&1.kind == "database" and &1.identifier =~ "environment=prod")),
            "expected prod's database to be recorded despite uat's failure, got #{inspect(resources)}"
 
-    refute Enum.any?(resources, &(&1.kind in ["registry", "database"] and &1.identifier =~ "environment=uat")),
+    refute Enum.any?(
+             resources,
+             &(&1.kind in ["registry", "database"] and &1.identifier =~ "environment=uat")
+           ),
            "uat's registry/database never succeeded — nothing about them should read as done. " <>
              "(uat's own server box is expected here — box creation is a separate, earlier " <>
              "phase this fix does not touch — only its registry and database should be absent)"
@@ -523,10 +591,17 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   defp already_provisioned_run(base_run) do
     fn [command] = args ->
       cond do
-        command =~ "docker ps -q -f name=^/cms-registry$" -> {"c0ffeec0ffee\n", 0}
-        command =~ "docker ps -q -f name=^/cms-postgres$" -> {"c0ffeec0ffee\n", 0}
-        command =~ "docker inspect --format '{{.Config.Image}}' cms-postgres" -> {"pgvector/pgvector:pg18\n", 0}
-        true -> base_run.(args)
+        command =~ "docker ps -q -f name=^/cms-registry$" ->
+          {"c0ffeec0ffee\n", 0}
+
+        command =~ "docker ps -q -f name=^/cms-postgres$" ->
+          {"c0ffeec0ffee\n", 0}
+
+        command =~ "docker inspect --format '{{.Config.Image}}' cms-postgres" ->
+          {"pgvector/pgvector:pg18\n", 0}
+
+        true ->
+          base_run.(args)
       end
     end
   end
@@ -569,9 +644,15 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     Req.Test.stub(Hetzner, plug)
   end
 
-  defp full_reply(conn, "GET", "/v1/servers", _payload, servers), do: json(conn, %{"servers" => servers})
-  defp full_reply(conn, "GET", "/v1/firewalls", _payload, _servers), do: json(conn, %{"firewalls" => []})
-  defp full_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers), do: json(conn, %{"ssh_keys" => []})
+  defp full_reply(conn, "GET", "/v1/servers", _payload, servers),
+    do: json(conn, %{"servers" => servers})
+
+  defp full_reply(conn, "GET", "/v1/firewalls", _payload, _servers),
+    do: json(conn, %{"firewalls" => []})
+
+  defp full_reply(conn, "GET", "/v1/ssh_keys", _payload, _servers),
+    do: json(conn, %{"ssh_keys" => []})
+
   defp full_reply(conn, "GET", "/v1/networks", _payload, _servers) do
     json(conn, %{
       "networks" => [
@@ -668,7 +749,9 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(
       412,
-      Jason.encode!(%{"error" => %{"code" => "resource_unavailable", "message" => "error during placement"}})
+      Jason.encode!(%{
+        "error" => %{"code" => "resource_unavailable", "message" => "error during placement"}
+      })
     )
   end
 
