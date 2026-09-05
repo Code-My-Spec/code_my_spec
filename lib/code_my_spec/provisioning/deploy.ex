@@ -521,7 +521,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
       deliver_ssh_key(opts) <>
       diagnose_key_on_builder(opts) <>
       diagnose_net_ssh_lookup(opts) <>
-      "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
+      "cd #{shell_quote(dir)} && " <>
+      diagnose_net_ssh_lookup_in_project_dir(opts) <>
+      "#{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
   end
 
   # Temporary: every piece of this tested clean in isolation from this
@@ -580,21 +582,46 @@ defmodule CodeMySpec.Provisioning.Deploy do
   defp diagnose_net_ssh_lookup(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
-        "ruby -e #{shell_quote(net_ssh_probe_script(host))}; "
+        "ruby -e #{shell_quote(net_ssh_probe_script(host, "net_ssh_probe"))}; "
 
       _ ->
         ""
     end
   end
 
-  defp net_ssh_probe_script(host) do
+  # A first probe (`diagnose_net_ssh_lookup/1`) called this exact method with
+  # this exact target and found the exact key kamal's own connection then
+  # rejected — same host, same fingerprint, moments apart, in what looked
+  # like the same shell session. It was not: that probe runs before `cd
+  # #{dir}`, kamal runs after. A project with its own Gemfile can carry its
+  # own `net-ssh` — a different version, potentially a buggy one — and a
+  # bundler-aware `kamal` binstub checked into the repo's own `bin/` would
+  # shadow the globally gem-installed one the moment the working directory
+  # changes, with nothing in the deploy's own output naming which one ran.
+  # This repeats the identical probe from inside the tree, alongside `which
+  # kamal` and whatever `Gemfile.lock` says about `net-ssh`, so a mismatch
+  # between the two probes' output points at the version instead of guessing
+  # at Net::SSH internals a third time.
+  defp diagnose_net_ssh_lookup_in_project_dir(opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        "which kamal; gem list net-ssh 2>&1; " <>
+          "[ -f Gemfile.lock ] && grep -A1 '    net-ssh' Gemfile.lock; " <>
+          "ruby -e #{shell_quote(net_ssh_probe_script(host, "net_ssh_probe_incd"))}; "
+
+      _ ->
+        ""
+    end
+  end
+
+  defp net_ssh_probe_script(host, label) do
     "require 'net/ssh'; require 'socket'; " <>
       "host=#{inspect(host)}; " <>
       "ip=(TCPSocket.new(host,22).remote_address.ip_address rescue nil); " <>
       "target=ip ? \"\#{host},\#{ip}\" : host; " <>
       "keys=Net::SSH::KnownHosts.search_for(target); " <>
-      "puts \"net_ssh_probe target=\#{target} found=\#{keys.to_a.size}\"; " <>
-      "keys.each{|k| puts \"net_ssh_probe \#{k.ssh_type} " <>
+      "puts \"#{label} target=\#{target} found=\#{keys.to_a.size}\"; " <>
+      "keys.each{|k| puts \"#{label} \#{k.ssh_type} " <>
       "\#{(Net::SSH::Authentication::PubKeyFingerprint.fingerprint(k.to_blob) rescue 'fp-error')}\"}"
   end
 

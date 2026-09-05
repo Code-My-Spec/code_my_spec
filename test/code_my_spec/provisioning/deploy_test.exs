@@ -661,6 +661,46 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "expected the probe to run after the config is written, before the script runs"
     end
 
+    # The first probe (above) found and correctly fingerprinted the exact
+    # key kamal's own connection then rejected moments later — but that
+    # probe runs before `cd`, and kamal runs after. A project with its own
+    # Gemfile can carry its own net-ssh, and a bundler-aware `kamal` binstub
+    # checked into the repo would shadow the global one the moment the
+    # working directory changes. Repeats the identical probe from inside
+    # the tree, plus `which kamal` and whatever Gemfile.lock says about
+    # net-ssh, so a difference between the two probes' output points at the
+    # version instead of guessing at Net::SSH internals again.
+    test "repeats the probe from inside the project directory, where kamal actually runs",
+         %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "which kamal"
+      assert migrate_command =~ "gem list net-ssh"
+      assert migrate_command =~ "Gemfile.lock"
+      assert migrate_command =~ "net_ssh_probe_incd"
+
+      assert Regex.match?(
+               ~r/cd '\/build' && which kamal.*net_ssh_probe_incd.*bin\/deploy/,
+               migrate_command
+             ),
+             "expected the in-directory probe to run after cd, before the script"
+    end
+
     # `CMS_SSH_KEY_PATH` travels as an env var — only ever a path. Kamal
     # reads it on the builder to make its own, second outbound ssh
     # connection to the app host, which needs the key's actual bytes to be
