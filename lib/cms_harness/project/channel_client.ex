@@ -60,6 +60,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
   alias CmsHarness.Web.Endpoint
+  alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
 
@@ -1130,7 +1131,7 @@ defmodule CmsHarness.Project.ChannelClient do
     root = socket.assigns.project.root
 
     Task.start(fn ->
-      result = CmsHarness.WorkingCopies.Create.run(root, msg)
+      result = Create.run(root, msg)
 
       send(parent, {:create_working_copy_result, topic, ref, result})
     end)
