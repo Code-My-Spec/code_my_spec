@@ -51,20 +51,38 @@ let Hooks = {
   // the agent takes a turn.
   StickToBottom: {
     mounted() {
+      // Starts true: nobody has looked at this transcript yet, so there is
+      // nothing to respect besides following the newest turn.
+      this.wasAtBottom = true;
       this.pin();
+      // A real scroll, not a geometry snapshot taken in `beforeUpdate` —
+      // that snapshot can land *after* an update has already reshaped the
+      // content above it. A conversation long enough to have "older turns"
+      // renders `phx-viewport-top` on mount, and its marker starts inside
+      // the viewport before this hook has pinned to the bottom, so a
+      // `load_older` round trip routinely lands as the very next update:
+      // `beforeUpdate` measured the stale, still-scrolled-to-top geometry
+      // from before `pin()`'s effect had settled, called that "not at the
+      // bottom", and this hook stayed unpinned for the rest of the session
+      // — reproduced locally, not guessed. Nothing here reads geometry
+      // except in response to a scroll event the browser actually fired,
+      // so there is no snapshot left to race.
+      this.onScroll = () => {
+        const { scrollTop, scrollHeight, clientHeight } = this.el;
+        // 32px of slack: "at the bottom" should survive a stray pixel from a
+        // rounded height, or following stops working for reasons nobody can see.
+        this.wasAtBottom = scrollHeight - (scrollTop + clientHeight) < 32;
+      };
+      this.el.addEventListener("scroll", this.onScroll, { passive: true });
     },
     updated() {
       if (this.wasAtBottom) this.pin();
     },
     pin() {
       this.el.scrollTop = this.el.scrollHeight;
-      this.wasAtBottom = true;
     },
-    beforeUpdate() {
-      // 32px of slack: "at the bottom" should survive a stray pixel from a
-      // rounded height, or following stops working for reasons nobody can see.
-      const { scrollTop, scrollHeight, clientHeight } = this.el;
-      this.wasAtBottom = scrollHeight - (scrollTop + clientHeight) < 32;
+    destroyed() {
+      this.el.removeEventListener("scroll", this.onScroll);
     },
   },
   // Tells the server how wide the screen is, because it cannot see one and the
