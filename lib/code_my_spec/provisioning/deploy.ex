@@ -517,6 +517,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     dir = Keyword.get(opts, :remote_dir, ".")
 
     trust_host(opts) <>
+      restrict_host_key_algorithms(opts) <>
       deliver_ssh_key(opts) <>
       diagnose_key_on_builder(opts) <>
       "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
@@ -646,6 +647,48 @@ defmodule CodeMySpec.Provisioning.Deploy do
           "for i in 1 2 3; do " <>
           "ssh-keyscan -T 10 -H #{quoted} >> ~/.ssh/known_hosts 2>/dev/null " <>
           "&& [ -s ~/.ssh/known_hosts ] && break; sleep 2; done; "
+
+      _ ->
+        ""
+    end
+  end
+
+  # Sidesteps a comparison bug rather than fixing it: confirmed live against
+  # broken_oaths, `ensure_kamal/1`'s ed25519/bcrypt_pbkdf install (needed for
+  # the delivered *client* auth key) has a side effect nothing asked for —
+  # `ssh-ed25519` also joins the *host key* algorithms Net::SSH will accept,
+  # and once the server negotiates it instead of rsa/ecdsa, verification
+  # fails even against a known_hosts entry proven correct: the reported
+  # fingerprint matched an independent scan byte-for-byte, all three
+  # algorithm types were present, and `Net::SSH::Verifiers::Always` still
+  # raised `HostKeyMismatch`. Every earlier attempt tonight, before that
+  # gem existed on the box, negotiated rsa/ecdsa and never once mismatched —
+  # this restricts the client back to that same known-good set rather than
+  # attempting to fix net-ssh's own key comparison, which is out of this
+  # codebase's control. Client-key auth is unaffected: ed25519 stays loaded
+  # for that; this line only narrows which algorithms the *server's host
+  # key* is allowed to use for this one connection.
+  #
+  # Written to `~/.ssh/config`, not passed as a kamal/Net::SSH option
+  # directly: `Kamal::Configuration::Ssh#options` has no `:host_key` key at
+  # all, so there is no config surface in kamal itself to carry this. But
+  # `Net::SSH.start` defaults `:config` to `true` when the caller does not
+  # set it (`net/ssh.rb`, `options.fetch(:config, true)`) — kamal's own
+  # `.compact` drops the key entirely when unset in `deploy.yml`, so this
+  # reaches Net::SSH already enabled with no config change needed there.
+  # `HostKeyAlgorithms` maps straight to `:host_key`
+  # (`net/ssh/config.rb`) — an explicit allow-list, not `-ssh-ed25519`,
+  # since net-ssh's own config parser is a plain comma-split with none of
+  # OpenSSH's `+`/`-`/`^` modifier support; a negation prefix would be
+  # read as one literal (and invalid) algorithm name.
+  @safe_host_key_algorithms "ssh-rsa,rsa-sha2-512,rsa-sha2-256,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521"
+
+  defp restrict_host_key_algorithms(opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        "rm -f ~/.ssh/config; " <>
+          "printf '%s\\n' #{shell_quote("Host " <> host)} " <>
+          "#{shell_quote("  HostKeyAlgorithms " <> @safe_host_key_algorithms)} >> ~/.ssh/config; "
 
       _ ->
         ""

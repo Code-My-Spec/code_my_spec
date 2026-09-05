@@ -559,6 +559,49 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "expected known_hosts wiped, then the host key seeded, before the script runs"
     end
 
+    # `ensure_kamal/1`'s ed25519/bcrypt_pbkdf install was only ever meant to
+    # let the delivered *client* key authenticate — it has an unasked-for
+    # side effect of also letting Net::SSH negotiate ed25519 as the *host
+    # key* algorithm. Confirmed live against broken_oaths: once it did, host
+    # key verification failed against a known_hosts entry independently
+    # proven correct (identical fingerprint, all three types present) —
+    # every attempt before that gem existed on the box negotiated rsa/ecdsa
+    # and never once mismatched. Restricting back to that known-good set
+    # sidesteps whatever the comparison bug actually is, without touching
+    # the delivered client key (still ed25519) or any shared secret.
+    test "restricts the host key algorithms Net::SSH will accept back to the known-good set",
+         %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "rm -f ~/.ssh/config"
+      assert migrate_command =~ "Host app.example.com"
+      assert migrate_command =~ "HostKeyAlgorithms ssh-rsa,rsa-sha2-512,rsa-sha2-256"
+
+      refute migrate_command =~ "ssh-ed25519",
+             "the allow-list must not include the algorithm being sidestepped"
+
+      assert Regex.match?(
+               ~r/done; rm -f ~\/\.ssh\/config; printf .*>> ~\/\.ssh\/config; cd '\/build'/,
+               migrate_command
+             ),
+             "expected the algorithm restriction written after known_hosts, before the script runs"
+    end
+
     test "does not try to seed a host it was never given", %{env: env} do
       test_pid = self()
 
@@ -576,6 +619,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert_receive {:ran, migrate_command}
       refute migrate_command =~ "ssh-keyscan"
+      refute migrate_command =~ "HostKeyAlgorithms"
     end
 
     # `CMS_SSH_KEY_PATH` travels as an env var — only ever a path. Kamal
