@@ -167,7 +167,14 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
     case create_in(scope, name, defaults_for(arch), opts) do
       {:error, reason} = unavailable ->
-        try_other_architecture(scope, name, arch, opts, unavailable, this_box_is_not_on_offer?(reason))
+        try_other_architecture(
+          scope,
+          name,
+          arch,
+          opts,
+          unavailable,
+          this_box_is_not_on_offer?(reason)
+        )
 
       result ->
         result
@@ -230,7 +237,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   end
 
   defp retry_elsewhere(scope, name, arch, other, opts, unavailable) do
-    Logger.info("[Hetzner] #{defaults_for(arch).server_type} unavailable — trying #{other.server_type} in #{other.location}")
+    Logger.info(
+      "[Hetzner] #{defaults_for(arch).server_type} unavailable — trying #{other.server_type} in #{other.location}"
+    )
 
     case create_in(scope, name, other, opts) do
       {:ok, server} ->
@@ -280,6 +289,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       # been told where to push, and the address it was told is the one it does
       # not have yet.
       |> maybe_put(:networks, Keyword.get(opts, :network_ids))
+
+    Logger.warning("[Hetzner] create_server payload=#{inspect(payload)}")
 
     request(scope, :post, "/servers", json: payload)
   end
@@ -884,7 +895,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc "Find an SSH key by its fingerprint."
   @spec find_ssh_key_by_fingerprint(Scope.t(), String.t()) :: {:ok, body()} | error()
   def find_ssh_key_by_fingerprint(%Scope{} = scope, print) when is_binary(print) do
-    with {:ok, %{"ssh_keys" => keys}} <- request(scope, :get, "/ssh_keys?fingerprint=#{print}", []) do
+    with {:ok, %{"ssh_keys" => keys}} <-
+           request(scope, :get, "/ssh_keys?fingerprint=#{print}", []) do
       case keys do
         [key | _] -> {:ok, key}
         [] -> {:error, :not_found}

@@ -282,6 +282,11 @@ defmodule CodeMySpec.Provisioning.Builder do
         network_ids: Keyword.get(opts, :network_ids)
       ]
 
+      Logger.warning(
+        "[Builder] bootstrap create_opts location=#{inspect(create_opts[:location])} " <>
+          "network_ids=#{inspect(create_opts[:network_ids])} spec.location=#{inspect(spec.location)}"
+      )
+
       case create.(scope, name, create_opts) do
         {:ok, server} ->
           bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
@@ -427,11 +432,19 @@ defmodule CodeMySpec.Provisioning.Builder do
       network_ids: Keyword.get(opts, :network_ids)
     ]
 
+    Logger.warning(
+      "[Builder] start_builder create_opts location=#{inspect(create_opts[:location])} " <>
+        "network_ids=#{inspect(create_opts[:network_ids])} spec.location=#{inspect(spec.location)} " <>
+        "opts[:builder_location]=#{inspect(Keyword.get(opts, :builder_location))} " <>
+        "opts[:registry_host]=#{inspect(Keyword.get(opts, :registry_host))}"
+    )
+
     case create.(scope, name, create_opts) do
       {:error, {:hetzner_error, 409, _}} ->
         reclaim_orphan(scope, name, create, create_opts, opts)
 
-      {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} = error ->
+      {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} =
+          error ->
         reap_and_retry(scope, name, create, create_opts, opts, error)
 
       other ->
@@ -572,9 +585,11 @@ defmodule CodeMySpec.Provisioning.Builder do
     # be built at all — so `build: true` arrived as the build function and this
     # died with "expected a function, got: true" the first time a real drill
     # asked for a real build. Two meanings for one key in one opts bag.
-    build_fun = Keyword.get(opts, :build_fun, fn scope, server, ref, architecture ->
+    build_fun =
+      Keyword.get(opts, :build_fun, fn scope, server, ref, architecture ->
         docker_build(scope, server, ref, architecture, opts)
       end)
+
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
     with {:ok, image} <- build_fun.(scope, server, ref, architecture),
