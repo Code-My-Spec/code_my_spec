@@ -129,10 +129,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   # Says what went, in counts. "Offboarded" alone leaves the reader wondering
   # whether it did anything, and the numbers are the difference between a copy
   # that was holding the project up and one that was already empty.
-  defp offboarded(row, %{files: files, problems: problems, components: components}) do
+  defp offboarded(row, %{files: files, problems: problems, components: components} = counts) do
     "Offboarded #{row.label} — #{count(files, "file")}, #{count(problems, "problem")} " <>
-      "and #{count(components, "orphaned component")} removed."
+      "and #{count(components, "orphaned component")} removed." <> agents(counts)
   end
+
+  # What became of the agents, said only when there were any.
+  #
+  # The one that has to be said out loud is the agent that would not stop: the
+  # copy is gone from here and a process may still be running on a machine, and
+  # ending it is the operator's to do because the server could not reach it.
+  # Silence there reads as "everything is over", which is the belief this whole
+  # story exists to stop being wrong.
+  defp agents(%{agents_stopped: 0, agents_left_running: []}), do: ""
+
+  defp agents(%{agents_stopped: stopped, agents_left_running: []}),
+    do: " #{count(stopped, "agent")} stopped."
+
+  defp agents(%{agents_stopped: stopped, agents_left_running: left}) do
+    " #{count(stopped, "agent")} stopped, and #{count(length(left), "agent")} could not be " <>
+      "reached — #{Enum.join(left, ", ")} may still be running on its machine."
+  end
+
+  defp agents(_counts), do: ""
 
   # Counted nouns agree with their count. A real offboard printed "1 orphaned
   # components removed", which reads as a template rather than a report of what

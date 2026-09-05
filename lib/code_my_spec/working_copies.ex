@@ -24,6 +24,9 @@ defmodule CodeMySpec.WorkingCopies do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
+  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
@@ -923,7 +926,22 @@ defmodule CodeMySpec.WorkingCopies do
         id: id
       })
       when is_binary(project_id) do
-    _ = scope
+    # The agents first, and outside the transaction, because stopping one is a
+    # request to a machine rather than a write.
+    #
+    # A copy is the boundary of the work — story 964's rule, John: "I can keep
+    # them through that whole epic and then I can discard the working copy". So
+    # discarding has to end them, and an agent that outlived its checkout would
+    # be a model held open against a directory that is not there, still holding
+    # a subscription slot and still spending. Story 961 is the same concern
+    # arriving from the other side.
+    #
+    # Best-effort, and it does not block the offboard. The copy this is most
+    # often used on is one whose machine has gone — that is story 892's whole
+    # premise — and refusing to let go of a checkout because nothing can be
+    # reached to stop an agent on it would make the vanished case unofboardable,
+    # which is the one case the control exists for.
+    agents = stop_agents_on(scope, id)
 
     Repo.transaction(fn ->
       {files, _} =
@@ -942,7 +960,7 @@ defmodule CodeMySpec.WorkingCopies do
 
       Repo.delete_all(from w in WorkingCopy, where: w.id == ^id)
 
-      %{files: files, problems: problems, components: components}
+      Map.merge(%{files: files, problems: problems, components: components}, agents)
     end)
     |> case do
       {:ok, counts} ->
@@ -985,6 +1003,32 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
+  # Stop everything on this copy, and say what would not stop.
+  #
+  # Counted rather than swallowed: "3 agents stopped" and "3 agents stopped, 1
+  # still running" are different facts and the person offboarding needs the
+  # second one, because the remedy is theirs — a process on a machine we could
+  # not reach is not something the server can end on its own.
+  defp stop_agents_on(scope, working_copy_id) do
+    scope
+    |> Agents.list_agents()
+    |> Enum.filter(&(&1.working_copy_id == working_copy_id and &1.status != :stopped))
+    |> Enum.reduce(%{agents_stopped: 0, agents_left_running: []}, fn agent, acc ->
+      case Agents.stop_agent(scope, agent.id) do
+        {:ok, _stopped} ->
+          %{acc | agents_stopped: acc.agents_stopped + 1}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[WorkingCopies] offboarding #{working_copy_id}: could not stop agent " <>
+              "#{agent.id} (#{inspect(reason)}); it may still be running"
+          )
+
+          %{acc | agents_left_running: [agent.id | acc.agents_left_running]}
+      end
+    end)
+  end
 
   # Two plain subqueries rather than correlated `exists`. The component set is
   # small and this is legible: anything a file or a story points at is kept,

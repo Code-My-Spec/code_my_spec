@@ -108,6 +108,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # judgement rather than a default.
   component(CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies)
   component(CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
