@@ -307,6 +307,21 @@ defmodule CodeMySpec.Provisioning do
   Returns `{:ok, step}` when it finished, or `{:halt, step, reason}` when it
   errored or paused. Retrying one errored step without re-running the rest is
   exactly this call (criterion 7971).
+
+  `opts[:force]` skips verification and runs unconditionally. `verify/3`'s
+  contract is narrower than `run/3`'s actual side effects for at least one
+  step: `verify(:server, …)` calls a resource "satisfied" from the box and
+  `DATABASE_URL` existing, but `run(:server, …)` also (re-)establishes the
+  registry-trust config on the box's docker daemon via `Registry.serve/2` —
+  a write with no corresponding verify check. Confirmed live against
+  broken_oaths: fixing which network's address `registry_address/3` resolves
+  to changed the correct trust target, but re-running the `:server` step
+  through the ordinary verify-gated path reported "satisfied" against the
+  unrelated, still-true claims (box exists, `DATABASE_URL` is set) and never
+  touched the stale docker daemon config. `force` is the escape hatch until
+  verify grows a way to check a claim like that; every step's `run/3` is
+  already idempotent, so forcing one that genuinely had nothing to do costs
+  a few redundant provider calls, not a wrong state.
   """
   @spec run_step(Scope.t(), atom(), keyword()) ::
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
@@ -315,7 +330,7 @@ defmodule CodeMySpec.Provisioning do
     scope = reread_project(scope)
     previous = StepRepository.get(scope, key)
 
-    case safe_verify(scope, key, opts) do
+    case forced_or_verified(scope, key, opts) do
       {:ok, :satisfied, resources} ->
         {:ok, mark(scope, key, :done, %{resources: still_ours(scope, key, resources)})}
 
@@ -339,6 +354,16 @@ defmodule CodeMySpec.Provisioning do
 
       {:error, reason} ->
         {:halt, mark(scope, key, :errored, error_attrs(key, reason)), describe(reason)}
+    end
+  end
+
+  # `:force` skips asking the provider anything and reports the resource
+  # absent unconditionally, which is exactly the input that already sends
+  # `run_step/3` to `run_and_record/4` below.
+  defp forced_or_verified(scope, key, opts) do
+    case Keyword.get(opts, :force, false) do
+      true -> {:ok, :absent}
+      false -> safe_verify(scope, key, opts)
     end
   end
 

@@ -185,6 +185,32 @@ defmodule CodeMySpec.ProvisioningTest do
 
       assert StepRepository.get(scope, :repository).state == :done
     end
+
+    # Confirmed live against broken_oaths: `verify(:server, …)` calls a
+    # server "satisfied" from the box and DATABASE_URL existing, but
+    # `run(:server, …)` also re-establishes registry trust on the box's
+    # docker daemon — a write verify never checks. Fixing which network's
+    # address the registry resolves to left the ordinary verify-gated path
+    # reporting "satisfied" forever, with no way to make it redo the
+    # now-stale trust write. `force` is the way around a satisfied verdict
+    # that is true about what it checks and wrong about what actually needs
+    # doing.
+    test "force runs the step even though its resource already exists", %{scope: scope} do
+      verify = fn
+        _scope, :repository -> {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
+      end
+      ran = fn -> Process.put(:ran, true) end
+
+      execute = fn _scope, :repository, _opts ->
+        ran.()
+        {:ok, []}
+      end
+
+      Provisioning.run_step(scope, :repository, verify: verify, execute: execute, force: true)
+
+      assert Process.get(:ran)
+      assert StepRepository.get(scope, :repository).state == :done
+    end
   end
 
   describe "a done step survives a provider that could not be read" do

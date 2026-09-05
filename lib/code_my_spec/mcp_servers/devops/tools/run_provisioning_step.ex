@@ -99,6 +99,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "live there today. The step pauses and names the current and new address " <>
           "instead of doing this silently; set this to true once that repoint is " <>
           "actually wanted, and call the step again."
+
+    field :force, :boolean,
+      doc:
+        "Skip verification and run the step unconditionally, even if the provider " <>
+          "already reports it satisfied. A step's own claim of \"satisfied\" can be " <>
+          "narrower than everything its run actually does — e.g. \"server\" only checks " <>
+          "the box and DATABASE_URL exist, not that the box's docker daemon trusts the " <>
+          "registry it should. Every step's run is idempotent, so this is safe to use " <>
+          "whenever a step reports done but something it should have set up still isn't."
   end
 
   @impl true
@@ -128,7 +137,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
         _ -> []
       end
 
-    inbound_opts ++ dns_opts
+    force_opts =
+      case Map.get(params, :force) do
+        true -> [force: true]
+        _ -> []
+      end
+
+    inbound_opts ++ dns_opts ++ force_opts
   end
 
   defp find_step(step) do
