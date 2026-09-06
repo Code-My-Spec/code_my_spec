@@ -647,12 +647,48 @@ defmodule CodeMySpecWeb.ChatComponents do
     do: if(orchestrator_kind(message) == "nudge", do: "", else: " for the detail")
 
   # Results keyed by the call they answer, so a call can render its own.
+  # A result belongs to the call it answered, not to every call that ever
+  # carried its id.
+  #
+  # Tool call ids are sequential per agent run — `call_1`, `call_16`,
+  # `call_26_retry` — so a conversation that has run all day holds `call_16`
+  # several times over. Collecting them into a map keyed by id alone made the
+  # newest call inherit the oldest surviving answer.
+  #
+  # What that looked like: an `ask_user_question` that had worked — question
+  # created, delivered, answered — rendered with "No session_id available" from
+  # a `start_task` eight hours earlier that happened to be call_16 too. The
+  # error was real, belonged to a different call, and read as this one failing.
+  # It only appeared once scrolling loaded the older turns, which is why it
+  # showed up long after the call itself.
+  #
+  # Folded in order rather than comprehended: a call *clears* any result
+  # standing against its id, so a later call starts unanswered and renders "no
+  # result recorded" until its own answer arrives. Inheriting a stale one is
+  # strictly worse than admitting there is none.
   defp results_by_call_id(messages) do
-    for %{role: :tool, tool_call_id: id} = message <- messages,
-        is_binary(id),
-        into: %{},
-        do: {id, message}
+    Enum.reduce(messages, %{}, fn message, results ->
+      results
+      |> forget_answered_calls(message)
+      |> record_result(message)
+    end)
   end
+
+  defp forget_answered_calls(results, %{tool_calls: calls}) when is_list(calls) do
+    Enum.reduce(calls, results, fn call, acc ->
+      case call["id"] do
+        id when is_binary(id) -> Map.delete(acc, id)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp forget_answered_calls(results, _message), do: results
+
+  defp record_result(results, %{role: :tool, tool_call_id: id} = message) when is_binary(id),
+    do: Map.put(results, id, message)
+
+  defp record_result(results, _message), do: results
 
   # The ids of calls actually on this page.
   defp call_ids(messages) do

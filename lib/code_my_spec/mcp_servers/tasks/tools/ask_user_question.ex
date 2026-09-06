@@ -60,10 +60,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   @max_questions 4
 
   @impl true
-  def execute(%{questions: questions}, frame) when is_list(questions) and questions != [] do
+  def execute(%{questions: questions} = params, frame)
+      when is_list(questions) and questions != [] do
     with :ok <- check_count(questions),
          {:ok, normalized} <- normalize(questions),
-         {:ok, id} <- ask(frame, normalized) do
+         {:ok, id} <- ask(frame, normalized, params[:title]) do
       {:reply, Response.tool() |> Response.text(asked(frame, id, normalized)), frame}
     else
       {:error, message} when is_binary(message) ->
@@ -139,10 +140,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   defp get(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, String.to_atom(key))
   defp get(_map, _key), do: nil
 
-  defp ask(%{assigns: %{current_scope: %{user: %{id: user_id}} = scope}} = frame, questions) do
+  defp ask(
+         %{assigns: %{current_scope: %{user: %{id: user_id}} = scope}} = frame,
+         questions,
+         title
+       ) do
     attrs = %{
       "questions" => questions,
-      "title" => frame.assigns[:title] || "Claude has a question",
+      # The caller's title, which this read off `frame.assigns` — where it never
+      # was. It arrives in the params, so every question the agents asked was
+      # headed "Claude has a question" while the notification the agent wrote
+      # said something useful like "Capital vassalization rule".
+      "title" => title_or_default(title),
       # Who to hand the answer back to — off the connection, the same as
       # `send_message`. Nil for a Claude Code session, which polls.
       "agent_id" => frame.assigns[:agent_id],
@@ -155,9 +164,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     end
   end
 
-  defp ask(_frame, _questions) do
+  defp ask(_frame, _questions, _title) do
     {:error, "No user on this scope, so there is nobody to ask. Ask in the terminal instead."}
   end
+
+  defp title_or_default(title) when is_binary(title) and title != "", do: title
+  defp title_or_default(_title), do: "Claude has a question"
 
   defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
   defp working_copy_id(_scope), do: nil
