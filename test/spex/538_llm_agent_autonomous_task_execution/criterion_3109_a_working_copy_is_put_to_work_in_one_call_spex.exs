@@ -38,6 +38,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -55,6 +56,18 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
   spex "Continuous mode is turned on and off deliberately" do
     scenario "A working copy is put to work in one call, and stopped the same way" do
       given_ :synced_context_component
+      given_ :story_linked_to_component
+
+      given_ "the project has work for them to be offered", context do
+        # Without this the switch is correctly silent — there is nothing to
+        # offer — and "each of them is told something" would fail for a reason
+        # that has nothing to do with the switch. `get_next_requirement` is also
+        # what populates the read model the menu counts from.
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        {:ok, context}
+      end
 
       given_ "a working copy staffed with agents that are not working", context do
         # The three roles an epic's copy is staffed with. Not one agent: what
@@ -88,6 +101,25 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
                  "the loop. A switch that moves only part of a checkout leaves the " <>
                  "rest stopping while the others carry on — a split nobody asked for " <>
                  "and nothing displays."
+
+        {:ok, context}
+      end
+
+      and_ "each of them is actually sent something to act on", context do
+        # The half the first version missed. An agent is a supervised process
+        # that is alive and idle and acts when messaged — nothing polls — so
+        # setting the flag and stopping there marks three agents willing to work
+        # and leaves them exactly as they were. Shipped that way at 21:23 and
+        # reported within the hour: "I don't see those agents running."
+        #
+        # R12's wake cannot cover it either: that fires when a task completes,
+        # and no task completes if nobody takes a turn.
+        for agent_id <- context.staffed do
+          assert Fixtures.orchestrator_actions(context.scope, agent_id) != [],
+                 "an agent was switched on and told nothing. The switch marks it " <>
+                   "willing; it has to also ring the bell, or the copy reads as " <>
+                   "working and sits there."
+        end
 
         {:ok, context}
       end

@@ -516,10 +516,29 @@ defmodule CodeMySpec.Agents do
   Stopped agents are left alone. Putting a mode on a process that is gone
   records an intention nothing will act on, and it would come back to life
   looking like a running loop the next time the row was read.
+
+  ## Switching it on takes the first turn
+
+  An agent is a supervised process that is alive and idle, and it acts when it
+  is messaged — nothing polls. So setting the flag and stopping there marked
+  three agents *willing* to work and left them exactly as they were: John,
+  within the hour, "I don't see those agents running."
+
+  R12's wake cannot rescue it either, because that fires when a task completes,
+  and no task can complete if nobody ever takes a turn. The switch has to ring
+  the bell itself.
+
+  Only on the way on. Switching off is the absence of a message, which is what
+  letting an agent stop means.
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, term()}
-  defdelegate set_copy_continuous(scope, copy_id, continuous?), to: AgentsRepository
+  def set_copy_continuous(%Scope{} = scope, copy_id, continuous?) do
+    with {:ok, count} <- AgentsRepository.set_copy_continuous(scope, copy_id, continuous?) do
+      if continuous?, do: wake_roles(scope, copy_id)
+      {:ok, count}
+    end
+  end
 
   @doc """
   Tell the other roles on this copy that there may be something for them.
