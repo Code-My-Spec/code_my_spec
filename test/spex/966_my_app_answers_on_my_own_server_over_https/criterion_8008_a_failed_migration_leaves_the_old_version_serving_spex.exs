@@ -33,8 +33,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         view = mount_provisioning(context)
 
         view
-        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-        |> render_click()
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
         {:ok, context |> Map.put(:view, view)}
       end
@@ -50,8 +50,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         migration_fails(context)
 
         context.view
-        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-        |> render_click()
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
         await_step(context.view, :deploy)
         html = render(context.view)

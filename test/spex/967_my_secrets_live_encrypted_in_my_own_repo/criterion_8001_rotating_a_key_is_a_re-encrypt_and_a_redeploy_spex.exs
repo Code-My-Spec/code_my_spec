@@ -60,8 +60,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         html =
           with_provider_cassette(@cassette, fn ->
             context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
+            |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+            |> render_submit()
           end)
 
         {:ok, Map.put(context, :html, html)}

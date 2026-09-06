@@ -38,8 +38,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
 
       when_ "the deploy runs and UAT does not answer its health check", context do
         context.view
-        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-        |> render_click()
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
         html = render(context.view)
 
