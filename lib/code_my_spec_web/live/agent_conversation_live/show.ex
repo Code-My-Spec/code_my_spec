@@ -150,6 +150,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
+    |> assign(:working?, working?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
     |> assign(:waiting, waiting)
@@ -325,6 +326,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # `send_message` dispatches through `Agents.dispatch_message/3`, which answers
   # `{:error, :not_running}` rather than absorbing the message, so the report is
   # real.
+  # Whether this agent keeps going when its turn ends — the state the play
+  # control shows and flips. Story 538's R13 at the grain somebody watches: the
+  # working copy page moves all three roles at once, which is right for staffing
+  # an epic and wrong when you are looking at one agent.
+  defp working?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    match?({:ok, %{continuous: true}}, Agents.fetch_agent(scope, agent_id))
+  end
+
+  defp working?(_scope, _conversation), do: false
+
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
@@ -388,6 +399,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # on the row. Written first, the transcript claims the agent was told every
   # time the machine could not be reached.
   @impl true
+  # Put this one agent to work, or let it stop. Story 538's R13.
+  #
+  # Switching on also wakes it, because a flag alone marks an agent willing and
+  # leaves it idle — an agent is a supervised process that acts when messaged
+  # and nothing polls. `Agents.set_agent_continuous/3` owns both halves so this
+  # and the working-copy switch cannot drift.
+  def handle_event("toggle_agent_working", _params, socket) do
+    scope = socket.assigns.current_scope
+    agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
+
+    case agent_id && Agents.set_agent_continuous(scope, agent_id, not socket.assigns.working?) do
+      {:ok, agent} ->
+        {:noreply, assign(socket, :working?, agent.continuous == true)}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
+    end
+  end
+
   def handle_event("send_message", _params, %{assigns: %{talkable?: false}} = socket) do
     # A control that is merely hidden is still reachable, and "no button" is a
     # weaker promise than "no effect". Nothing is recorded, because a
@@ -869,6 +899,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           more_above?={@more_above?}
           pending={@pending}
           talkable?={@talkable?}
+          working?={@working?}
           draft={@draft}
         />
 
@@ -958,6 +989,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :more_above?, :boolean, required: true
   attr :pending, :list, required: true
   attr :talkable?, :boolean, required: true
+  attr :working?, :boolean, default: false
   attr :draft, :string, required: true
 
   # The transcript, its composer, and the header above them — pulled out of
@@ -986,6 +1018,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
           {short_session(@conversation)}
         </span>
+
+        <%!-- Story 538's R13, at the grain somebody is actually looking at.
+        The working copy page moves all three roles together, which is right
+        for staffing an epic and wrong when you have one agent's conversation
+        open and want that one to carry on. --%>
+        <button
+          :if={@conversation && @conversation.agent_id}
+          type="button"
+          phx-click="toggle_agent_working"
+          data-test="toggle-agent-working"
+          data-working={to_string(@working?)}
+          class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
+          title={
+            if @working?,
+              do: "Let this agent stop after its current turn",
+              else: "Put this agent to work — it picks its own next task"
+          }
+        >
+          <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
+        </button>
       </header>
 
       <%!-- `overflow-anchor` is what keeps your place when older turns are

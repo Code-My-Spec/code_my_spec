@@ -57,6 +57,29 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def set_copy_continuous(%Scope{}, _copy_id, _continuous?), do: {:error, :no_project}
 
   @doc """
+  Set continuous mode on one agent.
+
+  The grain a person actually watches. `set_copy_continuous/3` moves a whole
+  checkout, which is the right unit for staffing an epic, and the wrong one when
+  somebody is looking at a single agent's conversation and wants *that* one to
+  carry on — John: *"when I open the agent conversation for the agent, I should
+  get a play button that lets me start the agent."*
+
+  It is also the grain R6 already works at: a coding agent goes home when coding
+  work runs out while product keeps going, so the roles were always allowed to
+  differ and only the control was per copy.
+  """
+  @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def set_agent_continuous(%Scope{} = scope, agent_id, continuous?)
+      when is_binary(agent_id) and is_boolean(continuous?) do
+    case fetch_agent(scope, agent_id) do
+      {:ok, agent} -> update_agent(scope, agent, %{continuous: continuous?})
+      error -> error
+    end
+  end
+
+  @doc """
   The agents this project believes are running.
 
   Separate from `list_agents/1` because "what is running" and "what has ever

@@ -541,6 +541,23 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  Put one agent to work, or let it stop.
+
+  Same act as `set_copy_continuous/3` at the grain somebody watches — one agent,
+  from its own conversation. Switching on rings its bell for the same reason:
+  an agent is a supervised process that acts when messaged, so a flag on its own
+  marks it willing and leaves it exactly where it was.
+  """
+  @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
+    with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
+      if continuous?, do: StopDecision.wake(scope, agent)
+      {:ok, agent}
+    end
+  end
+
+  @doc """
   Tell the other roles on this copy that there may be something for them.
 
   Story 538's R12. An agent whose queue emptied was told nothing and stopped —
