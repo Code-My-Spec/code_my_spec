@@ -330,9 +330,28 @@ defmodule CodeMySpec.Agents.StopDecision do
     :ok
   end
 
-  defp dispatch(scope, agent, ref, message) do
+  # The agent's own working copy, not the caller's.
+  #
+  # These were the same thing while the only caller was `deliver/2`, which runs
+  # at the end of a turn in the copy the turn happened in. R12's wake broke that
+  # assumption: it is triggered by somebody else — a person clicking a control, an
+  # agent finishing a task in a different checkout — and the scope it carries is
+  # theirs. So the message was looked up against the wrong copy's harness and
+  # answered `:harness_not_connected` with the right harness connected and
+  # reconciling that exact copy.
+  #
+  # It reported as a delivery failure rather than a wrong address, because both
+  # produce the same silence: the message is recorded on the agent's
+  # conversation before it is sent, so the transcript showed three agents told
+  # and nothing happening. John, looking at the copy: "I don't see those agents
+  # running."
+  #
+  # `agent.working_copy_id` is the only thing here that knows where the agent
+  # is, and it is right on every path — including the original one, where it
+  # equals what the scope carried.
+  defp dispatch(_scope, agent, ref, message) do
     case CodeMySpec.Agents.Transport.impl().dispatch_message(
-           scope.active_working_copy_id,
+           agent.working_copy_id,
            agent,
            ref,
            message,

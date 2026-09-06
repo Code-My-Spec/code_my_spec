@@ -58,7 +58,23 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # Asserted as "nothing carried is scriptable" rather than as a number,
         # which is the invariant the number was standing in for and does not go
         # stale the next time an unscriptable tool is needed.
-        scriptable = project_tools -- ~w(start_agent stop_agent assign_subagent)
+        # The four the loop walks joined them on 2026-09-06, for the same
+        # reason and after the same failure. `CodeMode.Catalog` refuses them to
+        # scripts saying "you already have them directly" — which was true of a
+        # Claude Code agent and false of this one, so an agent asked to work the
+        # graph found `get_next_requirement` in its project guide and in no
+        # catalogue: "it isn't available in the active tool catalog".
+        #
+        # Named here rather than read from `Catalog.excluded/0`, which is public
+        # for exactly this check — the spex boundary cannot reach `CodeMySpec`.
+        # So this list is a copy and can go stale; what it must always equal is
+        # the set of carried tools a script may not call.
+        unscriptable = ~w(
+          start_agent stop_agent assign_subagent
+          get_next_requirement sync_project start_task evaluate_task
+        )
+
+        scriptable = project_tools -- unscriptable
 
         # `run_browser_script` is a second door, not a second catalogue. It is
         # the entry to the machine's sandbox, which exists because browser tools

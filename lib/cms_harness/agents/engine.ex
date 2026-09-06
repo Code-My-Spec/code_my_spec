@@ -611,10 +611,18 @@ defmodule CmsHarness.Agents.Engine do
   @doc """
   What an agent of this type carries.
 
-  Two project tools, not ninety-eight. The rest are reachable through
-  `run_script` — which is the whole of story 982: the model reads two schemas
-  per turn instead of a catalogue it has already read, and the ninety-eight are
-  a lookup rather than a preamble.
+  The four the loop walks, plus a handful, not ninety-eight. The rest are
+  reachable through `run_script` — which is the whole of story 982: the model
+  reads a few schemas per turn instead of a catalogue it has already read, and
+  the ninety-odd are a lookup rather than a preamble.
+
+  The spine is here because it has to be somewhere. `CodeMode.Catalog` excludes
+  `get_next_requirement`, `sync_project`, `start_task` and `evaluate_task` from
+  scripts and tells the agent "you already have them directly" — true of a
+  Claude Code agent, which reaches them over MCP, and false of this one until
+  they were added. An agent asked to work the graph could read about the tools
+  in its own project guide and find them in no catalogue: *"it isn't available
+  in the active tool catalog, despite being listed in the project guide."*
 
   Three more that a script may not have. `CodeMode.Catalog` excludes
   `start_agent`, `stop_agent` and `assign_subagent` because a loop around a
@@ -637,6 +645,14 @@ defmodule CmsHarness.Agents.Engine do
       CmsHarness.Agents.Tools.RunScript,
       CmsHarness.Agents.Tools.RunBrowserScript,
       CmsHarness.Agents.Tools.ToolDocs,
+      # The spine. `LocalServer` mounts these four for a Claude Code agent and
+      # `CodeMode.Catalog` refuses to bind them to a script — telling the agent
+      # "you already have them directly", which was true over there and false
+      # here until now. See `Tools.GetNextRequirement`.
+      CmsHarness.Agents.Tools.GetNextRequirement,
+      CmsHarness.Agents.Tools.SyncProject,
+      CmsHarness.Agents.Tools.StartTask,
+      CmsHarness.Agents.Tools.EvaluateTask,
       CmsHarness.Agents.Tools.StartAgent,
       CmsHarness.Agents.Tools.StopAgent,
       CmsHarness.Agents.Tools.AssignSubagent
