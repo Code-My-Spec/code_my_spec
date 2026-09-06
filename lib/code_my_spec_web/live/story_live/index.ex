@@ -271,20 +271,21 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   # could only be asked in psql. John: "I don't see on either the epics or the
   # stories UI, the assignments to agents."
   #
-  # A label rather than the id, because the id is not a thing anyone recognises
-  # and the label is what every other surface calls that checkout.
+  # Named via `WorkingCopies.display_name/1`, which already owns this rule.
+  #
+  # A copy that has not named itself carries the generated label "the harness at
+  # <root> on <host>" — a sentence with a full path in it, which is what this
+  # badge printed at first: 90 characters where two checkouts differ in one
+  # directory. John: "It's referencing the harness at full path on machine name,
+  # which is super ugly." `display_name/1` cuts that to the root's last segment
+  # and returns a label a person actually chose whole, and the harness picker
+  # and the working-copies pages have been calling it all along. This was a
+  # fourth copy of the rule, and the only one that got it wrong.
   defp copy_labels(scope) do
     scope
     |> WorkingCopies.list_harnesses()
-    |> Map.new(&{&1.id, copy_name(&1)})
-  rescue
-    # A badge is never worth failing a page over.
-    _error -> %{}
+    |> Map.new(&{&1.id, WorkingCopies.display_name(&1)})
   end
-
-  defp copy_name(%{label: label}) when is_binary(label) and label != "", do: label
-  defp copy_name(%{root: root}) when is_binary(root) and root != "", do: Path.basename(root)
-  defp copy_name(%{id: id}), do: id
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 

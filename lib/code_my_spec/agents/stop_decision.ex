@@ -126,7 +126,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   """
   @spec wake(Scope.t(), Agent.t()) :: :ok
   def wake(%Scope{} = scope, %Agent{} = agent) do
-    case Validation.Menu.render(scope, agent.continuous == true, agent.role) do
+    case Validation.Menu.render(scope, agent.continuous == true, agent.role, agent) do
       "" ->
         :ok
 
@@ -192,7 +192,8 @@ defmodule CodeMySpec.Agents.StopDecision do
         # what to do next, and "next" is this agent's own work for the same
         # reason it is on every other path — a blocked coding agent pointed at
         # QA's queue is being told to do something it will not do.
-        {reason <> Validation.Menu.render(scope, agent.continuous == true, agent.role), key}
+        {reason <> Validation.Menu.render(scope, agent.continuous == true, agent.role, agent),
+         key}
 
       {:ok, _result} ->
         keep_working(scope, agent)
@@ -221,7 +222,7 @@ defmodule CodeMySpec.Agents.StopDecision do
     # which it can do anything about, and it would loop until somebody else
     # finished. Asked about its own, it goes home when its own runs out, which
     # is R6.
-    case Validation.Menu.render(scope, true, agent.role) do
+    case Validation.Menu.render(scope, true, agent.role, agent) do
       "" -> {nil, nil}
       menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
     end

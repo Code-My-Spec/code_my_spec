@@ -263,7 +263,7 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   end
 
   # The checkouts its stories are on, named rather than numbered — a uuid tells
-  # a reader nothing and the label is what every other surface calls it.
+  # a reader nothing.
   defp copy_names(epic) do
     epic
     |> epic_working_copy_ids()
@@ -275,11 +275,13 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
     end
   end
 
+  # `WorkingCopies.display_name/1` owns the rule: an unnamed copy's generated
+  # label is the sentence "the harness at <root> on <host>", which is a path in
+  # a badge, and this used to print it whole.
   defp copy_name(id) do
     case WorkingCopies.fetch(id) do
-      {:ok, %{label: label}} when is_binary(label) and label != "" -> label
-      {:ok, %{root: root}} when is_binary(root) and root != "" -> Path.basename(root)
-      _ -> "a checkout"
+      {:ok, harness} -> WorkingCopies.display_name(harness)
+      _error -> "a checkout"
     end
   end
 
@@ -393,25 +395,44 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                     binding on *stories* — an epic carries no working copy of
                     its own, and its column was dropped when the axis moved
                     down — so this counts its members rather than reading a
-                    field, and says "stories" so nobody reads it as the epic
-                    being placed. Unassigned is not a gap to fill: it is the
-                    shared backlog every working copy is offered. --%>
-                    <p
+                    field.
+
+                    Badges rather than a sentence, and the same badges the
+                    stories page uses: this first shipped as `text-xs
+                    opacity-70` directly under another `text-xs opacity-70`
+                    line, which rendered correctly and read as nothing. John:
+                    "I don't see the assignment on the epics screen at all."
+
+                    Unassigned is not a gap to fill: it is the shared backlog
+                    every working copy is offered. --%>
+                    <div
                       data-test="epic-assignment"
                       data-assigned-count={assigned_count(epic)}
-                      class="text-xs opacity-70"
+                      class="mt-1 flex flex-wrap items-center gap-1"
                     >
                       <%= case {assigned_count(epic), length(epic_stories(epic))} do %>
                         <% {0, 0} -> %>
-                          No stories yet
+                          <span class="text-xs opacity-70">No stories yet</span>
                         <% {0, _total} -> %>
-                          No stories assigned — every checkout is offered these
+                          <span class="badge badge-ghost badge-sm" title="In the shared backlog — every working copy is offered these">
+                            Unassigned
+                          </span>
                         <% {n, n} -> %>
-                          All {n} stories on {copy_names(epic)}
+                          <span
+                            class="badge badge-info badge-outline badge-sm"
+                            title={"All #{n} stories are offered only to this checkout"}
+                          >
+                            {copy_names(epic)}
+                          </span>
                         <% {n, total} -> %>
-                          {n} of {total} stories on {copy_names(epic)}
+                          <span class="badge badge-info badge-outline badge-sm" title="Offered only to this checkout">
+                            {copy_names(epic)}
+                          </span>
+                          <span class="badge badge-ghost badge-sm" title="In the shared backlog — every working copy is offered these">
+                            {total - n} unassigned
+                          </span>
                       <% end %>
-                    </p>
+                    </div>
 
                     <%!-- Where the work is happening. An epic dispatched with
                     nowhere to go says so rather than looking finished: the

@@ -34,7 +34,8 @@ defmodule CodeMySpec.Validation.Menu do
 
       1. problems       list_problems          do not start new work on a broken
                                                tree
-      2. requirements   get_next_requirement
+      2. task           evaluate_task          finish what you already started
+      3. requirements   get_next_requirement
 
   Issues were the second class here and are not any more. The graph already
   carries them — `issues_triaged` is product's and `issues_resolved` is
@@ -74,13 +75,15 @@ defmodule CodeMySpec.Validation.Menu do
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
 
   @tools %{
     problems: "list_problems",
+    task: "evaluate_task",
     requirements: "get_next_requirement"
   }
 
-  @order [:problems, :requirements]
+  @order [:problems, :task, :requirements]
 
   @doc """
   The menu, rendered for appending to a refusal.
@@ -88,11 +91,14 @@ defmodule CodeMySpec.Validation.Menu do
   `""` when no class is live — the caller is then looking at a stop that should
   be allowed, and a menu with nothing on it would be noise.
   """
-  @spec render(map(), boolean()) :: String.t()
-  def render(scope, continuous? \\ false, role \\ nil) do
-    case live(scope, role) do
-      [] -> ""
-      [top | rest] -> directive(top) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
+  @spec render(map(), boolean(), atom() | nil, TaskOwner.t() | nil) :: String.t()
+  def render(scope, continuous? \\ false, role \\ nil, owner \\ nil) do
+    case live(scope, role, owner) do
+      [] ->
+        ""
+
+      [top | rest] ->
+        directive(top, owner) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
     end
   end
 
@@ -135,25 +141,50 @@ defmodule CodeMySpec.Validation.Menu do
   empty, and computing it twice from different queries is how the message and
   the decision come to disagree.
   """
-  @spec live(map(), atom() | nil) :: [{atom(), pos_integer()}]
+  @spec live(map(), atom() | nil, TaskOwner.t() | nil) :: [{atom(), pos_integer()}]
   # `role` narrows the requirements count to that role's work — story 538's R10,
   # so a coding agent is not held open by product's queue. `nil` counts the
   # project's, which is what every caller outside the loop wants.
-  def live(scope, role \\ nil)
+  def live(scope, role \\ nil, owner \\ nil)
 
   # A working copy that has not been bound to a project yet. Every count below
   # queries by `project_id`, and Ecto refuses to compare a column with `nil`
   # rather than silently matching nothing — so this raised on a stop fired
   # before `init_project`, which is the one stop that must stay quiet.
-  def live(%{active_project_id: nil}, _role), do: []
+  def live(%{active_project_id: nil}, _role, _owner), do: []
 
-  def live(scope, role) do
+  def live(scope, role, owner) do
     @order
-    |> Enum.map(&{&1, count(scope, &1, role)})
+    |> Enum.map(&{&1, count(scope, &1, role, owner)})
     |> Enum.filter(fn {_class, n} -> n > 0 end)
   end
 
-  defp count(scope, :problems, _role) do
+  # The task the caller already started and has not closed.
+  #
+  # A class rather than an offer, and it passes both tests this module holds: it
+  # is countable state — an embedded row with `status: :active` — and it is work
+  # in this working copy, so it can be ranked against problems.
+  #
+  # It exists because of what an agent did on 2026-09-06. Sent to
+  # `story_issues_resolved` on story 994, it started the task, did the work,
+  # wrote its question to the user in prose, and stopped. Nothing was reading
+  # the transcript, and the menu it got on the way out said "call
+  # `get_next_requirement`" — advice for an agent holding no work, handed to one
+  # holding an open task. Both halves of that stop were wrong and the menu
+  # named neither.
+  #
+  # Ranked below problems, because a broken tree still comes first: a task
+  # evaluated against a tree that will not compile fails on the tree rather than
+  # on the work. Ranked above requirements, because taking a second task while
+  # still holding the first is how a queue fills with half-finished work.
+  defp count(_scope, :task, _role, owner) do
+    case active_task(owner) do
+      nil -> 0
+      _task -> 1
+    end
+  end
+
+  defp count(scope, :problems, _role, _owner) do
     scope
     |> ProblemRepository.list_project_problems(severity: :error)
     |> length()
@@ -175,14 +206,40 @@ defmodule CodeMySpec.Validation.Menu do
   # prerequisite — and needs no recompute, no cache and no filesystem. John's
   # point, and it is the answer: nothing about a stop should require rethinking
   # the graph.
-  defp count(scope, :requirements, role), do: NodeRepository.actionable_count(scope, role)
+  defp count(scope, :requirements, role, _owner),
+    do: NodeRepository.actionable_count(scope, role)
+
+  # `nil` for every caller not given an owner — the class then counts 0 and the
+  # menu reads exactly as it did before this existed.
+  defp active_task(nil), do: nil
+  defp active_task(owner), do: TaskOwner.active_task(owner)
 
   # The tool call goes on the `Next:` line rather than below it. A directive
   # whose action sits on the following line reads as two facts, and the agent
   # has to join them; on one line it is a single instruction.
-  defp directive({class, count}) do
+  # The open task names itself, because "1 open task" is not actionable and the
+  # id is not something the agent can look up from here. `evaluate_task` takes
+  # the id, so the directive carries the id.
+  defp directive({:task, _count}, owner) do
+    task = active_task(owner)
+
+    "\n\nNext: you have an open task#{task_subject(task)}. Nothing closes it for " <>
+      "you — when the work is done, call `evaluate_task` with " <>
+      "task_id \"#{task.id}\". If it is not done, finish it before taking anything else."
+  end
+
+  defp directive({class, count}, _owner) do
     "\n\nNext: #{label(class, count)} — call `#{@tools[class]}`."
   end
+
+  # What the task is about, when the row says. Both fields are nullable and a
+  # task with neither is still worth naming as open.
+  defp task_subject(%{requirement_name: name, story_id: story_id})
+       when is_binary(name) and is_integer(story_id),
+       do: " — `#{name}` on story #{story_id}"
+
+  defp task_subject(%{requirement_name: name}) when is_binary(name), do: " — `#{name}`"
+  defp task_subject(_task), do: ""
 
   defp tally([]), do: ""
 
@@ -193,6 +250,7 @@ defmodule CodeMySpec.Validation.Menu do
   # Counts without their tool names, deliberately. The tally says what is
   # waiting; naming its call too would make four instructions out of one, which
   # is the full menu this is meant to avoid.
+  defp label(:task, _n), do: "1 open task"
   defp label(:problems, 1), do: "1 problem in this working copy"
   defp label(:problems, n), do: "#{n} problems in this working copy"
   defp label(:requirements, 1), do: "1 requirement"
@@ -224,8 +282,10 @@ defmodule CodeMySpec.Validation.Menu do
   # rows describing work in this working copy.
   defp offers(scope) do
     answer_offer(open_questions(scope)) <>
-      "\n\nIf you need something from the user to go further, call `ask_user` — " <>
-      "nothing here can tell that you do." <>
+      "\n\nNobody is reading this conversation. If you need a decision from the " <>
+      "user, `ask_user` is the only thing that reaches them — a question written " <>
+      "into your reply reaches no one, and stopping on it just brings you back " <>
+      "here. Ask, then carry on with anything the answer does not block." <>
       "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."

@@ -1,0 +1,147 @@
+defmodule CodeMySpec.Validation.MenuTaskClauseTest do
+  @moduledoc """
+  What the menu says to an agent that already holds a task.
+
+  On 2026-09-06 the product agent was sent to `story_issues_resolved` on story
+  994, started the task, did the work, wrote its question to the user in prose,
+  and stopped. Two things were wrong with that stop and the menu named neither:
+  the task was still open, and the question had gone somewhere nobody reads.
+
+  The menu's advice on the way out was "call `get_next_requirement`" — correct
+  for an agent holding nothing, and exactly wrong for one holding an open task,
+  which is how a queue fills with half-finished work.
+  """
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.UsersFixtures
+  import CodeMySpec.ComponentsFixtures
+
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Requirements.Projection
+  alias CodeMySpec.Validation.Menu
+
+  defp task(attrs) do
+    struct!(
+      %CodeMySpec.Sessions.Task{
+        id: "43d57947-9b6b-4309-806c-53a32ae5c65b",
+        status: :active,
+        requirement_name: "story_issues_resolved",
+        story_id: 994
+      },
+      attrs
+    )
+  end
+
+  defp agent(tasks), do: %Agent{role: :product, continuous: true, tasks: tasks}
+
+  # An unsatisfied requirement with no unsatisfied prerequisite: actionable, and
+  # therefore what the menu sends the agent to when nothing outranks it.
+  #
+  # Written straight into the read model rather than through
+  # `RequirementsFixtures`, which seeds the *files* a requirement is computed
+  # from and leaves `requirements` empty. `actionable_count/1` counts rows, and
+  # counts them from one checkout's vantage — `Projection.vantage/1` is the
+  # single definition of whose view that is, so the row has to carry the same
+  # one or the count steps over it.
+  defp scope_with_waiting_requirements do
+    scope = full_scope_fixture()
+    component = component_fixture(scope)
+
+    Repo.insert!(
+      Node.changeset(%Node{}, %{
+        name: "design_file",
+        description: "Component design documentation exists",
+        satisfied: false,
+        component_id: component.id,
+        working_copy_id: Projection.vantage(scope)
+      })
+    )
+
+    scope
+  end
+
+  describe "an open task" do
+    setup do
+      %{scope: scope_with_waiting_requirements()}
+    end
+
+    # The control. If this stops holding, the displacement test below is
+    # asserting against an empty queue and means nothing.
+    test "requirements are what the menu says when no task is held", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent([]))
+
+      assert menu =~ "call `get_next_requirement`"
+    end
+
+    test "is the directive, and carries the id evaluate_task needs", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent([task(%{})]))
+
+      assert menu =~ "you have an open task"
+      assert menu =~ "`story_issues_resolved` on story 994"
+      assert menu =~ "call `evaluate_task`"
+      assert menu =~ ~s(task_id "43d57947-9b6b-4309-806c-53a32ae5c65b")
+    end
+
+    # The whole point of the clause. Sending an agent to fetch more work while
+    # it is holding some is the behaviour this replaced.
+    test "displaces get_next_requirement, without dropping it", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent([task(%{})]))
+
+      refute menu =~ "call `get_next_requirement`"
+
+      # Tallied rather than dropped — a class never mentioned starves
+      # invisibly, which is the failure a strict single directive has.
+      assert menu =~ "Also live:"
+      assert menu =~ "requirement"
+    end
+
+    test "a task with no requirement name is still named as open", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent([task(%{requirement_name: nil, story_id: nil})]))
+
+      assert menu =~ "you have an open task"
+      assert menu =~ "call `evaluate_task`"
+    end
+  end
+
+  describe "no open task" do
+    setup do
+      %{scope: scope_with_waiting_requirements()}
+    end
+
+    # `prepared` is a task that exists and has not been picked up; `completed`
+    # is one already closed. Neither is work in hand, and treating either as one
+    # would pin an agent against a row it cannot evaluate.
+    test "a prepared or completed task does not count as one", %{scope: scope} do
+      owner = agent([task(%{status: :prepared}), task(%{status: :completed})])
+
+      refute Menu.render(scope, true, nil, owner) =~ "you have an open task"
+    end
+
+    test "an owner with no tasks reads as it did before the clause existed", %{scope: scope} do
+      refute Menu.render(scope, true, nil, agent([])) =~ "open task"
+    end
+
+    # Every caller that has not been given an owner — the clause must be inert
+    # rather than raising on `nil`.
+    test "no owner at all is not an error", %{scope: scope} do
+      refute Menu.render(scope, true, nil, nil) =~ "open task"
+    end
+  end
+
+  describe "the unattended notice" do
+    setup do
+      %{scope: scope_with_waiting_requirements()}
+    end
+
+    # The second half of the incident. A question in the reply reached nobody,
+    # and nothing in the refusal said so.
+    test "says the conversation is unread and names the tool that is not", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent([task(%{})]))
+
+      assert menu =~ "Nobody is reading this conversation"
+      assert menu =~ "`ask_user`"
+    end
+  end
+end
