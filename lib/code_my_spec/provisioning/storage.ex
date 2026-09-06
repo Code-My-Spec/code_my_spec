@@ -462,19 +462,45 @@ defmodule CodeMySpec.Provisioning.Storage do
   Read from `ProjectSecrets` rather than the platform's own environment: these
   are Sam's keys, held for him, and the whole story falls apart if setup
   quietly falls back to ours.
+
+  `opts[:environment]`, when given, is tried first — a project that wants
+  UAT and production isolated at the credential level, not just the bucket
+  level (a distinct Hetzner project/console key per environment, matching
+  how `database_password_<environment>` and `age_private_key_<environment>`
+  already keep those two apart), can set one. Falls back to the shared
+  `"global"` secret otherwise, which is what every project has by default:
+  Hetzner's own access keys are not bucket-scoped, so one key pair
+  ordinarily manages every environment's bucket fine.
   """
   @spec credentials(Scope.t(), keyword()) :: {:ok, credentials()} | :none
   def credentials(%Scope{} = scope, opts \\ []) do
     location = Keyword.get(opts, :location, @default_location)
 
-    with {:ok, id} when id != "" <- ProjectSecrets.fetch_value(scope, "hetzner_s3_access_key_id"),
+    case Keyword.get(opts, :environment) do
+      nil -> fetch_credentials(scope, [])
+      environment -> fetch_credentials(scope, environment: environment) |> or_global(scope)
+    end
+    |> with_region(location)
+  end
+
+  defp or_global(:none, scope), do: fetch_credentials(scope, [])
+  defp or_global(result, _scope), do: result
+
+  defp fetch_credentials(scope, secret_opts) do
+    with {:ok, id} when id != "" <-
+           ProjectSecrets.fetch_value(scope, "hetzner_s3_access_key_id", secret_opts),
          {:ok, secret} when secret != "" <-
-           ProjectSecrets.fetch_value(scope, "hetzner_s3_secret_access_key") do
-      {:ok, [access_key_id: id, secret_access_key: secret, region: location]}
+           ProjectSecrets.fetch_value(scope, "hetzner_s3_secret_access_key", secret_opts) do
+      {:ok, id, secret}
     else
       _ -> :none
     end
   end
+
+  defp with_region(:none, _location), do: :none
+
+  defp with_region({:ok, id, secret}, location),
+    do: {:ok, [access_key_id: id, secret_access_key: secret, region: location]}
 
   @doc "What Sam is told to go do when his project has no storage keys yet."
   @spec credentials_instructions() :: String.t()
@@ -482,7 +508,9 @@ defmodule CodeMySpec.Provisioning.Storage do
     "Hetzner does not issue object-storage keys over an API — they exist only in the console. " <>
       "Open Hetzner Cloud → your project → Object Storage → Credentials, generate a key pair, " <>
       "and save it on this project as `hetzner_s3_access_key_id` and " <>
-      "`hetzner_s3_secret_access_key`. Setup will re-check when you resume."
+      "`hetzner_s3_secret_access_key`. Setup will re-check when you resume. If UAT and " <>
+      "production should use separate keys, save each pair with its own environment " <>
+      "instead of leaving both on the shared default."
   end
 
   ## Internals

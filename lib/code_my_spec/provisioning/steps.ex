@@ -380,21 +380,42 @@ defmodule CodeMySpec.Provisioning.Steps do
     environments = environments(scope, opts)
     project = project(scope)
 
-    case Storage.credentials(scope, opts) do
-      :none ->
-        {:ok, :absent}
-
-      {:ok, credentials} ->
-        environments
-        |> Enum.map(&Storage.bucket_name(project, &1))
-        |> every_bucket_present(credentials, opts)
-        |> record_content_bucket(scope, credentials, opts)
-    end
+    environments
+    |> Enum.reduce_while({:ok, :satisfied, []}, &verify_bucket_for(&1, &2, project, scope, opts))
+    |> record_content_bucket_for_primary(scope, opts)
   end
 
   # Everything else is either cheap to re-run or has no read-back that
   # distinguishes done from not-done without doing the work.
   def verify(_key, _scope, _opts), do: {:ok, :absent}
+
+  # Each environment's own credentials, not one pair shared across all of
+  # them — a project with separate UAT and production Hetzner keys (the
+  # whole point of `Storage.credentials/2` taking `opts[:environment]`) may
+  # have buckets that simply are not visible to the other environment's key,
+  # since Hetzner lists only what the credentials presented own.
+  defp verify_bucket_for(environment, {:ok, :satisfied, acc}, project, scope, opts) do
+    bucket = Storage.bucket_name(project, environment)
+    env_opts = Keyword.put(opts, :environment, environment)
+
+    case Storage.credentials(scope, env_opts) do
+      :none ->
+        {:halt, {:ok, :absent}}
+
+      {:ok, credentials} ->
+        case Storage.list_buckets(credentials, env_opts) do
+          {:ok, existing} ->
+            if bucket in existing do
+              {:cont, {:ok, :satisfied, acc ++ [bucket_resource(bucket, env_opts)]}}
+            else
+              {:halt, {:ok, :absent}}
+            end
+
+          {:error, reason} ->
+            {:halt, {:error, format(reason)}}
+        end
+    end
+  end
 
   ## Run
 
@@ -895,18 +916,9 @@ defmodule CodeMySpec.Provisioning.Steps do
     environments = environments(scope, opts)
     project = project(scope)
 
-    case Storage.credentials(scope, opts) do
-      :none ->
-        # Hetzner issues object-storage keys in the console and nowhere else,
-        # so there is no call to make here. Pausing states the real limit and
-        # re-checks on resume rather than pretending it can be automated.
-        {:paused, Storage.credentials_instructions()}
-
-      {:ok, credentials} ->
-        environments
-        |> Enum.reduce_while({:ok, []}, &ensure_bucket_for(&1, &2, project, credentials, opts))
-        |> record_content_bucket(scope, credentials, opts)
-    end
+    environments
+    |> Enum.reduce_while({:ok, []}, &ensure_bucket_with_credentials(&1, &2, project, scope, opts))
+    |> record_content_bucket_for_primary(scope, opts)
   end
 
   # Every environment, the way `run(:storage, ...)` immediately above already
@@ -927,22 +939,26 @@ defmodule CodeMySpec.Provisioning.Steps do
     environments = environments(scope, opts)
     project = project(scope)
 
-    case Storage.credentials(scope, opts) do
-      :none ->
-        {:paused, Storage.credentials_instructions()}
+    environments
+    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+      bucket = Storage.bucket_name(project, environment)
+      # Fetched per environment, not once for the whole step: a project may
+      # give UAT and production separate Hetzner keys, the same as it may
+      # give them separate database passwords or age keys below.
+      env_opts = Keyword.put(opts, :environment, environment)
 
-      {:ok, credentials} ->
-        environments
-        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-          bucket = Storage.bucket_name(project, environment)
+      case Storage.credentials(scope, env_opts) do
+        :none ->
+          {:halt, {:paused, Storage.credentials_instructions()}}
 
+        {:ok, credentials} ->
           # The key travels with the work, the way the deploy step carries it.
           # `bin/backup` decrypts the environment file itself and sops reads
           # its identity from `SOPS_AGE_KEY` — without it every dump failed on
           # "no identity matched any of the recipients", which reads like a
           # broken key rather than one that was never handed over.
           environment_opts =
-            opts
+            env_opts
             |> Keyword.put(:bucket, bucket)
             |> Keyword.put(:credentials, credentials)
             |> put_age_key(scope, environment)
@@ -967,12 +983,31 @@ defmodule CodeMySpec.Provisioning.Steps do
             # backups could stop for input.
             {:error, reason} -> {:halt, {:error, reason, acc}}
           end
-        end)
-    end
+      end
+    end)
   end
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
+
+  # Credentials fetched per environment, not once for the whole step — same
+  # reason `verify_bucket_for/5` does it: a project may have separate UAT and
+  # production Hetzner keys, and `Storage.credentials/2` only resolves the
+  # right pair when it is told which environment is asking.
+  defp ensure_bucket_with_credentials(environment, {:ok, acc}, project, scope, opts) do
+    env_opts = Keyword.put(opts, :environment, environment)
+
+    case Storage.credentials(scope, env_opts) do
+      :none ->
+        # Hetzner issues object-storage keys in the console and nowhere else,
+        # so there is no call to make here. Pausing states the real limit and
+        # re-checks on resume rather than pretending it can be automated.
+        {:halt, {:paused, Storage.credentials_instructions()}}
+
+      {:ok, credentials} ->
+        ensure_bucket_for(environment, {:ok, acc}, project, credentials, env_opts)
+    end
+  end
 
   @doc """
   Bring up one account-owned server, ready for any project to link onto:
@@ -1275,17 +1310,36 @@ defmodule CodeMySpec.Provisioning.Steps do
   #
   # Only when unset: a project that names a bucket of its own has chosen it, and
   # a re-run must not point publishing somewhere else.
-  defp record_content_bucket({:ok, :satisfied, _resources} = outcome, scope, credentials, opts) do
-    write_content_bucket(scope, credentials, opts)
+  defp record_content_bucket_for_primary({:ok, :satisfied, _resources} = outcome, scope, opts) do
+    write_content_bucket_for_primary(scope, opts)
     outcome
   end
 
-  defp record_content_bucket({:ok, _resources} = outcome, scope, credentials, opts) do
-    write_content_bucket(scope, credentials, opts)
+  defp record_content_bucket_for_primary({:ok, _resources} = outcome, scope, opts) do
+    write_content_bucket_for_primary(scope, opts)
     outcome
   end
 
-  defp record_content_bucket(other, _scope, _credentials, _opts), do: other
+  defp record_content_bucket_for_primary(other, _scope, _opts), do: other
+
+  # Publishing needs exactly one key pair, so this resolves the primary
+  # environment's own credentials (falling back to the shared default the
+  # same way every other environment does) rather than reusing whichever
+  # environment happened to run last in the loop above.
+  defp write_content_bucket_for_primary(scope, opts) do
+    case primary_environment(scope, opts) do
+      environment when is_binary(environment) ->
+        env_opts = Keyword.put(opts, :environment, environment)
+
+        case Storage.credentials(scope, env_opts) do
+          {:ok, credentials} -> write_content_bucket(scope, credentials, opts)
+          :none -> :ok
+        end
+
+      nil ->
+        :ok
+    end
+  end
 
   # The bucket, and where it is.
   #
@@ -2353,23 +2407,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     case Storage.ensure_bucket(bucket, credentials, opts) do
       {:ok, created} -> {:cont, {:ok, acc ++ [bucket_created_resource(created)]}}
       {:error, reason} -> {:halt, {:error, format(reason), acc}}
-    end
-  end
-
-  # Every environment or none: a project with a production bucket and no UAT
-  # bucket is not done, and saying it is hides that until an upload fails.
-  defp every_bucket_present(wanted, credentials, opts) do
-    case Storage.list_buckets(credentials, opts) do
-      {:ok, existing} -> buckets_verdict(wanted, existing, opts)
-      {:error, reason} -> {:error, format(reason)}
-    end
-  end
-
-  defp buckets_verdict(wanted, existing, opts) do
-    if Enum.all?(wanted, &(&1 in existing)) do
-      {:ok, :satisfied, Enum.map(wanted, &bucket_resource(&1, opts))}
-    else
-      {:ok, :absent}
     end
   end
 
