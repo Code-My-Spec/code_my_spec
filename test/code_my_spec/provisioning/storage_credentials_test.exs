@@ -52,7 +52,9 @@ defmodule CodeMySpec.Provisioning.StorageCredentialsTest do
       {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "global-secret")
 
       {:ok, _} =
-        ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "prod-id", environment: "prod")
+        ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "prod-id",
+          environment: "prod"
+        )
 
       {:ok, _} =
         ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "prod-secret",
@@ -73,7 +75,9 @@ defmodule CodeMySpec.Provisioning.StorageCredentialsTest do
       scope: scope
     } do
       {:ok, _} =
-        ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "prod-id", environment: "prod")
+        ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "prod-id",
+          environment: "prod"
+        )
 
       # No secret half saved anywhere — an incomplete pair is not usable.
       assert :none = Storage.credentials(scope, environment: "prod")

@@ -47,7 +47,11 @@ defmodule CodeMySpec.Provisioning.Storage do
   # the host and the signing region.
   @default_location "fsn1"
 
-  @type credentials :: [access_key_id: String.t(), secret_access_key: String.t(), region: String.t()]
+  @type credentials :: [
+          access_key_id: String.t(),
+          secret_access_key: String.t(),
+          region: String.t()
+        ]
 
   @doc """
   The bucket for one environment of one project.
@@ -317,7 +321,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   and teardown runs in `on_exit` where slow means "killed by a timeout, and the
   bucket leaks". S3 takes up to a thousand keys at a time.
   """
-  @spec delete_objects(String.t(), [String.t()], credentials(), keyword()) :: :ok | {:error, term()}
+  @spec delete_objects(String.t(), [String.t()], credentials(), keyword()) ::
+          :ok | {:error, term()}
   def delete_objects(_bucket, [], _credentials, _opts), do: :ok
 
   def delete_objects(bucket, keys, credentials, opts) do
@@ -541,8 +546,7 @@ defmodule CodeMySpec.Provisioning.Storage do
         await_bucket(bucket, credentials, location, opts, origin, attempts - 1)
 
       {:error, reason} ->
-        {:error,
-         "bucket #{bucket} was created but never became usable: #{inspect(reason)}"}
+        {:error, "bucket #{bucket} was created but never became usable: #{inspect(reason)}"}
     end
   end
 

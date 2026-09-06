@@ -333,6 +333,76 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end
   end
 
+  describe "deploy is only ever run for one named environment" do
+    # John, after two unscoped run_provisioning_step calls both deployed prod
+    # first and never reached uat: "The deploy should be like a thing where I
+    # pick the environment and then it should deploy to that environment."
+    # The plain "Run"/"Retry" buttons every other step gets would still let
+    # this page deploy every environment in one unscoped call, so they are
+    # hidden for this one step rather than merely discouraged.
+    test "the plain Run and Retry buttons are absent for the deploy step", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :deploy, %{
+        state: :errored,
+        position: Sequence.position(:deploy),
+        attempted: "deploy",
+        provider_error: "boom"
+      })
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-step='deploy'] [data-test='run-step']")
+      refute has_element?(view, "[data-step='deploy'] [data-test='retry-step']")
+    end
+
+    test "every other step keeps its plain Run button", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-step='repository'] [data-test='run-step']")
+    end
+
+    test "the deploy step offers an environment picker instead", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-step='deploy'] [data-test='deploy-environment-form']")
+      assert has_element?(view, "[data-step='deploy'] [data-test='deploy-environment-select']")
+    end
+
+    # The wiring: submitting the picker threads the chosen environment through
+    # as `:environment`, the same key `run_provisioning_step` requires and
+    # `Steps.run(:deploy, ...)` already reads to deploy one environment
+    # instead of every environment the project has.
+    test "submitting the picker threads the chosen environment through", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      test_pid = self()
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+      stub_execute(fn _scope, _key, opts -> send(test_pid, {:executed, opts}) && {:ok, []} end)
+
+      environment = List.first(CodeMySpec.Provisioning.environment_names(scope))
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view
+      |> form("[data-step='deploy'] [data-test='deploy-environment-form']", %{
+        "environment" => environment
+      })
+      |> render_submit()
+
+      assert_received {:executed, opts}
+      assert Keyword.get(opts, :environment) == environment
+    end
+  end
+
   describe "the DNS confirm and repository adopt buttons run through run_step_async" do
     # Issue 74b6e3a0: both used to call `Provisioning.run_step/3` — the
     # synchronous form — inside the `handle_event`. A dns confirm alone costs

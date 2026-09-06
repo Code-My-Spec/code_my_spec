@@ -77,130 +77,141 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.flash_group flash={@flash} />
-    <.header>
-      Setup
-      <:subtitle>
-        Everything your project needs, in the order it needs it.
-      </:subtitle>
-      <:actions>
-        <.button data-test="generate-project" phx-click="generate_project" class="btn-ghost">
-          Generate deploy files
-        </.button>
-        <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
-        <.button :if={@halted_at} data-test="resume-setup" phx-click="resume_setup">
-          Resume
-        </.button>
-      </:actions>
-    </.header>
-
-    <form data-test="setup-options-form" phx-change="toggle_options" class="my-6">
-      <div class="flex flex-wrap gap-4">
-        <label :for={option <- @available_options} class="label cursor-pointer gap-2">
-          <input
-            type="checkbox"
-            class="checkbox"
-            name={"options[#{option}]"}
-            value="true"
-            checked={option in @options}
-          />
-          <span class="label-text">{option}</span>
-        </label>
-      </div>
-    </form>
-
-    <section data-test="provider-credentials" class="my-6">
-      <h2 class="text-lg font-semibold">Provider credentials</h2>
-      <p class="opacity-70 text-sm">
-        Everything this run needs, in one place. Hetzner has no OAuth — those are
-        pasted and belong to this project. Cloudflare, Resend and GitHub are
-        connected on <.link navigate={~p"/app/users/settings"} class="link">your account</.link>.
-      </p>
-
-      <div
-        :if={@missing_credentials != []}
-        data-test="credentials-incomplete"
-        data-missing={Enum.map_join(@missing_credentials, ",", & &1.key)}
-        class="alert alert-warning mt-3"
-      >
-        Setup cannot start yet — still needed: {Enum.map_join(@missing_credentials, ", ", & &1.label)}.
-      </div>
-
-      <form
-        data-test="credentials-form"
-        phx-submit="save_credentials"
-        class="mt-3 flex flex-col gap-4"
-      >
-        <div
-          :for={credential <- @credentials}
-          data-test="credential-field"
-          data-credential={credential.key}
-          data-credential-kind={to_string(credential.kind)}
-          data-stored={to_string(credential.stored?)}
-          data-state={credential.state}
-          class="flex flex-col gap-1"
-        >
-          <label class="label" for={credential.key}>
-            <span class="label-text">{credential.label}</span>
-            <span
-              data-test="credential-state"
-              data-key={credential.key}
-              data-set={to_string(credential.stored?)}
-              class={[
-                "badge badge-sm",
-                credential.state == "verified" && "badge-success",
-                credential.state == "rejected" && "badge-error"
-              ]}
-            >
-              {credential_badge(credential)}
-            </span>
-          </label>
-
-          <input
-            :if={credential.kind == :secret}
-            type="password"
-            id={credential.key}
-            name={"credentials[#{credential.key}]"}
-            data-test="credential-input"
-            class="input input-bordered w-full"
-            autocomplete="off"
-            placeholder={
-              if credential.stored?, do: "•••••••• (leave blank to keep)", else: credential.hint
-            }
-          />
-
-          <p
-            :if={credential.state == "rejected"}
-            data-test="credential-rejection"
-            data-credential={credential.key}
-            class="text-xs text-error"
-          >
-            Rejected by the provider. Missing: {credential.missing_permission}
-          </p>
-
-          <p
-            data-test="credential-directions"
-            data-credential={credential.key}
-            class="text-xs opacity-70"
-          >
-            {credential.directions}
-          </p>
-
-          <p class="text-xs opacity-50">{credential.why}</p>
-        </div>
-
-        <div class="flex gap-2">
-          <.button type="submit" data-test="save-credentials">Save credentials</.button>
-          <.button type="button" data-test="check-credentials" phx-click="check_credentials">
-            Check them against the providers
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
+      <.header>
+        Setup
+        <:subtitle>
+          Everything your project needs, in the order it needs it.
+        </:subtitle>
+        <:actions>
+          <.button data-test="generate-project" phx-click="generate_project" class="btn-ghost">
+            Generate deploy files
           </.button>
+          <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
+          <.button :if={@halted_at} data-test="resume-setup" phx-click="resume_setup">
+            Resume
+          </.button>
+        </:actions>
+      </.header>
+
+      <form data-test="setup-options-form" phx-change="toggle_options" class="my-6">
+        <div class="flex flex-wrap gap-4">
+          <label :for={option <- @available_options} class="label cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              class="checkbox"
+              name={"options[#{option}]"}
+              value="true"
+              checked={option in @options}
+            />
+            <span class="label-text">{option}</span>
+          </label>
         </div>
       </form>
-    </section>
 
-    <section data-test="domain" class="my-6">
-      <h2 class="text-lg font-semibold">Domain</h2>
-      <%!-- Describes what actually happens. It used to say "check a name, see
+      <section data-test="provider-credentials" class="my-6">
+        <h2 class="text-lg font-semibold">Provider credentials</h2>
+        <p class="opacity-70 text-sm">
+          Everything this run needs, in one place. Hetzner has no OAuth — those are
+          pasted and belong to this project. Cloudflare, Resend and GitHub are
+          connected on <.link navigate={~p"/app/users/settings"} class="link">your account</.link>.
+        </p>
+
+        <div
+          :if={@missing_credentials != []}
+          data-test="credentials-incomplete"
+          data-missing={Enum.map_join(@missing_credentials, ",", & &1.key)}
+          class="alert alert-warning mt-3"
+        >
+          Setup cannot start yet — still needed: {Enum.map_join(
+            @missing_credentials,
+            ", ",
+            & &1.label
+          )}.
+        </div>
+
+        <form
+          data-test="credentials-form"
+          phx-submit="save_credentials"
+          class="mt-3 flex flex-col gap-4"
+        >
+          <div
+            :for={credential <- @credentials}
+            data-test="credential-field"
+            data-credential={credential.key}
+            data-credential-kind={to_string(credential.kind)}
+            data-stored={to_string(credential.stored?)}
+            data-state={credential.state}
+            class="flex flex-col gap-1"
+          >
+            <label class="label" for={credential.key}>
+              <span class="label-text">{credential.label}</span>
+              <span
+                data-test="credential-state"
+                data-key={credential.key}
+                data-set={to_string(credential.stored?)}
+                class={[
+                  "badge badge-sm",
+                  credential.state == "verified" && "badge-success",
+                  credential.state == "rejected" && "badge-error"
+                ]}
+              >
+                {credential_badge(credential)}
+              </span>
+            </label>
+
+            <input
+              :if={credential.kind == :secret}
+              type="password"
+              id={credential.key}
+              name={"credentials[#{credential.key}]"}
+              data-test="credential-input"
+              class="input input-bordered w-full"
+              autocomplete="off"
+              placeholder={
+                if credential.stored?, do: "•••••••• (leave blank to keep)", else: credential.hint
+              }
+            />
+
+            <p
+              :if={credential.state == "rejected"}
+              data-test="credential-rejection"
+              data-credential={credential.key}
+              class="text-xs text-error"
+            >
+              Rejected by the provider. Missing: {credential.missing_permission}
+            </p>
+
+            <p
+              data-test="credential-directions"
+              data-credential={credential.key}
+              class="text-xs opacity-70"
+            >
+              {credential.directions}
+            </p>
+
+            <p class="text-xs opacity-50">{credential.why}</p>
+          </div>
+
+          <div class="flex gap-2">
+            <.button type="submit" data-test="save-credentials">Save credentials</.button>
+            <.button type="button" data-test="check-credentials" phx-click="check_credentials">
+              Check them against the providers
+            </.button>
+          </div>
+        </form>
+      </section>
+
+      <section data-test="domain" class="my-6">
+        <h2 class="text-lg font-semibold">Domain</h2>
+        <%!-- Describes what actually happens. It used to say "check a name, see
             what it costs, then say yes" — and steps two and three were
             unreachable for every input. Cloudflare's Registrar API returns a
             price and an availability answer only for domains already on the
@@ -209,568 +220,602 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             be priced here, and a name you do own has no price to show.
             Advertising the flow the API cannot support read as a broken
             feature rather than a provider limitation. --%>
-      <p class="opacity-70 text-sm">
-        Bring a domain you already own and check it here to adopt it. To register a new
-        one, buy it in the Cloudflare dashboard and come back — the Registrar API will
-        not price or sell a name this app does not already hold.
-      </p>
+        <p class="opacity-70 text-sm">
+          Bring a domain you already own and check it here to adopt it. To register a new
+          one, buy it in the Cloudflare dashboard and come back — the Registrar API will
+          not price or sell a name this app does not already hold.
+        </p>
 
-      <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
-        <label class="form-control">
-          <span class="label-text text-xs">Domain</span>
-          <input
-            type="text"
-            name="domain[name]"
-            value={@domain_name}
-            class="input input-bordered input-sm"
-            placeholder="example.com"
-          />
-        </label>
-        <.button type="submit" data-test="check-domain">Check</.button>
-      </form>
+        <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
+          <label class="form-control">
+            <span class="label-text text-xs">Domain</span>
+            <input
+              type="text"
+              name="domain[name]"
+              value={@domain_name}
+              class="input input-bordered input-sm"
+              placeholder="example.com"
+            />
+          </label>
+          <.button type="submit" data-test="check-domain">Check</.button>
+        </form>
 
-      <div :if={@domain_check} class="mt-3 flex flex-col gap-2">
-        <!-- Availability as the registrar actually reports it. For a name the
+        <div :if={@domain_check} class="mt-3 flex flex-col gap-2">
+          <!-- Availability as the registrar actually reports it. For a name the
              account does not already hold, Cloudflare answers only whether the
              TLD is supported — not a price and not a definite yes — so the
              three states are `available`, `taken`, and `unknown`, and
              `unknown` is not `taken` (criterion 7988's reground). -->
-        <span
-          data-test="domain-availability"
-          data-availability={to_string(@domain_check.availability)}
-          data-available={to_string(@domain_check.availability == :available)}
-          data-supported-tld={to_string(@domain_check.supported_tld)}
-          data-name={@domain_name}
-          class={[
-            "badge",
-            @domain_check.availability == :available && "badge-success",
-            @domain_check.availability == :taken && "badge-error"
-          ]}
-        >
-          {availability_label(@domain_check)}
-        </span>
-        
+          <span
+            data-test="domain-availability"
+            data-availability={to_string(@domain_check.availability)}
+            data-available={to_string(@domain_check.availability == :available)}
+            data-supported-tld={to_string(@domain_check.supported_tld)}
+            data-name={@domain_name}
+            class={[
+              "badge",
+              @domain_check.availability == :available && "badge-success",
+              @domain_check.availability == :taken && "badge-error"
+            ]}
+          >
+            {availability_label(@domain_check)}
+          </span>
+          
     <!-- A taken name is a dead end here: choose another (criterion 7989). -->
-        <p :if={@domain_check.availability == :taken} data-test="domain-taken" class="text-sm">
-          {@domain_name} is already registered{if @domain_check.current_registrar,
-            do: " (#{@domain_check.current_registrar})"}. Pick another name.
-        </p>
-        
+          <p :if={@domain_check.availability == :taken} data-test="domain-taken" class="text-sm">
+            {@domain_name} is already registered{if @domain_check.current_registrar,
+              do: " (#{@domain_check.current_registrar})"}. Pick another name.
+          </p>
+          
     <!-- The API can price and sell only a name the account can already act
              on. Those rare cases keep the in-app confirm. -->
-        <span
-          :if={@domain_check.availability == :available and @domain_check.price}
-          data-test="domain-price"
-          class="text-sm"
-        >
-          {@domain_check.price} {@domain_check.currency}
-        </span>
+          <span
+            :if={@domain_check.availability == :available and @domain_check.price}
+            data-test="domain-price"
+            class="text-sm"
+          >
+            {@domain_check.price} {@domain_check.currency}
+          </span>
 
-        <.button
-          :if={@domain_check.availability == :available and @domain_check.price}
-          data-test="confirm-purchase"
-          phx-click="confirm_purchase"
-          class="btn-warning w-fit"
-        >
-          Yes — register {@domain_name}
-        </.button>
-        
+          <.button
+            :if={@domain_check.availability == :available and @domain_check.price}
+            data-test="confirm-purchase"
+            phx-click="confirm_purchase"
+            class="btn-warning w-fit"
+          >
+            Yes — register {@domain_name}
+          </.button>
+          
     <!-- The common new-name case: a supported TLD the API will not price
              or sell. Buying is a Cloudflare dashboard errand, not an in-app
              purchase (criteria 7988, 7990, 7993, 7994) — and setup adopts it
              once it is registered and its records resolve. -->
-        <div
-          :if={
-            @domain_check.supported_tld and @domain_check.availability != :available and
-              @domain_check.availability != :taken
-          }
-          data-test="domain-dashboard-handoff"
-          data-name={@domain_name}
-          class="alert alert-info flex-col items-start text-sm"
-        >
-          <p>{@domain_name} is a supported extension, but registering it is done in the
-            Cloudflare dashboard — the API will not price or buy it here.</p>
-          <a
-            href="https://dash.cloudflare.com/?to=/:account/domains/register"
-            target="_blank"
-            rel="noopener"
-            data-test="domain-dashboard-link"
-            class="link"
-          >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
-        </div>
-        
+          <div
+            :if={
+              @domain_check.supported_tld and @domain_check.availability != :available and
+                @domain_check.availability != :taken
+            }
+            data-test="domain-dashboard-handoff"
+            data-name={@domain_name}
+            class="alert alert-info flex-col items-start text-sm"
+          >
+            <p>{@domain_name} is a supported extension, but registering it is done in the
+              Cloudflare dashboard — the API will not price or buy it here.</p>
+            <a
+              href="https://dash.cloudflare.com/?to=/:account/domains/register"
+              target="_blank"
+              rel="noopener"
+              data-test="domain-dashboard-link"
+              class="link"
+            >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
+          </div>
+          
     <!-- An unsupported extension the Registrar API cannot sell at all: the
              same dashboard errand, named as such (criterion 7993). -->
-        <div
-          :if={not @domain_check.supported_tld}
-          data-test="domain-unsupported"
-          data-name={@domain_name}
-          class="alert alert-warning flex-col items-start text-sm"
-        >
-          <p>{@domain_name}'s extension is not one the Registrar API can sell.</p>
-          <a
-            href="https://dash.cloudflare.com/?to=/:account/domains/register"
-            target="_blank"
-            rel="noopener"
-            data-test="domain-dashboard-link"
-            class="link"
-          >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
+          <div
+            :if={not @domain_check.supported_tld}
+            data-test="domain-unsupported"
+            data-name={@domain_name}
+            class="alert alert-warning flex-col items-start text-sm"
+          >
+            <p>{@domain_name}'s extension is not one the Registrar API can sell.</p>
+            <a
+              href="https://dash.cloudflare.com/?to=/:account/domains/register"
+              target="_blank"
+              rel="noopener"
+              data-test="domain-dashboard-link"
+              class="link"
+            >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
+          </div>
         </div>
-      </div>
 
-      <div
-        :if={@domain_registered}
-        data-test="domain-registered"
-        data-name={@domain_registered.name}
-        data-adopted={to_string(@domain_registered.adopted)}
-        data-owned-already={to_string(@domain_registered.adopted)}
-        class="mt-3 badge badge-outline"
-      >
-        {@domain_registered.name} {if @domain_registered.adopted,
-          do: "(already yours)",
-          else: "registered"}
-      </div>
-
-      <p :if={@domain_error} data-test="domain-error" class="text-error text-xs mt-2">
-        {@domain_error}
-      </p>
-    </section>
-
-    <section data-test="secrets" class="my-6">
-      <h2 class="text-lg font-semibold">Secrets</h2>
-      <p class="opacity-70 text-sm">
-        Set once, encrypted into the repo. The value goes straight to <code>sops set</code>
-        and is never written to the working tree in the clear — so the file you commit is
-        the file the server reads, and the repo alone will not open it.
-      </p>
-
-      <form
-        data-test="secret-form"
-        phx-submit="put_secret"
-        class="mt-3 flex flex-wrap gap-2 items-end"
-      >
-        <label class="form-control">
-          <span class="label-text text-xs">Key</span>
-          <input
-            type="text"
-            name="secret[key]"
-            class="input input-bordered input-sm"
-            placeholder="RESEND_API_KEY"
-          />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">Value</span>
-          <input
-            type="password"
-            name="secret[value]"
-            class="input input-bordered input-sm"
-            autocomplete="off"
-          />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">Environment</span>
-          <select name="secret[environment]" class="select select-bordered select-sm">
-            <option :for={environment <- @environments} value={environment}>{environment}</option>
-          </select>
-        </label>
-        <.button type="submit" data-test="save-secret">Encrypt into the repo</.button>
-      </form>
-
-      <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">
-        {@secret_error}
-      </p>
-
-      <div class="mt-4 flex flex-col gap-1">
         <div
-          :for={recipient <- @sops_recipients}
-          data-test="sops-recipient"
-          data-environment={recipient.environment}
-          data-key-fingerprint={List.first(recipient.fingerprints)}
-          class="text-xs font-mono opacity-70"
+          :if={@domain_registered}
+          data-test="domain-registered"
+          data-name={@domain_registered.name}
+          data-adopted={to_string(@domain_registered.adopted)}
+          data-owned-already={to_string(@domain_registered.adopted)}
+          class="mt-3 badge badge-outline"
         >
-          {recipient.environment}: {Enum.join(recipient.fingerprints, ", ")}
+          {@domain_registered.name} {if @domain_registered.adopted,
+            do: "(already yours)",
+            else: "registered"}
         </div>
-      </div>
 
-      <div class="mt-4 flex flex-col gap-1">
-        <div
-          :for={source <- @secret_sources}
-          data-test="secret-source"
-          data-consumer={source.consumer}
-          data-path={source.path}
-          class="text-xs font-mono opacity-70"
+        <p :if={@domain_error} data-test="domain-error" class="text-error text-xs mt-2">
+          {@domain_error}
+        </p>
+      </section>
+
+      <section data-test="secrets" class="my-6">
+        <h2 class="text-lg font-semibold">Secrets</h2>
+        <p class="opacity-70 text-sm">
+          Set once, encrypted into the repo. The value goes straight to <code>sops set</code>
+          and is never written to the working tree in the clear — so the file you commit is
+          the file the server reads, and the repo alone will not open it.
+        </p>
+
+        <form
+          data-test="secret-form"
+          phx-submit="put_secret"
+          class="mt-3 flex flex-wrap gap-2 items-end"
         >
-          {source.consumer} reads {source.path}
-        </div>
-      </div>
-    </section>
+          <label class="form-control">
+            <span class="label-text text-xs">Key</span>
+            <input
+              type="text"
+              name="secret[key]"
+              class="input input-bordered input-sm"
+              placeholder="RESEND_API_KEY"
+            />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Value</span>
+            <input
+              type="password"
+              name="secret[value]"
+              class="input input-bordered input-sm"
+              autocomplete="off"
+            />
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs">Environment</span>
+            <select name="secret[environment]" class="select select-bordered select-sm">
+              <option :for={environment <- @environments} value={environment}>{environment}</option>
+            </select>
+          </label>
+          <.button type="submit" data-test="save-secret">Encrypt into the repo</.button>
+        </form>
 
-    <ol class="steps steps-vertical w-full">
-      <li
-        :for={step <- @plan}
-        data-test="setup-step"
-        data-step={step.key}
-        data-completed-at={step_completed_at(step)}
-        data-started-at={step_started_at(step)}
-        data-verified-at={step_verified_at(step)}
-        data-state={step.state}
-        data-position={step.position}
-        class="step"
-      >
-        <div class="card bg-base-100 w-full text-left">
-          <div class="card-body">
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <h3 class="card-title">{step.label}</h3>
-                <p class="text-sm opacity-70">{step.why}</p>
+        <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">
+          {@secret_error}
+        </p>
+
+        <div class="mt-4 flex flex-col gap-1">
+          <div
+            :for={recipient <- @sops_recipients}
+            data-test="sops-recipient"
+            data-environment={recipient.environment}
+            data-key-fingerprint={List.first(recipient.fingerprints)}
+            class="text-xs font-mono opacity-70"
+          >
+            {recipient.environment}: {Enum.join(recipient.fingerprints, ", ")}
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-col gap-1">
+          <div
+            :for={source <- @secret_sources}
+            data-test="secret-source"
+            data-consumer={source.consumer}
+            data-path={source.path}
+            class="text-xs font-mono opacity-70"
+          >
+            {source.consumer} reads {source.path}
+          </div>
+        </div>
+      </section>
+
+      <ol class="steps steps-vertical w-full">
+        <li
+          :for={step <- @plan}
+          data-test="setup-step"
+          data-step={step.key}
+          data-completed-at={step_completed_at(step)}
+          data-started-at={step_started_at(step)}
+          data-verified-at={step_verified_at(step)}
+          data-state={step.state}
+          data-position={step.position}
+          class="step"
+        >
+          <div class="card bg-base-100 w-full text-left">
+            <div class="card-body">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <h3 class="card-title">{step.label}</h3>
+                  <p class="text-sm opacity-70">{step.why}</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="badge">{step.state}</span>
+                  <.button
+                    :if={step.key != :deploy}
+                    data-test="run-step"
+                    phx-click="run_step"
+                    phx-value-key={step.key}
+                  >
+                    Run
+                  </.button>
+                  <.button
+                    :if={step.state == :errored and step.key != :deploy}
+                    data-test="retry-step"
+                    phx-click="run_step"
+                    phx-value-key={step.key}
+                  >
+                    Retry
+                  </.button>
+                </div>
               </div>
 
-              <div class="flex items-center gap-2">
-                <span class="badge">{step.state}</span>
-                <.button
-                  data-test="run-step"
-                  phx-click="run_step"
-                  phx-value-key={step.key}
-                >
-                  Run
+              <p
+                :if={step.state == :paused && step.paused_instructions}
+                data-test="paused-instructions"
+                data-step={step.key}
+                class="alert alert-warning mt-3"
+              >
+                {step.paused_instructions}
+              </p>
+              
+    <!-- Deploying is a decision about one environment, never a batch
+                 operation — confirmed live against cleaner_crm: two unscoped
+                 calls both deployed prod first (environments have no defined
+                 order) and never reached uat, because a run halts on the
+                 first failure. The plain "Run"/"Retry" buttons above are
+                 hidden for this step so there is no path left that deploys
+                 every environment in one click; picking one here is the only
+                 way to deploy from this page now, matching the same
+                 requirement `run_provisioning_step` already enforces. -->
+              <form
+                :if={step.key == :deploy}
+                data-test="deploy-environment-form"
+                phx-submit="run_step_with_environment"
+                class="mt-3 flex flex-wrap gap-2 items-end"
+              >
+                <input type="hidden" name="key" value={step.key} />
+                <label class="form-control">
+                  <span class="label-text text-xs">Environment</span>
+                  <select
+                    name="environment"
+                    data-test="deploy-environment-select"
+                    class="select select-bordered select-sm"
+                  >
+                    <option :for={environment <- @environments} value={environment}>
+                      {environment}
+                    </option>
+                  </select>
+                </label>
+                <.button type="submit" data-test="deploy-environment-submit" class="btn-primary">
+                  {if step.state == :errored, do: "Retry", else: "Deploy"} this environment
                 </.button>
-                <.button
-                  :if={step.state == :errored}
-                  data-test="retry-step"
-                  phx-click="run_step"
-                  phx-value-key={step.key}
-                >
-                  Retry
-                </.button>
-              </div>
-            </div>
-
-            <p
-              :if={step.state == :paused && step.paused_instructions}
-              data-test="paused-instructions"
-              data-step={step.key}
-              class="alert alert-warning mt-3"
-            >
-              {step.paused_instructions}
-            </p>
-            
+              </form>
+              
     <!-- The apex already points somewhere, and this run would move it.
                  Not a default: a live site going dark is less reversible than
                  the domain purchase that already demands a second step — the
                  money comes back, the downtime does not. Behind a dialog
                  rather than a bare click, and not `data-confirm`, whose
                  browser confirm() is invisible to the driver QA runs. -->
-            <div
-              :if={step.key == :dns and step.state == :paused}
-              data-test="apex-repoint"
-              class="mt-3 flex gap-2"
-            >
-              <.button
-                data-test="confirm-apex-repoint"
-                class="btn-warning"
-                phx-click={show_confirm("confirm-apex-repoint")}
+              <div
+                :if={step.key == :dns and step.state == :paused}
+                data-test="apex-repoint"
+                class="mt-3 flex gap-2"
               >
-                Repoint it anyway
-              </.button>
+                <.button
+                  data-test="confirm-apex-repoint"
+                  class="btn-warning"
+                  phx-click={show_confirm("confirm-apex-repoint")}
+                >
+                  Repoint it anyway
+                </.button>
 
-              <.confirm_dialog
-                id="confirm-apex-repoint"
-                title="Repoint the apex?"
-                message={step.paused_instructions}
-                confirm_label="Repoint it"
-                on_confirm={JS.push("confirm_apex_repoint")}
-              />
-            </div>
-            
+                <.confirm_dialog
+                  id="confirm-apex-repoint"
+                  title="Repoint the apex?"
+                  message={step.paused_instructions}
+                  confirm_label="Repoint it"
+                  on_confirm={JS.push("confirm_apex_repoint")}
+                />
+              </div>
+              
     <!-- A name collision Sam did not cause: the repository exists but
                  is not this project's. Neither choice is taken for him
                  (criterion 8185) — adopting a stranger's repo or inventing a
                  suffixed name are both decisions, not defaults. -->
-            <div
-              :if={step.key == :repository and step.state == :paused}
-              data-test="repository-collision"
-              class="mt-3 flex gap-2"
-            >
-              <.button
-                data-test="adopt-existing-repository"
-                phx-click="adopt_repository"
-                class="btn-warning"
+              <div
+                :if={step.key == :repository and step.state == :paused}
+                data-test="repository-collision"
+                class="mt-3 flex gap-2"
               >
-                Adopt the existing repository
-              </.button>
-              <.button data-test="choose-another-name" phx-click="rename_repository">
-                Use a different name
-              </.button>
-            </div>
-
-            <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
+                <.button
+                  data-test="adopt-existing-repository"
+                  phx-click="adopt_repository"
+                  class="btn-warning"
+                >
+                  Adopt the existing repository
+                </.button>
+                <.button data-test="choose-another-name" phx-click="rename_repository">
+                  Use a different name
+                </.button>
+              </div>
+              
+    <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
                  rather than repeat the mistake `59f366cc` fixed, but nothing gave
                  Sam a way to supply the one it's asking for — the plain "Run"
                  button above re-runs with the same missing opt and loops back to
                  this same pause forever. Same shape as the two blocks above:
                  a paused step naming a decision only Sam can make. -->
-            <form
-              :if={step.key == :inbound and step.state == :paused}
-              data-test="inbound-probe-address"
-              phx-submit="run_step_with_probe_address"
-              class="mt-3 flex gap-2"
-            >
-              <input type="hidden" name="key" value={step.key} />
-              <input
-                type="email"
-                name="probe_to"
-                data-test="inbound-probe-address-input"
-                placeholder="an address you already receive at this domain"
-                required
-                class="input input-bordered input-sm flex-1"
-              />
-              <.button type="submit" data-test="inbound-probe-address-submit" class="btn-primary">
-                Use this address
-              </.button>
-            </form>
+              <form
+                :if={step.key == :inbound and step.state == :paused}
+                data-test="inbound-probe-address"
+                phx-submit="run_step_with_probe_address"
+                class="mt-3 flex gap-2"
+              >
+                <input type="hidden" name="key" value={step.key} />
+                <input
+                  type="email"
+                  name="probe_to"
+                  data-test="inbound-probe-address-input"
+                  placeholder="an address you already receive at this domain"
+                  required
+                  class="input input-bordered input-sm flex-1"
+                />
+                <.button type="submit" data-test="inbound-probe-address-submit" class="btn-primary">
+                  Use this address
+                </.button>
+              </form>
 
-            <div
-              :if={step.state == :errored}
-              data-test="escalation"
-              data-step={step.key}
-              class="alert alert-error mt-3 flex-col items-start"
-            >
-              <p>{step.attempted}</p>
-              <p :if={not shown_again_below?(step)} class="font-mono text-xs">
-                {step.provider_error}
-              </p>
-            </div>
-            
+              <div
+                :if={step.state == :errored}
+                data-test="escalation"
+                data-step={step.key}
+                class="alert alert-error mt-3 flex-col items-start"
+              >
+                <p>{step.attempted}</p>
+                <p :if={not shown_again_below?(step)} class="font-mono text-xs">
+                  {step.provider_error}
+                </p>
+              </div>
+              
     <!-- How the decryption key reaches the app. A property of the
                  deploy's configuration, not of a particular run: the key is
                  supplied the same way whether the deploy then succeeds or
                  fails, and hanging this off a success path would mean "Sam
                  places no key file by hand" stopped being visible exactly
                  when a deploy went wrong. -->
-            <div
-              :if={step.key == :deploy and @age_key_environments != []}
-              data-test="age-key-delivery"
-              data-via="deploy_env"
-              data-manual-step-required="false"
-              class="mt-2 text-xs opacity-70"
-            >
-              key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
-            </div>
-            
+              <div
+                :if={step.key == :deploy and @age_key_environments != []}
+                data-test="age-key-delivery"
+                data-via="deploy_env"
+                data-manual-step-required="false"
+                class="mt-2 text-xs opacity-70"
+              >
+                key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
+              </div>
+              
     <!-- Where the callback credential was placed. The observable
                  form of "Sam never sees the credential he is using" (8022):
                  written into the encrypted env, copied by nobody. -->
-            <div
-              :for={cred <- Enum.filter(step.resources, &(&1.kind == "callback_credential"))}
-              data-test="callback-credential"
-              data-placed-in="encrypted_env"
-              data-manual-copy="false"
-              data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
-              class="mt-2 text-xs opacity-70"
-            >
-              credential placed in {cred.location}
-            </div>
-            
+              <div
+                :for={cred <- Enum.filter(step.resources, &(&1.kind == "callback_credential"))}
+                data-test="callback-credential"
+                data-placed-in="encrypted_env"
+                data-manual-copy="false"
+                data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
+                class="mt-2 text-xs opacity-70"
+              >
+                credential placed in {cred.location}
+              </div>
+              
     <!-- Configuration is not an inbox. The step sends a message to the
                  domain it just configured and waits for Resend to report it
                  received; that delivery is the claim, so it is on the page
                  rather than folded into "done" (8033). -->
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "inbound_proof"))}
-              data-test="inbound-delivery-proof"
-              data-target={pr.location}
-              data-state={proof_field(pr.identifier, "state")}
-              data-message-id={proof_field(pr.identifier, "message_id")}
-              data-completed-at={proof_field(pr.identifier, "proven_at")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              delivered to {pr.location}: {pr.identifier}
-            </span>
-            
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "inbound_proof"))}
+                data-test="inbound-delivery-proof"
+                data-target={pr.location}
+                data-state={proof_field(pr.identifier, "state")}
+                data-message-id={proof_field(pr.identifier, "message_id")}
+                data-completed-at={proof_field(pr.identifier, "proven_at")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                delivered to {pr.location}: {pr.identifier}
+              </span>
+              
     <!-- Uploading is not publishing. The step fetches the post back
                  from the deployed site and checks the body carried its title,
                  so the page shows what the site actually answered rather than
                  that a file was written (8036, 8039). -->
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-              data-test="content-render-proof"
-              data-state={proof_field(pr.identifier, "state")}
-              data-completed-at={proof_field(pr.identifier, "proven_at")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              rendered at {pr.location}: {pr.identifier}
-            </span>
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+                data-test="content-render-proof"
+                data-state={proof_field(pr.identifier, "state")}
+                data-completed-at={proof_field(pr.identifier, "proven_at")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                rendered at {pr.location}: {pr.identifier}
+              </span>
 
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-              data-test="content-render-check"
-              data-status={proof_field(pr.identifier, "status")}
-              data-path={pr.location}
-              data-title-present={proof_field(pr.identifier, "title_present")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              {pr.location} answered {proof_field(pr.identifier, "status")}
-            </span>
-            
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+                data-test="content-render-check"
+                data-status={proof_field(pr.identifier, "status")}
+                data-path={pr.location}
+                data-title-present={proof_field(pr.identifier, "title_present")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                {pr.location} answered {proof_field(pr.identifier, "status")}
+              </span>
+              
     <!-- Which version is live. A publish that fails verification leaves
                  the last proven one serving, and Sam needs to see that the
                  thing visitors get did not change under him (8038). -->
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-              data-test="content-served-version"
-              data-version={proof_field(pr.identifier, "version")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              serving {proof_field(pr.identifier, "version")}
-            </span>
-            
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+                data-test="content-served-version"
+                data-version={proof_field(pr.identifier, "version")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                serving {proof_field(pr.identifier, "version")}
+              </span>
+              
     <!-- Whose bucket each object landed in, one row per object. A
                  summary line cannot answer that, and "in Sam's own storage" is
                  the whole of 8035. -->
-            <span
-              :for={obj <- Enum.filter(step.resources, &(&1.kind == "content_object"))}
-              data-test="content-object"
-              data-key={obj.location}
-              data-owner={proof_field(obj.identifier, "owner")}
-              data-bucket={proof_field(obj.identifier, "bucket")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              {obj.location} → {proof_field(obj.identifier, "bucket")}
-            </span>
-            
+              <span
+                :for={obj <- Enum.filter(step.resources, &(&1.kind == "content_object"))}
+                data-test="content-object"
+                data-key={obj.location}
+                data-owner={proof_field(obj.identifier, "owner")}
+                data-bucket={proof_field(obj.identifier, "bucket")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                {obj.location} → {proof_field(obj.identifier, "bucket")}
+              </span>
+              
     <!-- Uploaded but not served is a different failure from a publish
                  that never happened, and the difference is what Sam acts on
                  (8038, 8058). -->
-            <span
-              :for={f <- Enum.filter(step.resources, &(&1.kind == "content_failure"))}
-              data-test="content-verification"
-              data-state={proof_field(f.identifier, "state")}
-              data-served="false"
-              data-objects-uploaded={proof_field(f.identifier, "objects_uploaded")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              <span data-test="content-publish-error">{f.location}</span>
-            </span>
-            
+              <span
+                :for={f <- Enum.filter(step.resources, &(&1.kind == "content_failure"))}
+                data-test="content-verification"
+                data-state={proof_field(f.identifier, "state")}
+                data-served="false"
+                data-objects-uploaded={proof_field(f.identifier, "objects_uploaded")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                <span data-test="content-publish-error">{f.location}</span>
+              </span>
+              
     <!-- Present and openable are asked separately because
                  present-but-not-openable is exactly what a broken bundle looks
                  like from the outside (8040). -->
-            <span
-              :for={r <- Enum.filter(step.resources, &(&1.kind == "widget_render"))}
-              data-test="widget-render-check"
-              data-status={proof_field(r.identifier, "status")}
-              data-widget-present={proof_field(r.identifier, "present")}
-              data-widget-openable={proof_field(r.identifier, "openable")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              widget check: {r.identifier}
-            </span>
-            
+              <span
+                :for={r <- Enum.filter(step.resources, &(&1.kind == "widget_render"))}
+                data-test="widget-render-check"
+                data-status={proof_field(r.identifier, "status")}
+                data-widget-present={proof_field(r.identifier, "present")}
+                data-widget-openable={proof_field(r.identifier, "openable")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                widget check: {r.identifier}
+              </span>
+              
     <!-- A script tag proves nothing. This is a message that travelled
                  from the deployed site into CodeMySpec, and `origin` is what
                  separates it from one posted by hand (8044). -->
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "widget_proof"))}
-              data-test="widget-message-proof"
-              data-state={proof_field(pr.identifier, "state")}
-              data-origin={proof_field(pr.identifier, "origin")}
-              data-completed-at={proof_field(pr.identifier, "proven_at")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              message from {pr.location}: {pr.identifier}
-            </span>
-            
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "widget_proof"))}
+                data-test="widget-message-proof"
+                data-state={proof_field(pr.identifier, "state")}
+                data-origin={proof_field(pr.identifier, "origin")}
+                data-completed-at={proof_field(pr.identifier, "proven_at")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                message from {pr.location}: {pr.identifier}
+              </span>
+              
     <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
                  count is the whole claim, so it is on the page rather than
                  folded into "done" (8054). -->
-            <span
-              :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
-              data-test="backup-restore-proof"
-              data-target={pr.location}
-              data-rows={
-                pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")
-              }
-              data-completed-at={
-                pr.identifier
-                |> String.split(" ")
-                |> List.last()
-                |> String.replace_prefix("proven_at=", "")
-              }
-              data-content-verified={
-                pr.identifier
-                |> String.split(" ")
-                |> hd()
-                |> String.replace_prefix("rows=", "")
-                |> then(&(&1 != "0"))
-                |> to_string()
-              }
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              restored into {pr.location}: {pr.identifier}
-            </span>
-            
+              <span
+                :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
+                data-test="backup-restore-proof"
+                data-target={pr.location}
+                data-rows={
+                  pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")
+                }
+                data-completed-at={
+                  pr.identifier
+                  |> String.split(" ")
+                  |> List.last()
+                  |> String.replace_prefix("proven_at=", "")
+                }
+                data-content-verified={
+                  pr.identifier
+                  |> String.split(" ")
+                  |> hd()
+                  |> String.replace_prefix("rows=", "")
+                  |> then(&(&1 != "0"))
+                  |> to_string()
+                }
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                restored into {pr.location}: {pr.identifier}
+              </span>
+              
     <!-- Retention is enforced by the bucket's own lifecycle rule, not
                  by anything this app runs on a schedule — so a dump expires
                  whether or not setup ever runs again (8016). -->
-            <span
-              :for={r <- Enum.filter(step.resources, &(&1.kind == "retention"))}
-              data-test="backup-retention"
-              data-days={r.location |> String.replace_suffix(" days", "")}
-              data-enforced-by="bucket_lifecycle"
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              dumps expire after {r.location}
-            </span>
-            
+              <span
+                :for={r <- Enum.filter(step.resources, &(&1.kind == "retention"))}
+                data-test="backup-retention"
+                data-days={r.location |> String.replace_suffix(" days", "")}
+                data-enforced-by="bucket_lifecycle"
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                dumps expire after {r.location}
+              </span>
+              
     <!-- The deploy's phases, from the recorded resources: migration
                  completing before the swap starts (8007), and on a failure the
                  phase that stopped it and which version stayed live (8008,
                  8009). -->
-            <span
-              :for={ph <- Enum.filter(step.resources, &(&1.kind == "deploy_phase"))}
-              data-test="deploy-phase"
-              data-phase={ph.location}
-              data-completed-at={ph.location == "migrate" && ph.identifier}
-              data-started-at={ph.location == "swap" && ph.identifier}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              {ph.location} at {ph.identifier}
-            </span>
-            
+              <span
+                :for={ph <- Enum.filter(step.resources, &(&1.kind == "deploy_phase"))}
+                data-test="deploy-phase"
+                data-phase={ph.location}
+                data-completed-at={ph.location == "migrate" && ph.identifier}
+                data-started-at={ph.location == "swap" && ph.identifier}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                {ph.location} at {ph.identifier}
+              </span>
+              
     <!-- The image the deploy runs, and whether this deploy built it.
                  `built=false` is an image that already existed somewhere; a
                  build records the architecture it produced, which is the claim
                  worth being able to read back (8234/8235). -->
-            <span
-              :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
-              data-test="published-image"
-              data-image={img.location}
-              data-built={
-                img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")
-              }
-              data-architecture={image_architecture(img)}
-              data-registry={img.location |> String.split("/") |> hd()}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              image {img.location}
-            </span>
-            
+              <span
+                :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
+                data-test="published-image"
+                data-image={img.location}
+                data-built={
+                  img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")
+                }
+                data-architecture={image_architecture(img)}
+                data-registry={img.location |> String.split("/") |> hd()}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                image {img.location}
+              </span>
+              
     <!-- The box the image was built on. It exists for one build and is
                  destroyed either way (8236/8237); `booted_from` is the
                  pre-warmed image, so no deploy pays to install the toolchain
                  again (8239). -->
-            <span
-              :for={b <- Enum.filter(step.resources, &(&1.kind == "builder"))}
-              data-test="builder"
-              data-builder={b.location}
-              data-destroyed={identifier_field(b, "destroyed")}
-              data-booted-from={identifier_field(b, "booted_from")}
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              built on {b.location}, destroyed after
-            </span>
-            
+              <span
+                :for={b <- Enum.filter(step.resources, &(&1.kind == "builder"))}
+                data-test="builder"
+                data-builder={b.location}
+                data-destroyed={identifier_field(b, "destroyed")}
+                data-booted-from={identifier_field(b, "booted_from")}
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                built on {b.location}, destroyed after
+              </span>
+              
     <!-- Two mechanisms, two blocks (6dcb62b8) — `:s3` storage's bucket
                  lifecycle rule and `:filesystem` storage's prune-on-push are not
                  the same claim in the same units, and forcing one span to read
@@ -779,319 +824,319 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                  most one of these per deploy, keyed to whichever mechanism
                  `retention_claim/3` actually ran; neither renders at all if
                  pruning failed to reach the box this time (8241). -->
-            <span
-              :for={
-                r <-
-                  Enum.filter(step.resources, fn r ->
-                    r.kind == "image_retention" and
-                      identifier_field(r, "enforced_by") == "bucket_lifecycle"
-                  end)
-              }
-              data-test="image-retention"
-              data-days={r.location |> String.replace_suffix(" days", "")}
-              data-enforced-by="bucket_lifecycle"
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              images expire after {r.location}
-            </span>
+              <span
+                :for={
+                  r <-
+                    Enum.filter(step.resources, fn r ->
+                      r.kind == "image_retention" and
+                        identifier_field(r, "enforced_by") == "bucket_lifecycle"
+                    end)
+                }
+                data-test="image-retention"
+                data-days={r.location |> String.replace_suffix(" days", "")}
+                data-enforced-by="bucket_lifecycle"
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                images expire after {r.location}
+              </span>
 
-            <span
-              :for={
-                r <-
-                  Enum.filter(step.resources, fn r ->
-                    r.kind == "image_retention" and
-                      identifier_field(r, "enforced_by") == "prune_on_push"
-                  end)
-              }
-              data-test="image-retention"
-              data-images={r.location |> String.replace_suffix(" images", "")}
-              data-enforced-by="prune_on_push"
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              the registry keeps the newest {r.location}
-            </span>
+              <span
+                :for={
+                  r <-
+                    Enum.filter(step.resources, fn r ->
+                      r.kind == "image_retention" and
+                        identifier_field(r, "enforced_by") == "prune_on_push"
+                    end)
+                }
+                data-test="image-retention"
+                data-images={r.location |> String.replace_suffix(" images", "")}
+                data-enforced-by="prune_on_push"
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                the registry keeps the newest {r.location}
+              </span>
 
-            <span
-              :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
-              data-test="deployed-version"
-              data-image={dv.location}
-              data-commit={
-                dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")
-              }
-              data-source={
-                dv.identifier
-                |> String.split(" ")
-                |> List.last()
-                |> String.replace_prefix("source=", "")
-              }
-              data-image-source={
-                dv.identifier
-                |> String.split(" ")
-                |> List.last()
-                |> String.replace_prefix("source=", "")
-              }
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              shipped {dv.location}
-            </span>
+              <span
+                :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
+                data-test="deployed-version"
+                data-image={dv.location}
+                data-commit={
+                  dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")
+                }
+                data-source={
+                  dv.identifier
+                  |> String.split(" ")
+                  |> List.last()
+                  |> String.replace_prefix("source=", "")
+                }
+                data-image-source={
+                  dv.identifier
+                  |> String.split(" ")
+                  |> List.last()
+                  |> String.replace_prefix("source=", "")
+                }
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                shipped {dv.location}
+              </span>
 
-            <span
-              :for={lv <- Enum.filter(step.resources, &(&1.kind == "live_version"))}
-              data-test="live-version"
-              data-version={lv.location}
-              data-role={lv.location}
-              class="mt-1 block text-xs opacity-70"
-            >
-              live version: {lv.location}
-            </span>
+              <span
+                :for={lv <- Enum.filter(step.resources, &(&1.kind == "live_version"))}
+                data-test="live-version"
+                data-version={lv.location}
+                data-role={lv.location}
+                class="mt-1 block text-xs opacity-70"
+              >
+                live version: {lv.location}
+              </span>
 
-            <p
-              :for={f <- Enum.filter(step.resources, &(&1.kind == "deploy_failure"))}
-              data-test="deploy-failure"
-              data-phase={f.identifier}
-              class="mt-2 text-xs text-error"
-            >
-              {f.location}
-            </p>
+              <p
+                :for={f <- Enum.filter(step.resources, &(&1.kind == "deploy_failure"))}
+                data-test="deploy-failure"
+                data-phase={f.identifier}
+                class="mt-2 text-xs text-error"
+              >
+                {f.location}
+              </p>
 
-            <p
-              :if={step.key == :deploy and step.state == :errored and step.provider_error}
-              data-test="boot-failure"
-              class="mt-2 text-xs text-error"
-            >
-              {step.provider_error}
-            </p>
-            
+              <p
+                :if={step.key == :deploy and step.state == :errored and step.provider_error}
+                data-test="boot-failure"
+                class="mt-2 text-xs text-error"
+              >
+                {step.provider_error}
+              </p>
+              
     <!-- The commit that actually landed. The step is proven by a
                  push rather than by the repository existing (8183), and an
                  empty repository is exactly what "it exists" looks like when
                  the push failed. -->
-            <div
-              :for={commit <- Enum.filter(step.resources, &(&1.kind == "commit"))}
-              data-test="push-proof"
-              data-commit={commit.location}
-              class="mt-2 text-xs font-mono opacity-70"
-            >
-              pushed {String.slice(commit.location, 0, 12)}
-            </div>
-            
+              <div
+                :for={commit <- Enum.filter(step.resources, &(&1.kind == "commit"))}
+                data-test="push-proof"
+                data-commit={commit.location}
+                class="mt-2 text-xs font-mono opacity-70"
+              >
+                pushed {String.slice(commit.location, 0, 12)}
+              </div>
+              
     <!-- The firewall's inbound rules, from the deterministic rule set:
                  only the web ports and key-only SSH face the internet, and the
                  database port never does (criterion 8004). Rendered when the
                  server step has recorded its firewall. -->
-            <div
-              :if={step.key == :server and Enum.any?(step.resources, &(&1.kind == "firewall"))}
-              class="mt-2 flex flex-col gap-1"
-            >
-              <span
-                :for={rule <- firewall_rules()}
-                data-test="firewall-rule"
-                data-direction="in"
-                data-port={rule.port}
-                data-source={hd(rule.source_ips)}
-                class="text-xs font-mono opacity-70"
+              <div
+                :if={step.key == :server and Enum.any?(step.resources, &(&1.kind == "firewall"))}
+                class="mt-2 flex flex-col gap-1"
               >
-                in {rule.port} from {Enum.join(rule.source_ips, ", ")}
-              </span>
-              <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
-                enforced at the Hetzner cloud firewall, not on the box
-              </span>
-            </div>
+                <span
+                  :for={rule <- firewall_rules()}
+                  data-test="firewall-rule"
+                  data-direction="in"
+                  data-port={rule.port}
+                  data-source={hd(rule.source_ips)}
+                  class="text-xs font-mono opacity-70"
+                >
+                  in {rule.port} from {Enum.join(rule.source_ips, ", ")}
+                </span>
+                <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
+                  enforced at the Hetzner cloud firewall, not on the box
+                </span>
+              </div>
 
-            <span
-              :for={v <- Enum.filter(step.resources, &(&1.kind == "environment_verification"))}
-              data-test="environment-verification"
-              data-scheme="https"
-              data-status="200"
-              data-host={v.location}
-              data-cert-valid="true"
-              class="mt-1 block text-xs font-mono opacity-70"
-            >
-              verified https://{v.location} (200, valid cert)
-            </span>
+              <span
+                :for={v <- Enum.filter(step.resources, &(&1.kind == "environment_verification"))}
+                data-test="environment-verification"
+                data-scheme="https"
+                data-status="200"
+                data-host={v.location}
+                data-cert-valid="true"
+                class="mt-1 block text-xs font-mono opacity-70"
+              >
+                verified https://{v.location} (200, valid cert)
+              </span>
 
-            <span
-              :for={m <- Enum.filter(step.resources, &(&1.kind == "monitor"))}
-              data-test="uptime-monitor"
-              data-host={m.location}
-              data-notify={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
-              data-notifies={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
-              class="mt-1 block text-xs opacity-70"
-            >
-              monitoring {m.location}
-            </span>
-            
+              <span
+                :for={m <- Enum.filter(step.resources, &(&1.kind == "monitor"))}
+                data-test="uptime-monitor"
+                data-host={m.location}
+                data-notify={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+                data-notifies={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+                class="mt-1 block text-xs opacity-70"
+              >
+                monitoring {m.location}
+              </span>
+              
     <!-- Confirmed by asking a public resolver, which is the only check that
                  distinguishes a working record from one that merely exists. -->
-            <span
-              :for={v <- Enum.filter(step.resources, &(&1.kind == "dns_verification"))}
-              data-test="dns-verified"
-              data-source="resolver"
-              data-environment={resource_environment(v)}
-              data-host={v.location}
-              class="text-xs opacity-70"
-            >
-              {v.location} resolves
-            </span>
-            
+              <span
+                :for={v <- Enum.filter(step.resources, &(&1.kind == "dns_verification"))}
+                data-test="dns-verified"
+                data-source="resolver"
+                data-environment={resource_environment(v)}
+                data-host={v.location}
+                class="text-xs opacity-70"
+              >
+                {v.location} resolves
+              </span>
+              
     <!-- One row per environment's record, so "each environment resolves to
                  its own server" is readable off the page rather than inferred. -->
-            <span
-              :for={record <- Enum.filter(step.resources, &(&1.kind == "dns_record"))}
-              data-test="dns-record"
-              data-environment={resource_environment(record)}
-              data-target={resource_target(record)}
-              data-name={resource_name(record)}
-              data-proxied="false"
-              class="text-xs opacity-70"
-            >
-              {resource_name(record)} → {resource_target(record)}
-            </span>
-
-            <div :if={step.resources != []} class="mt-3 flex flex-col gap-1">
               <span
-                :for={resource <- step.resources}
-                data-test="provisioned-resource"
-                data-kind={resource.kind}
-                data-location={resource.location}
-                data-environment={resource_environment(resource)}
-                data-name={resource_name(resource)}
-                data-owner={resource_owner(resource)}
-                data-disposition={resource_disposition(resource)}
-                data-verified={to_string(step.state == :done)}
-                class={[
-                  "badge badge-outline",
-                  step.state != :done && "badge-warning opacity-70"
-                ]}
+                :for={record <- Enum.filter(step.resources, &(&1.kind == "dns_record"))}
+                data-test="dns-record"
+                data-environment={resource_environment(record)}
+                data-target={resource_target(record)}
+                data-name={resource_name(record)}
+                data-proxied="false"
+                class="text-xs opacity-70"
               >
-                {resource.kind} — {resource.location}
-                <span
-                  :if={step.state != :done}
-                  data-test="unverified-resource"
-                  data-step={step.key}
-                  class="ml-1"
-                >
-                  ({unverified_note(step)})
-                </span>
+                {resource_name(record)} → {resource_target(record)}
               </span>
+
+              <div :if={step.resources != []} class="mt-3 flex flex-col gap-1">
+                <span
+                  :for={resource <- step.resources}
+                  data-test="provisioned-resource"
+                  data-kind={resource.kind}
+                  data-location={resource.location}
+                  data-environment={resource_environment(resource)}
+                  data-name={resource_name(resource)}
+                  data-owner={resource_owner(resource)}
+                  data-disposition={resource_disposition(resource)}
+                  data-verified={to_string(step.state == :done)}
+                  class={[
+                    "badge badge-outline",
+                    step.state != :done && "badge-warning opacity-70"
+                  ]}
+                >
+                  {resource.kind} — {resource.location}
+                  <span
+                    :if={step.state != :done}
+                    data-test="unverified-resource"
+                    data-step={step.key}
+                    class="ml-1"
+                  >
+                    ({unverified_note(step)})
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
+        </li>
+      </ol>
+
+      <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
+        <h2 class="text-lg font-semibold">Prove the bucket</h2>
+        <p class="opacity-70 text-sm">
+          Writes an object and reads it back. A bucket that accepted a write is not
+          the same as a bucket you can get your file out of again.
+        </p>
+
+        <form
+          data-test="storage-probe-form"
+          phx-submit="storage_probe"
+          class="mt-3 flex flex-wrap gap-2 items-end"
+        >
+          <label class="form-control">
+            <span class="label-text">Environment</span>
+            <select name="probe[environment]" class="select select-bordered">
+              <option :for={environment <- @environments} value={environment}>{environment}</option>
+            </select>
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Key</span>
+            <input name="probe[key]" value="probe.txt" class="input input-bordered" />
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Content</span>
+            <input name="probe[body]" value="hello" class="input input-bordered" />
+          </label>
+
+          <.button type="submit" data-test="run-storage-probe">Write and read back</.button>
+        </form>
+
+        <ul class="mt-3 flex flex-col gap-1">
+          <li
+            :for={object <- @storage_objects}
+            data-test="storage-object"
+            data-key={object.key}
+            data-environment={object.environment}
+            data-bucket={object.bucket}
+          >
+            wrote {object.key} to {object.bucket}
+          </li>
+        </ul>
+
+        <ul class="mt-1 flex flex-col gap-1">
+          <li
+            :for={readback <- @storage_readbacks}
+            data-test="storage-readback"
+            data-key={readback.key}
+            data-environment={readback.environment}
+            data-status={readback.status}
+            data-matches-written={to_string(readback.matches)}
+            data-reason={readback[:reason]}
+          >
+            read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
+            <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
+          </li>
+        </ul>
+      </section>
+
+      <section :if={@mail} data-test="mail" class="my-6">
+        <h2 class="text-lg font-semibold">Outbound mail</h2>
+
+        <div
+          :for={entry <- @mail_domains}
+          data-test="mail-sending-domain"
+          data-domain={entry.domain}
+          data-name={entry.domain}
+          data-environment={entry.environment}
+          data-status={entry.status}
+          data-provider-id={entry.provider_id}
+          data-manual-step-required={to_string(entry.manual_step_required)}
+          data-verified-separately={to_string(entry.status == "verified")}
+        >
+          {entry.environment}: {entry.domain} — {entry.status}
         </div>
-      </li>
-    </ol>
 
-    <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
-      <h2 class="text-lg font-semibold">Prove the bucket</h2>
-      <p class="opacity-70 text-sm">
-        Writes an object and reads it back. A bucket that accepted a write is not
-        the same as a bucket you can get your file out of again.
-      </p>
-
-      <form
-        data-test="storage-probe-form"
-        phx-submit="storage_probe"
-        class="mt-3 flex flex-wrap gap-2 items-end"
-      >
-        <label class="form-control">
-          <span class="label-text">Environment</span>
-          <select name="probe[environment]" class="select select-bordered">
-            <option :for={environment <- @environments} value={environment}>{environment}</option>
-          </select>
-        </label>
-
-        <label class="form-control">
-          <span class="label-text">Key</span>
-          <input name="probe[key]" value="probe.txt" class="input input-bordered" />
-        </label>
-
-        <label class="form-control">
-          <span class="label-text">Content</span>
-          <input name="probe[body]" value="hello" class="input input-bordered" />
-        </label>
-
-        <.button type="submit" data-test="run-storage-probe">Write and read back</.button>
-      </form>
-
-      <ul class="mt-3 flex flex-col gap-1">
-        <li
-          :for={object <- @storage_objects}
-          data-test="storage-object"
-          data-key={object.key}
-          data-environment={object.environment}
-          data-bucket={object.bucket}
+        <div
+          data-test="mail-verification"
+          data-status={@mail.status}
+          data-attempts={@mail.attempts}
+          data-verified-at={@mail.verified_at}
+          data-dkim={@mail.dkim}
+          data-manual-step-required={to_string(@mail.manual_step_required)}
         >
-          wrote {object.key} to {object.bucket}
-        </li>
-      </ul>
+          verification: {@mail.status} after {@mail.attempts} check(s)
+        </div>
 
-      <ul class="mt-1 flex flex-col gap-1">
-        <li
-          :for={readback <- @storage_readbacks}
-          data-test="storage-readback"
-          data-key={readback.key}
-          data-environment={readback.environment}
-          data-status={readback.status}
-          data-matches-written={to_string(readback.matches)}
-          data-reason={readback[:reason]}
+        <ul class="mt-2 flex flex-col gap-1">
+          <li
+            :for={record <- @mail.records}
+            data-test="mail-dns-record"
+            data-type={record.type}
+            data-name={record.name}
+            data-verified={to_string(record.verified)}
+            data-resolved={to_string(record.resolved)}
+            data-content={record.content}
+          >
+            {record.type} {record.name} — {if record.verified, do: "verified", else: "pending"}
+          </li>
+        </ul>
+
+        <div
+          :if={@mail.missing_records != []}
+          data-test="dns-record-deleted"
+          data-name={List.first(@mail.missing_records)}
         >
-          read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
-          <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
-        </li>
-      </ul>
-    </section>
+          a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
+        </div>
+      </section>
 
-    <section :if={@mail} data-test="mail" class="my-6">
-      <h2 class="text-lg font-semibold">Outbound mail</h2>
-
-      <div
-        :for={entry <- @mail_domains}
-        data-test="mail-sending-domain"
-        data-domain={entry.domain}
-        data-name={entry.domain}
-        data-environment={entry.environment}
-        data-status={entry.status}
-        data-provider-id={entry.provider_id}
-        data-manual-step-required={to_string(entry.manual_step_required)}
-        data-verified-separately={to_string(entry.status == "verified")}
-      >
-        {entry.environment}: {entry.domain} — {entry.status}
-      </div>
-
-      <div
-        data-test="mail-verification"
-        data-status={@mail.status}
-        data-attempts={@mail.attempts}
-        data-verified-at={@mail.verified_at}
-        data-dkim={@mail.dkim}
-        data-manual-step-required={to_string(@mail.manual_step_required)}
-      >
-        verification: {@mail.status} after {@mail.attempts} check(s)
-      </div>
-
-      <ul class="mt-2 flex flex-col gap-1">
-        <li
-          :for={record <- @mail.records}
-          data-test="mail-dns-record"
-          data-type={record.type}
-          data-name={record.name}
-          data-verified={to_string(record.verified)}
-          data-resolved={to_string(record.resolved)}
-          data-content={record.content}
-        >
-          {record.type} {record.name} — {if record.verified, do: "verified", else: "pending"}
-        </li>
-      </ul>
-
-      <div
-        :if={@mail.missing_records != []}
-        data-test="dns-record-deleted"
-        data-name={List.first(@mail.missing_records)}
-      >
-        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
-      </div>
-    </section>
-
-    <%!-- The mail *actions* are not gated on the mail panel, for the same
+      <%!-- The mail *actions* are not gated on the mail panel, for the same
          reason content and widget are not: `:if={@mail}` made them present
          only when a sending domain had already been read back from the
          provider, and these are how Sam causes that to happen. Since the page
@@ -1104,243 +1149,248 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
          The results sit here with their buttons: a probe's outcome should not
          vanish because the panel above it has not been read. --%>
-    <section data-test="mail-actions" class="my-6">
-      <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="mt-3">
-        Send a test message
-      </.button>
+      <section data-test="mail-actions" class="my-6">
+        <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="mt-3">
+          Send a test message
+        </.button>
 
-      <div
-        :if={@mail_send_result}
-        data-test="mail-send-result"
-        data-from={@mail_send_result.from}
-        data-accepted={to_string(@mail_send_result.accepted)}
-        data-provider-id={@mail_send_result.provider_id}
-        data-completed-at={@mail_send_result.completed_at}
-        data-dkim={@mail_send_result.dkim}
-        data-domain={@mail_send_result.domain}
-        data-reason={@mail_send_result.reason}
-      >
-        sent from {@mail_send_result.from}: {if @mail_send_result.accepted,
-          do: "accepted",
-          else: "refused"}
-        <span :if={@mail_send_result.reason}>— {@mail_send_result.reason}</span>
-      </div>
+        <div
+          :if={@mail_send_result}
+          data-test="mail-send-result"
+          data-from={@mail_send_result.from}
+          data-accepted={to_string(@mail_send_result.accepted)}
+          data-provider-id={@mail_send_result.provider_id}
+          data-completed-at={@mail_send_result.completed_at}
+          data-dkim={@mail_send_result.dkim}
+          data-domain={@mail_send_result.domain}
+          data-reason={@mail_send_result.reason}
+        >
+          sent from {@mail_send_result.from}: {if @mail_send_result.accepted,
+            do: "accepted",
+            else: "refused"}
+          <span :if={@mail_send_result.reason}>— {@mail_send_result.reason}</span>
+        </div>
 
-      <%!-- Sending is only half of it. A domain you can send from but not
+        <%!-- Sending is only half of it. A domain you can send from but not
             receive at swallows every reply, so this sends *to* the domain and
             waits for Resend to say it arrived (974/8030). Separate from the
             send probe above because they fail independently and for different
             reasons. --%>
-      <.button data-test="mail-inbound-probe" phx-click="mail_inbound_probe" class="mt-3">
-        Send a message to this domain
-      </.button>
+        <.button data-test="mail-inbound-probe" phx-click="mail_inbound_probe" class="mt-3">
+          Send a message to this domain
+        </.button>
 
-      <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
-        Re-check DNS
-      </.button>
-    </section>
+        <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
+          Re-check DNS
+        </.button>
+      </section>
 
-    <%!-- Content and widget live in their own section rather than inside the
+      <%!-- Content and widget live in their own section rather than inside the
          mail one. Putting them there made them `:if={@mail}` — present only
          when a sending domain happened to be registered, which has nothing to
          do with publishing a blog or embedding a widget. --%>
-    <section data-test="content-and-widget" class="my-6">
-      <%!-- One command, not a checklist. The whole of 972/8034 is that this
+      <section data-test="content-and-widget" class="my-6">
+        <%!-- One command, not a checklist. The whole of 972/8034 is that this
             button finishes the job — snapshot, upload, trigger, and a fetch
             back from the live site — with nothing left for Sam to do
             afterwards, which is what `manual-steps-remaining` reports. --%>
-      <.button data-test="content-publish" phx-click="content_publish" class="mt-3">
-        Publish the blog
-      </.button>
+        <.button data-test="content-publish" phx-click="content_publish" class="mt-3">
+          Publish the blog
+        </.button>
 
-      <div
-        :if={@content_publish}
-        data-test="content-publish-result"
-        data-state={@content_publish.state}
-        data-manual-steps-remaining={@content_publish.manual_steps_remaining}
-        data-objects-uploaded={to_string(@content_publish.objects_uploaded)}
-      >
-        {@content_publish.summary}
-        <span :if={@content_publish.error} data-test="content-publish-error">
-          {@content_publish.error}
-        </span>
-      </div>
+        <div
+          :if={@content_publish}
+          data-test="content-publish-result"
+          data-state={@content_publish.state}
+          data-manual-steps-remaining={@content_publish.manual_steps_remaining}
+          data-objects-uploaded={to_string(@content_publish.objects_uploaded)}
+        >
+          {@content_publish.summary}
+          <span :if={@content_publish.error} data-test="content-publish-error">
+            {@content_publish.error}
+          </span>
+        </div>
 
-      <%!-- The widget failing must not take the page with it. `probe_degraded/2`
+        <%!-- The widget failing must not take the page with it. `probe_degraded/2`
             has computed this since it was written and had no caller — nothing
             asked the deployed site how it looks when the backend is gone
             (973/8043). --%>
-      <.button data-test="widget-degradation-probe" phx-click="widget_degradation_probe" class="mt-3">
-        Check the site with the widget backend down
-      </.button>
+        <.button
+          data-test="widget-degradation-probe"
+          phx-click="widget_degradation_probe"
+          class="mt-3"
+        >
+          Check the site with the widget backend down
+        </.button>
 
-      <div
-        :if={@widget_degradation}
-        data-test="widget-degradation-result"
-        data-page-status={@widget_degradation.page_status}
-        data-page-usable={to_string(@widget_degradation.page_usable)}
-        data-widget-state={@widget_degradation.widget_state}
-      >
-        {@widget_degradation.summary}
-      </div>
+        <div
+          :if={@widget_degradation}
+          data-test="widget-degradation-result"
+          data-page-status={@widget_degradation.page_status}
+          data-page-usable={to_string(@widget_degradation.page_usable)}
+          data-widget-state={@widget_degradation.widget_state}
+        >
+          {@widget_degradation.summary}
+        </div>
 
-      <div
-        :if={@mail_inbound_result}
-        data-test="inbound-delivery"
-        data-state={@mail_inbound_result.state}
-        data-destination={@mail_inbound_result.destination}
-        data-message-id={@mail_inbound_result.message_id}
-        data-completed-at={@mail_inbound_result.completed_at}
-        data-delivered-to={@mail_inbound_result.delivered_to}
-        data-body-available={to_string(@mail_inbound_result.body_available)}
-        data-manual-forward={to_string(@mail_inbound_result.manual_forward)}
-      >
-        {@mail_inbound_result.summary}
-      </div>
-    </section>
+        <div
+          :if={@mail_inbound_result}
+          data-test="inbound-delivery"
+          data-state={@mail_inbound_result.state}
+          data-destination={@mail_inbound_result.destination}
+          data-message-id={@mail_inbound_result.message_id}
+          data-completed-at={@mail_inbound_result.completed_at}
+          data-delivered-to={@mail_inbound_result.delivered_to}
+          data-body-available={to_string(@mail_inbound_result.body_available)}
+          data-manual-forward={to_string(@mail_inbound_result.manual_forward)}
+        >
+          {@mail_inbound_result.summary}
+        </div>
+      </section>
 
-    <%!-- Environments never share a server (966/8156). That is invisible from
+      <%!-- Environments never share a server (966/8156). That is invisible from
           a list of names — two environments pointing at one box look exactly
           like two environments — so each one names the server it runs on. --%>
-    <section data-test="environments-panel">
-      <h2>Environments</h2>
+      <section data-test="environments-panel">
+        <h2>Environments</h2>
 
-      <%!-- Turning production on is adding an environment, not ticking a box.
+        <%!-- Turning production on is adding an environment, not ticking a box.
             There is no `prod` option on the setup form and never was — the
             steps fan out over whichever environment rows exist, which is what
             lets a project have `qa`, or one per story, without a code change. --%>
-      <.form
-        for={%{}}
-        as={:environment}
-        data-test="add-environment-form"
-        phx-submit="add_environment"
-      >
-        <input type="text" name="environment[name]" data-test="environment-name" />
-        <.button type="submit" data-test="add-environment">Add environment</.button>
-      </.form>
+        <.form
+          for={%{}}
+          as={:environment}
+          data-test="add-environment-form"
+          phx-submit="add_environment"
+        >
+          <input type="text" name="environment[name]" data-test="environment-name" />
+          <.button type="submit" data-test="add-environment">Add environment</.button>
+        </.form>
 
-      <div
-        :for={environment <- @environment_rows}
-        data-test="environment"
-        data-environment={environment.name}
-        data-server={environment.server_name}
-        data-host={environment.host}
-        data-ip={environment.ip}
-        class="flex items-center gap-3"
-      >
-        <span>{environment.name}: {environment.server_name || "no server yet"}</span>
+        <div
+          :for={environment <- @environment_rows}
+          data-test="environment"
+          data-environment={environment.name}
+          data-server={environment.server_name}
+          data-host={environment.host}
+          data-ip={environment.ip}
+          class="flex items-center gap-3"
+        >
+          <span>{environment.name}: {environment.server_name || "no server yet"}</span>
 
-        <%!-- Behind a dialog rather than a bare click. This releases a real
+          <%!-- Behind a dialog rather than a bare click. This releases a real
               server and a real DNS record, and the panel's rows are one line
               apart. `data-confirm` is not an option here — the browser's own
               confirm() is invisible to the driver QA runs. --%>
-        <.button
-          data-test="remove-environment"
-          class="btn-xs btn-error"
-          phx-click={show_confirm("remove-environment-#{environment.name}")}
-        >
-          Remove
+          <.button
+            data-test="remove-environment"
+            class="btn-xs btn-error"
+            phx-click={show_confirm("remove-environment-#{environment.name}")}
+          >
+            Remove
+          </.button>
+
+          <.confirm_dialog
+            id={"remove-environment-#{environment.name}"}
+            title={"Remove #{environment.name}?"}
+            message={remove_environment_warning(environment)}
+            confirm_label="Remove it"
+            on_confirm={JS.push("remove_environment", value: %{name: environment.name})}
+          />
+        </div>
+      </section>
+
+      <section data-test="backups-panel">
+        <h2>Backups</h2>
+
+        <.button data-test="backups-refresh" phx-click="refresh_backups" class="mt-2">
+          Check the bucket
         </.button>
 
-        <.confirm_dialog
-          id={"remove-environment-#{environment.name}"}
-          title={"Remove #{environment.name}?"}
-          message={remove_environment_warning(environment)}
-          confirm_label="Remove it"
-          on_confirm={JS.push("remove_environment", value: %{name: environment.name})}
-        />
-      </div>
-    </section>
+        <.button data-test="backup-restore-probe" phx-click="probe_restore" class="mt-2">
+          Restore the newest dump
+        </.button>
 
-    <section data-test="backups-panel">
-      <h2>Backups</h2>
-
-      <.button data-test="backups-refresh" phx-click="refresh_backups" class="mt-2">
-        Check the bucket
-      </.button>
-
-      <.button data-test="backup-restore-probe" phx-click="probe_restore" class="mt-2">
-        Restore the newest dump
-      </.button>
-
-      <%!-- `data-content-verified` is not the exit status. A restore of an
+        <%!-- `data-content-verified` is not the exit status. A restore of an
             empty dump exits 0, so the rows that came back are the claim. --%>
-      <div
-        :if={@restore_result}
-        data-test="restore-result"
-        data-state={@restore_result.state}
-        data-rows-restored={@restore_result.rows}
-        data-content-verified={to_string(@restore_result.rows > 0)}
-        data-target={Map.get(@restore_result, :target)}
-      >
-        {if @restore_result.state == "succeeded",
-          do: "restored #{@restore_result.rows} rows into #{@restore_result.target}",
-          else: "restore failed: #{@restore_result.reason}"}
-      </div>
+        <div
+          :if={@restore_result}
+          data-test="restore-result"
+          data-state={@restore_result.state}
+          data-rows-restored={@restore_result.rows}
+          data-content-verified={to_string(@restore_result.rows > 0)}
+          data-target={Map.get(@restore_result, :target)}
+        >
+          {if @restore_result.state == "succeeded",
+            do: "restored #{@restore_result.rows} rows into #{@restore_result.target}",
+            else: "restore failed: #{@restore_result.reason}"}
+        </div>
 
-      <p :if={@backups == []} data-test="no-backups">
-        no dumps in any bucket yet
-      </p>
+        <p :if={@backups == []} data-test="no-backups">
+          no dumps in any bucket yet
+        </p>
 
-      <%!-- A backup that stopped running looks exactly like one that is working,
+        <%!-- A backup that stopped running looks exactly like one that is working,
             right up until somebody needs it. "never" and "stalled" are reported
             apart because "it never ran" and "it stopped last Tuesday" send Sam
             to different places. --%>
-      <div
-        :if={@backup_health}
-        data-test="backup-health"
-        data-state={@backup_health.state}
-        data-last-successful-at={@backup_health.last_seen}
-        data-stale-after-hours={@backup_health.stale_after_hours}
-      >
-        {case @backup_health.state do
-          "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
-          "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
-          "never" -> "no dump has ever landed"
-        end}
-      </div>
-
-      <div
-        :for={dump <- @backups}
-        data-test="backup-dump"
-        data-key={dump.key}
-        data-environment={dump.environment}
-        data-bucket={dump.bucket}
-        data-taken-at={dump.taken_at}
-        data-age-days={dump.age_days}
-        data-size={dump.size}
-      >
-        {dump.environment}: {dump.key} ({dump.taken_at})
-      </div>
-    </section>
-
-    <section data-test="setup-record" class="mt-8">
-      <h2 class="text-lg font-semibold">What you now own</h2>
-      <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
-      <ul class="mt-2 flex flex-col gap-1">
-        <li
-          :for={%{resource: resource} = owned <- @resources}
-          data-test="provisioned-resource"
-          data-kind={resource.kind}
-          data-location={resource.location}
-          data-environment={resource_environment(resource)}
-          data-name={resource_name(resource)}
-          data-owner={resource_owner(resource)}
-          data-verified={to_string(owned.verified?)}
-          class={not owned.verified? && "opacity-70"}
+        <div
+          :if={@backup_health}
+          data-test="backup-health"
+          data-state={@backup_health.state}
+          data-last-successful-at={@backup_health.last_seen}
+          data-stale-after-hours={@backup_health.stale_after_hours}
         >
-          {resource.kind} — {resource.location}
-          <span
-            :if={not owned.verified?}
-            data-test="unverified-resource"
-            data-step={owned.step}
-            class="badge badge-sm badge-warning ml-2"
+          {case @backup_health.state do
+            "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
+            "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
+            "never" -> "no dump has ever landed"
+          end}
+        </div>
+
+        <div
+          :for={dump <- @backups}
+          data-test="backup-dump"
+          data-key={dump.key}
+          data-environment={dump.environment}
+          data-bucket={dump.bucket}
+          data-taken-at={dump.taken_at}
+          data-age-days={dump.age_days}
+          data-size={dump.size}
+        >
+          {dump.environment}: {dump.key} ({dump.taken_at})
+        </div>
+      </section>
+
+      <section data-test="setup-record" class="mt-8">
+        <h2 class="text-lg font-semibold">What you now own</h2>
+        <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
+        <ul class="mt-2 flex flex-col gap-1">
+          <li
+            :for={%{resource: resource} = owned <- @resources}
+            data-test="provisioned-resource"
+            data-kind={resource.kind}
+            data-location={resource.location}
+            data-environment={resource_environment(resource)}
+            data-name={resource_name(resource)}
+            data-owner={resource_owner(resource)}
+            data-verified={to_string(owned.verified?)}
+            class={not owned.verified? && "opacity-70"}
           >
-            {unverified_note(owned)}
-          </span>
-        </li>
-      </ul>
-    </section>
+            {resource.kind} — {resource.location}
+            <span
+              :if={not owned.verified?}
+              data-test="unverified-resource"
+              data-step={owned.step}
+              class="badge badge-sm badge-warning ml-2"
+            >
+              {unverified_note(owned)}
+            </span>
+          </li>
+        </ul>
+      </section>
+    </Layouts.app>
     """
   end
 
@@ -1920,8 +1970,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # `{:provisioning, :step, row}` → `load/2` → a fresh `plan` read.
     :ok = Provisioning.run_step_async(scope, :dns, step_opts() ++ [confirm_apex_repoint: true])
 
-    {:noreply,
-     socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
+    {:noreply, socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
   end
 
   def handle_event("adopt_repository", _params, socket) do
@@ -1932,8 +1981,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # Async for the same reason as confirm_apex_repoint above (issue 74b6e3a0).
     :ok = Provisioning.run_step_async(scope, :repository, step_opts() ++ [adopt: true])
 
-    {:noreply,
-     socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
+    {:noreply, socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
   end
 
   def handle_event("rename_repository", _params, socket) do
@@ -2007,6 +2055,30 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         scope,
         String.to_existing_atom(key),
         [inbound_probe_to: address] ++ step_opts()
+      )
+
+    {:noreply,
+     socket
+     |> assign(halted_at: nil, halt_reason: nil)
+     |> load(socket.assigns.options)}
+  end
+
+  # The only way this page deploys now — see the moduledoc comment on the
+  # form above. `:environment` wins over anything `step_opts()` might carry,
+  # matching `run_provisioning_step`'s own contract for the deploy step.
+  def handle_event(
+        "run_step_with_environment",
+        %{"key" => key, "environment" => environment},
+        socket
+      )
+      when is_binary(environment) and environment != "" do
+    scope = socket.assigns.current_scope
+
+    :ok =
+      Provisioning.run_step_async(
+        scope,
+        String.to_existing_atom(key),
+        Keyword.put(step_opts(), :environment, environment)
       )
 
     {:noreply,
