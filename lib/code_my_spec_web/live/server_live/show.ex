@@ -30,6 +30,8 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.ServerView
   alias CodeMySpec.Servers
 
@@ -46,6 +48,10 @@ defmodule CodeMySpecWeb.ServerLive.Show do
          |> assign(:containers_error, nil)
          |> assign(:retire_error, nil)
          |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
+         |> assign(:projects, Projects.list_projects(socket.assigns.current_scope))
+         |> assign(:link_project_id, nil)
+         |> assign(:link_environments, [])
+         |> assign(:link_error, nil)
          |> read_containers(server)}
 
       {:error, :not_found} ->
@@ -118,6 +124,84 @@ defmodule CodeMySpecWeb.ServerLive.Show do
         {:noreply, socket |> put_flash(:error, "That server is not linked to this account.") |> push_navigate(to: ~p"/app/servers")}
     end
   end
+
+  # Same connection `link_server` (the devops MCP tool) makes — an
+  # environment's `server_id` set to a server this account already has a
+  # record of. Was previously the only way to make this connection at all:
+  # nothing on `/app/servers` could point an environment at a server, only
+  # an agent driving the MCP tool from inside a project. Confirmed live: the
+  # `:server` step pauses naming exactly this action ("link one of those...")
+  # with no page for Sam to go do it on.
+  def handle_event("pick-link-project", %{"project_id" => ""}, socket) do
+    {:noreply, socket |> assign(:link_project_id, nil) |> assign(:link_environments, [])}
+  end
+
+  def handle_event("pick-link-project", %{"project_id" => _}, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("pick-link-project", %{"project_id" => project_id}, socket) do
+    environments =
+      case Projects.get_project(socket.assigns.current_scope, project_id) do
+        {:ok, project} ->
+          socket.assigns.current_scope
+          |> project_scope(project)
+          |> EnvironmentRepository.names()
+
+        {:error, _reason} ->
+          []
+      end
+
+    {:noreply,
+     socket
+     |> assign(:link_project_id, project_id)
+     |> assign(:link_environments, environments)
+     |> assign(:link_error, nil)}
+  end
+
+  def handle_event("link-environment", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("link-environment", %{"project_id" => "", "environment" => _}, socket) do
+    {:noreply, assign(socket, :link_error, "Choose a project first.")}
+  end
+
+  def handle_event("link-environment", %{"project_id" => _, "environment" => ""}, socket) do
+    {:noreply, assign(socket, :link_error, "Name the environment — \"prod\", \"uat\", whatever this project calls it.")}
+  end
+
+  def handle_event("link-environment", %{"project_id" => project_id, "environment" => environment}, socket) do
+    # `socket.assigns.server` is the merged, provider-reported struct
+    # `Servers.list/1` builds — its `id` is Hetzner's own numeric id, not
+    # `linked_servers.id`. `EnvironmentRepository`'s `server_id` is a foreign
+    # key into the latter, the same row `link_server` (the devops MCP tool)
+    # resolves via `Servers.get_linked/2` before writing. Using the reported
+    # struct's id here would cast a Hetzner id into a `:binary_id` column —
+    # caught by a test that read the row back rather than trusting the
+    # success path alone.
+    with {:ok, project} <- Projects.get_project(socket.assigns.current_scope, project_id),
+         scope = project_scope(socket.assigns.current_scope, project),
+         %{} = linked <- Servers.get_linked(socket.assigns.current_scope, socket.assigns.server.name),
+         {:ok, _env} <- EnvironmentRepository.put(scope, environment, %{server_id: linked.id}) do
+      {:noreply,
+       socket
+       |> assign(:link_project_id, nil)
+       |> assign(:link_environments, [])
+       |> assign(:link_error, nil)
+       |> assign(:entries, ServerView.for_server(socket.assigns.current_scope, socket.assigns.server.name))}
+    else
+      {:error, :not_found} ->
+        {:noreply, assign(socket, :link_error, "That project could not be found.")}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, assign(socket, :link_error, "Could not save that link.")}
+
+      nil ->
+        {:noreply, assign(socket, :link_error, "This server is not linked to this account yet.")}
+    end
+  end
+
+  defp project_scope(scope, project),
+    do: %{scope | active_project: project, active_project_id: project.id}
 
   defp in_use_message(projects),
     do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
@@ -363,6 +447,62 @@ defmodule CodeMySpecWeb.ServerLive.Show do
           <p :if={@entries == []} data-test="no-entries" class="text-base-content/60">
             Nothing points at this server. Nothing deploys to it, and nothing was made for it.
           </p>
+
+          <form
+            :if={@can_manage}
+            data-test="link-environment-form"
+            phx-change="pick-link-project"
+            phx-submit="link-environment"
+            class="flex flex-wrap items-end gap-3 mb-8 pb-6 border-b"
+          >
+            <label class="form-control">
+              <span class="label-text">Project</span>
+              <select name="project_id" data-test="link-project" class="select select-bordered select-sm">
+                <option value="" selected={is_nil(@link_project_id)}>Point a project at this server…</option>
+                <option
+                  :for={project <- @projects}
+                  value={project.id}
+                  selected={@link_project_id == project.id}
+                >
+                  {project.name}
+                </option>
+              </select>
+            </label>
+
+            <label class="form-control">
+              <span class="label-text">Environment</span>
+              <input
+                type="text"
+                name="environment"
+                data-test="link-environment-name"
+                list="link-environment-options"
+                placeholder="prod"
+                disabled={is_nil(@link_project_id)}
+                class="input input-bordered input-sm w-32"
+              />
+              <datalist id="link-environment-options">
+                <option :for={name <- @link_environments} value={name} />
+              </datalist>
+            </label>
+
+            <button
+              type="submit"
+              data-test="link-environment-submit"
+              disabled={is_nil(@link_project_id)}
+              class="btn btn-sm btn-primary"
+            >
+              Link
+            </button>
+          </form>
+
+          <div
+            :if={@link_error}
+            data-test="link-environment-error"
+            role="alert"
+            class="alert alert-error alert-soft mb-8"
+          >
+            <span>{@link_error}</span>
+          </div>
 
           <div :for={entry <- entries_for_app(@entries, @app)} class="mb-8">
             <h3 class="font-medium mb-2">
