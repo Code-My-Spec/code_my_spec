@@ -781,7 +781,13 @@ defmodule CmsHarness.Agents.Engine do
              base_url: Keyword.get(opts, :base_url),
              # Machine-local, like `on_stop` and `on_event`: it is a function,
              # so it cannot cross the wire and nothing on the wire sets it.
-             req_options: Keyword.get(opts, :req_options)
+             req_options: Keyword.get(opts, :req_options),
+             # Only `claude-code` reads this today, to pin its subprocess to a
+             # stable directory across the agent's calls instead of the
+             # provider's own default of a fresh temp dir per call — see
+             # `Provider.options/3`'s "claude-code" clause for why that
+             # matters.
+             working_copy: working_copy
            ) do
       {:ok,
        provider_opts

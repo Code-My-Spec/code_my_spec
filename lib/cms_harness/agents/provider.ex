@@ -128,11 +128,38 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
+  # The subscription running on this machine, not a credential from the
+  # server: `claude` handles its own OAuth login state, exactly like `codex
+  # exec`, so there is nothing here to fetch from `credential`.
+  #
+  # `workdir: working_copy`, not the provider's own default of a fresh temp
+  # directory per call. `Alloy.Provider.ClaudeCode` resumes the underlying
+  # `claude` session turn to turn (`--resume`) once one exists in
+  # `provider_state`, and that only buys back its prompt-cache cost — not
+  # just correct recall — when every call in one agent's lifetime runs from
+  # the same directory (verified against the real CLI: resuming from a
+  # different directory still recalls the conversation but never hits the
+  # cache). An agent already has exactly one working copy for its whole
+  # life, so passing it here costs nothing and is the difference between
+  # `--resume` actually paying for itself and being a no-op.
+  def options("claude-code", _credential, opts) do
+    {:ok,
+     [
+       provider:
+         {Alloy.Provider.ClaudeCode,
+          %{
+            model: Keyword.get(opts, :model) || "claude-sonnet-5",
+            workdir: Keyword.get(opts, :working_copy),
+            timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
+          }}
+     ]}
+  end
+
   def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
 
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
-  def names, do: ["anthropic", "openai-codex", "zai"]
+  def names, do: ["anthropic", "openai-codex", "zai", "claude-code"]
 
   # The credential's own auth file, or this machine's codex login.
   #
