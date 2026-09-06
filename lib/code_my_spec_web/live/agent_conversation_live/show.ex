@@ -477,7 +477,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         answers = Notifications.collect_answers(request.questions, params)
         _ = Notifications.answer_question_request(request.id, answers)
 
-        {:noreply, assign(socket, :questions, questions_for(socket.assigns.conversation))}
+        # Re-fold as well as re-read. The run was split so the form could sit
+        # inside it; once answered there is nothing to sit there, and the calls
+        # belong back in one collapsed item.
+        {:noreply,
+         socket
+         |> assign(:questions, questions_for(socket.assigns.conversation))
+         |> assign_turns(socket.assigns.messages)}
     end
   end
 
@@ -755,7 +761,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The page holds one page of messages (50 by default), so re-folding the list
   # on each arrival costs nothing and the whole class of problem goes away.
   defp assign_turns(socket, messages) do
-    {items, results} = ChatComponents.group_turns(messages)
+    # A run of calls folds into one expandable item, and a pending question
+    # anchored inside that run would render after the whole thing — below calls
+    # the agent made *after* it asked. So the run breaks where the question is.
+    #
+    # Questions are read from the socket rather than passed in, because this is
+    # called from the message paths and the questions change on their own.
+    breaks =
+      socket.assigns
+      |> Map.get(:questions, [])
+      |> pending()
+      |> MapSet.new(& &1.conversation_message_id)
+
+    {items, results} = ChatComponents.group_turns(messages, breaks)
 
     socket
     |> assign(:messages, messages)

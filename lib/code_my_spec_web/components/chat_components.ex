@@ -586,8 +586,8 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   Returns items carrying an `:id`, so the caller can stream them.
   """
-  @spec group_turns([struct()]) :: {[map()], %{String.t() => struct()}}
-  def group_turns(messages) do
+  @spec group_turns([struct()], MapSet.t()) :: {[map()], %{String.t() => struct()}}
+  def group_turns(messages, break_after \\ MapSet.new()) do
     results = results_by_call_id(messages)
     called = call_ids(messages)
 
@@ -600,10 +600,59 @@ defmodule CodeMySpecWeb.ChatComponents do
         # answers with three `tool_use` blocks in one response — and chunking by
         # message saw that as a single item and left it unfolded, which is the
         # exact case the fold exists for.
-        if call?(hd(run)) and call_count(run) > 1, do: [group(run)], else: singles(run)
+        if call?(hd(run)) and call_count(run) > 1 do
+          run |> split_after(break_after) |> Enum.flat_map(&fold/1)
+        else
+          singles(run)
+        end
       end)
 
     {items, results}
+  end
+
+  # Where a run must not be folded across.
+  #
+  # The fold collapses a run of calls into one expandable item, which is right
+  # until something has to render *between* two of them. A pending question is
+  # the case: three calls, then `ask_user_question`, then two more calls is one
+  # item, and a form rendered after it appears below work that happened after
+  # the question was asked. Putting it inside the item is worse — a question
+  # nobody can see behind an expander is a question that does not get answered.
+  #
+  # So the caller names the messages a run has to break after, and the run
+  # becomes several items with the boundary between them. Everything without a
+  # boundary folds exactly as before.
+  #
+  # The caller names them rather than this looking them up, because what
+  # deserves a break is not a fact about messages — today it is an unanswered
+  # question, and the next one will be something else.
+  defp split_after(run, break_after) do
+    if MapSet.size(break_after) == 0 do
+      [run]
+    else
+      run
+      |> Enum.chunk_while(
+        [],
+        fn message, acc ->
+          acc = [message | acc]
+
+          if MapSet.member?(break_after, message.id),
+            do: {:cont, Enum.reverse(acc), []},
+            else: {:cont, acc}
+        end,
+        fn
+          [] -> {:cont, []}
+          acc -> {:cont, Enum.reverse(acc), []}
+        end
+      )
+      |> Enum.reject(&(&1 == []))
+    end
+  end
+
+  # A piece of a split run folds on its own terms: two calls still collapse, one
+  # left over renders as itself rather than as a group of one.
+  defp fold(messages) do
+    if call_count(messages) > 1, do: [group(messages)], else: singles(messages)
   end
 
   # Carried on the message's own parts rather than in the sentence, so the view
