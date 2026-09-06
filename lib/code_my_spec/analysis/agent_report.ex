@@ -78,12 +78,25 @@ defmodule CodeMySpec.Analysis.AgentReport do
   # Alloy only. A Claude Code session in the same copy has its own path and
   # would be told twice — once here and once on its next tool call — which is
   # the duplicate criterion 3048 exists to keep out.
+  # The roles a run's findings are actually for.
+  #
+  # `Validation.Menu` holds the same two on its problems class, and for the same
+  # reason: `:coding` fixes code and `:main` does everything, while `:qa` tests a
+  # story and `:product` writes specs. Telling QA about 47 spex errors it cannot
+  # read — the digest says "call `list_problems`", which its role does not carry
+  # — is a message that costs a turn and offers no move.
+  #
+  # Kept beside the menu's list deliberately rather than shared: they answer
+  # different questions that happen to agree today, and a wake that follows a
+  # refusal it cannot cause is worse than two lists that drift visibly.
+  @report_roles [:coding, :main]
+
   defp internal_agents(%Scope{active_project_id: project_id}, copy_id) do
     Agent
     |> where(
       [a],
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy
+        a.status != :stopped and a.engine == :alloy and a.role in ^@report_roles
     )
     |> Repo.all()
   end

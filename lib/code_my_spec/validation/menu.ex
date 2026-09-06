@@ -180,6 +180,29 @@ defmodule CodeMySpec.Validation.Menu do
   # still holding the first is how a queue fills with half-finished work.
   defp count(_scope, :task, _role, owner), do: length(active_tasks(owner))
 
+  # Held only by the roles that can do something about them.
+  #
+  # This ignored role entirely while requirements were scoped by it (R10), so a
+  # QA agent was held open by the project's compile and spex errors — 47 of
+  # them on the war-epic copy — and answered, correctly and repeatedly:
+  # "`list_problems` is not available to this QA role, so I cannot inspect the
+  # 47 Spex findings." It could not read them, could not fix them, and could not
+  # stop. John: "it shouldn't get blocked by problems."
+  #
+  # `:coding` fixes code and `:main` does everything, so a broken tree is their
+  # business and the class still outranks their requirements — work built on a
+  # tree that will not compile fails on the tree. `:qa` tests a story and
+  # `:product` writes specs; neither has a move that clears a compile error, and
+  # a directive nobody can act on is the shape this whole module exists to stop.
+  #
+  # Unscoped for `nil`, which is every caller outside the loop — the project's
+  # own count, which is what a person asking about the tree wants.
+  @problem_roles [:coding, :main]
+
+  defp count(_scope, :problems, role, _owner)
+       when is_atom(role) and not is_nil(role) and role not in @problem_roles,
+       do: 0
+
   defp count(scope, :problems, _role, _owner) do
     scope
     |> ProblemRepository.list_project_problems(severity: :error)
