@@ -151,8 +151,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp resolve_session(_scope, _session_id) do
-    {:error,
-     "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
+    {:error, no_owner_message()}
   end
 
   defp lazily_register_session(scope, session_id) do
@@ -346,4 +345,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # `{:error, {atom, message}}` (terse code + agent-actionable
   # message). Prefer the message when present.
   defp format_error_reason(reason), do: CodeMySpec.AgentTasks.format_error(reason)
+
+  # Neither identity arrived, so there is nothing to look the task up on.
+  #
+  # `register_session` is named only where it can be followed. It is a Claude
+  # Code tool and no coding agent carries one — an Alloy agent told to call it
+  # gets "register_session is not a tool a coding agent carries" and is no
+  # closer, which is exactly what happened on 2026-09-06 while its task stayed
+  # open.
+  defp no_owner_message do
+    "No session_id and no agent id on this call, so there is no owner to find " <>
+      "the task on.\n\n" <>
+      "If you are Claude Code: `register_session` with this conversation's id " <>
+      "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
+      "If you are an agent we run: your id travels on the connection and you " <>
+      "cannot supply it — this is a harness fault, not something to retry or " <>
+      "spell differently. Report it with `create_issue` and carry on with work " <>
+      "that does not need the task closed."
+  end
 end
