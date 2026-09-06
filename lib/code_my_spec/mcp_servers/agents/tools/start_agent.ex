@@ -26,7 +26,10 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
     field :role, :string, doc: "Agent type: main, product, coding or qa. Defaults to main."
 
     field :provider, :string,
-      doc: "Override the provider this type would use, e.g. openai-codex, anthropic, zai"
+      doc:
+        "Override the provider this type would use, e.g. openai-codex, anthropic, zai, " <>
+          "claude-code (hyphenated - an Alloy agent using the local claude CLI as its " <>
+          "completion backend; not the same as engine=claude_code below)"
 
     field :engine, :string, doc: "Agent engine: pi (default) or claude_code"
 

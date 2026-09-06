@@ -36,15 +36,29 @@ defmodule CodeMySpec.Agents.Credential do
 
   @doc """
   The `auth.json` entry for one provider, or why there is not one.
+
+  A `:local` provider (see `Providers`) short-circuits to `{:ok, %{}}`
+  unconditionally — there is no Integration to check, no token to mint, and
+  every account reads as "connected" for it. That is deliberate for now, not
+  yet scoped to specific accounts; see the TODO on `Providers.@providers`.
   """
   @spec fetch(Scope.t(), String.t()) ::
           {:ok, t()} | {:error, :not_connected | :reconnect_required | term()}
   def fetch(%Scope{} = scope, provider) when is_binary(provider) do
-    with {:ok, integration_provider} <- Providers.integration_provider(provider) do
-      case build(scope, provider, integration_provider) do
-        {:error, :not_connected} -> platform_credential(provider)
-        result -> result
-      end
+    case Providers.kind(provider) do
+      {:ok, :local} ->
+        {:ok, %{}}
+
+      {:ok, _kind} ->
+        with {:ok, integration_provider} <- Providers.integration_provider(provider) do
+          case build(scope, provider, integration_provider) do
+            {:error, :not_connected} -> platform_credential(provider)
+            result -> result
+          end
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -117,28 +131,47 @@ defmodule CodeMySpec.Agents.Credential do
   """
   @spec source(Scope.t(), String.t()) :: :user | :platform | :none
   def source(%Scope{} = scope, provider) when is_binary(provider) do
-    with {:ok, integration_provider} <- Providers.integration_provider(provider) do
-      case build(scope, provider, integration_provider) do
-        {:ok, _credential} ->
-          :user
+    case Providers.kind(provider) do
+      # Never ours to pay for and never capped — the account's own harness
+      # machine is spending whatever `claude` login is already sitting on it,
+      # which this server has no part in and no visibility into.
+      {:ok, :local} ->
+        :user
 
-        # A credential that needs reconnecting is still theirs. Treating it as
-        # ours would put a cap on someone who is paying and has a token to
-        # refresh, and `fetch/2` does not fall back for this case either.
-        {:error, :reconnect_required} ->
-          :user
+      {:ok, _kind} ->
+        source_via_integration(scope, provider)
 
-        {:error, :not_connected} ->
-          case platform_credential(provider) do
-            {:ok, _} -> :platform
-            {:error, _} -> :none
-          end
+      {:error, _reason} ->
+        :none
+    end
+  end
 
-        {:error, _other} ->
-          :none
-      end
-    else
-      _ -> :none
+  defp source_via_integration(scope, provider) do
+    case Providers.integration_provider(provider) do
+      {:ok, integration_provider} -> source_from_build(scope, provider, integration_provider)
+      {:error, _reason} -> :none
+    end
+  end
+
+  defp source_from_build(scope, provider, integration_provider) do
+    case build(scope, provider, integration_provider) do
+      {:ok, _credential} ->
+        :user
+
+      # A credential that needs reconnecting is still theirs. Treating it as
+      # ours would put a cap on someone who is paying and has a token to
+      # refresh, and `fetch/2` does not fall back for this case either.
+      {:error, :reconnect_required} ->
+        :user
+
+      {:error, :not_connected} ->
+        case platform_credential(provider) do
+          {:ok, _} -> :platform
+          {:error, _} -> :none
+        end
+
+      {:error, _other} ->
+        :none
     end
   end
 
