@@ -683,13 +683,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp elsewhere?(%{session_external_id: same}, same), do: true
   defp elsewhere?(_request, _mine), do: false
 
+  # Only the ones still waiting.
+  #
+  # Answered questions used to render here too, on the reasoning that in a
+  # transcript the answer is part of the record. In practice it put the same
+  # exchange on the page twice — the tool call block with its parameters, then
+  # a card repeating the question and the answer — and an old answered one with
+  # no anchor landed at the bottom, below the live question, out of any order
+  # that made sense.
+  #
+  # John: "we just leave those as normal tool call blocks and we only render the
+  # unanswered question." The call block already says what was asked and the
+  # answer already reached the agent, so the card was decorating a record that
+  # was complete without it. `QuestionLive.Show` still renders the answered
+  # state — landing there from a notification you have already answered should
+  # say so rather than show nothing.
+  defp pending(questions), do: Enum.filter(questions, &(&1.status == "pending"))
+
   # The questions asked at any message in this group. A group's dom id is its
   # *first* message's id, and the anchor is whichever message was newest when
   # the question was asked — so matching on `item.id` alone would miss every
   # question anchored mid-group.
   defp questions_at(questions, item) do
     ids = MapSet.new(item.messages, & &1.id)
-    Enum.filter(questions, &MapSet.member?(ids, &1.conversation_message_id))
+
+    questions
+    |> pending()
+    |> Enum.filter(&MapSet.member?(ids, &1.conversation_message_id))
   end
 
   # Everything the loop above did not place. Checked against the messages on the
@@ -697,13 +717,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # question anchored above the window would otherwise render nowhere at all.
   defp unanchored_questions(questions, items) do
     shown = items |> Enum.flat_map(& &1.messages) |> MapSet.new(& &1.id)
-    Enum.reject(questions, &MapSet.member?(shown, &1.conversation_message_id))
+
+    questions
+    |> pending()
+    |> Enum.reject(&MapSet.member?(shown, &1.conversation_message_id))
   end
 
-  defp pending_questions(questions), do: Enum.filter(questions, &(&1.status == "pending"))
-
   defp waiting_label(questions) do
-    case length(pending_questions(questions)) do
+    case length(pending(questions)) do
       1 -> "A question is waiting on you"
       n -> "#{n} questions are waiting on you"
     end
@@ -1137,14 +1158,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         one pending question means whichever submits first makes the other look
         broken. --%>
         <div
-          :if={pending_questions(@questions) != []}
+          :if={pending(@questions) != []}
           data-test="questions-waiting"
           class="mb-4 flex items-center gap-3 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
         >
           <.icon name="hero-chat-bubble-left-right" class="size-4 text-warning" />
           <span>{waiting_label(@questions)}</span>
           <a
-            href={"#question-#{hd(pending_questions(@questions)).id}"}
+            href={"#question-#{hd(pending(@questions)).id}"}
             class="link link-primary ml-auto text-xs"
           >
             Jump to it
