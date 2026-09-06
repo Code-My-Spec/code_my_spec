@@ -103,6 +103,52 @@ defmodule CodeMySpec.Agents.StopDecision do
   end
 
   @doc """
+  Tell one agent that work of its kind is available.
+
+  Story 538's R12, delivered. An agent whose queue emptied was told nothing and
+  stopped — correctly, under R6 — and then nothing existed that would bring it
+  back: product finishes a spec unblocking three coding requirements and the
+  coding agent sits idle with no reason to look again.
+
+  Here rather than in `Agents` because this is the same act as a stop decision
+  and has to travel the same way — recorded before it is dispatched, dispatched
+  off this process so a busy agent is queued rather than interrupted (criterion
+  3053), and silent when there is nothing to say. A second delivery path would
+  drift from this one, and the drift would be invisible until an agent stopped
+  hearing from one of them.
+
+  Silent for a role with an empty queue, for the reason this module keeps
+  everywhere: a message wakes a process and costs it a turn, and an agent woken
+  to be told there is nothing has been charged for no information.
+
+  Not a decision about whether to keep going — that is `deliver/2`, at the end
+  of a turn. This is the nudge that gets an idle agent to take one.
+  """
+  @spec wake(Scope.t(), Agent.t()) :: :ok
+  def wake(%Scope{} = scope, %Agent{} = agent) do
+    case Validation.Menu.render(scope, agent.continuous == true, agent.role) do
+      "" ->
+        :ok
+
+      menu ->
+        Conversations.find_or_create_agent_conversation(
+          scope.active_account_id,
+          scope.active_project_id,
+          agent.id
+        )
+
+        send_to(scope, agent, "Work of your kind is available." <> menu)
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[StopDecision] could not wake agent #{agent.id}: " <> Exception.message(error)
+      )
+
+      :ok
+  end
+
+  @doc """
   The decision as a value, or `nil` when there is nothing to say.
 
   Public because it is the half both transports share. A hook rendering this

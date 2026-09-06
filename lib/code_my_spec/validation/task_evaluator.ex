@@ -8,6 +8,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.Environments
   alias CodeMySpec.Sessions
@@ -93,6 +94,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   defp handle_result({:ok, :valid}, scope, session, task, _type_name, _opts) do
     Sessions.complete_task(scope, session, task.id, :completed)
     Sessions.clear_eval_feedback(scope, session)
+    wake_the_others(scope, task)
     {:ok, :valid}
   end
 
@@ -104,6 +106,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
     Sessions.complete_task(scope, session, task.id, :completed)
     Sessions.clear_eval_feedback(scope, session)
+    wake_the_others(scope, task)
     {:ok, :valid}
   end
 
@@ -228,6 +231,27 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   # Custom evaluate/2 modules don't take opts; only the unified evaluator
   # honors `sync: false`.
+  # Story 538's R12. Finishing work is what wakes the roles it unblocked.
+  #
+  # Only on the completing paths, because only a completed task moves the graph.
+  # An invalid evaluation leaves the same work outstanding for the same role, and
+  # waking the others to tell them nothing changed is the message this whole
+  # design keeps refusing to send.
+  #
+  # Never the reason an evaluation fails. The task is complete either way, and a
+  # nudge that could take that down would be worse than a nudge that is missed —
+  # the next completion sends it again.
+  defp wake_the_others(scope, task) do
+    case scope.active_working_copy_id do
+      nil -> :ok
+      copy_id -> Agents.wake_roles(scope, copy_id, Map.get(task, :agent_id))
+    end
+  rescue
+    error ->
+      Logger.warning("[TaskEvaluator] could not wake the others: " <> Exception.message(error))
+      :ok
+  end
+
   defp dispatch_evaluate(module, scope, task, opts) do
     if Evaluator.has_custom_evaluate?(module) do
       module.evaluate(scope, task)

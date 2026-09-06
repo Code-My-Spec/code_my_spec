@@ -521,6 +521,58 @@ defmodule CodeMySpec.Agents do
           {:ok, non_neg_integer()} | {:error, term()}
   defdelegate set_copy_continuous(scope, copy_id, continuous?), to: AgentsRepository
 
+  @doc """
+  Tell the other roles on this copy that there may be something for them.
+
+  Story 538's R12. An agent whose queue emptied was told nothing and stopped —
+  correctly, under R6 — and then nothing existed that would ever bring it back.
+  Product finishes a spec that unblocks three coding requirements and the coding
+  agent is still sitting there, idle, with no reason to look again.
+
+  So finishing work is what wakes the roles it unblocked. The graph decides what
+  is available and this only delivers it: every woken agent gets the menu, the
+  same one its own stop would have produced, and chooses for itself. Nobody is
+  handed an ordering and nobody is put in charge of anybody.
+
+  ## Only the roles that have something
+
+  `StopDecision`'s rule holds — a message wakes a process and costs it a turn,
+  so an agent woken to be told there is nothing has been charged for no
+  information. `Menu.render/3` answers `""` for a role with an empty queue and
+  that agent is left alone.
+
+  ## Not the agent that just finished
+
+  It is about to make its own stop decision, which is where it finds out what is
+  next. Waking it here would tell it twice.
+
+  ## The count can lag by a cycle
+
+  This reads the requirements read model, which a graph computation writes —
+  `get_next_requirement` is the usual one. A role whose work became actionable
+  in the same breath as this completion may therefore not show until something
+  recomputes. That is a nudge arriving late rather than a wake being lost: the
+  next completion on this copy sends it, and the agent that finished refreshes
+  the model on its own next turn.
+  """
+  @spec wake_roles(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
+  def wake_roles(%Scope{} = scope, copy_id, except_agent_id \\ nil)
+      when is_binary(copy_id) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&wakeable?(&1, copy_id, except_agent_id))
+    |> Enum.each(&StopDecision.wake(scope, &1))
+
+    :ok
+  end
+
+  defp wakeable?(agent, copy_id, except_agent_id) do
+    agent.working_copy_id == copy_id and
+      agent.continuous == true and
+      agent.status in [:starting, :running] and
+      agent.id != except_agent_id
+  end
+
   defp start_copy_agent(scope, copy_id, root, role) do
     with {:ok, provider, model} <- role_choice(scope, role) do
       start_agent(scope, %{
