@@ -409,12 +409,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     scope = socket.assigns.current_scope
     agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
 
-    case agent_id && Agents.set_agent_continuous(scope, agent_id, not socket.assigns.working?) do
-      {:ok, agent} ->
-        {:noreply, assign(socket, :working?, agent.continuous == true)}
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
+    # The direction comes from the agent, not from what this page last drew.
+    #
+    # It was `not @working?`, and that inverted the control the moment the assign
+    # was stale: the wide layout rendered `working?` false over an agent that was
+    # working, so a click meant to pause it computed `not false` and switched it
+    # *on*. John: "I was unable to stop that agent." He was pressing pause and
+    # starting it.
+    #
+    # Reading the row costs one query on a click a person made, and it cannot
+    # disagree with the thing it is about — where the assign is a copy that goes
+    # stale whenever anything else moves the agent, including the other switch on
+    # the working copy page.
+    with agent_id when is_binary(agent_id) <- agent_id,
+         {:ok, current} <- Agents.fetch_agent(scope, agent_id),
+         {:ok, agent} <- Agents.set_agent_continuous(scope, agent_id, current.continuous != true) do
+      {:noreply, assign(socket, :working?, agent.continuous == true)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
     end
   end
 
