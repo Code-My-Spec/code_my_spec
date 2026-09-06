@@ -135,10 +135,16 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
       then_ "the other live classes are tallied with counts", context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ ~r/\d+\s+issues?\b/i,
-               "the issue class is live and not the directive, so it must appear in " <>
-                 "the tally with a count — otherwise it starves invisibly, which is " <>
-                 "the failure a strict single directive has. Got:\n#{reason}"
+        # Requirements rather than issues. Issues stopped being a menu class on
+        # 2026-09-05: the graph already carries them as `issues_triaged`
+        # (product's) and `issues_resolved` (coding's), counted against
+        # `fix_issues_min_severity`, so a class beside them was the same work
+        # counted twice by the cruder accounting — no role, no threshold, and
+        # ranked above the graph's own answer.
+        assert reason =~ ~r/\d+\s+requirements?\b/i,
+               "a live class that is not the directive must appear in the tally " <>
+                 "with a count — otherwise it starves invisibly, which is the " <>
+                 "failure a strict single directive has. Got:\n#{reason}"
 
         {:ok, context}
       end

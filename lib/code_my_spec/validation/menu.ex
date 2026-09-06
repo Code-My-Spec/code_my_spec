@@ -34,8 +34,22 @@ defmodule CodeMySpec.Validation.Menu do
 
       1. problems       list_problems          do not start new work on a broken
                                                tree
-      2. issues         list_issues
-      3. requirements   get_next_requirement
+      2. requirements   get_next_requirement
+
+  Issues were the second class here and are not any more. The graph already
+  carries them — `issues_triaged` is product's and `issues_resolved` is
+  coding's, both counted by `IssuesChecker` against
+  `fix_issues_min_severity` — so a class beside them was the same work counted
+  twice, by the cruder of the two accountings: no role, no threshold, and
+  ranked *above* the graph's own answer.
+
+  It showed the day role scoping landed. Three agents on one copy were each sent
+  to `list_issues` with the same 14, on a project where all 14 were incoming and
+  therefore product's alone, because the class could not tell triage from
+  resolution and did not know what a role was.
+
+  Problems keep their class for the opposite reason: no requirement models them
+  at all, so this is the only place they surface as work.
 
   One directive, not the whole menu: a full list on every stop buries the
   important item among the easy ones and invites the agent to take whichever is
@@ -56,7 +70,6 @@ defmodule CodeMySpec.Validation.Menu do
   nonsense. That is harder to catch than a red test.
   """
 
-  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements.NodeRepository
@@ -64,11 +77,10 @@ defmodule CodeMySpec.Validation.Menu do
 
   @tools %{
     problems: "list_problems",
-    issues: "list_issues",
     requirements: "get_next_requirement"
   }
 
-  @order [:problems, :issues, :requirements]
+  @order [:problems, :requirements]
 
   @doc """
   The menu, rendered for appending to a refusal.
@@ -147,12 +159,6 @@ defmodule CodeMySpec.Validation.Menu do
     |> length()
   end
 
-  defp count(scope, :issues, _role) do
-    scope
-    |> Issues.list_issues()
-    |> Enum.count(&(&1.status in [:incoming, :accepted, "incoming", "accepted"]))
-  end
-
   # Straight off the read model, which is where this always belonged.
   #
   # Two versions preceded it and both tried to compute an answer the rows
@@ -189,8 +195,6 @@ defmodule CodeMySpec.Validation.Menu do
   # is the full menu this is meant to avoid.
   defp label(:problems, 1), do: "1 problem in this working copy"
   defp label(:problems, n), do: "#{n} problems in this working copy"
-  defp label(:issues, 1), do: "1 issue"
-  defp label(:issues, n), do: "#{n} issues"
   defp label(:requirements, 1), do: "1 requirement"
   defp label(:requirements, n), do: "#{n} requirements"
 
