@@ -399,21 +399,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     env_opts = Keyword.put(opts, :environment, environment)
 
     case Storage.credentials(scope, env_opts) do
-      :none ->
-        {:halt, {:ok, :absent}}
+      :none -> {:halt, {:ok, :absent}}
+      {:ok, credentials} -> verify_bucket_listed(bucket, credentials, env_opts, acc)
+    end
+  end
 
-      {:ok, credentials} ->
-        case Storage.list_buckets(credentials, env_opts) do
-          {:ok, existing} ->
-            if bucket in existing do
-              {:cont, {:ok, :satisfied, acc ++ [bucket_resource(bucket, env_opts)]}}
-            else
-              {:halt, {:ok, :absent}}
-            end
-
-          {:error, reason} ->
-            {:halt, {:error, format(reason)}}
+  defp verify_bucket_listed(bucket, credentials, env_opts, acc) do
+    case Storage.list_buckets(credentials, env_opts) do
+      {:ok, existing} ->
+        if bucket in existing do
+          {:cont, {:ok, :satisfied, acc ++ [bucket_resource(bucket, env_opts)]}}
+        else
+          {:halt, {:ok, :absent}}
         end
+
+      {:error, reason} ->
+        {:halt, {:error, format(reason)}}
     end
   end
 

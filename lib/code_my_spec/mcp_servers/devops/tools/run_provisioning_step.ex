@@ -111,7 +111,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
     field :environment, :string,
       doc:
-        "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). " <>
+        ~s(Required for the "deploy" step: which environment to deploy \(e.g. "uat"\). ) <>
           "Deploying is a decision about one specific environment, not a batch operation — " <>
           "without this, `Steps.run(:deploy, …)` would deploy every environment the " <>
           "project has in one call, in an unspecified order, stopping at the first " <>
@@ -135,37 +135,52 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   end
 
   defp run_opts(params) do
-    inbound_opts =
-      case Map.get(params, :inbound_probe_to) do
-        to when is_binary(to) and to != "" -> [inbound_probe_to: to]
-        _ -> []
-      end
+    []
+    |> with_inbound_probe(params)
+    |> with_confirm_apex_repoint(params)
+    |> with_force(params)
+    |> with_environment(params)
+  end
 
-    dns_opts =
-      case Map.get(params, :confirm_apex_repoint) do
-        true -> [confirm_apex_repoint: true]
-        _ -> []
-      end
+  defp with_inbound_probe(opts, params) do
+    case Map.get(params, :inbound_probe_to) do
+      to when is_binary(to) and to != "" -> Keyword.put(opts, :inbound_probe_to, to)
+      _ -> opts
+    end
+  end
 
-    force_opts =
-      case Map.get(params, :force) do
-        true -> [force: true]
-        _ -> []
-      end
+  defp with_confirm_apex_repoint(opts, params) do
+    case Map.get(params, :confirm_apex_repoint) do
+      true -> Keyword.put(opts, :confirm_apex_repoint, true)
+      _ -> opts
+    end
+  end
 
-    environment_opts =
-      case Map.get(params, :environment) do
-        environment when is_binary(environment) and environment != "" -> [environment: environment]
-        _ -> []
-      end
+  defp with_force(opts, params) do
+    case Map.get(params, :force) do
+      true -> Keyword.put(opts, :force, true)
+      _ -> opts
+    end
+  end
 
-    inbound_opts ++ dns_opts ++ force_opts ++ environment_opts
+  defp with_environment(opts, params) do
+    case Map.get(params, :environment) do
+      environment when is_binary(environment) and environment != "" ->
+        Keyword.put(opts, :environment, environment)
+
+      _ ->
+        opts
+    end
   end
 
   defp find_step(step) do
     case Enum.find(Step.keys(), &(to_string(&1) == step)) do
-      nil -> {:error, "unknown step #{inspect(step)} — must be one of #{Enum.map_join(Step.keys(), ", ", &to_string/1)}"}
-      key -> {:ok, key}
+      nil ->
+        {:error,
+         "unknown step #{inspect(step)} — must be one of #{Enum.map_join(Step.keys(), ", ", &to_string/1)}"}
+
+      key ->
+        {:ok, key}
     end
   end
 
@@ -178,8 +193,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   # rather than silently defaulting to "every environment."
   defp require_environment(:deploy, params) do
     case Map.get(params, :environment) do
-      environment when is_binary(environment) and environment != "" -> :ok
-      _ -> {:error, "the \"deploy\" step needs :environment — name the one environment to deploy (e.g. \"uat\"), never all of them at once"}
+      environment when is_binary(environment) and environment != "" ->
+        :ok
+
+      _ ->
+        {:error,
+         "the \"deploy\" step needs :environment — name the one environment to deploy (e.g. \"uat\"), never all of them at once"}
     end
   end
 
@@ -229,8 +248,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   end
 
   defp reply({:ok, :started}, step, project, frame) do
-    {:reply,
-     ok("#{step} for #{project.name} started — call devops_status to watch it converge"), frame}
+    {:reply, ok("#{step} for #{project.name} started — call devops_status to watch it converge"),
+     frame}
   end
 
   # The synchronous (test-mode) outcomes — `Provisioning.run_step/2`'s own
@@ -251,7 +270,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
   defp reply({:error, {:already_running, started_at}}, _step, _project, frame) do
     since = started_at && " (started #{started_at})"
-    {:reply, error("a setup run is already in progress for this project#{since} — call devops_status rather than retrying"), frame}
+
+    {:reply,
+     error(
+       "a setup run is already in progress for this project#{since} — call devops_status rather than retrying"
+     ), frame}
   end
 
   defp reply({:error, :lock_handshake_timeout}, step, project, frame) do
