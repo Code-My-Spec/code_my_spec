@@ -419,7 +419,24 @@ defmodule CodeMySpec.Provisioning.Steps do
       # Guessing either way is the bad outcome. Adopting always would let a
       # re-run push into a stranger's repository; prompting always would make
       # every retry stop and ask about a repository setup made a minute ago.
-      opts = Keyword.put_new(opts, :adopt, ours?(project, opts))
+      adopt? = ours?(project, opts)
+
+      # `adopt: true` alone is not enough. `Repository.ensure/3` still looks
+      # up `opts[:owner] || authenticated_owner(scope)` and
+      # `opts[:name] || default_name(project)` regardless — neither of which
+      # is where an adopted repository actually lives unless the caller's own
+      # GitHub login happens to match its owner and `default_name/1`'s
+      # hyphenated slug happens to match its name. A repository that already
+      # exists is not required to follow either convention — `cleaner_crm`,
+      # underscored, matching its own `mix.exs` :app atom, owned by the
+      # `Code-My-Spec` org rather than the connected personal account.
+      # Without this, adopting still searched the wrong (owner, name) pair,
+      # found nothing there, and created a second, empty repository under the
+      # caller's own account beside the real one. Confirmed live.
+      opts =
+        opts
+        |> Keyword.put_new(:adopt, adopt?)
+        |> with_recorded_location(project, adopt?)
 
       scope
       |> Repository.run(env(scope), project, opts)
@@ -3430,16 +3447,62 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Whether the project already records the repository this step would use.
   # Compared on the last path segment, because the recorded URL may be the SSH
   # or HTTPS form and either is the same repository.
+  #
+  # Normalized before comparing: `Repository.default_name/1` always hyphenates,
+  # but an existing repository is routinely named with underscores instead,
+  # matching its own `mix.exs` :app atom — cleaner_crm's real, already-correct
+  # `code_repo` is exactly this shape. Comparing the literal strings treated
+  # "cleaner_crm" and "cleaner-crm" as different repositories, so a project
+  # already pointed at its own real one failed this check anyway, fell
+  # through with `adopt: false`, and `Repository.ensure/3` went looking for
+  # the hyphenated name under the caller's own personal GitHub login instead —
+  # found nothing there, and created it. Confirmed live: an empty
+  # `johns10/cleaner-crm` appeared beside the real, populated
+  # `Code-My-Spec/cleaner_crm` this step was never told to look for.
   defp ours?(%{code_repo: url} = project, opts) when is_binary(url) and url != "" do
     name = Keyword.get(opts, :name) || Repository.default_name(project)
 
     recorded =
       url |> String.trim_trailing(".git") |> String.split("/") |> List.last()
 
-    recorded == name
+    normalize_repo_name(recorded) == normalize_repo_name(name)
   end
 
   defp ours?(_project, _opts), do: false
+
+  defp normalize_repo_name(name), do: String.replace(name, "_", "-")
+
+  # Points the lookup at where an adopted repository actually is, instead of
+  # `Repository.ensure/3`'s own convention-derived (owner, name) — the
+  # authenticated user's login and `default_name/1`'s hyphenated slug, neither
+  # of which is where `code_repo` may already point. `put_new`, so an explicit
+  # `opts[:owner]`/`opts[:name]` a caller passed on purpose still wins.
+  defp with_recorded_location(opts, %{code_repo: url}, true)
+       when is_binary(url) and url != "" do
+    case parse_recorded_repo(url) do
+      {:ok, owner, name} -> opts |> Keyword.put_new(:owner, owner) |> Keyword.put_new(:name, name)
+      :error -> opts
+    end
+  end
+
+  defp with_recorded_location(opts, _project, _adopt?), do: opts
+
+  # Handles both remote forms: `git@github.com:Owner/name.git` (`:` before the
+  # owner) and `https://github.com/Owner/name.git` (`/` throughout). Replacing
+  # `:` with `/` first collapses them to one shape, so both split the same way.
+  defp parse_recorded_repo(url) do
+    segments =
+      url
+      |> String.trim_trailing(".git")
+      |> String.replace(":", "/")
+      |> String.split("/")
+      |> Enum.reject(&(&1 == ""))
+
+    case Enum.take(segments, -2) do
+      [owner, name] -> {:ok, owner, name}
+      _ -> :error
+    end
+  end
 
   defp repository_outcome(result) do
     case result do
