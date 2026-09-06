@@ -54,12 +54,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   @impl true
   def execute(params, frame) do
+    # Who is calling comes off the connection, not out of the arguments. The
+    # header is the server's own value — it minted the agent row and sent the id
+    # over the channel to start it — and `Plugs.AgentScope` has already checked
+    # it names an agent on this project.
+    #
+    # The argument still means what it always did: who this task is *for*, which
+    # a main agent uses to claim one on behalf of something it started. Caller
+    # and subject are different questions, and only one of them should be
+    # answerable by whoever is asking.
+    caller_agent_id = frame.assigns[:agent_id]
     session_id = Map.get(params, :session_id)
-    agent_id = Map.get(params, :agent_id)
+    agent_id = Map.get(params, :agent_id) || caller_agent_id
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, requirement} <- resolve_requirement(scope, params),
-         {:ok, session} <- resolve_session(scope, session_id) do
+         {:ok, session} <- resolve_session(scope, session_id, caller_agent_id) do
       start_or_resume(scope, session, requirement, agent_id, frame)
     else
       {:error, reason} ->
@@ -100,7 +110,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
+  defp resolve_session(scope, session_id, _agent_id)
+       when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
         # Try as DB UUID (an agent may pass the internal id), then lazily
@@ -122,7 +133,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp resolve_session(_scope, _session_id) do
+  # An agent we run has no session and cannot get one: it fires no hooks, so
+  # nothing injects a `session_id`, and `register_session` is not a tool it
+  # carries. It could take turns and use tools and never claim a task — which is
+  # what one hit on 2026-09-06: "this session must be registered before a task
+  # can start, but `register_session` is not available in the provided tools."
+  #
+  # So the agent is the session. One per agent, created on demand, keyed on the
+  # id the server already minted.
+  #
+  # An interim, and worth naming as one. Tasks are `embeds_many` on Session, so
+  # a task cannot exist without one — the session here is a container rather
+  # than an identity, and the direction is that it stops being either for the
+  # agents we run: "the session was never the right identity for who was told."
+  # When tasks move onto the agent, this clause goes with them.
+  defp resolve_session(scope, _session_id, agent_id) when is_binary(agent_id) do
+    lazily_register_session(scope, agent_id)
+  end
+
+  defp resolve_session(_scope, _session_id, _agent_id) do
     {:error,
      "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end

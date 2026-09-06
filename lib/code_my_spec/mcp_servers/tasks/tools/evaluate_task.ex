@@ -37,10 +37,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   @impl true
   def execute(%{task_id: task_id} = params, frame) do
+    # Who is calling, off the connection — see `start_task` and
+    # `Plugs.AgentScope`. An agent we run has no session to name and no way to
+    # get one, so without this it could start a task and never close it, which
+    # is the half of the loop that tells the other roles work is done.
+    caller_agent_id = frame.assigns[:agent_id]
     session_id = Map.get(params, :session_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- resolve_session(scope, session_id),
+         {:ok, session} <- resolve_session(scope, session_id, caller_agent_id),
          {:ok, task} <- find_task(session, task_id) do
       handle_evaluate(scope, session, task, frame)
     else
@@ -55,8 +60,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
+  defp resolve_session(scope, session_id, _agent_id)
+       when is_binary(session_id) and session_id != "" do
     session =
       Sessions.get_by_external_id(scope, session_id) ||
         safe_get_session(scope, session_id)
@@ -67,7 +72,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  defp resolve_session(_scope, _session_id) do
+  # The agent's own session, which `start_task` created when it claimed the
+  # task. Looked up rather than created here: an evaluate with no session is an
+  # agent closing a task it never opened, and inventing one would hide that.
+  defp resolve_session(scope, _session_id, agent_id) when is_binary(agent_id) do
+    case Sessions.get_by_external_id(scope, agent_id) do
+      nil -> {:error, :session_not_found}
+      session -> {:ok, session}
+    end
+  end
+
+  defp resolve_session(_scope, _session_id, _agent_id) do
     {:error,
      "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end

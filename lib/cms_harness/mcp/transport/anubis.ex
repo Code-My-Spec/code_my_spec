@@ -185,10 +185,31 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
            %{
              "authorization" => "Bearer " <> token,
              "x-harness-id" => Keyword.get(opts, :working_copy_id)
-           }}
+           }
+           |> put_agent(Keyword.get(opts, :agent_id))}
         end
     end
   end
+
+  # Which agent is calling, when one is.
+  #
+  # The connection is the only place this can live. An agent inside our own BEAM
+  # still reaches the server over HTTP — `Config.server_url()` is a real URL, on
+  # Fly in production — so nothing about the caller is ambient, and identity
+  # travels the way the working copy's already does.
+  #
+  # The value is the server's own: it mints the agent row, sends the id over the
+  # channel to start it, and the harness hands it back here. So this is not a
+  # claim the harness invents, and the server can check the agent belongs to a
+  # working copy this caller holds.
+  #
+  # Absent for a connection that is not an agent's — the CLI's, a subprocess's —
+  # and absent is the right answer there rather than a placeholder, because a
+  # tool that needs an agent should refuse rather than act on a guess.
+  defp put_agent(headers, agent_id) when is_binary(agent_id) and agent_id != "",
+    do: Map.put(headers, "x-agent-id", agent_id)
+
+  defp put_agent(headers, _agent_id), do: headers
 
   # A subprocess on this machine authenticates by being on this machine.
   defp stdio_needs_none(opts), do: if(Keyword.get(opts, :command), do: %{}, else: nil)

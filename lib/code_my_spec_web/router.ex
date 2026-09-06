@@ -34,6 +34,9 @@ defmodule CodeMySpecWeb.Router do
     plug :accepts, ["json", "sse"]
     plug :require_oauth_token
     plug CodeMySpecWeb.Plugs.ProjectScopeOverride
+    # After the scope, because the agent is resolved within the project this
+    # request is already scoped to — see `AgentScope`.
+    plug CodeMySpecWeb.Plugs.AgentScope
   end
 
   # Guided intake (story 990). Its own pipeline because the anonymous plan

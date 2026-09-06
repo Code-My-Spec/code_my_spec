@@ -55,6 +55,12 @@ defmodule CmsHarness.Mcp do
       base_url: Config.server_url(),
       mcp_path: "/mcp/harness",
       working_copy_id: working_copy_id,
+      # Carried on the connection so the server knows which agent is calling
+      # without being told by the model. It was already an argument here and
+      # only ever named the process, so the tools that need an agent had to ask
+      # for one — and an Alloy agent has no way to answer: it fires no hooks, so
+      # nothing injects a session, and its own id is not in its prompt.
+      agent_id: agent_id,
       root: root
     )
   end
