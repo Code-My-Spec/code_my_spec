@@ -39,7 +39,6 @@ defmodule CodeMySpec.Agents do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Repo
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
@@ -51,6 +50,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
