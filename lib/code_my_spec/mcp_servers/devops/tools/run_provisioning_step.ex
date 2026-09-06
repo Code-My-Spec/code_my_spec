@@ -108,13 +108,23 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "the box and DATABASE_URL exist, not that the box's docker daemon trusts the " <>
           "registry it should. Every step's run is idempotent, so this is safe to use " <>
           "whenever a step reports done but something it should have set up still isn't."
+
+    field :environment, :string,
+      doc:
+        "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). " <>
+          "Deploying is a decision about one specific environment, not a batch operation — " <>
+          "without this, `Steps.run(:deploy, …)` would deploy every environment the " <>
+          "project has in one call, in an unspecified order, stopping at the first " <>
+          "failure. That silently includes prod even when a caller only meant to touch " <>
+          "uat, so this tool requires naming the one environment intended."
   end
 
   @impl true
   def execute(%{step: step} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, project} <- Validators.devops_project(scope),
-         {:ok, key} <- find_step(step) do
+         {:ok, key} <- find_step(step),
+         :ok <- require_environment(key, params) do
       scope
       |> Resources.project_scope(project)
       |> start_step_async(project, key, run_opts(params))
@@ -143,7 +153,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
         _ -> []
       end
 
-    inbound_opts ++ dns_opts ++ force_opts
+    environment_opts =
+      case Map.get(params, :environment) do
+        environment when is_binary(environment) and environment != "" -> [environment: environment]
+        _ -> []
+      end
+
+    inbound_opts ++ dns_opts ++ force_opts ++ environment_opts
   end
 
   defp find_step(step) do
@@ -152,6 +168,22 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
       key -> {:ok, key}
     end
   end
+
+  # Deploying is a decision about one environment, never a batch operation —
+  # confirmed live against cleaner_crm: two calls with no `:environment` both
+  # deployed prod first (environments have no defined order) and never
+  # reached uat at all, because `deploy_environments/3` halts on the first
+  # failure. John was explicit: a deploy call must always name the one
+  # environment it means, so this refuses before ever reaching `Steps.run/3`
+  # rather than silently defaulting to "every environment."
+  defp require_environment(:deploy, params) do
+    case Map.get(params, :environment) do
+      environment when is_binary(environment) and environment != "" -> :ok
+      _ -> {:error, "the \"deploy\" step needs :environment — name the one environment to deploy (e.g. \"uat\"), never all of them at once"}
+    end
+  end
+
+  defp require_environment(_key, _params), do: :ok
 
   # Same `:provisioning_run_async` flag `Provisioning.run_step_async/3`
   # reads, for the same reason: a spawned `Task.Supervisor` child is a
