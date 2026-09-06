@@ -20,6 +20,32 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   free-text other, and `answer_question_request/2` delivers the result to the
   asking agent. The only missing piece was a way in.
 
+  ## Why it does not block until the answer arrives
+
+  Asked and settled 2026-09-06. `send_message` carries the original account of
+  the attempt — a synchronous wait whose transport gave up long before any
+  person answered, with every retry creating another question — and two things
+  about today's setup keep the answer the same.
+
+  The wait is unbounded and no leg of the path is. The harness MCP client
+  defaults to thirty seconds; the one tool that waits on purpose,
+  `run_browser_script`, raises it to sixty and says both sides must agree or
+  "the first turns an answer into a timeout with no way to tell them apart". A
+  minute is the longest anything holds. And questions never expire — story 896
+  decided against a sweeper, because "a question vanishing on a clock is a
+  decision the user never made disappearing from the one place they would have
+  seen it" — so a blocking call would have to hold for as long as a question can
+  stay pending, which is forever.
+
+  Beyond the plumbing: a blocked agent is indistinguishable from a wedged one,
+  a harness restart kills the call while the question row survives, and holding
+  the turn forfeits the thing the reply text promises — "carry on with anything
+  the answer does not block".
+
+  A short bounded wait was offered and declined: it buys a synchronous feel when
+  somebody happens to be watching, at the cost of a timeout two sides have to
+  agree on, for a path that already works.
+
   ## Why a separate tool rather than an option on `send_message`
 
   They are different acts. `send_message` opens a question; this one closes it —

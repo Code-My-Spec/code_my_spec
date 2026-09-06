@@ -28,9 +28,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
 
   Waiting minutes inside a synchronous call was the mistake, not the timeout
   value. A person is not a slow function; they are an event that arrives later.
-  So this returns a question id and `check_answer` fetches the reply when the
-  agent next looks. In between the agent can stop — the stop hook brings it
-  back, which is the loop that already exists.
+  So this returns a question id rather than a reply. A Claude Code session
+  fetches it with `check_answer` when it next looks; an agent of ours is sent
+  the answer as a message and is allowed to stop in the meantime, which is why
+  its stop is not refused while a question of its own is outstanding.
 
   ## Why this no longer goes over HTTP
 
