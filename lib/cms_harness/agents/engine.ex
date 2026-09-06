@@ -656,7 +656,16 @@ defmodule CmsHarness.Agents.Engine do
       # The way to a person. Excluded from scripts for a reason about scripts,
       # and absent here — so every refusal that said "call `ask_user`" named a
       # tool the agent did not have. See `Tools.AskUser`.
+      # Named in the menu's top directive as "call `list_problems`", which is an
+      # instruction to call a tool. It was reachable only through a script.
+      CmsHarness.Agents.Tools.ListProblems,
       CmsHarness.Agents.Tools.AskUser,
+      # Offered on every refusal inside the loop by `Menu.tap_out_offer/1`, and
+      # carried by nothing until now.
+      CmsHarness.Agents.Tools.TapOut,
+      # The panel beside the conversation. Excluded from scripts because a
+      # script has nobody watching it; an agent does.
+      CmsHarness.Agents.Tools.ShowInPanel,
       CmsHarness.Agents.Tools.StartAgent,
       CmsHarness.Agents.Tools.StopAgent,
       CmsHarness.Agents.Tools.AssignSubagent
