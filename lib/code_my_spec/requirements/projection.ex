@@ -12,7 +12,7 @@ defmodule CodeMySpec.Requirements.Projection do
   A row holds identity and verdict — `satisfied`, `details`, and which entity it
   belongs to. Everything else on a node comes back from the
   `RequirementDefinition` by name (`scope`, `execution_type`, `validation_type`,
-  `orchestrated_by`, `subagent_role`, `satisfied_by`, `render_command_always?`,
+  `orchestrated_by`, `role`, `satisfied_by`, `render_command_always?`,
   `prerequisites`) or from the entity (`entity_name`).
 
   That split is deliberate. Persisting the definition fields would keep a second
@@ -178,7 +178,7 @@ defmodule CodeMySpec.Requirements.Projection do
         prerequisites: definition.prerequisites || [],
         orchestrated_by: definition.orchestrated_by,
         render_command_always?: definition.render_command_always? || false,
-        subagent_role: definition.subagent_role,
+        role: definition.role,
         details: row.details || %{}
       }
     else

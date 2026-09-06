@@ -165,8 +165,13 @@ defmodule CodeMySpec.Agents.StopDecision do
   # terminus: nothing left to do, nothing said, the agent stops. That is R6
   # arriving for free rather than as a second emptiness check that could
   # disagree with the first.
-  defp keep_working(%Scope{} = scope, %Agent{continuous: true} = _agent) do
-    case Validation.Menu.render(scope, true) do
+  defp keep_working(%Scope{} = scope, %Agent{continuous: true} = agent) do
+    # Narrowed to this agent's own role — R10. A coding agent asked whether the
+    # *project* has work is held open by product's queue and QA's, neither of
+    # which it can do anything about, and it would loop until somebody else
+    # finished. Asked about its own, it goes home when its own runs out, which
+    # is R6.
+    case Validation.Menu.render(scope, true, agent.role) do
       "" -> {nil, nil}
       menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
     end

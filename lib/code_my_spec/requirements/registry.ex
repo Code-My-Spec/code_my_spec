@@ -58,6 +58,17 @@ defmodule CodeMySpec.Requirements.Registry do
   def get_project_requirements, do: RequirementDefinitionData.project_requirements()
 
   @doc """
+  The names of every requirement one role owns, across every graph.
+
+  How "is there work of my kind" is answered — see `R10` on story 538 and
+  `NodeRepository.actionable_count/2`, which narrows its count by these rather
+  than by a column the read model does not have.
+  """
+  @spec requirement_names_for_role(atom()) :: [String.t()]
+  def requirement_names_for_role(role),
+    do: RequirementDefinitionData.requirement_names_for_role(role)
+
+  @doc """
   Unified lookup by entity struct. Returns the requirement definitions
   applicable to the given entity.
   """

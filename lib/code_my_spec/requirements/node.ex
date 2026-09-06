@@ -10,7 +10,7 @@ defmodule CodeMySpec.Requirements.Node do
   Of the seventeen fields on the computed struct, exactly two are computed:
   `satisfied` and `details`. Every other one is read off the `RequirementDefinition`
   by name (`description`, `scope`, `execution_type`, `validation_type`,
-  `orchestrated_by`, `subagent_role`, `satisfied_by`, `render_command_always?`)
+  `orchestrated_by`, `role`, `satisfied_by`, `render_command_always?`)
   or off the entity (`entity_name`). Persisting those would be storing a second
   copy of the definition table and inviting the two to disagree.
 

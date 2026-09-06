@@ -29,6 +29,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -41,6 +42,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -55,6 +57,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "spec_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -68,6 +71,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "spec_valid",
+        role: :coding,
         node_scope: :child,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -83,6 +87,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "review_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :review},
@@ -96,6 +101,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "review_valid",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_valid,
         config: %{role: :review},
@@ -111,6 +117,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 7,
         name: "test_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :test},
@@ -124,6 +131,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 8,
         name: "test_spec_alignment",
+        role: :coding,
         node_scope: :child,
         check_type: :file_valid,
         config: %{role: :test},
@@ -137,6 +145,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 9,
         name: "implementation_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -150,6 +159,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 10,
         name: "tests_passing",
+        role: :coding,
         node_scope: :child,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -166,6 +176,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 11,
         name: "implementation_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -179,6 +190,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 12,
         name: "test_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :test},
@@ -192,6 +204,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 13,
         name: "test_spec_alignment",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_valid,
         config: %{role: :test},
@@ -205,6 +218,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 14,
         name: "tests_passing",
+        role: :coding,
         node_scope: :parent,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -226,6 +240,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -238,6 +253,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -252,6 +268,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "spec_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -265,6 +282,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "spec_valid",
+        role: :coding,
         node_scope: :child,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -280,6 +298,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "review_file",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_exists,
         config: %{role: :review},
@@ -293,6 +312,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "review_valid",
+        role: :coding,
         node_scope: :parent,
         check_type: :file_valid,
         config: %{role: :review},
@@ -308,6 +328,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 7,
         name: "test_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :test},
@@ -321,6 +342,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 8,
         name: "test_spec_alignment",
+        role: :coding,
         node_scope: :child,
         check_type: :file_valid,
         config: %{role: :test},
@@ -334,6 +356,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 9,
         name: "implementation_file",
+        role: :coding,
         node_scope: :child,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -347,6 +370,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 10,
         name: "tests_passing",
+        role: :coding,
         node_scope: :child,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -368,6 +392,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -380,6 +405,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -392,6 +418,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "test_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :test},
@@ -404,6 +431,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "test_spec_alignment",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :test},
@@ -416,6 +444,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -428,6 +457,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "tests_passing",
+        role: :coding,
         node_scope: :self,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -444,6 +474,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -456,6 +487,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -468,6 +500,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -485,6 +518,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -497,6 +531,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -509,6 +544,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -526,6 +562,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -538,6 +575,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -555,6 +593,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -567,6 +606,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -579,6 +619,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "test_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :test},
@@ -591,6 +632,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -603,6 +645,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "tests_passing",
+        role: :coding,
         node_scope: :self,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -619,6 +662,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "spec_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :spec},
@@ -631,6 +675,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "spec_valid",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :spec},
@@ -643,6 +688,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "test_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :test},
@@ -655,6 +701,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "test_spec_alignment",
+        role: :coding,
         node_scope: :self,
         check_type: :file_valid,
         config: %{role: :test},
@@ -667,6 +714,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "implementation_file",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :implementation},
@@ -679,6 +727,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "tests_passing",
+        role: :coding,
         node_scope: :self,
         check_type: :tests_passing,
         satisfied_by: AgentTasks.ComponentCode,
@@ -699,6 +748,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 1,
         name: "component_linked",
+        role: :product,
         node_scope: :self,
         # Not `:field_present` on `component_id`. The migration computes a
         # component's id rather than looking it up — it is a pure function of the
@@ -716,6 +766,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "three_amigos_complete",
+        role: :product,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :sealed?},
@@ -745,6 +796,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "bdd_specs_exist",
+        role: :coding,
         node_scope: :self,
         check_type: :file_exists,
         config: %{role: :bdd_spec},
@@ -757,6 +809,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "bdd_specs_passing",
+        role: :coding,
         node_scope: :self,
         check_type: :field_true,
         config: %{field: :specs_ready},
@@ -773,6 +826,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "qa_complete",
+        role: :qa,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Qa, function: :complete_check},
@@ -781,7 +835,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description: "QA complete: at least one valid DB-backed pass attempt exists",
         prerequisites: [3],
         execution_type: :sub_agent,
-        subagent_role: :qa,
         # Automatic, because "at least one valid DB-backed pass attempt exists"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
         # completes on a real attempt, so nothing here needs a human to say it
@@ -824,6 +877,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "story_issues_resolved",
+        role: :coding,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :story_resolved?},
@@ -860,6 +914,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 7,
         name: "deploy",
+        role: :main,
         node_scope: :self,
         # The environment is config, not a function name. `uat_check/2` could
         # only ever answer for one environment, and environments are rows — a
@@ -885,6 +940,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 13,
         name: "personas_complete",
+        role: :product,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.PersonasChecker, function: :complete?},
@@ -907,6 +963,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 15,
         name: "stories_exist",
+        role: :product,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.StoriesChecker, function: :exist?},
@@ -922,6 +979,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 2,
         name: "technical_strategy",
+        role: :main,
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/architecture/decisions.md"},
@@ -933,6 +991,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 3,
         name: "code_generation",
+        role: :coding,
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/tasks/code_generation.sh"},
@@ -944,6 +1003,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 4,
         name: "qa_integration_plan",
+        role: :qa,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: AgentTasks.QaIntegrationPlan, function: :evaluate},
@@ -956,6 +1016,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 5,
         name: "architecture_designed",
+        role: :main,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.ArchitectureChecker, function: :complete?},
@@ -968,6 +1029,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 16,
         name: "spex_boundary_ready",
+        role: :coding,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.SpexBoundaryChecker, function: :complete?},
@@ -987,6 +1049,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 17,
         name: "work_dispatched",
+        role: :main,
         node_scope: :self,
         check_type: :delegate,
         config: %{
@@ -1001,6 +1064,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 6,
         name: "issues_triaged",
+        role: :product,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :triaged?},
@@ -1012,6 +1076,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 7,
         name: "issues_resolved",
+        role: :coding,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :resolved?},
@@ -1046,6 +1111,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 14,
         name: "qa_setup",
+        role: :qa,
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/qa/plan.md"},
@@ -1067,6 +1133,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 10,
         name: "qa_journey_plan",
+        role: :qa,
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/qa/journey_plan.md"},
@@ -1078,6 +1145,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 11,
         name: "qa_journey_execute",
+        role: :qa,
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/qa/journey_result.md"},
@@ -1089,6 +1157,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 12,
         name: "qa_journey_wallaby",
+        role: :qa,
         node_scope: :self,
         check_type: :path_exists,
         # Matches `Paths.qa_journey_wallaby_dir/0` and the QaJourney
@@ -1111,6 +1180,45 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   def story_requirements, do: story_graph()
   def project_requirements, do: project_graph()
+
+  @doc """
+  Every requirement name belonging to one role.
+
+  Story 538's R10 asks "is there work of my kind" on every stop, and the answer
+  is a set of names: the role lives on the definition and the requirements read
+  model has no column for it, so `NodeRepository` narrows its count by name
+  rather than by a join.
+
+  Read across every graph, because a role's work does not respect entity
+  boundaries — coding owns `spec_file` on a component and `bdd_specs_passing` on
+  a story, and an agent that only counted one of those would go home with the
+  other outstanding.
+
+  Deduplicated: the same name appears in several component graphs with the same
+  role, and a duplicate in an `IN` clause is noise the database has to think
+  about.
+  """
+  @spec requirement_names_for_role(atom()) :: [String.t()]
+  def requirement_names_for_role(role) when is_atom(role) do
+    all_graphs()
+    |> Enum.filter(&(&1.role == role))
+    |> Enum.map(& &1.name)
+    |> Enum.uniq()
+  end
+
+  defp all_graphs do
+    context_graph() ++
+      live_context_graph() ++
+      default_graph() ++
+      schema_graph() ++
+      behaviour_graph() ++
+      json_graph() ++
+      controller_graph() ++
+      liveview_graph() ++
+      story_graph() ++
+      project_graph()
+  end
+
   def default_requirements, do: default_graph()
 
   # ═══════════════════════════════════════════════════════════════════════

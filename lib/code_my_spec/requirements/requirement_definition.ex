@@ -53,7 +53,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           execution_type: execution_type(),
           orchestrated_by: atom() | nil,
           render_command_always?: boolean(),
-          subagent_role: atom() | nil
+          role: atom() | nil
         }
 
   @artifact_types [
@@ -105,9 +105,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :config, :map, default: %{}
     field :prerequisites, {:array, :integer}, default: []
     field :node_scope, Ecto.Enum, values: [:parent, :child, :self], default: :self
-    field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
+
+    field :scope, Ecto.Enum,
+      values: [:local, :children, :dependencies, :orchestrate, :pipeline],
+      default: :local
+
     field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
     field :execution_type, Ecto.Enum, values: [:main_agent, :sub_agent], default: :main_agent
+
     field :orchestrated_by, Ecto.Enum,
       values: [:develop_context, :develop_live_context, :develop_controller],
       default: nil
@@ -120,14 +125,27 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     # while unsatisfied (the prompt for the next agent step).
     field :render_command_always?, :boolean, default: false
 
-    # The role atom identifying which sub-agent class owns this requirement
-    # (e.g. `:qa`, `:coding`, `:spec_writer`). Set on sub_agent requirements
-    # whose `dispatch/1` emits a structured `%{role: atom, prompt: String}`.
-    # Used by the mapper to route dispatch: SendMessage to a live sub-agent
-    # for this role, or Agent spawn if none is registered.
-    # Nil means no role-based dispatch — use the default rendering path.
-    field :subagent_role, Ecto.Enum,
-      values: [:qa, :coding, :spec_writer],
+    # Which role's work this is.
+    #
+    # Was `subagent_role`, and was set on exactly one definition out of seventy,
+    # because it only ever answered a narrow question: which sub-agent to route
+    # a dispatch to. John, 2026-09-05: *"Change subagent role to just role and
+    # reuse — that's what that field was for."*
+    #
+    # It is the answer to "is there work of my kind" now, which story 538's R10
+    # asks on every stop an agent makes: a coding agent must not be held open by
+    # product's queue, and a QA agent must not be sent to implement something.
+    # Same vocabulary as `Agent.role` deliberately — two role enums that had to
+    # be kept in step would drift, and the drift is silent.
+    #
+    # `:spec_writer` is gone rather than renamed. Specs are written by the agent
+    # that writes the code — John's call in story 983 — so what carried it is
+    # `:coding`.
+    #
+    # Nil means nobody's in particular: project-level scaffolding that any agent
+    # can satisfy, and which therefore holds no single role's loop open.
+    field :role, Ecto.Enum,
+      values: [:main, :product, :coding, :qa],
       default: nil
   end
 
@@ -190,7 +208,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :execution_type,
       :orchestrated_by,
       :render_command_always?,
-      :subagent_role
+      :role
     ])
     |> validate_required([
       :name,

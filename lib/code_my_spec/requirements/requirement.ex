@@ -24,7 +24,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           parent_entity_id: Ecto.UUID.t() | nil,
           parent_entity_name: String.t() | nil,
           render_command_always?: boolean(),
-          subagent_role: atom() | nil,
+          role: atom() | nil,
           details: map()
         }
 
@@ -44,7 +44,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     parent_entity_id: nil,
     parent_entity_name: nil,
     render_command_always?: false,
-    subagent_role: nil,
+    role: nil,
     prerequisites: [],
     details: %{}
   ]

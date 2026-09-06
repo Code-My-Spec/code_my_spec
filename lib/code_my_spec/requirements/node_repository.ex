@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, Projection, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement}
   alias CodeMySpec.Users.Scope
 
   @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
@@ -63,7 +63,45 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   @spec actionable_count(Scope.t()) :: non_neg_integer()
   def actionable_count(%Scope{active_project_id: nil}), do: 0
 
-  def actionable_count(%Scope{active_project_id: project_id} = scope) do
+  def actionable_count(%Scope{} = scope),
+    do: scope |> actionable_query() |> Repo.aggregate(:count)
+
+  @doc """
+  The same count, narrowed to one role's work.
+
+  Story 538's R10: whether there is anything to do is asked of the requirements
+  this agent's role can satisfy, so a coding agent is never held open by
+  product's queue and a QA agent is never sent to implement something.
+
+  Filtered by requirement **name** rather than by a column, because the role
+  lives on the definition and the read model has no place for it. The registry
+  is the source of truth for that mapping and it is in code, so resolving it
+  here costs a list comprehension rather than a migration and a backfill — and
+  a name that changes role changes it in one place.
+
+  A role with no requirements of its own counts nothing, which is the honest
+  answer: it has no work, and its loop should end rather than hold it open on
+  somebody else's queue.
+
+  `nil` requirements — project-level scaffolding no role owns — belong to no
+  role's count for the same reason. They are nobody's in particular, and
+  counting them for everybody would hold every loop open forever on work that
+  is not any one agent's to finish.
+  """
+  @spec actionable_count(Scope.t(), atom() | nil) :: non_neg_integer()
+  def actionable_count(%Scope{} = scope, nil), do: actionable_count(scope)
+
+  def actionable_count(%Scope{} = scope, role) when is_atom(role) do
+    case Registry.requirement_names_for_role(role) do
+      [] ->
+        0
+
+      names ->
+        scope |> actionable_query() |> where([n], n.name in ^names) |> Repo.aggregate(:count)
+    end
+  end
+
+  defp actionable_query(%Scope{active_project_id: project_id} = scope) do
     # Whose count this is. Rows are per working copy, so an unfiltered count
     # returns the real number multiplied by however many checkouts have
     # computed — and `blocked` would let a prerequisite unsatisfied in any one
@@ -112,7 +150,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           )
     )
     |> where(^copy_filter(working_copy_id))
-    |> Repo.aggregate(:count)
   end
 
   @doc """

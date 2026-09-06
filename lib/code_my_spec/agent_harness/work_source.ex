@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
       server routes to it (falling back to the manager).
 
   Requirement resolution reuses the same path `get_next_requirement` uses:
-  `RequirementGraph.next_actionable/1` filtered to the role's `subagent_role`,
+  `RequirementGraph.next_actionable/1` filtered to the role's `role`,
   rendered to directive text via `RequirementsMapper`. Only the sub-agent roles
   (`coding` / `spec_writer` / `qa`) auto-pull; `product` is interview-driven and
   `manager` is the puller, so both resolve to `:none`.
@@ -27,14 +27,15 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
 
-  # Role string -> requirement `subagent_role`. Roles absent here don't auto-pull.
+  # Role string -> requirement `role`. Roles absent here don't auto-pull.
   @auto_pull_roles %{"coding" => :coding, "spec_writer" => :spec_writer, "qa" => :qa}
 
   # ---- API ------------------------------------------------------------------
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  def lane_idle(external_id, role), do: GenServer.cast(__MODULE__, {:lane_idle, external_id, role})
+  def lane_idle(external_id, role),
+    do: GenServer.cast(__MODULE__, {:lane_idle, external_id, role})
 
   def work_result(external_id, role, payload),
     do: GenServer.cast(__MODULE__, {:work_result, external_id, role, payload})
@@ -84,7 +85,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
          {:ok, scope} <- resolve_scope(external_id) do
       scope
       |> RequirementGraph.next_actionable()
-      |> Enum.filter(&(&1.subagent_role == role_atom))
+      |> Enum.filter(&(&1.role == role_atom))
       |> case do
         [node | _] ->
           {:ok,

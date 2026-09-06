@@ -77,8 +77,8 @@ defmodule CodeMySpec.Validation.Menu do
   be allowed, and a menu with nothing on it would be noise.
   """
   @spec render(map(), boolean()) :: String.t()
-  def render(scope, continuous? \\ false) do
-    case live(scope) do
+  def render(scope, continuous? \\ false, role \\ nil) do
+    case live(scope, role) do
       [] -> ""
       [top | rest] -> directive(top) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
     end
@@ -123,26 +123,31 @@ defmodule CodeMySpec.Validation.Menu do
   empty, and computing it twice from different queries is how the message and
   the decision come to disagree.
   """
-  @spec live(map()) :: [{atom(), pos_integer()}]
+  @spec live(map(), atom() | nil) :: [{atom(), pos_integer()}]
+  # `role` narrows the requirements count to that role's work — story 538's R10,
+  # so a coding agent is not held open by product's queue. `nil` counts the
+  # project's, which is what every caller outside the loop wants.
+  def live(scope, role \\ nil)
+
   # A working copy that has not been bound to a project yet. Every count below
   # queries by `project_id`, and Ecto refuses to compare a column with `nil`
   # rather than silently matching nothing — so this raised on a stop fired
   # before `init_project`, which is the one stop that must stay quiet.
-  def live(%{active_project_id: nil}), do: []
+  def live(%{active_project_id: nil}, _role), do: []
 
-  def live(scope) do
+  def live(scope, role) do
     @order
-    |> Enum.map(&{&1, count(scope, &1)})
+    |> Enum.map(&{&1, count(scope, &1, role)})
     |> Enum.filter(fn {_class, n} -> n > 0 end)
   end
 
-  defp count(scope, :problems) do
+  defp count(scope, :problems, _role) do
     scope
     |> ProblemRepository.list_project_problems(severity: :error)
     |> length()
   end
 
-  defp count(scope, :issues) do
+  defp count(scope, :issues, _role) do
     scope
     |> Issues.list_issues()
     |> Enum.count(&(&1.status in [:incoming, :accepted, "incoming", "accepted"]))
@@ -164,7 +169,7 @@ defmodule CodeMySpec.Validation.Menu do
   # prerequisite — and needs no recompute, no cache and no filesystem. John's
   # point, and it is the answer: nothing about a stop should require rethinking
   # the graph.
-  defp count(scope, :requirements), do: NodeRepository.actionable_count(scope)
+  defp count(scope, :requirements, role), do: NodeRepository.actionable_count(scope, role)
 
   # The tool call goes on the `Next:` line rather than below it. A directive
   # whose action sits on the following line reads as two facts, and the agent

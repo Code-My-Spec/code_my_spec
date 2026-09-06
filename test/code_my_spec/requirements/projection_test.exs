@@ -78,7 +78,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
         assert loaded.execution_type == computed.execution_type
         assert loaded.validation_type == computed.validation_type
         assert loaded.satisfied_by == computed.satisfied_by
-        assert loaded.subagent_role == computed.subagent_role
+        assert loaded.role == computed.role
       end
     end
 

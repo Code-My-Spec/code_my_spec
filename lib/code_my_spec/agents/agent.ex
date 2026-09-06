@@ -66,7 +66,7 @@ defmodule CodeMySpec.Agents.Agent do
   #
   # `spec_writer` is deliberately absent. Specs are written by the agent that
   # writes the code — John's call in that session — so requirements that used
-  # to carry `subagent_role: :spec_writer` are re-tagged `:coding`.
+  # to carry `role: :spec_writer` are re-tagged `:coding`.
   @roles [:main, :product, :coding, :qa]
 
   @type t :: %__MODULE__{
