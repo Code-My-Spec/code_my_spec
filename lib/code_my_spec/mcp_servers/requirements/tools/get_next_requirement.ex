@@ -16,6 +16,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Requirements.Registry
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
@@ -46,9 +48,16 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         # (SendMessage to a live sub-agent vs. fresh Agent spawn).
         active_subagents = resolve_active_subagents(scope)
 
-        case RequirementGraph.next_actionable(scope) do
-          [] -> {:reply, empty_response(scope), frame}
-          nodes -> {:reply, RequirementsMapper.next_requirements_response(nodes, active_subagents), frame}
+        scope
+        |> RequirementGraph.next_actionable()
+        |> of_my_kind(frame, scope)
+        |> case do
+          [] ->
+            {:reply, empty_response(scope), frame}
+
+          nodes ->
+            {:reply, RequirementsMapper.next_requirements_response(nodes, active_subagents),
+             frame}
         end
 
       {:error, _reason} ->
@@ -56,6 +65,33 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         scope = build_init_scope(frame)
         {:ok, prompt} = Init.command(scope, %{})
         {:reply, RequirementsMapper.init_required_response(prompt), frame}
+    end
+  end
+
+  # Narrowed to the caller's own role — story 538's R10, which until now scoped
+  # the *count* and not the tool.
+  #
+  # The menu told a product agent "7 requirements" — its own — and sent it here,
+  # where it was handed the project's next actionable regardless of role. So it
+  # picked up `story_issues_resolved` on a story it does not own, and a main
+  # agent asked to organise epics was handed `bdd_specs_exist`. Both did exactly
+  # what they were told; the two halves of the same sentence disagreed.
+  #
+  # The role comes off the connection (`Plugs.AgentScope`), so an agent does not
+  # have to state it and cannot state somebody else's. A caller with no agent —
+  # a Claude Code session — has no role and gets the whole graph, which is what
+  # it had before and what a person driving by hand wants.
+  #
+  # Same source as `NodeRepository.actionable_count/2` deliberately: two
+  # definitions of "my kind of work" would drift, and the drift shows up as a
+  # count that disagrees with the list it is counting.
+  defp of_my_kind(nodes, frame, scope) do
+    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
+         {:ok, %{role: role}} when not is_nil(role) <- Agents.fetch_agent(scope, agent_id),
+         names when names != [] <- Registry.requirement_names_for_role(role) do
+      Enum.filter(nodes, &(&1.name in names))
+    else
+      _ -> nodes
     end
   end
 
