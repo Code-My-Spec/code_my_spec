@@ -53,12 +53,61 @@ defmodule CmsHarness.WorkingCopies.Create do
     with :ok <- refuse_existing(target),
          :ok <- add_worktree(root, target, name),
          {:ok, id} <- write_identity(target, request) do
+      onboard(root, target, id, request)
       Logger.info("[CmsHarness] made a working copy at #{target}")
       {:ok, %{root: target, working_copy_id: id}}
     end
   end
 
   def run(_root, _request), do: {:error, :no_repository}
+
+  # The other half of making a working copy.
+  #
+  # Without this the directory is servable and not buildable: a worktree with an
+  # identity file, no `.claude/settings.local.json`, and therefore no recorded
+  # test partition. `copy-11394` sat that way from 2026-09-05 until the coding
+  # agent working in it needed to run spex and found it could not.
+  #
+  # What makes it worth doing here rather than leaving to whoever notices: an
+  # un-onboarded copy does not fail where it is broken. `Validation`'s own notes
+  # record the precedent — credo crashed before it ran, 104 times across two
+  # checkouts, and what the agent saw was the *previous* run's findings marked
+  # stale, on a file it had already fixed. Nothing it edited was ever measured.
+  #
+  # After `write_identity/2`, not instead of it. `onboard/2` merges into
+  # `.cms_harness.json` rather than replacing it, and the fields story 891 cares
+  # about — `project_id` and `working_copy_id` — are ours to write and not in
+  # its shape. Writing ours first and letting the merge land on top keeps both.
+  #
+  # Failure does not fail the creation. The worktree exists, the identity is
+  # written, and the remedy is one documented command — whereas refusing here
+  # would leave a directory behind that the caller was told does not exist.
+  defp onboard(root, target, id, request) do
+    result =
+      ClientUtils.Harness.Onboarding.onboard(target,
+        harness_id: id,
+        app: app_name(root),
+        deploy_key: request["deploy_key"],
+        server_url: request["server_url"]
+      )
+
+    Logger.info("[CmsHarness] onboarded #{target} on partition #{result.partition}")
+  end
+
+  # The app the new copy builds, for the database names onboarding reports.
+  #
+  # Read from the parent's `mix.exs` because a worktree is the same application
+  # as the checkout it came from. Falls back to the directory name, which is
+  # what it usually is anyway — this names databases in a report, so a wrong
+  # guess misinforms and nothing more.
+  defp app_name(root) do
+    with {:ok, mix} <- File.read(Path.join(root, "mix.exs")),
+         [_, app] <- Regex.run(~r/app:\s*:([a-z_][a-z0-9_]*)/, mix) do
+      app
+    else
+      _ -> Path.basename(root)
+    end
+  end
 
   # A directory that is already there is not ours to take. It may hold somebody's
   # work, and adopting it would give two copies one path.
