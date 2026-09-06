@@ -177,12 +177,7 @@ defmodule CodeMySpec.Validation.Menu do
   # evaluated against a tree that will not compile fails on the tree rather than
   # on the work. Ranked above requirements, because taking a second task while
   # still holding the first is how a queue fills with half-finished work.
-  defp count(_scope, :task, _role, owner) do
-    case active_task(owner) do
-      nil -> 0
-      _task -> 1
-    end
-  end
+  defp count(_scope, :task, _role, owner), do: length(active_tasks(owner))
 
   defp count(scope, :problems, _role, _owner) do
     scope
@@ -209,10 +204,30 @@ defmodule CodeMySpec.Validation.Menu do
   defp count(scope, :requirements, role, _owner),
     do: NodeRepository.actionable_count(scope, role)
 
-  # `nil` for every caller not given an owner — the class then counts 0 and the
+  # `[]` for every caller not given an owner — the class then counts 0 and the
   # menu reads exactly as it did before this existed.
-  defp active_task(nil), do: nil
-  defp active_task(owner), do: TaskOwner.active_task(owner)
+  defp active_tasks(nil), do: []
+  defp active_tasks(owner), do: Enum.filter(TaskOwner.tasks(owner), &(&1.status == :active))
+
+  # The one the agent is actually working on, which is the newest.
+  #
+  # `TaskOwner.active_task/1` answers the *first* active task, and that is the
+  # wrong end. Nothing closes a task except `evaluate_task`, and an agent that
+  # starts work without finishing it leaves the old row active — the product
+  # agent on the war-epic copy was holding seven when this was written, the
+  # oldest `story_issues_resolved` on story 904 and the newest
+  # `three_amigos_complete` on story 994, which was the one it was mid-thought
+  # on. Naming the oldest would send it back to work it had already moved past.
+  #
+  # `started_at` is stamped at microsecond resolution, so ordering by it is
+  # exact. A task with no stamp sorts oldest, which is right: it was never
+  # started.
+  defp newest_active_task(owner) do
+    owner
+    |> active_tasks()
+    |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
+    |> List.first()
+  end
 
   # The tool call goes on the `Next:` line rather than below it. A directive
   # whose action sits on the following line reads as two facts, and the agent
@@ -220,16 +235,31 @@ defmodule CodeMySpec.Validation.Menu do
   # The open task names itself, because "1 open task" is not actionable and the
   # id is not something the agent can look up from here. `evaluate_task` takes
   # the id, so the directive carries the id.
-  defp directive({:task, _count}, owner) do
-    task = active_task(owner)
+  defp directive({:task, count}, owner) do
+    task = newest_active_task(owner)
 
-    "\n\nNext: you have an open task#{task_subject(task)}. Nothing closes it for " <>
-      "you — when the work is done, call `evaluate_task` with " <>
-      "task_id \"#{task.id}\". If it is not done, finish it before taking anything else."
+    "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}. " <>
+      "Nothing closes a task for you — when the work is done, call " <>
+      "`evaluate_task` with task_id \"#{task.id}\". If it is not done, finish it " <>
+      "before taking anything else." <> backlog_note(count)
   end
 
   defp directive({class, count}, _owner) do
     "\n\nNext: #{label(class, count)} — call `#{@tools[class]}`."
+  end
+
+  defp open_tasks(1), do: "an open task"
+  defp open_tasks(n), do: "#{n} open tasks"
+
+  # A pile of open tasks is a fact about this agent worth saying out loud. They
+  # accumulate silently — only `evaluate_task` closes one — so an agent that
+  # starts work it does not finish looks, from every other surface, exactly like
+  # an agent that is busy.
+  defp backlog_note(1), do: ""
+
+  defp backlog_note(_n) do
+    " The others are still open too; `list_tasks` shows them, and each one needs " <>
+      "its own `evaluate_task`."
   end
 
   # What the task is about, when the row says. Both fields are nullable and a
@@ -250,7 +280,7 @@ defmodule CodeMySpec.Validation.Menu do
   # Counts without their tool names, deliberately. The tally says what is
   # waiting; naming its call too would make four instructions out of one, which
   # is the full menu this is meant to avoid.
-  defp label(:task, _n), do: "1 open task"
+  defp label(:task, n), do: open_tasks(n)
   defp label(:problems, 1), do: "1 problem in this working copy"
   defp label(:problems, n), do: "#{n} problems in this working copy"
   defp label(:requirements, 1), do: "1 requirement"

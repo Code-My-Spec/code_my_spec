@@ -105,6 +105,67 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     end
   end
 
+  # What the product agent on the war-epic copy was actually holding on
+  # 2026-09-06: six tasks opened in a six-minute burst and left, then the one it
+  # was really working on. Nothing closes a task but `evaluate_task`, so they
+  # accumulate, and from every other surface an agent that abandons work looks
+  # exactly like one that is busy.
+  describe "several open tasks" do
+    setup do
+      %{scope: scope_with_waiting_requirements()}
+    end
+
+    defp burst do
+      [
+        task(%{
+          id: "oldest",
+          requirement_name: "story_issues_resolved",
+          story_id: 904,
+          started_at: ~U[2026-09-06 11:26:20.022400Z]
+        }),
+        task(%{
+          id: "middle",
+          requirement_name: "bdd_specs_passing",
+          story_id: 949,
+          started_at: ~U[2026-09-06 11:30:30.545291Z]
+        }),
+        task(%{
+          id: "newest",
+          requirement_name: "three_amigos_complete",
+          story_id: 994,
+          started_at: ~U[2026-09-06 11:58:00.189607Z]
+        })
+      ]
+    end
+
+    # The one it is mid-thought on, not the one it abandoned first. `Enum.find`
+    # answers the head of the list, which is the oldest, and would send the
+    # agent back to work it had already moved past.
+    test "names the newest, not the first", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent(burst()))
+
+      assert menu =~ "`three_amigos_complete` on story 994"
+      assert menu =~ ~s(task_id "newest")
+      refute menu =~ "story 904"
+    end
+
+    test "says how many are open rather than implying one", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent(burst()))
+
+      assert menu =~ "you have 3 open tasks"
+      assert menu =~ "The others are still open too"
+    end
+
+    # Order in the embed is insertion order, and nothing guarantees the newest
+    # is last — a restored agent's rows come back in whatever order the column
+    # holds them.
+    test "picks the newest whatever order the rows arrive in", %{scope: scope} do
+      menu = Menu.render(scope, true, nil, agent(Enum.reverse(burst())))
+
+      assert menu =~ ~s(task_id "newest")
+    end
+  end
+
   describe "no open task" do
     setup do
       %{scope: scope_with_waiting_requirements()}
