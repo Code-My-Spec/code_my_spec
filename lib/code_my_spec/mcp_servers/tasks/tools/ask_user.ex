@@ -58,7 +58,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   def execute(%{message: message}, frame) when is_binary(message) and message != "" do
     scope = frame.assigns[:current_scope]
 
-    case ask(scope, message) do
+    case ask(scope, message, frame.assigns[:agent_id]) do
       {:ok, id} ->
         {:reply,
          Response.tool()
@@ -67,8 +67,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
 
          Question id: #{id}
 
-         They will not answer instantly. Do other work, or stop — the stop hook
-         will bring you back. Call `check_answer` with that id for the reply.
+         #{waiting_advice(frame.assigns[:agent_id])}
          """), frame}
 
       {:error, :no_user} ->
@@ -88,8 +87,36 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
     {:reply, Response.tool() |> Response.error("message is required"), frame}
   end
 
-  defp ask(%{user: %{id: user_id}} = scope, message) do
+  # Two callers, two different right answers.
+  #
+  # An agent we run can stop and be woken: the answer is dispatched to it as a
+  # message, so telling it to poll would have it spend a turn per check on
+  # somebody who has not started typing. A Claude Code session has no such
+  # delivery and keeps running anyway, so `check_answer` remains its route.
+  defp waiting_advice(agent_id) when is_binary(agent_id) do
+    """
+    Stop now. Do not poll and do not wait — their answer will be delivered to
+    you as a message, and you will pick up from there. Anything the answer does
+    not block, you can finish first.
+    """
+  end
+
+  defp waiting_advice(_agent_id) do
+    """
+    They will not answer instantly. Do other work, or stop — the stop hook
+    will bring you back. Call `check_answer` with that id for the reply.
+    """
+  end
+
+  defp ask(%{user: %{id: user_id}} = scope, message, agent_id) do
     attrs = %{
+      # Who to hand the answer back to.
+      #
+      # Off the connection (`Plugs.AgentScope`), not off a parameter: an agent
+      # cannot state somebody else's id and does not have to state its own.
+      # Nil for a Claude Code session, which has no agent and polls with
+      # `check_answer` instead.
+      "agent_id" => agent_id,
       "questions" => [
         %{"question" => message, "header" => nil, "multiSelect" => false, "options" => []}
       ],
@@ -107,7 +134,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
     end
   end
 
-  defp ask(_scope, _message), do: {:error, :no_user}
+  defp ask(_scope, _message, _agent_id), do: {:error, :no_user}
 
   # Whose inbox this actually landed in.
   #

@@ -37,6 +37,11 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # was asked in. Nil when it was asked outside a harness.
     field :session_external_id, :string
 
+    # Which agent asked, so the answer can be handed back to it as a message
+    # rather than waited for. Nil when a Claude Code session asked — that path
+    # keeps running and polls with `check_answer`.
+    belongs_to :agent, CodeMySpec.Agents.Agent, type: :binary_id
+
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
@@ -44,7 +49,15 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
 
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:user_id, :title, :questions, :status, :answers, :session_external_id])
+    |> cast(attrs, [
+      :user_id,
+      :agent_id,
+      :title,
+      :questions,
+      :status,
+      :answers,
+      :session_external_id
+    ])
     |> validate_required([:user_id])
     |> validate_nonempty_questions()
     |> validate_inclusion(:status, @statuses)

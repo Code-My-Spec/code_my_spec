@@ -39,6 +39,7 @@ defmodule CodeMySpec.Agents do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Repo
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
@@ -372,6 +373,41 @@ defmodule CodeMySpec.Agents do
       agent.working_copy_id
       |> Transport.impl().message_agent(agent, text, timeout)
       |> delivered_or_working()
+    end
+  end
+
+  @doc """
+  Hand an agent the answer to something it asked, and let it carry on.
+
+  The other half of `ask_user` for an agent we run. `check_answer` polls, which
+  is right for a Claude Code session that keeps running regardless, and wrong
+  here: an agent waiting on a person should be stopped, and a stopped agent has
+  nothing to poll with.
+
+  No scope, unlike `message_agent/4`, and the reason is what the id is. It comes
+  off `question_requests.agent_id`, which this application wrote from the asking
+  connection — not from a parameter, and not from anything a caller chose. There
+  is no tenant decision left to make by the time we are here, and threading a
+  scope in would mean *reconstructing* one from the row to re-derive an answer
+  the row already holds.
+
+  Failure is returned, never raised. This runs inside the person's answer
+  submission, and an agent whose machine has since gone away must not take the
+  form with it — the answer is recorded either way, and an agent that missed it
+  can still find it with `check_answer`.
+  """
+  @spec deliver_answer(Ecto.UUID.t(), String.t(), timeout()) ::
+          {:ok, String.t()} | {:error, term()}
+  def deliver_answer(agent_id, text, timeout \\ @message_timeout_ms)
+      when is_binary(agent_id) and is_binary(text) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        agent.working_copy_id
+        |> Transport.impl().message_agent(agent, text, timeout)
+        |> delivered_or_working()
     end
   end
 

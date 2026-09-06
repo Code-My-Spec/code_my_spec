@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -180,7 +181,31 @@ defmodule CodeMySpec.Agents.StopDecision do
   # per turn.
   @stuck_threshold 5
 
+  # An agent that asked a person something is allowed to stop.
+  #
+  # Refusing it is the shape of loop that looks like diligence and is waste: the
+  # agent has nothing to do until a human types, the menu it would be handed
+  # says so in a line it cannot act on, and every stop costs a turn. John: "it
+  # shouldn't hit the agent with the stop hook."
+  #
+  # Nothing is lost by stopping, because the answer comes back as a message —
+  # `Notifications.answer_question_request/2` dispatches it through
+  # `Agents.deliver_answer/3` the moment it lands. That is the difference from
+  # `check_answer`, which needs a running agent to do the checking and so cannot
+  # be combined with going quiet.
+  #
+  # Above the validation call rather than below it: a blocked tree is still no
+  # reason to hammer an agent that cannot act on anything until it hears back,
+  # and the findings will still be there when it wakes.
   defp decide_with_key(%Scope{} = scope, %Agent{} = agent) do
+    if Notifications.awaiting_answer?(agent.id) do
+      {nil, nil}
+    else
+      decide_with_work(scope, agent)
+    end
+  end
+
+  defp decide_with_work(%Scope{} = scope, %Agent{} = agent) do
     # The role travels with the id because the decision depends on it: whether a
     # `block_changed` source is enforced for an agent with no session turns on
     # whether that agent writes code. Passed from the struct rather than looked

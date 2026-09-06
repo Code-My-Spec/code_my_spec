@@ -279,6 +279,7 @@ defmodule CodeMySpec.Notifications do
             )
 
             broadcast_notifications_changed(updated.user_id)
+            deliver_to_agent(updated)
 
             {:ok, updated}
 
@@ -289,6 +290,72 @@ defmodule CodeMySpec.Notifications do
       %{status: status} ->
         {:error, {:already_resolved, status}}
     end
+  end
+
+  # Hand the answer back to the agent that asked.
+  #
+  # Here rather than at the three call sites — `QuestionLive`, the conversation
+  # page, and `QuestionController` — because a delivery each caller has to
+  # remember is one that will be missed by whichever route is added next, and
+  # the symptom is an agent that stopped and never woke up. There is nothing to
+  # decide per caller: the question knows who asked.
+  #
+  # Nil `agent_id` is the ordinary case for a Claude Code session, which polls
+  # with `check_answer` and has no process of ours to message.
+  #
+  # Result deliberately dropped. The answer is recorded whether or not the
+  # agent's machine is reachable, and failing the person's submission because an
+  # agent went away would lose the answer to save the notification.
+  defp deliver_to_agent(%{agent_id: nil}), do: :ok
+
+  defp deliver_to_agent(%{agent_id: agent_id} = request) do
+    _ = CodeMySpec.Agents.deliver_answer(agent_id, answer_message(request))
+    :ok
+  end
+
+  # What the agent is handed. Self-contained on purpose: it asked, stopped, and
+  # is being woken by this — so the question has to come back with the answer or
+  # the agent is reading a reply to something it cannot see.
+  defp answer_message(%{questions: questions, answers: answers}) do
+    body =
+      questions
+      |> Enum.map(fn question ->
+        text = question["question"] || question[:question]
+        "Q: #{text}\nA: #{said(answers, text)}"
+      end)
+      |> Enum.join("\n\n")
+
+    """
+    The user answered your question.
+
+    #{body}
+
+    Carry on from there. If this settles what you were blocked on, finish the
+    task and close it out.
+    """
+  end
+
+  defp said(answers, text) do
+    case answers[text] || answers[to_string(text)] do
+      nil -> "(no answer recorded)"
+      list when is_list(list) -> Enum.join(list, ", ")
+      value -> to_string(value)
+    end
+  end
+
+  @doc """
+  Is this agent waiting on an answer?
+
+  Asked on every stop decision, which is why the index is on
+  `(agent_id, status)` rather than on `agent_id` alone.
+  """
+  @spec awaiting_answer?(Ecto.UUID.t() | nil) :: boolean()
+  def awaiting_answer?(nil), do: false
+
+  def awaiting_answer?(agent_id) when is_binary(agent_id) do
+    QuestionRequest
+    |> where([q], q.agent_id == ^agent_id and q.status == "pending")
+    |> Repo.exists?()
   end
 
   @doc "Get a question request by ID."

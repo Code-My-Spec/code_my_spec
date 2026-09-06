@@ -653,6 +653,10 @@ defmodule CmsHarness.Agents.Engine do
       CmsHarness.Agents.Tools.SyncProject,
       CmsHarness.Agents.Tools.StartTask,
       CmsHarness.Agents.Tools.EvaluateTask,
+      # The way to a person. Excluded from scripts for a reason about scripts,
+      # and absent here — so every refusal that said "call `ask_user`" named a
+      # tool the agent did not have. See `Tools.AskUser`.
+      CmsHarness.Agents.Tools.AskUser,
       CmsHarness.Agents.Tools.StartAgent,
       CmsHarness.Agents.Tools.StopAgent,
       CmsHarness.Agents.Tools.AssignSubagent
