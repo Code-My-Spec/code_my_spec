@@ -65,6 +65,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # from scripts *and* absent from here would be reachable by no route at all.
   component(CodeMySpec.McpServers.Tasks.Tools.SendMessage)
   component(CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion)
+  component(CodeMySpec.McpServers.Tasks.Tools.StartAnalysis)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)

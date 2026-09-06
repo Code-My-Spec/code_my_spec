@@ -657,6 +657,8 @@ defmodule CmsHarness.Agents.Engine do
       # scripts, and absent here — so every refusal that said "call `ask_user`"
       # named a tool the agent did not have. `ask_user_question` offers the
       # choices; `send_message` is for when the answer is genuinely prose.
+      # Begins a sweep and returns; the result arrives as a message.
+      CmsHarness.Agents.Tools.StartAnalysis,
       CmsHarness.Agents.Tools.AskUserQuestion,
       CmsHarness.Agents.Tools.SendMessage,
       # Offered on every refusal inside the loop by `Menu.tap_out_offer/1`, and

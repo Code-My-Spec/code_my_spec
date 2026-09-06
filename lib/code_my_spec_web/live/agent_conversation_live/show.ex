@@ -53,6 +53,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
@@ -66,7 +67,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, socket}
+  # `:analysis_running` defaults here rather than on the params path: that
+  # function has an error branch which assigns almost nothing, and a render
+  # missing the key is a `KeyError` on a page whose whole job is to show an
+  # agent that something went wrong.
+  def mount(_params, _session, socket), do: {:ok, assign(socket, :analysis_running, [])}
 
   # One page of turns. 50 is `Conversations.@default_page_size`; named here too
   # because the loader compares against it to decide whether more sit above.
@@ -135,6 +140,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # project, same as `WorkingCopyLive.Index` — without this it only ever
       # reflects whatever was true at the last navigation.
       Agents.subscribe(scope)
+
+      # What the analyzers are doing right now.
+      #
+      # The internal agent starts a run, ends its turn, and is messaged when it
+      # lands — which is right for the agent and leaves the person watching an
+      # idle transcript with no idea anything is happening. John: "there should
+      # be an indicator in the UI of what is going on."
+      #
+      # `analysis:<project_id>` is the completion topic both the local queue and
+      # the remote path broadcast on, deliberately in the same shape so a
+      # subscriber cannot tell which machine ran the tool.
+      Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{scope.active_project_id}")
     end
 
     # Computed once and reused: `team_status/3` cross-references the same
@@ -149,6 +166,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
+    |> assign(:analysis_running, running_analysis(scope))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
@@ -729,11 +747,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> Enum.reject(&MapSet.member?(shown, &1.conversation_message_id))
   end
 
+  defp analysis_label([one]), do: "Running #{one}…"
+
+  defp analysis_label(sources),
+    do: "Running #{Enum.join(sources, ", ")}…"
+
   defp waiting_label(questions) do
     case length(pending(questions)) do
       1 -> "A question is waiting on you"
       n -> "#{n} questions are waiting on you"
     end
+  end
+
+  # Which analyzers are mid-run for this working copy, oldest first.
+  #
+  # Scoped to the copy by `running_since/1` itself: another checkout's sweep
+  # produces nothing for this one, and showing it would tell the person work is
+  # happening on their agent's tree when it is happening somewhere else.
+  defp running_analysis(scope) do
+    scope
+    |> RunsRepository.running_since()
+    |> Enum.sort_by(fn {_source, started_at} -> started_at end, DateTime)
+    |> Enum.map(fn {source, _started_at} -> to_string(source) end)
   end
 
   defp questions_for(nil), do: []
@@ -855,6 +890,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp drop_ref(socket, ref), do: Enum.reject(socket.assigns.pending, &(&1.delivery_ref == ref))
 
   @impl true
+  # A run finished, so what is in flight has changed. Re-read rather than
+  # subtracting the completed source: a sweep enqueues several, and the
+  # arithmetic would be a second answer that can disagree with the rows.
+  def handle_info({:analysis, _payload}, socket) do
+    {:noreply, assign(socket, :analysis_running, running_analysis(socket.assigns.current_scope))}
+  end
+
   def handle_info({:new_message, message}, socket) do
     {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
   end
@@ -984,6 +1026,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           more_above?={@more_above?}
           pending={@pending}
           talkable?={@talkable?}
+          analysis_running={@analysis_running}
           working?={@working?}
           draft={@draft}
         />
@@ -1022,6 +1065,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               more_above?={@more_above?}
               pending={@pending}
               talkable?={@talkable?}
+              analysis_running={@analysis_running}
               working?={@working?}
               draft={@draft}
             />
@@ -1082,6 +1126,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # work" over an agent that was already working. A control that misreports its
   # own state is the failure this whole day kept producing; a missing attribute
   # should stop the compile rather than pick an answer.
+  attr :analysis_running, :list, required: true
   attr :working?, :boolean, required: true
   attr :draft, :string, required: true
 
@@ -1169,6 +1214,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           Turns were taken but not recorded. What follows is incomplete —
           treat gaps as missing evidence, not as an idle sprite.
         </p>
+
+        <%!-- What the analyzers are doing, while they are doing it. The agent
+        hears about a run when it lands; the person watching would otherwise
+        see an idle transcript and no reason for it. --%>
+        <div
+          :if={@analysis_running != []}
+          data-test="analysis-running"
+          data-sources={Enum.join(@analysis_running, ",")}
+          class="mb-4 flex items-center gap-3 rounded-box border border-info/40 bg-info/10 p-3 text-sm"
+        >
+          <span class="loading loading-spinner loading-xs text-info"></span>
+          <span>{analysis_label(@analysis_running)}</span>
+          <span class="ml-auto text-xs opacity-60">
+            the agent is told when it lands
+          </span>
+        </div>
 
         <%!-- A pointer, not a second copy of the form. The questions render in
         the transcript at the turn that asked them; this only exists so an

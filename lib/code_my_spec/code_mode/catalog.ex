@@ -60,6 +60,9 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "send_message" => "it waits on a person, the same as `ask_user_question`",
     "check_answer" => "it belongs with the asking tools, which a script cannot call",
     "list_user_questions" => "it belongs with the asking tools, which a script cannot call",
+    "start_analysis" =>
+      "it spawns a sweep that runs for minutes, and a loop around it is a queue " <>
+        "of them nobody asked for",
     "start_agent" => "it spawns background work, and a loop around it is a fleet",
     "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
     "stop_agent" => "it acts on agents, which a script cannot start",

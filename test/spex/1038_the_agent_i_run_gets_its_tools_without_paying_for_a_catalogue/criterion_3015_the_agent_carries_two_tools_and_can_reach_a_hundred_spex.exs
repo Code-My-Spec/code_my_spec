@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         unscriptable = ~w(
           start_agent stop_agent assign_subagent
           get_next_requirement sync_project start_task evaluate_task
-          ask_user_question send_message tap_out show_in_panel
+          ask_user_question send_message tap_out show_in_panel start_analysis
         )
 
         scriptable = project_tools -- unscriptable
