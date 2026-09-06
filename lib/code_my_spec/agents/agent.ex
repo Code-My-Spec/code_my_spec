@@ -82,6 +82,7 @@ defmodule CodeMySpec.Agents.Agent do
           os_boot_id: String.t() | nil,
           status: atom() | nil,
           continuous: boolean() | nil,
+          tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -141,6 +142,21 @@ defmodule CodeMySpec.Agents.Agent do
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
 
+    # The work this agent has claimed.
+    #
+    # Story 538's direction, and the end of an agent that could take turns and
+    # never claim anything: a task was `embeds_many` on `Session`, so it could
+    # not exist without one — and an agent we run has no session and no way to
+    # get one. John: "we shouldn't need a session to create tasks, dude. You
+    # should be keying the tasks to the agent and then embeds many on there."
+    #
+    # The same `Task` the session embeds, so one schema and one set of task
+    # semantics serve both owners. Which list a task is in *is* its ownership,
+    # so nothing needs a constraint to say so — and a constraint would have been
+    # wrong anyway, because `Task.agent_id` already means the Claude Code
+    # sub-agent a session's task is assigned to.
+    embeds_many :tasks, CodeMySpec.Sessions.Task, on_replace: :delete
+
     belongs_to :project, Project
 
     timestamps(type: :utc_datetime)
@@ -155,6 +171,55 @@ defmodule CodeMySpec.Agents.Agent do
 
   @spec engines() :: [atom()]
   def engines, do: @engines
+
+  @doc """
+  Add a task to this agent's list.
+
+  The same shape as `Session.add_task/2`, deliberately: both owners hold the
+  same `Task`, and a second set of task semantics is how the two would come to
+  disagree about what `:active` means.
+
+  `Task.agent_id` is left alone here, and that is the point of storing tasks
+  this way: the list a task is in says who owns it, so a field repeating that
+  is one more thing that can disagree with the row holding it. On a session's
+  task the field still means what it always did — the Claude Code sub-agent it
+  was assigned to — which is a question that does not arise for an agent we run,
+  because we do not spawn sub-agents. John: *"we don't need agent ID ... we
+  don't need the foreign key so don't care."*
+  """
+  @spec add_task(t(), map()) :: Ecto.Changeset.t()
+  def add_task(%__MODULE__{} = agent, task_attrs) do
+    task_attrs = Map.put_new(task_attrs, :id, Ecto.UUID.generate())
+
+    agent
+    |> change()
+    |> put_embed(:tasks, (agent.tasks || []) ++ [task_attrs])
+  end
+
+  @doc "Update one of this agent's tasks by id."
+  @spec update_task(t(), String.t(), map()) :: Ecto.Changeset.t()
+  def update_task(%__MODULE__{} = agent, task_id, updates) do
+    updated =
+      Enum.map(agent.tasks || [], fn task ->
+        if task.id == task_id, do: Map.merge(task, Map.new(updates)), else: task
+      end)
+
+    agent
+    |> change()
+    |> put_embed(:tasks, updated)
+  end
+
+  @doc "The task this agent is working, if any."
+  @spec active_task(t()) :: CodeMySpec.Sessions.Task.t() | nil
+  def active_task(%__MODULE__{tasks: tasks}) do
+    Enum.find(tasks || [], &(&1.status == :active))
+  end
+
+  @doc "One of this agent's tasks by id."
+  @spec find_task(t(), String.t()) :: CodeMySpec.Sessions.Task.t() | nil
+  def find_task(%__MODULE__{tasks: tasks}, task_id) do
+    Enum.find(tasks || [], &(&1.id == task_id))
+  end
 
   @doc false
   def changeset(agent, attrs) do

@@ -268,7 +268,12 @@ defmodule CodeMySpec.Agents.StopDecision do
   # instructions — QA of story 985 found the second reads as somewhere to go
   # looking.
   defp nudge_open_task(scope, agent) do
-    case Sessions.open_task_for_agent(scope, agent.id) do
+    # The agent's own list first. It owns its tasks now, so an agent we run has
+    # its open work here and never in a session — `Sessions.open_task_for_agent/2`
+    # scans active sessions for one assigned to a sub-agent, which is the
+    # external shape and answers nil for ours. That is why an agent could be
+    # nudged about nothing while holding an open task.
+    case Agent.active_task(agent) || Sessions.open_task_for_agent(scope, agent.id) do
       nil ->
         :ok
 

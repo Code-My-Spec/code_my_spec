@@ -24,7 +24,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Sessions.Session
 
   schema do
@@ -45,9 +47,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     session_id = Map.get(params, :session_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- resolve_session(scope, session_id, caller_agent_id),
-         {:ok, task} <- find_task(session, task_id) do
-      handle_evaluate(scope, session, task, frame)
+         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id),
+         {:ok, task} <- find_task(owner, task_id) do
+      handle_evaluate(scope, owner, task, frame)
     else
       {:error, :session_not_found} ->
         {:reply, TasksMapper.session_not_found(session_id || "unknown"), frame}
@@ -60,8 +62,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  defp resolve_session(scope, session_id, _agent_id)
-       when is_binary(session_id) and session_id != "" do
+  # An agent we run owns its tasks directly, so it is the owner and there is no
+  # session in the picture. Ahead of the session clause for the same reason as
+  # in `start_task`: a call carrying both is one of ours, and the agent is what
+  # holds the task it is closing.
+  defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
+    Agents.fetch_agent(scope, agent_id)
+  end
+
+  defp resolve_owner(scope, session_id, _agent_id), do: resolve_session(scope, session_id)
+
+  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     session =
       Sessions.get_by_external_id(scope, session_id) ||
         safe_get_session(scope, session_id)
@@ -72,17 +83,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  # The agent's own session, which `start_task` created when it claimed the
-  # task. Looked up rather than created here: an evaluate with no session is an
-  # agent closing a task it never opened, and inventing one would hide that.
-  defp resolve_session(scope, _session_id, agent_id) when is_binary(agent_id) do
-    case Sessions.get_by_external_id(scope, agent_id) do
-      nil -> {:error, :session_not_found}
-      session -> {:ok, session}
-    end
-  end
-
-  defp resolve_session(_scope, _session_id, _agent_id) do
+  defp resolve_session(_scope, _session_id) do
     {:error,
      "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end
@@ -93,19 +94,19 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     Ecto.Query.CastError -> nil
   end
 
-  defp find_task(session, task_id) do
-    case Session.find_task(session, task_id) do
+  defp find_task(owner, task_id) do
+    case TaskOwner.find_task(owner, task_id) do
       nil -> {:error, :task_not_found}
       task -> {:ok, task}
     end
   end
 
-  defp handle_evaluate(_scope, _session, %{status: status}, frame)
+  defp handle_evaluate(_scope, _owner, %{status: status}, frame)
        when status in [:completed, :failed, :cancelled] do
     {:reply, TasksMapper.task_already_terminal(status), frame}
   end
 
-  defp handle_evaluate(scope, session, task, frame) do
+  defp handle_evaluate(scope, owner, task, frame) do
     task_module = task.session_type
 
     if is_nil(task_module) do
@@ -115,8 +116,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
       case result do
         {:ok, :valid} ->
-          {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
-          Sessions.clear_eval_feedback(scope, session)
+          {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :completed)
+          clear_feedback(scope, owner)
 
           Logger.info(
             "[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed"
@@ -125,8 +126,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
           {:reply, TasksMapper.evaluate_passed_response(task), frame}
 
         {:ok, :valid, info} ->
-          {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
-          Sessions.clear_eval_feedback(scope, session)
+          {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :completed)
+          clear_feedback(scope, owner)
 
           Logger.info(
             "[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed"
@@ -139,7 +140,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
           # repeat counter so the stop hook can detect a stuck loop —
           # this surface (manual evaluate) and TaskEvaluator (auto stop
           # hook) share the same session-scoped counter.
-          Sessions.record_eval_feedback(scope, session, feedback)
+          record_feedback(scope, owner, feedback)
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")
           {:reply, TasksMapper.evaluate_needs_work_response(task, feedback), frame}
 
@@ -161,6 +162,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   rescue
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
   end
+
+  # R8's repeat counter lives on the session, and an agent we run has its own —
+  # `StopDecision` keys it on the agent, because "the session was never the
+  # right identity for who was told". So these are session-shaped by design
+  # rather than by omission, and an agent owner is a no-op here.
+  defp record_feedback(scope, %Session{} = session, feedback),
+    do: Sessions.record_eval_feedback(scope, session, feedback)
+
+  defp record_feedback(_scope, _owner, _feedback), do: :ok
+
+  defp clear_feedback(scope, %Session{} = session),
+    do: Sessions.clear_eval_feedback(scope, session)
+
+  defp clear_feedback(_scope, _owner), do: :ok
 
   defp type_name(module) do
     module |> Atom.to_string() |> String.split(".") |> List.last()

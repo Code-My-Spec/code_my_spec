@@ -26,7 +26,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Sessions.Session
 
   schema do
@@ -69,8 +71,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, requirement} <- resolve_requirement(scope, params),
-         {:ok, session} <- resolve_session(scope, session_id, caller_agent_id) do
-      start_or_resume(scope, session, requirement, agent_id, frame)
+         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id) do
+      start_or_resume(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} ->
         {:reply, TasksMapper.error(reason), frame}
@@ -110,8 +112,23 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp resolve_session(scope, session_id, _agent_id)
-       when is_binary(session_id) and session_id != "" do
+  # An agent we run holds its own tasks, so it is the owner and no session is
+  # involved at all. It has none and cannot get one — it fires no hooks, so
+  # nothing injects a `session_id`, and `register_session` is not a tool it
+  # carries. Before this it could take turns, call tools, and never claim work:
+  # "this session must be registered before a task can start, but
+  # `register_session` is not available in the provided tools."
+  #
+  # Ahead of the session clause deliberately. A call that carries both is an
+  # agent of ours whose caller also named a session, and the agent is the one
+  # that will be asked for its active task at the end of the turn.
+  defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
+    Agents.fetch_agent(scope, agent_id)
+  end
+
+  defp resolve_owner(scope, session_id, _agent_id), do: resolve_session(scope, session_id)
+
+  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
         # Try as DB UUID (an agent may pass the internal id), then lazily
@@ -133,25 +150,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  # An agent we run has no session and cannot get one: it fires no hooks, so
-  # nothing injects a `session_id`, and `register_session` is not a tool it
-  # carries. It could take turns and use tools and never claim a task — which is
-  # what one hit on 2026-09-06: "this session must be registered before a task
-  # can start, but `register_session` is not available in the provided tools."
-  #
-  # So the agent is the session. One per agent, created on demand, keyed on the
-  # id the server already minted.
-  #
-  # An interim, and worth naming as one. Tasks are `embeds_many` on Session, so
-  # a task cannot exist without one — the session here is a container rather
-  # than an identity, and the direction is that it stops being either for the
-  # agents we run: "the session was never the right identity for who was told."
-  # When tasks move onto the agent, this clause goes with them.
-  defp resolve_session(scope, _session_id, agent_id) when is_binary(agent_id) do
-    lazily_register_session(scope, agent_id)
-  end
-
-  defp resolve_session(_scope, _session_id, _agent_id) do
+  defp resolve_session(_scope, _session_id) do
     {:error,
      "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end
@@ -172,33 +171,33 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     Ecto.Query.CastError -> nil
   end
 
-  defp start_or_resume(scope, session, requirement, agent_id, frame) do
+  defp start_or_resume(scope, owner, requirement, agent_id, frame) do
     # Check for existing task for this exact requirement + entity. Must
     # match on entity ID too — multiple subagents may have tasks with the
     # same requirement_name for different components.
     entity_id = to_string(requirement.entity_id)
-    existing = find_existing_task(session, requirement, entity_id)
-    handle_existing(existing, scope, session, requirement, agent_id, frame)
+    existing = find_existing_task(owner, requirement, entity_id)
+    handle_existing(existing, scope, owner, requirement, agent_id, frame)
   end
 
-  defp find_existing_task(session, requirement, entity_id) do
-    Enum.find(session.tasks || [], fn t ->
+  defp find_existing_task(owner, requirement, entity_id) do
+    Enum.find(TaskOwner.tasks(owner), fn t ->
       t.requirement_name == requirement.name and
         t.status in [:prepared, :active] and
         matches_entity?(t, requirement.entity_type, entity_id)
     end)
   end
 
-  defp handle_existing(nil, scope, session, requirement, agent_id, frame),
-    do: create_and_activate(scope, session, requirement, agent_id, frame)
+  defp handle_existing(nil, scope, owner, requirement, agent_id, frame),
+    do: create_and_activate(scope, owner, requirement, agent_id, frame)
 
-  defp handle_existing(%{status: :active} = task, scope, session, _req, agent_id, frame) do
-    maybe_assign_agent(scope, session, task, agent_id)
+  defp handle_existing(%{status: :active} = task, scope, owner, _req, agent_id, frame) do
+    maybe_assign_agent(scope, owner, task, agent_id)
     return_prompt(task, scope, frame)
   end
 
-  defp handle_existing(%{status: :prepared} = task, scope, session, _req, agent_id, frame) do
-    case Sessions.activate_task(scope, session, task.id, agent_id) do
+  defp handle_existing(%{status: :prepared} = task, scope, owner, _req, agent_id, frame) do
+    case TaskOwner.activate_task(scope, owner, task.id, agent_id) do
       {:ok, _updated} ->
         # Activation is the hand-over, whichever way the task got here. A
         # session prepares its whole chain up front, so most work an agent is
@@ -217,20 +216,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     {:reply, TasksMapper.prompt_response(prompt, task), frame}
   end
 
-  defp maybe_assign_agent(scope, session, %{agent_id: nil, id: task_id}, agent_id)
+  defp maybe_assign_agent(scope, %Session{} = session, %{agent_id: nil, id: task_id}, agent_id)
        when is_binary(agent_id) do
     Sessions.assign_agent(scope, session, task_id, agent_id)
   end
 
   defp maybe_assign_agent(_scope, _session, _task, _agent_id), do: :ok
 
-  defp create_and_activate(scope, session, requirement, agent_id, frame) do
+  defp create_and_activate(scope, owner, requirement, agent_id, frame) do
     task_attrs = build_task_attrs(scope, requirement, agent_id)
-    session = maybe_init_session(scope, session, requirement.satisfied_by)
+    owner = maybe_init_session(scope, owner, requirement.satisfied_by)
 
-    case session |> Session.add_task(task_attrs) |> Repo.update() do
-      {:ok, updated_session} ->
-        task = Session.find_task(updated_session, task_attrs.id)
+    case TaskOwner.add_task(scope, owner, task_attrs) do
+      {:ok, updated_owner} ->
+        task = TaskOwner.find_task(updated_owner, task_attrs.id)
         note_handover(scope, agent_id, requirement)
         return_prompt(task, scope, frame)
 
@@ -295,7 +294,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp build_entity_refs(_scope, %{entity_type: "story", entity_id: id}), do: {nil, nil, id}
   defp build_entity_refs(_scope, _req), do: {nil, nil, nil}
 
-  defp maybe_init_session(scope, session, task_module) do
+  # Session-only, and it has to be: `init_session/2` exists so
+  # `StartImplementation` can set `continuous` on a Session, and an agent we run
+  # carries its own `continuous` column with its own switch on it. Running it
+  # against an agent would be a second thing writing the mode, which is how the
+  # two would come to disagree.
+  defp maybe_init_session(scope, %Session{} = session, task_module) do
     if function_exported?(task_module, :init_session, 2) do
       {:ok, s} = task_module.init_session(scope, session)
       s
@@ -303,6 +307,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       session
     end
   end
+
+  defp maybe_init_session(_scope, owner, _task_module), do: owner
 
   defp matches_entity?(task, "component", entity_id) do
     to_string(task.component_id) == entity_id
