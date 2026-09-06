@@ -449,6 +449,31 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
+  The questions one agent asked, oldest first.
+
+  Not the agent-shaped spelling of `list_question_requests_for_session/1` — a
+  different abstraction that happens to answer a similar-looking question. A
+  session is a Claude Code process with an external id; an agent is a row we
+  own. Neither has the other, and a question belongs to exactly one of them.
+
+  This is why the conversation page could not show a question an agent asked.
+  It looked them up by `session_external_id`, and an agent has none: the asking
+  scope carries a working copy and never a session id, so the column stayed
+  empty and the lookup found nothing. The tool call rendered as an ordinary
+  tool block with no form under it — nothing wrong with the rendering, the page
+  was asking the wrong question.
+  """
+  @spec list_question_requests_for_agent(Ecto.UUID.t() | nil) :: [QuestionRequest.t()]
+  def list_question_requests_for_agent(nil), do: []
+
+  def list_question_requests_for_agent(agent_id) when is_binary(agent_id) do
+    QuestionRequest
+    |> where([q], q.agent_id == ^agent_id)
+    |> order_by([q], asc: q.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc """
   Every question this user has waiting, whichever session asked it.
 
   Separate from `list_question_requests_for_session/1` because the two answer

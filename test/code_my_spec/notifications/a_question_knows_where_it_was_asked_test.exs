@@ -111,6 +111,51 @@ defmodule CodeMySpec.Notifications.AQuestionKnowsWhereItWasAskedTest do
     assert request.status == "pending"
   end
 
+  # The bug John hit: the tool call rendered as an ordinary tool block and no
+  # form appeared under it. Nothing was wrong with the rendering — the page
+  # looked questions up by `session_external_id`, which an agent never has, so
+  # it found none. A session and an agent are different abstractions and a
+  # question belongs to exactly one of them.
+  describe "finding a conversation's questions" do
+    test "an agent's questions are found by agent", ctx do
+      request = ask(ctx.scope, ctx.agent, "Which theme?")
+
+      assert [found] = Notifications.list_question_requests_for_agent(ctx.agent.id)
+      assert found.id == request.id
+    end
+
+    # The column that used to be the only key. Left empty on purpose now: it
+    # was always nil for an agent, and naming both implied the two identities
+    # were interchangeable.
+    test "an agent's question carries no session", ctx do
+      request = ask(ctx.scope, ctx.agent, "Which theme?")
+
+      assert request.session_external_id == nil
+      assert Notifications.list_question_requests_for_session(nil) == []
+    end
+
+    test "one agent's questions stay out of another's", ctx do
+      ask(ctx.scope, ctx.agent, "Mine")
+
+      {:ok, other_copy} =
+        CodeMySpec.WorkingCopies.issue(ctx.scope, nil,
+          label: "another checkout",
+          device: device_fixture(ctx.scope)
+        )
+
+      {:ok, other} =
+        AgentsRepository.create_agent(ctx.scope, %{
+          provider: "anthropic",
+          engine: :alloy,
+          role: "coding",
+          working_copy: "/tmp/other-#{System.unique_integer([:positive])}",
+          working_copy_id: other_copy.id
+        })
+
+      assert Notifications.list_question_requests_for_agent(other.id) == []
+    end
+  end
+
   test "an explicit anchor is not overwritten", ctx do
     first = say(ctx.conversation, "one")
     _second = say(ctx.conversation, "two")

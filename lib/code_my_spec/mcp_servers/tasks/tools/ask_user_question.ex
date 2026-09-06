@@ -2,13 +2,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   @moduledoc """
   Ask the user a question with the options already written out.
 
-  The structured half of `ask_user`, and until now it existed for exactly one
+  The structured half of asking, and until now it existed for exactly one
   kind of caller. Claude Code has `AskUserQuestion` natively; the plugin hook
   relays it to `POST /api/questions/ask`, and that is the notification John has
   been answering on his phone for months — headers, options with descriptions,
   single or multi select, and an "Other" box.
 
-  Nothing of ours ever created one. `ask_user` hardcodes `"options" => []` and
+  Nothing of ours ever created one. `send_message` hardcodes `"options" => []` and
   `"multiSelect" => false`, which the renderer reads as free-form and answers
   with a textarea. So an agent that is not Claude Code — every Alloy agent we
   run — could only ever ask open questions, no matter how closed the question
@@ -20,17 +20,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   free-text other, and `answer_question_request/2` delivers the result to the
   asking agent. The only missing piece was a way in.
 
-  ## Why a separate tool rather than an option on `ask_user`
+  ## Why a separate tool rather than an option on `send_message`
 
-  They are different acts. `ask_user` opens a question; this one closes it —
+  They are different acts. `send_message` opens a question; this one closes it —
   the answer is constrained to a set the agent wrote, and choosing that set is
   the work. As an optional field on a free-form tool it would be skipped, the
   way optional structure usually is, and the caller would get a textarea back
   for a question with three obvious answers.
 
-  `ask_user`'s own moduledoc already drew this line ("Unlike `AskUserQuestion`,
-  there are no fixed options — use this for open-ended questions"). It was
-  describing a tool that, for our agents, did not exist.
+  The old `ask_user` moduledoc already drew this line ("Unlike
+  `AskUserQuestion`, there are no fixed options — use this for open-ended
+  questions"). It was describing a tool that, for our agents, did not exist.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -50,8 +50,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
         options     list of {label, description} — the choices you are offering
         multiSelect true if more than one may be picked (default false)
 
-      A question with no options is answered as free text, which is `ask_user`'s
-      job — use options here.
+      A question with no options is answered as free text, which is
+      `send_message`'s job — use options here.
       """
 
     field :title, :string, doc: "Heading for the notification. Defaults to a generic one."
@@ -95,7 +95,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
   # The renderer reads string keys, and a tool call may arrive with either. A
   # question that normalizes to no options is refused rather than quietly
-  # rendering as a textarea — that is `ask_user`, and an agent that meant to
+  # rendering as a textarea — that is `send_message`, and an agent that meant to
   # offer choices should hear that it did not.
   defp normalize(questions) do
     Enum.reduce_while(questions, {:ok, []}, fn question, {:ok, acc} ->
@@ -117,7 +117,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       options == [] ->
         {:error,
          "\"#{String.slice(to_string(text), 0, 60)}\" has no options. Give it some, or call " <>
-           "`ask_user` for an open question."}
+           "`send_message` for an open question."}
 
       true ->
         {:ok,
@@ -144,9 +144,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       "questions" => questions,
       "title" => frame.assigns[:title] || "Claude has a question",
       # Who to hand the answer back to — off the connection, the same as
-      # `ask_user`. Nil for a Claude Code session, which polls.
+      # `send_message`. Nil for a Claude Code session, which polls.
       "agent_id" => frame.assigns[:agent_id],
-      "session_external_id" => Sessions.external_id_for_harness(working_copy_id(scope))
+      "session_external_id" => session_id_unless_agent(frame.assigns[:agent_id], scope)
     }
 
     case Notifications.create_question_request(user_id, attrs) do
@@ -170,7 +170,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     """
   end
 
-  # Same split as `ask_user`: an agent we run stops and is woken by the answer,
+  # Same split as `send_message`: an agent we run stops and is woken by the answer,
   # a Claude Code session keeps running and polls.
   defp waiting_advice(agent_id) when is_binary(agent_id) do
     "Stop now. Do not poll and do not wait — their answer will be delivered to " <>
@@ -181,4 +181,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     "They will not answer instantly. Do other work, or stop — the stop hook will " <>
       "bring you back. Call `check_answer` with that id for the reply."
   end
+
+  # A session or an agent, never both. `Sessions.external_id_for_harness/1`
+  # answers nil for an agent's working copy anyway, so stamping it wrote
+  # nothing — but naming both implied the two identities were interchangeable,
+  # and a page reading the wrong one is what sent every agent question nowhere.
+  defp session_id_unless_agent(agent_id, _scope) when is_binary(agent_id), do: nil
+
+  defp session_id_unless_agent(_agent_id, scope),
+    do: Sessions.external_id_for_harness(working_copy_id(scope))
 end

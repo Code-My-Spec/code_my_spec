@@ -129,11 +129,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
         %{"question" => message, "header" => nil, "multiSelect" => false, "options" => []}
       ],
       "title" => "Claude has a message",
-      # The harness, not the session: the asking agent's scope carries a working
-      # copy, and the session running there is what a conversation is keyed by.
-      # Resolved here for the same reason `QuestionController.ask` resolves it —
-      # the agent does not know its own session id.
-      "session_external_id" => Sessions.external_id_for_harness(working_copy_id(scope))
+      # A session or an agent, never both.
+      "session_external_id" => session_id_unless_agent(agent_id, scope)
     }
 
     case Notifications.create_question_request(user_id, attrs) do
@@ -178,4 +175,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
   # has no conversation to be shown in.
   defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
   defp working_copy_id(_scope), do: nil
+
+  # A session or an agent, never both. `Sessions.external_id_for_harness/1`
+  # answers nil for an agent's working copy anyway, so stamping it wrote
+  # nothing — but naming both implied the two identities were interchangeable,
+  # and a page reading the wrong one is what sent every agent question nowhere.
+  defp session_id_unless_agent(agent_id, _scope) when is_binary(agent_id), do: nil
+
+  defp session_id_unless_agent(_agent_id, scope),
+    do: Sessions.external_id_for_harness(working_copy_id(scope))
 end

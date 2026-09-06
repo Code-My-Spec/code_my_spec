@@ -711,6 +711,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp questions_for(nil), do: []
 
+  # An agent's conversation shows the agent's questions. No fallback to the
+  # session — they are different abstractions, and a conversation is one or the
+  # other. An agent with nothing asked has nothing to show, which is the honest
+  # answer; going and asking about a session it does not have would only ever
+  # find somebody else's question or nothing at all.
+  defp questions_for(%{agent_id: agent_id}) when is_binary(agent_id),
+    do: Notifications.list_question_requests_for_agent(agent_id)
+
   defp questions_for(conversation),
     do: Notifications.list_question_requests_for_session(conversation.session_external_id)
 
