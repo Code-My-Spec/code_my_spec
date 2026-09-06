@@ -2,10 +2,11 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   @moduledoc """
   What the menu says to an agent that already holds a task.
 
-  On 2026-09-06 the product agent was sent to `story_issues_resolved` on story
-  994, started the task, did the work, wrote its question to the user in prose,
-  and stopped. Two things were wrong with that stop and the menu named neither:
-  the task was still open, and the question had gone somewhere nobody reads.
+  On 2026-09-06 the product agent, working `three_amigos_complete` on story 994,
+  reached a question it needed answered — whether open borders are bilateral and
+  revocable — wrote it into its reply, and stopped. Two things were wrong with
+  that stop and the menu named neither: the task was still open, and the
+  question had gone somewhere nobody reads.
 
   The menu's advice on the way out was "call `get_next_requirement`" — correct
   for an agent holding nothing, and exactly wrong for one holding an open task,
@@ -28,7 +29,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
         id: "43d57947-9b6b-4309-806c-53a32ae5c65b",
         status: :active,
         requirement_name: "story_issues_resolved",
-        story_id: 994
+        story_id: 904
       },
       attrs
     )
@@ -79,7 +80,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       menu = Menu.render(scope, true, nil, agent([task(%{})]))
 
       assert menu =~ "you have an open task"
-      assert menu =~ "`story_issues_resolved` on story 994"
+      assert menu =~ "`story_issues_resolved` on story 904"
       assert menu =~ "call `evaluate_task`"
       assert menu =~ ~s(task_id "43d57947-9b6b-4309-806c-53a32ae5c65b")
     end

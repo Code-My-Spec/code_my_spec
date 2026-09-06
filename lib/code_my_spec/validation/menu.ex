@@ -165,10 +165,11 @@ defmodule CodeMySpec.Validation.Menu do
   # is countable state — an embedded row with `status: :active` — and it is work
   # in this working copy, so it can be ranked against problems.
   #
-  # It exists because of what an agent did on 2026-09-06. Sent to
-  # `story_issues_resolved` on story 994, it started the task, did the work,
-  # wrote its question to the user in prose, and stopped. Nothing was reading
-  # the transcript, and the menu it got on the way out said "call
+  # It exists because of what an agent did on 2026-09-06. Working
+  # `three_amigos_complete` on story 994, it started the task, got as far as a
+  # question it needed answered — whether open borders are bilateral and
+  # revocable — wrote that question into its reply, and stopped. Nothing was
+  # reading the transcript, and the menu it got on the way out said "call
   # `get_next_requirement`" — advice for an agent holding no work, handed to one
   # holding an open task. Both halves of that stop were wrong and the menu
   # named neither.
