@@ -937,6 +937,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               more_above?={@more_above?}
               pending={@pending}
               talkable?={@talkable?}
+              working?={@working?}
               draft={@draft}
             />
           </LivePane.pane>
@@ -989,7 +990,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :more_above?, :boolean, required: true
   attr :pending, :list, required: true
   attr :talkable?, :boolean, required: true
-  attr :working?, :boolean, default: false
+
+  # Required rather than defaulted, and the default is why. The column is
+  # rendered twice — narrow and wide — and only the narrow one got this at
+  # first, so the wide layout fell back to `false` and drew "put this agent to
+  # work" over an agent that was already working. A control that misreports its
+  # own state is the failure this whole day kept producing; a missing attribute
+  # should stop the compile rather than pick an answer.
+  attr :working?, :boolean, required: true
   attr :draft, :string, required: true
 
   # The transcript, its composer, and the header above them — pulled out of
