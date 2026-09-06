@@ -391,13 +391,32 @@ defmodule CodeMySpec.Agents do
   scope in would mean *reconstructing* one from the row to re-derive an answer
   the row already holds.
 
+  Dispatched, not called. `message_agent/4` is a `GenServer.call` to the process
+  holding the working copy, and that process runs the *whole turn* inside the
+  call — so delivering this way waited out the agent's entire reply, inside the
+  person's form submission, and timed out:
+  `{GenServer, :call, [#PID<…>, {:stream_chat, "The user answered your
+  question…"}]}`. The answer was recorded and the agent was not told, so John
+  pasted it in by hand — which is the cost of this failing quietly: the loop
+  still runs, with a person carrying the message.
+
+  `Agents.StopDecision` had already learned this and says so: a dispatch goes
+  off this process so a busy agent is queued rather than interrupted. Same act,
+  same route.
+
+  Recorded before it is dispatched, and for the same reason the stop decision is:
+  delivery can fail — a halted agent has nobody to tell — and what the person
+  answered is true whether or not anything was there to hear it. It is also the
+  only trace of the answer in the transcript, now that an answered question
+  stops rendering its card.
+
   Failure is returned, never raised. This runs inside the person's answer
   submission, and an agent whose machine has since gone away must not take the
   form with it — the answer is recorded either way, and an agent that missed it
   can still find it with `check_answer`.
   """
   @spec deliver_answer(Ecto.UUID.t(), String.t(), timeout()) ::
-          {:ok, String.t()} | {:error, term()}
+          {:ok, :started | :queued} | {:error, term()}
   def deliver_answer(agent_id, text, timeout \\ @message_timeout_ms)
       when is_binary(agent_id) and is_binary(text) do
     case Repo.get(Agent, agent_id) do
@@ -405,9 +424,15 @@ defmodule CodeMySpec.Agents do
         {:error, :no_such_agent}
 
       agent ->
-        agent.working_copy_id
-        |> Transport.impl().message_agent(agent, text, timeout)
-        |> delivered_or_working()
+        Conversations.record_orchestrator_action(agent, text, kind: "answer")
+
+        Transport.impl().dispatch_message(
+          agent.working_copy_id,
+          agent,
+          "answer-" <> Ecto.UUID.generate(),
+          text,
+          timeout
+        )
     end
   end
 

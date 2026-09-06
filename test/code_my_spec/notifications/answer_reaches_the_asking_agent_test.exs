@@ -51,7 +51,17 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
         working_copy_id: copy.id
       })
 
-    %{scope: scope, agent: agent}
+    # `record_orchestrator_action/3` writes into the agent's conversation and
+    # no-ops when there is none, so the delivery has to have one to record into
+    # — which in production it always does, opened when the agent starts.
+    {:ok, conversation} =
+      CodeMySpec.Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent.id
+      )
+
+    %{scope: scope, agent: agent, conversation: conversation}
   end
 
   defp ask(scope, agent, question) do
@@ -76,7 +86,7 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
           "Are open borders bilateral?" => "Yes, and either side can revoke"
         })
 
-      assert_receive {:agent_message, id, message}
+      assert_receive {:agent_dispatch, id, _ref, message}
       assert id == agent.id
       assert message =~ "The user answered your question"
       assert message =~ "Are open borders bilateral?"
@@ -92,7 +102,7 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
       {:ok, _} =
         Notifications.answer_question_request(request.id, %{"Which city falls first?" => "Ravena"})
 
-      assert_receive {:agent_message, _id, message}
+      assert_receive {:agent_dispatch, _id, _ref, message}
       assert message =~ "Q: Which city falls first?"
       assert message =~ "A: Ravena"
     end
@@ -110,7 +120,7 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
 
       {:ok, _} = Notifications.answer_question_request(request.id, %{"Anyone?" => "no"})
 
-      refute_receive {:agent_message, _id, _message}, 100
+      refute_receive {:agent_dispatch, _id, _ref, _message}, 100
     end
   end
 
@@ -157,6 +167,41 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
       ask(scope, agent, "Are open borders bilateral?")
 
       assert StopDecision.decide(scope, agent) == nil
+    end
+  end
+
+  # The failure John hit. `message_agent/4` is a `GenServer.call` to the process
+  # holding the working copy, and that process runs the whole turn inside the
+  # call — so delivering that way waited out the agent's entire reply, inside
+  # the form submission, and timed out. `StopDecision` had already learned this
+  # and dispatches off-process for the same reason.
+  describe "how it is delivered" do
+    test "it is dispatched, not called", %{scope: scope, agent: agent} do
+      request = ask(scope, agent, "Well?")
+      {:ok, _} = Notifications.answer_question_request(request.id, %{"Well?" => "fine"})
+
+      assert_receive {:agent_dispatch, _id, ref, _message}
+      assert is_binary(ref), "a dispatch carries a ref so the turn can be tracked"
+
+      # A call would have waited for the turn. Nothing should arrive that way.
+      refute_receive {:agent_message, _id, _text}, 100
+    end
+
+    # The only trace of the answer in the transcript, now that an answered
+    # question stops rendering its card.
+    test "the answer is recorded in the conversation", ctx do
+      request = ask(ctx.scope, ctx.agent, "Which one?")
+
+      {:ok, _} =
+        Notifications.answer_question_request(request.id, %{"Which one?" => "the second"})
+
+      texts =
+        ctx.conversation
+        |> CodeMySpec.Conversations.list_messages()
+        |> Enum.flat_map(fn m -> Enum.map(m.content || [], &Map.get(&1, "text", "")) end)
+
+      assert Enum.any?(texts, &(&1 =~ "the second")),
+             "the answer left no trace, so nothing in the transcript says it arrived"
     end
   end
 

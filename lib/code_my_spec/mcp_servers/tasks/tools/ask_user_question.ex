@@ -1,63 +1,69 @@
 defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   @moduledoc """
-  Ask the user a question with the options already written out.
+  Ask the user a question with the answers written out for them.
 
-  The structured half of asking, and until now it existed for exactly one
-  kind of caller. Claude Code has `AskUserQuestion` natively; the plugin hook
-  relays it to `POST /api/questions/ask`, and that is the notification John has
-  been answering on his phone for months — headers, options with descriptions,
-  single or multi select, and an "Other" box.
+  One to four questions, each with options they pick from and an "Other" box.
+  Use it the moment a decision is theirs to make. Prefer it to `send_message`
+  whenever the alternatives can be named — they get a tap instead of a
+  paragraph, and naming them is most of the thinking.
 
-  Nothing of ours ever created one. `send_message` hardcodes `"options" => []` and
-  `"multiSelect" => false`, which the renderer reads as free-form and answers
-  with a textarea. So an agent that is not Claude Code — every Alloy agent we
-  run — could only ever ask open questions, no matter how closed the question
-  actually was.
-
-  Everything downstream was already built and waiting: `ChatComponents` renders
-  options as radios or checkboxes with the "Other" row,
-  `Notifications.collect_answers/2` resolves a list, a single choice or the
-  free-text other, and `answer_question_request/2` delivers the result to the
-  asking agent. The only missing piece was a way in.
-
-  ## Why it does not block until the answer arrives
-
-  Asked and settled 2026-09-06. `send_message` carries the original account of
-  the attempt — a synchronous wait whose transport gave up long before any
-  person answered, with every retry creating another question — and two things
-  about today's setup keep the answer the same.
-
-  The wait is unbounded and no leg of the path is. The harness MCP client
-  defaults to thirty seconds; the one tool that waits on purpose,
-  `run_browser_script`, raises it to sixty and says both sides must agree or
-  "the first turns an answer into a timeout with no way to tell them apart". A
-  minute is the longest anything holds. And questions never expire — story 896
-  decided against a sweeper, because "a question vanishing on a clock is a
-  decision the user never made disappearing from the one place they would have
-  seen it" — so a blocking call would have to hold for as long as a question can
-  stay pending, which is forever.
-
-  Beyond the plumbing: a blocked agent is indistinguishable from a wedged one,
-  a harness restart kills the call while the question row survives, and holding
-  the turn forfeits the thing the reply text promises — "carry on with anything
-  the answer does not block".
-
-  A short bounded wait was offered and declined: it buys a synchronous feel when
-  somebody happens to be watching, at the cost of a timeout two sides have to
-  agree on, for a path that already works.
-
-  ## Why a separate tool rather than an option on `send_message`
-
-  They are different acts. `send_message` opens a question; this one closes it —
-  the answer is constrained to a set the agent wrote, and choosing that set is
-  the work. As an optional field on a free-form tool it would be skipped, the
-  way optional structure usually is, and the caller would get a textarea back
-  for a question with three obvious answers.
-
-  The old `ask_user` moduledoc already drew this line ("Unlike
-  `AskUserQuestion`, there are no fixed options — use this for open-ended
-  questions"). It was describing a tool that, for our agents, did not exist.
+  Returns as soon as the question is delivered. An agent we run should stop
+  after asking: the answer arrives as a message.
   """
+
+  # Why this exists at all
+  #
+  # Claude Code has `AskUserQuestion` natively and the plugin hook relays it to
+  # `POST /api/questions/ask` — headers, options with descriptions, single or
+  # multi select, an "Other" box. Nothing of ours could create one.
+  # `send_message` hardcodes `"options" => []`, which the renderer reads as
+  # free-form, so every question an Alloy agent asked came back as a paragraph
+  # to interpret however closed the question actually was.
+  #
+  # Everything downstream was already built: `ChatComponents.question/1` renders
+  # the options, `Notifications.collect_answers/2` resolves a list or a single
+  # choice or the free-text other, and `answer_question_request/2` delivers the
+  # result to the asking agent. The only missing piece was a way in.
+  #
+  # Why it does not block until the answer arrives
+  #
+  # Asked and settled 2026-09-06. `send_message` carries the original account of
+  # the attempt — a synchronous wait whose transport gave up long before any
+  # person answered, with every retry creating another question — and two things
+  # about today's setup keep the answer the same.
+  #
+  # The wait is unbounded and no leg of the path is. The harness MCP client
+  # defaults to thirty seconds; the one tool that waits on purpose,
+  # `run_browser_script`, raises it to sixty and says both sides must agree or
+  # "the first turns an answer into a timeout with no way to tell them apart". A
+  # minute is the longest anything holds. And questions never expire — story 896
+  # decided against a sweeper, because "a question vanishing on a clock is a
+  # decision the user never made disappearing from the one place they would have
+  # seen it" — so a blocking call would have to hold for as long as a question
+  # can stay pending, which is forever.
+  #
+  # Beyond the plumbing: a blocked agent is indistinguishable from a wedged one,
+  # a harness restart kills the call while the question row survives, and holding
+  # the turn forfeits what the reply text promises — carry on with anything the
+  # answer does not block.
+  #
+  # A short bounded wait was offered and declined: it buys a synchronous feel
+  # when somebody happens to be watching, at the cost of a timeout two sides have
+  # to agree on, for a path that already works.
+  #
+  # Why a separate tool rather than an option on `send_message`
+  #
+  # They are different acts. `send_message` opens a question; this one closes it
+  # — the answer is constrained to a set the agent wrote, and choosing that set
+  # is the work. As an optional field on a free-form tool it would be skipped,
+  # the way optional structure usually is, and the caller would get a textarea
+  # back for a question with three obvious answers.
+  #
+  # Keep this block as comments, not moduledoc. `Anubis.Server.Component`
+  # advertises the moduledoc as the tool's `description`, so it is sent to every
+  # agent at connect and `SpineTest` caps that payload at 20 KB. These notes cost
+  # 3,199 bytes there and took the spine to 20,958 — the test caught it the same
+  # afternoon they were written.
 
   use Anubis.Server.Component, type: :tool
 
@@ -66,21 +72,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   alias CodeMySpec.Sessions
 
   schema do
+    # Terse on purpose. Every byte here is advertised to every Claude Code agent
+    # at connect, and `SpineTest` holds that payload under 20 KB — the first
+    # draft of this doc put it over on its own. The detail lives in the
+    # moduledoc, which nothing pays for.
     field :questions, {:list, :map},
       required: true,
-      doc: """
-      One to four questions. Each is an object:
+      doc:
+        "1-4 objects: question (required), options (required, [{label, description}]), " <>
+          "header, multiSelect."
 
-        question    (required) the question text
-        header      short label, 12 characters or so, e.g. "Scope"
-        options     list of {label, description} — the choices you are offering
-        multiSelect true if more than one may be picked (default false)
-
-      A question with no options is answered as free text, which is
-      `send_message`'s job — use options here.
-      """
-
-    field :title, :string, doc: "Heading for the notification. Defaults to a generic one."
+    field :title, :string, doc: "Notification heading."
   end
 
   @max_questions 4
