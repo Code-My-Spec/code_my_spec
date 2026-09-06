@@ -240,7 +240,10 @@ defmodule CodeMySpec.Notifications do
   `"question_request:<id>"` to await the answer.
   """
   def create_question_request(user_id, %{} = attrs) do
-    attrs = Map.merge(attrs, %{"user_id" => user_id, "status" => "pending"})
+    attrs =
+      attrs
+      |> Map.merge(%{"user_id" => user_id, "status" => "pending"})
+      |> put_anchor()
 
     with {:ok, request} <-
            %QuestionRequest{} |> QuestionRequest.changeset(attrs) |> Repo.insert() do
@@ -248,7 +251,7 @@ defmodule CodeMySpec.Notifications do
         type: "question_request",
         title: request.title || "Claude Code has a question",
         body: first_question_text(request.questions),
-        url: "/app/questions/#{request.id}"
+        url: question_url(request)
       })
 
       broadcast_notifications_changed(user_id)
@@ -341,6 +344,74 @@ defmodule CodeMySpec.Notifications do
       list when is_list(list) -> Enum.join(list, ", ")
       value -> to_string(value)
     end
+  end
+
+  # Where tapping the notification lands you.
+  #
+  # `QuestionLive.Show` exists because an *external* agent has no conversation
+  # in this application to render a question into — that is the whole of its
+  # reason, and it is still true for Claude Code and false for an agent we run.
+  # So the rule is: the question belongs in the asker's conversation, and the
+  # standalone page is the fallback for an asker that has not got one.
+  #
+  # Anchored to the question itself, so the page opens with it in view rather
+  # than at the bottom of a fifty-turn transcript.
+  defp question_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
+    case conversation_for_agent(agent_id) do
+      %{id: conversation_id, project_id: project_id} ->
+        "/app/projects/#{project_id}/agent-conversation/#{conversation_id}#question-#{id}"
+
+      _ ->
+        "/app/questions/#{id}"
+    end
+  end
+
+  defp question_url(%{id: id}), do: "/app/questions/#{id}"
+
+  defp conversation_for_agent(agent_id) do
+    from(c in CodeMySpec.Conversations.Conversation,
+      where: c.agent_id == ^agent_id,
+      order_by: [desc: c.inserted_at],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  # Where in the transcript this question was asked.
+  #
+  # The newest message in the asking agent's conversation, resolved now rather
+  # than plumbed through MCP: a tool does not know its own tool-call id, and it
+  # does not need to — it only needs to know which conversation it is in, which
+  # the agent id answers.
+  #
+  # Worst case it anchors to the turn *before* the one that asked, if that
+  # turn's message has not been written yet. That is still beside the work that
+  # prompted it, which is the whole point, and strictly better than the pinned
+  # block it replaces.
+  #
+  # A caller that set it explicitly wins. Nil is left alone — a Claude Code
+  # session has no conversation of ours and renders on `QuestionLive.Show`.
+  defp put_anchor(%{"conversation_message_id" => id} = attrs) when not is_nil(id), do: attrs
+
+  defp put_anchor(attrs) do
+    case attrs["agent_id"] do
+      agent_id when is_binary(agent_id) ->
+        Map.put(attrs, "conversation_message_id", newest_message_id(agent_id))
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp newest_message_id(agent_id) do
+    from(m in CodeMySpec.Conversations.Message,
+      join: c in assoc(m, :conversation),
+      where: c.agent_id == ^agent_id,
+      order_by: [desc: m.inserted_at],
+      limit: 1,
+      select: m.id
+    )
+    |> Repo.one()
   end
 
   @doc """

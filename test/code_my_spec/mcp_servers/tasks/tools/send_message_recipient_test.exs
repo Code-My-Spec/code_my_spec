@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserRecipientTest do
+defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessageRecipientTest do
   @moduledoc """
   The reply names whose inbox the question landed in.
 
@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserRecipientTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserRecipientTest do
   defp text(response), do: Enum.map_join(response.content, "\n", &Map.get(&1, "text", ""))
 
   test "the reply names the user and the project", %{scope: scope} do
-    {:reply, response, _} = AskUser.execute(%{message: "Which storage backend?"}, frame(scope))
+    {:reply, response, _} = SendMessage.execute(%{message: "Which storage backend?"}, frame(scope))
 
     refute response.isError
     body = text(response)

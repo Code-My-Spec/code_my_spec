@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
 
   @question "Which approach do you want here?"
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
       given_ "the agent asked a question and nobody answered it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = AskUser.execute(%{message: @question}, frame)
+        {:reply, response, _frame} = SendMessage.execute(%{message: @question}, frame)
 
         refute response.isError,
                "asking is the agent's own surface and has to work here. " <>
@@ -123,7 +123,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
     |> Phoenix.ConnTest.json_response(200)
   end
 
-  # `ask_user` reports the id in prose, which is what the agent reads.
+  # `send_message` reports the id in prose, which is what the agent reads.
   defp question_id!(response) do
     body = response_text(response)
 

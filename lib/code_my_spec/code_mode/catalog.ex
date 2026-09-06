@@ -55,10 +55,11 @@ defmodule CodeMySpec.CodeMode.Catalog do
   # typo in the script rather than a rule about the tool. QA on story 970 found
   # an agent would most likely try spelling variations rather than learn.
   @excluded %{
-    "ask_user" =>
+    "ask_user_question" =>
       "it waits on a person, and a loop around it is questions nobody agreed to answer",
-    "check_answer" => "it belongs with ask_user, which a script cannot call",
-    "list_user_questions" => "it belongs with ask_user, which a script cannot call",
+    "send_message" => "it waits on a person, the same as `ask_user_question`",
+    "check_answer" => "it belongs with the asking tools, which a script cannot call",
+    "list_user_questions" => "it belongs with the asking tools, which a script cannot call",
     "start_agent" => "it spawns background work, and a loop around it is a fleet",
     "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
     "stop_agent" => "it acts on agents, which a script cannot start",
@@ -81,12 +82,9 @@ defmodule CodeMySpec.CodeMode.Catalog do
     # agent told the wrong reason looks in the wrong place.
     "get_next_requirement" =>
       "it is one of the four tools you already have directly — call it as a tool",
-    "sync_project" =>
-      "it is one of the four tools you already have directly — call it as a tool",
-    "start_task" =>
-      "it is one of the four tools you already have directly — call it as a tool",
-    "evaluate_task" =>
-      "it is one of the four tools you already have directly — call it as a tool"
+    "sync_project" => "it is one of the four tools you already have directly — call it as a tool",
+    "start_task" => "it is one of the four tools you already have directly — call it as a tool",
+    "evaluate_task" => "it is one of the four tools you already have directly — call it as a tool"
   }
 
   @type invoke :: (map() -> {:ok, term()} | {:error, String.t()})

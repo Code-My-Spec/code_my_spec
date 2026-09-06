@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
 
   @earlier "Which approach do you want here?"
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
         context = start_session(context, "spex-2418-earlier")
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = AskUser.execute(%{message: @earlier}, frame)
+        {:reply, response, _frame} = SendMessage.execute(%{message: @earlier}, frame)
 
         refute response.isError,
                "asking is the agent's own surface and has to work here. " <>
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
         context = start_session(context, "spex-2418-later")
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = AskUser.execute(%{message: @later}, frame)
+        {:reply, response, _frame} = SendMessage.execute(%{message: @later}, frame)
 
         refute response.isError,
                "asking is the agent's own surface and has to work here. " <>

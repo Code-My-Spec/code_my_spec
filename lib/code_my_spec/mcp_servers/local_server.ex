@@ -63,7 +63,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
   # `ask_user` waits on a person, `start_agent` spawns — and a tool excluded
   # from scripts *and* absent from here would be reachable by no route at all.
-  component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
+  component(CodeMySpec.McpServers.Tasks.Tools.SendMessage)
+  component(CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)

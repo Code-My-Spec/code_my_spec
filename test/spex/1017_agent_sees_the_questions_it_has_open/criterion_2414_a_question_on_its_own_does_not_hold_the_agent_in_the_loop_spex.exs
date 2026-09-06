@@ -41,13 +41,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
 
   ## Surface
 
-  Two of the four real ones: the `ask_user` MCP tool to ask, and
+  Two of the four real ones: the `send_message` MCP tool to ask, and
   `POST /api/hooks/stop` to stop. An earlier draft dispatched
   `POST /api/questions/ask` on the cloud endpoint directly, which is not a
   surface a spex may drive — John: "you should only be driving the surface of
   the app through stop hooks, mcp tools, the ui, and files."
 
-  That correction is what exposed the real gap. `ask_user` today hands off to
+  That correction is what exposed the real gap. `send_message` today hands off to
   `QuestionClient`, which makes an outbound HTTP call to the configured server,
   so it cannot run in-process and no spex has ever driven it. Asking is also
   still an *interception*: `Hooks.AskUserQuestion` denies Claude's native
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.FullSatisfactionFixtures
 
@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          AskUser.execute(%{message: "Which approach do you want here?"}, frame)
+          SendMessage.execute(%{message: "Which approach do you want here?"}, frame)
 
         refute response.isError,
                "asking is the agent's own surface and has to work here. " <>
@@ -143,7 +143,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
     end
   end
 
-  # `ask_user` reports the id in prose, which is what the agent reads.
+  # `send_message` reports the id in prose, which is what the agent reads.
   defp question_id!(response) do
     body = response_text(response)
 

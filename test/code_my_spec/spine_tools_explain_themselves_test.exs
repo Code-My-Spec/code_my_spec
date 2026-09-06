@@ -3,7 +3,7 @@ defmodule CodeMySpec.SpineToolsExplainThemselvesTest do
   A script that reaches for a spine tool is told where it is.
 
   `Catalog`'s own comment says why this matters, and it was written before this
-  happened: "attempt to call a nil value (global 'ask_user')" — which is what
+  happened: "attempt to call a nil value (global 'ask_user_question')" — which is what
   absence alone produces — "reads like a typo in the script rather than a rule
   about the tool. QA on story 970 found an agent would most likely try spelling
   variations rather than learn."
@@ -49,10 +49,10 @@ defmodule CodeMySpec.SpineToolsExplainThemselvesTest do
   end
 
   test "the tools a script genuinely must not call still say so" do
-    # The distinction is the point: `ask_user` waits on a person and a loop
+    # The distinction is the point: `ask_user_question` waits on a person and a loop
     # around it is questions nobody agreed to answer. That is a rule, not a
     # signpost, and collapsing the two would lose it.
-    assert Catalog.exclusion_reason("ask_user") =~ "waits on a person"
+    assert Catalog.exclusion_reason("ask_user_question") =~ "waits on a person"
     assert Catalog.exclusion_reason("run_script") =~ "already in one"
   end
 

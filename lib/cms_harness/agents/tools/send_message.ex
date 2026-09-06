@@ -1,4 +1,4 @@
-defmodule CmsHarness.Agents.Tools.AskUser do
+defmodule CmsHarness.Agents.Tools.SendMessage do
   @moduledoc """
   The way an agent reaches a person, carried directly.
 
@@ -43,7 +43,7 @@ defmodule CmsHarness.Agents.Tools.AskUser do
   """
 
   use CmsHarness.Agents.Tools.Direct,
-    name: "ask_user",
+    name: "send_message",
     nothing_to: "nobody it can ask"
 
   @impl true

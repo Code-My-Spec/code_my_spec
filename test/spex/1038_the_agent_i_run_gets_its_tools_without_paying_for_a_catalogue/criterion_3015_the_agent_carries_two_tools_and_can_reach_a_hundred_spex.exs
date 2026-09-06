@@ -65,6 +65,17 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # graph found `get_next_requirement` in its project guide and in no
         # catalogue: "it isn't available in the active tool catalog".
         #
+        # The four ways to a person and out of the loop joined on 2026-09-06:
+        # `ask_user_question`, `send_message`, `tap_out` and `show_in_panel`.
+        # Same shape again — each is refused to scripts for a reason about
+        # scripts and was carried by nothing, so every refusal that offered
+        # `ask_user` or `tap_out` named a tool the agent did not have.
+        #
+        # `list_problems` was carried in the same pass and taken back out: it is
+        # scriptable, so carrying it buys nothing and costs a schema on every
+        # turn. This assertion is what caught it. The menu's directive stopped
+        # saying "call" it instead.
+        #
         # Named here rather than read from `Catalog.excluded/0`, which is public
         # for exactly this check — the spex boundary cannot reach `CodeMySpec`.
         # So this list is a copy and can go stale; what it must always equal is
@@ -72,6 +83,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         unscriptable = ~w(
           start_agent stop_agent assign_subagent
           get_next_requirement sync_project start_task evaluate_task
+          ask_user_question send_message tap_out show_in_panel
         )
 
         scriptable = project_tools -- unscriptable

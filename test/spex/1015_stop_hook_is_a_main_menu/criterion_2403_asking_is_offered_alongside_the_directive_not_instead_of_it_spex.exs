@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
   the offer whenever something else was live would be the detector all over
   again, just with the condition inverted.
 
-  `ask_user` and `check_answer` are deliberately never the same rule: asking is
+  `ask_user_question` and `check_answer` are deliberately never the same rule: asking is
   the standing offer, collecting an answer is a tiered directive, because asking
   wrote a row and wanting to ask did not.
 
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
       then_ "asking the user is offered as well", context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ "ask_user",
+        assert reason =~ "ask_user_question",
                "the hook cannot detect that the agent needs input, so it says so " <>
                  "every time rather than waiting for a condition it cannot evaluate. " <>
                  "Dropping the offer because something else is live rebuilds the " <>

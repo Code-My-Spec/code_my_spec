@@ -73,7 +73,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     test "requirements are what the menu says when no task is held", %{scope: scope} do
       menu = Menu.render(scope, true, nil, agent([]))
 
-      assert menu =~ "call `get_next_requirement`"
+      assert menu =~ "`get_next_requirement`"
     end
 
     test "is the directive, and carries the id evaluate_task needs", %{scope: scope} do
@@ -90,7 +90,8 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     test "displaces get_next_requirement, without dropping it", %{scope: scope} do
       menu = Menu.render(scope, true, nil, agent([task(%{})]))
 
-      refute menu =~ "call `get_next_requirement`"
+      refute menu =~ "Next: 1 requirement"
+      refute menu =~ "`get_next_requirement`"
 
       # Tallied rather than dropped — a class never mentioned starves
       # invisibly, which is the failure a strict single directive has.
@@ -203,7 +204,8 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       menu = Menu.render(scope, true, nil, agent([task(%{})]))
 
       assert menu =~ "Nobody is reading this conversation"
-      assert menu =~ "`ask_user`"
+      assert menu =~ "`ask_user_question`"
+      assert menu =~ "`send_message`"
     end
   end
 end

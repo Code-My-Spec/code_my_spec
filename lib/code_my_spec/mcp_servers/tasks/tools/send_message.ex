@@ -1,13 +1,21 @@
-defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
+defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
   @moduledoc """
-  Ask the user a free-form question. Returns once the question is delivered;
-  the reply is collected separately with `check_answer`.
+  Send the user a message and get prose back.
 
-  Pushes the message to the user's phone (Web Push → `QuestionLive.Show`, which
-  renders a free-text box for a question with no options). Unlike
-  `AskUserQuestion`, there are no fixed options — use this for open-ended
-  questions ("what should this copy say?", "how do you want this edge case
-  handled?") or a check-in where enumerating choices would be artificial.
+  Was `ask_user`, and the name was doing damage. It sat beside no structured
+  counterpart of ours, so it read as *the* way to reach a person and got used
+  for questions that had three obvious answers — which came back as a textarea
+  and a paragraph to interpret. `ask_user_question` is that counterpart now, and
+  this is what is left when the answer genuinely is prose: "what should this copy
+  say?", "how do you want this edge case handled?", or a check-in where
+  enumerating choices would be artificial.
+
+  Its notification has always been titled "Claude has a message", which is what
+  it is.
+
+  Pushes to the user's phone (Web Push → `QuestionLive.Show`, or the agent's own
+  conversation) and renders a free-text box, because a question with no options
+  is free-form by definition.
 
   ## Why this does not block
 

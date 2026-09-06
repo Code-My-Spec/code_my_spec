@@ -42,6 +42,14 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # keeps running and polls with `check_answer`.
     belongs_to :agent, CodeMySpec.Agents.Agent, type: :binary_id
 
+    # Where in the transcript it was asked, so it renders beside the work that
+    # prompted it rather than pinned above everything. Resolved when the
+    # question is created; nil for an asker with no conversation of ours, and
+    # for every row written before this existed — those fall to the bottom of
+    # the chat, which is right for a pending one and the best available guess
+    # for an old answered one.
+    belongs_to :conversation_message, CodeMySpec.Conversations.Message, type: :binary_id
+
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
@@ -52,6 +60,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     |> cast(attrs, [
       :user_id,
       :agent_id,
+      :conversation_message_id,
       :title,
       :questions,
       :status,

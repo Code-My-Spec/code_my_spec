@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
   > A refusal made while the autonomous loop is running offers leaving it.
 
   The negative half, and the reason this offer is the one exception to
-  unconditional. `check_answer`, `ask_user` and `semantic_search` are printed
+  unconditional. `check_answer`, `ask_user_question` and `semantic_search` are printed
   every time because what they serve is invisible from here — an unread reply, a
   decision the agent needs, a fact already written down. None of those can be
   detected, so none can be gated.
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
         # than about the offers section being absent.
         reason = context.response["reason"] || ""
 
-        assert reason =~ "ask_user"
+        assert reason =~ "ask_user_question"
         assert reason =~ "semantic_search"
         assert reason =~ "check_answer"
 

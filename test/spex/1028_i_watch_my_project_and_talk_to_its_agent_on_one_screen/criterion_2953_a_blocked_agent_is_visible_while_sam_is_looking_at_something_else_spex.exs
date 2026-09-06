@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
 
       when_ "an agent in another working copy asks a question and stops", context do
         alias Anubis.Server.Frame
-        alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+        alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
 
         # Genuinely another copy, not this one wearing a different name. The
         # criterion is about a thread that is *not* the one being read, and
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
         }
 
         {:reply, response, _frame} =
-          AskUser.execute(%{message: "Which deploy key should I use?"}, frame)
+          SendMessage.execute(%{message: "Which deploy key should I use?"}, frame)
 
         # Checked, because the tool answers a bad call with an error *response*
         # rather than a raise. Ignoring it means the question was never asked and

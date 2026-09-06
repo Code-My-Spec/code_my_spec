@@ -294,7 +294,7 @@ defmodule CodeMySpec.CodeModeTest do
       built =
         catalog([
           %{name: "get_story", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
-          %{name: "ask_user", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
+          %{name: "ask_user_question", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
           %{name: "start_agent", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end}
         ])
 
@@ -304,10 +304,10 @@ defmodule CodeMySpec.CodeModeTest do
     test "and an excluded tool is simply not there to call" do
       built =
         catalog([
-          %{name: "ask_user", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end}
+          %{name: "ask_user_question", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end}
         ])
 
-      result = CodeMode.eval(built, ~S[return ask_user({ question = "hi" })])
+      result = CodeMode.eval(built, ~S[return ask_user_question({ question = "hi" })])
 
       assert Result.failed?(result),
              "a loop over ask_user is twenty questions nobody agreed to answer"
@@ -350,7 +350,7 @@ defmodule CodeMySpec.CodeModeTest do
 
     test "the index says which tools are not callable, so their absence is explained" do
       docs = CodeMode.docs(stories_catalog())
-      assert docs =~ "ask_user"
+      assert docs =~ "ask_user_question"
     end
   end
 end

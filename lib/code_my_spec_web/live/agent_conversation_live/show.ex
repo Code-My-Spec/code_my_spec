@@ -683,6 +683,32 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp elsewhere?(%{session_external_id: same}, same), do: true
   defp elsewhere?(_request, _mine), do: false
 
+  # The questions asked at any message in this group. A group's dom id is its
+  # *first* message's id, and the anchor is whichever message was newest when
+  # the question was asked — so matching on `item.id` alone would miss every
+  # question anchored mid-group.
+  defp questions_at(questions, item) do
+    ids = MapSet.new(item.messages, & &1.id)
+    Enum.filter(questions, &MapSet.member?(ids, &1.conversation_message_id))
+  end
+
+  # Everything the loop above did not place. Checked against the messages on the
+  # page rather than against `nil`, because the page holds fifty turns and a
+  # question anchored above the window would otherwise render nowhere at all.
+  defp unanchored_questions(questions, items) do
+    shown = items |> Enum.flat_map(& &1.messages) |> MapSet.new(& &1.id)
+    Enum.reject(questions, &MapSet.member?(shown, &1.conversation_message_id))
+  end
+
+  defp pending_questions(questions), do: Enum.filter(questions, &(&1.status == "pending"))
+
+  defp waiting_label(questions) do
+    case length(pending_questions(questions)) do
+      1 -> "A question is waiting on you"
+      n -> "#{n} questions are waiting on you"
+    end
+  end
+
   defp questions_for(nil), do: []
 
   defp questions_for(conversation),
@@ -1097,13 +1123,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           treat gaps as missing evidence, not as an idle sprite.
         </p>
 
-        <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
-          <ChatComponents.question
-            :for={request <- @questions}
-            id={"question-#{request.id}"}
-            request={request}
-            on_submit="answer_question"
-          />
+        <%!-- A pointer, not a second copy of the form. The questions render in
+        the transcript at the turn that asked them; this only exists so an
+        unanswered one is findable when it is forty turns up. Two live forms for
+        one pending question means whichever submits first makes the other look
+        broken. --%>
+        <div
+          :if={pending_questions(@questions) != []}
+          data-test="questions-waiting"
+          class="mb-4 flex items-center gap-3 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+        >
+          <.icon name="hero-chat-bubble-left-right" class="size-4 text-warning" />
+          <span>{waiting_label(@questions)}</span>
+          <a
+            href={"#question-#{hd(pending_questions(@questions)).id}"}
+            class="link link-primary ml-auto text-xs"
+          >
+            Jump to it
+          </a>
         </div>
 
         <div
@@ -1115,11 +1152,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <p :if={@more_above?} data-test="loading-older" class="py-2 text-center text-xs opacity-40">
             loading earlier turns…
           </p>
-          <ChatComponents.turn_item
-            :for={item <- @items}
-            id={"turn-#{item.id}"}
-            item={item}
-            results={@results}
+          <div :for={item <- @items} id={"turn-group-#{item.id}"} class="space-y-2">
+            <ChatComponents.turn_item id={"turn-#{item.id}"} item={item} results={@results} />
+            <%!-- Beside the work that prompted it. An answered one keeps
+            rendering here with what was said, because in a transcript the
+            answer is part of the record rather than a modal that closes. --%>
+            <ChatComponents.question
+              :for={request <- questions_at(@questions, item)}
+              id={"question-#{request.id}"}
+              request={request}
+              on_submit="answer_question"
+            />
+          </div>
+
+          <%!-- Anything whose anchor is not on this page: rows written before
+          the anchor existed, and questions whose turn has scrolled above the
+          window. Bottom of the chat is right for a pending one — it is the
+          newest thing — and the best available guess for an old answered one. --%>
+          <ChatComponents.question
+            :for={request <- unanchored_questions(@questions, @items)}
+            id={"question-#{request.id}"}
+            request={request}
+            on_submit="answer_question"
           />
         </div>
       </div>

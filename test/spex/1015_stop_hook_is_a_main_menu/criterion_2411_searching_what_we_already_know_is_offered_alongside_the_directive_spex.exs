@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2411Spex do
 
   ## Why an offer and not a class
 
-  Same reason `ask_user` is one. No query answers "is this agent missing
+  Same reason `ask_user_question` is one. No query answers "is this agent missing
   something it could look up" — wanting to know is an intention, and the hook
   sees rows. A first pass at this story made needing-input a class and produced
   a Given nothing could evaluate; this would fail the same way for the same
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2411Spex do
 
   ## Why it is never withdrawn
 
-  `ask_user` steps aside while a question is outstanding, because asking twice
+  `ask_user_question` steps aside while a question is outstanding, because asking twice
   fills a queue with duplicates and that is a real harm. There is no equivalent
   harm in searching twice, and the case for looking is strongest exactly when
   the agent is stuck enough to be stopping. So this one has no exception, which

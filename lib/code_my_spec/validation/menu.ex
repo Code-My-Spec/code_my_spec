@@ -60,7 +60,7 @@ defmodule CodeMySpec.Validation.Menu do
 
   ## Three offers, none conditional
 
-  `check_answer`, `ask_user`, `semantic_search`. Every refusal carries all
+  `check_answer`, `ask_user_question`, `semantic_search`. Every refusal carries all
   three, because what they serve — a reply the agent has not read, a decision it
   needs, a fact already written down somewhere — is invisible from here. They
   cost three lines and cannot starve anything.
@@ -245,8 +245,18 @@ defmodule CodeMySpec.Validation.Menu do
       "before taking anything else." <> backlog_note(count)
   end
 
+  # Names the tool; does not say "call" it.
+  #
+  # It used to, and that was a false instruction to half the agents reading it.
+  # `list_problems` is reachable from a script and deliberately not carried
+  # directly — story 1038's rule, and a good one: every carried schema is read
+  # on every turn, which is the cost code mode exists to remove. Carrying it to
+  # make the sentence true was the wrong direction and criterion 3015 caught it.
+  #
+  # An agent that holds the tool calls it; one that does not looks it up with
+  # `tool_docs` and calls it in a script. Naming it is true for both.
   defp directive({class, count}, _owner) do
-    "\n\nNext: #{label(class, count)} — call `#{@tools[class]}`."
+    "\n\nNext: #{label(class, count)} — `#{@tools[class]}`."
   end
 
   defp open_tasks(1), do: "an open task"
@@ -314,9 +324,11 @@ defmodule CodeMySpec.Validation.Menu do
   defp offers(scope) do
     answer_offer(open_questions(scope)) <>
       "\n\nNobody is reading this conversation. If you need a decision from the " <>
-      "user, `ask_user` is the only thing that reaches them — a question written " <>
-      "into your reply reaches no one, and stopping on it just brings you back " <>
-      "here. Ask, then carry on with anything the answer does not block." <>
+      "user, `ask_user_question` is what reaches them — name the alternatives and " <>
+      "they answer with a tap; `send_message` is for when the answer is genuinely " <>
+      "prose. A question written into your reply reaches no one, and stopping on " <>
+      "it just brings you back here. Ask, then carry on with anything the answer " <>
+      "does not block." <>
       "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."

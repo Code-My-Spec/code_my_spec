@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
 
   ## The tool this drives does not exist yet
 
-  `list_user_questions` is the deliverable. `ask_user` and `check_answer` are
+  `list_user_questions` is the deliverable. `send_message` and `check_answer` are
   registered in `LocalServer`; nothing lists. So this spec is red until the tool
   is written, which is the point — the criterion is the specification, not a
   description of today.
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
 
   @first "Which approach do you want here?"
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
 
         ids =
           for text <- [@first, @second] do
-            {:reply, response, _frame} = AskUser.execute(%{message: text}, frame)
+            {:reply, response, _frame} = SendMessage.execute(%{message: text}, frame)
 
             refute response.isError,
                    "asking is the agent's own surface and has to work here. " <>
@@ -128,7 +128,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
     end
   end
 
-  # `ask_user` reports the id in prose, which is what the agent reads.
+  # `send_message` reports the id in prose, which is what the agent reads.
   defp question_id!(response) do
     body = response_text(response)
 

@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
 
   @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_compile_error"
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
         ids =
           for text <- ["Which approach do you want here?", "Should this ship behind a flag?"] do
-            {:reply, response, _frame} = AskUser.execute(%{message: text}, frame)
+            {:reply, response, _frame} = SendMessage.execute(%{message: text}, frame)
 
             refute response.isError,
                    "asking is the agent's own surface and has to work here. " <>
@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
-  # `ask_user` reports the id in prose, which is what the agent reads.
+  # `send_message` reports the id in prose, which is what the agent reads.
   defp question_id!(response) do
     body = response_text(response)
 

@@ -83,13 +83,19 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
            "carried and also excused, so the excuse is stale: #{Enum.join(both, ", ")}"
   end
 
-  # The tools the menu names by name. A refusal that names a tool the agent
-  # cannot call is worse than one that names none: it reads as an instruction
-  # and cannot be followed.
+  # The tools the menu tells an agent to *call*. A refusal that says to call a
+  # tool the agent has not got is worse than one that names none: it reads as an
+  # instruction and cannot be followed.
+  #
+  # `list_problems` is deliberately not here. It is reachable from a script, so
+  # carrying it would break story 1038's rule — every carried schema is read on
+  # every turn — and the fix was the sentence: the directive names the tool
+  # rather than telling the agent to call it. Anything the menu does tell an
+  # agent to call has to be something it holds.
   test "every tool the stop menu tells an agent to call is carried" do
     carried = carried()
 
-    for tool <- ~w(list_problems get_next_requirement evaluate_task ask_user tap_out) do
+    for tool <- ~w(get_next_requirement evaluate_task ask_user_question send_message tap_out) do
       assert tool in carried, "the stop menu says to call `#{tool}` and the agent cannot"
     end
   end

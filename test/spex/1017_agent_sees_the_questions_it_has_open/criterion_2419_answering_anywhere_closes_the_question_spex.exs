@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
 
   ## Surface
 
-  Three of the four real ones: `ask_user` and `list_user_questions` as MCP
+  Three of the four real ones: `send_message` and `list_user_questions` as MCP
   tools, and `QuestionLive.Show` as the UI. `@endpoint` is the cloud endpoint so
   `live/2` reaches `/app`, which means the session-start hook — on
   `CodeMySpecLocalWeb` — has to be dispatched explicitly rather than through
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
 
         ids =
           for text <- [@answered, @still_open] do
-            {:reply, response, _frame} = AskUser.execute(%{message: text}, frame)
+            {:reply, response, _frame} = SendMessage.execute(%{message: text}, frame)
 
             refute response.isError,
                    "asking is the agent's own surface and has to work here. " <>
@@ -136,7 +136,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
     end
   end
 
-  # `ask_user` reports the id in prose, which is what the agent reads.
+  # `send_message` reports the id in prose, which is what the agent reads.
   defp question_id!(response) do
     body = response_text(response)
 
