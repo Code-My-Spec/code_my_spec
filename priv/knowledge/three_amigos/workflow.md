@@ -48,10 +48,15 @@ For each rule, generate at least one scenario.
   different layer (e.g. infrastructure rather than the business
   rule), leave it out.
 
-Call `add_scenario` with story_id, rule_id, a title, kind, and the
-Given/When/Then body in plain Gherkin (single-line per step is
-fine; this is example mapping, not full BDD spec writing —
+Call `add_scenario` with story_id, `rule_statement`, a title, kind,
+and the Given/When/Then body in plain Gherkin (single-line per step
+is fine; this is example mapping, not full BDD spec writing —
 `write_bdd_specs` handles that downstream).
+
+`rule_statement` is the rule's text, matched exactly against a rule
+already added to this story — not the id `add_rule` hands back. There
+is no `rule_id` parameter, and an agent that goes looking for one has
+nowhere to put the id it is holding.
 
 ### 4. Questions (red cards)
 

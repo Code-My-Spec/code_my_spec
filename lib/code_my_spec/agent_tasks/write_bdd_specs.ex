@@ -137,7 +137,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       [
         header_section(story, component),
         mental_model_section(),
-        knowledge_section(),
+        knowledge_section(scope),
         component_context_section(scope, env, component),
         sibling_specs_section(env, story, criteria),
         surface_hint_section(component),
@@ -184,7 +184,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  defp knowledge_section do
+  defp knowledge_section(scope) do
     """
     ## Required reading — both layers
 
@@ -206,13 +206,57 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     ### Project BDD knowledge (`.code_my_spec/knowledge/bdd/spex/`)
 
-    - `four_surfaces_quick_reference.md` — the four interaction surfaces
-      in this codebase (MCP tool, HTTP, LiveView, filesystem) with
-      one-line "I'm testing X → use surface Y" table and 30-second
-      skeletons. **Read second.**
-    - `surfaces.md` — canonical skeletons per surface, deeper detail.
-    - `cassettes.md` — project-specific cassette conventions.\
+    #{project_knowledge(scope)}\
     """
+  end
+
+  # What this project actually has, rather than what a template hoped it
+  # would have.
+  #
+  # This named `four_surfaces_quick_reference.md`, `surfaces.md` and
+  # `cassettes.md`. Broken Oaths has `index.md` and nothing else, so an agent
+  # following the prompt spent two `read_knowledge` calls on files that do not
+  # exist before listing the directory and finding the real one — reported as
+  # `0e501e3d`, and the same shape as the war.spec.md and buildings.spec.md
+  # reports beside it.
+  #
+  # A prompt naming files inside somebody else's repository is asserting a fact
+  # about a place it does not control. The file records are the fact: the
+  # harness syncs `.code_my_spec/knowledge/**` like anything else, so the answer
+  # is already here and does not have to be guessed.
+  #
+  # Named files, not just the directory, because "go and list it" spends a turn
+  # on something the server can answer for free.
+  defp project_knowledge(scope) do
+    case knowledge_files(scope) do
+      [] ->
+        "This project has no BDD knowledge of its own yet. The framework " <>
+          "layer above is the whole of it — do not go looking for project " <>
+          "files, and do not assume conventions this codebase has not written " <>
+          "down."
+
+      paths ->
+        listed = Enum.map_join(paths, "\n", &"    - `#{Path.basename(&1)}`")
+
+        "Read all of these. Project rules override the framework where they " <>
+          "conflict.\n\n" <> listed
+    end
+  end
+
+  @knowledge_dir ".code_my_spec/knowledge/bdd/spex/"
+
+  defp knowledge_files(scope) do
+    scope
+    |> Files.list_files()
+    |> Enum.map(& &1.path)
+    |> Enum.filter(&String.starts_with?(&1, @knowledge_dir))
+    |> Enum.uniq()
+    |> Enum.sort()
+  rescue
+    # A prompt is not the place to fail over a listing. Naming nothing is
+    # recoverable — the agent lists the directory, which is what it had to do
+    # before this existed.
+    _error -> []
   end
 
   # Surfaces the component's source location and @moduledoc so the
@@ -349,9 +393,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     **#{hint}**.
 
     Pick by what the user (engineer or agent) would actually do, not by
-    component type alone — see
-    `.code_my_spec/knowledge/bdd/spex/four_surfaces_quick_reference.md`
-    for the full decision table and the 30-second skeleton.\
+    component type alone — the project BDD knowledge listed above carries
+    this codebase's decision table, where it has one.\
     """
   end
 
