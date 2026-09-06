@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.EpicsLive.FormComponent
 
   @impl true
@@ -256,6 +257,32 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
 
   defp ready_count(epic), do: Enum.count(epic_stories(epic), &(&1.ready_for_dev == true))
 
+  # How many of this epic's stories are bound to a checkout.
+  defp assigned_count(epic) do
+    epic |> epic_stories() |> Enum.count(&(&1.working_copy_id != nil))
+  end
+
+  # The checkouts its stories are on, named rather than numbered — a uuid tells
+  # a reader nothing and the label is what every other surface calls it.
+  defp copy_names(epic) do
+    epic
+    |> epic_working_copy_ids()
+    |> Enum.map(&copy_name/1)
+    |> case do
+      [] -> "no checkout"
+      [one] -> one
+      many -> Enum.join(many, ", ")
+    end
+  end
+
+  defp copy_name(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{label: label}} when is_binary(label) and label != "" -> label
+      {:ok, %{root: root}} when is_binary(root) and root != "" -> Path.basename(root)
+      _ -> "a checkout"
+    end
+  end
+
   # Which checkout an epic is being built on, read off its stories.
   #
   # Derived rather than stored since 2026-09-05: the epic's own column was never
@@ -360,6 +387,30 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                     <h3 class="font-semibold truncate">{epic.name}</h3>
                     <p class="text-xs opacity-70">
                       {length(epic_stories(epic))} stories · {ready_count(epic)} ready
+                    </p>
+
+                    <%!-- What is assigned and what is not. Story 895 put the
+                    binding on *stories* — an epic carries no working copy of
+                    its own, and its column was dropped when the axis moved
+                    down — so this counts its members rather than reading a
+                    field, and says "stories" so nobody reads it as the epic
+                    being placed. Unassigned is not a gap to fill: it is the
+                    shared backlog every working copy is offered. --%>
+                    <p
+                      data-test="epic-assignment"
+                      data-assigned-count={assigned_count(epic)}
+                      class="text-xs opacity-70"
+                    >
+                      <%= case {assigned_count(epic), length(epic_stories(epic))} do %>
+                        <% {0, 0} -> %>
+                          No stories yet
+                        <% {0, _total} -> %>
+                          No stories assigned — every checkout is offered these
+                        <% {n, n} -> %>
+                          All {n} stories on {copy_names(epic)}
+                        <% {n, total} -> %>
+                          {n} of {total} stories on {copy_names(epic)}
+                      <% end %>
                     </p>
 
                     <%!-- Where the work is happening. An epic dispatched with

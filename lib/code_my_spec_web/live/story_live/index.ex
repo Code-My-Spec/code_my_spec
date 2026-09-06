@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Stories.Markdown
 
   @impl true
@@ -79,6 +80,27 @@ defmodule CodeMySpecWeb.StoryLive.Index do
                   class="badge badge-ghost"
                 >
                   Parked
+                </span>
+                <%!-- Assigned means one checkout is offered this story and no
+                other is. Unassigned is not "nobody's" — it is the shared
+                backlog every copy sees, which is why it reads as a state rather
+                than as a gap to fill. --%>
+                <span
+                  :if={story.working_copy_id}
+                  data-test="story-assigned"
+                  data-working-copy-id={story.working_copy_id}
+                  class="badge badge-info badge-outline"
+                  title="Only this checkout is offered this story"
+                >
+                  {Map.get(@copy_labels, story.working_copy_id, "a checkout")}
+                </span>
+                <span
+                  :if={is_nil(story.working_copy_id)}
+                  data-test="story-unassigned"
+                  class="badge badge-ghost"
+                  title="In the shared backlog — every working copy is offered this"
+                >
+                  Unassigned
                 </span>
                 <button
                   type="button"
@@ -236,10 +258,33 @@ defmodule CodeMySpecWeb.StoryLive.Index do
     {:noreply,
      socket
      |> maybe_subscribe(scope)
+     |> assign(:copy_labels, copy_labels(scope))
      |> stream(:stories, Stories.list_project_stories_by_priority(scope), reset: true)}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  # Which checkout each working copy is, keyed by id.
+  #
+  # Story 895 put `working_copy_id` on stories and nothing showed it, so the one
+  # question the axis exists to answer — what is assigned and what is not —
+  # could only be asked in psql. John: "I don't see on either the epics or the
+  # stories UI, the assignments to agents."
+  #
+  # A label rather than the id, because the id is not a thing anyone recognises
+  # and the label is what every other surface calls that checkout.
+  defp copy_labels(scope) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Map.new(&{&1.id, copy_name(&1)})
+  rescue
+    # A badge is never worth failing a page over.
+    _error -> %{}
+  end
+
+  defp copy_name(%{label: label}) when is_binary(label) and label != "", do: label
+  defp copy_name(%{root: root}) when is_binary(root) and root != "", do: Path.basename(root)
+  defp copy_name(%{id: id}), do: id
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
