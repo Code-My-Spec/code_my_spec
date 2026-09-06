@@ -14,7 +14,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository, Signatures}
+  alias CodeMySpec.Analysis.{AgentReport, Fingerprint, Run, RunsRepository, Signatures}
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -85,6 +85,16 @@ defmodule CodeMySpec.Analysis.Reconciler do
         RunsRepository.prune(scope, run.source)
         evaluate_sessions(scope)
         maybe_notify(scope, finished, problems, opts)
+
+        # The internal half of story 1042. `maybe_notify/4` above is the push to
+        # the *person*; this is the push to the agents running in our own BEAM,
+        # which have a process to reach and should not have to wait on one.
+        #
+        # A Claude Code session in the same copy is not told here — it collects
+        # the digest on its next tool call through `Hooks.AnalysisAlert`. Two
+        # consumers, two shapes, and telling both here would tell one of them
+        # twice.
+        AgentReport.deliver(scope, run.source, problems)
 
         Logger.info(
           "[Analysis] #{run.source} reconciled: #{length(problems)} problem(s) (#{run.kind})" <>

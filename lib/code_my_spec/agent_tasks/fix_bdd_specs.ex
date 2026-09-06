@@ -112,11 +112,11 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
         {:ok, :invalid, "No story found for this task — cannot evaluate the specs-passing gate."}
 
       story ->
-        evaluate_story(scope, story)
+        evaluate_story(scope, story, task)
     end
   end
 
-  defp evaluate_story(scope, story) do
+  defp evaluate_story(scope, story, task) do
     cond do
       story.specs_ready == true ->
         # Already latched. A stale run or a fresh failure elsewhere must
@@ -127,7 +127,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
         {:ok, :invalid, no_specs_message(story)}
 
       not Analysis.fresh?(scope, "spex") ->
-        {:ok, :invalid, analysis_pending_message(story, scope)}
+        {:ok, :invalid, analysis_pending_message(story, scope, task)}
 
       true ->
         case story_spex_problems(scope, story) do
@@ -266,7 +266,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # Deliberately worded as pending rather than failing. A stale run means
   # "we don't know yet", and an agent told its specs failed will go looking
   # for a bug that isn't there.
-  defp analysis_pending_message(story, scope) do
+  defp analysis_pending_message(story, scope, task) do
     """
     # Specs Passing — analysis pending
 
@@ -274,7 +274,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     latest spex run does not cover the current state of the code. This is
     **not** a spec failure — nothing is known to be broken.
 
-    #{wait_directive(scope)}
+    #{wait_directive(scope, task)}
     """
   end
 
@@ -292,7 +292,28 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # loop by the other door — no failing step anywhere in it. A harness restart
   # is the ordinary way to get here: `just refresh` kills every in-flight sweep
   # and says so.
-  defp wait_directive(%{active_working_copy_id: id}) when not is_nil(id) do
+  defp wait_directive(_scope, %{agent_id: agent_id}) when is_binary(agent_id),
+    do: internal_directive()
+
+  defp wait_directive(scope, _task), do: external_directive(scope)
+
+  # An agent in our own BEAM does not wait. It has a process we can reach, so
+  # the run reports back when it lands — `Analysis.AgentReport` dispatches the
+  # digest at the end of `Reconciler.reconcile/4`. Telling it to hold a `curl`
+  # open instead spends a turn watching a sweep that takes several minutes,
+  # which is what it was doing when John found it.
+  defp internal_directive do
+    "Stop when you have nothing else to do. The spex run reports back to you " <>
+      "as a message when it lands — you do not need to wait for it, and you " <>
+      "must not hold a command open watching it. Anything the result does not " <>
+      "block, finish first."
+  end
+
+  # And the agent these endpoints were written for keeps them: Claude Code
+  # runs on, fires hooks, and collects the digest on its next tool call. Two
+  # consumers of one result, and the difference is whether there is a process
+  # on the other end.
+  defp external_directive(%{active_working_copy_id: id}) when not is_nil(id) do
     "Wait for the spex run with " <>
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
       "the background and you will be notified when it returns — then evaluate this " <>
@@ -304,7 +325,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "background — a sweep takes several minutes."
   end
 
-  defp wait_directive(_scope) do
+  defp external_directive(_scope) do
     "Wait for the analyzers to finish, then evaluate this requirement again. Both " <>
       "endpoints are on the harness and name the working copy — " <>
       "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` to wait for a " <>
