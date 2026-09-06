@@ -229,6 +229,8 @@ defmodule CodeMySpec.Agents.Credential do
      |> put_refreshed_at(integration)}
   end
 
+  defp oauth_entry({:error, reason}, _token), do: {:error, reason}
+
   # When this token was last renewed, so the reader does not immediately renew it
   # again.
   #
@@ -272,8 +274,6 @@ defmodule CodeMySpec.Agents.Credential do
        do: Map.put(entry, "idToken", token)
 
   defp put_id_token(entry, _integration), do: entry
-
-  defp oauth_entry({:error, reason}, _token), do: {:error, reason}
 
   # OpenAI's account id, which Pi sends as the `chatgpt-account-id` header on
   # every model call (`openai-codex-responses.js`). An `auth.json` without it
