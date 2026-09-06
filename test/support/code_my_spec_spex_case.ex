@@ -4138,12 +4138,7 @@ defmodule CodeMySpecSpex.Case do
 
       with_full_cassette unquote(cassette_name), unquote(opts) do
         for key <- unquote(keys) do
-          view
-          |> Phoenix.LiveViewTest.element(
-            "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-          )
-          |> Phoenix.LiveViewTest.render_click()
-
+          CodeMySpecSpex.Case.run_step_interaction(view, key)
           CodeMySpecSpex.Case.await_step(view, key)
         end
       end
@@ -4168,15 +4163,36 @@ defmodule CodeMySpecSpex.Case do
       view = unquote(view)
 
       for key <- unquote(keys) do
-        view
-        |> Phoenix.LiveViewTest.element(
-          "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-        )
-        |> Phoenix.LiveViewTest.render_click()
-
+        CodeMySpecSpex.Case.run_step_interaction(view, key)
         CodeMySpecSpex.Case.await_step(view, key)
       end
     end
+  end
+
+  @doc """
+  Trigger one setup step's run, the way a person would from the page.
+
+  Every step but `:deploy` still has the plain "Run" button. Deploy does
+  not: it always requires naming one environment now (`ProvisioningLive`'s
+  `deploy-environment-form`), so a caller that has not opted a specific
+  environment in gets the same default every other deploy-driving spex
+  already assumed — `"uat"`, the one `stage_deploy/2`'s own
+  `provisioning_step_opts` has hard-coded all along.
+  """
+  def run_step_interaction(view, :deploy) do
+    view
+    |> Phoenix.LiveViewTest.form("[data-test='deploy-environment-form']", %{
+      "environment" => "uat"
+    })
+    |> Phoenix.LiveViewTest.render_submit()
+  end
+
+  def run_step_interaction(view, key) do
+    view
+    |> Phoenix.LiveViewTest.element(
+      "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+    )
+    |> Phoenix.LiveViewTest.render_click()
   end
 
   @doc """
@@ -4237,11 +4253,7 @@ defmodule CodeMySpecSpex.Case do
   def rerun_step(view, key) do
     before = step_started_at(view, key)
 
-    view
-    |> Phoenix.LiveViewTest.element(
-      "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-    )
-    |> Phoenix.LiveViewTest.render_click()
+    run_step_interaction(view, key)
 
     await_restart(view, key, before, 600)
     await_step(view, key)
