@@ -52,6 +52,21 @@ defmodule CmsHarness.Agents.Engine do
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
 
+  # How many times round the agent loop before a turn is cut off.
+  #
+  # Alloy's default is 25 and nothing set it, which is fine for work that reads
+  # a few files and answers, and far too small for anything driving a browser:
+  # navigate, fill, click, evaluate, read is five calls to check one thing. On
+  # 2026-09-07 a QA agent spent 26 calls getting a game to the state it needed
+  # and was cut off before it could look at anything, twice, with two of those
+  # calls lost to malformed tool arguments from the provider.
+  #
+  # 150 is John's number and it is a *ceiling*, not a budget: a turn that
+  # finishes in four calls costs four. What it buys is that a long scenario can
+  # finish inside one turn rather than being restarted from the top with its
+  # context re-established every 25 calls.
+  @max_turns 150
+
   @type start_opts :: [
           agent_id: String.t(),
           provider: String.t(),
@@ -486,6 +501,33 @@ defmodule CmsHarness.Agents.Engine do
   defp announce_outcome(state, {:ok, %{status: :error, error: reason}}),
     do: report_failure(state, reason)
 
+  # A turn that ran out of loop, said so.
+  #
+  # Alloy returns `{:ok, result}` with `status: :max_turns` — a successful-
+  # looking tuple for a turn that was cut off — so this was indistinguishable
+  # from finishing. On 2026-09-07 a QA agent spent 26 calls getting a game into
+  # the state it needed, was cut at the cap, and left a transcript showing 26
+  # tool calls and no reply. The only signal anyone got was a nudge about a task
+  # it had never stopped working on.
+  #
+  # Announced before the text rather than instead of it: a cut-off turn may
+  # still have said something on its way, and dropping that to report the
+  # cut-off would lose the more useful half.
+  defp announce_outcome(state, {:ok, %{status: :max_turns} = result}) do
+    if is_binary(result.text) and result.text != "" do
+      state.on_event.(state.agent_id, %{event: :message, text: result.text})
+    end
+
+    state.on_event.(state.agent_id, %{
+      event: :turn_cut_off,
+      text:
+        "This turn hit the #{@max_turns}-step limit and was cut off — you did not " <>
+          "finish, and nothing about the work is wrong. Pick up where you left " <>
+          "off. If a single turn keeps running out here, say so rather than " <>
+          "starting the same approach again."
+    })
+  end
+
   # What the agent actually said, once it has finished saying it.
   #
   # The providers emit `:text_delta` per fragment and nothing at all when a
@@ -734,6 +776,7 @@ defmodule CmsHarness.Agents.Engine do
            Keyword.get(opts, :app_url)
          )
        )
+       |> Keyword.put(:max_turns, @max_turns)
        |> Keyword.put(:middleware, [Compaction])
        |> Keyword.put(:context, %{
          working_directory: working_copy,

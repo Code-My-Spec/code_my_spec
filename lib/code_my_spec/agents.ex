@@ -1059,6 +1059,24 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # A turn cut off at the step limit, recorded as something done *to* the agent.
+  #
+  # Not as the agent's own words — it did not say this — and not as a step,
+  # because a step is work and this is the absence of it. `record_orchestrator_action/3`
+  # is the channel already carrying "the harness did this to you", which is what
+  # a cut-off is, and it renders distinctly for the same reason the stop
+  # decision does.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_cut_off"} = event) do
+    case AgentsRepository.fetch_agent(scope, agent_id) do
+      {:ok, agent} ->
+        Conversations.record_orchestrator_action(agent, event["text"] || "", kind: "cut_off")
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
   def record_turn_event(%Scope{} = scope, agent_id, event) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
