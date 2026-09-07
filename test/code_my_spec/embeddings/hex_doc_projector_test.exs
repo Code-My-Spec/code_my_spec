@@ -6,8 +6,8 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
   alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
-  alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.Projects
+  alias CodeMySpec.Support.InMemoryEnvironment
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -286,7 +286,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       target = Path.join([".code_my_spec/hex_docs/phoenix/Phoenix.md"])
-      first_mtime = File.stat!(target, time: :posix).mtime
+      {:ok, %{mtime: first_mtime}} = Environments.stat(env, target)
 
       # Guarantee at least 1s of clock movement so a fresh write would
       # visibly bump the mtime.
@@ -294,7 +294,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
-      second_mtime = File.stat!(target, time: :posix).mtime
+      {:ok, %{mtime: second_mtime}} = Environments.stat(env, target)
 
       assert second_mtime == first_mtime,
              "expected the projector to skip the write when content is unchanged"
@@ -316,7 +316,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
 
       # Externally clobber the projected file with stale content so the
       # projector's needs_write? check has something to disagree with.
-      File.write!(target, "stale content that does not match")
+      :ok = Environments.write_file(env, target, "stale content that does not match")
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
