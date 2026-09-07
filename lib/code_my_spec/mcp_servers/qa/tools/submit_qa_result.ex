@@ -69,9 +69,33 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, validation_error(changeset), frame}
 
+      {:error, {:task_not_found, open}} ->
+        {:reply, error_response(task_not_found_message(open)), frame}
+
       {:error, reason} ->
         {:reply, error_response(reason), frame}
     end
+  end
+
+  # Names the id it wanted.
+  #
+  # `task_not_found` alone sent a QA agent looking for a cause that was not
+  # there: it had passed story 1000's id as the task id, was refused, and
+  # reported "the task session is unavailable" — a diagnosis it could not act on
+  # and that was not true. The id it needed was already open on its own agent.
+  defp task_not_found_message([]) do
+    "No task with that id, and no QA task is open in this working copy. " <>
+      "`start_task` on a `qa_complete` requirement opens one and returns its id."
+  end
+
+  defp task_not_found_message(open) do
+    listed =
+      Enum.map_join(open, "\n", fn {id, story} ->
+        "  task_id #{inspect(id)} — story #{story}"
+      end)
+
+    "No task with that id. `task_id` is the task's own id, not a story id — " <>
+      "these QA tasks are open here:\n\n" <> listed
   end
 
   # Asked only on a pass, and asked after the attempt is written.

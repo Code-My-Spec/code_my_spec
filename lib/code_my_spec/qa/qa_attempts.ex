@@ -257,7 +257,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     task_arrays = session_tasks(project_id) ++ agent_tasks(project_id)
 
     case find_task(task_arrays, task_id) do
-      nil -> {:error, :task_not_found}
+      nil -> {:error, {:task_not_found, open_qa_tasks(task_arrays)}}
       task -> {:ok, {task_field(task, :story_id), task_field(task, :agent_id)}}
     end
   end
@@ -294,6 +294,29 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> where([a], a.project_id == ^project_id)
     |> select([a], a.tasks)
     |> Repo.all()
+  end
+
+  # The QA tasks that are actually open, so a refusal can name them.
+  #
+  # The war-epic QA agent submitted `task_id: "1000"` — story 1000's id, not its
+  # task's — got `task_not_found`, and concluded its session was unregistered.
+  # It was not: the id was simply the wrong one, and nothing in the refusal said
+  # which id it wanted. It had been told, in the nudge two lines above
+  # (`evaluate_task task_id: "e060369a-…"`), and used the number it had been
+  # thinking about all turn instead.
+  #
+  # A story id is the obvious wrong guess here — every other QA surface is keyed
+  # by story — so the refusal names the open QA task and its story together, and
+  # the agent can see which number goes where.
+  defp open_qa_tasks(task_arrays) do
+    task_arrays
+    |> List.flatten()
+    |> Enum.filter(fn task ->
+      task_field(task, :status) in ["active", :active] and
+        task_field(task, :requirement_name) == "qa_complete"
+    end)
+    |> Enum.map(&{task_field(&1, :id), task_field(&1, :story_id)})
+    |> Enum.reject(fn {id, _story} -> is_nil(id) end)
   end
 
   defp find_task(task_arrays, task_id) do

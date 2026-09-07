@@ -95,7 +95,22 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
   # The refusal still has to work. A task id belonging to nothing is not the
   # same as one this could not look in the right place for.
   test "an id that is on neither an agent nor a session is refused", ctx do
-    assert {:error, :task_not_found} =
+    assert {:error, {:task_not_found, _open}} =
              Qa.submit_qa_result(ctx.scope, attrs(Ecto.UUID.generate(), :pass))
+  end
+
+  # The refusal the war-epic agent needed and did not get. It submitted story
+  # 1000's id as the task id, was told `task_not_found`, and concluded its
+  # session was unregistered — a cause that was not there and that it could not
+  # have acted on.
+  test "a story id passed as a task id is refused with the real one", ctx do
+    story_id_as_task = to_string(ctx.story.id)
+
+    assert {:error, {:task_not_found, open}} =
+             Qa.submit_qa_result(ctx.scope, attrs(story_id_as_task, :pass))
+
+    assert {ctx.task_id, ctx.story.id} in open,
+           "the refusal did not name the open QA task, so the agent has nothing " <>
+             "to correct its guess with"
   end
 end
