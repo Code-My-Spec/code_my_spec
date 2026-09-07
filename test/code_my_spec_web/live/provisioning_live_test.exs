@@ -11,6 +11,8 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
   defp path(project), do: "/app/projects/#{project.id}/provisioning"
   defp credentials_path(project), do: "/app/projects/#{project.id}/provisioning/credentials"
+  defp environments_path(project), do: "/app/projects/#{project.id}/provisioning/environments"
+  defp secrets_path(project), do: "/app/projects/#{project.id}/provisioning/secrets"
 
   # The page verifies against providers on mount; these tests are about
   # rendering, so the provider's answer is supplied rather than reached for.
@@ -99,6 +101,86 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       {:ok, _view, html} = live(conn, path(project))
 
       assert html =~ "Still needed:"
+    end
+  end
+
+  describe "environments live in a dialog, not inlined on the page" do
+    test "the dialog does not exist on the plain index route", %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='environments-modal']")
+      refute html =~ ~s(data-test="add-environment-form")
+    end
+
+    test "the trigger button on the index page patches to the environments route", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='manage-environments']")
+
+      html =
+        view
+        |> element("[data-test='manage-environments']")
+        |> render_click()
+
+      assert has_element?(view, "[data-test='environments-modal']")
+      assert html =~ ~s(data-test="add-environment-form")
+    end
+
+    test "closing the dialog patches back to the index route", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, environments_path(project))
+
+      assert has_element?(view, "[data-test='environments-modal']")
+
+      html =
+        view
+        |> element("[data-test='close-environments-modal']")
+        |> render_click()
+
+      refute has_element?(view, "[data-test='environments-modal']")
+      refute html =~ ~s(data-test="add-environment-form")
+    end
+  end
+
+  describe "secrets live in a dialog, not inlined on the page" do
+    test "the dialog does not exist on the plain index route", %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='secrets-modal']")
+      refute html =~ ~s(data-test="secret-form")
+    end
+
+    test "the trigger button on the index page patches to the secrets route", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='manage-secrets']")
+
+      html =
+        view
+        |> element("[data-test='manage-secrets']")
+        |> render_click()
+
+      assert has_element?(view, "[data-test='secrets-modal']")
+      assert html =~ ~s(data-test="secret-form")
+    end
+
+    test "closing the dialog patches back to the index route", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, secrets_path(project))
+
+      assert has_element?(view, "[data-test='secrets-modal']")
+
+      html =
+        view
+        |> element("[data-test='close-secrets-modal']")
+        |> render_click()
+
+      refute has_element?(view, "[data-test='secrets-modal']")
+      refute html =~ ~s(data-test="secret-form")
     end
   end
 

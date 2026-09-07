@@ -70,7 +70,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   }
 
   alias CodeMySpec.Users.Scope
-  alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsModal
+  alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -117,6 +119,45 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </div>
       </form>
 
+      <section data-test="environments-trigger" class="my-6 flex items-center gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Environments</h2>
+          <p class="opacity-70 text-sm">
+            {environments_summary(@environment_rows)}
+          </p>
+        </div>
+        <.button
+          data-test="manage-environments"
+          class="btn"
+          patch={~p"/app/projects/#{@current_scope.active_project_id}/provisioning/environments"}
+        >
+          Manage environments
+        </.button>
+      </section>
+
+      <dialog
+        :if={@live_action == :environments}
+        id="environments-modal"
+        class="modal modal-open"
+        data-test="environments-modal"
+      >
+        <div class="modal-box max-w-2xl">
+          <EnvironmentsForm.environments_form
+            return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
+            environment_rows={@environment_rows}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button
+            type="button"
+            aria-label="close"
+            phx-click={JS.patch(~p"/app/projects/#{@current_scope.active_project_id}/provisioning")}
+          >
+            close
+          </button>
+        </form>
+      </dialog>
+
       <section data-test="provider-credentials" class="my-6 flex items-center gap-3">
         <div>
           <h2 class="text-lg font-semibold">Provider credentials</h2>
@@ -135,12 +176,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </.button>
       </section>
 
-      <CredentialsModal.credentials_modal
+      <dialog
         :if={@live_action == :credentials}
-        return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
-        missing_credentials={@missing_credentials}
-        credentials={@credentials}
-      />
+        id="credentials-modal"
+        class="modal modal-open"
+        data-test="credentials-modal"
+      >
+        <div class="modal-box max-w-2xl">
+          <CredentialsForm.credentials_form
+            return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
+            missing_credentials={@missing_credentials}
+            credentials={@credentials}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button
+            type="button"
+            aria-label="close"
+            phx-click={JS.patch(~p"/app/projects/#{@current_scope.active_project_id}/provisioning")}
+          >
+            close
+          </button>
+        </form>
+      </dialog>
 
       <section data-test="domain" class="my-6">
         <h2 class="text-lg font-semibold">Domain</h2>
@@ -280,74 +338,47 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </p>
       </section>
 
-      <section data-test="secrets" class="my-6">
-        <h2 class="text-lg font-semibold">Secrets</h2>
-        <p class="opacity-70 text-sm">
-          Set once, encrypted into the repo. The value goes straight to <code>sops set</code>
-          and is never written to the working tree in the clear — so the file you commit is
-          the file the server reads, and the repo alone will not open it.
-        </p>
-
-        <form
-          data-test="secret-form"
-          phx-submit="put_secret"
-          class="mt-3 flex flex-wrap gap-2 items-end"
+      <section data-test="secrets-trigger" class="my-6 flex items-center gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Secrets</h2>
+          <p class="opacity-70 text-sm">
+            Set once, encrypted into the repo.
+          </p>
+        </div>
+        <.button
+          data-test="manage-secrets"
+          class="btn"
+          patch={~p"/app/projects/#{@current_scope.active_project_id}/provisioning/secrets"}
         >
-          <label class="form-control">
-            <span class="label-text text-xs">Key</span>
-            <input
-              type="text"
-              name="secret[key]"
-              class="input input-bordered input-sm"
-              placeholder="RESEND_API_KEY"
-            />
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs">Value</span>
-            <input
-              type="password"
-              name="secret[value]"
-              class="input input-bordered input-sm"
-              autocomplete="off"
-            />
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs">Environment</span>
-            <select name="secret[environment]" class="select select-bordered select-sm">
-              <option :for={environment <- @environments} value={environment}>{environment}</option>
-            </select>
-          </label>
-          <.button type="submit" data-test="save-secret">Encrypt into the repo</.button>
-        </form>
-
-        <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">
-          {@secret_error}
-        </p>
-
-        <div class="mt-4 flex flex-col gap-1">
-          <div
-            :for={recipient <- @sops_recipients}
-            data-test="sops-recipient"
-            data-environment={recipient.environment}
-            data-key-fingerprint={List.first(recipient.fingerprints)}
-            class="text-xs font-mono opacity-70"
-          >
-            {recipient.environment}: {Enum.join(recipient.fingerprints, ", ")}
-          </div>
-        </div>
-
-        <div class="mt-4 flex flex-col gap-1">
-          <div
-            :for={source <- @secret_sources}
-            data-test="secret-source"
-            data-consumer={source.consumer}
-            data-path={source.path}
-            class="text-xs font-mono opacity-70"
-          >
-            {source.consumer} reads {source.path}
-          </div>
-        </div>
+          Manage secrets
+        </.button>
       </section>
+
+      <dialog
+        :if={@live_action == :secrets}
+        id="secrets-modal"
+        class="modal modal-open"
+        data-test="secrets-modal"
+      >
+        <div class="modal-box max-w-2xl">
+          <SecretsForm.secrets_form
+            return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
+            environments={@environments}
+            secret_error={@secret_error}
+            sops_recipients={@sops_recipients}
+            secret_sources={@secret_sources}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button
+            type="button"
+            aria-label="close"
+            phx-click={JS.patch(~p"/app/projects/#{@current_scope.active_project_id}/provisioning")}
+          >
+            close
+          </button>
+        </form>
+      </dialog>
 
       <%!-- DaisyUI's `.steps` base rule is horizontal-first: `overflow: hidden`
       plus an `overflow-x: auto` override, so a horizontal list clips vertical
@@ -1204,59 +1235,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </div>
       </section>
 
-      <%!-- Environments never share a server (966/8156). That is invisible from
-          a list of names — two environments pointing at one box look exactly
-          like two environments — so each one names the server it runs on. --%>
-      <section data-test="environments-panel">
-        <h2>Environments</h2>
-
-        <%!-- Turning production on is adding an environment, not ticking a box.
-            There is no `prod` option on the setup form and never was — the
-            steps fan out over whichever environment rows exist, which is what
-            lets a project have `qa`, or one per story, without a code change. --%>
-        <.form
-          for={%{}}
-          as={:environment}
-          data-test="add-environment-form"
-          phx-submit="add_environment"
-        >
-          <input type="text" name="environment[name]" data-test="environment-name" />
-          <.button type="submit" data-test="add-environment">Add environment</.button>
-        </.form>
-
-        <div
-          :for={environment <- @environment_rows}
-          data-test="environment"
-          data-environment={environment.name}
-          data-server={environment.server_name}
-          data-host={environment.host}
-          data-ip={environment.ip}
-          class="flex items-center gap-3"
-        >
-          <span>{environment.name}: {environment.server_name || "no server yet"}</span>
-
-          <%!-- Behind a dialog rather than a bare click. This releases a real
-              server and a real DNS record, and the panel's rows are one line
-              apart. `data-confirm` is not an option here — the browser's own
-              confirm() is invisible to the driver QA runs. --%>
-          <.button
-            data-test="remove-environment"
-            class="btn btn-xs btn-error"
-            phx-click={show_confirm("remove-environment-#{environment.name}")}
-          >
-            Remove
-          </.button>
-
-          <.confirm_dialog
-            id={"remove-environment-#{environment.name}"}
-            title={"Remove #{environment.name}?"}
-            message={remove_environment_warning(environment)}
-            confirm_label="Remove it"
-            on_confirm={JS.push("remove_environment", value: %{name: environment.name})}
-          />
-        </div>
-      </section>
-
       <section data-test="backups-panel">
         <h2>Backups</h2>
 
@@ -2110,20 +2088,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp removed_summary(name, removed),
     do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
 
-  # Says what actually goes, so the dialog is not a generic "are you sure".
-  defp remove_environment_warning(%{host: host, server_name: server})
-       when is_binary(server) and server != "" do
-    "This destroys the server #{server}" <>
-      if(is_binary(host) and host != "", do: " and removes the DNS record for #{host}", else: "") <>
-      ". The record goes first, so the name stops resolving before the address is released."
-  end
-
-  defp remove_environment_warning(%{host: host}) when is_binary(host) and host != "" do
-    "This removes the DNS record for #{host}. No server was ever provisioned for it."
-  end
-
-  defp remove_environment_warning(_environment),
-    do: "Nothing was provisioned for it, so this only removes the row."
+  defp environments_summary([]), do: "None yet."
+  defp environments_summary(rows), do: Enum.map_join(rows, ", ", & &1.name)
 
   # `key=value key=value` — the shape every proof resource uses for its
   # identifier, so the page can pull one field without knowing the order.

@@ -594,6 +594,8 @@ defmodule CodeMySpecWeb.Router do
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
       live "/projects/:project_id/provisioning/credentials", ProvisioningLive, :credentials
+      live "/projects/:project_id/provisioning/environments", ProvisioningLive, :environments
+      live "/projects/:project_id/provisioning/secrets", ProvisioningLive, :secrets
       live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
