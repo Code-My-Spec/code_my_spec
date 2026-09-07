@@ -177,6 +177,46 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     |> Response.text("# All requirements satisfied\n\nNo actionable requirements remain.")
   end
 
+  @doc """
+  There is work; none of it is yours.
+
+  Distinct from `all_satisfied_response/0`, which said this too and should not
+  have. A coding agent stopped correctly against three unsatisfied requirements
+  — `issues_resolved` is its own and waits on `issues_triaged`, which is
+  product's — and reported "All requirements satisfied", which reads as a
+  finished project to the person watching.
+
+  Naming the roles that hold the work turns a stop into information: an agent
+  waiting on product can say what it is waiting for, and whoever is reading can
+  see that starting product is the thing to do.
+  """
+  @spec nothing_for_this_role_response([map()], atom()) :: Response.t()
+  def nothing_for_this_role_response(actionable, role) do
+    Response.tool()
+    |> Response.text("""
+    # Nothing for #{role} right now
+
+    #{length(actionable)} actionable requirement(s) in this project, none of them
+    #{role}'s. This is not a finished project and not an error — your queue is
+    empty because the work in front of it belongs to somebody else.
+
+    #{whose(actionable)}
+
+    Stop. You will be woken when work of your own appears — finishing a
+    requirement wakes the roles it unblocks.\
+    """)
+  end
+
+  defp whose(actionable) do
+    actionable
+    |> Enum.group_by(& &1.role)
+    |> Enum.sort_by(fn {role, _} -> to_string(role) end)
+    |> Enum.map_join("\n", fn {role, nodes} ->
+      "- **#{role || "unassigned"}**: " <>
+        (nodes |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", "))
+    end)
+  end
+
   def init_required_response(prompt) do
     tool_text(prompt <> "\n\nWhen all steps are complete, call `get_next_requirement` again.")
   end

@@ -48,12 +48,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         # (SendMessage to a live sub-agent vs. fresh Agent spawn).
         active_subagents = resolve_active_subagents(scope)
 
-        scope
-        |> RequirementGraph.next_actionable()
-        |> of_my_kind(frame, scope)
-        |> case do
+        actionable = RequirementGraph.next_actionable(scope)
+
+        case of_my_kind(actionable, frame, scope) do
           [] ->
-            {:reply, empty_response(scope), frame}
+            {:reply, empty_response(scope, actionable, my_role(frame, scope)), frame}
 
           nodes ->
             {:reply, RequirementsMapper.next_requirements_response(nodes, active_subagents),
@@ -86,12 +85,20 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # definitions of "my kind of work" would drift, and the drift shows up as a
   # count that disagrees with the list it is counting.
   defp of_my_kind(nodes, frame, scope) do
-    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
-         {:ok, %{role: role}} when not is_nil(role) <- Agents.fetch_agent(scope, agent_id),
+    with role when not is_nil(role) <- my_role(frame, scope),
          names when names != [] <- Registry.requirement_names_for_role(role) do
       Enum.filter(nodes, &(&1.name in names))
     else
       _ -> nodes
+    end
+  end
+
+  defp my_role(frame, scope) do
+    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
+         {:ok, %{role: role}} <- Agents.fetch_agent(scope, agent_id) do
+      role
+    else
+      _ -> nil
     end
   end
 
@@ -118,10 +125,26 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
     %{cwd: working_dir}
   end
 
-  defp empty_response(scope) do
+  # Three states, not two, and the third is the one that reads as a finished
+  # project when it is nothing of the sort.
+  #
+  # A coding agent on `49760b8b` was told "All requirements satisfied" while
+  # three of them were unsatisfied. It was not wrong to stop — `issues_resolved`
+  # is its own and sits behind `issues_triaged`, which is product's — but the
+  # sentence it was given says the project is done, and the reader (a person, in
+  # this case) has no way from here to tell that from a graph nobody has any
+  # work in.
+  #
+  # So: nothing actionable for anyone is "all satisfied"; work that exists and
+  # belongs to somebody else says whose it is. An agent that knows it is waiting
+  # on product can say so instead of reporting completion.
+  defp empty_response(scope, [], _role) do
     case RequirementGraph.compute_all(scope) do
       [] -> RequirementsMapper.sync_required_response()
       _ -> RequirementsMapper.all_satisfied_response()
     end
   end
+
+  defp empty_response(_scope, actionable, role),
+    do: RequirementsMapper.nothing_for_this_role_response(actionable, role)
 end
