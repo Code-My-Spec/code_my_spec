@@ -35,10 +35,12 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      {:reply, Response.text(Response.tool(), render(scope)), frame}
-    else
-      {:error, atom} -> {:reply, Response.error(Response.tool(), inspect(atom)), frame}
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        {:reply, Response.text(Response.tool(), render(scope)), frame}
+
+      {:error, atom} ->
+        {:reply, Response.error(Response.tool(), inspect(atom)), frame}
     end
   end
 

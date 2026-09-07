@@ -20,8 +20,7 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok,
-     assign(socket, section: :knowledge, page_title: "Knowledge", view: nil, error: nil)}
+    {:ok, assign(socket, section: :knowledge, page_title: "Knowledge", view: nil, error: nil)}
   end
 
   @impl true
@@ -36,17 +35,18 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
     base_url = "/app/projects/#{socket.assigns.slug}/#{library_path(library)}"
 
-    with {:ok, result} <- Knowledge.browse(socket.assigns.scope, library, path_segments) do
-      view = build_view(result, config, base_url, path_segments)
+    case Knowledge.browse(socket.assigns.scope, library, path_segments) do
+      {:ok, result} ->
+        view = build_view(result, config, base_url, path_segments)
 
-      {:noreply,
-       assign(socket,
-         library: library,
-         view: view,
-         page_title: elem(view, 1).title,
-         error: nil
-       )}
-    else
+        {:noreply,
+         assign(socket,
+           library: library,
+           view: view,
+           page_title: elem(view, 1).title,
+           error: nil
+         )}
+
       {:error, reason} ->
         {:noreply, assign(socket, library: library, view: nil, error: error_message(reason))}
     end
@@ -57,12 +57,12 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
-      <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
+    <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
+    <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
     """
   end
 
@@ -79,7 +79,9 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
           :for={entry <- @dir.entries}
           class="flex items-center gap-2 rounded-box border border-base-300 bg-base-200 p-3"
         >
-          <span class="flex-none text-base-content/50">{if entry.type == :dir, do: "▸", else: "·"}</span>
+          <span class="flex-none text-base-content/50">
+            {if entry.type == :dir, do: "▸", else: "·"}
+          </span>
           <.link navigate={entry.url} class="link link-hover flex-1 truncate">{entry.label}</.link>
         </li>
       </ul>

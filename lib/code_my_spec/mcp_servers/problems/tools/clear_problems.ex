@@ -37,18 +37,20 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblems do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params) do
-      case file_paths(params) do
-        [] ->
-          {:ok, count} = Problems.clear_project_problems(scope)
-          {:reply, ok(cleared_all_summary(count)), frame}
+    case Validators.validate_local_scope(frame, params) do
+      {:ok, scope} ->
+        case file_paths(params) do
+          [] ->
+            {:ok, count} = Problems.clear_project_problems(scope)
+            {:reply, ok(cleared_all_summary(count)), frame}
 
-        paths ->
-          {:ok, _} = Problems.replace_problems_for_files(scope, paths, [])
-          {:reply, ok(cleared_files_summary(paths)), frame}
-      end
-    else
-      {:error, reason} -> {:reply, error(reason), frame}
+          paths ->
+            {:ok, _} = Problems.replace_problems_for_files(scope, paths, [])
+            {:reply, ok(cleared_files_summary(paths)), frame}
+        end
+
+      {:error, reason} ->
+        {:reply, error(reason), frame}
     end
   end
 
@@ -60,7 +62,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblems do
   end
 
   defp cleared_all_summary(count),
-    do: "Cleared #{count} persisted problem(s) for the project. Re-run validation to re-record any that are still real."
+    do:
+      "Cleared #{count} persisted problem(s) for the project. Re-run validation to re-record any that are still real."
 
   defp cleared_files_summary(paths),
     do:

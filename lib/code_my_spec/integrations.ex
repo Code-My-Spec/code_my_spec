@@ -298,9 +298,14 @@ defmodule CodeMySpec.Integrations do
   def fetch_access_token(%Scope{} = scope, provider) do
     with {:ok, integration} <- get_integration(scope, provider) do
       cond do
-        fresh?(integration) -> {:ok, integration.access_token}
-        is_nil(integration.refresh_token) or integration.refresh_token == "" -> stale_without_refresh(integration)
-        true -> refresh_serialized(scope, provider)
+        fresh?(integration) ->
+          {:ok, integration.access_token}
+
+        is_nil(integration.refresh_token) or integration.refresh_token == "" ->
+          stale_without_refresh(integration)
+
+        true ->
+          refresh_serialized(scope, provider)
       end
     end
   end
@@ -311,7 +316,10 @@ defmodule CodeMySpec.Integrations do
   """
   @spec fresh?(Integration.t()) :: boolean()
   def fresh?(%Integration{expires_at: %DateTime{} = expires_at}) do
-    DateTime.compare(DateTime.utc_now(), DateTime.add(expires_at, -@refresh_skew_seconds, :second)) ==
+    DateTime.compare(
+      DateTime.utc_now(),
+      DateTime.add(expires_at, -@refresh_skew_seconds, :second)
+    ) ==
       :lt
   end
 
@@ -330,20 +338,22 @@ defmodule CodeMySpec.Integrations do
 
   defp refresh_serialized(scope, provider) do
     Repo.transaction(fn ->
-      with {:ok, integration} <- IntegrationRepository.lock_integration(scope, provider) do
-        # Re-check under the lock: whoever held it before us may have just
-        # refreshed, and burning a second rotation would spend a token that is
-        # now the only valid one.
-        if fresh?(integration) do
-          integration.access_token
-        else
-          case refresh_locked(scope, provider, integration) do
-            {:ok, refreshed} -> refreshed.access_token
-            {:error, reason} -> Repo.rollback(reason)
+      case IntegrationRepository.lock_integration(scope, provider) do
+        {:ok, integration} ->
+          # Re-check under the lock: whoever held it before us may have just
+          # refreshed, and burning a second rotation would spend a token that is
+          # now the only valid one.
+          if fresh?(integration) do
+            integration.access_token
+          else
+            case refresh_locked(scope, provider, integration) do
+              {:ok, refreshed} -> refreshed.access_token
+              {:error, reason} -> Repo.rollback(reason)
+            end
           end
-        end
-      else
-        {:error, reason} -> Repo.rollback(reason)
+
+        {:error, reason} ->
+          Repo.rollback(reason)
       end
     end)
   end

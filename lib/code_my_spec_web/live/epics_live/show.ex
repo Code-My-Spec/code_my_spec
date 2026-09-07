@@ -24,15 +24,16 @@ defmodule CodeMySpecWeb.EpicsLive.Show do
 
   @impl true
   def handle_params(%{"slug" => epic_slug}, _url, %{assigns: %{scope: %{} = scope}} = socket) do
-    with epic when not is_nil(epic) <- Epics.get_epic_by_slug(scope, epic_slug) do
-      {:noreply,
-       socket
-       |> assign(
-         error: nil,
-         page_title: epic.name,
-         epic: epic
-       )}
-    else
+    case Epics.get_epic_by_slug(scope, epic_slug) do
+      epic when not is_nil(epic) ->
+        {:noreply,
+         socket
+         |> assign(
+           error: nil,
+           page_title: epic.name,
+           epic: epic
+         )}
+
       nil ->
         {:noreply, assign(socket, error: "Epic not found")}
 
@@ -106,86 +107,93 @@ defmodule CodeMySpecWeb.EpicsLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={!@error && @epic}>
-        <.header>
-          {@epic.name}
-          <:subtitle>{@epic.description}</:subtitle>
-          <:actions>
-            <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/epics")} class="btn btn-ghost btn-sm">
-              Back to epics
-            </.link>
-            <button
-              type="button"
-              phx-click="bulk_release"
-              data-test="bulk-release-epic"
-              class="btn btn-primary btn-sm"
-            >
-              Release these stories for development
-            </button>
-            <button type="button" phx-click="bulk_park" data-test="bulk-park-epic" class="btn btn-ghost btn-sm">
-              Park them
-            </button>
-          </:actions>
-        </.header>
-
-        <p class="mt-2 text-sm opacity-70">
-          Releasing stamps the {length(epic_stories(@epic))} stories in this epic right now.
-          Stories added afterwards stay parked.
-        </p>
-
-        <div :if={epic_stories(@epic) == []} class="mt-8 card bg-base-200" data-test="empty-state">
-          <div class="card-body">
-            <h2 class="card-title">No stories in this epic</h2>
-            <p>Move stories in from the epics list.</p>
-          </div>
-        </div>
-
-        <ul :if={epic_stories(@epic) != []} class="mt-8 space-y-2">
-          <li
-            :for={story <- epic_stories(@epic)}
-            class="card bg-base-100 border border-base-300"
-            data-test={"epic-story-#{story.id}"}
+    <div :if={!@error && @epic}>
+      <.header>
+        {@epic.name}
+        <:subtitle>{@epic.description}</:subtitle>
+        <:actions>
+          <.link
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/epics")}
+            class="btn btn-ghost btn-sm"
           >
-            <div class="card-body py-3 flex-row items-center justify-between gap-4">
-              <div>
-                <h3 class="font-semibold">{story.title}</h3>
-                <p class="text-sm opacity-70">{story.story || story.description}</p>
-              </div>
+            Back to epics
+          </.link>
+          <button
+            type="button"
+            phx-click="bulk_release"
+            data-test="bulk-release-epic"
+            class="btn btn-primary btn-sm"
+          >
+            Release these stories for development
+          </button>
+          <button
+            type="button"
+            phx-click="bulk_park"
+            data-test="bulk-park-epic"
+            class="btn btn-ghost btn-sm"
+          >
+            Park them
+          </button>
+        </:actions>
+      </.header>
 
-              <div class="flex items-center gap-2">
-                <span
-                  :if={story.ready_for_dev == true}
-                  data-test="story-ready"
-                  class="badge badge-success"
-                >
-                  Ready for development
-                </span>
-                <span
-                  :if={story.ready_for_dev != true}
-                  data-test="story-not-ready"
-                  class="badge badge-ghost"
-                >
-                  Parked
-                </span>
-                <button
-                  type="button"
-                  phx-click="toggle_story_ready"
-                  phx-value-id={story.id}
-                  data-test={"toggle-epic-story-#{story.id}"}
-                  class="btn btn-ghost btn-xs"
-                >
-                  {if story.ready_for_dev == true, do: "Park", else: "Release"}
-                </button>
-              </div>
-            </div>
-          </li>
-        </ul>
+      <p class="mt-2 text-sm opacity-70">
+        Releasing stamps the {length(epic_stories(@epic))} stories in this epic right now.
+        Stories added afterwards stay parked.
+      </p>
+
+      <div :if={epic_stories(@epic) == []} class="mt-8 card bg-base-200" data-test="empty-state">
+        <div class="card-body">
+          <h2 class="card-title">No stories in this epic</h2>
+          <p>Move stories in from the epics list.</p>
+        </div>
       </div>
+
+      <ul :if={epic_stories(@epic) != []} class="mt-8 space-y-2">
+        <li
+          :for={story <- epic_stories(@epic)}
+          class="card bg-base-100 border border-base-300"
+          data-test={"epic-story-#{story.id}"}
+        >
+          <div class="card-body py-3 flex-row items-center justify-between gap-4">
+            <div>
+              <h3 class="font-semibold">{story.title}</h3>
+              <p class="text-sm opacity-70">{story.story || story.description}</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span
+                :if={story.ready_for_dev == true}
+                data-test="story-ready"
+                class="badge badge-success"
+              >
+                Ready for development
+              </span>
+              <span
+                :if={story.ready_for_dev != true}
+                data-test="story-not-ready"
+                class="badge badge-ghost"
+              >
+                Parked
+              </span>
+              <button
+                type="button"
+                phx-click="toggle_story_ready"
+                phx-value-id={story.id}
+                data-test={"toggle-epic-story-#{story.id}"}
+                class="btn btn-ghost btn-xs"
+              >
+                {if story.ready_for_dev == true, do: "Park", else: "Release"}
+              </button>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
     """
   end
-
 end

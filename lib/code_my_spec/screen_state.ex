@@ -41,7 +41,7 @@ defmodule CodeMySpec.ScreenState do
   @doc """
   This person's screen for this project, defaults included.
   """
-  @spec get(map()) :: Screen.t() | %Screen{}
+  @spec get(map()) :: Screen.t()
   def get(scope) do
     case key(scope) do
       nil -> %Screen{}
@@ -57,13 +57,15 @@ defmodule CodeMySpec.ScreenState do
   """
   @spec put(map(), map()) :: {:ok, Screen.t()} | {:error, Ecto.Changeset.t()} | :error
   def put(scope, attrs) do
-    with {user_id, project_id} <- key(scope) do
-      (stored(user_id, project_id) || %Screen{})
-      |> Screen.changeset(attrs, %{user_id: user_id, project_id: project_id})
-      |> Repo.insert_or_update()
-      |> announce(scope)
-    else
-      _ -> :error
+    case key(scope) do
+      {user_id, project_id} ->
+        (stored(user_id, project_id) || %Screen{})
+        |> Screen.changeset(attrs, %{user_id: user_id, project_id: project_id})
+        |> Repo.insert_or_update()
+        |> announce(scope)
+
+      _ ->
+        :error
     end
   end
 
