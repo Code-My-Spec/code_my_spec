@@ -1215,22 +1215,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           treat gaps as missing evidence, not as an idle sprite.
         </p>
 
-        <%!-- What the analyzers are doing, while they are doing it. The agent
-        hears about a run when it lands; the person watching would otherwise
-        see an idle transcript and no reason for it. --%>
-        <div
-          :if={@analysis_running != []}
-          data-test="analysis-running"
-          data-sources={Enum.join(@analysis_running, ",")}
-          class="mb-4 flex items-center gap-3 rounded-box border border-info/40 bg-info/10 p-3 text-sm"
-        >
-          <span class="loading loading-spinner loading-xs text-info"></span>
-          <span>{analysis_label(@analysis_running)}</span>
-          <span class="ml-auto text-xs opacity-60">
-            the agent is told when it lands
-          </span>
-        </div>
-
         <%!-- A pointer, not a second copy of the form. The questions render in
         the transcript at the turn that asked them; this only exists so an
         unanswered one is findable when it is forty turns up. Two live forms for
@@ -1284,6 +1268,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             on_submit="answer_question"
           />
         </div>
+      </div>
+
+      <%!-- What the analyzers are doing, while they are doing it. The agent
+      hears about a run when it lands; the person watching would otherwise see
+      an idle transcript and no reason for it.
+
+      Below the transcript rather than above it, with the other status strips.
+      It was at the top, which is off screen for anyone reading the newest
+      turns — a spinner nobody scrolls back to answers the question nobody is
+      asking. John, watching a turn end: "I don't see any UI element to indicate
+      that the analyzers are running ... I just saw it come back, I think the
+      observable element is rendering, but at the top of the chat pane."
+
+      One copy, not two. A status shown in two places disagrees with itself the
+      moment one of them patches first, which is the trap the question pointer
+      above this file already documents. --%>
+      <div
+        :if={@analysis_running != []}
+        data-test="analysis-running"
+        data-sources={Enum.join(@analysis_running, ",")}
+        class="flex shrink-0 items-center gap-3 border-t border-base-300 pt-3 text-sm"
+      >
+        <span class="loading loading-spinner loading-xs text-info"></span>
+        <span>{analysis_label(@analysis_running)}</span>
+        <span class="ml-auto text-xs opacity-60">
+          the agent is told when it lands
+        </span>
       </div>
 
       <div

@@ -70,7 +70,9 @@ defmodule CodeMySpec.Agents.StopDecision do
       agent.id
     )
 
-    case decide_with_key(scope, agent, opts) do
+    decided = decide_with_key(scope, agent, opts)
+
+    case decided do
       {nil, _key} ->
         :ok
 
@@ -91,12 +93,17 @@ defmodule CodeMySpec.Agents.StopDecision do
         end
     end
 
-    # Beside the decision, not instead of it. On the external path
-    # `nudge_open_task/2` fires via `tap/2` on every stop with an open task,
-    # independently of whether anything blocked — an agent that stops with a
-    # failing compile *and* work open has two different things to act on, and
-    # collapsing them loses one.
-    nudge_open_task(scope, agent)
+    # Beside the decision, not instead of it. An agent that stops with a failing
+    # compile *and* work open has two different things to act on, and collapsing
+    # them loses one — the menu ranks problems above the task, so the directive
+    # is `list_problems` and the task appears only as "Also live: 3 open tasks",
+    # which names neither the requirement nor the id `evaluate_task` needs.
+    #
+    # Only when the decision did not already carry it. When the task *does* win
+    # the directive the menu says the whole thing — "you have an open task, most
+    # recently `bdd_specs_passing` … call `evaluate_task` with task_id" — and a
+    # nudge after it is the same instruction twice in one stop.
+    nudge_open_task(scope, agent, elem(decided, 0))
   rescue
     error ->
       Logger.warning(
@@ -298,7 +305,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # told to make a call and being told to go read about one are different
   # instructions — QA of story 985 found the second reads as somewhere to go
   # looking.
-  defp nudge_open_task(scope, agent) do
+  defp nudge_open_task(scope, agent, decision) do
     # The agent's own list first. It owns its tasks now, so an agent we run has
     # its open work here and never in a session — `Sessions.open_task_for_agent/2`
     # scans active sessions for one assigned to a sub-agent, which is the
@@ -309,6 +316,13 @@ defmodule CodeMySpec.Agents.StopDecision do
         :ok
 
       task ->
+        already_said? = is_binary(decision) and String.contains?(decision, task.id)
+
+        message =
+          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
+            "it is done — nothing will do it for you. " <>
+            ~s(Call `evaluate_task` with task_id: "#{task.id}".)
+
         Conversations.record_orchestrator_action(
           agent,
           "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
@@ -317,7 +331,24 @@ defmodule CodeMySpec.Agents.StopDecision do
           kind: "nudge"
         )
 
-        :ok
+        # Recorded *and* sent, unless the decision already said it. It was only
+        # ever recorded, which made it a message to the transcript rather than
+        # to the agent: it rendered in the conversation, read as an instruction
+        # that had been given, and reached nobody. John, watching a stop: "I
+        # think it's a total red herring and it's not even being delivered to
+        # the agent."
+        #
+        # He was right about the case he was looking at. That agent's menu was
+        # led by 48 problems, so the task was a tally line with no id in it, and
+        # the only message carrying the id went nowhere.
+        #
+        # The external path does not have this bug: there the nudge is part of
+        # the stop hook's own response, which is delivered by definition. Only
+        # an agent we run needed the dispatch.
+        case already_said? do
+          true -> :ok
+          false -> deliver_message(scope, agent, message)
+        end
     end
   end
 
@@ -340,6 +371,14 @@ defmodule CodeMySpec.Agents.StopDecision do
     # anyone was there to hear it. The conversation was opened by `deliver/2`.
     Conversations.record_orchestrator_action(agent, message, kind: "decision")
 
+    deliver_message(scope, agent, message)
+  end
+
+  # The dispatch half, shared. `send_to/3` records a decision and sends it; the
+  # nudge records its own line with its own `kind` and sends through here, so
+  # there is one definition of how a message reaches an agent and no second one
+  # to forget to call.
+  defp deliver_message(scope, agent, message) do
     ref = "stop-decision-" <> Ecto.UUID.generate()
 
     # Off this process, and that is not an optimisation.
