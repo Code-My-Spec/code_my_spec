@@ -11,11 +11,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.BddRules.GherkinRenderer
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
-  alias Anubis.Server.Response
 
   schema do
     field :story_id, :integer,

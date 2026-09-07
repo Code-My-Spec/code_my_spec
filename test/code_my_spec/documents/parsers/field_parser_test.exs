@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Documents.Parsers.FieldParserTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Documents.Parsers.FieldParser
   alias CodeMySpec.Documents.Field
+  alias CodeMySpec.Documents.Parsers.FieldParser
 
   describe "from_ast/1" do
     test "extracts table headers from thead" do

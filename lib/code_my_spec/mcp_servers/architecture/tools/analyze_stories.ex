@@ -11,10 +11,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
   use Anubis.Server.Component, type: :tool
   require Logger
 
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
-  alias Anubis.Server.Response
 
   schema do
   end

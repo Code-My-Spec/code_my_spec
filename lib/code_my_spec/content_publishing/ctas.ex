@@ -46,6 +46,8 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
   """
   use Phoenix.Component
 
+  alias Phoenix.HTML.Safe
+
   @shortcode ~r/\{\{\s*([a-z0-9_]+)\s*((?:[a-z_]+="[^"]*"\s*)*)\}\}/
 
   @doc """
@@ -126,7 +128,7 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
       "aside" -> cta_aside(rendered)
       _ -> cta_card(rendered)
     end
-    |> Phoenix.HTML.Safe.to_iodata()
+    |> Safe.to_iodata()
     |> IO.iodata_to_binary()
     |> flatten_for_earmark()
   end

@@ -10,8 +10,8 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.LocalScope
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(params, _session, socket) do

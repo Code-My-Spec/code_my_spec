@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+
   # The cloud router, because these paths are `/app` ones. `CodeMySpecSpex.Case`
   # verifies against the local router, where they do not exist — which is why
   # every spex in this story compiles with a "no route path" warning per `~p`.
@@ -115,7 +117,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
     {:reply, reply, _frame} =
-      CodeMySpec.McpServers.Agents.Tools.StopAgent.execute(%{"agent_id" => agent_id}, frame)
+      StopAgent.execute(%{"agent_id" => agent_id}, frame)
 
     refute reply.isError, "the stop was refused, so nothing was stopped"
 

@@ -8,8 +8,8 @@ defmodule CodeMySpec.ProjectUsers do
   for enriched user / ICP marketing data.
   """
 
-  alias CodeMySpec.ProjectUsers.{Client, Page}
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.ProjectUsers.{Client, Page}
 
   @doc """
   Lists registered users for a project, one page at a time.

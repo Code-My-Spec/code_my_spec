@@ -21,13 +21,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
-  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.TaskOwner
 
   schema do
     field :task_id, :string,

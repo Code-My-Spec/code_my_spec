@@ -1,9 +1,9 @@
 defmodule CodeMySpec.Documents.MarkdownParserTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Documents.MarkdownParser
-  alias CodeMySpec.Documents.Function
   alias CodeMySpec.Documents.Field
+  alias CodeMySpec.Documents.Function
+  alias CodeMySpec.Documents.MarkdownParser
 
   describe "parse/1 - basic section extraction" do
     test "extracts H2 sections into map with section names as keys" do

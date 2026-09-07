@@ -19,9 +19,9 @@ defmodule CodeMySpec.Mail.Attachments do
 
   require Logger
 
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Mail.{Email, EmailAttachment, ResendClient}
   alias CodeMySpec.Content.S3Client
+  alias CodeMySpec.Mail.{Email, EmailAttachment, ResendClient}
+  alias CodeMySpec.Repo
 
   @doc """
   Store every attachment on an inbound `Email` (matched by its Resend receiving

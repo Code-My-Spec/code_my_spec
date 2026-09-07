@@ -1,17 +1,18 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.StoryTagToolsTest do
   use ExUnit.Case, async: true
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Stories.Tools.ListProjectTags
   alias CodeMySpec.McpServers.Stories.Tools.TagStories
   alias CodeMySpec.Tags
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
+  alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   defp get_text(response) do

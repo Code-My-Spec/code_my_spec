@@ -21,6 +21,9 @@ defmodule CodeMySpec.GoogleAuthHelper do
       "ya29.a0AfH6SMBw..."
 
   """
+
+  alias GoogleApi.AnalyticsAdmin.V1beta.Connection
+
   def get_token do
     cond do
       access_token = System.get_env("GOOGLE_ACCESS_TOKEN") ->
@@ -101,6 +104,6 @@ defmodule CodeMySpec.GoogleAuthHelper do
   """
   def get_connection do
     token = get_token()
-    GoogleApi.AnalyticsAdmin.V1beta.Connection.new(token)
+    Connection.new(token)
   end
 end

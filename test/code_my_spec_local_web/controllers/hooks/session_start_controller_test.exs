@@ -5,8 +5,8 @@ defmodule CodeMySpecLocalWeb.Hooks.SessionStartControllerTest do
   import Plug.Conn
   import Plug.Test
 
-  alias CodeMySpecLocalWeb.Hooks.SessionStartController
   alias CodeMySpec.Sessions
+  alias CodeMySpecLocalWeb.Hooks.SessionStartController
 
   setup do
     scope = full_scope_fixture()

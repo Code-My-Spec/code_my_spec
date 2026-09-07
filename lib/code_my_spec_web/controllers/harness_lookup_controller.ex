@@ -20,9 +20,9 @@ defmodule CodeMySpecWeb.HarnessLookupController do
 
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
 

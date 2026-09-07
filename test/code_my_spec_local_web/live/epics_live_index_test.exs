@@ -21,10 +21,12 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Ecto.Adapters.SQL.Sandbox
+
   @endpoint CodeMySpecLocalWeb.Endpoint
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
     :ok
   end
 

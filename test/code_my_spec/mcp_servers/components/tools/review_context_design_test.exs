@@ -1,12 +1,13 @@
 defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesignTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Components.Tools.ReviewContextDesign
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ReviewContextDesign
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "ReviewContextDesign tool" do

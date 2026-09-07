@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Environments
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.{BootstrapMapper, Installers}
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Projects.Project

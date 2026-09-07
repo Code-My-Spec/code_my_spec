@@ -3,6 +3,7 @@ defmodule CodeMySpec.DocumentsTest do
   doctest CodeMySpec.Documents
 
   alias CodeMySpec.Documents
+  alias CodeMySpec.Environments.Environment
 
   describe "create_dynamic_document/2" do
     test "creates a valid schema document from markdown" do
@@ -405,7 +406,7 @@ defmodule CodeMySpec.DocumentsTest do
                Documents.validate_internal_dependencies(
                  content,
                  tmp_dir,
-                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+                 Environment.new(:local, File.cwd!())
                )
     end
 
@@ -423,7 +424,7 @@ defmodule CodeMySpec.DocumentsTest do
                Documents.validate_internal_dependencies(
                  content,
                  tmp_dir,
-                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+                 Environment.new(:local, File.cwd!())
                )
 
       assert length(warnings) == 1
@@ -446,7 +447,7 @@ defmodule CodeMySpec.DocumentsTest do
                Documents.validate_internal_dependencies(
                  content,
                  tmp_dir,
-                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+                 Environment.new(:local, File.cwd!())
                )
     end
 
@@ -465,7 +466,7 @@ defmodule CodeMySpec.DocumentsTest do
                Documents.validate_internal_dependencies(
                  content,
                  tmp_dir,
-                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+                 Environment.new(:local, File.cwd!())
                )
 
       assert length(warnings) == 1

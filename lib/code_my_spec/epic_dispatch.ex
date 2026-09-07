@@ -42,13 +42,13 @@ defmodule CodeMySpec.EpicDispatch do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Agents
   alias CodeMySpec.WorkingCopies
 
   @type dispatch_state ::

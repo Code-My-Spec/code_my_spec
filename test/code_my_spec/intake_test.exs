@@ -5,9 +5,9 @@ defmodule CodeMySpec.IntakeTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Personas
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Plan
+  alias CodeMySpec.Personas
   alias CodeMySpec.Projects
   alias CodeMySpec.Repo
 

@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Sessions
 
   schema do

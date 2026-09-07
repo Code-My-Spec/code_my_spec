@@ -49,8 +49,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
 
   @question "Which approach do you want here?"
 

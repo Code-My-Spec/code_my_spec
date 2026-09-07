@@ -2,11 +2,12 @@ defmodule CodeMySpec.McpServers.Components.Tools.ListComponentsTest do
   use ExUnit.Case, async: true
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ListComponents
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "ListComponents tool" do

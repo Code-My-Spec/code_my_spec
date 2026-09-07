@@ -4,8 +4,8 @@ defmodule CodeMySpec.ComponentsFixtures do
   entities via the `CodeMySpec.Components` context.
   """
 
-  alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Repo
 
   @doc """

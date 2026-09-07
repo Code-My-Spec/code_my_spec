@@ -24,6 +24,7 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
@@ -70,7 +71,7 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
       )
 
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         provider: provider,
         engine: :alloy,
         working_copy: "/tmp/cap-#{System.unique_integer([:positive])}",

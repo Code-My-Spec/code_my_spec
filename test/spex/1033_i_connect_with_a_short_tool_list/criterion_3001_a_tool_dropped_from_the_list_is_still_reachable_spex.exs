@@ -12,8 +12,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3001Spex do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.CodeMode.Catalog
-  alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
+  alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account

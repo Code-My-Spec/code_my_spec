@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.OrchestratorActionRendersTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -27,7 +28,7 @@ defmodule CodeMySpecWeb.OrchestratorActionRendersTest do
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

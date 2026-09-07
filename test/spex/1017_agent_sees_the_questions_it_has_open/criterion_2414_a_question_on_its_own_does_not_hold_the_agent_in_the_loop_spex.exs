@@ -64,8 +64,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpecSpex.FullSatisfactionFixtures
 
   setup :register_log_in_setup_account

@@ -27,6 +27,7 @@ defmodule CodeMySpec.Integrations do
   - `normalize_user/1` - Transforms provider user data to domain model
   """
 
+  alias Assent.Strategy.OAuth2
   alias CodeMySpec.Integrations.{Integration, IntegrationRepository}
   alias CodeMySpec.Integrations.Providers.ApiKey
   alias CodeMySpec.Repo
@@ -408,7 +409,7 @@ defmodule CodeMySpec.Integrations do
         user_config
       end
 
-    Assent.Strategy.OAuth2.refresh_access_token(config, %{"refresh_token" => refresh_token})
+    OAuth2.refresh_access_token(config, %{"refresh_token" => refresh_token})
   end
 
   defp persist_refreshed_token(scope, provider, integration, token_response) do

@@ -34,6 +34,7 @@ defmodule CodeMySpec.LiveInboundTest do
   @moduletag :live
   @moduletag timeout: 900_000
 
+  alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
@@ -53,7 +54,7 @@ defmodule CodeMySpec.LiveInboundTest do
 
     for {provider, token} <- [resend: resend, cloudflare: cloudflare] do
       {:ok, _} =
-        CodeMySpec.Integrations.IntegrationRepository.upsert_integration(scope, provider, %{
+        IntegrationRepository.upsert_integration(scope, provider, %{
           access_token: token,
           refresh_token: nil,
           expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),

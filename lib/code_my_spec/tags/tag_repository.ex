@@ -7,8 +7,8 @@ defmodule CodeMySpec.Tags.TagRepository do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Tags.Tag
   alias CodeMySpec.Tags.StoryTag
+  alias CodeMySpec.Tags.Tag
   alias CodeMySpec.Users.Scope
 
   # Tag Operations

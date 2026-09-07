@@ -25,8 +25,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblems do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
-  alias CodeMySpec.Problems
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Problems
 
   schema do
     field :file_paths, {:list, :string},

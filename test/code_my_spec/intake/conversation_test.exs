@@ -16,6 +16,7 @@ defmodule CodeMySpec.Intake.ConversationTest do
 
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Conversation
+  alias Ecto.Adapters.SQL.Sandbox
 
   defmodule SlowShaper do
     @moduledoc false
@@ -36,7 +37,7 @@ defmodule CodeMySpec.Intake.ConversationTest do
     # Shared mode, so the conversation and the task it owns can both see the
     # connection. Allowing them one at a time raced: the task is spawned by the
     # conversation, after any grant the test could make.
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     previous = Application.get_env(:code_my_spec, Intake, [])
 

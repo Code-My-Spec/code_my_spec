@@ -9,11 +9,11 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.ProjectsFixtures
 
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.{Scope, User}
+  alias CodeMySpec.WorkingCopies
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "hello world!"

@@ -15,10 +15,13 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
     %{scope: full_scope_fixture()}
   end
 
@@ -44,7 +47,7 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
 
     test "a scope whose project is nil does not silently pass through" do
       user = user_fixture()
-      scope = CodeMySpec.Users.Scope.for_user(user)
+      scope = Scope.for_user(user)
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -68,13 +71,13 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
         )
 
       refute create_response.isError,
-             inspect(Anubis.Server.Response.to_protocol(create_response))
+             inspect(Response.to_protocol(create_response))
 
       {:reply, list_response, _} = ListStoryTitles.execute(%{}, frame)
 
       refute list_response.isError
 
-      text = list_response |> Anubis.Server.Response.to_protocol() |> get_in(["content"]) |> hd()
+      text = list_response |> Response.to_protocol() |> get_in(["content"]) |> hd()
 
       assert text["text"] =~ "Watch a sprite from the server",
              "a story tool must round-trip with no working directory anywhere in the frame"

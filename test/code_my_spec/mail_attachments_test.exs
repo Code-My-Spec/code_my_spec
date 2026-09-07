@@ -11,9 +11,9 @@ defmodule CodeMySpec.MailAttachmentsTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Mail
   alias CodeMySpec.Mail.{Attachments, EmailAttachment, ResendClient}
-  alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Repo
 
   @domain "att.example.com"

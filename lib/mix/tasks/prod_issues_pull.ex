@@ -43,6 +43,7 @@ defmodule Mix.Tasks.ProdIssues.Pull do
   use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
+  alias Ecto.Adapters.SQL
 
   @prod_url "https://codemyspec.com"
   @token_path "~/.codemyspec/prod_token"
@@ -206,7 +207,7 @@ defmodule Mix.Tasks.ProdIssues.Pull do
       now
     ]
 
-    result = Ecto.Adapters.SQL.query!(CodeMySpec.Repo, sql, params)
+    result = SQL.query!(CodeMySpec.Repo, sql, params)
     {:ok, result.num_rows}
   end
 

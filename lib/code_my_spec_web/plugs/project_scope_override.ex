@@ -24,9 +24,9 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.WorkingCopies
 
   @behaviour Plug
 

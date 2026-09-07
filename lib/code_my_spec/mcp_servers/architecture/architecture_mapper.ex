@@ -1,9 +1,9 @@
 defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
   @moduledoc false
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Architecture.StoryAnalyzer
   alias CodeMySpec.McpServers.Formatters
-  alias Anubis.Server.Response
 
   def story_analysis_response(analysis) do
     markdown = StoryAnalyzer.format_as_markdown(analysis)

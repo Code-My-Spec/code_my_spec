@@ -37,6 +37,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   """
 
   alias Anubis.Server.{Frame, Response}
+  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.ScriptResult
@@ -193,7 +194,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
       # around it came to be the same thirty seconds with nobody noticing.
       timeout: call_timeout,
       invoke: fn args ->
-        CodeMySpec.Agents.Transport.impl().call_machine_tool(
+        Transport.impl().call_machine_tool(
           scope.active_working_copy_id,
           name,
           args,

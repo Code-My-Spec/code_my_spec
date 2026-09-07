@@ -25,6 +25,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
 
@@ -162,7 +163,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
       )
 
       assert {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
-      assert {:ok, _} = CodeMySpec.Files.ComponentSync.sync_from_files(scope)
+      assert {:ok, _} = ComponentSync.sync_from_files(scope)
 
       impl = Files.get_by_path(scope, "lib/my_app/tasks.ex")
 
@@ -195,7 +196,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
       File.write!(impl, "defmodule MyApp.CoreComponents do\nend\n")
 
       assert {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
-      assert {:ok, _} = CodeMySpec.Files.ComponentSync.sync_from_files(scope)
+      assert {:ok, _} = ComponentSync.sync_from_files(scope)
 
       record = Files.get_by_path(scope, "lib/my_app/components/core_components.ex")
 

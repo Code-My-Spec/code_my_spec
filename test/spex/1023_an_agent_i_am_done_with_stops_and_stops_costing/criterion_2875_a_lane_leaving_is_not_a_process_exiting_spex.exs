@@ -22,9 +22,9 @@ defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
 
   import CodeMySpecSpex.AgentProcessHelpers
 
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessChannel
   alias CodeMySpecWeb.UserSocket
-  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account

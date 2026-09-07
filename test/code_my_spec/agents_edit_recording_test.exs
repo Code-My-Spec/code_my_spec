@@ -15,11 +15,12 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.FileEdits
 
   defp running_agent(scope) do
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         engine: :alloy,
         provider: "zai",
         role: "coding",

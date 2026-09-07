@@ -10,6 +10,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
 
   setup [:register_log_in_setup_account]
@@ -217,7 +218,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope = %{scope | active_project: project, active_project_id: project.id}
 
       {:ok, agent} =
-        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        AgentsRepository.create_agent(scope, %{
           engine: :alloy,
           provider: "zai",
           working_copy: root,

@@ -21,8 +21,8 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems.ProblemRepository
+  alias CodeMySpec.WorkingCopies
 
   defp problem(path) do
     %{

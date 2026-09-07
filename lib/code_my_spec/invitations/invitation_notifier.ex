@@ -2,8 +2,8 @@ defmodule CodeMySpec.Invitations.InvitationNotifier do
   @moduledoc false
   import Swoosh.Email
 
-  alias CodeMySpec.Mailer
   alias CodeMySpec.Invitations.Invitation
+  alias CodeMySpec.Mailer
 
   def deliver_invitation_email(%Invitation{} = invitation, url) do
     deliver(

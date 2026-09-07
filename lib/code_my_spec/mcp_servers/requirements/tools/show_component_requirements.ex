@@ -5,10 +5,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements.RequirementGraph
 
   schema do
     field :component, :string, required: true, description: "Component module name (e.g. 'MyApp.Accounts') or component ID"
@@ -64,7 +65,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements do
     #{lines}
     """
 
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(String.trim(text))
+    Response.tool()
+    |> Response.text(String.trim(text))
   end
 end

@@ -8,9 +8,9 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   """
 
   import Ecto.Query
+  alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Integrations.Integration
 
   @type provider :: :github | :gitlab | :bitbucket | :google
   @type integration_attrs :: %{

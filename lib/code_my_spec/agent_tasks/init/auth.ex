@@ -3,6 +3,8 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
   Init step: authenticate with CodeMySpec.
   """
 
+  alias CodeMySpec.Auth.OAuthClient
+
   def evaluate(_scope, _task) do
     if auth_ok?() do
       {:ok, :valid}
@@ -27,12 +29,10 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
   end
 
   defp auth_ok? do
-    try do
-      CodeMySpec.Auth.OAuthClient.authenticated?()
-    rescue
-      _ -> false
-    catch
-      _, _ -> false
-    end
+    OAuthClient.authenticated?()
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
   end
 end

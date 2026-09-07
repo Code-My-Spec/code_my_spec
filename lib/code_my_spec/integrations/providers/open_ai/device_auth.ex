@@ -49,6 +49,8 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
   that is why.
   """
 
+  alias CodeMySpec.Integrations.Providers.OpenAI
+
   @auth_base "https://auth.openai.com"
   @originator "pi"
   @verification_uri "#{@auth_base}/codex/device"
@@ -123,7 +125,7 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
 
   # One definition, in the provider. Two copies of a client id drift, and the
   # drift shows up as a redirect the registration does not recognise.
-  defp client_id, do: CodeMySpec.Integrations.Providers.OpenAI.client_id()
+  defp client_id, do: OpenAI.client_id()
 
   # One place the plug is applied, so a test pins this the way every other Req
   # client here is pinned rather than reaching the network.

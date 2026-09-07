@@ -9,8 +9,8 @@ defmodule CodeMySpecWeb.ConversationAttachmentController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Content.S3Client
-  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
 
   def show(conn, %{"message_id" => message_id, "index" => index}) do
     scope = conn.assigns.current_scope

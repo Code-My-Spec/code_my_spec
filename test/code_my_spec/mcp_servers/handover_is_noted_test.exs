@@ -20,9 +20,10 @@ defmodule CodeMySpec.McpServers.HandoverIsNotedTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     scope = full_scope_fixture()
     integration_fixture(scope.user, %{provider: :anthropic})

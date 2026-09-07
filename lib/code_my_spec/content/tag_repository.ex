@@ -9,8 +9,8 @@ defmodule CodeMySpec.Content.TagRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.Content.Tag
+  alias CodeMySpec.Repo
 
   @spec upsert_tag(String.t()) :: {:ok, Tag.t()} | {:error, Ecto.Changeset.t()}
   def upsert_tag(name) do

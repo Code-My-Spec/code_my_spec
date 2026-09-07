@@ -23,8 +23,8 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
   import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint

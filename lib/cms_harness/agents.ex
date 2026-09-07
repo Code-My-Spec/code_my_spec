@@ -23,6 +23,7 @@ defmodule CmsHarness.Agents do
   """
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Project.ChannelClient
 
   @doc """
   Start the agent this request describes.
@@ -230,7 +231,7 @@ defmodule CmsHarness.Agents do
   # there is nowhere to report to.
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
-      CmsHarness.Project.ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+      ChannelClient.report_turn_event(working_copy, agent_id, envelope)
     end
   end
 

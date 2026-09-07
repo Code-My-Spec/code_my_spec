@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -70,7 +71,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3038Spex do
         # that does not check its own reply turns that into a `then_` failing
         # for the wrong reason.
         {:reply, response, _frame} =
-          CodeMySpec.McpServers.Tasks.Tools.StartTask.execute(
+          StartTask.execute(
             %{
               # Work the session has not already handed over. The shared given
               # starts the component's own chain, and re-reading the prompt for

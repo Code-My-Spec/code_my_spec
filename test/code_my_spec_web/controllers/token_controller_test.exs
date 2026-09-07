@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.TokenControllerTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AppTokens
+  alias CodeMySpecWeb.Plugs.AppToken
 
   setup %{conn: conn} do
     scope = full_scope_fixture()
@@ -51,7 +52,7 @@ defmodule CodeMySpecWeb.TokenControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer #{token}")
-        |> CodeMySpecWeb.Plugs.AppToken.call([])
+        |> AppToken.call([])
 
       refute conn.halted
       assert conn.assigns.app_token_project_id == project.id
@@ -64,14 +65,14 @@ defmodule CodeMySpecWeb.TokenControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer the-refresh-secret")
-        |> CodeMySpecWeb.Plugs.AppToken.call([])
+        |> AppToken.call([])
 
       assert conn.halted
       assert json_response(conn, 401)["reason"] == "invalid"
     end
 
     test "no credential at all is refused", %{conn: conn} do
-      conn = CodeMySpecWeb.Plugs.AppToken.call(conn, [])
+      conn = AppToken.call(conn, [])
 
       assert conn.halted
       assert json_response(conn, 401)["reason"] == "invalid"
@@ -90,7 +91,7 @@ defmodule CodeMySpecWeb.TokenControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer #{old}")
-        |> CodeMySpecWeb.Plugs.AppToken.call([])
+        |> AppToken.call([])
 
       assert conn.halted
       assert json_response(conn, 401)["reason"] == "expired"

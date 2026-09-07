@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpecWeb.HarnessProjectChannel
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -112,7 +113,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     # noticing.
     reply =
       Map.put(
-        CmsHarness.Project.ChannelClient.encode_start_result({:ok, %{agent_id: "agent-99"}}),
+        ChannelClient.encode_start_result({:ok, %{agent_id: "agent-99"}}),
         "ref",
         pushed["ref"]
       )

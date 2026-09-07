@@ -3,13 +3,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias CodeMySpec.McpServers.Stories.Tools.ListStories
-  alias CodeMySpec.Tags
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Stories.Tools.ListStories
+  alias CodeMySpec.Tags
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "ListStories tool" do

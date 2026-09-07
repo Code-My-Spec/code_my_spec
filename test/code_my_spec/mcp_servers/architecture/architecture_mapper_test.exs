@@ -1,12 +1,13 @@
 defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapperTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "spec_created/2" do

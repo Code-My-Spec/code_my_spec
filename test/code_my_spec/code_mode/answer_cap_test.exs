@@ -25,6 +25,7 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
 
   use ExUnit.Case, async: true
 
+  alias CmsHarness.Agents.Tools.RunScript
   alias CodeMySpec.CodeMode
 
   describe "an answer within the cap" do
@@ -90,7 +91,7 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
 
   describe "both tools use this number" do
     test "the harness tool reports the same cap" do
-      assert CmsHarness.Agents.Tools.RunScript.max_result_chars() ==
+      assert RunScript.max_result_chars() ==
                CodeMode.max_answer_bytes(),
              "two numbers is how the two paths came to disagree in the first place."
     end

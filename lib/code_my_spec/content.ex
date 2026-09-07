@@ -28,8 +28,8 @@ defmodule CodeMySpec.Content do
 
   require Logger
 
+  alias CodeMySpec.Content.{Content, ContentRepository, ContentTag, Tag}
   alias CodeMySpec.Repo
-  alias CodeMySpec.Content.{Content, Tag, ContentTag, ContentRepository}
   alias CodeMySpec.Users.Scope
 
   @type content_type :: :blog | :page | :landing | :documentation

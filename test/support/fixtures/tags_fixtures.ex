@@ -4,10 +4,10 @@ defmodule CodeMySpec.TagsFixtures do
   entities via the `CodeMySpec.Tags` context.
   """
 
-  alias CodeMySpec.Tags
-  alias CodeMySpec.Tags.Tag
-  alias CodeMySpec.Tags.StoryTag
   alias CodeMySpec.Repo
+  alias CodeMySpec.Tags
+  alias CodeMySpec.Tags.StoryTag
+  alias CodeMySpec.Tags.Tag
 
   @doc """
   Generate a tag with valid attributes.

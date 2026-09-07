@@ -7,8 +7,8 @@ defmodule CodeMySpec.Tests.TestRun do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Tests.TestStats
   alias CodeMySpec.Tests.TestResult
+  alias CodeMySpec.Tests.TestStats
 
   @derive Jason.Encoder
 

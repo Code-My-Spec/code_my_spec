@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Architecture
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -31,8 +32,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
         mermaid = Architecture.generate_mermaid(components)
 
         {:reply,
-         Anubis.Server.Response.tool()
-         |> Anubis.Server.Response.text(mermaid), frame}
+         Response.tool()
+         |> Response.text(mermaid), frame}
 
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}

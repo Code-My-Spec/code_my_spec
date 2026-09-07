@@ -24,8 +24,8 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.WorkingCopies
 
   @endpoint CodeMySpecWeb.Endpoint
 

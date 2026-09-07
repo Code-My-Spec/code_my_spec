@@ -3,10 +3,10 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
   end

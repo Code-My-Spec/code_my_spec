@@ -18,8 +18,8 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems
+  alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account]
 

@@ -3,13 +3,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, UpdateCriterion, DeleteCriterion}
-  alias CodeMySpec.AcceptanceCriteria
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, DeleteCriterion, UpdateCriterion}
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "AddCriterion" do

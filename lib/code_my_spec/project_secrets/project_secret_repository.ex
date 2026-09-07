@@ -10,8 +10,8 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecretRepository do
 
   import Ecto.Query
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.ProjectSecrets.ProjectSecret
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @spec fetch(Scope.t(), String.t(), String.t()) ::

@@ -16,6 +16,7 @@ defmodule CodeMySpec.ConversationsOrchestratorActionTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
 
@@ -23,7 +24,7 @@ defmodule CodeMySpec.ConversationsOrchestratorActionTest do
     scope = full_scope_fixture()
 
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         engine: :alloy,
         provider: "anthropic",
         working_copy: "/workspace/app",
@@ -95,7 +96,7 @@ defmodule CodeMySpec.ConversationsOrchestratorActionTest do
 
   test "an agent with no conversation is not an error", %{scope: scope} do
     {:ok, unwatched} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         engine: :alloy,
         provider: "anthropic",
         working_copy: "/workspace/unwatched",

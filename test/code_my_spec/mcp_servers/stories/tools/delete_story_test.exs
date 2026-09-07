@@ -1,13 +1,14 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStoryTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Stories.Tools.DeleteStory
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Stories.Tools.DeleteStory
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "DeleteStory tool" do

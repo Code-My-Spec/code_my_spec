@@ -18,11 +18,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   require Logger
 
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
-  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry

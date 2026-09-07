@@ -22,8 +22,8 @@ defmodule CodeMySpec.Requirements.OrphansArePerWorkingCopyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Requirements.ArchitectureChecker
+  alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do

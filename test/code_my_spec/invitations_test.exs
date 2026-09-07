@@ -1,9 +1,9 @@
 defmodule CodeMySpec.InvitationsTest do
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Invitations
   alias CodeMySpec.Invitations.Invitation
-  alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Users.User
 
   import CodeMySpec.AccountsFixtures

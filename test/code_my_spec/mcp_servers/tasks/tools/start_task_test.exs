@@ -9,9 +9,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2 — happy path" do

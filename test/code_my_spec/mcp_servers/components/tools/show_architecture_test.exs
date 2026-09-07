@@ -7,8 +7,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitectureTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
 
-  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
 
   # `ShowArchitecture` returns a Mermaid `flowchart TD` (see
   # `Architecture.MermaidProjector`). The projector filters components

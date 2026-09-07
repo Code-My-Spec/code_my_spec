@@ -11,6 +11,7 @@ defmodule CodeMySpec.StaticAnalysis do
   Called by `Validation` context — never call `Pipeline` directly.
   """
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.{Pipeline, Runner}
 
   defdelegate list_analyzers(), to: Runner
@@ -42,6 +43,6 @@ defmodule CodeMySpec.StaticAnalysis do
           CodeMySpec.Environments.Environment.t()
   def resolve_environment(opts, scope, cwd) do
     opts[:environment] || scope.environment ||
-      CodeMySpec.Environments.Environment.new(:local, cwd)
+      Environment.new(:local, cwd)
   end
 end

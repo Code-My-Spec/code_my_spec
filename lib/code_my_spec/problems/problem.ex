@@ -9,8 +9,8 @@ defmodule CodeMySpec.Problems.Problem do
   import Ecto.Changeset
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @type t :: %__MODULE__{
           id: integer() | nil,

@@ -22,9 +22,9 @@ defmodule CodeMySpecLocalWeb.HarnessController do
 
   require Logger
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   def register(conn, params) do
     with {:ok, project_id} <- require_param(params, "project_id"),

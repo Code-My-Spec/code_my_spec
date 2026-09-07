@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
@@ -274,8 +275,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
   defp score_to_health_level(_), do: :poor
 
   defp health_response(health_summary) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.json(%{
+    Response.tool()
+    |> Response.json(%{
       architecture_health: health_summary
     })
   end

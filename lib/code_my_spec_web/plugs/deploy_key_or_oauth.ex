@@ -26,9 +26,9 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.UserAuth
 
   require Logger

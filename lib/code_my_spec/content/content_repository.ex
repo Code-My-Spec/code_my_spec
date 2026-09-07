@@ -11,8 +11,8 @@ defmodule CodeMySpec.Content.ContentRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.Content.Content
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @type scope :: Scope.t()

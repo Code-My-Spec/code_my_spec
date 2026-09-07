@@ -12,6 +12,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.Agents.SystemPrompt
+  alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.RoleBrief
 
   defp copy_with_guide(contents) do
@@ -71,7 +72,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
         working_copy: "/tmp/a-copy"
       }
 
-      request = CodeMySpec.Agents.LaunchRequest.for(agent)
+      request = LaunchRequest.for(agent)
 
       assert request["role_brief"] == RoleBrief.for(:product), """
       The launch request does not carry the role brief, so the harness has
@@ -89,7 +90,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
         working_copy: "/tmp/a-copy"
       }
 
-      request = CodeMySpec.Agents.LaunchRequest.for(agent)
+      request = LaunchRequest.for(agent)
 
       assert Map.has_key?(request, "role_brief")
       assert request["role_brief"] == nil

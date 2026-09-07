@@ -21,15 +21,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
-  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.TaskOwner
 
   schema do
     field :requirement_name, :string,

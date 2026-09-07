@@ -1,14 +1,15 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
   use ExUnit.Case, async: true
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpec.Tags
-  alias Anubis.Server.Frame
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "UpdateStory tool" do

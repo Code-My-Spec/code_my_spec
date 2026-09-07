@@ -28,8 +28,8 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
 
   alias Anubis.Server.Response
   alias CodeMySpec.CodeMode
-  alias CodeMySpec.McpServers.AgentAlert
   alias CodeMySpec.CodeMode.Result
+  alias CodeMySpec.McpServers.AgentAlert
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.Validators
 

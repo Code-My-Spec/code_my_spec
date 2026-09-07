@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignTask do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Sessions
@@ -47,7 +48,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignTask do
       - Requirement: #{task.requirement_name}
       """
 
-      response = Anubis.Server.Response.tool() |> Anubis.Server.Response.text(text)
+      response = Response.tool() |> Response.text(text)
       {:reply, response, frame}
     else
       {:error, reason} ->

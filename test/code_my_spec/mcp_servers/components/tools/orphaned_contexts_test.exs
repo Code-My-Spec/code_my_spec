@@ -2,11 +2,12 @@ defmodule CodeMySpec.McpServers.Components.Tools.OrphanedContextsTest do
   use ExUnit.Case, async: true
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.McpServers.Components.Tools.OrphanedContexts
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.OrphanedContexts
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "OrphanedContexts tool" do

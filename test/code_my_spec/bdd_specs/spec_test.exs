@@ -1,8 +1,8 @@
 defmodule CodeMySpec.BddSpecs.SpecTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.BddSpecs.Spec
   alias CodeMySpec.BddSpecs.Scenario
+  alias CodeMySpec.BddSpecs.Spec
 
   describe "changeset/2" do
     test "returns valid changeset when name and file_path are provided" do

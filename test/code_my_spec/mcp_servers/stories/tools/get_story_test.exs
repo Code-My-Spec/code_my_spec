@@ -1,13 +1,15 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias Anubis.Server.Frame
+  alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Stories.Tools.GetStory
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "GetStory tool" do
@@ -32,7 +34,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
       assert response.type == :tool
       assert response.isError == true
 
-      protocol = Anubis.Server.Response.to_protocol(response)
+      protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
       assert content =~ "not found"
     end

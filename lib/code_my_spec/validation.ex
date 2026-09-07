@@ -43,8 +43,8 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
   # Everything else in a resolved analyzer set runs in-process (fast) inside

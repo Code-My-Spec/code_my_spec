@@ -9,8 +9,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Agents
+  alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Sessions
 
   schema do

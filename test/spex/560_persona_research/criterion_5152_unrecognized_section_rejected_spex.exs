@@ -10,6 +10,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5152Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -65,7 +66,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5152Spex do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          CodeMySpec.McpServers.Tasks.Tools.EvaluateTask.execute(
+          EvaluateTask.execute(
             %{task_id: context.task_id, session_id: context.session_id},
             frame
           )

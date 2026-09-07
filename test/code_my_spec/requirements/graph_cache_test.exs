@@ -14,8 +14,8 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.CachedGraph
   alias CodeMySpec.Requirements.Difference
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
 

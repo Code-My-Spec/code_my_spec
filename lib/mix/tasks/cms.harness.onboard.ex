@@ -83,6 +83,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
+  alias Ecto.Adapters.SQL
 
   @settings_file ".claude/settings.local.json"
   @harness_config_file ".cms_harness.json"
@@ -306,7 +307,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # tuple rather than raising, is.
   defp reachable_repo do
     with :ok <- start_local_repo(),
-         {:ok, _result} <- Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT 1", []) do
+         {:ok, _result} <- SQL.query(CodeMySpec.Repo, "SELECT 1", []) do
       :ok
     else
       {:error, reason} -> {:error, reason}

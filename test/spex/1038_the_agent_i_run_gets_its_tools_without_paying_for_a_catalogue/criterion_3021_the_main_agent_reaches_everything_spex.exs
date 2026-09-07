@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3021Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3021Spex do
       then_ "it is every tool, because it is the one that checks the others", context do
         assert {:ok, body} = context.reply
 
-        every = CodeMySpec.McpServers.ScriptableTools.__components__() |> Enum.count()
+        every = ScriptableTools.__components__() |> Enum.count()
         listed = body |> String.split("\n") |> Enum.count(&String.match?(&1, ~r/^\s+\w+ —/))
 
         assert listed >= every,

@@ -12,15 +12,15 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Agents
-  alias CodeMySpec.Requirements.Registry
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements.Registry
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 

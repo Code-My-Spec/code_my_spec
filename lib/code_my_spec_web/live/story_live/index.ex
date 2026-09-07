@@ -2,8 +2,8 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Stories
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Stories.Markdown
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def render(assigns) do

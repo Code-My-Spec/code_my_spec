@@ -15,7 +15,9 @@ defmodule CodeMySpec.ConversationsResumeTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
 
   setup do
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
@@ -23,7 +25,7 @@ defmodule CodeMySpec.ConversationsResumeTest do
     copy_id = CodeMySpec.WorkingCopies.ensure_default(scope)
 
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         provider: "zai",
         working_copy: "/tmp/a-copy",
         role: "main",
@@ -172,7 +174,7 @@ defmodule CodeMySpec.ConversationsResumeTest do
       texts =
         conversation
         |> Conversations.list_messages()
-        |> Enum.map(&CodeMySpec.Conversations.Message.text/1)
+        |> Enum.map(&Message.text/1)
 
       assert texts == ["the first thing"],
              "the summary was written into the transcript. A person scrolling back would " <>

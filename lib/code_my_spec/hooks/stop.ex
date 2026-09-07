@@ -23,12 +23,12 @@ defmodule CodeMySpec.Hooks.Stop do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
-  alias CodeMySpec.Agents
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions

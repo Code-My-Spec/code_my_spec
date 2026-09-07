@@ -86,11 +86,11 @@ defmodule CodeMySpecSpex.Drill do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.AccountSecrets
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Sops
   alias CodeMySpec.Provisioning.Teardown
-  alias CodeMySpec.ProjectSecrets
   alias CodeMySpecSpex.Fixtures
 
   # Long enough for the full plan against cold infrastructure. The walk does not

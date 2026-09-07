@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummaryTest d
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary
 
   describe "ArchitectureHealthSummary tool" do
     setup do

@@ -18,9 +18,9 @@ defmodule CodeMySpec.Requirements.ProjectionWriteOutcomeTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Repo
 
   test "a successful computation writes rows and says so" do
     scope = full_scope_fixture()

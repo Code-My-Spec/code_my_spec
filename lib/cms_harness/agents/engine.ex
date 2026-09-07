@@ -45,6 +45,7 @@ defmodule CmsHarness.Agents.Engine do
 
   require Logger
 
+  alias Alloy.Agent.Server
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
@@ -257,7 +258,7 @@ defmodule CmsHarness.Agents.Engine do
       # proxy would park the engine on a call that can take a whole turn, and an
       # agent that cannot be sent anything while somebody reads its history is
       # the failure the turn-in-a-task shape exists to avoid.
-      {:ok, Alloy.Agent.Server.messages(alloy)}
+      {:ok, Server.messages(alloy)}
     end
   catch
     :exit, {:timeout, _} -> {:error, :busy}
@@ -319,7 +320,7 @@ defmodule CmsHarness.Agents.Engine do
     # the right thing for a session's failure to reach, and nothing above it is.
     {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
 
-    case Alloy.Agent.Server.start_link(alloy_opts) do
+    case Server.start_link(alloy_opts) do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
 
@@ -617,14 +618,14 @@ defmodule CmsHarness.Agents.Engine do
   defp run_turn(%{on_event: nil} = state, message, timeout) do
     # Nobody is listening, so there is nothing to stream to. Answering the
     # caller is still the job.
-    Alloy.Agent.Server.chat(state.alloy, message, timeout: timeout)
+    Server.chat(state.alloy, message, timeout: timeout)
   end
 
   defp run_turn(state, message, timeout) do
     report = state.on_event
     agent_id = state.agent_id
 
-    Alloy.Agent.Server.stream_chat(
+    Server.stream_chat(
       state.alloy,
       message,
       fn _chunk -> :ok end,

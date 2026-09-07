@@ -4,8 +4,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   # must not do — the watcher runs in its own process and needs to see the data.
   use CodeMySpecTest.DataCase, async: false
 
-  alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Dependencies
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ProjectSync.FileWatcherServer
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
@@ -24,7 +25,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     scope = %{
       scope
       | cwd: tmp_dir,
-        environment: CodeMySpec.Environments.Environment.new(:local, tmp_dir)
+        environment: Environment.new(:local, tmp_dir)
     }
 
     on_exit(fn -> File.rm_rf!(tmp_dir) end)

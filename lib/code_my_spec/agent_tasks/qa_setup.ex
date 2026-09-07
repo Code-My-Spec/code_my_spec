@@ -5,10 +5,10 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_setup.spec.md`.
   """
 
-  alias CodeMySpec.Files
-  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.Files
+  alias CodeMySpec.Files.File, as: FileRecord
 
   @doc_type "qa_plan"
   @scripts_dir Path.join(Paths.qa_dir(), "scripts")

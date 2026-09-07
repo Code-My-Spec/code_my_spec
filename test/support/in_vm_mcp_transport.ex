@@ -32,6 +32,7 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   @behaviour CmsHarness.Mcp.Transport
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.CodeMode
   alias CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
@@ -114,7 +115,7 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   def list_tool_names({__MODULE__, _headers}) do
     case scope() do
       nil -> {:ok, []}
-      scope -> {:ok, scope |> CodeMySpec.McpServers.CodeMode.catalog() |> Map.keys()}
+      scope -> {:ok, scope |> CodeMode.catalog() |> Map.keys()}
     end
   end
 

@@ -1,12 +1,14 @@
 defmodule CodeMySpec.McpServers.Components.Tools.CreateComponentTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
+  alias Anubis.Server.Component
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "CreateComponent tool" do
@@ -36,7 +38,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponentTest do
     setup do
       cleaned =
         CreateComponent.__mcp_raw_schema__()
-        |> Anubis.Server.Component.__clean_schema_for_peri__()
+        |> Component.__clean_schema_for_peri__()
 
       %{cleaned: cleaned}
     end

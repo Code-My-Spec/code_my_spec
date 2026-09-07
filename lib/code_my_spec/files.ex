@@ -12,9 +12,9 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.Scanner.ReadModel
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   Build the `ReadModel` a scan needs: component module names, the project's

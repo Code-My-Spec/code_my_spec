@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   the agent would see, nothing more.
   """
 
+  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+
   @doc """
   Flattens a tool response into a single text string.
 
@@ -137,7 +139,7 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
     {:reply, response, _frame} =
-      CodeMySpec.McpServers.Requirements.Tools.ListRequirements.execute(
+      ListRequirements.execute(
         %{
           status: "satisfied",
           entity_type: "story",

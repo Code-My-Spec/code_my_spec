@@ -8,9 +8,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStoriesTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do

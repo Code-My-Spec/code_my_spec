@@ -7,6 +7,7 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunConversionsReport do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Google.Ga4
+  alias CodeMySpec.McpServers.Ga4.Tools
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
@@ -28,7 +29,7 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunConversionsReport do
   def execute(params, frame) do
     opts =
       params
-      |> CodeMySpec.McpServers.Ga4.Tools.report_opts()
+      |> Tools.report_opts()
       |> Keyword.put(:conversion_spec, params.conversion_spec)
 
     with {:ok, {_scope, token}} <- GoogleTools.resolve(frame, params),

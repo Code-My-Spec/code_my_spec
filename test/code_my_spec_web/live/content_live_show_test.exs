@@ -3,8 +3,8 @@ defmodule CodeMySpecWeb.ContentLive.ShowTest do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.ContentPublishing.Snapshot
+  alias CodeMySpec.Repo
 
   setup [:register_log_in_setup_account, :setup_active_project]
 

@@ -3,11 +3,13 @@ defmodule CodeMySpecLocalWeb.McpPlug do
   Forwards MCP requests to the Anubis StreamableHTTP transport.
   """
 
+  alias Anubis.Server.Transport.StreamableHTTP
+
   @behaviour Plug
 
   @impl true
   def init(opts) do
-    Anubis.Server.Transport.StreamableHTTP.Plug.init(opts)
+    StreamableHTTP.Plug.init(opts)
   end
 
   @impl true
@@ -15,6 +17,6 @@ defmodule CodeMySpecLocalWeb.McpPlug do
     require Logger
     Logger.debug("[McpPlug] headers: #{inspect(conn.req_headers)}")
     Logger.debug("[McpPlug] assigns: #{inspect(Map.keys(conn.assigns))}")
-    Anubis.Server.Transport.StreamableHTTP.Plug.call(conn, opts)
+    StreamableHTTP.Plug.call(conn, opts)
   end
 end

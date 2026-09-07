@@ -15,6 +15,7 @@ defmodule CodeMySpec.Provisioning.SetupOptionsTest do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.Sequence
 
   setup do
     %{scope: full_scope_fixture()}
@@ -30,7 +31,7 @@ defmodule CodeMySpec.Provisioning.SetupOptionsTest do
       # A step added with a new option must show up as a toggle without anyone
       # remembering to add it in a second place.
       from_sequence =
-        CodeMySpec.Provisioning.Sequence.all()
+        Sequence.all()
         |> Enum.map(& &1.option)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq()

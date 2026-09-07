@@ -6,10 +6,10 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.ProblemsFixtures
 
-  alias CodeMySpec.McpServers.Problems.Tools.ClearProblems
-  alias CodeMySpec.Problems
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Problems.Tools.ClearProblems
+  alias CodeMySpec.Problems
 
   setup do
     user = user_fixture()

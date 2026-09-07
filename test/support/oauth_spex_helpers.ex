@@ -49,6 +49,8 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   import Plug.Conn
   import ReqCassette
 
+  alias Assent.JWTAdapter.AssentJWT
+
   @cassette_dir "test/cassettes/oauth"
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -278,7 +280,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
       |> Map.put("exp", now + 3600)
 
     {:ok, jwt} =
-      Assent.JWTAdapter.AssentJWT.sign(
+      AssentJWT.sign(
         id_token_claims,
         "RS256",
         pem,

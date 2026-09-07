@@ -13,8 +13,8 @@ defmodule CodeMySpecWeb.ContentLive do
 
   import CodeMySpecWeb.ContentLive.Helpers
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.ContentPublishing
+  alias CodeMySpec.Projects
 
   @impl true
   def mount(_params, _session, socket) do

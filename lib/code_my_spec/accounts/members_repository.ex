@@ -6,8 +6,8 @@ defmodule CodeMySpec.Accounts.MembersRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.Accounts.{Account, Member}
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.User
 
   @type account_role :: :owner | :admin | :member

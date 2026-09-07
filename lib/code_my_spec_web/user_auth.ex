@@ -10,6 +10,7 @@ defmodule CodeMySpecWeb.UserAuth do
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecWeb.Plugs.IntakeSession
   alias ExOauth2Provider.AccessTokens
 
   # Make the remember me cookie valid for 14 days. This should match
@@ -154,7 +155,7 @@ defmodule CodeMySpecWeb.UserAuth do
     # having lost everything, which is the exact opposite of the promise.
     # Carried across the renewal rather than kept out of the session, so
     # fixation protection still does its job.
-    intake_token = get_session(conn, CodeMySpecWeb.Plugs.IntakeSession.session_key())
+    intake_token = get_session(conn, IntakeSession.session_key())
 
     conn
     |> configure_session(renew: true)
@@ -165,7 +166,7 @@ defmodule CodeMySpecWeb.UserAuth do
   defp restore_intake_token(conn, nil), do: conn
 
   defp restore_intake_token(conn, token),
-    do: put_session(conn, CodeMySpecWeb.Plugs.IntakeSession.session_key(), token)
+    do: put_session(conn, IntakeSession.session_key(), token)
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}, _),
     do: write_remember_me_cookie(conn, token)

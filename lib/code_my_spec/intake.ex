@@ -16,8 +16,8 @@ defmodule CodeMySpec.Intake do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Personas
   alias CodeMySpec.Intake.{Plan, Planner, PlansRepository}
+  alias CodeMySpec.Personas
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 

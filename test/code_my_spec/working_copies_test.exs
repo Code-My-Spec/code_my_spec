@@ -24,8 +24,8 @@ defmodule CodeMySpec.WorkingCopiesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems
+  alias CodeMySpec.WorkingCopies
 
   setup do
     %{scope: full_scope_fixture()}

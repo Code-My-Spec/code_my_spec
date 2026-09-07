@@ -24,8 +24,8 @@ defmodule CodeMySpec.Workspaces.InstanceCopyReuseTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.{WorkingCopies, Workspaces}
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.{WorkingCopies, Workspaces}
   alias CodeMySpecTest.FakeWorkspaceRunner
 
   setup do

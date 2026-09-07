@@ -24,10 +24,11 @@ defmodule CodeMySpec.LiveProvisioningTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Hetzner, Sops, Storage, StepRepository}
+  alias CodeMySpec.Provisioning.{Hetzner, Sops, StepRepository, Storage}
 
   @moduletag :live
   @moduletag timeout: 900_000
@@ -51,7 +52,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
         File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
 
         scope = full_scope_fixture()
-        scope = %{scope | environment: CodeMySpec.Environments.Environment.new(:local, tmp)}
+        scope = %{scope | environment: Environment.new(:local, tmp)}
 
         %Integration{}
         |> Integration.changeset(%{
@@ -331,8 +332,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
       scope.environment.cwd
       |> Path.join("**/*")
       |> Path.wildcard()
-      |> Enum.filter(&File.regular?/1)
-      |> Enum.filter(&(File.read!(&1) =~ secret))
+      |> Enum.filter(&(File.regular?(&1) && File.read!(&1) =~ secret))
 
     assert plaintext == [],
            "the callback secret is sitting in plaintext at #{inspect(plaintext)}"

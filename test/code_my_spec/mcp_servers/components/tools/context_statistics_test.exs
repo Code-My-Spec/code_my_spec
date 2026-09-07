@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatisticsTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
 
   describe "ContextStatistics tool" do
     setup do

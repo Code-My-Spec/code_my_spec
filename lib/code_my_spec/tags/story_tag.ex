@@ -6,8 +6,8 @@ defmodule CodeMySpec.Tags.StoryTag do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Tags.Tag
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Tags.Tag
 
   @type t :: %__MODULE__{
           id: integer() | nil,

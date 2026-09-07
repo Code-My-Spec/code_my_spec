@@ -6,9 +6,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements.RequirementGraph
 
   schema do
     field :name, :string, required: true, description: "The requirement name (e.g. 'spec_written', 'tests_written')"
@@ -60,8 +61,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
     **Validation:** #{validation_label(node.validation_type)}
     """
 
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(String.trim(text))
+    Response.tool()
+    |> Response.text(String.trim(text))
   end
 
   defp list_response(name, nodes) do
@@ -73,8 +74,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
     text = "# #{name} (#{length(nodes)} instances)\n\n#{lines}"
 
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(String.trim(text))
+    Response.tool()
+    |> Response.text(String.trim(text))
   end
 
   defp execution_label(:sub_agent), do: "Delegate to a sub-agent"

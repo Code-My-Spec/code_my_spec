@@ -40,8 +40,8 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
 
   import Plug.Conn
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @behaviour Plug
 

@@ -45,9 +45,9 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.TempFile
   alias Ecto.Adapters.SQL.Sandbox

@@ -1,12 +1,13 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.CreateStoriesTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStories
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Stories.Tools.CreateStories
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.UsersFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "CreateStories tool" do

@@ -35,6 +35,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
   import CodeMySpecSpex.Case, only: [fake_providers: 1, zone_exists: 2]
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.Steps
 
   @domain "inbound-default-drill.example.com"
@@ -93,7 +94,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
         |> Enum.filter(&(&1[:kind] == "secret"))
         |> Enum.map(& &1[:location])
 
-      environments = CodeMySpec.Provisioning.EnvironmentRepository.names(ctx.scope)
+      environments = EnvironmentRepository.names(ctx.scope)
       assert environments != [], "this test is meaningless with no environments to seed"
 
       for environment <- environments do

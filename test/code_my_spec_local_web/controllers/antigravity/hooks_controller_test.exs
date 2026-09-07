@@ -5,9 +5,9 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksControllerTest do
   import Plug.Conn
   import Plug.Test
 
-  alias CodeMySpecLocalWeb.Antigravity.HooksController
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Sessions
+  alias CodeMySpecLocalWeb.Antigravity.HooksController
 
   setup do
     scope = full_scope_fixture()

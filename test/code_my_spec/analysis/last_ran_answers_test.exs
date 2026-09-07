@@ -26,8 +26,8 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Validation
+  alias CodeMySpec.WorkingCopies
 
   setup do
     scope = full_scope_fixture()

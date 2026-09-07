@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
 
   alias CodeMySpec.AgentTasks.QaSetup
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
 
   # ============================================================================
   # Test Helpers
@@ -74,7 +75,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   # copy can still tell whether it is valid. Syncing here means these tests
   # exercise the classifier and the validator too, not just the checker.
   defp sync!(scope) do
-    {:ok, _} = CodeMySpec.Files.FileSync.sync(scope, base_dir: scope.environment.cwd)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.environment.cwd)
     :ok
   end
 

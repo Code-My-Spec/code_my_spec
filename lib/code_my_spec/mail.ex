@@ -16,11 +16,11 @@ defmodule CodeMySpec.Mail do
   import Ecto.Query, warn: false
   require Logger
 
-  alias CodeMySpec.Repo
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Mail.{Attachments, Email, EmailAttachment, Mailbox, ResendClient}
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Mail.{Mailbox, Email, ResendClient, Attachments, EmailAttachment}
+  alias CodeMySpec.Repo
   alias CodeMySpec.Uploads
   alias CodeMySpec.Users.Scope
 
@@ -235,20 +235,22 @@ defmodule CodeMySpec.Mail do
     case ResendClient.list_received_emails(opts) do
       {:ok, received} ->
         tally =
-          Enum.reduce(received, %{synced: 0, new: 0, backfilled: 0}, fn meta, acc ->
-            acc = %{acc | synced: acc.synced + 1}
-
-            case reconcile_received(project, meta) do
-              :inserted -> %{acc | new: acc.new + 1}
-              :backfilled -> %{acc | backfilled: acc.backfilled + 1}
-              _ -> acc
-            end
-          end)
+          Enum.reduce(received, %{synced: 0, new: 0, backfilled: 0}, &tally_received(project, &1, &2))
 
         {:ok, tally}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp tally_received(project, meta, acc) do
+    acc = %{acc | synced: acc.synced + 1}
+
+    case reconcile_received(project, meta) do
+      :inserted -> %{acc | new: acc.new + 1}
+      :backfilled -> %{acc | backfilled: acc.backfilled + 1}
+      _ -> acc
     end
   end
 

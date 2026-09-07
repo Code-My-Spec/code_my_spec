@@ -21,6 +21,7 @@ defmodule CodeMySpec.Chat.RunnerLiveTest do
   alias CodeMySpec.Chat.Runner
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias ReqLLM.Message.ContentPart
 
   # --- fake providers -------------------------------------------------------
 
@@ -83,14 +84,14 @@ defmodule CodeMySpec.Chat.RunnerLiveTest do
   defp text_reply(text) do
     response(%ReqLLM.Message{
       role: :assistant,
-      content: [ReqLLM.Message.ContentPart.text(text)]
+      content: [ContentPart.text(text)]
     })
   end
 
   defp tool_reply(name, args, text \\ "") do
     response(%ReqLLM.Message{
       role: :assistant,
-      content: [ReqLLM.Message.ContentPart.text(text)],
+      content: [ContentPart.text(text)],
       tool_calls: [ReqLLM.ToolCall.new("call_live_1", name, Jason.encode!(args))]
     })
   end

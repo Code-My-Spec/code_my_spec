@@ -8,8 +8,8 @@ defmodule CodeMySpec.Components.DependencyTreeTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
 
-  alias CodeMySpec.Components.DependencyTree
   alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.Components.DependencyTree
 
   setup do
     user = user_fixture()

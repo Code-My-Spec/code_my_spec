@@ -10,8 +10,8 @@ defmodule Mix.Tasks.GetJohns10Token do
   use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
-  alias CodeMySpec.{Repo, Users}
   alias CodeMySpec.Oauth.Application
+  alias CodeMySpec.{Repo, Users}
   alias ExOauth2Provider.AccessTokens
 
   @shortdoc "Generate bearer token for johns10@gmail.com"
@@ -27,26 +27,34 @@ defmodule Mix.Tasks.GetJohns10Token do
         System.halt(1)
 
       user ->
-        case get_or_create_oauth_application() do
-          {:ok, application} ->
-            case create_access_token(user, application) do
-              {:ok, access_token} ->
-                Mix.shell().info("Bearer token for #{email}:")
-                Mix.shell().info(access_token.token)
-                Mix.shell().info("\nToken details:")
-                Mix.shell().info("  - Expires in: #{access_token.expires_in} seconds")
-                Mix.shell().info("  - Scopes: #{access_token.scopes}")
-                Mix.shell().info("  - Token type: Bearer")
+        with_oauth_application(email, user)
+    end
+  end
 
-              {:error, reason} ->
-                Mix.shell().error("Failed to create access token: #{inspect(reason)}")
-                System.halt(1)
-            end
+  defp with_oauth_application(email, user) do
+    case get_or_create_oauth_application() do
+      {:ok, application} ->
+        with_access_token(email, user, application)
 
-          {:error, reason} ->
-            Mix.shell().error("Failed to get OAuth application: #{inspect(reason)}")
-            System.halt(1)
-        end
+      {:error, reason} ->
+        Mix.shell().error("Failed to get OAuth application: #{inspect(reason)}")
+        System.halt(1)
+    end
+  end
+
+  defp with_access_token(email, user, application) do
+    case create_access_token(user, application) do
+      {:ok, access_token} ->
+        Mix.shell().info("Bearer token for #{email}:")
+        Mix.shell().info(access_token.token)
+        Mix.shell().info("\nToken details:")
+        Mix.shell().info("  - Expires in: #{access_token.expires_in} seconds")
+        Mix.shell().info("  - Scopes: #{access_token.scopes}")
+        Mix.shell().info("  - Token type: Bearer")
+
+      {:error, reason} ->
+        Mix.shell().error("Failed to create access token: #{inspect(reason)}")
+        System.halt(1)
     end
   end
 

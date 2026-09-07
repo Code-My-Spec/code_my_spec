@@ -51,8 +51,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
+  alias CodeMySpec.McpServers.Tasks.Tools.SendMessage
 
   @first "Which approach do you want here?"
   @second "Should this ship behind a flag?"

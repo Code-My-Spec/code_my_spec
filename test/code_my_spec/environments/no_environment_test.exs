@@ -14,6 +14,7 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AgentTasks.ArchitectureDesign
   alias CodeMySpec.Environments
 
   describe "file operations with no environment" do
@@ -81,7 +82,7 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
       project = %{scope.active_project | name: "e2e-todo", module_name: "E2eTodo"}
       scope = %{scope | active_project: project, environment: nil}
 
-      assert {:ok, prompt} = CodeMySpec.AgentTasks.ArchitectureDesign.command(scope, %{})
+      assert {:ok, prompt} = ArchitectureDesign.command(scope, %{})
 
       refute prompt =~ "E2etodo",
              "a prompt naming a module tree no boundary claims sends the agent " <>

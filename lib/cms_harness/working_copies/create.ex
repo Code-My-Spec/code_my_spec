@@ -36,6 +36,8 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   require Logger
 
+  alias ClientUtils.Harness.Onboarding
+
   @worktrees ".claude/worktrees"
 
   @doc """
@@ -84,7 +86,7 @@ defmodule CmsHarness.WorkingCopies.Create do
   # would leave a directory behind that the caller was told does not exist.
   defp onboard(root, target, id, request) do
     result =
-      ClientUtils.Harness.Onboarding.onboard(target,
+      Onboarding.onboard(target,
         harness_id: id,
         app: app_name(root),
         deploy_key: request["deploy_key"],

@@ -15,8 +15,9 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   @behaviour CodeMySpec.Agents.Transport
 
   alias CmsHarness.Agents
-  alias CodeMySpec.Agents.LaunchRequest
+  alias CmsHarness.WorkingCopies.Create
   alias CmsHarnessTest.Machine
+  alias CodeMySpec.Agents.LaunchRequest
 
   @impl true
   def start_agent(_working_copy_id, agent, _timeout) do
@@ -75,7 +76,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   def create_working_copy([], _request, _timeout), do: {:error, :no_harness}
 
   def create_working_copy(_candidate_ids, request, _timeout) do
-    CmsHarness.WorkingCopies.Create.run(host_repository(), request)
+    Create.run(host_repository(), request)
   end
 
   # One repository per test process, cleaned up with it.

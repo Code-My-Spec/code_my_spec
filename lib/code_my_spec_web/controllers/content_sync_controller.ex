@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.ContentSyncController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Content
+  alias CodeMySpec.Content.Pull
 
   action_fallback CodeMySpecWeb.FallbackController
 
@@ -143,9 +144,9 @@ defmodule CodeMySpecWeb.ContentSyncController do
   # ExUnit sandbox connection instead of racing the test process's lifetime).
   defp run_pull(manifest_url) do
     if Application.get_env(:code_my_spec, :content_pull_async, true) do
-      Task.start(fn -> CodeMySpec.Content.Pull.run(manifest_url) end)
+      Task.start(fn -> Pull.run(manifest_url) end)
     else
-      CodeMySpec.Content.Pull.run(manifest_url)
+      Pull.run(manifest_url)
     end
   end
 

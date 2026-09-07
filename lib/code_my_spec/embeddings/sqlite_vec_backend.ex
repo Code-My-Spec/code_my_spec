@@ -16,8 +16,8 @@ defmodule CodeMySpec.Embeddings.SqliteVecBackend do
   import Ecto.Query
 
   alias CodeMySpec.Embeddings.{DocEmbedding, EmbeddingService, Serving}
-  alias Ecto.Adapters.SQL, as: AdaptersSQL
   alias CodeMySpec.Repo
+  alias Ecto.Adapters.SQL, as: AdaptersSQL
 
   @impl true
   def embed_file(project_id, source, path, content) do

@@ -3,12 +3,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.GetIssueTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures
 
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do

@@ -3,6 +3,7 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunRealtimeReport do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Google.Ga4
+  alias CodeMySpec.McpServers.Ga4.Tools
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
@@ -19,7 +20,7 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunRealtimeReport do
 
   @impl true
   def execute(params, frame) do
-    opts = CodeMySpec.McpServers.Ga4.Tools.report_opts(params)
+    opts = Tools.report_opts(params)
 
     with {:ok, {_scope, token}} <- GoogleTools.resolve(frame, params),
          {:ok, data} <- Ga4.run_realtime_report(token, params.property_id, opts) do

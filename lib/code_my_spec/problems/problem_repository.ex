@@ -6,10 +6,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   One cheap read answering "has anything changed, and is there anything to say".

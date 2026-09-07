@@ -19,8 +19,8 @@ defmodule CodeMySpecWeb.ChatLive do
 
   alias CodeMySpec.Chat.Runner
   alias CodeMySpec.Conversations
-  alias CodeMySpecWeb.ChatComponents
   alias CodeMySpec.Stories
+  alias CodeMySpecWeb.ChatComponents
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, assign(socket, section: :chat)}

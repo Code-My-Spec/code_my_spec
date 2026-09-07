@@ -12,6 +12,7 @@ defmodule CodeMySpec.AgentTasksTest do
   doctest CodeMySpec.AgentTasks
 
   alias CodeMySpec.AgentTasks
+  alias CodeMySpec.AgentTasks.WriteBddSpecs
 
   describe "format_error/1" do
     test "keeps the actionable message, on its own lines" do
@@ -48,7 +49,7 @@ defmodule CodeMySpec.AgentTasksTest do
     # produces is the shape format_error/1 preserves.
     test "an unlinked story renders both the tag and the remedy" do
       {:error, reason} =
-        CodeMySpec.AgentTasks.WriteBddSpecs.command(
+        WriteBddSpecs.command(
           %CodeMySpec.Users.Scope{},
           %{story_id: nil}
         )

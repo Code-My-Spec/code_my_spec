@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Architecture
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
@@ -31,7 +32,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview do
   end
 
   defp text_response(content) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(content)
+    Response.tool()
+    |> Response.text(content)
   end
 end

@@ -27,8 +27,8 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Hooks.SessionStart
+  alias CodeMySpec.WorkingCopies
 
   setup do
     %{scope: full_scope_fixture()}

@@ -33,11 +33,11 @@ defmodule CodeMySpec.Provisioning.Credentials do
 
   require Logger
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Integrations
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage}
-  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage}
   alias CodeMySpec.Users.Scope
 
   @type state :: :verified | :missing | :unchecked | {:rejected, String.t()}

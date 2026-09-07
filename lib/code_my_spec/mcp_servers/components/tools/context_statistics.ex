@@ -9,6 +9,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatistics do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
@@ -93,7 +94,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatistics do
   end
 
   defp statistics_response(statistics) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.json(statistics)
+    Response.tool()
+    |> Response.json(statistics)
   end
 end

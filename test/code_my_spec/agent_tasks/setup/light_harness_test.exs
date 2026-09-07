@@ -19,6 +19,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
   alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.McpServers.Validators
 
   setup do
     scope = full_scope_fixture()
@@ -88,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
     test "no working directory resolves to no environment, not to the server's own" do
       frame = %{assigns: %{}}
 
-      assert CodeMySpec.McpServers.Validators.mcp_environment(frame) == nil,
+      assert Validators.mcp_environment(frame) == nil,
              "this returned `Environment.new(:local, File.cwd!())`, so every " <>
                "filesystem tool on the server-hosted mount operated on the " <>
                "server's own checkout — and reported success for it"

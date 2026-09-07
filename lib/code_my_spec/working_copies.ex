@@ -31,11 +31,11 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
   The harness for this id, or a new one if the caller has none.
