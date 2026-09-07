@@ -150,6 +150,37 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   def settle(_no_project), do: :ok
 
+  @doc """
+  Start a watcher for every project that has an agent in the loop.
+
+  Watchers live in memory, so a restart takes them all — and nothing recreated
+  them until somebody toggled a loop. That is the worst possible time to lose
+  them: a deploy is exactly when agents are mid-run, and an agent that goes idle
+  after one has nothing watching for the work that would wake it.
+
+  Called at boot. A project with nobody working it stays unwatched, which is the
+  same rule `ensure_watching/1` follows on demand.
+
+  Best-effort by design: a project whose scope cannot be built is skipped rather
+  than taking the boot down with it, and the next stop decision on that project
+  starts its watcher anyway.
+  """
+  @spec watch_active_projects() :: :ok
+  def watch_active_projects do
+    CodeMySpec.Agents.AgentsRepository.continuous_project_scopes()
+    |> Enum.each(fn scope ->
+      case ensure_watching(scope) do
+        {:ok, _pid} ->
+          :ok
+
+        other ->
+          Logger.warning(
+            "[GraphWatcher] could not watch #{scope.active_project_id}: #{inspect(other)}"
+          )
+      end
+    end)
+  end
+
   # -- Server --
 
   @impl true

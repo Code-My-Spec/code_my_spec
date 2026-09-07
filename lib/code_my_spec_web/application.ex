@@ -50,6 +50,17 @@ defmodule CodeMySpecWeb.Application do
         {Registry, keys: :unique, name: CodeMySpec.Requirements.Registry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Requirements.WatcherSupervisor},
+        # And re-establish them for whatever was already being worked. Watchers
+        # are in memory, so a restart takes them all, and a deploy is exactly
+        # when agents are mid-run — an agent that goes idle after one would have
+        # nothing watching for the work that wakes it. `:temporary` because
+        # failing to seed is not a reason to refuse to boot: the next stop
+        # decision on a project starts its watcher anyway.
+        Supervisor.child_spec(
+          {Task, &CodeMySpec.Requirements.GraphWatcher.watch_active_projects/0},
+          id: :watch_active_projects,
+          restart: :temporary
+        ),
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

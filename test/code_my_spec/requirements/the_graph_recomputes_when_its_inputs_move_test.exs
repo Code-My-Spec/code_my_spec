@@ -188,6 +188,26 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     assert first == second
   end
 
+  # Watchers are in memory, so a restart takes them all — and a deploy is exactly
+  # when agents are mid-run. Without this an agent that went idle after one had
+  # nothing watching for the work that would wake it, and the only way back was
+  # a human toggling a loop.
+  test "a restart re-establishes a watcher for a project being worked", ctx do
+    _product = product_agent(ctx.scope, ctx.copy)
+
+    assert :ok = GraphWatcher.watch_active_projects()
+
+    assert [{_pid, _}] =
+             Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id)
+  end
+
+  test "a project nobody is working is left unwatched", ctx do
+    assert :ok = GraphWatcher.watch_active_projects()
+
+    assert [] = Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id),
+           "a project with no agent in the loop needs no watcher"
+  end
+
   # `settle/1` is called from the agent-facing read on every stop, so a project
   # nobody is watching must not turn that into an error or a wait.
   test "settling a project with no watcher is fine", ctx do

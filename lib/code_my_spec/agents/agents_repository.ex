@@ -66,6 +66,35 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
+  @doc """
+  A scope per project that has at least one agent in the loop.
+
+  For `GraphWatcher.watch_active_projects/0` at boot. Scopeless because there is
+  no caller to scope it to — this runs before anybody has asked for anything,
+  and "which projects are being worked" is a fact about the whole install.
+
+  Carries only what a graph computation needs: the project and its account. No
+  user, because no user asked.
+  """
+  @spec continuous_project_scopes() :: [Scope.t()]
+  def continuous_project_scopes do
+    from(a in Agent,
+      where: a.continuous == true and not is_nil(a.project_id),
+      distinct: a.project_id,
+      select: a.project_id
+    )
+    |> Repo.all()
+    |> Enum.map(&Repo.get(CodeMySpec.Projects.Project, &1))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(fn project ->
+      %Scope{
+        active_project: project,
+        active_project_id: project.id,
+        active_account_id: project.account_id
+      }
+    end)
+  end
+
   def set_copy_continuous(%Scope{active_project_id: project_id}, copy_id, continuous?)
       when is_binary(project_id) and is_binary(copy_id) and is_boolean(continuous?) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
