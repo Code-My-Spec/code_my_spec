@@ -242,7 +242,9 @@ defmodule CodeMySpec.Resources do
     if Application.get_env(:code_my_spec, :provisioning_async, true) do
       start_fix_async(project_scope, project, options)
     else
-      RunLock.with_lock(project.id, fn -> Provisioning.run(project_scope, options, step_opts()) end)
+      RunLock.with_lock(project.id, fn ->
+        Provisioning.run(project_scope, options, step_opts())
+      end)
       |> case do
         {:error, {:already_running, _}} = refused -> refused
         _finished -> {:ok, :started}
@@ -333,11 +335,13 @@ defmodule CodeMySpec.Resources do
   end
 
   defp project_checklist(scope, project) do
-    for step <- Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
+    for step <-
+          Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
       %{
         project_id: project.id,
         project_name: project.name,
         key: step.key,
+        environment: step.environment,
         state: if(step.state == :done, do: :present, else: :missing),
         detail: step.provider_error
       }
@@ -401,7 +405,13 @@ defmodule CodeMySpec.Resources do
   # already has.
   def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
     environment = harness_environment(scope.active_working_copy_id, project)
-    %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
+
+    %Scope{
+      scope
+      | active_project: project,
+        active_project_id: project.id,
+        environment: environment
+    }
   end
 
   # A scope built from an HTTP session — `/app/resources`' own button, unlike
@@ -467,7 +477,8 @@ defmodule CodeMySpec.Resources do
   defp harness_environment(working_copy_id, %Project{id: project_id} = project)
        when is_binary(working_copy_id) do
     case WorkingCopies.fetch(working_copy_id) do
-      {:ok, %WorkingCopy{project_id: ^project_id, root: root}} when is_binary(root) and root != "" ->
+      {:ok, %WorkingCopy{project_id: ^project_id, root: root}}
+      when is_binary(root) and root != "" ->
         Environment.new(:local, root)
 
       _ ->
@@ -490,7 +501,8 @@ defmodule CodeMySpec.Resources do
     recorded = recorded_resources(scope)
 
     %{
-      live_addresses: MapSet.new(for %{kind: "server", identifier: ip} <- found, is_binary(ip), do: ip),
+      live_addresses:
+        MapSet.new(for %{kind: "server", identifier: ip} <- found, is_binary(ip), do: ip),
       recorded_addresses: addresses_in(recorded),
       recorded_buckets: names_in(recorded, "bucket"),
       # Whether we can say anything about what servers exist right now. When

@@ -84,9 +84,16 @@ defmodule CodeMySpec.Provisioning do
   @spec runner(atom()) :: module() | nil
   def runner(key), do: Map.get(@runners, key)
 
-  @doc "The persisted step row for `key`, or nil."
-  @spec get_step(Scope.t(), atom()) :: Step.t() | nil
-  def get_step(%Scope{} = scope, key), do: StepRepository.get(scope, key)
+  @doc """
+  The persisted step row for `key`, or nil. `environment` is nil for a
+  project-wide step and a name for one environment's row of a per-environment
+  step.
+  """
+  @spec get_step(Scope.t(), atom(), String.t() | nil) :: Step.t() | nil
+  def get_step(scope, key, environment \\ nil)
+
+  def get_step(%Scope{} = scope, key, environment),
+    do: StepRepository.get(scope, key, environment)
 
   @doc """
   Record a domain adopted through the check form as the domain step's
@@ -99,7 +106,7 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec adopt_domain_step(Scope.t(), String.t()) :: Step.t()
   def adopt_domain_step(%Scope{} = scope, name) do
-    mark(scope, :domain, :done, %{
+    mark(scope, :domain, nil, :done, %{
       resources: [%{kind: "domain", location: "cloudflare/#{name}", origin: "adopted"}]
     })
   end
@@ -218,28 +225,55 @@ defmodule CodeMySpec.Provisioning do
   defp derived_host("prod", domain), do: domain
   defp derived_host(name, domain), do: "#{name}.#{domain}"
 
+  # Production when there is one, because that is the site everything else
+  # (a reader, a webhook, a health check) actually reaches. Otherwise the
+  # first environment the project has, so a UAT-only project still gets one
+  # rather than none. `:content` is the one step that cannot yet act on more
+  # than one environment at a time (it proves itself against the project's
+  # single stored `client_api_url`/`content_bucket`) — this is what its one
+  # row is attributed to until that becomes genuinely independent per
+  # environment.
+  defp primary_environment(scope) do
+    case Steps.permitted_environments(scope) do
+      [] -> nil
+      names -> if "prod" in names, do: "prod", else: List.first(names)
+    end
+  end
+
   @doc """
   The whole plan for a project, in order, before anything runs.
 
   Every step carries its current state, so Sam sees the shape of the run and
   where it stands at once (criterion 7959). Steps his options exclude are
   absent, not present-and-skipped (criterion 7968).
+
+  A project-wide step is one entry. A step that runs independently per
+  environment (`Sequence.scope/1` == `:environment`) is one entry per
+  environment the project has — `:content` is the one exception, pinned to
+  `primary_environment/1` rather than fanned out, since its own execution
+  cannot yet prove more than one environment's site.
   """
   @spec plan(Scope.t(), [atom()]) :: [map()]
   def plan(%Scope{} = scope, enabled_options) do
-    persisted = scope |> StepRepository.list() |> Map.new(&{&1.key, &1})
+    persisted =
+      scope |> StepRepository.list() |> Map.new(&{{&1.key, &1.environment}, &1})
 
-    enabled_options
-    |> Sequence.for_options()
-    |> Enum.map(&entry(&1, Map.get(persisted, &1.key)))
+    for step <- Sequence.for_options(enabled_options),
+        environment <- plan_environments(scope, step),
+        do: entry(step, environment, Map.get(persisted, {step.key, environment}))
   end
+
+  defp plan_environments(_scope, %{scope: :project}), do: [nil]
+  defp plan_environments(scope, %{key: :content}), do: [primary_environment(scope)]
+  defp plan_environments(scope, %{scope: :environment}), do: Steps.permitted_environments(scope)
 
   # Two heads rather than a `row && row.field` for each of ten fields. Those
   # guards were the same question asked ten times, and asking it once — has
   # this step ever run — is both shorter and the actual distinction.
-  defp entry(step, nil) do
+  defp entry(step, environment, nil) do
     %{
       key: step.key,
+      environment: environment,
       label: step.label,
       why: step.why,
       position: Sequence.position(step.key),
@@ -254,9 +288,10 @@ defmodule CodeMySpec.Provisioning do
     }
   end
 
-  defp entry(step, row) do
+  defp entry(step, environment, row) do
     %{
       key: step.key,
+      environment: environment,
       label: step.label,
       why: step.why,
       position: Sequence.position(step.key),
@@ -325,17 +360,106 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec run_step(Scope.t(), atom(), keyword()) ::
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
-  def run_step(%Scope{} = scope, key, opts \\ []) do
+  def run_step(scope, key, opts \\ [])
+
+  # `:content` cannot yet act on more than one environment's site (see
+  # `primary_environment/1`), so it never fans out the way the other
+  # per-environment steps do — it runs once, against whichever environment is
+  # primary, and its one row is attributed there.
+  def run_step(%Scope{} = scope, :content = key, opts) do
+    case primary_environment(scope) do
+      nil -> {:ok, unsaved_step(key, nil)}
+      environment -> run_step(scope, key, environment, opts)
+    end
+  end
+
+  def run_step(%Scope{} = scope, key, opts) do
+    case Sequence.scope(key) do
+      :project ->
+        run_step(scope, key, nil, opts)
+
+      :environment ->
+        case step_environments(scope, opts) do
+          [] -> {:ok, unsaved_step(key, nil)}
+          environments -> run_step_across(scope, key, environments, opts)
+        end
+    end
+  end
+
+  # `opts[:environment]` wins (the deploy form's own contract, extended
+  # uniformly to every per-environment step); `opts[:environments]` narrows to
+  # exactly that list; absent either, every environment the project has.
+  defp step_environments(scope, opts) do
+    cond do
+      environment = Keyword.get(opts, :environment) -> [environment]
+      environments = Keyword.get(opts, :environments) -> environments
+      true -> Steps.permitted_environments(scope)
+    end
+  end
+
+  # One environment at a time, halting the walk (not just that environment)
+  # on the first failure — the same "halting is the point" the whole-sequence
+  # run already follows, so a failed prod deploy does not go on to attempt
+  # uat as though nothing had gone wrong. Returns the last successful row when
+  # every environment finished, or the row that halted.
+  defp run_step_across(scope, key, environments, opts) do
+    Enum.reduce_while(environments, nil, fn environment, _acc ->
+      case run_step(scope, key, environment, opts) do
+        {:ok, row} -> {:cont, {:ok, row}}
+        {:halt, row, reason} -> {:halt, {:halt, row, reason}}
+      end
+    end)
+  end
+
+  defp unsaved_step(key, environment) do
+    %Step{
+      key: key,
+      environment: environment,
+      state: :not_started,
+      position: Sequence.position(key)
+    }
+  end
+
+  @doc """
+  Run one step for one environment (`nil` for a project-wide step), verifying
+  against the provider first.
+
+  Returns `{:ok, step}` when it finished, or `{:halt, step, reason}` when it
+  errored or paused. Retrying one errored step without re-running the rest is
+  exactly this call (criterion 7971).
+
+  `opts[:force]` skips verification and runs unconditionally. `verify/3`'s
+  contract is narrower than `run/3`'s actual side effects for at least one
+  step: `verify(:server, …)` calls a resource "satisfied" from the box and
+  `DATABASE_URL` existing, but `run(:server, …)` also (re-)establishes the
+  registry-trust config on the box's docker daemon via `Registry.serve/2` —
+  a write with no corresponding verify check. Confirmed live against
+  broken_oaths: fixing which network's address `registry_address/3` resolves
+  to changed the correct trust target, but re-running the `:server` step
+  through the ordinary verify-gated path reported "satisfied" against the
+  unrelated, still-true claims (box exists, `DATABASE_URL` is set) and never
+  touched the stale docker daemon config. `force` is the escape hatch until
+  verify grows a way to check a claim like that; every step's `run/3` is
+  already idempotent, so forcing one that genuinely had nothing to do costs
+  a few redundant provider calls, not a wrong state.
+  """
+  @spec run_step(Scope.t(), atom(), String.t() | nil, keyword()) ::
+          {:ok, Step.t()} | {:halt, Step.t(), String.t()}
+  def run_step(%Scope{} = scope, key, environment, opts) do
     execute = Keyword.get(opts, :execute, &execute_step/3)
     scope = reread_project(scope)
-    previous = StepRepository.get(scope, key)
+    previous = StepRepository.get(scope, key, environment)
+    opts = with_environment_opt(scope, key, environment, opts)
 
     case forced_or_verified(scope, key, opts) do
       {:ok, :satisfied, resources} ->
-        {:ok, mark(scope, key, :done, %{resources: still_ours(scope, key, resources)})}
+        {:ok,
+         mark(scope, key, environment, :done, %{
+           resources: still_ours(scope, key, environment, resources)
+         })}
 
       {:ok, :absent} ->
-        run_and_record(scope, key, execute, opts)
+        run_and_record(scope, key, environment, execute, opts)
 
       # A provider that could not be read is not a verdict that the resource
       # is gone — `reverify/3`'s own rule (a page load never demotes a
@@ -353,9 +477,33 @@ defmodule CodeMySpec.Provisioning do
         {:halt, previous, describe(reason)}
 
       {:error, reason} ->
-        {:halt, mark(scope, key, :errored, error_attrs(key, reason)), describe(reason)}
+        {:halt, mark(scope, key, environment, :errored, error_attrs(key, reason)),
+         describe(reason)}
     end
   end
+
+  # Translates a resolved environment into the shape each step's `run/3` and
+  # `verify/3` already read — `:deploy` and `:tls` were built environment-first
+  # from the start; the rest already loop over `opts[:environments]`
+  # internally and correctly degenerate to one iteration when it names exactly
+  # one.
+  defp with_environment_opt(_scope, _key, nil, opts), do: opts
+
+  defp with_environment_opt(_scope, :deploy, environment, opts),
+    do: Keyword.put(opts, :environment, environment)
+
+  defp with_environment_opt(scope, :tls, environment, opts) do
+    case Enum.find(environments(scope), &(&1.name == environment)) do
+      %{host: host} when is_binary(host) and host != "" -> Keyword.put(opts, :host, host)
+      _ -> opts
+    end
+  end
+
+  defp with_environment_opt(_scope, key, environment, opts)
+       when key in [:secrets, :storage, :backups, :widget, :callback_credential],
+       do: Keyword.put(opts, :environments, [environment])
+
+  defp with_environment_opt(_scope, _key, _environment, opts), do: opts
 
   # `:force` skips asking the provider anything and reports the resource
   # absent unconditionally, which is exactly the input that already sends
@@ -503,7 +651,7 @@ defmodule CodeMySpec.Provisioning do
       {:error, {:already_running, started_at}} ->
         Logger.info(
           "[Provisioning] #{key} skipped — a run for this project is already in flight" <>
-            (started_at && " (started #{started_at})" || "")
+            ((started_at && " (started #{started_at})") || "")
         )
 
       _result ->
@@ -516,13 +664,13 @@ defmodule CodeMySpec.Provisioning do
     :ok
   end
 
-  defp run_and_record(scope, key, execute, opts) do
+  defp run_and_record(scope, key, environment, execute, opts) do
     # Stamped when the step actually begins, not when the row is created — a
     # step that was never run has no start, and an ordering comparison against
     # a row's insertion time would answer for steps that never ran.
-    _ = mark(scope, key, :running, %{started_at: DateTime.utc_now()})
+    _ = mark(scope, key, environment, :running, %{started_at: DateTime.utc_now()})
 
-    execute_and_record(scope, key, execute, opts)
+    execute_and_record(scope, key, environment, execute, opts)
   rescue
     # A step that raises must halt the run as an errored step, not crash the
     # runner and leave itself stuck :running. A provider client that throws, a
@@ -540,11 +688,11 @@ defmodule CodeMySpec.Provisioning do
     error ->
       reason = Exception.message(error)
       Logger.error(Exception.format(:error, error, __STACKTRACE__))
-      row = mark(scope, key, :errored, error_attrs(key, reason))
+      row = mark(scope, key, environment, :errored, error_attrs(key, reason))
       {:halt, row, reason}
   end
 
-  defp execute_and_record(scope, key, execute, opts) do
+  defp execute_and_record(scope, key, environment, execute, opts) do
     case execute.(scope, key, opts) do
       # Succeeding does not make this run's list the whole truth either. A
       # second run that adds production returns production's server, and
@@ -553,10 +701,13 @@ defmodule CodeMySpec.Provisioning do
       # merge was written for, observed twice: once through the error path, and
       # again here after the error path was fixed.
       {:ok, resources} ->
-        {:ok, mark(scope, key, :done, %{resources: keeping_earlier(scope, key, resources)})}
+        {:ok,
+         mark(scope, key, environment, :done, %{
+           resources: keeping_earlier(scope, key, environment, resources)
+         })}
 
       {:paused, instructions} ->
-        row = mark(scope, key, :paused, %{paused_instructions: instructions})
+        row = mark(scope, key, environment, :paused, %{paused_instructions: instructions})
         {:halt, row, instructions}
 
       # Pausing carries resources for the same reason failing does. A step can
@@ -565,9 +716,9 @@ defmodule CodeMySpec.Provisioning do
       # that dropped the resources would leak exactly like an error that did.
       {:paused, instructions, partial} when is_list(partial) ->
         row =
-          mark(scope, key, :paused, %{
+          mark(scope, key, environment, :paused, %{
             paused_instructions: instructions,
-            resources: keeping_earlier(scope, key, partial)
+            resources: keeping_earlier(scope, key, environment, partial)
           })
 
         {:halt, row, instructions}
@@ -582,14 +733,19 @@ defmodule CodeMySpec.Provisioning do
           mark(
             scope,
             key,
+            environment,
             :errored,
-            Map.put(error_attrs(key, reason), :resources, keeping_earlier(scope, key, partial))
+            Map.put(
+              error_attrs(key, reason),
+              :resources,
+              keeping_earlier(scope, key, environment, partial)
+            )
           )
 
         {:halt, row, describe(reason)}
 
       {:error, reason} ->
-        row = mark(scope, key, :errored, error_attrs(key, reason))
+        row = mark(scope, key, environment, :errored, error_attrs(key, reason))
         {:halt, row, describe(reason)}
     end
   end
@@ -720,11 +876,14 @@ defmodule CodeMySpec.Provisioning do
     now = DateTime.utc_now()
 
     for step <- Sequence.for_options(enabled_options),
-        row = StepRepository.get(scope, step.key),
+        environment <- plan_environments(scope, step),
+        row = StepRepository.get(scope, step.key, environment),
         row && row.state == :done do
-      case safe_verify(scope, step.key, opts) do
+      verify_opts = with_environment_opt(scope, step.key, environment, opts)
+
+      case safe_verify(scope, step.key, verify_opts) do
         {:ok, :satisfied, resources} ->
-          mark(scope, step.key, :done, %{resources: resources, verified_at: now})
+          mark(scope, step.key, environment, :done, %{resources: resources, verified_at: now})
 
         {:ok, :absent} ->
           # State only — the recorded resources stay. `:absent` can mean a
@@ -733,7 +892,7 @@ defmodule CodeMySpec.Provisioning do
           # would lose the record of what *was* made. Teardown removes only
           # what a step recorded, so wiping that leaks whatever is still there.
           Logger.info("[Provisioning] #{step.key} no longer verifies — marking not_started")
-          mark(scope, step.key, :not_started, %{verified_at: now})
+          mark(scope, step.key, environment, :not_started, %{verified_at: now})
 
         {:error, _reason} ->
           :unreachable
@@ -756,9 +915,9 @@ defmodule CodeMySpec.Provisioning do
   @spec resume(Scope.t(), [atom()], keyword()) :: run_result()
   def resume(%Scope{} = scope, enabled_options, opts \\ []) do
     steps = Sequence.for_options(enabled_options)
-    persisted = scope |> StepRepository.list() |> Map.new(&{&1.key, &1})
+    persisted = StepRepository.list(scope)
 
-    remaining = Enum.drop_while(steps, fn step -> done?(Map.get(persisted, step.key)) end)
+    remaining = Enum.drop_while(steps, &step_fully_done?(&1, persisted, scope))
 
     Enum.reduce_while(remaining, %{steps: [], halted_at: nil, reason: nil}, fn step, acc ->
       case run_step(scope, step.key, opts) do
@@ -773,6 +932,34 @@ defmodule CodeMySpec.Provisioning do
 
   defp done?(%Step{state: :done}), do: true
   defp done?(_), do: false
+
+  # A project-wide step is done when its one row is. `:content` is done when
+  # its one (primary-environment) row is. Any other per-environment step is
+  # done only once every environment's own row is — resume/3 uses this purely
+  # to skip calling run_step/3 at all for a step with nothing left to do;
+  # run_step/4's own verify-first check is what actually decides per
+  # environment, so under-skipping here costs a redundant verify call, never
+  # a wrong result.
+  defp step_fully_done?(%{key: :content}, persisted, scope) do
+    environment = primary_environment(scope)
+    persisted |> Enum.find(&(&1.key == :content and &1.environment == environment)) |> done?()
+  end
+
+  defp step_fully_done?(%{key: key, scope: :project}, persisted, _scope) do
+    persisted |> Enum.find(&(&1.key == key and is_nil(&1.environment))) |> done?()
+  end
+
+  defp step_fully_done?(%{key: key, scope: :environment}, persisted, scope) do
+    case Steps.permitted_environments(scope) do
+      [] ->
+        false
+
+      names ->
+        Enum.all?(names, fn name ->
+          persisted |> Enum.find(&(&1.key == key and &1.environment == name)) |> done?()
+        end)
+    end
+  end
 
   ## Escalation
 
@@ -896,9 +1083,9 @@ defmodule CodeMySpec.Provisioning do
   # the run that made it, and wrong for a phase, which does not.
   @run_scoped ~w(deploy_phase live_version deploy_failure)
 
-  defp keeping_earlier(scope, key, partial) do
+  defp keeping_earlier(scope, key, environment, partial) do
     earlier =
-      case StepRepository.get(scope, key) do
+      case StepRepository.get(scope, key, environment) do
         %{resources: resources} when is_list(resources) -> resources
         _ -> []
       end
@@ -943,18 +1130,18 @@ defmodule CodeMySpec.Provisioning do
   # It does not license the opposite: a *later* claim of `created` over an
   # earlier `adopted` stays refused, because that is a step restating something
   # Sam had before setup ran, and believing it would license destroying it.
-  defp still_ours(scope, key, resources) do
+  defp still_ours(scope, key, environment, resources) do
     # Both directions, which is what the paragraph above says and what this did
     # not do. It collected only the `created` ones, so an earlier `adopted`
     # met a later `created` claim and the later one stood — the promotion the
-    # comment calls refused. `keeping_earlier/3` never had the asymmetry: it
+    # comment calls refused. `keeping_earlier/4` never had the asymmetry: it
     # keeps the earlier record whole and only appends what is new.
     #
     # Which matters in the dangerous direction. A step restating something Sam
     # had before setup ran as `created` is how teardown gets licensed to
     # destroy it, and that is the Resend sending-domain incident exactly.
     ours =
-      case StepRepository.get(scope, key) do
+      case StepRepository.get(scope, key, environment) do
         %{resources: earlier} when is_list(earlier) ->
           for r <- earlier, into: %{}, do: {{r.kind, r.location}, r.origin}
 
@@ -978,11 +1165,12 @@ defmodule CodeMySpec.Provisioning do
   # answer and took the whole walk down with it.
   defp field(resource, key), do: Map.get(resource, key)
 
-  defp mark(scope, key, state, attrs) do
+  defp mark(scope, key, environment, state, attrs) do
     row =
       StepRepository.upsert(
         scope,
         key,
+        environment,
         Map.merge(attrs, %{state: state, position: Sequence.position(key)})
       )
 

@@ -268,7 +268,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     maybe_create_bucket(scope, project)
 
-    StepRepository.upsert(scope, :storage, %{
+    StepRepository.upsert(scope, :storage, "prod", %{
       state: :done,
       position: Sequence.position(:storage),
       resources: [%{kind: "bucket", location: location, identifier: "user"}]
@@ -1038,8 +1038,12 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec connect_hetzner(Scope.t(), String.t()) :: {:ok, term()}
   def connect_hetzner(scope, token \\ "spex-placeholder-hetzner-token") do
-    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "spex-placeholder-key-id")
-    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "spex-placeholder-secret")
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "spex-placeholder-key-id")
+
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "spex-placeholder-secret")
+
     ProjectSecrets.put_value(scope, "hetzner_api_token", token)
   end
 

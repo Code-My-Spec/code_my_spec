@@ -396,6 +396,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           :for={step <- @plan}
           data-test="setup-step"
           data-step={step.key}
+          data-environment={step.environment}
           data-completed-at={step_completed_at(step)}
           data-started-at={step_started_at(step)}
           data-verified-at={step_verified_at(step)}
@@ -407,7 +408,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             <div class="card-body">
               <div class="flex items-center justify-between gap-4">
                 <div>
-                  <h3 class="card-title">{step.label}</h3>
+                  <h3 class="card-title">
+                    {step.label}
+                    <span :if={step.environment} class="badge badge-ghost badge-sm align-middle">
+                      {step.environment}
+                    </span>
+                  </h3>
                   <p class="text-sm opacity-70">{step.why}</p>
                 </div>
 
@@ -418,6 +424,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                     data-test="run-step"
                     phx-click="run_step"
                     phx-value-key={step.key}
+                    phx-value-environment={step.environment}
                   >
                     Run
                   </.button>
@@ -426,6 +433,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                     data-test="retry-step"
                     phx-click="run_step"
                     phx-value-key={step.key}
+                    phx-value-environment={step.environment}
                   >
                     Retry
                   </.button>
@@ -1976,10 +1984,23 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # The page follows the same way it already follows a whole-sequence run.
   # `mark/3` broadcasts every transition and each step renders its own reason
   # from its own row, so nothing here has to hold the answer.
-  def handle_event("run_step", %{"key" => key}, socket) do
+  # `environment` names which row this card is — absent for a project-wide
+  # step, present for one environment's row of a per-environment step. Without
+  # it, the plain Run button on (say) uat's storage card would run storage for
+  # every environment the project has, not just the one the card is showing.
+  def handle_event("run_step", %{"key" => key} = params, socket) do
     scope = socket.assigns.current_scope
 
-    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), step_opts())
+    opts =
+      case Map.get(params, "environment") do
+        environment when is_binary(environment) and environment != "" ->
+          Keyword.put(step_opts(), :environment, environment)
+
+        _ ->
+          step_opts()
+      end
+
+    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), opts)
 
     {:noreply,
      socket

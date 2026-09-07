@@ -315,10 +315,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  def verify(:callback_credential, %Scope{} = scope, _opts) do
-    case ProjectSecrets.has_value?(scope, "cms_refresh_secret") do
-      true -> {:ok, :satisfied, [%{kind: "callback_credential", location: "encrypted_env"}]}
-      false -> {:ok, :absent}
+  # Per environment, not the project-wide `ProjectSecrets` flag `run/3` also
+  # writes — that flag only ever says "this succeeded once, for some
+  # environment", the same way `minted_secrets/0`'s check reads the file each
+  # environment actually boots from rather than a marker that a run happened.
+  # `present?/3` is the same per-file check `secrets_ready?/2` already uses.
+  def verify(:callback_credential, %Scope{} = scope, opts) do
+    case environments(scope, opts) do
+      [] ->
+        {:ok, :absent}
+
+      targets ->
+        if Enum.all?(targets, &present?(scope, &1, "CMS_REFRESH_SECRET")) do
+          {:ok, :satisfied,
+           Enum.map(targets, &%{kind: "callback_credential", location: "encrypted_env/#{&1}"})}
+        else
+          {:ok, :absent}
+        end
     end
   end
 
@@ -3926,7 +3939,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Filtered here rather than in the seed, because a row is not infrastructure.
   # Seeding both keeps promotion a matter of changing one setting, which is
   # what "the user promotes to prod themselves" means.
-  defp permitted_environments(scope) do
+  @doc """
+  Names of the environments this project's devops level actually permits —
+  every environment row it has, unless `devops: :uat` has filtered production
+  out. Public so `Provisioning` can fan a per-environment step out over the
+  same list `run/3`/`verify/3` already narrow to internally when a caller
+  gives no explicit `:environment`/`:environments` override — without this, a
+  plain "Run" click (or `run/3`'s own whole-sequence walk) would reach past
+  the filter and touch an environment the project's devops level excludes.
+  """
+  @spec permitted_environments(Scope.t()) :: [String.t()]
+  def permitted_environments(scope) do
     scope |> permitted_environment_rows() |> Enum.map(& &1.name)
   end
 

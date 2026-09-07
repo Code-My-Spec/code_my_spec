@@ -54,7 +54,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetupTest do
       # task started above finish against this test's own sandboxed
       # connection before the test process exits and tears it down —
       # ResourcesTest documents the same requirement for the same reason.
-      wait_until(fn -> step_state(scope, :callback_credential) == :done end)
+      wait_until(fn -> step_state(scope, :callback_credential, "prod") == :done end)
     end
   end
 
@@ -63,7 +63,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetupTest do
     hd(protocol["content"])["text"]
   end
 
-  defp step_state(scope, step), do: scope |> StepRepository.get(step) |> state_of()
+  defp step_state(scope, step, environment \\ nil),
+    do: StepRepository.get(scope, step, environment) |> state_of()
 
   defp state_of(nil), do: nil
   defp state_of(record), do: record.state

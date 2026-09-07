@@ -164,13 +164,13 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
 
   describe "it removes only what a step recorded" do
     test "a step that recorded nothing removes nothing", %{scope: scope} do
-      StepRepository.upsert(scope, :storage, %{state: :done, position: 9, resources: []})
+      StepRepository.upsert(scope, :storage, "prod", %{state: :done, position: 9, resources: []})
 
-      assert {:ok, []} = Teardown.step(scope, :storage)
+      assert {:ok, []} = Teardown.step(scope, :storage, environment: "prod")
     end
 
     test "a step that never ran removes nothing", %{scope: scope} do
-      assert {:ok, []} = Teardown.step(scope, :storage)
+      assert {:ok, []} = Teardown.step(scope, :storage, environment: "prod")
     end
 
     # The safety property, stated as a test rather than a comment: there is no
@@ -197,7 +197,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # `environment/3`'s moduledoc is about *when* a record is removed and
     # cannot help when it is not removed at all (167394ad).
     test "a skipped adoption is not counted among the removed", %{scope: scope} do
-      StepRepository.upsert(scope, :dns, %{
+      StepRepository.upsert(scope, :dns, nil, %{
         state: :done,
         position: 5,
         resources: [
@@ -256,7 +256,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # somebody pays for a resource nobody remembers.
     @tag :capture_log
     test "a step naming an unremovable resource reports what was left behind", %{scope: scope} do
-      StepRepository.upsert(scope, :storage, %{
+      StepRepository.upsert(scope, :storage, "prod", %{
         state: :done,
         position: 9,
         resources: [
@@ -265,7 +265,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
       })
 
       assert {:error, {:left_behind, [%{kind: "something_new"}]}} =
-               Teardown.step(scope, :storage)
+               Teardown.step(scope, :storage, environment: "prod")
     end
   end
 
@@ -279,7 +279,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # longer existed, overriding a real delivery failure ten minutes old. The
     # proof of an environment must not outlive the environment.
     test "its recorded resources are forgotten", %{scope: scope} do
-      StepRepository.upsert(scope, :inbound, %{
+      StepRepository.upsert(scope, :inbound, nil, %{
         state: :done,
         position: 9,
         resources: [
@@ -297,7 +297,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # what teardown's error path exists to do.
     @tag :capture_log
     test "a step that left something behind keeps what it still owns", %{scope: scope} do
-      StepRepository.upsert(scope, :storage, %{
+      StepRepository.upsert(scope, :storage, "prod", %{
         state: :done,
         position: 9,
         resources: [
@@ -305,10 +305,10 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
         ]
       })
 
-      assert {:error, {:left_behind, _}} = Teardown.step(scope, :storage)
+      assert {:error, {:left_behind, _}} = Teardown.step(scope, :storage, environment: "prod")
 
       assert %{state: :done, resources: [%{kind: "something_new"}]} =
-               StepRepository.get(scope, :storage)
+               StepRepository.get(scope, :storage, "prod")
     end
   end
 end

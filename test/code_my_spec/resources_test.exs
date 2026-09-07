@@ -65,10 +65,10 @@ defmodule CodeMySpec.ResourcesTest do
       # still mid-sequence tears that connection down out from under it.
       # Waited on `:done`, not on the row existing — see `step_state/2`.
       wait_until(fn -> step_state(scope, :repository) == :done end)
-      wait_until(fn -> step_state(scope, :callback_credential) == :done end)
+      wait_until(fn -> step_state(scope, :callback_credential, "prod") == :done end)
 
       assert StepRepository.get(scope, :repository).state == :done
-      assert StepRepository.get(scope, :callback_credential).state == :done
+      assert StepRepository.get(scope, :callback_credential, "prod").state == :done
     end
 
     # The confirmed-live race: a caller retries `run_devops_setup` for a
@@ -118,11 +118,13 @@ defmodule CodeMySpec.ResourcesTest do
       assert [{^project_id, {:ok, :started}}] = Resources.fix_all_async(scope)
 
       # Waited on `:done`, not on the row existing — see `step_state/2`.
+      # `"uat"`, not `"prod"` — devops is `:uat` here, so prod is filtered
+      # out and callback_credential never gets a row for it.
       wait_until(fn -> step_state(scope, :repository) == :done end)
-      wait_until(fn -> step_state(scope, :callback_credential) == :done end)
+      wait_until(fn -> step_state(scope, :callback_credential, "uat") == :done end)
 
       assert StepRepository.get(scope, :repository).state == :done
-      assert StepRepository.get(scope, :callback_credential).state == :done
+      assert StepRepository.get(scope, :callback_credential, "uat").state == :done
     end
   end
 
@@ -294,7 +296,8 @@ defmodule CodeMySpec.ResourcesTest do
   #
   # `nil` rather than raising for an unwritten step, because that is the
   # ordinary state while async work is starting and it is what the wait is for.
-  defp step_state(scope, step), do: scope |> StepRepository.get(step) |> state_of()
+  defp step_state(scope, step, environment \\ nil),
+    do: StepRepository.get(scope, step, environment) |> state_of()
 
   defp state_of(nil), do: nil
   defp state_of(record), do: record.state

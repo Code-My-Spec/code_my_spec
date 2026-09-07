@@ -40,6 +40,7 @@ defmodule CodeMySpec.Provisioning.Step do
 
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Resource
+  alias CodeMySpec.Provisioning.Sequence
 
   @states [:not_started, :running, :done, :errored, :paused]
 
@@ -74,6 +75,7 @@ defmodule CodeMySpec.Provisioning.Step do
           id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t(),
           key: atom(),
+          environment: String.t() | nil,
           state: state(),
           position: integer(),
           attempted: String.t() | nil,
@@ -86,6 +88,9 @@ defmodule CodeMySpec.Provisioning.Step do
 
   schema "provisioning_steps" do
     field :key, Ecto.Enum, values: @keys
+    # Nil for a project-wide step (Sequence.scope/1 == :project); the
+    # environment's name for one that runs independently per environment.
+    field :environment, :string
     field :state, Ecto.Enum, values: @states, default: :not_started
     field :position, :integer
 
@@ -120,6 +125,7 @@ defmodule CodeMySpec.Provisioning.Step do
     step
     |> cast(attrs, [
       :key,
+      :environment,
       :state,
       :position,
       :attempted,
@@ -133,10 +139,37 @@ defmodule CodeMySpec.Provisioning.Step do
     |> drop_the_other_state_s_diagnosis()
     |> validate_required([:key, :state, :position, :project_id])
     |> validate_number(:position, greater_than_or_equal_to: 0)
+    |> validate_environment_matches_scope()
     |> validate_pause_is_actionable()
     |> validate_error_is_diagnosable()
-    |> unique_constraint([:project_id, :key])
+    |> unique_constraint([:project_id, :key],
+      name: :provisioning_steps_project_id_key_no_environment_index
+    )
+    |> unique_constraint([:project_id, :key, :environment],
+      name: :provisioning_steps_project_id_key_environment_index
+    )
     |> foreign_key_constraint(:project_id)
+  end
+
+  # A row's environment presence has to agree with what the sequence says
+  # this key is — otherwise a per-environment step (deploy, secrets, ...)
+  # could be saved with no environment and collide with every other
+  # environment's row, or a project-wide step (domain, server, ...) could
+  # fork into one row per environment nothing ever meant to track separately.
+  defp validate_environment_matches_scope(changeset) do
+    key = get_field(changeset, :key)
+    environment = get_field(changeset, :environment)
+
+    case {Sequence.scope(key), environment} do
+      {:environment, nil} ->
+        add_error(changeset, :environment, "is required for a per-environment step")
+
+      {:project, environment} when not is_nil(environment) ->
+        add_error(changeset, :environment, "must be blank — this step is project-wide")
+
+      _ ->
+        changeset
+    end
   end
 
   # A step carries the diagnosis of the state it is in, and only that one.

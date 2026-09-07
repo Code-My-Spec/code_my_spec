@@ -4233,12 +4233,45 @@ defmodule CodeMySpecSpex.Case do
     |> Phoenix.LiveViewTest.render_submit()
   end
 
+  # A step that runs independently per environment (secrets, tls, storage,
+  # backups, content, widget, callback_credential) now renders one card per
+  # environment the project has. Clicking "the #{key} step" is ambiguous the
+  # moment there is more than one — this raises rather than guessing which
+  # one a caller meant, so a spex that needs a specific environment says so
+  # with run_step_interaction/3 instead of silently exercising the wrong one.
   def run_step_interaction(view, key) do
+    case setup_step_environments(view, key) do
+      [] ->
+        raise "no step named #{key} on the page"
+
+      [_only] ->
+        view
+        |> Phoenix.LiveViewTest.element(
+          "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+        )
+        |> Phoenix.LiveViewTest.render_click()
+
+      environments ->
+        raise "#{key} has one row per environment (#{inspect(environments)}) — call " <>
+                "run_step_interaction/3 with the one you mean"
+    end
+  end
+
+  @doc "Trigger one environment's row of a per-environment step's run."
+  def run_step_interaction(view, key, environment) do
     view
     |> Phoenix.LiveViewTest.element(
-      "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+      "[data-test='setup-step'][data-step='#{key}'][data-environment='#{environment}'] [data-test='run-step']"
     )
     |> Phoenix.LiveViewTest.render_click()
+  end
+
+  defp setup_step_environments(view, key) do
+    view
+    |> Phoenix.LiveViewTest.render()
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
+    |> Floki.attribute("data-environment")
   end
 
   @doc """
@@ -4256,29 +4289,59 @@ defmodule CodeMySpecSpex.Case do
   """
   @spec await_step(term(), atom(), pos_integer()) :: :ok
   def await_step(view, key, attempts \\ 600) do
-    state =
-      view
-      |> Phoenix.LiveViewTest.render()
-      |> Floki.parse_document!()
-      |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
-      |> Floki.attribute("data-state")
-      |> List.first()
+    case setup_step_states(view, key) do
+      [] ->
+        raise "no step named #{key} on the page — nothing to wait for"
 
-    settled?(view, key, state, attempts)
+      [state] ->
+        settled?(view, key, nil, state, attempts)
+
+      states ->
+        raise "#{key} has one row per environment — call await_step/4 with the one " <>
+                "you mean, got: #{inspect(states)}"
+    end
   end
 
-  defp settled?(_view, key, nil, _attempts) do
+  @doc "Wait for one environment's row of a per-environment step to stop running."
+  @spec await_step(term(), atom(), String.t(), pos_integer()) :: :ok
+  def await_step(view, key, environment, attempts) do
+    state = setup_step_states(view, key, environment) |> List.first()
+    settled?(view, key, environment, state, attempts)
+  end
+
+  defp setup_step_states(view, key, environment \\ nil) do
+    selector =
+      case environment do
+        nil -> "[data-test='setup-step'][data-step='#{key}']"
+        env -> "[data-test='setup-step'][data-step='#{key}'][data-environment='#{env}']"
+      end
+
+    view
+    |> Phoenix.LiveViewTest.render()
+    |> Floki.parse_document!()
+    |> Floki.find(selector)
+    |> Floki.attribute("data-state")
+  end
+
+  defp settled?(_view, key, _environment, nil, _attempts) do
     raise "no step named #{key} on the page — nothing to wait for"
   end
 
-  defp settled?(_view, _key, state, _attempts) when state in ~w(done errored paused), do: :ok
+  defp settled?(_view, _key, _environment, state, _attempts)
+       when state in ~w(done errored paused),
+       do: :ok
 
-  defp settled?(view, key, _state, attempts) when attempts > 1 do
+  defp settled?(view, key, nil, _state, attempts) when attempts > 1 do
     Process.sleep(500)
     await_step(view, key, attempts - 1)
   end
 
-  defp settled?(_view, key, state, _attempts) do
+  defp settled?(view, key, environment, _state, attempts) when attempts > 1 do
+    Process.sleep(500)
+    await_step(view, key, environment, attempts - 1)
+  end
+
+  defp settled?(_view, key, _environment, state, _attempts) do
     raise "the #{key} step is still #{state} after five minutes"
   end
 

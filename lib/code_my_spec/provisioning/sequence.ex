@@ -47,11 +47,14 @@ defmodule CodeMySpec.Provisioning.Sequence do
   for it not to be.
   """
 
+  @type scope :: :project | :environment
+
   @type step :: %{
           key: atom(),
           label: String.t(),
           option: atom() | nil,
-          why: String.t()
+          why: String.t(),
+          scope: scope()
         }
 
   @sequence [
@@ -59,65 +62,99 @@ defmodule CodeMySpec.Provisioning.Sequence do
       key: :repository,
       label: "Repository",
       option: nil,
-      why: "the remote CI publishes from and the harness pushes to"
+      why: "the remote CI publishes from and the harness pushes to",
+      scope: :project
     },
     %{
       key: :secrets,
       label: "Secrets",
       option: nil,
-      why: "one age key per environment, so UAT's key cannot open production's"
+      why: "one age key per environment, so UAT's key cannot open production's",
+      scope: :environment
     },
-    %{key: :server, label: "Server", option: nil, why: "the box both environments start on"},
+    %{
+      key: :server,
+      label: "Server",
+      option: nil,
+      why: "the box both environments start on",
+      scope: :project
+    },
     %{
       key: :domain,
       label: "Domain",
       option: :domain,
-      why: "the name everything else is reached by"
+      why: "the name everything else is reached by",
+      scope: :project
     },
-    %{key: :dns, label: "DNS records", option: :domain, why: "points the name at the server"},
-    %{key: :deploy, label: "Deploy", option: nil, why: "the app running on the server"},
+    %{
+      key: :dns,
+      label: "DNS records",
+      option: :domain,
+      why: "points the name at the server",
+      scope: :project
+    },
+    %{
+      key: :deploy,
+      label: "Deploy",
+      option: nil,
+      why: "the app running on the server",
+      scope: :environment
+    },
     %{
       key: :tls,
       label: "Certificate",
       option: :domain,
-      why: "the proxy issues it on first boot, so it follows the deploy"
+      why: "the proxy issues it on first boot, so it follows the deploy",
+      scope: :environment
     },
     %{
       key: :email,
       label: "Outbound email",
       option: :email,
-      why: "sending domain verified before anything sends"
+      why: "sending domain verified before anything sends",
+      scope: :project
     },
     %{
       key: :inbound,
       label: "Inbound email",
       option: :inbound,
-      why: "apex MX, which outbound deliberately does not touch"
+      why: "apex MX, which outbound deliberately does not touch",
+      scope: :project
     },
-    %{key: :storage, label: "Object storage", option: :storage, why: "buckets for files"},
+    %{
+      key: :storage,
+      label: "Object storage",
+      option: :storage,
+      why: "buckets for files",
+      scope: :environment
+    },
     %{
       key: :backups,
       label: "Backups",
       option: :backups,
-      why: "scheduled dumps, proven by a restore"
+      why: "scheduled dumps, proven by a restore",
+      scope: :environment
     },
     %{
       key: :content,
       label: "Content publishing",
       option: :content,
-      why: "proven by a post rendering on the deployed site"
+      why: "proven by a post rendering on the deployed site",
+      scope: :environment
     },
     %{
       key: :widget,
       label: "Feedback widget",
       option: :widget,
-      why: "proven by a message from the deployed site"
+      why: "proven by a message from the deployed site",
+      scope: :environment
     },
     %{
       key: :callback_credential,
       label: "Callback credential",
       option: nil,
-      why: "how the deployed app talks back without a long-lived key"
+      why: "how the deployed app talks back without a long-lived key",
+      scope: :environment
     }
   ]
 
@@ -172,6 +209,23 @@ defmodule CodeMySpec.Provisioning.Sequence do
     case Enum.find(@sequence, &(&1.key == key)) do
       nil -> :error
       step -> {:ok, step}
+    end
+  end
+
+  @doc """
+  Whether a step's state is one row for the whole project or one row per
+  environment.
+
+  Defaults to `:project` for a key this sequence does not know — `:monitoring`
+  is still a valid `Step.key()` (removed from the sequence, never from the
+  enum) and an old row of that kind casts as project-wide rather than
+  rejecting.
+  """
+  @spec scope(atom()) :: scope()
+  def scope(key) do
+    case fetch(key) do
+      {:ok, step} -> step.scope
+      :error -> :project
     end
   end
 

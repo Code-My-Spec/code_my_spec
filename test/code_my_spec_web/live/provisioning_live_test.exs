@@ -306,7 +306,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     # a seeded row alone is exactly what this page deliberately no longer
     # trusts.
     test "a done step shows done", %{conn: conn, project: project, scope: scope} do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
       stub_verifier(fn _scope, _key -> {:ok, :satisfied, []} end)
 
       {:ok, _view, html} = live(conn, path(project))
@@ -321,7 +321,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
       stub_verifier(fn _scope, _key -> {:ok, :absent} end)
 
       {:ok, _view, html} = live(conn, path(project))
@@ -337,7 +337,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
       stub_verifier(fn _scope, _key -> {:error, :timeout} end)
 
       {:ok, _view, html} = live(conn, path(project))
@@ -353,7 +353,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :domain, %{
+      StepRepository.upsert(scope, :domain, nil, %{
         state: :paused,
         position: Sequence.position(:domain),
         paused_instructions: "Register it in the Cloudflare dashboard, then resume."
@@ -376,7 +376,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :inbound, %{
+      StepRepository.upsert(scope, :inbound, nil, %{
         state: :paused,
         position: Sequence.position(:inbound),
         paused_instructions: "the inbound records are published... Give it an address and resume."
@@ -393,7 +393,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :domain, %{
+      StepRepository.upsert(scope, :domain, nil, %{
         state: :paused,
         position: Sequence.position(:domain),
         paused_instructions: "Register it in the Cloudflare dashboard, then resume."
@@ -413,7 +413,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :inbound, %{
+      StepRepository.upsert(scope, :inbound, nil, %{
         state: :paused,
         position: Sequence.position(:inbound),
         paused_instructions: "Give it an address and resume."
@@ -439,7 +439,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :domain, %{
+      StepRepository.upsert(scope, :domain, nil, %{
         state: :errored,
         position: Sequence.position(:domain),
         attempted: "register example.com via Cloudflare Registrar",
@@ -460,7 +460,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :domain, %{
+      StepRepository.upsert(scope, :domain, nil, %{
         state: :paused,
         position: Sequence.position(:domain),
         paused_instructions: "Go do the thing."
@@ -485,7 +485,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :deploy, %{
+      StepRepository.upsert(scope, :deploy, "prod", %{
         state: :errored,
         position: Sequence.position(:deploy),
         attempted: "deploy",
@@ -532,10 +532,14 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
       {:ok, view, _html} = live(conn, path(project))
 
+      # Deploy now has one card per environment (each still offering the full
+      # picker — the per-row layout this schema change enables is future
+      # work), so the selector has to say which row's form it means.
       view
-      |> form("[data-step='deploy'] [data-test='deploy-environment-form']", %{
-        "environment" => environment
-      })
+      |> form(
+        "[data-step='deploy'][data-environment='#{environment}'] [data-test='deploy-environment-form']",
+        %{"environment" => environment}
+      )
       |> render_submit()
 
       assert_received {:executed, opts}
@@ -563,7 +567,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :dns, %{
+      StepRepository.upsert(scope, :dns, nil, %{
         state: :paused,
         position: Sequence.position(:dns),
         paused_instructions: "The apex already points elsewhere."
@@ -591,7 +595,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :repository, %{
+      StepRepository.upsert(scope, :repository, nil, %{
         state: :paused,
         position: Sequence.position(:repository),
         paused_instructions: "A repository with this name already exists and isn't ours."
@@ -625,7 +629,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :repository, %{
+      StepRepository.upsert(scope, :repository, nil, %{
         state: :paused,
         position: Sequence.position(:repository),
         paused_instructions: "A repository with this name already exists and isn't ours."
@@ -655,7 +659,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     } do
       reason = "uat is missing SECRET_KEY_BASE, DATABASE_URL — the app refuses to boot"
 
-      StepRepository.upsert(scope, :deploy, %{
+      StepRepository.upsert(scope, :deploy, "prod", %{
         state: :errored,
         position: Sequence.position(:deploy),
         attempted: "run the deploy step",
@@ -683,7 +687,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :storage, %{
+      StepRepository.upsert(scope, :storage, "prod", %{
         state: :errored,
         position: Sequence.position(:storage),
         attempted: "run the storage step",
@@ -706,7 +710,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: Sequence.position(:server),
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
@@ -730,7 +734,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: Sequence.position(:server),
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
@@ -761,7 +765,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: Sequence.position(:server),
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
@@ -783,7 +787,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: Sequence.position(:server),
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
@@ -799,7 +803,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
     # Criterion 8003 / 8035: nothing is held on the platform's side.
     test "no resource is owned by the platform", %{conn: conn, project: project, scope: scope} do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: Sequence.position(:server),
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
@@ -821,7 +825,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :deploy, %{
+      StepRepository.upsert(scope, :deploy, "prod", %{
         state: :done,
         position: Sequence.position(:deploy),
         resources: [
@@ -848,7 +852,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :deploy, %{
+      StepRepository.upsert(scope, :deploy, "prod", %{
         state: :done,
         position: Sequence.position(:deploy),
         resources: [
@@ -875,7 +879,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      StepRepository.upsert(scope, :deploy, %{
+      StepRepository.upsert(scope, :deploy, "prod", %{
         state: :done,
         position: Sequence.position(:deploy),
         resources: [
@@ -907,7 +911,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
     # Criterion 7971: retrying one errored step without re-running the rest.
     test "an errored step offers a retry", %{conn: conn, project: project, scope: scope} do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :errored,
         position: Sequence.position(:server),
         attempted: "create the server",

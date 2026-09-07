@@ -29,8 +29,15 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     {:ok, scope: full_scope_fixture()}
   end
 
+  # `environment: "prod"` is read only by a per-environment step (deploy is
+  # the one exercised here) — a project-wide step's run_step/3 never looks
+  # at it, so this is a harmless no-op for :server/:domain/:dns/:email.
   defp succeed_with(resources) do
-    [verify: fn _, _ -> {:ok, :absent} end, execute: fn _, _, _ -> {:ok, resources} end]
+    [
+      verify: fn _, _ -> {:ok, :absent} end,
+      execute: fn _, _, _ -> {:ok, resources} end,
+      environment: "prod"
+    ]
   end
 
   defp locations(scope, key) do
@@ -186,7 +193,7 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     # same rule on the path a *repeated* walk takes, where every step verifies
     # satisfied and nothing is executed at all.
     test "a resource an earlier run created stays created when re-verified as adopted", ctx do
-      StepRepository.upsert(ctx.scope, :dns, %{
+      StepRepository.upsert(ctx.scope, :dns, nil, %{
         state: :done,
         position: 5,
         resources: [
@@ -214,7 +221,7 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     # sake: a step claiming `created` for something Sam had before setup ran is
     # how teardown gets licensed to destroy it.
     test "a resource first seen as adopted is not promoted by a later created claim", ctx do
-      StepRepository.upsert(ctx.scope, :dns, %{
+      StepRepository.upsert(ctx.scope, :dns, nil, %{
         state: :done,
         position: 5,
         resources: [
@@ -296,10 +303,11 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
              %{kind: "deploy_phase", location: "migrate", identifier: "t2"},
              %{kind: "live_version", location: "previous"}
            ]}
-        end
+        end,
+        environment: "prod"
       )
 
-      kinds = StepRepository.get(ctx.scope, :deploy).resources
+      kinds = StepRepository.get(ctx.scope, :deploy, "prod").resources
 
       refute Enum.any?(kinds, &(&1.kind == "deploy_phase" and &1.location == "swap")),
              "the earlier run's swap must not survive into a run that never swapped"

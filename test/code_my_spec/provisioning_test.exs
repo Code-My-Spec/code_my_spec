@@ -97,7 +97,7 @@ defmodule CodeMySpec.ProvisioningTest do
     end
 
     test "reflects persisted state for steps that have run", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
 
       plan = Provisioning.plan(scope, [])
       repository = Enum.find(plan, &(&1.key == :repository))
@@ -130,8 +130,11 @@ defmodule CodeMySpec.ProvisioningTest do
     # still depends on it.
     test "a paused step halts the run the same way", %{scope: scope} do
       execute = fn
-        _scope, :repository, _opts -> {:paused, "Register the domain in the dashboard, then resume."}
-        _scope, _key, _opts -> {:ok, []}
+        _scope, :repository, _opts ->
+          {:paused, "Register the domain in the dashboard, then resume."}
+
+        _scope, _key, _opts ->
+          {:ok, []}
       end
 
       result = Provisioning.run(scope, [], verify: always_absent(), execute: execute)
@@ -154,7 +157,7 @@ defmodule CodeMySpec.ProvisioningTest do
     # skipped. If run/3 filtered on state == :done, a stale row would be
     # permanent — skipped because it says done, and never re-checked.
     test "a step marked done whose resource is gone is run again", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
 
       {:ok, ran} = Agent.start_link(fn -> [] end)
 
@@ -172,8 +175,11 @@ defmodule CodeMySpec.ProvisioningTest do
     # Criterion 7965: running a step twice leaves one of everything.
     test "a step whose resource still exists is not run again", %{scope: scope} do
       verify = fn
-        _scope, :repository -> {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
-        _scope, _key -> {:ok, :absent}
+        _scope, :repository ->
+          {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
+
+        _scope, _key ->
+          {:ok, :absent}
       end
 
       execute = fn _scope, key, _opts ->
@@ -197,8 +203,10 @@ defmodule CodeMySpec.ProvisioningTest do
     # doing.
     test "force runs the step even though its resource already exists", %{scope: scope} do
       verify = fn
-        _scope, :repository -> {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
+        _scope, :repository ->
+          {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
       end
+
       ran = fn -> Process.put(:ran, true) end
 
       execute = fn _scope, :repository, _opts ->
@@ -222,7 +230,7 @@ defmodule CodeMySpec.ProvisioningTest do
     # DNS blip against a step that finished yesterday read exactly like the
     # resource having been deleted.
     test "verify's transient error halts the run without demoting a done step", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
 
       verify = fn
         _scope, :repository -> {:error, :nxdomain}
@@ -252,7 +260,7 @@ defmodule CodeMySpec.ProvisioningTest do
     # only :done means "this was confirmed working", so only :done is worth
     # shielding from a transient read failure.
     test "a previously errored step still errors on a provider failure", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{
+      StepRepository.upsert(scope, :repository, nil, %{
         state: :errored,
         position: 0,
         attempted: "run the repository step",
@@ -284,7 +292,7 @@ defmodule CodeMySpec.ProvisioningTest do
     end
 
     test "a verify that raises does not demote a step already confirmed done", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
 
       verify = fn
         _scope, :repository -> raise ArgumentError, "no working directory"
@@ -308,8 +316,12 @@ defmodule CodeMySpec.ProvisioningTest do
       # first step that is not done, so this has to mark a contiguous run from
       # the top — marking the first and third would correctly re-run the second
       # and read as a failure to skip.
-      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
-      StepRepository.upsert(scope, :secrets, %{state: :done, position: 1})
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
+      # Every environment's row, not just one — resume/3 only skips a
+      # per-environment step once none of its environments have anything
+      # left to do.
+      StepRepository.upsert(scope, :secrets, "prod", %{state: :done, position: 1})
+      StepRepository.upsert(scope, :secrets, "uat", %{state: :done, position: 1})
 
       {:ok, ran} = Agent.start_link(fn -> [] end)
 
@@ -329,7 +341,7 @@ defmodule CodeMySpec.ProvisioningTest do
 
     # Criterion 7967: returning is not the same as having done the errand.
     test "a paused step is re-verified rather than assumed complete", %{scope: scope} do
-      StepRepository.upsert(scope, :repository, %{
+      StepRepository.upsert(scope, :repository, nil, %{
         state: :paused,
         position: 0,
         paused_instructions: "Go register it."
@@ -365,6 +377,7 @@ defmodule CodeMySpec.ProvisioningTest do
                  secret: "known-secret",
                  environments: ["prod"]
                )
+
       assert row.state == :done
 
       assert {:ok, token, expires_in} = CodeMySpec.AppTokens.exchange("known-secret")
@@ -409,10 +422,11 @@ defmodule CodeMySpec.ProvisioningTest do
          [%{kind: "something_new", location: "provider/thing", origin: "created"}]}
       end
 
-      {:halt, _row, _} = Provisioning.run_step(scope, :storage, execute: execute)
+      {:halt, _row, _} =
+        Provisioning.run_step(scope, :storage, execute: execute, environment: "prod")
 
       assert {:error, {:left_behind, [%{location: "provider/thing"}]}} =
-               Teardown.step(scope, :storage)
+               Teardown.step(scope, :storage, environment: "prod")
     end
 
     test "a plain error without partial resources still works", %{scope: scope} do
@@ -541,7 +555,8 @@ defmodule CodeMySpec.ProvisioningTest do
 
       # A paused step is waiting on a person and says so in its instructions;
       # only the errored ones owe an explanation of what is missing.
-      for {key, _row, reason} <- Enum.filter(halted, fn {_k, row, _r} -> row.state == :errored end) do
+      for {key, _row, reason} <-
+            Enum.filter(halted, fn {_k, row, _r} -> row.state == :errored end) do
         assert reason =~ "working environment" or reason =~ "deploy-ready",
                "#{key} failed without naming what is missing: #{reason}"
       end

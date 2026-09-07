@@ -41,9 +41,11 @@ defmodule CodeMySpec.Provisioning.Teardown do
     EnvironmentRepository,
     Hetzner,
     Resend,
+    Sequence,
     StepRepository,
     Storage
   }
+
   alias CodeMySpec.Users.Scope
 
   @type outcome :: {:ok, [map()]} | {:error, term()}
@@ -51,13 +53,25 @@ defmodule CodeMySpec.Provisioning.Teardown do
   @doc """
   Remove everything a step recorded, and confirm it is gone.
 
+  For a step that runs independently per environment (`Sequence.scope/1` ==
+  `:environment`), `opts[:environment]` names which environment's row —
+  required, since tearing down "every environment of this key" by default is
+  exactly the silent-broad-action this module's other functions are written
+  to refuse. A project-wide step ignores it.
+
   Returns `{:ok, removed}` when nothing remains, or `{:error, {:left_behind,
   remaining}}` naming what survived. The error case is the one worth having:
   silence here means somebody pays for a resource nobody remembers.
   """
   @spec step(Scope.t(), atom(), keyword()) :: outcome()
   def step(%Scope{} = scope, key, opts \\ []) do
-    case StepRepository.get(scope, key) do
+    environment =
+      case Sequence.scope(key) do
+        :project -> nil
+        :environment -> Keyword.get(opts, :environment)
+      end
+
+    case StepRepository.get(scope, key, environment) do
       nil ->
         {:ok, []}
 
@@ -66,7 +80,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
         case Enum.filter(outcomes, &match?({:error, _}, &1)) do
           [] ->
-            forget(scope, key)
+            forget(scope, key, environment)
             # Only what was removed. A skipped adoption is still standing, and
             # counting it here is how a teardown reports work it did not do.
             {:ok, for({:ok, r} <- outcomes, do: r)}
@@ -90,8 +104,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
   #
   # Only on full success. A step that left something behind is not undone, and
   # forgetting what it still owns is how a leak becomes invisible.
-  defp forget(scope, key) do
-    StepRepository.upsert(scope, key, %{state: :not_started, resources: [], error: nil})
+  defp forget(scope, key, environment) do
+    StepRepository.upsert(scope, key, environment, %{state: :not_started, resources: []})
   end
 
   @doc """
@@ -166,14 +180,39 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # project rather than to one environment, like the shared firewall, network
   # and ssh key, and those outlive any single environment.
   defp forget_environment(scope, name) do
-    for step <- StepRepository.list(scope),
-        kept = Enum.reject(step.resources, &belongs_to_environment?(&1, name)),
-        length(kept) < length(step.resources) do
-      StepRepository.upsert(scope, step.key, %{resources: Enum.map(kept, &Map.from_struct/1)})
+    for step <- StepRepository.list(scope) do
+      forget_environment_step(scope, step, name)
     end
 
     :ok
   end
+
+  # A step's own row for the environment being removed goes with it outright
+  # — no more resources to have belonged to it once the row itself is gone.
+  # This is the shape a per-environment step's rows always had once this
+  # schema landed (058d20ed's era predates it): the resource list on a row
+  # never spans two environments, so there is nothing left to filter.
+  defp forget_environment_step(scope, %{environment: environment, key: key}, name)
+       when environment == name do
+    StepRepository.delete(scope, key, environment)
+  end
+
+  # A project-wide step (server, dns, ...) keeps one row across every
+  # environment, tagging which resources belong to which — this is the
+  # filtering `forget_environment/2` always did, unchanged.
+  defp forget_environment_step(scope, %{environment: nil} = step, name) do
+    kept = Enum.reject(step.resources, &belongs_to_environment?(&1, name))
+
+    if length(kept) < length(step.resources) do
+      StepRepository.upsert(scope, step.key, nil, %{
+        resources: Enum.map(kept, &Map.from_struct/1)
+      })
+    end
+  end
+
+  # Another environment's own row — nothing here belongs to the one being
+  # removed.
+  defp forget_environment_step(_scope, _step, _name), do: :ok
 
   defp belongs_to_environment?(%{identifier: identifier}, name) when is_binary(identifier) do
     "environment=#{name}" in String.split(identifier)

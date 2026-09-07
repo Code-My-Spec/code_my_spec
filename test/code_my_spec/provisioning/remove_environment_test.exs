@@ -109,7 +109,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
   # `dns_record` for a name the zone did not answer for (92445d6f).
   describe "what the steps still claim afterwards" do
     setup %{scope: scope} do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: 2,
         resources: [
@@ -161,7 +161,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
   # substring match would.
   describe "matching the environment marker" do
     setup %{scope: scope} do
-      StepRepository.upsert(scope, :server, %{
+      StepRepository.upsert(scope, :server, nil, %{
         state: :done,
         position: 2,
         resources: [
