@@ -284,6 +284,19 @@ defmodule CodeMySpec.Files.FileSync do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
 
+    # The harness's file path, and the one that carries most real change: a
+    # scan arrives as a manifest and lands here, not through `sync/2`. Hooking
+    # only `finish_sync/5` announced nothing for any file an agent actually
+    # wrote — measured on dev, fifteen reconciles after the watcher shipped and
+    # not one announcement.
+    #
+    # Only when something moved. A manifest that upserted nothing, removed
+    # nothing and changed nothing is the steady state of a quiet tree, and the
+    # harness sends one every few minutes.
+    if changed != [] or upserted > 0 or removed > 0 do
+      CodeMySpec.Requirements.GraphInputs.changed(scope)
+    end
+
     %{
       upserted: upserted,
       removed: removed,

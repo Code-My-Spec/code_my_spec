@@ -118,6 +118,35 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     assert project_id == ctx.scope.active_project_id
   end
 
+  # The harness's own path, and the one that carries most real change. A scan
+  # arrives as a manifest and lands in `reconcile/2`, never in `sync/2` — so
+  # hooking only the latter announced nothing for any file an agent wrote.
+  # Measured on dev: fifteen reconciles after the watcher shipped, and not one
+  # announcement.
+  test "a harness manifest announces when it changed something", ctx do
+    GraphInputs.subscribe(ctx.scope.active_project_id)
+
+    CodeMySpec.Files.FileSync.reconcile(ctx.scope, [
+      %{
+        path: "lib/example/thing.ex",
+        role: :implementation,
+        mtime: DateTime.utc_now(),
+        size: 42,
+        fingerprint: "abc123"
+      }
+    ])
+
+    assert_receive {:graph_inputs_changed, _project_id}, 1_000
+  end
+
+  test "a manifest that changed nothing stays quiet", ctx do
+    GraphInputs.subscribe(ctx.scope.active_project_id)
+
+    CodeMySpec.Files.FileSync.reconcile(ctx.scope, [])
+
+    refute_receive {:graph_inputs_changed, _project_id}, 300
+  end
+
   test "the watcher says when the graph has been recomputed", ctx do
     {:ok, _pid} = GraphWatcher.ensure_watching(ctx.scope)
     GraphInputs.subscribe(ctx.scope.active_project_id)
