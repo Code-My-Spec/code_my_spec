@@ -13,26 +13,26 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.CredentialsModal do
   (`save_credentials`, `check_credentials`) still live on `ProvisioningLive`
   itself — this is a plain function component, not a `LiveComponent`, because
   nothing here needs state or a lifecycle of its own.
+
+  Shown and hidden through `:live_action`, the same pattern `ServerLive.Index`
+  already uses for its edit form — a real route
+  (`/projects/:project_id/provisioning/credentials`) rather than a CSS class
+  a JS command toggles. That makes the open dialog a URL: reachable by a
+  direct link, restorable on refresh, and closed by patching back to the
+  index route rather than by a bespoke show/hide pair.
   """
 
   use CodeMySpecWeb, :html
 
   alias Phoenix.LiveView.JS
 
-  @doc "Open the credentials dialog by id (use as a trigger button's `phx-click`)."
-  def open_credentials_modal(js \\ %JS{}, id), do: JS.add_class(js, "modal-open", to: "#" <> id)
-
-  @doc "Close the credentials dialog by id."
-  def close_credentials_modal(js \\ %JS{}, id),
-    do: JS.remove_class(js, "modal-open", to: "#" <> id)
-
-  attr :id, :string, default: "credentials-modal"
+  attr :return_to, :string, required: true
   attr :missing_credentials, :list, required: true
   attr :credentials, :list, required: true
 
   def credentials_modal(assigns) do
     ~H"""
-    <dialog id={@id} class="modal" data-test="credentials-modal">
+    <dialog id="credentials-modal" class="modal modal-open" data-test="credentials-modal">
       <div class="modal-box max-w-2xl">
         <h3 class="text-lg font-bold">Provider credentials</h3>
         <p class="opacity-70 text-sm mt-1">
@@ -122,7 +122,7 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.CredentialsModal do
               type="button"
               data-test="close-credentials-modal"
               class="btn"
-              phx-click={close_credentials_modal(@id)}
+              phx-click={JS.patch(@return_to)}
             >
               Close
             </.button>
@@ -136,7 +136,7 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.CredentialsModal do
         </form>
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button type="button" aria-label="close" phx-click={close_credentials_modal(@id)}>
+        <button type="button" aria-label="close" phx-click={JS.patch(@return_to)}>
           close
         </button>
       </form>

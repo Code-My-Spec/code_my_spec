@@ -10,6 +10,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
 
   defp path(project), do: "/app/projects/#{project.id}/provisioning"
+  defp credentials_path(project), do: "/app/projects/#{project.id}/provisioning/credentials"
 
   # The page verifies against providers on mount; these tests are about
   # rendering, so the provider's answer is supplied rather than reached for.
@@ -47,30 +48,54 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
   describe "provider credentials live in a dialog, not inlined on the page" do
     # First piece of breaking this page up: the credentials form used to sit
     # in the middle of the render, ahead of the actual setup steps, purely
-    # because it happens to be needed first. It's real content now, not
-    # conditionally rendered — a page load must not require opening the
-    # dialog first to have anything to assert against.
-    test "the dialog and its form exist on the page without opening it", %{
+    # because it happens to be needed first. Shown through :live_action now —
+    # the same pattern ServerLive.Index already uses for its edit form — so
+    # the dialog is a real route rather than a CSS class a JS command toggles.
+    test "the dialog does not exist on the plain index route", %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='credentials-modal']")
+      refute html =~ ~s(data-test="credentials-form")
+    end
+
+    test "the trigger button on the index page patches to the credentials route", %{
       conn: conn,
       project: project
     } do
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='manage-credentials']")
+
+      html =
+        view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
 
       assert has_element?(view, "[data-test='credentials-modal']")
       assert html =~ ~s(data-test="credentials-form")
       assert html =~ ~s(data-credential="hetzner_api_token")
     end
 
-    test "the trigger button on the page opens it", %{conn: conn, project: project} do
-      {:ok, view, _html} = live(conn, path(project))
+    test "closing the dialog patches back to the index route", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, credentials_path(project))
 
-      assert has_element?(view, "[data-test='manage-credentials']")
+      assert has_element?(view, "[data-test='credentials-modal']")
+
+      html =
+        view
+        |> element("[data-test='close-credentials-modal']")
+        |> render_click()
+
+      refute has_element?(view, "[data-test='credentials-modal']")
+      refute html =~ ~s(data-test="credentials-form")
     end
 
     # The old inline warning survives outside the dialog — Sam should see
-    # setup is blocked without having to go looking for why.
-    test "the missing-credentials summary is visible without opening the dialog",
-         %{conn: conn, project: project} do
+    # setup is blocked without having to open it to find out why.
+    test "the missing-credentials summary is visible on the index page", %{
+      conn: conn,
+      project: project
+    } do
       {:ok, _view, html} = live(conn, path(project))
 
       assert html =~ "Still needed:"
@@ -140,7 +165,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     # behaviour was always right on mount and always wrong live.
     test "unchecking an option stops it asking for that option's credentials",
          %{conn: conn, project: project} do
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, credentials_path(project))
 
       # Matched on `data-credential`, which only a `credential-field` row
       # carries. A bare substring match finds the key in the blocker's
@@ -176,7 +201,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     # the page's own directions are the only instructions there are.
     test "turning an option back on asks for its credentials again",
          %{conn: conn, project: project} do
-      {:ok, view, _html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, credentials_path(project))
 
       html = render_change(view, "toggle_options", %{"options" => %{"domain" => "true"}})
       refute html =~ ~s(data-credential="hetzner_s3_access_key_id")
@@ -858,7 +883,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       conn: conn,
       project: project
     } do
-      {:ok, _view, html} = live(conn, path(project))
+      {:ok, _view, html} = live(conn, credentials_path(project))
 
       for key <- ["hetzner_api_token", "hetzner_s3_access_key_id", "hetzner_s3_secret_access_key"] do
         assert html =~ ~s(data-key="#{key}"), "expected a field for #{key}"
@@ -871,7 +896,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       project: project,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, credentials_path(project))
 
       html =
         view
@@ -900,7 +925,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     } do
       AccountSecrets.put_value(scope, "hetzner_api_token", "keep-me")
 
-      {:ok, view, _html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, credentials_path(project))
 
       view
       |> form("form[phx-submit='save_credentials']", %{

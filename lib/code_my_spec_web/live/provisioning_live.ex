@@ -129,13 +129,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         <.button
           data-test="manage-credentials"
           class={"btn " <> if(@missing_credentials == [], do: "btn-ghost", else: "btn-warning")}
-          phx-click={CredentialsModal.open_credentials_modal("credentials-modal")}
+          patch={~p"/app/projects/#{@current_scope.active_project_id}/provisioning/credentials"}
         >
           Manage credentials
         </.button>
       </section>
 
       <CredentialsModal.credentials_modal
+        :if={@live_action == :credentials}
+        return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
         missing_credentials={@missing_credentials}
         credentials={@credentials}
       />
@@ -1387,6 +1389,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
          |> put_flash(:error, "That project is not yours, or does not exist.")
          |> push_navigate(to: ~p"/app/projects")}
     end
+  end
+
+  # Patching between the index and credentials routes only changes
+  # `@live_action` (already assigned by the router) — nothing here needs
+  # reloading per-action, but `handle_params/3` must still exist: LiveView
+  # calls it unconditionally on `live_patch`, not just when exported.
+  @impl true
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
   end
 
   # A project id that is not this account's is treated as not existing, rather
