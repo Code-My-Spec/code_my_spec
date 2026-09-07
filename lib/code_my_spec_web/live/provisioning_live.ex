@@ -200,6 +200,77 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </form>
       </dialog>
 
+      <section data-test="secrets-trigger" class="my-6 flex items-center gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Secrets</h2>
+          <p class="opacity-70 text-sm">
+            Set once, encrypted into the repo.
+          </p>
+        </div>
+        <.button
+          data-test="manage-secrets"
+          class="btn"
+          patch={~p"/app/projects/#{@current_scope.active_project_id}/provisioning/secrets"}
+        >
+          Manage secrets
+        </.button>
+      </section>
+
+      <dialog
+        :if={@live_action == :secrets}
+        id="secrets-modal"
+        class="modal modal-open"
+        data-test="secrets-modal"
+      >
+        <div class="modal-box max-w-2xl">
+          <SecretsForm.secrets_form
+            return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
+            environments={@environments}
+            secret_error={@secret_error}
+            sops_recipients={@sops_recipients}
+            secret_sources={@secret_sources}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button
+            type="button"
+            aria-label="close"
+            phx-click={JS.patch(~p"/app/projects/#{@current_scope.active_project_id}/provisioning")}
+          >
+            close
+          </button>
+        </form>
+      </dialog>
+
+      <%!-- DaisyUI's `.steps` base rule is horizontal-first: `overflow: hidden`
+      plus an `overflow-x: auto` override, so a horizontal list clips vertical
+      spillover and scrolls sideways. `.steps-vertical` only flips
+      `grid-auto-flow` — it never resets that inherited `overflow-y: hidden`,
+      so a vertical list this tall clips itself, silently, with every step's
+      real content still in the DOM and readable as text. Confirmed live:
+      every step's card existed with the right text, but nothing between
+      "Domain" and the dedicated "Secrets" section ever painted a pixel.
+      `overflow-visible` here is a Tailwind *utility*, which sits in a later
+      cascade layer than DaisyUI's *component* classes, so it wins without
+      needing `!important`. --%>
+      <h2 class="text-lg font-semibold mt-8">Account</h2>
+      <p class="opacity-70 text-sm">
+        Infrastructure the account owns — shared across every project.
+      </p>
+      <ol class="steps steps-vertical w-full overflow-visible" data-test="account-steps">
+        <.step_card
+          :for={step <- account_plan(@plan)}
+          step={step}
+          environments={@environments}
+          age_key_environments={@age_key_environments}
+        />
+      </ol>
+
+      <h2 class="text-lg font-semibold mt-8">Project</h2>
+      <p class="opacity-70 text-sm">
+        This project as a whole — one value regardless of environment.
+      </p>
+
       <section data-test="domain" class="my-6">
         <h2 class="text-lg font-semibold">Domain</h2>
         <%!-- Describes what actually happens. It used to say "check a name, see
@@ -338,162 +409,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </p>
       </section>
 
-      <section data-test="secrets-trigger" class="my-6 flex items-center gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">Secrets</h2>
-          <p class="opacity-70 text-sm">
-            Set once, encrypted into the repo.
-          </p>
-        </div>
-        <.button
-          data-test="manage-secrets"
-          class="btn"
-          patch={~p"/app/projects/#{@current_scope.active_project_id}/provisioning/secrets"}
-        >
-          Manage secrets
-        </.button>
-      </section>
-
-      <dialog
-        :if={@live_action == :secrets}
-        id="secrets-modal"
-        class="modal modal-open"
-        data-test="secrets-modal"
-      >
-        <div class="modal-box max-w-2xl">
-          <SecretsForm.secrets_form
-            return_to={~p"/app/projects/#{@current_scope.active_project_id}/provisioning"}
-            environments={@environments}
-            secret_error={@secret_error}
-            sops_recipients={@sops_recipients}
-            secret_sources={@secret_sources}
-          />
-        </div>
-        <form method="dialog" class="modal-backdrop">
-          <button
-            type="button"
-            aria-label="close"
-            phx-click={JS.patch(~p"/app/projects/#{@current_scope.active_project_id}/provisioning")}
-          >
-            close
-          </button>
-        </form>
-      </dialog>
-
-      <%!-- DaisyUI's `.steps` base rule is horizontal-first: `overflow: hidden`
-      plus an `overflow-x: auto` override, so a horizontal list clips vertical
-      spillover and scrolls sideways. `.steps-vertical` only flips
-      `grid-auto-flow` — it never resets that inherited `overflow-y: hidden`,
-      so a vertical list this tall clips itself, silently, with every step's
-      real content still in the DOM and readable as text. Confirmed live:
-      every step's card existed with the right text, but nothing between
-      "Domain" and the dedicated "Secrets" section ever painted a pixel.
-      `overflow-visible` here is a Tailwind *utility*, which sits in a later
-      cascade layer than DaisyUI's *component* classes, so it wins without
-      needing `!important`. --%>
-      <h2 class="text-lg font-semibold mt-8">Account</h2>
-      <p class="opacity-70 text-sm">
-        Infrastructure the account owns — shared across every project.
-      </p>
-      <ol class="steps steps-vertical w-full overflow-visible" data-test="account-steps">
-        <.step_card
-          :for={step <- account_plan(@plan)}
-          step={step}
-          environments={@environments}
-          age_key_environments={@age_key_environments}
-        />
-      </ol>
-
-      <h2 class="text-lg font-semibold mt-8">Project</h2>
-      <p class="opacity-70 text-sm">
-        This project as a whole — one value regardless of environment.
-      </p>
-      <ol class="steps steps-vertical w-full overflow-visible" data-test="project-steps">
-        <.step_card
-          :for={step <- project_plan(@plan)}
-          step={step}
-          environments={@environments}
-          age_key_environments={@age_key_environments}
-        />
-      </ol>
-
-      <div
-        :for={environment <- plan_environments(@plan)}
-        data-test="environment-section"
-        data-environment={environment}
-      >
-        <h2 class="text-lg font-semibold mt-8">Environment: {environment}</h2>
-        <p class="opacity-70 text-sm">What runs for {environment}, tracked on its own.</p>
-        <ol class="steps steps-vertical w-full overflow-visible" data-test="environment-steps">
-          <.step_card
-            :for={step <- environment_plan(@plan, environment)}
-            step={step}
-            environments={@environments}
-            age_key_environments={@age_key_environments}
-          />
-        </ol>
-      </div>
-
-      <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
-        <h2 class="text-lg font-semibold">Prove the bucket</h2>
-        <p class="opacity-70 text-sm">
-          Writes an object and reads it back. A bucket that accepted a write is not
-          the same as a bucket you can get your file out of again.
-        </p>
-
-        <form
-          data-test="storage-probe-form"
-          phx-submit="storage_probe"
-          class="mt-3 flex flex-wrap gap-2 items-end"
-        >
-          <label class="form-control">
-            <span class="label-text">Environment</span>
-            <select name="probe[environment]" class="select select-bordered">
-              <option :for={environment <- @environments} value={environment}>{environment}</option>
-            </select>
-          </label>
-
-          <label class="form-control">
-            <span class="label-text">Key</span>
-            <input name="probe[key]" value="probe.txt" class="input input-bordered" />
-          </label>
-
-          <label class="form-control">
-            <span class="label-text">Content</span>
-            <input name="probe[body]" value="hello" class="input input-bordered" />
-          </label>
-
-          <.button type="submit" data-test="run-storage-probe">Write and read back</.button>
-        </form>
-
-        <ul class="mt-3 flex flex-col gap-1">
-          <li
-            :for={object <- @storage_objects}
-            data-test="storage-object"
-            data-key={object.key}
-            data-environment={object.environment}
-            data-bucket={object.bucket}
-          >
-            wrote {object.key} to {object.bucket}
-          </li>
-        </ul>
-
-        <ul class="mt-1 flex flex-col gap-1">
-          <li
-            :for={readback <- @storage_readbacks}
-            data-test="storage-readback"
-            data-key={readback.key}
-            data-environment={readback.environment}
-            data-status={readback.status}
-            data-matches-written={to_string(readback.matches)}
-            data-reason={readback[:reason]}
-          >
-            read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
-            <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
-          </li>
-        </ul>
-      </section>
-
       <section :if={@mail} data-test="mail" class="my-6">
         <h2 class="text-lg font-semibold">Outbound mail</h2>
 
@@ -596,6 +511,92 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="btn btn-primary mt-2">
           Re-check DNS
         </.button>
+      </section>
+
+      <ol class="steps steps-vertical w-full overflow-visible" data-test="project-steps">
+        <.step_card
+          :for={step <- project_plan(@plan)}
+          step={step}
+          environments={@environments}
+          age_key_environments={@age_key_environments}
+        />
+      </ol>
+
+      <div
+        :for={environment <- plan_environments(@plan)}
+        data-test="environment-section"
+        data-environment={environment}
+      >
+        <h2 class="text-lg font-semibold mt-8">Environment: {environment}</h2>
+        <p class="opacity-70 text-sm">What runs for {environment}, tracked on its own.</p>
+        <ol class="steps steps-vertical w-full overflow-visible" data-test="environment-steps">
+          <.step_card
+            :for={step <- environment_plan(@plan, environment)}
+            step={step}
+            environments={@environments}
+            age_key_environments={@age_key_environments}
+          />
+        </ol>
+      </div>
+
+      <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
+        <h2 class="text-lg font-semibold">Prove the bucket</h2>
+        <p class="opacity-70 text-sm">
+          Writes an object and reads it back. A bucket that accepted a write is not
+          the same as a bucket you can get your file out of again.
+        </p>
+
+        <form
+          data-test="storage-probe-form"
+          phx-submit="storage_probe"
+          class="mt-3 flex flex-wrap gap-2 items-end"
+        >
+          <label class="form-control">
+            <span class="label-text">Environment</span>
+            <select name="probe[environment]" class="select select-bordered">
+              <option :for={environment <- @environments} value={environment}>{environment}</option>
+            </select>
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Key</span>
+            <input name="probe[key]" value="probe.txt" class="input input-bordered" />
+          </label>
+
+          <label class="form-control">
+            <span class="label-text">Content</span>
+            <input name="probe[body]" value="hello" class="input input-bordered" />
+          </label>
+
+          <.button type="submit" data-test="run-storage-probe">Write and read back</.button>
+        </form>
+
+        <ul class="mt-3 flex flex-col gap-1">
+          <li
+            :for={object <- @storage_objects}
+            data-test="storage-object"
+            data-key={object.key}
+            data-environment={object.environment}
+            data-bucket={object.bucket}
+          >
+            wrote {object.key} to {object.bucket}
+          </li>
+        </ul>
+
+        <ul class="mt-1 flex flex-col gap-1">
+          <li
+            :for={readback <- @storage_readbacks}
+            data-test="storage-readback"
+            data-key={readback.key}
+            data-environment={readback.environment}
+            data-status={readback.status}
+            data-matches-written={to_string(readback.matches)}
+            data-reason={readback[:reason]}
+          >
+            read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
+            <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
+          </li>
+        </ul>
       </section>
 
       <%!-- Content and widget live in their own section rather than inside the
