@@ -93,7 +93,12 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
                "the thing nobody notices is off is not on the checklist, which is the " <>
                  "quietest way for it to stay off"
 
-        assert Floki.attribute(backups, "data-state") == ["missing"]
+        # One entry per environment now, and the run halted before backups
+        # reached any of them — every row reads missing, not just the first.
+        states = Floki.attribute(backups, "data-state")
+
+        assert Enum.all?(states, &(&1 == "missing")),
+               "expected every backups row to read missing, got #{inspect(states)}"
 
         {:ok, context}
       end

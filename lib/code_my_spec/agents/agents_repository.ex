@@ -66,6 +66,23 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
+  def set_copy_continuous(%Scope{active_project_id: project_id}, copy_id, continuous?)
+      when is_binary(project_id) and is_binary(copy_id) and is_boolean(continuous?) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {count, _} =
+      Agent
+      |> where(
+        [a],
+        a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.status != :stopped
+      )
+      |> Repo.update_all(set: [continuous: continuous?, updated_at: now])
+
+    {:ok, count}
+  end
+
+  def set_copy_continuous(%Scope{}, _copy_id, _continuous?), do: {:error, :no_project}
+
   @doc """
   A scope per project that has at least one agent in the loop.
 
@@ -94,23 +111,6 @@ defmodule CodeMySpec.Agents.AgentsRepository do
       }
     end)
   end
-
-  def set_copy_continuous(%Scope{active_project_id: project_id}, copy_id, continuous?)
-      when is_binary(project_id) and is_binary(copy_id) and is_boolean(continuous?) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    {count, _} =
-      Agent
-      |> where(
-        [a],
-        a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.status != :stopped
-      )
-      |> Repo.update_all(set: [continuous: continuous?, updated_at: now])
-
-    {:ok, count}
-  end
-
-  def set_copy_continuous(%Scope{}, _copy_id, _continuous?), do: {:error, :no_project}
 
   @doc """
   Set continuous mode on one agent.

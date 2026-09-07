@@ -261,6 +261,7 @@ defmodule CodeMySpecWeb.ResourceLive.Index do
                 :for={item <- @report.checklist}
                 data-test="checklist-item"
                 data-key={item.key}
+                data-environment={item.environment}
                 data-project-id={item.project_id}
                 data-state={item.state}
                 class="badge badge-outline gap-1"
@@ -362,9 +363,7 @@ defmodule CodeMySpecWeb.ResourceLive.Index do
             <button
               type="button"
               data-test="trim"
-              phx-click={
-                show_confirm("confirm-trim")
-              }
+              phx-click={show_confirm("confirm-trim")}
               class="btn btn-error btn-sm"
             >
               Remove {length(dangling(@report.resources))} resource(s)

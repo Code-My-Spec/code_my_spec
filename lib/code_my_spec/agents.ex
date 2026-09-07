@@ -51,6 +51,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -723,7 +724,7 @@ defmodule CodeMySpec.Agents do
         # Somebody is working this project now, so something has to notice when
         # its graph moves. Started here rather than at boot: a project nobody is
         # working on needs no watcher.
-        CodeMySpec.Requirements.GraphWatcher.ensure_watching(scope)
+        GraphWatcher.ensure_watching(scope)
         wake_roles(scope, copy_id)
       end
 
@@ -744,7 +745,7 @@ defmodule CodeMySpec.Agents do
   def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
-        CodeMySpec.Requirements.GraphWatcher.ensure_watching(scope)
+        GraphWatcher.ensure_watching(scope)
         StopDecision.wake(scope, agent)
       end
 

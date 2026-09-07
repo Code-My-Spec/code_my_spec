@@ -104,9 +104,14 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
           |> Floki.parse_document!()
           |> Floki.find("[data-test='checklist-item'][data-key='storage']")
 
-        assert Floki.attribute(storage, "data-state") == ["present"],
+        # One entry per environment now — the scripted step succeeds the same
+        # way regardless of which environment invoked it, so every row should
+        # have turned present.
+        states = Floki.attribute(storage, "data-state")
+
+        assert states != [] and Enum.all?(states, &(&1 == "present")),
                "the bucket was built and the page still says it is missing, so he has " <>
-                 "no way to tell the fix worked"
+                 "no way to tell the fix worked, got #{inspect(states)}"
 
         {:ok, context}
       end
