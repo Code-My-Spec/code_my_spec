@@ -410,9 +410,39 @@ defmodule CodeMySpec.Agents do
         {:error, :no_such_agent}
 
       agent ->
+        record_operator_message(agent, text)
+
         agent.working_copy_id
         |> Transport.impl().message_agent(agent, text, timeout)
         |> delivered_or_working()
+    end
+  end
+
+  # What was said to it, in the transcript, before it is said.
+  #
+  # `message_agent/4` never recorded the outgoing side — only `dispatch_message/3`
+  # does, through `record_sent/4` — so a conversation driven from this route
+  # showed the agent's answers with nothing above them. Watched on 2026-09-07:
+  # three replies in a row, each to a question that appeared nowhere, which
+  # reads as an agent talking to itself and gives a person no way to judge
+  # whether the answer was any good.
+  #
+  # Recorded first, and the same way a queued message is: the agent's reply is
+  # about to arrive and land after it, so writing afterwards would put the
+  # question below its own answer.
+  defp record_operator_message(%Agent{} = agent, text) do
+    case Conversations.find_or_create_agent_conversation(
+           agent.account_id,
+           agent.project_id,
+           agent.id
+         ) do
+      {:ok, conversation} ->
+        Conversations.add_message(conversation, :operator, text, "operator", [],
+          delivery: :delivered
+        )
+
+      _error ->
+        :ok
     end
   end
 
