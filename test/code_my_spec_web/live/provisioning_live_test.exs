@@ -44,6 +44,39 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end)
   end
 
+  describe "provider credentials live in a dialog, not inlined on the page" do
+    # First piece of breaking this page up: the credentials form used to sit
+    # in the middle of the render, ahead of the actual setup steps, purely
+    # because it happens to be needed first. It's real content now, not
+    # conditionally rendered — a page load must not require opening the
+    # dialog first to have anything to assert against.
+    test "the dialog and its form exist on the page without opening it", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='credentials-modal']")
+      assert html =~ ~s(data-test="credentials-form")
+      assert html =~ ~s(data-credential="hetzner_api_token")
+    end
+
+    test "the trigger button on the page opens it", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='manage-credentials']")
+    end
+
+    # The old inline warning survives outside the dialog — Sam should see
+    # setup is blocked without having to go looking for why.
+    test "the missing-credentials summary is visible without opening the dialog",
+         %{conn: conn, project: project} do
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ "Still needed:"
+    end
+  end
+
   describe "the plan is visible before anything runs" do
     # Criterion 7959: Sam sees the shape of the run before it starts, rather
     # than steps appearing one at a time as they execute.
