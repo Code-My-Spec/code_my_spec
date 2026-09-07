@@ -225,15 +225,22 @@ defmodule CodeMySpec.Provisioning do
   defp derived_host("prod", domain), do: domain
   defp derived_host(name, domain), do: "#{name}.#{domain}"
 
-  # Production when there is one, because that is the site everything else
-  # (a reader, a webhook, a health check) actually reaches. Otherwise the
-  # first environment the project has, so a UAT-only project still gets one
-  # rather than none. `:content` is the one step that cannot yet act on more
-  # than one environment at a time (it proves itself against the project's
-  # single stored `client_api_url`/`content_bucket`) — this is what its one
-  # row is attributed to until that becomes genuinely independent per
-  # environment.
-  defp primary_environment(scope) do
+  @doc """
+  Production when there is one, because that is the site everything else
+  (a reader, a webhook, a health check) actually reaches. Otherwise the
+  first environment the project has, so a UAT-only project still gets one
+  rather than none. `:content` is the one step that cannot yet act on more
+  than one environment at a time (it proves itself against the project's
+  single stored `client_api_url`/`content_bucket`) — this is what its one
+  row is attributed to until that becomes genuinely independent per
+  environment.
+
+  Public so callers outside this module (the setup page, naming a step's
+  actual scope) can say which environment a primary-only action affects,
+  rather than guessing at it themselves.
+  """
+  @spec primary_environment(Scope.t()) :: String.t() | nil
+  def primary_environment(scope) do
     case Steps.permitted_environments(scope) do
       [] -> nil
       names -> if "prod" in names, do: "prod", else: List.first(names)

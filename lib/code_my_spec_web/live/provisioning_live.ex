@@ -604,6 +604,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
          when a sending domain happened to be registered, which has nothing to
          do with publishing a blog or embedding a widget. --%>
       <section data-test="content-and-widget" class="my-6">
+        <h2 class="text-lg font-semibold">Content &amp; widget</h2>
+        <p :if={@primary_environment} class="opacity-70 text-sm">
+          Acts on {@primary_environment} — the one site these can prove today.
+        </p>
+
         <%!-- One command, not a checklist. The whole of 972/8034 is that this
             button finishes the job — snapshot, upload, trigger, and a fetch
             back from the live site — with nothing left for Sam to do
@@ -663,7 +668,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       </section>
 
       <section data-test="backups-panel">
-        <h2>Backups</h2>
+        <h2 class="text-lg font-semibold">Backups</h2>
+        <p :if={@primary_environment} class="opacity-70 text-sm">
+          Checks and restores {@primary_environment}'s bucket — usually the only one worth backing up.
+        </p>
 
         <.button data-test="backups-refresh" phx-click="refresh_backups" class="btn btn-primary mt-2">
           Check the bucket
@@ -2352,6 +2360,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       Process.put(:cms_environment_names, names)
       assign(socket, :environments, names)
     end)
+    |> assign(
+      :primary_environment,
+      Provisioning.primary_environment(socket.assigns.current_scope)
+    )
     |> assign(:storage_ready?, Storage.credentials(socket.assigns.current_scope, []) != :none)
     # Read once and kept, not re-read on every event. `mail_state/2` and
     # `mail_domains/1` each call Resend live, so re-reading here meant three
