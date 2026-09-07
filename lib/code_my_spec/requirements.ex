@@ -45,6 +45,12 @@ defmodule CodeMySpec.Requirements do
   def actionable_count(%Scope{active_project_id: nil}, _role), do: 0
 
   def actionable_count(%Scope{} = scope, role) do
+    # Settle first. A pending recompute means a write has landed that this count
+    # has not seen, and this count is what decides whether an agent is told to
+    # stop — deciding a beat before the recompute means deciding from the older
+    # answer. `:ok` when nothing is pending and when nobody is watching.
+    CodeMySpec.Requirements.GraphWatcher.settle(scope)
+
     {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
 
     case role && RequirementsRegistry.requirement_names_for_role(role) do

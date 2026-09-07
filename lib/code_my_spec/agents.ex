@@ -719,7 +719,14 @@ defmodule CodeMySpec.Agents do
           {:ok, non_neg_integer()} | {:error, term()}
   def set_copy_continuous(%Scope{} = scope, copy_id, continuous?) do
     with {:ok, count} <- AgentsRepository.set_copy_continuous(scope, copy_id, continuous?) do
-      if continuous?, do: wake_roles(scope, copy_id)
+      if continuous? do
+        # Somebody is working this project now, so something has to notice when
+        # its graph moves. Started here rather than at boot: a project nobody is
+        # working on needs no watcher.
+        CodeMySpec.Requirements.GraphWatcher.ensure_watching(scope)
+        wake_roles(scope, copy_id)
+      end
+
       {:ok, count}
     end
   end
@@ -736,7 +743,11 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, term()}
   def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
-      if continuous?, do: StopDecision.wake(scope, agent)
+      if continuous? do
+        CodeMySpec.Requirements.GraphWatcher.ensure_watching(scope)
+        StopDecision.wake(scope, agent)
+      end
+
       {:ok, agent}
     end
   end

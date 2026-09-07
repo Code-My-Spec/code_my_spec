@@ -166,6 +166,19 @@ defmodule CodeMySpec.Files.FileSync do
         "#{removed} removed, total #{total_ms}ms"
     )
 
+
+    # Files are what most of the graph is computed from, so a sync that changed
+    # anything is the biggest single reason it moved. Only when something
+    # actually changed: a scan that upserted nothing and removed nothing is the
+    # common case on a quiet tree, and announcing it would wake the debounce for
+    # a fingerprint that cannot have moved.
+    #
+    # `GraphWatcher` asks the fingerprint anyway, so this is an optimisation
+    # rather than a correctness rule. See `Requirements.GraphInputs`.
+    if changed_paths != [] or upserted > 0 or removed > 0 do
+      CodeMySpec.Requirements.GraphInputs.changed(scope)
+    end
+
     {:ok,
      %{
        upserted: upserted,

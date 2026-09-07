@@ -39,6 +39,17 @@ defmodule CodeMySpecWeb.Application do
         {Registry, keys: :unique, name: CodeMySpec.Intake.ConversationRegistry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Intake.ConversationSupervisor},
+        # One watcher per project with something happening in it, turning writes
+        # to the graph's inputs into a recomputed graph and a woken agent.
+        # Before it, the only thing that ever recomputed was somebody reading —
+        # so an idle agent never learned that work had appeared, measured at
+        # ninety minutes of a product agent waiting on four untriaged issues.
+        #
+        # Started on demand by `GraphWatcher.ensure_watching/1` rather than one
+        # per project at boot: a project nobody is working on needs no watcher.
+        {Registry, keys: :unique, name: CodeMySpec.Requirements.Registry},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: CodeMySpec.Requirements.WatcherSupervisor},
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

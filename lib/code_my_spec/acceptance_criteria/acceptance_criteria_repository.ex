@@ -214,10 +214,19 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   end
 
   @spec list_story_criteria(Scope.t(), integer()) :: [Criterion.t()]
+  # `id` breaks the tie, and the tie is the common case rather than the rare one.
+  #
+  # `inserted_at` is second-resolution, and criteria are written together — a
+  # three-amigos session adds four in one call, a fixture adds three in a row.
+  # They share a timestamp, Postgres is free to return equal keys in any order,
+  # and "creation order" came back shuffled. Reproduced with
+  # `--repeat-until-failure 10` on `export_to_strings/2`, which is the one place
+  # that ordering is load-bearing: it is what renders a story's criteria to an
+  # agent, so a shuffle reorders the work.
   def list_story_criteria(%Scope{active_project: %{id: project_id}}, story_id) do
     from(c in Criterion,
       where: c.story_id == ^story_id and c.project_id == ^project_id,
-      order_by: [asc: c.inserted_at]
+      order_by: [asc: c.inserted_at, asc: c.id]
     )
     |> Repo.all()
   end

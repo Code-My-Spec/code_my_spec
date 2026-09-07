@@ -1,0 +1,73 @@
+defmodule CodeMySpec.Requirements.GraphInputs do
+  @moduledoc """
+  One event, published by everything the requirement graph is computed from.
+
+  ## Why this exists
+
+  Every graph computation in this application is triggered by a *reader* — a
+  LiveView rendering, `get_next_requirement`, the stop menu. Nothing computes on
+  a write and nothing computes on a schedule, so an agent that is not reading
+  never learns that work appeared.
+
+  Watched on 2026-09-07: a product agent stopped correctly with an empty queue —
+  "No product work is currently available; I'll stop and wait to be woken when a
+  product requirement is unblocked" — and sat for ninety minutes while four
+  issues were filed and `issues_triaged` became actionable again.
+
+  Before this there were two proxies for "the graph moved": a task completing,
+  and (briefly) an issue being filed. `GraphFingerprint` covers ten inputs. Two
+  proxies for ten inputs is a hand-maintained list, and the eight it misses look
+  exactly like those ninety minutes.
+
+  ## Why a new topic rather than the ones that exist
+
+  The contexts already broadcast, and they are keyed for the reader they were
+  written for: `user:<user_id>:components`, `user:<account_id>:issues`,
+  `project:<id>:personas`. A per-project watcher cannot subscribe to a
+  user-keyed topic — it does not know which users are going to write.
+
+  So this is one topic per project, published to by every writer whose table the
+  fingerprint hashes. Readers keep their own topics; this one exists for the
+  watcher and says only "something the graph is computed from moved", never what.
+
+  ## Why it carries nothing
+
+  Deliberately no payload. The fingerprint already answers "did anything
+  actually change", and it answers it over every input at once — a payload
+  saying *which* would be a second, worse copy of that, and the first thing to
+  drift. `GraphWatcher` debounces these and asks the fingerprint.
+
+  So a writer that publishes when nothing really changed costs one hash, and a
+  writer that is unsure should publish.
+  """
+
+  alias CodeMySpec.Users.Scope
+
+  @pubsub CodeMySpec.PubSub
+
+  @doc "Topic for one project's graph-input changes."
+  @spec topic(Ecto.UUID.t()) :: String.t()
+  def topic(project_id) when is_binary(project_id), do: "project:#{project_id}:graph_inputs"
+
+  @doc """
+  Say that something the graph is computed from has changed.
+
+  Takes a scope so a writer can call it with what it already has. A scope with
+  no active project is a no-op rather than an error: plenty of writes happen
+  outside a project, and a writer should not have to ask.
+  """
+  @spec changed(Scope.t() | Ecto.UUID.t() | nil) :: :ok
+  def changed(%Scope{active_project_id: project_id}), do: changed(project_id)
+
+  def changed(project_id) when is_binary(project_id) do
+    Phoenix.PubSub.broadcast(@pubsub, topic(project_id), {:graph_inputs_changed, project_id})
+    :ok
+  end
+
+  def changed(_no_project), do: :ok
+
+  @doc "Listen for one project's graph-input changes."
+  @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term()}
+  def subscribe(project_id) when is_binary(project_id),
+    do: Phoenix.PubSub.subscribe(@pubsub, topic(project_id))
+end

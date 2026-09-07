@@ -99,23 +99,6 @@ defmodule CodeMySpec.Issues do
     with {:ok, issue} <- IssuesRepository.create_issue(scope, attrs) do
       broadcast(scope, {:created, issue})
 
-      # An incoming issue is product's work appearing. `issues_triaged` is
-      # product's requirement and becomes actionable the moment one is filed, so
-      # this is the event that makes the graph move — and nothing was listening
-      # to it.
-      #
-      # A product agent stopped correctly with an empty queue and said what it
-      # was waiting for: "I'll stop and wait to be woken when a product
-      # requirement is unblocked." Four issues arrived over the next ninety
-      # minutes and it never took another turn. Task completions were the only
-      # thing that woke anybody, and no task completed.
-      #
-      # After the write, so an agent that wakes and reads immediately sees the
-      # issue that woke it. `wake_project_roles/2` stays quiet for a role whose
-      # menu is empty, so a coding agent filing an issue mid-run does not wake
-      # itself or anybody with nothing to do.
-      CodeMySpec.Agents.wake_project_roles(scope)
-
       {:ok, issue}
     end
   end
@@ -355,8 +338,15 @@ defmodule CodeMySpec.Issues do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{account_id}:issues")
   end
 
-  defp broadcast(%Scope{active_account_id: account_id}, message) when is_binary(account_id) do
+  defp broadcast(%Scope{active_account_id: account_id} = scope, message)
+       when is_binary(account_id) do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
+
+    # And to the graph's own topic, additionally: `GraphWatcher` debounces these
+    # and asks the fingerprint whether anything really moved. An incoming issue
+    # makes `issues_triaged` actionable, which is work appearing that no reader
+    # would notice. See `Requirements.GraphInputs`.
+    CodeMySpec.Requirements.GraphInputs.changed(scope)
   end
 
   defp broadcast(_scope, _message), do: :ok

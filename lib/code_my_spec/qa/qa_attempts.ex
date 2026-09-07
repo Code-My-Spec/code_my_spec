@@ -53,8 +53,21 @@ defmodule CodeMySpec.Qa.QaAttempts do
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
+      |> tap(&announce_graph_change(scope, &1))
     end
   end
+
+  # A submitted attempt is what `qa_complete` is computed from, so the graph
+  # moved — and a pass is the case that matters most, because it unblocks
+  # whatever was waiting behind the story.
+  #
+  # After the transaction commits, not inside it: `GraphWatcher` recomputes on
+  # this, and a recompute that read the attempt before it committed would decide
+  # from a row that might roll back. Only on success for the same reason.
+  defp announce_graph_change(scope, {:ok, _attempt}),
+    do: CodeMySpec.Requirements.GraphInputs.changed(scope)
+
+  defp announce_graph_change(_scope, _other), do: :ok
 
   # A `fail` or `partial` outcome MUST be backed by issue ids. Agents
   # were filing findings into a result.md text blob that the harness
