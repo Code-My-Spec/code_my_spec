@@ -492,12 +492,39 @@ defmodule CmsHarness.Agents.Engine do
   # first; the decision is about what to do *next* and must not sit in front of
   # the thing that was asked for.
   #
-  # On every turn end rather than only the last of a run. An agent with work
-  # queued is about to take another turn, and the analyzers enqueued now are
-  # about the tree as it stands — `Analysis` supersedes a duplicate rather than
-  # running it twice, so the cost of saying so early is a row, and the cost of
-  # staying quiet is a turn's worth of broken tree nobody mentioned.
+  # Only when nothing is queued behind it — when the agent is actually done
+  # rather than between two turns of one run.
+  #
+  # This fired on every turn end, on the reasoning that "`Analysis` supersedes a
+  # duplicate rather than running it twice, so the cost of saying so early is a
+  # row". The row was never the cost. In continuous mode a turn ends every
+  # 15-20 seconds — the loop delivers a message, the agent acts, it settles, the
+  # decision sends another — and each settle enqueued a full sweep while a spex
+  # run takes ~176s. Measured on one working copy: 84 superseded against 26
+  # completed.
+  #
+  # Superseding is not destructive (`supersede_queued/2` drops queued runs only,
+  # never one in flight), so nothing was thrashing. What it cost is that the
+  # decision an agent gets is built from whatever last completed, which by then
+  # is several turns behind the tree it is looking at. John: "it should only run
+  # the analyzer when the agent is fully done, not like between tool calls and
+  # stuff."
+  #
+  # `queue` is the whole signal and it was already here — `drain/1` reads the
+  # same field one line below to decide whether another turn starts now.
+  #
+  # The loop is unaffected. The message that continues it is sent *by* the
+  # decision, so the queue is empty at the settle that produces it; a non-empty
+  # queue means somebody already gave the agent its next thing to do, and a stop
+  # decision in front of that is advice about a choice already made.
+  #
+  # What this gives up is the case the old comment named: a tree broken on turn
+  # 3 of a long run goes unmentioned until the run ends. Accepted deliberately —
+  # splitting fast analyzers from slow ones would keep both properties and is
+  # more machinery than the problem is worth today.
   defp announce_turn_end(%{on_event: nil}), do: :ok
+
+  defp announce_turn_end(%{queue: [_ | _]}), do: :ok
 
   defp announce_turn_end(state) do
     state.on_event.(state.agent_id, %{event: :turn_ended})
