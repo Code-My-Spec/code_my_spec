@@ -48,28 +48,38 @@ defmodule CodeMySpecSpex.Story553.Criterion5109Spex do
           )
 
         _turn_1_response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{
-            "test_output_files" => %{
-              "compile" => fixture_path("compile.jsonl")
-            }
-          })
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "test_output_files" => %{
+                "compile" => fixture_path("compile.jsonl"),
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         {:ok, context}
       end
 
       when_ "turn 2: the stop hook fires with no file changes", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{})
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "test_output_files" => %{
+                "compile" => fixture_path("compile.jsonl"),
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         {:ok, Map.put(context, :response, response)}
       end

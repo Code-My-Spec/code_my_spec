@@ -62,18 +62,20 @@ defmodule CodeMySpecSpex.Story553.Criterion6029Spex do
         :ok = Environments.write_file(context.environment, @clean_path, clean_module())
 
         _seed_response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{
-            "test_output_files" => %{
-              "compile" => fixture_path("compile.jsonl"),
-              "exunit" => fixture_path("exunit.json"),
-              "spex" => fixture_path("spex.jsonl")
-            }
-          })
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "test_output_files" => %{
+                "compile" => fixture_path("compile.jsonl"),
+                "exunit" => fixture_path("exunit.json"),
+                "spex" => fixture_path("spex.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         {:ok, context}
       end

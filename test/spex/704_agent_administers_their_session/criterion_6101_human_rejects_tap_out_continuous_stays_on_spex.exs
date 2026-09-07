@@ -10,6 +10,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6101Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
@@ -69,11 +70,20 @@ defmodule CodeMySpecSpex.Story704.Criterion6101Spex do
         # flag is on. The DB-read of session.continuous would be a
         # boundary violation; the stop hook is the user-facing signal.
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "session_id" => context.session_id,
+              "test_output_files" => %{
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+                "compile" =>
+                  Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         assert response["decision"] == "block",
                "expected stop to still block in continuous mode after tap-out rejection, got: #{inspect(response)}"

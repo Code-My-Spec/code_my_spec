@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6075Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
@@ -38,16 +39,19 @@ defmodule CodeMySpecSpex.Story553.Criterion6075Spex do
 
       when_ "the stop hook fires with a warning in the compile output", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{
-            "test_output_files" => %{
-              "compile" => fixture_path("compile.jsonl")
-            }
-          })
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "test_output_files" => %{
+                "compile" => fixture_path("compile.jsonl"),
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         {:ok, Map.put(context, :response, response)}
       end
