@@ -84,22 +84,11 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
     |> Enum.filter(&MapSet.member?(catalogue, &1))
   end
 
-  # One unsettled pair, named rather than hidden.
-  #
-  # `issues_resolved` and `story_issues_resolved` are coding's, satisfied by
-  # `FixIssues` and `FixStoryIssues`, whose prompts say to call `resolve_issue`.
-  # `ToolSets` withholds it from coding on a stated rule: "a coding agent that
-  # can resolve the issue it was given is grading its own work."
-  #
-  # Both cannot be right, and which one gives is a design decision rather than a
-  # gap to close by adding a tool — either coding records its own fixes and QA
-  # re-tests, or resolving belongs to whoever verifies and the requirement is
-  # not coding's. Listed here so the check stays useful for everything else and
-  # this stays visible instead of being quietly granted.
-  @unsettled [
-    "issues_resolved (coding) → CodeMySpec.AgentTasks.FixIssues names `resolve_issue`",
-    "story_issues_resolved (coding) → CodeMySpec.AgentTasks.FixStoryIssues names `resolve_issue`"
-  ]
+  # Nothing unsettled at the moment. Kept as a list rather than deleted: the
+  # check is only useful if a gap that is a real decision can be parked without
+  # switching the whole thing off, and the staleness test below makes parking
+  # one visible rather than permanent.
+  @unsettled []
 
   test "every tool a requirement's task names is one its role carries" do
     catalogue = scoped_tool_names()
@@ -146,11 +135,30 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
     assert "dismiss_issue" in carried
   end
 
-  # And the line the neighbouring comment draws: deciding whether an issue is
-  # real is product's, declaring it fixed is not.
-  test "neither product nor coding declares an issue fixed" do
+  # The line as it now stands: deciding whether an issue is real is product's,
+  # declaring it fixed belongs to whoever fixed it.
+  #
+  # `resolve_issue` was withheld from coding until 2026-09-07 on "a coding agent
+  # that can resolve the issue it was given is grading its own work", while
+  # `issues_resolved` was coding's requirement and its task said to call it. The
+  # graph won, because it is the half with work hanging off it.
+  test "coding records its own fixes and product does not" do
+    assert "resolve_issue" in ToolSets.for_role(:coding)
     refute "resolve_issue" in ToolSets.for_role(:product)
-    refute "resolve_issue" in ToolSets.for_role(:coding)
+  end
+
+  test "deciding an issue is real stays product's" do
+    refute "accept_issue" in ToolSets.for_role(:coding)
+    refute "dismiss_issue" in ToolSets.for_role(:coding)
+  end
+
+  # The other direction, and the reason it is not a contradiction: an agent
+  # working one thing finds another, and the choice has to be "write it down and
+  # carry on" rather than "fix it now or lose it".
+  test "coding can read the issue list and file what it finds" do
+    carried = ToolSets.for_role(:coding)
+
+    for tool <- ~w(list_issues get_issue create_issue), do: assert(tool in carried)
   end
 
   # An exception that stopped being one is worse than no list: it reads as a

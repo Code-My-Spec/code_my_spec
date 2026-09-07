@@ -47,8 +47,26 @@ defmodule CodeMySpec.Agents.ToolSets do
   )
 
   # Writing code against a spec, and reading everything that says what the spec
-  # is. No issue triage and no QA submission: a coding agent that can resolve
-  # the issue it was given is grading its own work.
+  # is. No issue *triage* and no QA submission — deciding whether an incoming
+  # issue is real is product's, and a coding agent that can submit a QA result
+  # is grading its own work.
+  #
+  # `resolve_issue` is the exception, and it used to be excluded by the same
+  # sentence. `issues_resolved` is coding's requirement and `FixIssues` tells it
+  # to call `resolve_issue` per issue, so the rule and the graph contradicted
+  # each other and the graph is the one with work hanging off it. John's call,
+  # 2026-09-07.
+  #
+  # It is not self-grading in the way submitting a QA result is: resolving
+  # records "I fixed this", and QA re-tests independently and can invalidate it.
+  # What coding still cannot do is decide an issue was never real — `accept_issue`
+  # and `dismiss_issue` stay product's.
+  #
+  # `create_issue` belongs here for the reverse reason, and has all along: an
+  # agent working one thing finds another, and the choice has to be "write it
+  # down and carry on" rather than "fix it now or lose it". John: "the coding
+  # agent can also find issues that it should report and not fix right that
+  # second."
   #
   # `browser` for the same reason QA has it: work on a LiveView is checked by
   # looking at it, and the `code-writer` agent type has carried browser tools
@@ -60,7 +78,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     create_component update_component validate_dependency_graph set_story_component
     list_requirements show_requirement
     list_rules list_questions
-    list_issues get_issue create_issue
+    list_issues get_issue create_issue resolve_issue
     list_knowledge read_knowledge semantic_search refresh_embeddings
     read_project_file write_project_file
     list_tasks clear_problems list_problems
@@ -83,9 +101,9 @@ defmodule CodeMySpec.Agents.ToolSets do
   # tap-out for a role with triage authority." The work was done and could not
   # be written down.
   #
-  # Note what this is not: `resolve_issue` stays off this list and off coding's,
-  # for the reason the `@coding` comment gives. Deciding whether an issue is
-  # real is product's; declaring it fixed is not.
+  # Note what this is not: `resolve_issue` stays off *this* list. Deciding
+  # whether an issue is real is product's; declaring it fixed belongs to whoever
+  # fixed it, which is coding — see the `@coding` comment.
   @product ~w(
     list_stories get_story list_story_titles create_story update_story delete_story
     add_criterion update_criterion delete_criterion move_criterion
