@@ -402,20 +402,46 @@ defmodule CodeMySpec.Agents do
   this cannot widen that. Reached only from `/dev/agents/:id/message`, which is
   compiled out of a release.
   """
-  @spec message_any_agent(Ecto.UUID.t(), String.t(), timeout()) ::
-          {:ok, String.t() | :still_working} | {:error, term()}
+  @spec message_any_agent(Ecto.UUID.t(), String.t(), timeout() | :no_wait) ::
+          {:ok, String.t() | :still_working | :queued | :started} | {:error, term()}
   def message_any_agent(agent_id, text, timeout) when is_binary(agent_id) and is_binary(text) do
     case Repo.get(Agent, agent_id) do
-      nil ->
-        {:error, :no_such_agent}
-
-      agent ->
-        record_operator_message(agent, text)
-
-        agent.working_copy_id
-        |> Transport.impl().message_agent(agent, text, timeout)
-        |> delivered_or_working()
+      nil -> {:error, :no_such_agent}
+      agent -> send_to_any(agent, text, timeout)
     end
+  end
+
+  # Dispatched, so the caller's patience is not the agent's turn limit.
+  #
+  # `message_agent/4` runs the whole turn inside a `GenServer.call` with the
+  # caller's timeout — so a four-minute HTTP client made a four-minute turn, and
+  # the turn that outlived it was announced as a *failure* while it carried on
+  # working. Watched on 2026-09-07: a QA agent mid-scenario, 165 tool calls in
+  # three minutes, with `{:timeout, {GenServer, :call, …}}` sitting in its own
+  # transcript as though it had said it.
+  #
+  # A person at a terminal wants the reply, so waiting stays available — but it
+  # is the exception now, and the long QA runs this route exists to drive are
+  # exactly the ones that must not be capped by it.
+  defp send_to_any(%Agent{} = agent, text, :no_wait) do
+    record_operator_message(agent, text)
+    ref = "dev-" <> Ecto.UUID.generate()
+
+    Transport.impl().dispatch_message(
+      agent.working_copy_id,
+      agent,
+      ref,
+      text,
+      @message_timeout_ms
+    )
+  end
+
+  defp send_to_any(%Agent{} = agent, text, timeout) do
+    record_operator_message(agent, text)
+
+    agent.working_copy_id
+    |> Transport.impl().message_agent(agent, text, timeout)
+    |> delivered_or_working()
   end
 
   # What was said to it, in the transcript, before it is said.

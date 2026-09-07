@@ -67,6 +67,25 @@ defmodule CmsHarness.Agents.Engine do
   # context re-established every 25 calls.
   @max_turns 150
 
+  # How long a turn may run, regardless of who sent the message.
+  #
+  # This used to be the *sender's* timeout, threaded from `{:send, ref, message,
+  # timeout}` through `start_turn/5` into `stream_chat`. So whoever spoke to the
+  # agent decided how long it was allowed to think: a four-minute HTTP client
+  # made a four-minute turn, and the turn that outlived it was killed and
+  # announced as the agent's own failure — `{:timeout, {GenServer, :call, …}}`
+  # sitting in its transcript in its own voice, while a QA scenario it had spent
+  # 165 calls on went unfinished.
+  #
+  # A turn's duration is a property of the turn. A caller's patience is a
+  # property of the caller, and it governs how long *it* waits — `awaiting` —
+  # not how long the agent works.
+  #
+  # Thirty minutes because a browser QA pass is minutes of real waiting: pages
+  # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
+  # ceiling on a runaway, not a budget.
+  @turn_timeout :timer.minutes(30)
+
   @type start_opts :: [
           agent_id: String.t(),
           provider: String.t(),
@@ -433,11 +452,14 @@ defmodule CmsHarness.Agents.Engine do
   # while it works cannot be sent anything while it works — and mid-turn is
   # when an operator most wants to. Linked, and this process traps exits, so a
   # turn that crashes arrives as a message instead of taking the agent with it.
-  defp start_turn(state, ref, message, timeout, awaiting) do
+  # `_timeout` is the sender's and is deliberately unused here. It is how long
+  # that caller waits, which `awaiting` settles; it is not how long the agent
+  # may work. Threading it in made the two the same thing and cost a QA run.
+  defp start_turn(state, ref, message, _timeout, awaiting) do
     announce_delivery(state, ref)
 
     %{
-      task: Task.async(fn -> run_turn(state, message, timeout) end),
+      task: Task.async(fn -> run_turn(state, message, @turn_timeout) end),
       awaiting: awaiting,
       ref: ref
     }

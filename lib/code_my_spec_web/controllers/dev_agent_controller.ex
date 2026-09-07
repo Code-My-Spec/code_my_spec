@@ -36,11 +36,17 @@ defmodule CodeMySpecWeb.DevAgentController do
 
   alias CodeMySpec.Agents
 
-  # Long, because this waits for the agent's turn. `message_agent/4` runs the
-  # whole turn inside the call — that is the point here, unlike the analysis and
-  # answer paths, where the caller is a process that must not block. A person at
-  # a terminal wants the reply.
-  @turn_timeout 240_000
+  # Only when the caller asked to wait, and short on purpose.
+  #
+  # `message_agent/4` runs the whole turn inside a `GenServer.call` with this
+  # value, so it is not a patience setting — it is the agent's turn limit. A
+  # four-minute wait made four-minute turns and reported the ones that outlived
+  # it as failures, in the agent's own voice, while they carried on working.
+  #
+  # So waiting is opt-in (`?wait=true`) and for short exchanges: ask a question,
+  # get an answer. Anything long — a QA pass, a browser scenario — is dispatched
+  # and watched in the transcript, which is where it is legible anyway.
+  @wait_timeout 240_000
 
   def index(conn, params) do
     agents =
@@ -63,11 +69,14 @@ defmodule CodeMySpecWeb.DevAgentController do
     json(conn, %{agents: agents})
   end
 
-  def message(conn, %{"agent_id" => agent_id, "message" => message})
+  def message(conn, %{"agent_id" => agent_id, "message" => message} = params)
       when is_binary(message) and message != "" do
-    case Agents.message_any_agent(agent_id, message, @turn_timeout) do
+    case Agents.message_any_agent(agent_id, message, wait_for(params)) do
       {:ok, :still_working} ->
         json(conn, %{status: "still_working", agent_id: agent_id})
+
+      {:ok, disposition} when disposition in [:started, :queued] ->
+        json(conn, %{status: to_string(disposition), agent_id: agent_id})
 
       {:ok, said} ->
         json(conn, %{status: "ok", agent_id: agent_id, said: said})
@@ -88,4 +97,10 @@ defmodule CodeMySpecWeb.DevAgentController do
   def message(conn, %{"agent_id" => _}) do
     conn |> put_status(422) |> json(%{error: "message is required and must not be empty"})
   end
+
+  # Dispatch unless the caller asked to wait. The default matters: waiting is
+  # what caps the turn, and the caller who forgets to think about it is the one
+  # driving a long run.
+  defp wait_for(%{"wait" => wait}) when wait in ["true", "1"], do: @wait_timeout
+  defp wait_for(_params), do: :no_wait
 end
