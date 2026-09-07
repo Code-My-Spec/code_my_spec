@@ -504,21 +504,26 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert has_element?(view, "[data-step='repository'] [data-test='run-step']")
     end
 
-    test "the deploy step offers an environment picker instead", %{
+    test "the deploy step's form is scoped to its own card's environment, with no picker", %{
       conn: conn,
       project: project
     } do
       {:ok, view, _html} = live(conn, path(project))
 
       assert has_element?(view, "[data-step='deploy'] [data-test='deploy-environment-form']")
-      assert has_element?(view, "[data-step='deploy'] [data-test='deploy-environment-select']")
+
+      # No picker: each deploy card is already one environment's row
+      # (`data-environment` on the card itself), so a dropdown offering
+      # every environment inside it would let the exact cross-environment
+      # mistake this form exists to prevent back in through a different door.
+      refute has_element?(view, "[data-step='deploy'] [data-test='deploy-environment-select']")
     end
 
-    # The wiring: submitting the picker threads the chosen environment through
+    # The wiring: submitting a card's form threads its own environment through
     # as `:environment`, the same key `run_provisioning_step` requires and
     # `Steps.run(:deploy, ...)` already reads to deploy one environment
     # instead of every environment the project has.
-    test "submitting the picker threads the chosen environment through", %{
+    test "submitting a card's form threads its own environment through", %{
       conn: conn,
       project: project,
       scope: scope
@@ -532,13 +537,11 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
       {:ok, view, _html} = live(conn, path(project))
 
-      # Deploy now has one card per environment (each still offering the full
-      # picker — the per-row layout this schema change enables is future
-      # work), so the selector has to say which row's form it means.
+      # Deploy has one card per environment, so the selector has to say
+      # which row's form it means.
       view
       |> form(
-        "[data-step='deploy'][data-environment='#{environment}'] [data-test='deploy-environment-form']",
-        %{"environment" => environment}
+        "[data-step='deploy'][data-environment='#{environment}'] [data-test='deploy-environment-form']"
       )
       |> render_submit()
 

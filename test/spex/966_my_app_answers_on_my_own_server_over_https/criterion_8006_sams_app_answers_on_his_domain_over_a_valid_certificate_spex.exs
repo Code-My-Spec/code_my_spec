@@ -48,9 +48,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
       end
 
       when_ "setup verifies the environment over HTTPS", context do
+        # "uat" — the environment `stage_deploy/2` staged above.
         html =
           context.view
-          |> element("[data-test='setup-step'][data-step='tls'] [data-test='run-step']")
+          |> element(
+            "[data-test='setup-step'][data-step='tls'][data-environment='uat'] [data-test='run-step']"
+          )
           |> render_click()
 
         {:ok, Map.put(context, :html, html)}

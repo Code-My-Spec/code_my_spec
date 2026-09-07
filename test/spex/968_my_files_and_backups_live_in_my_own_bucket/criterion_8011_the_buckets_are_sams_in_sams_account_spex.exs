@@ -33,12 +33,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
       end
 
       when_ "the storage step has run", context do
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-          |> render_click()
+        CodeMySpecSpex.Case.run_step_interaction(context.view, :storage, "prod")
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the buckets are under his own account", context do

@@ -38,7 +38,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
         view = mount_provisioning(context)
 
         view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         {:ok, context |> Map.put(:view, view)}
@@ -50,7 +53,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
 
         html =
           context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+          |> form(
+            "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+            %{"environment" => "uat"}
+          )
           |> render_submit()
 
         {:ok, Map.put(context, :html, html)}

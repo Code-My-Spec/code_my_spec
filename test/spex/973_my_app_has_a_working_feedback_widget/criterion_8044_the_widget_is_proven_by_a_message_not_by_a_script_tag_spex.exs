@@ -81,10 +81,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
       end
 
       when_ "it verifies itself", context do
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
-          |> render_click()
+        html = CodeMySpecSpex.Case.run_step_interaction(context.view, :widget, "prod")
 
         {:ok, Map.put(context, :html, html)}
       end

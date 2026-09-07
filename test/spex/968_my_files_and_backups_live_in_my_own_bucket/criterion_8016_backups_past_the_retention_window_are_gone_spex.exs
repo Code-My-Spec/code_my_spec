@@ -42,8 +42,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
         paste_storage_credentials(view)
 
         # The boxes first: `bin/backup` runs on the environment's own server,
-        # and the server step is what mints the key that gets there.
-        run_steps(view, [:server, :storage, :backups])
+        # and the server step is what mints the key that gets there. "uat" for
+        # storage and backups — the stale dump seeded below is in uat's
+        # bucket, so that is the environment whose retention this proves.
+        CodeMySpecSpex.Case.run_and_await_step(view, :server)
+        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "uat")
+        CodeMySpecSpex.Case.run_step_interaction(view, :backups, "uat")
 
         # A dump from before the window, which is what "backups have been
         # running longer than the retention window" states. Without one the

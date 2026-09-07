@@ -42,11 +42,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
       when_ "setup finishes placing the callback credential", context do
         html =
-          context.view
-          |> element(
-            "[data-test='setup-step'][data-step='callback_credential'] [data-test='run-step']"
-          )
-          |> render_click()
+          CodeMySpecSpex.Case.run_step_interaction(context.view, :callback_credential, "prod")
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -4184,8 +4184,7 @@ defmodule CodeMySpecSpex.Case do
 
       with_full_cassette unquote(cassette_name), unquote(opts) do
         for key <- unquote(keys) do
-          CodeMySpecSpex.Case.run_step_interaction(view, key)
-          CodeMySpecSpex.Case.await_step(view, key)
+          CodeMySpecSpex.Case.run_and_await_step(view, key)
         end
       end
     end
@@ -4209,9 +4208,41 @@ defmodule CodeMySpecSpex.Case do
       view = unquote(view)
 
       for key <- unquote(keys) do
-        CodeMySpecSpex.Case.run_step_interaction(view, key)
-        CodeMySpecSpex.Case.await_step(view, key)
+        CodeMySpecSpex.Case.run_and_await_step(view, key)
       end
+    end
+  end
+
+  @doc """
+  Run one step to completion, picking a sensible environment when the step
+  has more than one row.
+
+  `run_step_interaction/2` raises on an ambiguous step, deliberately: a spex
+  that means to test one specific environment must say so. `run_steps/2,4`
+  is a different kind of caller — establishing a precondition ("the server
+  step already ran") that what comes after usually does not care which
+  environment it ran for — so here, ambiguity resolves to `"prod"` (or the
+  step's only environment, if it does not have one) rather than stopping
+  the whole `given_`.
+  """
+  def run_and_await_step(view, :deploy) do
+    run_step_interaction(view, :deploy)
+    await_step(view, :deploy)
+  end
+
+  def run_and_await_step(view, key) do
+    case setup_step_environments(view, key) do
+      [] ->
+        raise "no step named #{key} on the page"
+
+      [_only] ->
+        run_step_interaction(view, key)
+        await_step(view, key)
+
+      environments ->
+        environment = if "prod" in environments, do: "prod", else: List.first(environments)
+        run_step_interaction(view, key, environment)
+        await_step(view, key, environment, 600)
     end
   end
 
@@ -4224,12 +4255,18 @@ defmodule CodeMySpecSpex.Case do
   environment in gets the same default every other deploy-driving spex
   already assumed — `"uat"`, the one `stage_deploy/2`'s own
   `provisioning_step_opts` has hard-coded all along.
+
+  Deploy is a per-environment card exactly like every other environment-scoped
+  step now, so its form lives inside the environment's own `setup-step` card
+  and carries that environment on a hidden field rather than a picker — the
+  scoped selector is what tells `form/2` which of the (now two) forms to use.
   """
   def run_step_interaction(view, :deploy) do
     view
-    |> Phoenix.LiveViewTest.form("[data-test='deploy-environment-form']", %{
-      "environment" => "uat"
-    })
+    |> Phoenix.LiveViewTest.form(
+      "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+      %{"environment" => "uat"}
+    )
     |> Phoenix.LiveViewTest.render_submit()
   end
 
@@ -4266,12 +4303,20 @@ defmodule CodeMySpecSpex.Case do
     |> Phoenix.LiveViewTest.render_click()
   end
 
+  # One entry per matched card, `nil` for a project-wide one rather than
+  # dropped. `Floki.attribute/2` answers per *occurrence of the attribute*,
+  # not per element — a project-wide card has no `data-environment` at all
+  # (HEEx omits a `nil` attribute), so calling it directly here silently
+  # threw that card away instead of reporting its `nil`. A run through
+  # `:server` right after an environment-scoped step read that as "no step
+  # named server on the page" — the exact wrong branch below, since `[]`
+  # already means something else there.
   defp setup_step_environments(view, key) do
     view
     |> Phoenix.LiveViewTest.render()
     |> Floki.parse_document!()
     |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
-    |> Floki.attribute("data-environment")
+    |> Enum.map(&(&1 |> Floki.attribute("data-environment") |> List.first()))
   end
 
   @doc """
@@ -4288,7 +4333,15 @@ defmodule CodeMySpecSpex.Case do
   `running` fails here rather than three assertions later.
   """
   @spec await_step(term(), atom(), pos_integer()) :: :ok
-  def await_step(view, key, attempts \\ 600) do
+  def await_step(view, key, attempts \\ 600)
+
+  # Same default as `run_step_interaction/2`'s `:deploy` clause: every
+  # deploy-driving spex that has not opted a specific environment in already
+  # assumes "uat", and deploy's two rows (one per environment) make the plain
+  # clause below ambiguous the same way `run_step_interaction/2` is.
+  def await_step(view, :deploy, attempts), do: await_step(view, :deploy, "uat", attempts)
+
+  def await_step(view, key, attempts) do
     case setup_step_states(view, key) do
       [] ->
         raise "no step named #{key} on the page — nothing to wait for"

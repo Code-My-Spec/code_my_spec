@@ -38,7 +38,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
 
       when_ "the deploy runs and UAT does not answer its health check", context do
         context.view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         html = render(context.view)
@@ -47,10 +50,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
       end
 
       then_ "the deploy is not recorded as done", context do
+        # Scoped to uat: deploy is now one card per environment, and prod's
+        # sits first in the DOM — an unscoped `List.first()` reads prod's
+        # (untouched, still not_started) instead of uat's.
         state =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step'][data-step='deploy']")
+          |> Floki.find("[data-test='setup-step'][data-step='deploy'][data-environment='uat']")
           |> Floki.attribute("data-state")
           |> List.first()
 

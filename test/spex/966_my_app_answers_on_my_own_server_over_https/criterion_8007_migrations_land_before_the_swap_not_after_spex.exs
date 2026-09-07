@@ -38,7 +38,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
       when_ "the deploy runs", context do
         html =
           context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+          |> form(
+            "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+            %{"environment" => "uat"}
+          )
           |> render_submit()
 
         {:ok, Map.put(context, :html, html)}

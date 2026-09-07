@@ -57,26 +57,43 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
         # ordering assertion below would pass on an empty document.
         assert steps != [], "expected the status page to render setup steps"
 
-        rendered_order = Enum.map(steps, &(Floki.attribute(&1, "data-step") |> List.first()))
+        # A project-wide step is one entry; a step that runs independently per
+        # environment is one entry per environment (`Sequence.scope/1`). The
+        # pair is the identity now, not the key alone — "secrets" legitimately
+        # appears once for prod and once for uat, and that is two different
+        # rows of the plan, not a duplicate of the same one.
+        rendered_order =
+          Enum.map(steps, fn step ->
+            {Floki.attribute(step, "data-step") |> List.first(),
+             Floki.attribute(step, "data-environment") |> List.first()}
+          end)
 
-        # Every step the routine will run is listed, in the order the
-        # routine will run them.
+        # Every step (and, for a per-environment step, every environment's
+        # row of it) the routine will run is listed, in the order the routine
+        # will run them.
         assert rendered_order == Enum.uniq(rendered_order),
-               "expected each step to appear exactly once, got #{inspect(rendered_order)}"
+               "expected each step/environment pair to appear exactly once, got #{inspect(rendered_order)}"
 
-        assert Enum.all?(rendered_order, &is_binary/1),
+        assert Enum.all?(rendered_order, fn {step, _environment} -> is_binary(step) end),
                "expected every rendered step to name itself via data-step"
 
         {:ok, Map.put(context, :rendered_order, rendered_order)}
       end
 
       then_ "each step is marked not started", context do
-        for step <- context.rendered_order do
-          assert has_element?(
-                   context.view,
-                   "[data-test='setup-step'][data-step='#{step}'][data-state='not_started']"
-                 ),
-                 "expected step #{step} to be marked not_started before the run begins"
+        for {step, environment} <- context.rendered_order do
+          selector =
+            case environment do
+              nil ->
+                "[data-test='setup-step'][data-step='#{step}'][data-state='not_started']"
+
+              env ->
+                "[data-test='setup-step'][data-step='#{step}'][data-environment='#{env}'][data-state='not_started']"
+            end
+
+          assert has_element?(context.view, selector),
+                 "expected step #{step} (#{environment || "project"}) to be marked not_started " <>
+                   "before the run begins"
         end
 
         # Nothing has run, so no step may claim a terminal or in-flight state.

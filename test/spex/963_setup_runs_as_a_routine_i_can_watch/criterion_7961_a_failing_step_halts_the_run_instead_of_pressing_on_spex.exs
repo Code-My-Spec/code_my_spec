@@ -71,13 +71,22 @@ defmodule CodeMySpecSpex.Story963.Criterion7961Spex do
         # Anchor: the plan rendered, so the ordering logic below is real.
         assert steps != [], "expected the plan to render its steps"
 
-        names = Enum.map(steps, &(Floki.attribute(&1, "data-step") |> List.first()))
-        states = Enum.map(steps, &(Floki.attribute(&1, "data-state") |> List.first()))
+        step_info = fn step ->
+          {step |> Floki.attribute("data-step") |> List.first(),
+           step |> Floki.attribute("data-position") |> List.first() |> String.to_integer(),
+           step |> Floki.attribute("data-state") |> List.first()}
+        end
 
+        rows = Enum.map(steps, step_info)
+        {_, domain_position, _} = Enum.find(rows, &match?({"domain", _, _}, &1))
+
+        # By sequence position, not by where the page happens to draw it: the
+        # Account/Project/Environment grouping renders steps in a different
+        # order than the routine runs them (secrets and the server both run
+        # before domain, for instance), so "after" has to mean the run's own
+        # order, not the page's.
         after_domain =
-          Enum.zip(names, states)
-          |> Enum.drop_while(fn {name, _} -> name != "domain" end)
-          |> Enum.drop(1)
+          for {name, position, state} <- rows, position > domain_position, do: {name, state}
 
         for {name, state} <- after_domain do
           assert state == "not_started",

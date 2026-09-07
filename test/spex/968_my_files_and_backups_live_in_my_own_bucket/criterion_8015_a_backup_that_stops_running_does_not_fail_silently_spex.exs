@@ -49,14 +49,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
         # Backups land in the bucket the storage step makes, so that has to exist
         # first — otherwise the dump fails with NoSuchBucket, which is true and
-        # says nothing about the schedule under test.
-        view
-        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-        |> render_click()
-
-        view
-        |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-        |> render_click()
+        # says nothing about the schedule under test. "uat" — the environment
+        # the `when_` below stalls dumps for.
+        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "uat")
+        CodeMySpecSpex.Case.run_step_interaction(view, :backups, "uat")
 
         {:ok, Map.put(context, :view, view)}
       end

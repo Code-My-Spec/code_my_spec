@@ -56,11 +56,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
         # writes, and `sops` cannot operate on a file that is not there. The
         # sequence is repository → secrets → server.
         for step <- [:secrets, :server] do
-          view
-          |> element("[data-test='setup-step'][data-step='#{step}'] [data-test='run-step']")
-          |> render_click()
-
-          CodeMySpecSpex.Case.await_step(view, step)
+          CodeMySpecSpex.Case.run_and_await_step(view, step)
         end
 
         assert render(view) =~ ~r/data-step="server"[^>]*data-state="done"/,

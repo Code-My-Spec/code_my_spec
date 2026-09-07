@@ -45,9 +45,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
         # interaction, not just a write.
         paste_storage_credentials(view)
 
-        view
-        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-        |> render_click()
+        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "prod")
 
         {:ok, Map.put(context, :view, view)}
       end

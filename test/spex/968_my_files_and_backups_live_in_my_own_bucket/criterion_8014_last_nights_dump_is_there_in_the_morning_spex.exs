@@ -59,14 +59,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
         # Backups land in the bucket the storage step makes, so that has to exist
         # first — otherwise the dump fails with NoSuchBucket, which is true and
         # says nothing about the schedule under test.
-        view
-        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-        |> render_click()
+        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "prod")
 
-        html =
-          view
-          |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-          |> render_click()
+        html = CodeMySpecSpex.Case.run_step_interaction(view, :backups, "prod")
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
                "expected the backup step to complete before checking for dumps, got: " <>

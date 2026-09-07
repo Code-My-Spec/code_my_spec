@@ -52,8 +52,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
 
         # A visitor who has used the widget: the widget step reports done only
         # on a message from the deployed site, and a criterion asserting the
-        # rebuild *finishes* has to say where that came from.
+        # rebuild *finishes* has to say where that came from. Widget now runs
+        # once per environment, and a halt in one environment's row stops the
+        # whole sequence before it ever reaches the steps behind it — so both
+        # environments need their own visitor message, or uat's widget pauses
+        # and callback_credential never gets a turn for either one.
         visitor_message_from(context, "https://c1969.legwork.ca")
+        visitor_message_from(context, "https://uat.c1969.legwork.ca")
 
         # And an address inbound can prove delivery to — 7df39199/2f8c4208
         # correctly stopped the step from guessing one, so without this it

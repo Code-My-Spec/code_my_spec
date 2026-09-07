@@ -872,9 +872,14 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                  order) and never reached uat, because a run halts on the
                  first failure. The plain "Run"/"Retry" buttons above are
                  hidden for this step so there is no path left that deploys
-                 every environment in one click; picking one here is the only
-                 way to deploy from this page now, matching the same
-                 requirement `run_provisioning_step` already enforces. -->
+                 every environment in one click.
+
+                 No environment picker: each deploy step is now its own card,
+                 one per environment (`Sequence.scope(:deploy) == :environment`),
+                 so `@step.environment` already says which one this card is —
+                 a dropdown offering every environment inside a card already
+                 labeled for one specific environment would let this exact
+                 mistake back in through a different door. -->
           <form
             :if={@step.key == :deploy}
             data-test="deploy-environment-form"
@@ -882,20 +887,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             class="mt-3 flex flex-wrap gap-2 items-end"
           >
             <input type="hidden" name="key" value={@step.key} />
-            <label class="form-control">
-              <span class="label-text text-xs">Environment</span>
-              <select
-                name="environment"
-                data-test="deploy-environment-select"
-                class="select select-bordered select-sm"
-              >
-                <option :for={environment <- @environments} value={environment}>
-                  {environment}
-                </option>
-              </select>
-            </label>
+            <input type="hidden" name="environment" value={@step.environment} />
             <.button type="submit" data-test="deploy-environment-submit" class="btn btn-primary">
-              {if @step.state == :errored, do: "Retry", else: "Deploy"} this environment
+              {if @step.state == :errored, do: "Retry", else: "Deploy"} {@step.environment}
             </.button>
           </form>
           

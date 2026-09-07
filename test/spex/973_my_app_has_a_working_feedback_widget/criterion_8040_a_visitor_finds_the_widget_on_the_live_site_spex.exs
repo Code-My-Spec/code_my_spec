@@ -49,10 +49,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
         # half subprocess and half HTTP — the generator runs through
         # `System.cmd`, the presence check through Req — and recording only
         # the HTTP half leaves the generator running for real on every replay.
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
-          |> render_click()
+        html = CodeMySpecSpex.Case.run_step_interaction(context.view, :widget, "prod")
 
         {:ok, Map.put(context, :html, html)}
       end

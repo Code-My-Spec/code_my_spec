@@ -88,11 +88,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
       end
 
       when_ "the proxy requests a certificate for that hostname", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='tls'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(context.view, :tls)
+        CodeMySpecSpex.Case.run_step_interaction(context.view, :tls, "prod")
+        CodeMySpecSpex.Case.await_step(context.view, :tls, "prod", 600)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

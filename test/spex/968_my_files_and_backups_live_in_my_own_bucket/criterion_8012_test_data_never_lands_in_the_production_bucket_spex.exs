@@ -30,10 +30,15 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
         paste_storage_credentials(view)
         tear_down_after(context.scope, [:storage])
 
-        html =
-          view
-          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-          |> render_click()
+        # One click per environment now — storage's own card only ever
+        # touches the environment it belongs to, and both need their own
+        # bucket for the isolation this criterion is about.
+        for environment <- ["prod", "uat"] do
+          CodeMySpecSpex.Case.run_step_interaction(view, :storage, environment)
+          CodeMySpecSpex.Case.await_step(view, :storage, environment, 600)
+        end
+
+        html = render(view)
 
         buckets_by_env =
           html

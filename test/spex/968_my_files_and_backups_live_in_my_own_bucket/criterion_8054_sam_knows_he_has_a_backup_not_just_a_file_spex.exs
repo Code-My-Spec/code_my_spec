@@ -56,15 +56,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
       end
 
       when_ "it verifies itself", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-        |> render_click()
+        CodeMySpecSpex.Case.run_step_interaction(context.view, :backups, "prod")
 
         # Waited for, then read. The step runs under a supervised task because
         # a dump takes longer than a LiveView event may, so `render_click/1`
         # returns while it is still running and the proof this criterion reads
         # is not on the page yet.
-        await_step(context.view, :backups)
+        await_step(context.view, :backups, "prod", 600)
         html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}

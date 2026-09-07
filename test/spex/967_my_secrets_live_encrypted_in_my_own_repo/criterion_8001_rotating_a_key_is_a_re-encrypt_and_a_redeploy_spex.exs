@@ -62,7 +62,10 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         html =
           with_provider_cassette(@cassette, fn ->
             context.view
-            |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+            |> form(
+              "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+              %{"environment" => "uat"}
+            )
             |> render_submit()
           end)
 
