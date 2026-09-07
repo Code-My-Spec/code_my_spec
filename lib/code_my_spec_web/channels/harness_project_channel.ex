@@ -950,33 +950,51 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `:normal` is answered by the process that is already watching it, which
   # covers every way of dying rather than one, and leaves the reply functions
   # free to return error tuples for the failures they actually have.
+  # The task computes the answer; the channel sends it.
+  #
+  # `async_nolink/2` rather than `start_child` + `Process.monitor`, because
+  # those two are not one step and the gap between them is a race the fast path
+  # wins. A pre-tool-use decision that is a few map lookups finishes before the
+  # monitor is established, and `Process.monitor/1` on an already-dead process
+  # delivers `:noproc` immediately — so a handler that answered correctly was
+  # then reported dead and a second, contradicting reply was sent after it.
+  #
+  # Not theoretical: 29 of them in the three minutes after this shipped,
+  # `decision (pre-tool-use) died: :noproc` against decisions that had already
+  # succeeded. `async_nolink` monitors at spawn, so there is no gap to lose.
+  #
+  # The task also stops replying for itself. `{ref, result}` arrives before the
+  # `:DOWN`, so the channel sends the answer and drops the entry, and a `:DOWN`
+  # that still finds an entry means the task died without producing one. One
+  # reply per request, decided in one process, whichever way it goes.
   defp reply_async(socket, ref, label, fun) do
-    CodeMySpec.TaskSupervisor
-    |> Task.Supervisor.start_child(fn -> Phoenix.Channel.reply(ref, fun.()) end)
-    |> case do
-      {:ok, pid} ->
-        monitor = Process.monitor(pid)
-        assign(socket, :pending_replies, Map.put(pending_replies(socket), monitor, {ref, label}))
+    task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fun)
 
-      # No task, so nothing will ever reply and nothing is watching. Said here
-      # rather than matched, because a channel that dies for want of a task
-      # takes the harness's connection with it — the loudest possible version of
-      # the silence this function exists to prevent.
-      {:error, reason} ->
-        Logger.error("[HarnessProject] #{describe(label)} could not start: #{inspect(reason)}")
+    assign(socket, :pending_replies, Map.put(pending_replies(socket), task.ref, {ref, label}))
+  end
 
-        Phoenix.Channel.reply(ref, {:error, %{"reason" => "handler_unavailable"}})
+  # The answer the task computed. Sending it here is what makes the entry's
+  # absence mean "already answered" — `Task.Supervisor.async_nolink/2` follows
+  # every result with a `:DOWN`, and the two have to be told apart by something.
+  defp deliver_pending(socket, task_ref, result) do
+    case Map.pop(pending_replies(socket), task_ref) do
+      {nil, _} ->
         socket
+
+      {{ref, _label}, pending} ->
+        # `:flush` because the `:DOWN` is already on its way and there is
+        # nothing left for it to say.
+        Process.demonitor(task_ref, [:flush])
+        Phoenix.Channel.reply(ref, result)
+        assign(socket, :pending_replies, pending)
     end
   end
 
-  # The task got through `Phoenix.Channel.reply/2` — replying is the last thing
-  # it does — so the harness has its answer and there is nothing left to say.
-  defp resolve_pending(socket, monitor, :normal),
-    do: assign(socket, :pending_replies, Map.delete(pending_replies(socket), monitor))
-
-  defp resolve_pending(socket, monitor, reason) do
-    case Map.pop(pending_replies(socket), monitor) do
+  # A `:DOWN` still holding an entry is a task that died without answering.
+  # One that does not is the ordinary end of a task whose result was delivered
+  # above, and there is nothing left to say about it.
+  defp resolve_pending(socket, task_ref, reason) do
+    case Map.pop(pending_replies(socket), task_ref) do
       {nil, _} ->
         socket
 
@@ -1180,13 +1198,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, next_manifest(socket)}
   end
 
-  # A deferred reply's task, one way or another. `reply_async/4` explains why
-  # the channel watches these rather than the task guarding itself.
+  # A deferred reply's answer, and then its task ending. `reply_async/4`
+  # explains why the channel holds both rather than the task replying for
+  # itself.
   #
-  # Below the reconcile clause on purpose: that task is tracked in `:reconciling`
-  # and is not one of these, and a catch-all here would swallow its DOWN.
-  def handle_info({:DOWN, monitor, :process, _pid, reason}, socket),
-    do: {:noreply, resolve_pending(socket, monitor, reason)}
+  # Below the reconcile clauses on purpose: that task is tracked in
+  # `:reconciling` and is not one of these, and a catch-all here would swallow
+  # its result and its DOWN both.
+  def handle_info({task_ref, result}, socket) when is_reference(task_ref),
+    do: {:noreply, deliver_pending(socket, task_ref, result)}
+
+  def handle_info({:DOWN, task_ref, :process, _pid, reason}, socket),
+    do: {:noreply, resolve_pending(socket, task_ref, reason)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

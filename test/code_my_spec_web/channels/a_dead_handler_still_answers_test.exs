@@ -70,14 +70,30 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
     assert at =~ "analysis_run"
   end
 
-  # A handler that succeeds must not also be reported dead. The monitor fires on
-  # every task, including the ones that answered, and a second reply on a ref
-  # the harness has already resolved is its own defect.
-  test "a handler that answers is not answered twice", %{channel: channel} do
-    ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+  # A handler that succeeds must not also be reported dead.
+  #
+  # This is the defect the first version of the change shipped with, and it
+  # reached dev: `start_child` then `Process.monitor` are two steps, and a
+  # decision that is a few map lookups finishes in the gap between them.
+  # `Process.monitor/1` on an already-dead process answers `:noproc` at once, so
+  # the channel reported a successful handler dead and sent a second,
+  # contradicting reply. 29 of them in three minutes.
+  #
+  # Driven through `pre-tool-use`, which is the fastest of the five and the one
+  # it actually bit — a stop decision takes long enough to hide it, which is why
+  # this test passed while dev did not.
+  test "a fast handler that answers is not then reported dead", %{channel: channel} do
+    for _ <- 1..25 do
+      ref =
+        push(channel, "hook_decision", %{
+          "hook" => "pre-tool-use",
+          "payload" => %{"tool_name" => "Read", "tool_input" => %{}},
+          "port" => 4004
+        })
 
-    assert_reply ref, :ok, _decision, 5_000
-    refute_reply ref, :error, _, 200
+      assert_reply ref, :ok, _decision, 5_000
+      refute_reply ref, :error, _, 50
+    end
   end
 
   defp handlers, do: MapSet.new(Task.Supervisor.children(CodeMySpec.TaskSupervisor))
