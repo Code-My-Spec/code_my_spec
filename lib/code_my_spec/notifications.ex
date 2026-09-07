@@ -241,9 +241,20 @@ defmodule CodeMySpec.Notifications do
   defp deliver_decision_to_agent(%{agent_id: nil}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
+    # An approved tap-out ends the loop, and saying so is not ending it. The
+    # message told the agent "the loop is done" while `continuous` stayed set,
+    # so the next stop woke it again — permission to leave, followed by being
+    # asked to carry on.
+    #
+    # Before the message, so the agent cannot be woken between the two.
+    if tap_out_approved?(request), do: CodeMySpec.Agents.leave_loop(agent_id)
+
     _ = CodeMySpec.Agents.deliver_answer(agent_id, decision_message(request))
     :ok
   end
+
+  defp tap_out_approved?(%{tool_name: "tap_out", decision: "allow"}), do: true
+  defp tap_out_approved?(_request), do: false
 
   defp decision_message(%{tool_name: "tap_out", decision: "allow"}) do
     """

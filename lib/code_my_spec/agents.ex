@@ -473,6 +473,33 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  Take an agent out of the loop, because a human approved its tap-out.
+
+  Scopeless for the same reason `deliver_answer/3` is: the id comes off
+  `permission_requests.agent_id`, which this application wrote from the asking
+  connection, so there is no tenant decision left to make.
+
+  The message alone was not enough and said so falsely. An approved tap-out
+  told the agent "the loop is done" and left `continuous` set, so the next stop
+  woke it again — the agent had been given permission to leave and was then
+  asked to carry on, which is worse than never having offered.
+  """
+  @spec leave_loop(Ecto.UUID.t()) :: :ok
+  def leave_loop(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        :ok
+
+      agent ->
+        agent
+        |> Agent.changeset(%{continuous: false})
+        |> Repo.update()
+
+        :ok
+    end
+  end
+
+  @doc """
   Hand an agent the answer to something it asked, and let it carry on.
 
   The other half of `ask_user` for an agent we run. `check_answer` polls, which

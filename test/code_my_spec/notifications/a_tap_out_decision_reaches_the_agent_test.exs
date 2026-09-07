@@ -93,6 +93,27 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
     assert message =~ "loop is done"
   end
 
+  # Saying the loop is done is not ending it. Approving a tap-out left
+  # `continuous` set, so the next stop woke the agent again — permission to
+  # leave, followed immediately by being asked to carry on.
+  test "an approved tap-out actually takes it out of the loop", ctx do
+    assert ctx.agent.continuous
+
+    request = ask_to_leave(ctx.scope, ctx.agent)
+    {:ok, _} = Notifications.resolve_permission_request(request.id, "allow")
+
+    refute CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, ctx.agent.id).continuous
+  end
+
+  # A decline must leave it running. An agent told to keep going and then taken
+  # out of the loop is the same failure in the other direction.
+  test "a declined tap-out leaves the loop on", ctx do
+    request = ask_to_leave(ctx.scope, ctx.agent)
+    {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
+
+    assert CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, ctx.agent.id).continuous
+  end
+
   # A Claude Code request is answered on the SSE connection already waiting on
   # it. Delivering here as well would be a message to nobody.
   test "a request with no agent dispatches nothing", ctx do
