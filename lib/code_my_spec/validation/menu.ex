@@ -73,7 +73,7 @@ defmodule CodeMySpec.Validation.Menu do
 
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
-  alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.TaskOwner
 
@@ -209,24 +209,28 @@ defmodule CodeMySpec.Validation.Menu do
     |> length()
   end
 
-  # Straight off the read model, which is where this always belonged.
+  # Through the same fingerprint-checked path every other reader uses.
   #
-  # Two versions preceded it and both tried to compute an answer the rows
-  # already hold. The first called `next_actionable/1`, which recomputes on a
-  # cache miss and globs the working copy — fatal here, because the stop
-  # decision runs inside the channel process for a harness-served project, so
-  # the process that would serve the glob is the one waiting on it. The second
-  # read the cached graph instead, which never deadlocks and also never answers:
-  # the fingerprint hashes the file digest and the stop hook syncs files before
-  # deciding, so the entry is stale by the time the menu renders.
+  # This read `requirements` rows directly, and the comment here explained why:
+  # `next_actionable/1` "recomputes on a cache miss and globs the working copy —
+  # fatal here, because the stop decision runs inside the channel process for a
+  # harness-served project, so the process that would serve the glob is the one
+  # waiting on it."
   #
-  # `requirements` and `requirement_edges` are a read model. Actionable is a
-  # graph query over it — unsatisfied, minus anything with an unsatisfied
-  # prerequisite — and needs no recompute, no cache and no filesystem. John's
-  # point, and it is the answer: nothing about a stop should require rethinking
-  # the graph.
+  # That hazard is gone and the note outlived it. `DelegateFiles` used to hash a
+  # few working-copy files off disk; `RequirementGraph` records that classify
+  # claims those files now, so `files_digest` covers them by content hash "and
+  # the side channel is gone". `Preloader.load/1` is `Repo.all/1`. A recompute
+  # is ~170ms and touches nothing but the database.
+  #
+  # What the workaround cost: rows are only written when something computes the
+  # graph, and nothing computes it on a file change or a finished task. So the
+  # menu counted work that had already been done, sent the agent to
+  # `get_next_requirement` for it, and the agent was told there was none — every
+  # six seconds, until enough recomputes caught the rows up. A count and the
+  # list it counts, disagreeing, which is exactly what one source prevents.
   defp count(scope, :requirements, role, _owner),
-    do: NodeRepository.actionable_count(scope, role)
+    do: Requirements.actionable_count(scope, role)
 
   # `[]` for every caller not given an owner — the class then counts 0 and the
   # menu reads exactly as it did before this existed.

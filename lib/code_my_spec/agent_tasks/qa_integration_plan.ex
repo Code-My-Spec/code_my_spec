@@ -14,7 +14,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   end
 
   alias CodeMySpec.Documents.DocumentSpecProjector
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{Environments, Files, Paths}
 
   @integrations_index Paths.integrations_index()
   @integrations_dir Paths.integrations_dir()
@@ -48,15 +48,47 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   2. All expected integration specs exist?
   3. All specs have verify scripts?
   4. All specs have `status: verified`?
+
+  Asked of the synced files, not of a disk — the same move
+  `ArchitectureChecker.proposal_present?/1` already made, and for a sharper
+  reason: this is a delegate on the **project** template, so it runs on every
+  graph computation for every project, and `next_actionable/1` computes the
+  graph on every cache miss.
+
+  The glob was the whole cost. `Environments.glob/2` against a harness-served
+  project is a `GenServer.call` to the harness with a 35-second limit, so a
+  project whose harness is busy or wedged made the stop decision wait that long
+  before saying anything — and a stop decision is the hot path of every agent
+  turn. Locally it is a fast disk read, which is why this never showed on the
+  CLI and only ever bit the light harness.
+
+  `Scanner.classify/1` claims the integrations directory
+  (`{&Paths.integrations_dir/0, :integration}`), so the specs sync like anything
+  else and a File row at that path is the same evidence the glob was after. On
+  the light harness it is better evidence: there is no disk there to glob.
+
+  The content checks below still read through the environment, and they are
+  reached only by a project that actually has integration specs — the File rows
+  carry path, role, size and fingerprint, not content, so "is this one marked
+  `status: verified`" is not answerable from them. Worth closing the same way if
+  it ever costs anything: the status is a property of the document, and
+  projecting it at sync time is the shape the rest of this already has.
   """
-  def evaluate(scope, _task) do
-    env = scope.environment
-    spec_files = list_spec_files(env)
+  def evaluate(scope, task), do: evaluate(scope, task, nil)
+
+  # The graph hands `ctx` to any delegate exporting arity 3
+  # (`RequirementCalculator.delegate_args/5`), and `files_by_project` is every
+  # File row it already loaded. Taking the list from there costs no query at
+  # all on the path that runs per computation.
+  def evaluate(scope, _task, ctx) do
+    spec_files = list_spec_files(scope, ctx)
 
     if spec_files == [] do
       {:ok, :valid}
     else
-      with :ok <- check_index(env),
+      env = scope.environment
+
+      with :ok <- check_index(scope, ctx),
            :ok <- check_verify_scripts(env, spec_files),
            :ok <- check_verified_status(env, spec_files) do
         {:ok, :valid}
@@ -217,20 +249,43 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   # Evaluation
   # ============================================================================
 
-  defp check_index(env) do
-    case Environments.read_file(env, @integrations_index) do
-      {:ok, content} when byte_size(content) > 0 -> :ok
-      {:ok, _} -> {:error, "Integration index is empty. Write `#{@integrations_index}` and stop again."}
-      _ -> {:error, "Integration index not found at `#{@integrations_index}`. Write it and stop again."}
+  # `size` is what "empty" meant when this read the file — the same distinction
+  # between written and started, from the row the sync already keeps.
+  defp check_index(scope, ctx) do
+    case index_row(scope, ctx) do
+      %{size: size} when is_integer(size) and size > 0 ->
+        :ok
+
+      %{} ->
+        {:error, "Integration index is empty. Write `#{@integrations_index}` and stop again."}
+
+      nil ->
+        {:error,
+         "Integration index not found at `#{@integrations_index}`. Write it and stop again."}
     end
   end
 
-  defp list_spec_files(env) do
-    case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
-      files when is_list(files) -> files
-      _ -> []
-    end
+  defp index_row(_scope, %{files_by_project: files}) when is_list(files),
+    do: Enum.find(files, &(&1.path == @integrations_index))
+
+  defp index_row(scope, _ctx), do: Files.get_by_path(scope, @integrations_index)
+
+  # `*.md` directly under the integrations directory, which is what the glob
+  # matched: `Path.dirname/1` on a nested path answers the subdirectory, so a
+  # spec's supporting files do not read as specs.
+  defp list_spec_files(scope, ctx) do
+    ctx
+    |> integration_files(scope)
+    |> Enum.map(& &1.path)
+    |> Enum.filter(&spec_file?/1)
+    |> Enum.sort()
   end
+
+  defp integration_files(%{files_by_project: files}, _scope) when is_list(files), do: files
+  defp integration_files(_ctx, scope), do: Files.list_project_files(scope)
+
+  defp spec_file?(path),
+    do: Path.dirname(path) == @integrations_dir and Path.extname(path) == ".md"
 
   defp check_verify_scripts(_env, []), do: :ok
 

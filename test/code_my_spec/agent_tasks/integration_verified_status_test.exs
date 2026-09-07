@@ -22,6 +22,7 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
 
   alias CodeMySpec.AgentTasks.QaIntegrationPlan
   alias CodeMySpec.Environments
+  alias CodeMySpec.Files
   alias CodeMySpec.Support.InMemoryEnvironment
 
   # The index is a file beside the directory, not inside it — anything inside is
@@ -38,10 +39,35 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
     %{scope: scope, env: env}
   end
 
-  defp seed!(env, spec_body) do
+  # Written *and synced*, because that is now the sequence the check reads.
+  #
+  # `evaluate/2` used to glob the environment for the spec list. It asks the
+  # File rows instead — a `GenServer.call` to the harness with a 35-second limit
+  # is not something the graph computation can do per stop hook. The contents
+  # still come from the environment, so both halves have to be here: a spec on
+  # disk that nothing scanned is, correctly, not a spec this project has.
+  defp seed!(scope, env, spec_body) do
     :ok = Environments.write_file(env, @index, "# Integrations\n\n- acme\n")
     :ok = Environments.write_file(env, @script, "#!/bin/sh\n")
     :ok = Environments.write_file(env, @spec_path, spec_body)
+
+    sync!(scope, [@index, @spec_path])
+  end
+
+  defp sync!(scope, paths) do
+    Files.upsert_files(
+      scope,
+      Enum.map(paths, fn path ->
+        %{
+          path: path,
+          role: :integration,
+          mtime: DateTime.utc_now(),
+          size: 128,
+          fingerprint: "seeded-#{path}",
+          valid: true
+        }
+      end)
+    )
   end
 
   defp spec_with(status) do
@@ -59,7 +85,7 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   end
 
   defp verified?(scope, env, status) do
-    seed!(env, spec_with(status))
+    seed!(scope, env, spec_with(status))
     match?({:ok, _}, QaIntegrationPlan.evaluate(scope, %{}))
   end
 
@@ -96,7 +122,7 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   # question the status section was answering differently.
   test "the word elsewhere in the document does not stand in for the status",
        %{scope: scope, env: env} do
-    seed!(env, """
+    seed!(scope, env, """
     # Acme
 
     Once verified, this integration is safe to rely on. A verified integration

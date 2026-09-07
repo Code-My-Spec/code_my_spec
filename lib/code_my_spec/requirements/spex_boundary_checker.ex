@@ -93,10 +93,16 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   end
 
   defp add_fixtures_bridge_gap(gaps, paths, scope) do
-    # `Helpers.app_name/1` prefers the synced mix.exs and only falls back to
-    # reading one, so it answers here where `extract_app_name/1` needed a disk.
-    case Helpers.app_name(scope) do
-      "your_app" ->
+    # The synced answer only. `Helpers.app_name/1` falls back to reading
+    # `mix.exs` through the environment, which for a harness-served project is a
+    # `GenServer.call` with a 35-second limit — and this runs inside the graph
+    # computation, which the stop decision waits on. An unsynced `mix.exs` made
+    # every agent turn pay that to avoid printing the gap below.
+    #
+    # Nothing is lost: not knowing the app name was already an outcome here, and
+    # `mix.exs` is synced on any project far enough along to have spex at all.
+    case Helpers.synced_app_name(scope) do
+      nil ->
         ["Could not determine app name from `mix.exs` — cannot verify fixtures bridge." | gaps]
 
       app ->

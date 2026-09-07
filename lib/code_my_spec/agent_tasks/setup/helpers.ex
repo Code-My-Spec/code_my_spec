@@ -24,10 +24,26 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   """
   @spec app_name(Scope.t()) :: String.t()
   def app_name(%Scope{} = scope) do
-    from_sync = scope |> Context.load() |> Context.app_name()
-
-    from_sync || extract_app_name(scope.environment) || "your_app"
+    synced_app_name(scope) || extract_app_name(scope.environment) || "your_app"
   end
+
+  @doc """
+  The same answer, from the sync alone — `nil` rather than a disk read.
+
+  For callers that must not touch the working copy. `app_name/1`'s fallback is
+  right for a prompt: reading `mix.exs` costs a local file read and the payoff is
+  a prompt that names real modules instead of `your_app`.
+
+  It is wrong inside a requirement graph computation, which is where
+  `SpexBoundaryChecker` calls it from. `Environments.read_file/2` against a
+  harness-served project is a `GenServer.call` to the harness with a 35-second
+  limit, and the graph is computed on every cache miss — so an unsynced
+  `mix.exs` could make the stop decision, the hot path of every agent turn, wait
+  35 seconds to improve a fallback string. The caller there already has an
+  answer for not knowing.
+  """
+  @spec synced_app_name(Scope.t()) :: String.t() | nil
+  def synced_app_name(%Scope{} = scope), do: scope |> Context.load() |> Context.app_name()
 
   @doc """
   Extract the app name from mix.exs via the Environment abstraction.

@@ -16,6 +16,45 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Users.Scope
 
   @doc """
+  How many requirements this role can act on, from a graph known to be current.
+
+  One definition of "your work", shared with `get_next_requirement`. They used
+  to have two: the tool computed the graph, and the stop menu counted
+  `requirements` rows directly — so the menu could advertise work that had
+  already been done, send the agent to ask for it, and be told there was none.
+  Watched on 2026-09-07: "27 requirements — `get_next_requirement`" against
+  "All requirements satisfied", once every six seconds until the rows caught up.
+
+  The menu read rows raw to avoid a recompute, on a hazard note in
+  `Validation.Menu` saying `next_actionable/1` "globs the working copy" and
+  would deadlock the stop decision inside the channel process. That was true and
+  is not: `DelegateFiles` used to hash working-copy files off disk, and
+  `RequirementGraph` records that classify claims those files now, so
+  `files_digest` covers them by content hash "and the side channel is gone". The
+  preloader is `Repo.all/1`. A recompute is ~170ms of database.
+
+  So this goes through `cached_graph_with_actionable/1` like every other reader:
+  fingerprint hit serves the published graph, miss recomputes and republishes.
+  Nothing here can be stale, which is the property the count needs and the one
+  reading rows could not give it.
+
+  `nil` role counts everything actionable, which is what a caller outside the
+  loop wants.
+  """
+  @spec actionable_count(Scope.t(), atom() | nil) :: non_neg_integer()
+  def actionable_count(%Scope{active_project_id: nil}, _role), do: 0
+
+  def actionable_count(%Scope{} = scope, role) do
+    {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
+
+    case role && RequirementsRegistry.requirement_names_for_role(role) do
+      nil -> length(actionable)
+      [] -> 0
+      names -> Enum.count(actionable, &(&1.name in names))
+    end
+  end
+
+  @doc """
   Returns the full computed requirements graph for a project.
 
   Nodes are `%Requirement{}` structs. Edges include both same-entity

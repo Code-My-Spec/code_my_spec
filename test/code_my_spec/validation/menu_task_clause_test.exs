@@ -18,9 +18,6 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   import CodeMySpec.ComponentsFixtures
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Validation.Menu
 
   defp task(attrs) do
@@ -40,26 +37,18 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   # An unsatisfied requirement with no unsatisfied prerequisite: actionable, and
   # therefore what the menu sends the agent to when nothing outranks it.
   #
-  # Written straight into the read model rather than through
-  # `RequirementsFixtures`, which seeds the *files* a requirement is computed
-  # from and leaves `requirements` empty. `actionable_count/1` counts rows, and
-  # counts them from one checkout's vantage — `Projection.vantage/1` is the
-  # single definition of whose view that is, so the row has to carry the same
-  # one or the count steps over it.
+  # A fresh project has one of its own — `personas_complete`, product's, which
+  # is the role these tests run as. Nothing has to be planted.
+  #
+  # This used to insert a `design_file` row straight into the read model,
+  # because the menu counted `requirements` rows and the fixtures leave that
+  # table empty. The menu counts from the computed graph now, so that row was
+  # never read: the graph is computed from components and stories, and an
+  # invented row is not in it. The setup would have kept passing while asserting
+  # nothing.
   defp scope_with_waiting_requirements do
     scope = full_scope_fixture()
-    component = component_fixture(scope)
-
-    Repo.insert!(
-      Node.changeset(%Node{}, %{
-        name: "design_file",
-        description: "Component design documentation exists",
-        satisfied: false,
-        component_id: component.id,
-        working_copy_id: Projection.vantage(scope)
-      })
-    )
-
+    _component = component_fixture(scope)
     scope
   end
 

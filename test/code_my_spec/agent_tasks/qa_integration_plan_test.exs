@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
 
   alias CodeMySpec.AgentTasks.QaIntegrationPlan
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
 
   # ============================================================================
   # Test Helpers
@@ -14,9 +15,19 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
   defp create_scope(_context) do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = %{scope | cwd: tmp_dir, environment: Environment.new(:local, tmp_dir)}
     %{scope: scope, tmp_dir: tmp_dir}
   end
+
+  # `evaluate/2` takes the spec list from the File rows now, not from a glob —
+  # the glob is a 35-second-limit call to the harness on a harness-served
+  # project, and the graph computation runs it on every stop hook. So a spec
+  # written to disk is not a spec this project has until the scan has seen it,
+  # which is the sequence in production and now the sequence here.
+  #
+  # Without this the `:invalid` cases below read `{:ok, :valid}` — no specs
+  # found, nothing to complain about — which is the pass that means nothing.
+  defp sync!(scope), do: {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
 
   defp create_task(context) do
     task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
@@ -166,6 +177,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
       write_verify_script(env, "twilio")
+      sync!(scope)
 
       assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
@@ -178,6 +190,8 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
         scope.environment,
         "# Integrations\n\nNo integrations required for this project."
       )
+
+      sync!(scope)
 
       assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
@@ -194,6 +208,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       task: task
     } do
       write_integration_index(scope.environment)
+      sync!(scope)
 
       assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
@@ -205,6 +220,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
+      sync!(scope)
 
       assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "missing"
@@ -218,6 +234,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "pending")
       write_verify_script(env, "twilio")
+      sync!(scope)
 
       assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "not yet verified"
