@@ -91,7 +91,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           Everything your project needs, in the order it needs it.
         </:subtitle>
         <:actions>
-          <.button data-test="generate-project" phx-click="generate_project" class="btn-ghost">
+          <.button data-test="generate-project" phx-click="generate_project" class="btn btn-ghost">
             Generate deploy files
           </.button>
           <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
@@ -281,7 +281,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             :if={@domain_check.availability == :available and @domain_check.price}
             data-test="confirm-purchase"
             phx-click="confirm_purchase"
-            class="btn-warning w-fit"
+            class="btn btn-warning w-fit"
           >
             Yes — register {@domain_name}
           </.button>
@@ -494,7 +494,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                     </option>
                   </select>
                 </label>
-                <.button type="submit" data-test="deploy-environment-submit" class="btn-primary">
+                <.button
+                  type="submit"
+                  data-test="deploy-environment-submit"
+                  class="btn btn-primary"
+                >
                   {if step.state == :errored, do: "Retry", else: "Deploy"} this environment
                 </.button>
               </form>
@@ -512,7 +516,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               >
                 <.button
                   data-test="confirm-apex-repoint"
-                  class="btn-warning"
+                  class="btn btn-warning"
                   phx-click={show_confirm("confirm-apex-repoint")}
                 >
                   Repoint it anyway
@@ -539,7 +543,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                 <.button
                   data-test="adopt-existing-repository"
                   phx-click="adopt_repository"
-                  class="btn-warning"
+                  class="btn btn-warning"
                 >
                   Adopt the existing repository
                 </.button>
@@ -569,7 +573,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                   required
                   class="input input-bordered input-sm flex-1"
                 />
-                <.button type="submit" data-test="inbound-probe-address-submit" class="btn-primary">
+                <.button
+                  type="submit"
+                  data-test="inbound-probe-address-submit"
+                  class="btn btn-primary"
+                >
                   Use this address
                 </.button>
               </form>
@@ -1150,7 +1158,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
          The results sit here with their buttons: a probe's outcome should not
          vanish because the panel above it has not been read. --%>
       <section data-test="mail-actions" class="my-6">
-        <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="mt-3">
+        <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="btn btn-primary mt-3">
           Send a test message
         </.button>
 
@@ -1176,11 +1184,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             waits for Resend to say it arrived (974/8030). Separate from the
             send probe above because they fail independently and for different
             reasons. --%>
-        <.button data-test="mail-inbound-probe" phx-click="mail_inbound_probe" class="mt-3">
+        <.button
+          data-test="mail-inbound-probe"
+          phx-click="mail_inbound_probe"
+          class="btn btn-primary mt-3"
+        >
           Send a message to this domain
         </.button>
 
-        <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
+        <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="btn btn-primary mt-2">
           Re-check DNS
         </.button>
       </section>
@@ -1194,7 +1206,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             button finishes the job — snapshot, upload, trigger, and a fetch
             back from the live site — with nothing left for Sam to do
             afterwards, which is what `manual-steps-remaining` reports. --%>
-        <.button data-test="content-publish" phx-click="content_publish" class="mt-3">
+        <.button data-test="content-publish" phx-click="content_publish" class="btn btn-primary mt-3">
           Publish the blog
         </.button>
 
@@ -1218,7 +1230,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         <.button
           data-test="widget-degradation-probe"
           phx-click="widget_degradation_probe"
-          class="mt-3"
+          class="btn btn-primary mt-3"
         >
           Check the site with the widget backend down
         </.button>
@@ -1285,7 +1297,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               confirm() is invisible to the driver QA runs. --%>
           <.button
             data-test="remove-environment"
-            class="btn-xs btn-error"
+            class="btn btn-xs btn-error"
             phx-click={show_confirm("remove-environment-#{environment.name}")}
           >
             Remove
@@ -1304,11 +1316,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <section data-test="backups-panel">
         <h2>Backups</h2>
 
-        <.button data-test="backups-refresh" phx-click="refresh_backups" class="mt-2">
+        <.button data-test="backups-refresh" phx-click="refresh_backups" class="btn btn-primary mt-2">
           Check the bucket
         </.button>
 
-        <.button data-test="backup-restore-probe" phx-click="probe_restore" class="mt-2">
+        <.button
+          data-test="backup-restore-probe"
+          phx-click="probe_restore"
+          class="btn btn-primary mt-2"
+        >
           Restore the newest dump
         </.button>
 
