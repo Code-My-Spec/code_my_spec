@@ -30,15 +30,44 @@ defmodule CmsHarness.Agents.SystemPrompt do
   than an empty string: it is what `Alloy.Agent.Config` already defaults to, so
   an agent we have nothing to tell is exactly as it was before this existed.
   """
-  @spec compose(String.t() | nil, String.t() | nil) :: String.t() | nil
-  def compose(role_brief, working_copy) do
-    [role_brief, guide(working_copy)]
+  @spec compose(String.t() | nil, String.t() | nil, String.t() | nil) :: String.t() | nil
+  def compose(role_brief, working_copy, app_url \\ nil) do
+    [role_brief, running_app(app_url), guide(working_copy)]
     |> Enum.reject(&(is_nil(&1) or &1 == ""))
     |> case do
       [] -> nil
       parts -> Enum.join(parts, "\n\n")
     end
   end
+
+  # Where the application is, so an agent testing it can open it.
+  #
+  # It cannot work this out. The address is a column on the project's main
+  # working copy — `preview_url`, written when the harness brings a preview up —
+  # and nothing on this side can see the database. So a QA agent with the
+  # browser bound and 77 tools ready reported "no app URL has been identified"
+  # and stopped, correctly refusing to guess, while the app was up the whole
+  # time behind a tunnel it had never been told about.
+  #
+  # Always the main checkout's, whichever copy the agent is working in.
+  # `record_preview_url/2` matches `main: true` and refuses everything else, so
+  # a worktree has no preview of its own — the app runs on the main copy under
+  # the harness, and that is the address there is.
+  #
+  # Nil says nothing at all rather than "there is no app", because those are
+  # different and only one of them is knowable from here: a project between
+  # previews looks identical to one that never had them.
+  defp running_app(url) when is_binary(url) and url != "" do
+    """
+    The application you are working on is running at #{url}.
+
+    That is the main checkout's preview, served under the harness — it is the
+    address to point a browser at, whichever working copy you are in. Your own
+    copy does not serve one.
+    """
+  end
+
+  defp running_app(_url), do: nil
 
   # Read at start rather than sent from the server, and read fresh each time.
   #

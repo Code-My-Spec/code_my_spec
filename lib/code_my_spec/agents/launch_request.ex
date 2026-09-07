@@ -32,6 +32,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   alias CodeMySpec.Agents.{Agent, Credential, RoleBrief}
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   Fill in the two things a launch needs and the row does not hold.
@@ -72,10 +73,33 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # set that enforces them, and the harness has no opinion about what a QA
       # agent may do.
       "role_brief" => RoleBrief.for(agent.role),
+      # Where the application it is working on is actually running.
+      #
+      # An agent that cannot answer this cannot open it. The QA agent on the
+      # war-epic copy had the browser bound, the tools working, and no idea
+      # there was anything to point them at — it reported "no app URL has been
+      # identified" and correctly refused to guess, while the app was up the
+      # whole time.
+      #
+      # The main checkout's preview, always, whichever copy the agent is in.
+      # `record_preview_url/2` matches `main: true` and refuses everything else,
+      # so a worktree cannot have one of its own — the app runs on the main copy
+      # under the harness, and that is the address there is.
+      "app_url" => app_url(agent),
       "messages" => agent.history || []
     }
     |> Map.merge(credential_fields(agent.credential))
   end
+
+  # Nil when the project has no main checkout, or it has one and nothing is
+  # serving it. Nil rather than a placeholder: an agent told the app is at a URL
+  # that answers nothing spends a turn finding out, and "no address" is a fact
+  # it can act on.
+  defp app_url(%Agent{project_id: project_id}) when is_binary(project_id) do
+    WorkingCopies.preview_url(%Scope{active_project_id: project_id})
+  end
+
+  defp app_url(_agent), do: nil
 
   # Where the agent picks up. `resume_messages/1` answers with the whole
   # conversation while it is short enough to hand a model, and from the last

@@ -728,7 +728,11 @@ defmodule CmsHarness.Agents.Engine do
        # its role chose its tools and told it nothing. Issue `0f022a10`.
        |> Keyword.put(
          :system_prompt,
-         SystemPrompt.compose(Keyword.get(opts, :role_brief), working_copy)
+         SystemPrompt.compose(
+           Keyword.get(opts, :role_brief),
+           working_copy,
+           Keyword.get(opts, :app_url)
+         )
        )
        |> Keyword.put(:middleware, [Compaction])
        |> Keyword.put(:context, %{

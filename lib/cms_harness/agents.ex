@@ -1,5 +1,6 @@
 defmodule CmsHarness.Agents do
   require Logger
+
   @moduledoc """
   Agents running on this machine — start one, say which are running, stop one.
 
@@ -42,6 +43,10 @@ defmodule CmsHarness.Agents do
              # Half of the system prompt; the engine composes it with the
              # project's own guide, which only this side can read.
              role_brief: request["role_brief"],
+             # Where the application is running, off the project's main working
+             # copy. Only the server knows it — it is a column there — and an
+             # agent that cannot answer it cannot open the thing it is testing.
+             app_url: request["app_url"],
              # Which checkout this is, as the server knows it. The agent's own
              # MCP session is addressed by it — `x-harness-id` is what makes a
              # script act for this copy and no other — so an agent without it
