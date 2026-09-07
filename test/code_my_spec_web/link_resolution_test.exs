@@ -250,16 +250,13 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   test "every project-scoped view that wraps itself passes the project to the layout" do
     missing =
       CodeMySpecWeb.Router.__routes__()
-      |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
-      |> Enum.filter(&(&1.path =~ ~r{^/app/projects/:project_id/}))
+      |> Enum.filter(
+        &(&1.plug == Phoenix.LiveView.Plug and &1.path =~ ~r{^/app/projects/:project_id/})
+      )
       |> Enum.map(&elem(&1.metadata.phoenix_live_view, 0))
       |> Enum.uniq()
       |> Enum.map(&(&1.__info__(:compile)[:source] |> to_string() |> Path.relative_to_cwd()))
-      |> Enum.filter(&File.exists?/1)
-      |> Enum.filter(fn file ->
-        src = File.read!(file)
-        String.contains?(src, "<Layouts.app") and not String.contains?(src, "project={")
-      end)
+      |> Enum.filter(&(File.exists?(&1) and missing_project_assign?(&1)))
 
     assert missing == [], """
     A project-scoped view renders <Layouts.app> without passing project=, so
@@ -270,6 +267,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
 
     Pass project={assigns[:project]} and projects={assigns[:projects] || []}.
     """
+  end
+
+  defp missing_project_assign?(file) do
+    src = File.read!(file)
+    String.contains?(src, "<Layouts.app") and not String.contains?(src, "project={")
   end
 
   # Surfaces with no sidebar entry, and why. The first is by design; the rest
