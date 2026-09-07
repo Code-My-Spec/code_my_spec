@@ -81,6 +81,17 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
     assert attempt.story_id == ctx.story.id
   end
 
+  # Who did the QA. `TaskOwner.activate_task/4` sets `task.agent_id` on its
+  # session clause and not its agent one — an agent-owned task does not name an
+  # agent, because the row it lives on already is one. So two real QA passes on
+  # story 1000 landed this morning attributed to nobody, and "which agent tested
+  # this" had no answer.
+  test "the attempt names the agent that made it", ctx do
+    {:ok, attempt} = Qa.submit_qa_result(ctx.scope, attrs(ctx.task_id, :pass))
+
+    assert attempt.agent_id == ctx.agent.id
+  end
+
   # The story comes off the task, not off the submission — a QA agent that had
   # to state it could state the wrong one, and nothing in the payload would say
   # so. `:pass` rather than `:fail` because a failure has to cite issue ids,

@@ -254,11 +254,15 @@ defmodule CodeMySpec.Qa.QaAttempts do
     # column so we skip Ecto's enum cast on `type` — stale sessions
     # in the DB with deprecated `type` values would otherwise crash
     # `Repo.all/1` here, even though we only care about `tasks`.
-    task_arrays = session_tasks(project_id) ++ agent_tasks(project_id)
+    sessions = session_tasks(project_id)
+    agents = agent_tasks(project_id)
 
-    case find_task(task_arrays, task_id) do
-      nil -> {:error, {:task_not_found, open_qa_tasks(task_arrays)}}
-      task -> {:ok, {task_field(task, :story_id), task_field(task, :agent_id)}}
+    case find_task(sessions ++ Enum.map(agents, &elem(&1, 1)), task_id) do
+      nil ->
+        {:error, {:task_not_found, open_qa_tasks(sessions ++ Enum.map(agents, &elem(&1, 1)))}}
+
+      task ->
+        {:ok, {task_field(task, :story_id), owner_of(task, task_id, agents)}}
     end
   end
 
@@ -292,8 +296,26 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp agent_tasks(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id)
-    |> select([a], a.tasks)
+    |> select([a], {a.id, a.tasks})
     |> Repo.all()
+  end
+
+  # Who did this QA.
+  #
+  # `task.agent_id` is set by `TaskOwner.activate_task/4`'s *session* clause and
+  # not by its agent one — an agent-owned task does not name an agent, because
+  # the row it lives on already is one. So an attempt from an agent recorded
+  # `agent_id: nil`, and two real QA passes on story 1000 landed this morning
+  # attributed to nobody.
+  #
+  # Read off the row the task was found on, which is the only place that knows.
+  # A session-owned task keeps whatever the field says, which is where it is
+  # written.
+  defp owner_of(task, task_id, agents) do
+    case Enum.find(agents, fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end) do
+      {agent_id, _tasks} -> agent_id
+      nil -> task_field(task, :agent_id)
+    end
   end
 
   # The QA tasks that are actually open, so a refusal can name them.
