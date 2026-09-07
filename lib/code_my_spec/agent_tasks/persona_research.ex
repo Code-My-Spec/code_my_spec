@@ -67,8 +67,10 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
 
     Personas are **project-scoped**. `create_persona` needs the scope to
     carry an `active_project_id`.
-    If `create_persona` returns `missing_active_project`, run `init_project`
-    first to bind the working directory to a project, then retry.
+    If `create_persona` returns `missing_active_project`, stop and say so —
+    binding a working directory to a project is not this role's to do, and the
+    tool that does it is not one you carry. Say which project you were working
+    on; whoever reads it can bind it and put you back to work.
 
     ## Reuse before research
 

@@ -57,7 +57,7 @@ defmodule CodeMySpec.Agents.ToolSets do
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
-    create_component update_component validate_dependency_graph
+    create_component update_component validate_dependency_graph set_story_component
     list_requirements show_requirement
     list_rules list_questions
     list_issues get_issue create_issue
@@ -70,6 +70,22 @@ defmodule CodeMySpec.Agents.ToolSets do
 
   # Shaping what gets built, and never building it. The product half of the
   # graph: stories, criteria, rules, personas, epics.
+  #
+  # Triage *is* shaping: `issues_triaged` is product's own requirement, and an
+  # incoming issue is either work somebody has to plan or noise to throw away.
+  # `accept_issue` and `dismiss_issue` are how that decision is recorded, and
+  # they were missing — while `triage_issues`, which product does carry, hands
+  # back a prompt naming them five times.
+  #
+  # So the agent was told to do a thing with a tool it did not have. It read all
+  # four incoming issues, decided every one of them, and then had to tap out:
+  # "This product agent lacks the required accept/dismiss tools, so I requested
+  # tap-out for a role with triage authority." The work was done and could not
+  # be written down.
+  #
+  # Note what this is not: `resolve_issue` stays off this list and off coding's,
+  # for the reason the `@coding` comment gives. Deciding whether an issue is
+  # real is product's; declaring it fixed is not.
   @product ~w(
     list_stories get_story list_story_titles create_story update_story delete_story
     add_criterion update_criterion delete_criterion move_criterion
@@ -83,7 +99,9 @@ defmodule CodeMySpec.Agents.ToolSets do
     link_persona_to_story unlink_persona_from_story
     list_epics create_epic update_epic assign_story_to_epic set_epic_stories_ready
     propose_epic tag_stories list_project_tags analyze_stories
-    list_issues get_issue create_issue triage_issues
+    set_story_component create_component update_component
+    validate_dependency_graph execute_proposal show_architecture_overview
+    list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
   )
