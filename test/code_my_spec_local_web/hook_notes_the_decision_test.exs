@@ -10,6 +10,7 @@ defmodule CodeMySpecLocalWeb.HookNotesTheDecisionTest do
   """
 
   use CodeMySpecTest.ConnCase, async: false
+  use ExCliVcr
 
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
@@ -17,11 +18,12 @@ defmodule CodeMySpecLocalWeb.HookNotesTheDecisionTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
+  alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecLocalWeb.Endpoint
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     scope = full_scope_fixture()
     integration_fixture(scope.user, %{provider: :anthropic})
@@ -60,10 +62,18 @@ defmodule CodeMySpecLocalWeb.HookNotesTheDecisionTest do
 
   test "a stop through the endpoint lands on the agent's thread", %{copy: copy, agent: agent} do
     conn =
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-harness-id", copy.id)
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> post("/api/hooks/stop", %{"session_id" => "a-session-nobody-registered"})
+      use_cmd_cassette "clean", record: :none do
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-harness-id", copy.id)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post("/api/hooks/stop", %{
+          "session_id" => "a-session-nobody-registered",
+          "test_output_files" => %{
+            "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+            "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+          }
+        })
+      end
 
     assert conn.status == 200, "the hook did not answer: #{conn.status}"
 

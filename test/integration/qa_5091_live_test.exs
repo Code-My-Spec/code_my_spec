@@ -103,7 +103,8 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     result =
       Validation.validate_stop(scope, nil,
         compile_output_file: compile_jsonl,
-        exunit_output_file: exunit_json
+        exunit_output_file: exunit_json,
+        spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
       )
 
     assert {:error, reason, key} = result, "expected blocking response, got: #{inspect(result)}"

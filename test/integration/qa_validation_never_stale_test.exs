@@ -89,15 +89,30 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
     """)
 
     compile_jsonl = Path.expand(Path.join(@fixture_dir, "compile.jsonl"))
+    # `spex: :off` does not stop `spex_stale` from being requested — it is
+    # deliberately absent from `@config_gated_analyzers`, since the
+    # specs-passing gate needs a fresh run to exist regardless of whether a
+    # failure blocks. Nothing here is about spex, so it has nothing to say.
+    spex_jsonl = Path.expand("test/fixtures/validation/spex_green.jsonl")
 
-    turn1 = Validation.validate_stop(scope, nil, compile_output_file: compile_jsonl)
+    turn1 =
+      Validation.validate_stop(scope, nil,
+        compile_output_file: compile_jsonl,
+        spex_output_file: spex_jsonl
+      )
+
     assert {:error, reason1, _key} = turn1
     assert reason1 =~ "qa_validation", "turn 1 must persist and block on the broken brief"
 
     # Turn 2: no files changed. The qa_validation problem from turn 1 is
     # still on record and must still block — but it must never claim to be
     # stale, because nothing will ever run to un-stale it.
-    turn2 = Validation.validate_stop(scope, nil, compile_output_file: compile_jsonl)
+    turn2 =
+      Validation.validate_stop(scope, nil,
+        compile_output_file: compile_jsonl,
+        spex_output_file: spex_jsonl
+      )
+
     assert {:error, reason2, _key} = turn2
 
     assert reason2 =~ "qa_validation",

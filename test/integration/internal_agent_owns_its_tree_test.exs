@@ -39,6 +39,14 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
   @broken_qa_brief_path ".code_my_spec/qa/9999/brief.md"
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
 
+  # `spex: :off` above does not stop `spex_stale` from being requested —
+  # it is deliberately absent from `@config_gated_analyzers`, since the
+  # specs-passing gate needs a fresh run to exist regardless of whether
+  # a failure blocks. Every `validate_stop` here is otherwise about
+  # qa_validation attribution, so it has nothing to say about a real
+  # (and here, doomed) `mix spex` run.
+  @spex_output_file Path.expand("test/fixtures/validation/spex_green.jsonl")
+
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
@@ -89,7 +97,10 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     # and blocks on its own merits. Without this the rest asserts against
     # nothing, which is the failure mode every criterion on story 988 hit.
     assert {:error, seeded, _key} =
-             Validation.validate_stop(scope, nil, compile_output_file: compile_jsonl)
+             Validation.validate_stop(scope, nil,
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
+             )
 
     assert seeded =~ "qa_validation", "the finding must be persisted before any turn below"
 
@@ -104,7 +115,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:error, reason, _key} =
              Validation.validate_stop(scope, nil,
                agent_id: "an-agent",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            """
            The agent edited the file this finding is about and was let go. An
@@ -121,7 +133,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:ok, _result} =
              Validation.validate_stop(scope, nil,
                agent_id: "an-idle-agent",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            """
            An agent that has edited nothing was blocked on a pre-existing
@@ -139,7 +152,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:ok, _result} =
              Validation.validate_stop(scope, nil,
                agent_id: "the-bystander",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            """
            A finding was attributed to an agent that did not make the edit. Two
@@ -161,7 +175,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:ok, _result} =
              Validation.validate_stop(scope, nil,
                agent_id: "an-idle-agent",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            """
            A block_all finding on a file this agent never touched still blocked
@@ -179,7 +194,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     assert {:error, reason, _key} =
              Validation.validate_stop(scope, nil,
                agent_id: "an-agent",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            "the agent broke it and was let go — demotion must not swallow its own findings"
 
@@ -193,7 +209,8 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
              Validation.validate_stop(scope, nil,
                session_id: "a-session",
                agent_id: "an-agent",
-               compile_output_file: compile_jsonl
+               compile_output_file: compile_jsonl,
+               spex_output_file: @spex_output_file
              ),
            """
            The external path must still demote a finding nothing was attributed

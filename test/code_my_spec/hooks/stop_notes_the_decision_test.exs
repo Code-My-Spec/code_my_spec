@@ -14,6 +14,7 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
   """
 
   use CodeMySpecTest.DataCase, async: false
+  use ExCliVcr
 
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
@@ -46,15 +47,33 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
     %{scope: scope, agent: agent}
   end
 
+  # No test here is about analyzer content — only whether the decision lands
+  # on the conversation. `async: false` makes the cassette safe: nothing else
+  # runs concurrently in this file to have `System.cmd/3` patched out from
+  # under it.
+  @stop_test_output_files %{
+    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+  }
+
+  defp decide(scope, params) do
+    use_cmd_cassette "clean", record: :none do
+      Stop.decide(scope, Map.put(params, "test_output_files", @stop_test_output_files))
+    end
+  end
+
   defp orchestrator_messages(agent) do
     case Repo.get_by(Conversation, agent_id: agent.id) do
-      nil -> []
-      conversation -> conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
+      nil ->
+        []
+
+      conversation ->
+        conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
     end
   end
 
   test "a stop decision is written to the agent's thread", %{scope: scope, agent: agent} do
-    Stop.decide(scope, %{"session_id" => "a-session-nobody-registered"})
+    decide(scope, %{"session_id" => "a-session-nobody-registered"})
 
     assert [action] = orchestrator_messages(agent),
            "the hook decided and the conversation says nothing about it. Somebody " <>
@@ -66,7 +85,7 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
   end
 
   test "one decision is one action", %{scope: scope, agent: agent} do
-    Stop.decide(scope, %{"session_id" => "a-session-nobody-registered"})
+    decide(scope, %{"session_id" => "a-session-nobody-registered"})
 
     assert length(orchestrator_messages(agent)) == 1,
            "one stop produced more than one entry. However many analyzers ran, the " <>
@@ -75,7 +94,7 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
   end
 
   test "the action names the tool that answers for the detail", %{scope: scope, agent: agent} do
-    Stop.decide(scope, %{"session_id" => "a-session-nobody-registered"})
+    decide(scope, %{"session_id" => "a-session-nobody-registered"})
 
     [action] = orchestrator_messages(agent)
 
@@ -94,7 +113,7 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
   test "a decision on a project with no agent does not raise", %{scope: scope} do
     other = full_scope_fixture()
 
-    assert %{} = Stop.decide(other, %{"session_id" => "no-agent-here"}),
+    assert %{} = decide(other, %{"session_id" => "no-agent-here"}),
            "recording broke a verdict for an agent that does not exist. The hook's job " <>
              "is the decision; a note able to break it is worse than no note."
 
