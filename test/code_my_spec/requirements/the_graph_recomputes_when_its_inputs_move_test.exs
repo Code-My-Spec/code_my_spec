@@ -209,6 +209,25 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
            "QA has no issue-triage requirement and was woken to be told so"
   end
 
+  # The watcher is per project and names no working copy, so without this every
+  # menu is rendered from the blended vantage — which `Preloader.load/1` warns
+  # is "expected for the UI; an agent path here is a bug". Waking is an agent
+  # path, and this fired with that warning beside it the first time it ran live.
+  test "an agent is woken from its own checkout, not a blended one", ctx do
+    product = product_agent(ctx.scope, ctx.copy)
+
+    blended = %CodeMySpec.Users.Scope{ctx.scope | active_working_copy_id: nil}
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        CodeMySpec.Agents.wake_project_roles(blended)
+        _ = woken()
+      end)
+
+    refute log =~ "with no working copy",
+           "the menu for #{product.id} was computed from every checkout at once"
+  end
+
   # One watcher per project, however many callers ask for one.
   test "watching is idempotent", ctx do
     {:ok, first} = GraphWatcher.ensure_watching(ctx.scope)

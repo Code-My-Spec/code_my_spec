@@ -823,10 +823,26 @@ defmodule CodeMySpec.Agents do
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(&project_wakeable?(&1, except_agent_id))
-    |> Enum.each(&StopDecision.wake(scope, &1))
+    |> Enum.each(fn agent -> StopDecision.wake(at_agents_vantage(scope, agent), agent) end)
 
     :ok
   end
+
+  # Each agent's menu is computed from its own checkout, not from whoever's
+  # scope started the wake.
+  #
+  # `GraphWatcher` is per project and its scope names no working copy, so every
+  # menu was rendered from the blended vantage — which `Preloader.load/1` warns
+  # about in as many words: "every checkout's files are read together, so a file
+  # present in one and absent in another reads as present. Expected for the UI;
+  # an agent path here is a bug." Waking an agent is an agent path.
+  #
+  # Seen live the first time this fired: the graph recomputed and woke the right
+  # agent, with that warning beside it.
+  defp at_agents_vantage(%Scope{} = scope, %Agent{working_copy_id: nil}), do: scope
+
+  defp at_agents_vantage(%Scope{} = scope, %Agent{working_copy_id: copy_id}),
+    do: %Scope{scope | active_working_copy_id: copy_id}
 
   defp project_wakeable?(agent, except_agent_id) do
     agent.continuous == true and
