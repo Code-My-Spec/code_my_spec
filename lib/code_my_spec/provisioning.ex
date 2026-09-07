@@ -273,6 +273,7 @@ defmodule CodeMySpec.Provisioning do
   defp entry(step, environment, nil) do
     %{
       key: step.key,
+      scope: step.scope,
       environment: environment,
       label: step.label,
       why: step.why,
@@ -291,6 +292,7 @@ defmodule CodeMySpec.Provisioning do
   defp entry(step, environment, row) do
     %{
       key: step.key,
+      scope: step.scope,
       environment: environment,
       label: step.label,
       why: step.why,

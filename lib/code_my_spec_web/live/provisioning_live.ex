@@ -391,630 +391,48 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       `overflow-visible` here is a Tailwind *utility*, which sits in a later
       cascade layer than DaisyUI's *component* classes, so it wins without
       needing `!important`. --%>
-      <ol class="steps steps-vertical w-full overflow-visible">
-        <li
-          :for={step <- @plan}
-          data-test="setup-step"
-          data-step={step.key}
-          data-environment={step.environment}
-          data-completed-at={step_completed_at(step)}
-          data-started-at={step_started_at(step)}
-          data-verified-at={step_verified_at(step)}
-          data-state={step.state}
-          data-position={step.position}
-          class="step"
-        >
-          <div class="card bg-base-100 w-full text-left">
-            <div class="card-body">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <h3 class="card-title">
-                    {step.label}
-                    <span :if={step.environment} class="badge badge-ghost badge-sm align-middle">
-                      {step.environment}
-                    </span>
-                  </h3>
-                  <p class="text-sm opacity-70">{step.why}</p>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <span class="badge">{step.state}</span>
-                  <.button
-                    :if={step.key != :deploy}
-                    data-test="run-step"
-                    phx-click="run_step"
-                    phx-value-key={step.key}
-                    phx-value-environment={step.environment}
-                  >
-                    Run
-                  </.button>
-                  <.button
-                    :if={step.state == :errored and step.key != :deploy}
-                    data-test="retry-step"
-                    phx-click="run_step"
-                    phx-value-key={step.key}
-                    phx-value-environment={step.environment}
-                  >
-                    Retry
-                  </.button>
-                </div>
-              </div>
-
-              <p
-                :if={step.state == :paused && step.paused_instructions}
-                data-test="paused-instructions"
-                data-step={step.key}
-                class="alert alert-warning mt-3"
-              >
-                {step.paused_instructions}
-              </p>
-              
-    <!-- Deploying is a decision about one environment, never a batch
-                 operation — confirmed live against cleaner_crm: two unscoped
-                 calls both deployed prod first (environments have no defined
-                 order) and never reached uat, because a run halts on the
-                 first failure. The plain "Run"/"Retry" buttons above are
-                 hidden for this step so there is no path left that deploys
-                 every environment in one click; picking one here is the only
-                 way to deploy from this page now, matching the same
-                 requirement `run_provisioning_step` already enforces. -->
-              <form
-                :if={step.key == :deploy}
-                data-test="deploy-environment-form"
-                phx-submit="run_step_with_environment"
-                class="mt-3 flex flex-wrap gap-2 items-end"
-              >
-                <input type="hidden" name="key" value={step.key} />
-                <label class="form-control">
-                  <span class="label-text text-xs">Environment</span>
-                  <select
-                    name="environment"
-                    data-test="deploy-environment-select"
-                    class="select select-bordered select-sm"
-                  >
-                    <option :for={environment <- @environments} value={environment}>
-                      {environment}
-                    </option>
-                  </select>
-                </label>
-                <.button
-                  type="submit"
-                  data-test="deploy-environment-submit"
-                  class="btn btn-primary"
-                >
-                  {if step.state == :errored, do: "Retry", else: "Deploy"} this environment
-                </.button>
-              </form>
-              
-    <!-- The apex already points somewhere, and this run would move it.
-                 Not a default: a live site going dark is less reversible than
-                 the domain purchase that already demands a second step — the
-                 money comes back, the downtime does not. Behind a dialog
-                 rather than a bare click, and not `data-confirm`, whose
-                 browser confirm() is invisible to the driver QA runs. -->
-              <div
-                :if={step.key == :dns and step.state == :paused}
-                data-test="apex-repoint"
-                class="mt-3 flex gap-2"
-              >
-                <.button
-                  data-test="confirm-apex-repoint"
-                  class="btn btn-warning"
-                  phx-click={show_confirm("confirm-apex-repoint")}
-                >
-                  Repoint it anyway
-                </.button>
-
-                <.confirm_dialog
-                  id="confirm-apex-repoint"
-                  title="Repoint the apex?"
-                  message={step.paused_instructions}
-                  confirm_label="Repoint it"
-                  on_confirm={JS.push("confirm_apex_repoint")}
-                />
-              </div>
-              
-    <!-- A name collision Sam did not cause: the repository exists but
-                 is not this project's. Neither choice is taken for him
-                 (criterion 8185) — adopting a stranger's repo or inventing a
-                 suffixed name are both decisions, not defaults. -->
-              <div
-                :if={step.key == :repository and step.state == :paused}
-                data-test="repository-collision"
-                class="mt-3 flex gap-2"
-              >
-                <.button
-                  data-test="adopt-existing-repository"
-                  phx-click="adopt_repository"
-                  class="btn btn-warning"
-                >
-                  Adopt the existing repository
-                </.button>
-                <.button data-test="choose-another-name" phx-click="rename_repository">
-                  Use a different name
-                </.button>
-              </div>
-              
-    <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
-                 rather than repeat the mistake `59f366cc` fixed, but nothing gave
-                 Sam a way to supply the one it's asking for — the plain "Run"
-                 button above re-runs with the same missing opt and loops back to
-                 this same pause forever. Same shape as the two blocks above:
-                 a paused step naming a decision only Sam can make. -->
-              <form
-                :if={step.key == :inbound and step.state == :paused}
-                data-test="inbound-probe-address"
-                phx-submit="run_step_with_probe_address"
-                class="mt-3 flex gap-2"
-              >
-                <input type="hidden" name="key" value={step.key} />
-                <input
-                  type="email"
-                  name="probe_to"
-                  data-test="inbound-probe-address-input"
-                  placeholder="an address you already receive at this domain"
-                  required
-                  class="input input-bordered input-sm flex-1"
-                />
-                <.button
-                  type="submit"
-                  data-test="inbound-probe-address-submit"
-                  class="btn btn-primary"
-                >
-                  Use this address
-                </.button>
-              </form>
-
-              <div
-                :if={step.state == :errored}
-                data-test="escalation"
-                data-step={step.key}
-                class="alert alert-error mt-3 flex-col items-start"
-              >
-                <p>{step.attempted}</p>
-                <p :if={not shown_again_below?(step)} class="font-mono text-xs">
-                  {step.provider_error}
-                </p>
-              </div>
-              
-    <!-- How the decryption key reaches the app. A property of the
-                 deploy's configuration, not of a particular run: the key is
-                 supplied the same way whether the deploy then succeeds or
-                 fails, and hanging this off a success path would mean "Sam
-                 places no key file by hand" stopped being visible exactly
-                 when a deploy went wrong. -->
-              <div
-                :if={step.key == :deploy and @age_key_environments != []}
-                data-test="age-key-delivery"
-                data-via="deploy_env"
-                data-manual-step-required="false"
-                class="mt-2 text-xs opacity-70"
-              >
-                key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
-              </div>
-              
-    <!-- Where the callback credential was placed. The observable
-                 form of "Sam never sees the credential he is using" (8022):
-                 written into the encrypted env, copied by nobody. -->
-              <div
-                :for={cred <- Enum.filter(step.resources, &(&1.kind == "callback_credential"))}
-                data-test="callback-credential"
-                data-placed-in="encrypted_env"
-                data-manual-copy="false"
-                data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
-                class="mt-2 text-xs opacity-70"
-              >
-                credential placed in {cred.location}
-              </div>
-              
-    <!-- Configuration is not an inbox. The step sends a message to the
-                 domain it just configured and waits for Resend to report it
-                 received; that delivery is the claim, so it is on the page
-                 rather than folded into "done" (8033). -->
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "inbound_proof"))}
-                data-test="inbound-delivery-proof"
-                data-target={pr.location}
-                data-state={proof_field(pr.identifier, "state")}
-                data-message-id={proof_field(pr.identifier, "message_id")}
-                data-completed-at={proof_field(pr.identifier, "proven_at")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                delivered to {pr.location}: {pr.identifier}
-              </span>
-              
-    <!-- Uploading is not publishing. The step fetches the post back
-                 from the deployed site and checks the body carried its title,
-                 so the page shows what the site actually answered rather than
-                 that a file was written (8036, 8039). -->
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-                data-test="content-render-proof"
-                data-state={proof_field(pr.identifier, "state")}
-                data-completed-at={proof_field(pr.identifier, "proven_at")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                rendered at {pr.location}: {pr.identifier}
-              </span>
-
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-                data-test="content-render-check"
-                data-status={proof_field(pr.identifier, "status")}
-                data-path={pr.location}
-                data-title-present={proof_field(pr.identifier, "title_present")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                {pr.location} answered {proof_field(pr.identifier, "status")}
-              </span>
-              
-    <!-- Which version is live. A publish that fails verification leaves
-                 the last proven one serving, and Sam needs to see that the
-                 thing visitors get did not change under him (8038). -->
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
-                data-test="content-served-version"
-                data-version={proof_field(pr.identifier, "version")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                serving {proof_field(pr.identifier, "version")}
-              </span>
-              
-    <!-- Whose bucket each object landed in, one row per object. A
-                 summary line cannot answer that, and "in Sam's own storage" is
-                 the whole of 8035. -->
-              <span
-                :for={obj <- Enum.filter(step.resources, &(&1.kind == "content_object"))}
-                data-test="content-object"
-                data-key={obj.location}
-                data-owner={proof_field(obj.identifier, "owner")}
-                data-bucket={proof_field(obj.identifier, "bucket")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                {obj.location} → {proof_field(obj.identifier, "bucket")}
-              </span>
-              
-    <!-- Uploaded but not served is a different failure from a publish
-                 that never happened, and the difference is what Sam acts on
-                 (8038, 8058). -->
-              <span
-                :for={f <- Enum.filter(step.resources, &(&1.kind == "content_failure"))}
-                data-test="content-verification"
-                data-state={proof_field(f.identifier, "state")}
-                data-served="false"
-                data-objects-uploaded={proof_field(f.identifier, "objects_uploaded")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                <span data-test="content-publish-error">{f.location}</span>
-              </span>
-              
-    <!-- Present and openable are asked separately because
-                 present-but-not-openable is exactly what a broken bundle looks
-                 like from the outside (8040). -->
-              <span
-                :for={r <- Enum.filter(step.resources, &(&1.kind == "widget_render"))}
-                data-test="widget-render-check"
-                data-status={proof_field(r.identifier, "status")}
-                data-widget-present={proof_field(r.identifier, "present")}
-                data-widget-openable={proof_field(r.identifier, "openable")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                widget check: {r.identifier}
-              </span>
-              
-    <!-- A script tag proves nothing. This is a message that travelled
-                 from the deployed site into CodeMySpec, and `origin` is what
-                 separates it from one posted by hand (8044). -->
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "widget_proof"))}
-                data-test="widget-message-proof"
-                data-state={proof_field(pr.identifier, "state")}
-                data-origin={proof_field(pr.identifier, "origin")}
-                data-completed-at={proof_field(pr.identifier, "proven_at")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                message from {pr.location}: {pr.identifier}
-              </span>
-              
-    <!-- A dump is a file until something has read it back. The step
-                 restores into a scratch database and counts the rows; that
-                 count is the whole claim, so it is on the page rather than
-                 folded into "done" (8054). -->
-              <span
-                :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
-                data-test="backup-restore-proof"
-                data-target={pr.location}
-                data-rows={
-                  pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")
-                }
-                data-completed-at={
-                  pr.identifier
-                  |> String.split(" ")
-                  |> List.last()
-                  |> String.replace_prefix("proven_at=", "")
-                }
-                data-content-verified={
-                  pr.identifier
-                  |> String.split(" ")
-                  |> hd()
-                  |> String.replace_prefix("rows=", "")
-                  |> then(&(&1 != "0"))
-                  |> to_string()
-                }
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                restored into {pr.location}: {pr.identifier}
-              </span>
-              
-    <!-- Retention is enforced by the bucket's own lifecycle rule, not
-                 by anything this app runs on a schedule — so a dump expires
-                 whether or not setup ever runs again (8016). -->
-              <span
-                :for={r <- Enum.filter(step.resources, &(&1.kind == "retention"))}
-                data-test="backup-retention"
-                data-days={r.location |> String.replace_suffix(" days", "")}
-                data-enforced-by="bucket_lifecycle"
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                dumps expire after {r.location}
-              </span>
-              
-    <!-- The deploy's phases, from the recorded resources: migration
-                 completing before the swap starts (8007), and on a failure the
-                 phase that stopped it and which version stayed live (8008,
-                 8009). -->
-              <span
-                :for={ph <- Enum.filter(step.resources, &(&1.kind == "deploy_phase"))}
-                data-test="deploy-phase"
-                data-phase={ph.location}
-                data-completed-at={ph.location == "migrate" && ph.identifier}
-                data-started-at={ph.location == "swap" && ph.identifier}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                {ph.location} at {ph.identifier}
-              </span>
-              
-    <!-- The image the deploy runs, and whether this deploy built it.
-                 `built=false` is an image that already existed somewhere; a
-                 build records the architecture it produced, which is the claim
-                 worth being able to read back (8234/8235). -->
-              <span
-                :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
-                data-test="published-image"
-                data-image={img.location}
-                data-built={
-                  img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")
-                }
-                data-architecture={image_architecture(img)}
-                data-registry={img.location |> String.split("/") |> hd()}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                image {img.location}
-              </span>
-              
-    <!-- The box the image was built on. It exists for one build and is
-                 destroyed either way (8236/8237); `booted_from` is the
-                 pre-warmed image, so no deploy pays to install the toolchain
-                 again (8239). -->
-              <span
-                :for={b <- Enum.filter(step.resources, &(&1.kind == "builder"))}
-                data-test="builder"
-                data-builder={b.location}
-                data-destroyed={identifier_field(b, "destroyed")}
-                data-booted-from={identifier_field(b, "booted_from")}
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                built on {b.location}, destroyed after
-              </span>
-              
-    <!-- Two mechanisms, two blocks (6dcb62b8) — `:s3` storage's bucket
-                 lifecycle rule and `:filesystem` storage's prune-on-push are not
-                 the same claim in the same units, and forcing one span to read
-                 either is how the last version ended up asserting a lifecycle
-                 rule that was never installed. `retention_resource/1` emits at
-                 most one of these per deploy, keyed to whichever mechanism
-                 `retention_claim/3` actually ran; neither renders at all if
-                 pruning failed to reach the box this time (8241). -->
-              <span
-                :for={
-                  r <-
-                    Enum.filter(step.resources, fn r ->
-                      r.kind == "image_retention" and
-                        identifier_field(r, "enforced_by") == "bucket_lifecycle"
-                    end)
-                }
-                data-test="image-retention"
-                data-days={r.location |> String.replace_suffix(" days", "")}
-                data-enforced-by="bucket_lifecycle"
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                images expire after {r.location}
-              </span>
-
-              <span
-                :for={
-                  r <-
-                    Enum.filter(step.resources, fn r ->
-                      r.kind == "image_retention" and
-                        identifier_field(r, "enforced_by") == "prune_on_push"
-                    end)
-                }
-                data-test="image-retention"
-                data-images={r.location |> String.replace_suffix(" images", "")}
-                data-enforced-by="prune_on_push"
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                the registry keeps the newest {r.location}
-              </span>
-
-              <span
-                :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
-                data-test="deployed-version"
-                data-image={dv.location}
-                data-commit={
-                  dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")
-                }
-                data-source={
-                  dv.identifier
-                  |> String.split(" ")
-                  |> List.last()
-                  |> String.replace_prefix("source=", "")
-                }
-                data-image-source={
-                  dv.identifier
-                  |> String.split(" ")
-                  |> List.last()
-                  |> String.replace_prefix("source=", "")
-                }
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                shipped {dv.location}
-              </span>
-
-              <span
-                :for={lv <- Enum.filter(step.resources, &(&1.kind == "live_version"))}
-                data-test="live-version"
-                data-version={lv.location}
-                data-role={lv.location}
-                class="mt-1 block text-xs opacity-70"
-              >
-                live version: {lv.location}
-              </span>
-
-              <p
-                :for={f <- Enum.filter(step.resources, &(&1.kind == "deploy_failure"))}
-                data-test="deploy-failure"
-                data-phase={f.identifier}
-                class="mt-2 text-xs text-error"
-              >
-                {f.location}
-              </p>
-
-              <p
-                :if={step.key == :deploy and step.state == :errored and step.provider_error}
-                data-test="boot-failure"
-                class="mt-2 text-xs text-error"
-              >
-                {step.provider_error}
-              </p>
-              
-    <!-- The commit that actually landed. The step is proven by a
-                 push rather than by the repository existing (8183), and an
-                 empty repository is exactly what "it exists" looks like when
-                 the push failed. -->
-              <div
-                :for={commit <- Enum.filter(step.resources, &(&1.kind == "commit"))}
-                data-test="push-proof"
-                data-commit={commit.location}
-                class="mt-2 text-xs font-mono opacity-70"
-              >
-                pushed {String.slice(commit.location, 0, 12)}
-              </div>
-              
-    <!-- The firewall's inbound rules, from the deterministic rule set:
-                 only the web ports and key-only SSH face the internet, and the
-                 database port never does (criterion 8004). Rendered when the
-                 server step has recorded its firewall. -->
-              <div
-                :if={step.key == :server and Enum.any?(step.resources, &(&1.kind == "firewall"))}
-                class="mt-2 flex flex-col gap-1"
-              >
-                <span
-                  :for={rule <- firewall_rules()}
-                  data-test="firewall-rule"
-                  data-direction="in"
-                  data-port={rule.port}
-                  data-source={hd(rule.source_ips)}
-                  class="text-xs font-mono opacity-70"
-                >
-                  in {rule.port} from {Enum.join(rule.source_ips, ", ")}
-                </span>
-                <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
-                  enforced at the Hetzner cloud firewall, not on the box
-                </span>
-              </div>
-
-              <span
-                :for={v <- Enum.filter(step.resources, &(&1.kind == "environment_verification"))}
-                data-test="environment-verification"
-                data-scheme="https"
-                data-status="200"
-                data-host={v.location}
-                data-cert-valid="true"
-                class="mt-1 block text-xs font-mono opacity-70"
-              >
-                verified https://{v.location} (200, valid cert)
-              </span>
-
-              <span
-                :for={m <- Enum.filter(step.resources, &(&1.kind == "monitor"))}
-                data-test="uptime-monitor"
-                data-host={m.location}
-                data-notify={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
-                data-notifies={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
-                class="mt-1 block text-xs opacity-70"
-              >
-                monitoring {m.location}
-              </span>
-              
-    <!-- Confirmed by asking a public resolver, which is the only check that
-                 distinguishes a working record from one that merely exists. -->
-              <span
-                :for={v <- Enum.filter(step.resources, &(&1.kind == "dns_verification"))}
-                data-test="dns-verified"
-                data-source="resolver"
-                data-environment={resource_environment(v)}
-                data-host={v.location}
-                class="text-xs opacity-70"
-              >
-                {v.location} resolves
-              </span>
-              
-    <!-- One row per environment's record, so "each environment resolves to
-                 its own server" is readable off the page rather than inferred. -->
-              <span
-                :for={record <- Enum.filter(step.resources, &(&1.kind == "dns_record"))}
-                data-test="dns-record"
-                data-environment={resource_environment(record)}
-                data-target={resource_target(record)}
-                data-name={resource_name(record)}
-                data-proxied="false"
-                class="text-xs opacity-70"
-              >
-                {resource_name(record)} → {resource_target(record)}
-              </span>
-
-              <div :if={step.resources != []} class="mt-3 flex flex-col gap-1">
-                <span
-                  :for={resource <- step.resources}
-                  data-test="provisioned-resource"
-                  data-kind={resource.kind}
-                  data-location={resource.location}
-                  data-environment={resource_environment(resource)}
-                  data-name={resource_name(resource)}
-                  data-owner={resource_owner(resource)}
-                  data-disposition={resource_disposition(resource)}
-                  data-verified={to_string(step.state == :done)}
-                  class={[
-                    "badge badge-outline",
-                    step.state != :done && "badge-warning opacity-70"
-                  ]}
-                >
-                  {resource.kind} — {resource.location}
-                  <span
-                    :if={step.state != :done}
-                    data-test="unverified-resource"
-                    data-step={step.key}
-                    class="ml-1"
-                  >
-                    ({unverified_note(step)})
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </li>
+      <h2 class="text-lg font-semibold mt-8">Account</h2>
+      <p class="opacity-70 text-sm">
+        Infrastructure the account owns — shared across every project.
+      </p>
+      <ol class="steps steps-vertical w-full overflow-visible" data-test="account-steps">
+        <.step_card
+          :for={step <- account_plan(@plan)}
+          step={step}
+          environments={@environments}
+          age_key_environments={@age_key_environments}
+        />
       </ol>
+
+      <h2 class="text-lg font-semibold mt-8">Project</h2>
+      <p class="opacity-70 text-sm">
+        This project as a whole — one value regardless of environment.
+      </p>
+      <ol class="steps steps-vertical w-full overflow-visible" data-test="project-steps">
+        <.step_card
+          :for={step <- project_plan(@plan)}
+          step={step}
+          environments={@environments}
+          age_key_environments={@age_key_environments}
+        />
+      </ol>
+
+      <div
+        :for={environment <- plan_environments(@plan)}
+        data-test="environment-section"
+        data-environment={environment}
+      >
+        <h2 class="text-lg font-semibold mt-8">Environment: {environment}</h2>
+        <p class="opacity-70 text-sm">What runs for {environment}, tracked on its own.</p>
+        <ol class="steps steps-vertical w-full overflow-visible" data-test="environment-steps">
+          <.step_card
+            :for={step <- environment_plan(@plan, environment)}
+            step={step}
+            environments={@environments}
+            age_key_environments={@age_key_environments}
+          />
+        </ol>
+      </div>
 
       <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
         <h2 class="text-lg font-semibold">Prove the bucket</h2>
@@ -1337,6 +755,665 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </ul>
       </section>
     </Layouts.app>
+    """
+  end
+
+  # Server and repository are set up once, from account-owned credentials
+  # (the Hetzner box pool, the GitHub connection), rather than reconfigured
+  # per environment — the same tier `/app/servers` already claims for
+  # servers alone. Grouping repository here too is a display choice, not a
+  # second copy of that authority: both stay ordinary `Sequence.scope ==
+  # :project` steps underneath.
+  defp account_plan(plan), do: Enum.filter(plan, &(&1.key in [:repository, :server]))
+
+  # Everything else project-wide: one value regardless of which environment
+  # is running, so it does not belong under any one environment's heading.
+  defp project_plan(plan) do
+    Enum.filter(plan, &(&1.scope == :project and &1.key not in [:repository, :server]))
+  end
+
+  # `:content` is `scope == :environment` but pinned to whichever environment
+  # is primary (see `Provisioning.plan/2`) rather than fanned out — so it
+  # shows up here too, under that one environment, the same as any other
+  # per-environment step.
+  defp environment_plan(plan, environment) do
+    Enum.filter(plan, &(&1.scope == :environment and &1.environment == environment))
+  end
+
+  # Every environment actually represented in the plan, in the order they
+  # first appear — not `Provisioning.environment_names/1` directly, since the
+  # plan has already narrowed to what the project's devops level permits.
+  defp plan_environments(plan) do
+    plan
+    |> Enum.filter(&(&1.scope == :environment))
+    |> Enum.map(& &1.environment)
+    |> Enum.uniq()
+  end
+
+  # One step's card. Factored out of `render/1` so the same markup renders
+  # under the Account, Project, and each Environment heading rather than
+  # existing three times over — this is exactly the block a flat
+  # `<li :for={step <- @plan}>` used to be, with `step` becoming `@step` and
+  # nothing else about its behavior changed.
+  attr :step, :map, required: true
+  attr :environments, :list, required: true
+  attr :age_key_environments, :list, required: true
+
+  defp step_card(assigns) do
+    ~H"""
+    <li
+      data-test="setup-step"
+      data-step={@step.key}
+      data-environment={@step.environment}
+      data-completed-at={step_completed_at(@step)}
+      data-started-at={step_started_at(@step)}
+      data-verified-at={step_verified_at(@step)}
+      data-state={@step.state}
+      data-position={@step.position}
+      class="step"
+    >
+      <div class="card bg-base-100 w-full text-left">
+        <div class="card-body">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <h3 class="card-title">
+                {@step.label}
+                <span :if={@step.environment} class="badge badge-ghost badge-sm align-middle">
+                  {@step.environment}
+                </span>
+              </h3>
+              <p class="text-sm opacity-70">{@step.why}</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span class="badge">{@step.state}</span>
+              <.button
+                :if={@step.key != :deploy}
+                data-test="run-step"
+                phx-click="run_step"
+                phx-value-key={@step.key}
+                phx-value-environment={@step.environment}
+              >
+                Run
+              </.button>
+              <.button
+                :if={@step.state == :errored and @step.key != :deploy}
+                data-test="retry-step"
+                phx-click="run_step"
+                phx-value-key={@step.key}
+                phx-value-environment={@step.environment}
+              >
+                Retry
+              </.button>
+            </div>
+          </div>
+
+          <p
+            :if={@step.state == :paused && @step.paused_instructions}
+            data-test="paused-instructions"
+            data-step={@step.key}
+            class="alert alert-warning mt-3"
+          >
+            {@step.paused_instructions}
+          </p>
+          
+    <!-- Deploying is a decision about one environment, never a batch
+                 operation — confirmed live against cleaner_crm: two unscoped
+                 calls both deployed prod first (environments have no defined
+                 order) and never reached uat, because a run halts on the
+                 first failure. The plain "Run"/"Retry" buttons above are
+                 hidden for this step so there is no path left that deploys
+                 every environment in one click; picking one here is the only
+                 way to deploy from this page now, matching the same
+                 requirement `run_provisioning_step` already enforces. -->
+          <form
+            :if={@step.key == :deploy}
+            data-test="deploy-environment-form"
+            phx-submit="run_step_with_environment"
+            class="mt-3 flex flex-wrap gap-2 items-end"
+          >
+            <input type="hidden" name="key" value={@step.key} />
+            <label class="form-control">
+              <span class="label-text text-xs">Environment</span>
+              <select
+                name="environment"
+                data-test="deploy-environment-select"
+                class="select select-bordered select-sm"
+              >
+                <option :for={environment <- @environments} value={environment}>
+                  {environment}
+                </option>
+              </select>
+            </label>
+            <.button type="submit" data-test="deploy-environment-submit" class="btn btn-primary">
+              {if @step.state == :errored, do: "Retry", else: "Deploy"} this environment
+            </.button>
+          </form>
+          
+    <!-- The apex already points somewhere, and this run would move it.
+                 Not a default: a live site going dark is less reversible than
+                 the domain purchase that already demands a second step — the
+                 money comes back, the downtime does not. Behind a dialog
+                 rather than a bare click, and not `data-confirm`, whose
+                 browser confirm() is invisible to the driver QA runs. -->
+          <div
+            :if={@step.key == :dns and @step.state == :paused}
+            data-test="apex-repoint"
+            class="mt-3 flex gap-2"
+          >
+            <.button
+              data-test="confirm-apex-repoint"
+              class="btn btn-warning"
+              phx-click={show_confirm("confirm-apex-repoint")}
+            >
+              Repoint it anyway
+            </.button>
+
+            <.confirm_dialog
+              id="confirm-apex-repoint"
+              title="Repoint the apex?"
+              message={@step.paused_instructions}
+              confirm_label="Repoint it"
+              on_confirm={JS.push("confirm_apex_repoint")}
+            />
+          </div>
+          
+    <!-- A name collision Sam did not cause: the repository exists but
+                 is not this project's. Neither choice is taken for him
+                 (criterion 8185) — adopting a stranger's repo or inventing a
+                 suffixed name are both decisions, not defaults. -->
+          <div
+            :if={@step.key == :repository and @step.state == :paused}
+            data-test="repository-collision"
+            class="mt-3 flex gap-2"
+          >
+            <.button
+              data-test="adopt-existing-repository"
+              phx-click="adopt_repository"
+              class="btn btn-warning"
+            >
+              Adopt the existing repository
+            </.button>
+            <.button data-test="choose-another-name" phx-click="rename_repository">
+              Use a different name
+            </.button>
+          </div>
+          
+    <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
+                 rather than repeat the mistake `59f366cc` fixed, but nothing gave
+                 Sam a way to supply the one it's asking for — the plain "Run"
+                 button above re-runs with the same missing opt and loops back to
+                 this same pause forever. Same shape as the two blocks above:
+                 a paused step naming a decision only Sam can make. -->
+          <form
+            :if={@step.key == :inbound and @step.state == :paused}
+            data-test="inbound-probe-address"
+            phx-submit="run_step_with_probe_address"
+            class="mt-3 flex gap-2"
+          >
+            <input type="hidden" name="key" value={@step.key} />
+            <input
+              type="email"
+              name="probe_to"
+              data-test="inbound-probe-address-input"
+              placeholder="an address you already receive at this domain"
+              required
+              class="input input-bordered input-sm flex-1"
+            />
+            <.button type="submit" data-test="inbound-probe-address-submit" class="btn btn-primary">
+              Use this address
+            </.button>
+          </form>
+
+          <div
+            :if={@step.state == :errored}
+            data-test="escalation"
+            data-step={@step.key}
+            class="alert alert-error mt-3 flex-col items-start"
+          >
+            <p>{@step.attempted}</p>
+            <p :if={not shown_again_below?(@step)} class="font-mono text-xs">
+              {@step.provider_error}
+            </p>
+          </div>
+          
+    <!-- How the decryption key reaches the app. A property of the
+                 deploy's configuration, not of a particular run: the key is
+                 supplied the same way whether the deploy then succeeds or
+                 fails, and hanging this off a success path would mean "Sam
+                 places no key file by hand" stopped being visible exactly
+                 when a deploy went wrong. -->
+          <div
+            :if={@step.key == :deploy and @age_key_environments != []}
+            data-test="age-key-delivery"
+            data-via="deploy_env"
+            data-manual-step-required="false"
+            class="mt-2 text-xs opacity-70"
+          >
+            key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
+          </div>
+          
+    <!-- Where the callback credential was placed. The observable
+                 form of "Sam never sees the credential he is using" (8022):
+                 written into the encrypted env, copied by nobody. -->
+          <div
+            :for={cred <- Enum.filter(@step.resources, &(&1.kind == "callback_credential"))}
+            data-test="callback-credential"
+            data-placed-in="encrypted_env"
+            data-manual-copy="false"
+            data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
+            class="mt-2 text-xs opacity-70"
+          >
+            credential placed in {cred.location}
+          </div>
+          
+    <!-- Configuration is not an inbox. The step sends a message to the
+                 domain it just configured and waits for Resend to report it
+                 received; that delivery is the claim, so it is on the page
+                 rather than folded into "done" (8033). -->
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "inbound_proof"))}
+            data-test="inbound-delivery-proof"
+            data-target={pr.location}
+            data-state={proof_field(pr.identifier, "state")}
+            data-message-id={proof_field(pr.identifier, "message_id")}
+            data-completed-at={proof_field(pr.identifier, "proven_at")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            delivered to {pr.location}: {pr.identifier}
+          </span>
+          
+    <!-- Uploading is not publishing. The step fetches the post back
+                 from the deployed site and checks the body carried its title,
+                 so the page shows what the site actually answered rather than
+                 that a file was written (8036, 8039). -->
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "content_proof"))}
+            data-test="content-render-proof"
+            data-state={proof_field(pr.identifier, "state")}
+            data-completed-at={proof_field(pr.identifier, "proven_at")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            rendered at {pr.location}: {pr.identifier}
+          </span>
+
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "content_proof"))}
+            data-test="content-render-check"
+            data-status={proof_field(pr.identifier, "status")}
+            data-path={pr.location}
+            data-title-present={proof_field(pr.identifier, "title_present")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            {pr.location} answered {proof_field(pr.identifier, "status")}
+          </span>
+          
+    <!-- Which version is live. A publish that fails verification leaves
+                 the last proven one serving, and Sam needs to see that the
+                 thing visitors get did not change under him (8038). -->
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "content_proof"))}
+            data-test="content-served-version"
+            data-version={proof_field(pr.identifier, "version")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            serving {proof_field(pr.identifier, "version")}
+          </span>
+          
+    <!-- Whose bucket each object landed in, one row per object. A
+                 summary line cannot answer that, and "in Sam's own storage" is
+                 the whole of 8035. -->
+          <span
+            :for={obj <- Enum.filter(@step.resources, &(&1.kind == "content_object"))}
+            data-test="content-object"
+            data-key={obj.location}
+            data-owner={proof_field(obj.identifier, "owner")}
+            data-bucket={proof_field(obj.identifier, "bucket")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            {obj.location} → {proof_field(obj.identifier, "bucket")}
+          </span>
+          
+    <!-- Uploaded but not served is a different failure from a publish
+                 that never happened, and the difference is what Sam acts on
+                 (8038, 8058). -->
+          <span
+            :for={f <- Enum.filter(@step.resources, &(&1.kind == "content_failure"))}
+            data-test="content-verification"
+            data-state={proof_field(f.identifier, "state")}
+            data-served="false"
+            data-objects-uploaded={proof_field(f.identifier, "objects_uploaded")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            <span data-test="content-publish-error">{f.location}</span>
+          </span>
+          
+    <!-- Present and openable are asked separately because
+                 present-but-not-openable is exactly what a broken bundle looks
+                 like from the outside (8040). -->
+          <span
+            :for={r <- Enum.filter(@step.resources, &(&1.kind == "widget_render"))}
+            data-test="widget-render-check"
+            data-status={proof_field(r.identifier, "status")}
+            data-widget-present={proof_field(r.identifier, "present")}
+            data-widget-openable={proof_field(r.identifier, "openable")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            widget check: {r.identifier}
+          </span>
+          
+    <!-- A script tag proves nothing. This is a message that travelled
+                 from the deployed site into CodeMySpec, and `origin` is what
+                 separates it from one posted by hand (8044). -->
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "widget_proof"))}
+            data-test="widget-message-proof"
+            data-state={proof_field(pr.identifier, "state")}
+            data-origin={proof_field(pr.identifier, "origin")}
+            data-completed-at={proof_field(pr.identifier, "proven_at")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            message from {pr.location}: {pr.identifier}
+          </span>
+          
+    <!-- A dump is a file until something has read it back. The step
+                 restores into a scratch database and counts the rows; that
+                 count is the whole claim, so it is on the page rather than
+                 folded into "done" (8054). -->
+          <span
+            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "restore_proof"))}
+            data-test="backup-restore-proof"
+            data-target={pr.location}
+            data-rows={
+              pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")
+            }
+            data-completed-at={
+              pr.identifier
+              |> String.split(" ")
+              |> List.last()
+              |> String.replace_prefix("proven_at=", "")
+            }
+            data-content-verified={
+              pr.identifier
+              |> String.split(" ")
+              |> hd()
+              |> String.replace_prefix("rows=", "")
+              |> then(&(&1 != "0"))
+              |> to_string()
+            }
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            restored into {pr.location}: {pr.identifier}
+          </span>
+          
+    <!-- Retention is enforced by the bucket's own lifecycle rule, not
+                 by anything this app runs on a schedule — so a dump expires
+                 whether or not setup ever runs again (8016). -->
+          <span
+            :for={r <- Enum.filter(@step.resources, &(&1.kind == "retention"))}
+            data-test="backup-retention"
+            data-days={r.location |> String.replace_suffix(" days", "")}
+            data-enforced-by="bucket_lifecycle"
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            dumps expire after {r.location}
+          </span>
+          
+    <!-- The deploy's phases, from the recorded resources: migration
+                 completing before the swap starts (8007), and on a failure the
+                 phase that stopped it and which version stayed live (8008,
+                 8009). -->
+          <span
+            :for={ph <- Enum.filter(@step.resources, &(&1.kind == "deploy_phase"))}
+            data-test="deploy-phase"
+            data-phase={ph.location}
+            data-completed-at={ph.location == "migrate" && ph.identifier}
+            data-started-at={ph.location == "swap" && ph.identifier}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            {ph.location} at {ph.identifier}
+          </span>
+          
+    <!-- The image the deploy runs, and whether this deploy built it.
+                 `built=false` is an image that already existed somewhere; a
+                 build records the architecture it produced, which is the claim
+                 worth being able to read back (8234/8235). -->
+          <span
+            :for={img <- Enum.filter(@step.resources, &(&1.kind == "published_image"))}
+            data-test="published-image"
+            data-image={img.location}
+            data-built={
+              img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")
+            }
+            data-architecture={image_architecture(img)}
+            data-registry={img.location |> String.split("/") |> hd()}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            image {img.location}
+          </span>
+          
+    <!-- The box the image was built on. It exists for one build and is
+                 destroyed either way (8236/8237); `booted_from` is the
+                 pre-warmed image, so no deploy pays to install the toolchain
+                 again (8239). -->
+          <span
+            :for={b <- Enum.filter(@step.resources, &(&1.kind == "builder"))}
+            data-test="builder"
+            data-builder={b.location}
+            data-destroyed={identifier_field(b, "destroyed")}
+            data-booted-from={identifier_field(b, "booted_from")}
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            built on {b.location}, destroyed after
+          </span>
+          
+    <!-- Two mechanisms, two blocks (6dcb62b8) — `:s3` storage's bucket
+                 lifecycle rule and `:filesystem` storage's prune-on-push are not
+                 the same claim in the same units, and forcing one span to read
+                 either is how the last version ended up asserting a lifecycle
+                 rule that was never installed. `retention_resource/1` emits at
+                 most one of these per deploy, keyed to whichever mechanism
+                 `retention_claim/3` actually ran; neither renders at all if
+                 pruning failed to reach the box this time (8241). -->
+          <span
+            :for={
+              r <-
+                Enum.filter(@step.resources, fn r ->
+                  r.kind == "image_retention" and
+                    identifier_field(r, "enforced_by") == "bucket_lifecycle"
+                end)
+            }
+            data-test="image-retention"
+            data-days={r.location |> String.replace_suffix(" days", "")}
+            data-enforced-by="bucket_lifecycle"
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            images expire after {r.location}
+          </span>
+
+          <span
+            :for={
+              r <-
+                Enum.filter(@step.resources, fn r ->
+                  r.kind == "image_retention" and
+                    identifier_field(r, "enforced_by") == "prune_on_push"
+                end)
+            }
+            data-test="image-retention"
+            data-images={r.location |> String.replace_suffix(" images", "")}
+            data-enforced-by="prune_on_push"
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            the registry keeps the newest {r.location}
+          </span>
+
+          <span
+            :for={dv <- Enum.filter(@step.resources, &(&1.kind == "deployed_version"))}
+            data-test="deployed-version"
+            data-image={dv.location}
+            data-commit={
+              dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")
+            }
+            data-source={
+              dv.identifier
+              |> String.split(" ")
+              |> List.last()
+              |> String.replace_prefix("source=", "")
+            }
+            data-image-source={
+              dv.identifier
+              |> String.split(" ")
+              |> List.last()
+              |> String.replace_prefix("source=", "")
+            }
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            shipped {dv.location}
+          </span>
+
+          <span
+            :for={lv <- Enum.filter(@step.resources, &(&1.kind == "live_version"))}
+            data-test="live-version"
+            data-version={lv.location}
+            data-role={lv.location}
+            class="mt-1 block text-xs opacity-70"
+          >
+            live version: {lv.location}
+          </span>
+
+          <p
+            :for={f <- Enum.filter(@step.resources, &(&1.kind == "deploy_failure"))}
+            data-test="deploy-failure"
+            data-phase={f.identifier}
+            class="mt-2 text-xs text-error"
+          >
+            {f.location}
+          </p>
+
+          <p
+            :if={@step.key == :deploy and @step.state == :errored and @step.provider_error}
+            data-test="boot-failure"
+            class="mt-2 text-xs text-error"
+          >
+            {@step.provider_error}
+          </p>
+          
+    <!-- The commit that actually landed. The step is proven by a
+                 push rather than by the repository existing (8183), and an
+                 empty repository is exactly what "it exists" looks like when
+                 the push failed. -->
+          <div
+            :for={commit <- Enum.filter(@step.resources, &(&1.kind == "commit"))}
+            data-test="push-proof"
+            data-commit={commit.location}
+            class="mt-2 text-xs font-mono opacity-70"
+          >
+            pushed {String.slice(commit.location, 0, 12)}
+          </div>
+          
+    <!-- The firewall's inbound rules, from the deterministic rule set:
+                 only the web ports and key-only SSH face the internet, and the
+                 database port never does (criterion 8004). Rendered when the
+                 server step has recorded its firewall. -->
+          <div
+            :if={@step.key == :server and Enum.any?(@step.resources, &(&1.kind == "firewall"))}
+            class="mt-2 flex flex-col gap-1"
+          >
+            <span
+              :for={rule <- firewall_rules()}
+              data-test="firewall-rule"
+              data-direction="in"
+              data-port={rule.port}
+              data-source={hd(rule.source_ips)}
+              class="text-xs font-mono opacity-70"
+            >
+              in {rule.port} from {Enum.join(rule.source_ips, ", ")}
+            </span>
+            <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
+              enforced at the Hetzner cloud firewall, not on the box
+            </span>
+          </div>
+
+          <span
+            :for={v <- Enum.filter(@step.resources, &(&1.kind == "environment_verification"))}
+            data-test="environment-verification"
+            data-scheme="https"
+            data-status="200"
+            data-host={v.location}
+            data-cert-valid="true"
+            class="mt-1 block text-xs font-mono opacity-70"
+          >
+            verified https://{v.location} (200, valid cert)
+          </span>
+
+          <span
+            :for={m <- Enum.filter(@step.resources, &(&1.kind == "monitor"))}
+            data-test="uptime-monitor"
+            data-host={m.location}
+            data-notify={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+            data-notifies={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+            class="mt-1 block text-xs opacity-70"
+          >
+            monitoring {m.location}
+          </span>
+          
+    <!-- Confirmed by asking a public resolver, which is the only check that
+                 distinguishes a working record from one that merely exists. -->
+          <span
+            :for={v <- Enum.filter(@step.resources, &(&1.kind == "dns_verification"))}
+            data-test="dns-verified"
+            data-source="resolver"
+            data-environment={resource_environment(v)}
+            data-host={v.location}
+            class="text-xs opacity-70"
+          >
+            {v.location} resolves
+          </span>
+          
+    <!-- One row per environment's record, so "each environment resolves to
+                 its own server" is readable off the page rather than inferred. -->
+          <span
+            :for={record <- Enum.filter(@step.resources, &(&1.kind == "dns_record"))}
+            data-test="dns-record"
+            data-environment={resource_environment(record)}
+            data-target={resource_target(record)}
+            data-name={resource_name(record)}
+            data-proxied="false"
+            class="text-xs opacity-70"
+          >
+            {resource_name(record)} → {resource_target(record)}
+          </span>
+
+          <div :if={@step.resources != []} class="mt-3 flex flex-col gap-1">
+            <span
+              :for={resource <- @step.resources}
+              data-test="provisioned-resource"
+              data-kind={resource.kind}
+              data-location={resource.location}
+              data-environment={resource_environment(resource)}
+              data-name={resource_name(resource)}
+              data-owner={resource_owner(resource)}
+              data-disposition={resource_disposition(resource)}
+              data-verified={to_string(@step.state == :done)}
+              class={[
+                "badge badge-outline",
+                @step.state != :done && "badge-warning opacity-70"
+              ]}
+            >
+              {resource.kind} — {resource.location}
+              <span
+                :if={@step.state != :done}
+                data-test="unverified-resource"
+                data-step={@step.key}
+                class="ml-1"
+              >
+                ({unverified_note(@step)})
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </li>
     """
   end
 
