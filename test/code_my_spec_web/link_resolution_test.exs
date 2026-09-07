@@ -291,6 +291,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/tasks",
     # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
     "/app/projects/:project_id/provisioning",
+    # The credentials dialog, opened from the provisioning page through
+    # `:live_action` (058d20ed). A dialog reached from the page it belongs to is
+    # exactly the case this list is for; a sidebar entry that opens a modal over
+    # a page you were not on is not a surface anyone wants offered.
+    "/app/projects/:project_id/provisioning/credentials",
     # Reached from their own list page's actions, not from the sidebar — a nav
     # entry that opens a blank form is a worse offer than the button on the
     # page you are already looking at.
