@@ -52,13 +52,15 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
   #
   # Everything else here is what the graph is computed *from*. Nothing described
   # how it is computed, so the same inputs under changed code produced the same
-  # fingerprint — and a payload written by the old code read as current.
+  # fingerprint — and rows written by the old code read as current.
   #
   # That is not hypothetical. Scoping the file load to one working copy changed
-  # the graph from 1,357 nodes to 2,783 on this project, and the cached payload
-  # still matched: `fetch/2` hit, and a reader was served a graph that predated
-  # the fix. It surfaced only because `served_graph/3` compares the projection
-  # against the payload and said so.
+  # the graph from 1,357 nodes to 2,783 on this project, and the cache row still
+  # matched: `fetch/2` hit, and a reader was served a graph that predated the
+  # fix. It surfaced only because the snapshot still carried a second copy of
+  # the graph to compare the rows against — which it no longer does, so this
+  # guard is now the only thing standing between a code change and a stale
+  # graph served as current.
   #
   # The app version rather than a constant to bump by hand. It is coarser —
   # every release invalidates every project's snapshot, costing one recompute —

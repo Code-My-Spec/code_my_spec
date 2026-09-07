@@ -37,6 +37,11 @@ defmodule CodeMySpecSpex.Story597.Criterion5284Spex do
         {:ok, context}
       end
 
+      given_ "the harness has scanned the working copy", context do
+        Fixtures.scan_working_copy(context.scope)
+        {:ok, context}
+      end
+
       when_ "the agent calls evaluate_task for the qa_integration_plan task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 

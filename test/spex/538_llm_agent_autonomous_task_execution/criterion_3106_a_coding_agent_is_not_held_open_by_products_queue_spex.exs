@@ -107,10 +107,24 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
       end
 
       when_ "work only product can act on arrives", context do
-        # A story with no component linked. `component_linked` is product's, and
-        # the story's coding requirements sit behind it — so this adds to
-        # product's queue and to nobody else's.
-        StoryHelpers.create_story(context.scope,
+        # A second story, linked to the same component. `three_amigos_complete`
+        # is product's and is actionable the moment the story exists; the
+        # story's coding requirements sit behind it, so this adds to product's
+        # queue and to nobody else's.
+        #
+        # Linked, and that is load-bearing. An *unlinked* story was the first
+        # version of this step, on the reasoning that `component_linked` is
+        # product's too. It does not grow product's queue: an unlinked story
+        # makes `architecture_designed` unsatisfied, which is a project-level
+        # gate that blocks every story requirement behind it — so product swaps
+        # one actionable item for another and the count stays put.
+        #
+        # That read as a growing queue for as long as the count came off
+        # `requirements` rows, which do not apply the blocking rule that
+        # `next_actionable/1` does. It stopped when the count started coming
+        # from the same place the work does, which is the point of R10 and
+        # exactly the disagreement that made it worth fixing.
+        StoryHelpers.create_and_link(context.scope, context.component.module_name,
           title: "Something product has to shape first",
           description: "As a user, I want a thing, so that I get the thing.",
           acceptance_criteria: ["It does the thing"]

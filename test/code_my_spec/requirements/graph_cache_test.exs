@@ -13,6 +13,8 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.CachedGraph
+  alias CodeMySpec.Requirements.Difference
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
@@ -22,20 +24,23 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   end
 
   describe "publishing" do
-    test "computing a graph publishes it, and the snapshot round-trips exactly" do
+    # What the `payload` column used to assert, asked of what replaced it.
+    #
+    # The snapshot held the whole graph as an Erlang term and this test compared
+    # it back. The rows are the graph now, so the round trip that matters is
+    # through `requirements` and `requirement_edges` — the same one
+    # `verify_round_trip/4` runs on every publish in production, and the
+    # evidence that let the payload go.
+    test "computing a graph publishes it, and the rows round-trip exactly" do
       scope = setup_project()
 
       {nodes, edges} = RequirementGraph.compute_graph(scope)
+      {read_nodes, read_edges} = Projection.load(scope, ctx!(scope))
 
-      assert {:ok, {cached_nodes, cached_edges}, computed_at} = GraphCache.fetch_any(scope)
+      assert Difference.describe(read_nodes, read_edges, nodes, edges) == :none
 
-      # Requirement structs and `{entity_type, entity_id, name}` edge tuples both
-      # survive the round trip. This is the property that justifies storing the
-      # payload as an Erlang term instead of hand-writing a JSON codec — a codec
-      # that silently dropped a field would surface as a malformed requirement
-      # handed to an agent, not as a decode error.
-      assert cached_nodes == nodes
-      assert cached_edges == edges
+      assert {:ok, node_count, computed_at} = GraphCache.fetch(scope, current_fingerprint(scope))
+      assert node_count == length(nodes)
       assert %DateTime{} = computed_at
     end
 
@@ -43,12 +48,13 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       scope = setup_project()
 
       RequirementGraph.compute_graph(scope)
-      {:ok, _graph, first_at} = GraphCache.fetch_any(scope)
+      {:ok, _count, first_at} = GraphCache.fetch(scope, current_fingerprint(scope))
 
       # Readers call compute_graph/1 too — the UI does, on every render — so a
-      # write per call would be a ~30KB upsert to say what the row already says.
+      # write per call would rewrite the row to say what it already says, and
+      # would move `computed_at` to now on a graph computed much earlier.
       RequirementGraph.compute_graph(scope)
-      {:ok, _graph, second_at} = GraphCache.fetch_any(scope)
+      {:ok, _count, second_at} = GraphCache.fetch(scope, current_fingerprint(scope))
 
       assert first_at == second_at
     end
@@ -65,8 +71,39 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     test "a project with no published graph reports a miss rather than raising" do
       scope = setup_project()
 
-      assert :miss = GraphCache.fetch_any(scope)
       assert :miss = GraphCache.fetch(scope, "whatever")
+    end
+
+    # The one thing the rows cannot say about themselves, and the reason
+    # `node_count` outlived the payload: rows that are empty where the publish
+    # counted nodes were never written. `served_graph/3` treats that as a miss
+    # and recomputes, because an empty graph tells an agent it has no work.
+    test "the count the publish recorded rides along with the hit" do
+      scope = setup_project()
+
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
+
+      assert {:ok, node_count, _at} = GraphCache.fetch(scope, current_fingerprint(scope))
+      assert node_count == length(nodes)
+      assert node_count > 0
+    end
+
+    # Deleting every row leaves a cache row whose fingerprint still matches, so
+    # this is exactly the state the payload used to cover. The graph has to come
+    # back rather than read as empty.
+    test "a hit whose rows were never written recomputes instead of serving nothing" do
+      scope = setup_project()
+
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
+      assert nodes != []
+
+      Repo.delete_all(CodeMySpec.Requirements.Node)
+
+      {recomputed, _edges} = RequirementGraph.cached_graph(scope) |> elem(0)
+
+      assert length(recomputed) == length(nodes),
+             "an empty projection behind a matching fingerprint is a failed write, " <>
+               "not a project with no requirements"
     end
   end
 
@@ -77,7 +114,8 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
       fingerprint = current_fingerprint(scope)
 
-      assert {:ok, {_nodes, _edges}, %DateTime{}} = GraphCache.fetch(scope, fingerprint)
+      assert {:ok, node_count, %DateTime{}} = GraphCache.fetch(scope, fingerprint)
+      assert is_integer(node_count)
     end
 
     test "fetch/2 misses for any other fingerprint" do

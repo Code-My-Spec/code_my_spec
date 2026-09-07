@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         {:ok, context}
       end
 
-      and_ "each of them is actually sent something to act on", context do
+      and_ "the ones with work to do are actually sent something to act on", context do
         # The half the first version missed. An agent is a supervised process
         # that is alive and idle and acts when messaged — nothing polls — so
         # setting the flag and stopping there marks three agents willing to work
@@ -114,11 +114,39 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         #
         # R12's wake cannot cover it either: that fires when a task completes,
         # and no task completes if nobody takes a turn.
-        for agent_id <- context.staffed do
-          assert Fixtures.orchestrator_actions(context.scope, agent_id) != [],
-                 "an agent was switched on and told nothing. The switch marks it " <>
-                   "willing; it has to also ring the bell, or the copy reads as " <>
-                   "working and sits there."
+        #
+        # "The ones with work", not all three, and the distinction is the rule
+        # rather than a weakening. `Agents.wake_roles/2` leaves a role whose menu
+        # is empty alone on purpose — a message wakes a process and costs it a
+        # turn, so an agent woken to be told there is nothing has been charged
+        # for no information.
+        #
+        # This asserted all three for as long as the menu counted `requirements`
+        # rows, which include nodes blocked behind unsatisfied prerequisites. QA
+        # therefore had a non-empty count on a fixture where it has nothing it
+        # can act on, and was rung to be told so. The count comes from
+        # `next_actionable/1` now — the same list `get_next_requirement` hands
+        # out — so it is empty, and the bell correctly does not ring.
+        rung = Enum.filter(context.staffed, &(Fixtures.orchestrator_actions(context.scope, &1) != []))
+
+        assert rung != [],
+               "the switch reported success and rang nobody. It marks agents " <>
+                 "willing; it has to also ring the bell, or the copy reads as " <>
+                 "working and sits there."
+
+        {:ok, Map.put(context, :rung, rung)}
+      end
+
+      and_ "an agent with nothing of its own is left alone rather than charged a turn",
+           context do
+        silent = context.staffed -- context.rung
+
+        for agent_id <- silent do
+          assert Fixtures.role_queue_size(context.scope, agent_id) == 0,
+                 "an agent was left unrung while its own queue had work in it. " <>
+                   "Silence is only correct for a role with nothing to do; for one " <>
+                   "with something it is the copy sitting there, which is the defect " <>
+                   "this criterion exists for."
         end
 
         {:ok, context}

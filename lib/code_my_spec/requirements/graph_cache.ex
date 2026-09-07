@@ -2,38 +2,37 @@ defmodule CodeMySpec.Requirements.GraphCache do
   @moduledoc """
   Stores the last computed requirement graph for a project.
 
-  ## Being retired
+  ## What it holds, now that the payload is gone
 
-  The graph itself is rows now — `requirements` for the nodes,
-  `requirement_edges` for the edges — and `RequirementGraph.cached_graph/1`
-  serves those. `Requirements.Projection` reads them. What this table still does
-  is hold the **fingerprint**, which is how a reader knows whether the rows are
-  current, and a `payload` kept only as a fallback for a graph whose rows were
-  never written.
+  The graph itself is rows — `requirements` for the nodes, `requirement_edges`
+  for the edges — and `Requirements.Projection` reads them. This table holds the
+  **fingerprint**, which is how a reader knows whether those rows are current,
+  and the counts the publish recorded.
 
-  Three things have to be true before the payload column can go:
+  It used to hold a `payload` as well: the whole graph as an Erlang term, served
+  as a fallback for a graph whose rows were never written. Retiring it was
+  conditional on three things, all since met — `the projection does not
+  round-trip` staying quiet across real projects, `projection is empty for a
+  payload` no longer appearing, and nothing reading the graph out of `fetch/2`
+  except the one caller that served it.
 
-    * `[Requirements] the projection does not round-trip` stays quiet across
-      real projects — the check runs on every publish, which is every genuine
-      change
-    * `[Requirements] projection is empty for a payload with N nodes` stops
-      appearing, meaning every live project has had its rows written at least
-      once
-    * nothing reads `fetch/2`'s graph except `served_graph/3`
-
-  The first condition used to name `projection differs from payload`, which
-  runs on a cache *hit*. That could not be satisfied, and worse, looked like it
-  already was: a hit needs the inputs not to have moved since the last
-  computation, so during active development it happens almost never. Measured
-  over 6h45m of production logs, that comparison ran **once** — on a projection
-  that disagreed about every node count. The criterion was being met by the
-  check not running.
+  The first condition originally named a comparison that runs on a cache *hit*,
+  which could not be satisfied and looked like it already was: a hit needs the
+  inputs not to have moved since the last computation, so during active
+  development it happens almost never. Measured over 6h45m of production logs,
+  that comparison ran **once** — on a projection that disagreed about every node
+  count. The criterion was being met by the check not running.
 
   So the evidence moved to the write path, where a publish is by definition a
-  real change and the rows were just written. Silence there means the round
-  trip was exercised and held.
+  real change and the rows were just written. 828 computations across four
+  rotated logs, silent throughout.
 
-  The fingerprint half stays regardless. It answers "are these rows current",
+  `node_count` survives the payload because it answers the one thing rows cannot
+  say about themselves: that there should be some. Rows that are empty where the
+  publish counted nodes were never written, and `RequirementGraph.served_graph/3`
+  treats that as a miss rather than serving an empty graph.
+
+    The fingerprint half stays regardless. It answers "are these rows current",
   which the rows cannot answer about themselves.
 
   A published snapshot, not a memoization. Computation never reads it, so
@@ -69,8 +68,8 @@ defmodule CodeMySpec.Requirements.GraphCache do
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Return the published graph when it was computed from `fingerprint` — i.e.
-  when the snapshot still matches current inputs.
+  Whether the published rows were computed from `fingerprint` — i.e. whether
+  the snapshot still matches current inputs.
 
   Note this only certifies the *context* inputs. Requirements whose
   satisfaction is delegated can move without changing the fingerprint, so a
@@ -78,47 +77,31 @@ defmodule CodeMySpec.Requirements.GraphCache do
   certainly current". Good enough to label a UI; not good enough to skip
   computing for an agent.
 
-  `{:ok, {nodes, edges}, computed_at}` on a hit, `:miss` when absent or
-  computed from different inputs. `computed_at` rides along for the same reason
-  `fetch_any/1` returns it: a reader showing a snapshot should be able to say
-  when it was taken, even when it is current.
+  `{:ok, node_count, computed_at}` on a hit, `:miss` when absent or computed
+  from different inputs.
+
+  The graph is not here to return — it is the `requirements` and
+  `requirement_edges` rows, which `Projection.load/2` reads. What comes back
+  instead is what the caller cannot get from those rows: when they were computed,
+  so a reader showing a snapshot can say how old it is, and how many nodes the
+  publish wrote, so a reader finding none can tell "nothing to do" from "the
+  write did not land".
   """
-  @spec fetch(Scope.t(), String.t()) :: {:ok, {list(), list()}, DateTime.t()} | :miss
+  @spec fetch(Scope.t(), String.t()) :: {:ok, non_neg_integer(), DateTime.t()} | :miss
   def fetch(%Scope{active_project_id: project_id} = scope, fingerprint)
       when is_binary(project_id) and is_binary(fingerprint) do
     CachedGraph
     |> where([g], g.project_id == ^project_id and g.fingerprint == ^fingerprint)
     |> for_copy(scope)
-    |> select([g], {g.payload, g.computed_at})
+    |> select([g], {g.node_count, g.computed_at})
     |> Repo.one()
     |> case do
       nil -> :miss
-      {payload, computed_at} -> {:ok, decode(payload), computed_at}
+      {node_count, computed_at} -> {:ok, node_count || 0, computed_at}
     end
   end
 
   def fetch(_scope, _fingerprint), do: :miss
-
-  @doc """
-  Return whatever is cached, regardless of freshness, with the time it was
-  computed.
-
-  For readers that cannot compute — the web UI against a project with no
-  harness running. They get the last known graph and enough information to say
-  how old it is, rather than an empty page.
-  """
-  @spec fetch_any(Scope.t()) :: {:ok, {list(), list()}, DateTime.t()} | :miss
-  def fetch_any(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    CachedGraph
-    |> where([g], g.project_id == ^project_id)
-    |> Repo.one()
-    |> case do
-      nil -> :miss
-      row -> {:ok, decode(row.payload), row.computed_at}
-    end
-  end
-
-  def fetch_any(_scope), do: :miss
 
   @doc """
   Publish a freshly computed graph. One row per project and working copy,
@@ -142,9 +125,9 @@ defmodule CodeMySpec.Requirements.GraphCache do
       when is_binary(project_id) and is_binary(fingerprint) do
     if current?(scope, fingerprint) do
       # Nothing moved since the last publish. Readers call compute_graph/1 too —
-      # the web UI does, on every render — so writing unconditionally would mean
-      # a ~30KB upsert per page view for a row that already says the same thing.
-      # One indexed SELECT is the cheaper half of that trade.
+      # the web UI does, on every render — so writing unconditionally would be a
+      # row rewrite per page view to say what the row already says, and would
+      # move `computed_at` to now on a graph that was computed much earlier.
       :unchanged
     else
       do_publish(project_id, scope.active_working_copy_id, fingerprint, {nodes, edges})
@@ -201,7 +184,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
       project_id: project_id,
       working_copy_id: working_copy_id,
       fingerprint: fingerprint,
-      payload: encode({nodes, edges}),
       node_count: length(nodes),
       edge_count: length(edges),
       computed_by: computed_by(),
@@ -215,7 +197,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
         {:replace,
          [
            :fingerprint,
-           :payload,
            :node_count,
            :edge_count,
            :computed_by,
@@ -227,15 +208,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
 
     :ok
   end
-
-  # term_to_binary rather than JSON: nodes are Requirement structs and edge
-  # endpoints are `{entity_type, entity_id, name}` tuples. A JSON codec for
-  # those is hand-written, and its bugs would surface as the agent being handed
-  # a malformed requirement rather than as a decode error. Compression is worth
-  # it — the payload is mostly repeated requirement names and entity ids.
-  defp encode(graph), do: :erlang.term_to_binary(graph, compressed: 6)
-
-  defp decode(payload), do: :erlang.binary_to_term(payload, [:safe])
 
   # `node()` is the BEAM node name, which for a sprite is set per container.
   defp computed_by, do: to_string(node())

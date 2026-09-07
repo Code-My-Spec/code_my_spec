@@ -906,6 +906,21 @@ defmodule CodeMySpecSpex.Fixtures do
   def list_agents(%Scope{} = scope), do: CodeMySpec.Agents.list_agents(scope)
 
   @doc """
+  How much of the project's actionable work belongs to this agent's role.
+
+  The number the stop menu and `get_next_requirement` both answer from, so a
+  scenario can tell "this agent was left alone because it has nothing" from
+  "this agent was left alone with work waiting" — which look identical from the
+  outside and mean opposite things.
+  """
+  def role_queue_size(%Scope{} = scope, agent_id) do
+    case CodeMySpec.Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{role: role}} -> CodeMySpec.Requirements.actionable_count(scope, role)
+      _ -> 0
+    end
+  end
+
+  @doc """
   The conversation an agent's turns land in.
 
   Keyed on the agent, which is what a conversation belongs to. It used to be
@@ -3588,6 +3603,27 @@ defmodule CodeMySpecSpex.Fixtures do
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
     {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
     CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+  end
+
+  @doc """
+  The scan, as a step a scenario can take.
+
+  Writing a file is half of what happens in production; the harness scanning it
+  is the other half, and several requirements read only what the scan wrote. An
+  integration spec's `## Status` is parsed by `Scanner.validate_integration/1`
+  and carried on the File row, because parsing it at evaluate time meant reading
+  the working copy from inside the graph computation — a 35-second-limit call to
+  the harness, on the hot path of every agent turn.
+
+  So a scenario that writes a file and asks a requirement about it has to scan
+  in between, or it is asking about a file the application has never been told
+  exists. Named for what it is rather than folded into the writing fixtures: the
+  sequence is the point, and hiding it would let a scenario pass while skipping
+  the step production cannot skip.
+  """
+  def scan_working_copy(%Scope{} = scope) do
+    {:ok, _} = FileSync.sync(scope, embed: false)
+    :ok
   end
 
   @doc """

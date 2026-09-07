@@ -150,56 +150,44 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     )
   end
 
-  # A cache hit is served from the rows. The payload is the fallback.
+  # A cache hit means the rows are current, so a hit is served from the rows.
   #
-  # That is the direction of the whole change: `requirements` and
-  # `requirement_edges` are the read model, and `requirement_graphs.payload` is
-  # what they replace. Serving the payload while writing rows nobody read proved
-  # nothing — a projection is only trustworthy once something depends on it.
+  # `requirement_graphs` used to carry a `payload` — the whole graph as an
+  # Erlang term — and this compared the two and served the rows unless there
+  # were none. That was the retirement plan working: serve the projection,
+  # compare it against the payload on every publish, and keep the payload only
+  # to cover a graph whose rows were never written.
   #
-  # The payload still wins in one case, and it is not a disagreement: no rows at
-  # all for a project whose payload has nodes. That is a graph published before
-  # this existed, or one whose row write failed, and serving an empty graph
-  # would tell an agent it has no work.
+  # All three conditions the plan named are met. The round-trip check has run on
+  # every publish since — 828 computations across four rotated logs — and
+  # `the projection does not round-trip` has never appeared, nor has
+  # `projection is empty for a payload`. So the rows are the graph, and the
+  # payload was a second copy of them that could disagree.
   #
-  # A genuine difference is served *from the rows* and logged loudly. Serving
-  # the payload instead would hide the defect behind the thing being retired,
-  # and leave the read model permanently unproven.
-  #
-  # Which is what the `rescue` that used to sit at the bottom of this function
-  # did, for every failure rather than a named one. It cannot have been
-  # protecting against the database: reaching here means `Preloader.load/1`,
-  # `Configurations.get_or_create/1` and `GraphCache.fetch/2` have all already
-  # returned in this same call, so a connection failure crashes upstream and
-  # never arrives. What is left is a bug in `Projection.load/2` or
-  # `Difference.describe/4` — exactly the defect the paragraph above says must
-  # not be hidden behind the payload.
-  defp served_graph(scope, ctx, {nodes, edges} = cached) do
+  # What is kept from it is the one thing rows cannot say about themselves:
+  # `node_count`, recorded by the publish that wrote them. Rows that are empty
+  # where the publish counted nodes are rows that were never written, and that
+  # is a miss — recompute — rather than an empty graph served as current. An
+  # empty graph tells an agent it has no work, which is the wrong answer to give
+  # for a write that failed.
+  defp served_graph(scope, ctx, published_nodes) do
     case Projection.load(scope, ctx) do
-      {[], _} when nodes != [] ->
+      {[], _} when published_nodes > 0 ->
         Logger.warning(
-          "[Requirements] projection is empty for a payload with #{length(nodes)} nodes " <>
-            "— serving the payload. Rows were never written for this graph."
+          "[Requirements] no requirement rows for a graph published with " <>
+            "#{published_nodes} nodes — recomputing. The row write for it did not land."
         )
 
-        cached
+        :no_rows
 
-      {read_nodes, read_edges} = projected ->
-        case Difference.describe(read_nodes, read_edges, nodes, edges) do
-          :none ->
-            :ok
-
-          description ->
-            Logger.warning("[Requirements] " <> description <> " — serving the projection")
-        end
-
-        projected
+      projected ->
+        {:ok, projected}
     end
   end
 
-  # Written behind the same fingerprint check that gates the payload. Readers
+  # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
-  # page view is exactly what `publish/3` already refuses to do for one `bytea`.
+  # page view is exactly what `publish/3` already refuses to do for one row.
   defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
 
   # Writes the read model. Atomically, and loudly.
@@ -306,8 +294,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     {graph, computed_at} =
       case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
-        {:ok, cached, at} -> {served_graph(scope, ctx, cached), at}
-        :miss -> {compute_and_publish(scope, ctx, config), nil}
+        {:ok, published_nodes, at} ->
+          case served_graph(scope, ctx, published_nodes) do
+            {:ok, graph} -> {graph, at}
+            :no_rows -> {compute_and_publish(scope, ctx, config), nil}
+          end
+
+        :miss ->
+          {compute_and_publish(scope, ctx, config), nil}
       end
 
     {nodes, edges} = graph
