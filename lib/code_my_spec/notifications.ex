@@ -321,12 +321,10 @@ defmodule CodeMySpec.Notifications do
   # the agent is reading a reply to something it cannot see.
   defp answer_message(%{questions: questions, answers: answers}) do
     body =
-      questions
-      |> Enum.map(fn question ->
+      Enum.map_join(questions, "\n\n", fn question ->
         text = question["question"] || question[:question]
         "Q: #{text}\nA: #{said(answers, text)}"
       end)
-      |> Enum.join("\n\n")
 
     """
     The user answered your question.
