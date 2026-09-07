@@ -12,8 +12,9 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   table. That is still the right shape; this is the correctness bug the parsing
   was hiding in the meantime.
 
-  Driven through `evaluate/2` against the in-memory environment, so it exercises
-  the real check on the real path rather than a copy of the regex.
+  Driven by writing the spec, syncing it, and asking `evaluate/2` — the whole
+  path, rather than a copy of the regex. The parse now happens at sync, so a
+  test that reached only `evaluate/2` would no longer touch it.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -22,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
 
   alias CodeMySpec.AgentTasks.QaIntegrationPlan
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Support.InMemoryEnvironment
 
   # The index is a file beside the directory, not inside it — anything inside is
@@ -39,35 +40,21 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
     %{scope: scope, env: env}
   end
 
-  # Written *and synced*, because that is now the sequence the check reads.
+  # Written *and synced*, because the sync is where the status is now read.
   #
-  # `evaluate/2` used to glob the environment for the spec list. It asks the
-  # File rows instead — a `GenServer.call` to the harness with a 35-second limit
-  # is not something the graph computation can do per stop hook. The contents
-  # still come from the environment, so both halves have to be here: a spec on
-  # disk that nothing scanned is, correctly, not a spec this project has.
+  # `evaluate/2` used to parse this itself, against the environment, on every
+  # graph computation — a `GenServer.call` to the harness with a 35-second limit
+  # for a project served by one. `Scanner.validate_integration/1` parses it
+  # once, when the file changes, and `evaluate/2` reads the verdict off the row.
+  #
+  # So the sync is not setup here, it is half the path under test: the same
+  # regex reached through the surface that actually runs it.
   defp seed!(scope, env, spec_body) do
     :ok = Environments.write_file(env, @index, "# Integrations\n\n- acme\n")
     :ok = Environments.write_file(env, @script, "#!/bin/sh\n")
     :ok = Environments.write_file(env, @spec_path, spec_body)
 
-    sync!(scope, [@index, @spec_path])
-  end
-
-  defp sync!(scope, paths) do
-    Files.upsert_files(
-      scope,
-      Enum.map(paths, fn path ->
-        %{
-          path: path,
-          role: :integration,
-          mtime: DateTime.utc_now(),
-          size: 128,
-          fingerprint: "seeded-#{path}",
-          valid: true
-        }
-      end)
-    )
+    {:ok, _} = FileSync.sync(scope, embed: false)
   end
 
   defp spec_with(status) do

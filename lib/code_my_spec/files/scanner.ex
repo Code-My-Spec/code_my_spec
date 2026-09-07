@@ -368,6 +368,26 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_qa_plan(&1, entry.path))
   end
 
+  # An integration spec's verdict, decided where the file is.
+  #
+  # `QaIntegrationPlan.evaluate/2` read these itself — a glob for the spec list
+  # and a read per spec for the status and the verify-script path. That is a
+  # delegate on the *project* requirement template, so it ran for every project
+  # on every graph computation, and against a harness-served project each of
+  # those is a `GenServer.call` to the harness with a 35-second limit. Measured:
+  # a stop decision that waited 35s on the glob and 24 more on a read.
+  #
+  # Same move as the persona and QA-plan artifacts above, and the same reason:
+  # the verdict has to survive the trip to a server that cannot read the file.
+  #
+  # Facts rather than errors. A spec that says `pending` is not a malformed
+  # document — it is one whose work is not finished, which is the requirement's
+  # question and not this file's validity. Recording it as an error would put
+  # every in-progress integration in the invalid-files list.
+  def validate_entry(%{role: :integration} = entry, env, _component_by_id, _strict?) do
+    validate_setup_file(entry, env, &validate_integration/1)
+  end
+
   def validate_entry(%{role: :persona_summary} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_persona_summary/1)
   end
@@ -603,6 +623,50 @@ defmodule CodeMySpec.Files.Scanner do
         "dependencies" => ComponentExtract.extract_dependencies(content)
       }
     }
+  end
+
+  # The two facts a requirement asks of an integration spec: where its verify
+  # script is, and whether it has been verified. Both lifted from
+  # `QaIntegrationPlan`, which parsed them at evaluate time against a disk.
+  #
+  # The index (`integrations.md`) carries the same role and is not one of these
+  # — it is a list, with no status and no script. Nothing to record, and its
+  # presence is `size` on the row.
+  defp validate_integration(content) do
+    %{
+      errors: %{},
+      data: %{
+        verify_script: verify_script_path(content),
+        verified: verified_status?(content)
+      }
+    }
+  end
+
+  defp verify_script_path(content) do
+    case Regex.run(~r/##\s*Verify Script\s*\n+`?([^\n`]+)`?/i, content) do
+      [_, path] -> String.trim(path)
+      _ -> nil
+    end
+  end
+
+  # The body of the `## Status` section, anchored.
+  #
+  # This was `String.contains?(String.downcase(content), "verified")` over the
+  # whole document, which passes on the word appearing anywhere — and
+  # "unverified" contains "verified". So an integration explicitly marked
+  # unverified satisfied the check, as did one whose prose merely said "once
+  # verified, …". A gate that reports satisfied when it is not is the worst
+  # failure available to a gate, because it is invisible.
+  defp verified_status?(content) do
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^##\s*Status\s*$/i)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.starts_with?(&1, "##")))
+    |> Enum.map_join(" ", &String.trim/1)
+    |> String.trim()
+    |> String.downcase()
+    |> String.match?(~r/^verified\b/)
   end
 
   defp validate_setup_file(entry, env, validator) do

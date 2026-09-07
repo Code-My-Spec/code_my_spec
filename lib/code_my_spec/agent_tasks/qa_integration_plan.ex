@@ -49,48 +49,43 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   3. All specs have verify scripts?
   4. All specs have `status: verified`?
 
-  Asked of the synced files, not of a disk — the same move
-  `ArchitectureChecker.proposal_present?/1` already made, and for a sharper
-  reason: this is a delegate on the **project** template, so it runs on every
-  graph computation for every project, and `next_actionable/1` computes the
-  graph on every cache miss.
+  Answered from the File rows alone — no disk, no environment, no harness.
 
-  The glob was the whole cost. `Environments.glob/2` against a harness-served
-  project is a `GenServer.call` to the harness with a 35-second limit, so a
-  project whose harness is busy or wedged made the stop decision wait that long
-  before saying anything — and a stop decision is the hot path of every agent
-  turn. Locally it is a fast disk read, which is why this never showed on the
-  CLI and only ever bit the light harness.
+  This is a delegate on the **project** template, so it runs for every project
+  on every graph computation, and `next_actionable/1` computes the graph on
+  every cache miss. It used to glob for the spec list and read each spec for its
+  status and verify-script path. Against a harness-served project every one of
+  those is a `GenServer.call` to the harness with a 35-second limit; measured, a
+  stop decision that waited 35s on the glob and 24 more on a read, then answered
+  nothing. Locally they are fast file reads, which is why this only ever bit the
+  light harness — the deployment that by design has no disk to read.
 
-  `Scanner.classify/1` claims the integrations directory
-  (`{&Paths.integrations_dir/0, :integration}`), so the specs sync like anything
-  else and a File row at that path is the same evidence the glob was after. On
-  the light harness it is better evidence: there is no disk there to glob.
+  Everything it asks is already a row. `Scanner.classify/1` claims the
+  integrations directory and the QA scripts directory, so the specs and the
+  scripts they name both sync; `validate_integration/1` parses each spec's
+  status and script path at sync time, where the file is, and carries the answer
+  in `validation_errors`. The presence of the index is `size` on its row.
 
-  The content checks below still read through the environment, and they are
-  reached only by a project that actually has integration specs — the File rows
-  carry path, role, size and fingerprint, not content, so "is this one marked
-  `status: verified`" is not answerable from them. Worth closing the same way if
-  it ever costs anything: the status is a property of the document, and
-  projecting it at sync time is the shape the rest of this already has.
+  So the question moved rather than the parsing: "is this integration verified"
+  is decided once when the file changes instead of on every stop hook, and the
+  requirement reads a verdict.
   """
   def evaluate(scope, task), do: evaluate(scope, task, nil)
 
   # The graph hands `ctx` to any delegate exporting arity 3
   # (`RequirementCalculator.delegate_args/5`), and `files_by_project` is every
-  # File row it already loaded. Taking the list from there costs no query at
-  # all on the path that runs per computation.
+  # File row it already loaded — so on the path that runs per computation this
+  # costs no query at all.
   def evaluate(scope, _task, ctx) do
-    spec_files = list_spec_files(scope, ctx)
+    rows = integration_files(ctx, scope)
+    specs = Enum.filter(rows, &spec_file?(&1.path))
 
-    if spec_files == [] do
+    if specs == [] do
       {:ok, :valid}
     else
-      env = scope.environment
-
-      with :ok <- check_index(scope, ctx),
-           :ok <- check_verify_scripts(env, spec_files),
-           :ok <- check_verified_status(env, spec_files) do
+      with :ok <- check_index(rows),
+           :ok <- check_verify_scripts(rows, specs),
+           :ok <- check_verified_status(specs) do
         {:ok, :valid}
       else
         {:error, feedback} ->
@@ -251,8 +246,11 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   # `size` is what "empty" meant when this read the file — the same distinction
   # between written and started, from the row the sync already keeps.
-  defp check_index(scope, ctx) do
-    case index_row(scope, ctx) do
+  # A project can legitimately have no rows at all — nothing synced yet — and
+  # the caller has already established that it has specs, so a missing index is
+  # a real gap rather than an unobservable one.
+  defp check_index(rows) do
+    case Enum.find(rows, &(&1.path == @integrations_index)) do
       %{size: size} when is_integer(size) and size > 0 ->
         :ok
 
@@ -265,111 +263,64 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
     end
   end
 
-  defp index_row(_scope, %{files_by_project: files}) when is_list(files),
-    do: Enum.find(files, &(&1.path == @integrations_index))
-
-  defp index_row(scope, _ctx), do: Files.get_by_path(scope, @integrations_index)
-
-  # `*.md` directly under the integrations directory, which is what the glob
-  # matched: `Path.dirname/1` on a nested path answers the subdirectory, so a
-  # spec's supporting files do not read as specs.
-  defp list_spec_files(scope, ctx) do
-    ctx
-    |> integration_files(scope)
-    |> Enum.map(& &1.path)
-    |> Enum.filter(&spec_file?/1)
-    |> Enum.sort()
-  end
-
+  # Every row the graph loaded, or every row in the project. Filtered by path
+  # rather than queried by role, because the ctx list is not narrowed by role
+  # and one predicate for both callers is what keeps them agreeing.
   defp integration_files(%{files_by_project: files}, _scope) when is_list(files), do: files
   defp integration_files(_ctx, scope), do: Files.list_project_files(scope)
 
+  # `*.md` directly under the integrations directory, which is what the glob
+  # matched: `Path.dirname/1` on a nested path answers the subdirectory, so a
+  # spec's supporting files do not read as specs. The index sits beside the
+  # directory rather than in it and is excluded by the same rule.
   defp spec_file?(path),
     do: Path.dirname(path) == @integrations_dir and Path.extname(path) == ".md"
 
-  defp check_verify_scripts(_env, []), do: :ok
+  # The script a spec names has a row of its own — `Scanner.classify/1` claims
+  # anything under the QA scripts directory — so "is it there" is a lookup.
+  defp check_verify_scripts(rows, specs) do
+    paths = MapSet.new(rows, & &1.path)
 
-  defp check_verify_scripts(env, spec_files) do
-    Enum.reduce_while(spec_files, :ok, fn file, :ok -> check_one_verify_script(env, file) end)
+    Enum.reduce_while(specs, :ok, fn spec, :ok ->
+      case data(spec, "verify_script") do
+        nil ->
+          {:halt,
+           {:error,
+            "Integration spec `#{spec.path}` has no verify script path. " <>
+              "Add a `## Verify Script` section."}}
+
+        script ->
+          if MapSet.member?(paths, script) do
+            {:cont, :ok}
+          else
+            {:halt,
+             {:error,
+              "Verify script `#{script}` missing (referenced by `#{spec.path}`). " <>
+                "Create it and stop again."}}
+          end
+      end
+    end)
   end
 
-  defp check_one_verify_script(env, file) do
-    case read_verify_script_path(env, file) do
-      {:ok, script_path} -> verify_script_exists(env, file, script_path)
-      {:error, _} -> {:halt, {:error, "Integration spec `#{file}` has no verify script path. Add a `## Verify Script` section."}}
-    end
+  defp check_verified_status(specs) do
+    Enum.reduce_while(specs, :ok, fn spec, :ok ->
+      if data(spec, "verified") == true do
+        {:cont, :ok}
+      else
+        {:halt,
+         {:error,
+          "Integration `#{spec.path}` is not yet verified. Run the verify script and set " <>
+            "`## Status` to `verified`."}}
+      end
+    end)
   end
 
-  defp verify_script_exists(env, file, script_path) do
-    if Environments.file_exists?(env, script_path) do
-      {:cont, :ok}
-    else
-      {:halt, {:error, "Verify script `#{script_path}` missing (referenced by `#{file}`). Create it and stop again."}}
-    end
-  end
+  # `validation_errors` round-trips through a `:map` column, so the keys come
+  # back as strings whatever they went in as. A row written before this
+  # validator existed has no `data` at all, and reads as "not verified" and "no
+  # script" — which is what it is until the next scan touches the file.
+  defp data(%{validation_errors: %{"data" => data}}, key) when is_map(data),
+    do: Map.get(data, key)
 
-  defp check_verified_status(_env, []), do: :ok
-
-  defp check_verified_status(env, spec_files) do
-    Enum.reduce_while(spec_files, :ok, fn file, :ok -> check_one_verified(env, file) end)
-  end
-
-  defp check_one_verified(env, file) do
-    case Environments.read_file(env, file) do
-      {:ok, content} -> verified_status(file, content)
-      _ -> {:halt, {:error, "Cannot read integration spec `#{file}`."}}
-    end
-  end
-
-  defp verified_status(file, content) do
-    content
-    |> status_section()
-    |> verified_section?()
-    |> status_result(file)
-  end
-
-  defp status_result(true, _file), do: {:cont, :ok}
-
-  defp status_result(false, file) do
-    {:halt,
-     {:error,
-      "Integration `#{file}` is not yet verified. Run the verify script and set " <>
-        "`## Status` to `verified`."}}
-  end
-
-  # The body of the `## Status` section, or "" when there is none.
-  #
-  # This used to be `String.contains?(String.downcase(content), "verified")` over
-  # the whole document, which passes on the word appearing anywhere — and
-  # "unverified" contains "verified". So an integration explicitly marked
-  # unverified satisfied the check, as did one whose prose merely said "once
-  # verified, …". A gate that reports satisfied when it is not is the worst
-  # failure mode available to a gate, because it is invisible.
-  defp status_section(content) do
-    content
-    |> String.split("\n")
-    |> Enum.drop_while(&(!String.match?(&1, ~r/^##\s*Status\s*$/i)))
-    |> Enum.drop(1)
-    |> Enum.take_while(&(!String.starts_with?(&1, "##")))
-    |> Enum.map_join(" ", &String.trim/1)
-    |> String.trim()
-    |> String.downcase()
-  end
-
-  # Anchored, so `unverified`, `not verified` and `pending verification` are all
-  # what they say rather than near-misses that pass.
-  defp verified_section?(section), do: String.match?(section, ~r/^verified\b/)
-
-  defp read_verify_script_path(env, spec_file) do
-    case Environments.read_file(env, spec_file) do
-      {:ok, content} ->
-        case Regex.run(~r/##\s*Verify Script\s*\n+`?([^\n`]+)`?/i, content) do
-          [_, path] -> {:ok, String.trim(path)}
-          _ -> {:error, "No verify script path found"}
-        end
-
-      _ ->
-        {:error, "Cannot read spec file"}
-    end
-  end
+  defp data(_row, _key), do: nil
 end
