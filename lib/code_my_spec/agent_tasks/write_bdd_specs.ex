@@ -424,7 +424,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         # a file that was fine.
         """
         ### Criterion #{criterion.id}: #{criterion.description}
-
+        #{criterion_body(criterion)}
         **Suggested file path**: `#{spec_path}`
         Any path under the story's directory works — whatever you write is
         adopted, and this line reports it back once it exists.\
@@ -447,6 +447,37 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # surfaces (an MCP tool and the LiveView that shows its result), which is
   # exactly the case one sentence above the list cannot describe, and the case
   # where the component-type hint degrades to "depends".
+  # The scenario itself, which this prompt has promised since it was written —
+  # "Write the spex against the surfaces named in the scenario bodies below" —
+  # and never printed. A coding agent on story 1001 said so exactly: "lists only
+  # criterion titles, but omits the promised scenario bodies", and then asked
+  # which peace flow it was supposed to encode. It could not know. The four
+  # bodies were on the rows it had been handed.
+  #
+  # In the prompt rather than behind a tool call. `story.criteria` is already
+  # loaded, a body is ~150 characters, and for a stub component the paragraph
+  # above says these *are* the contract — so this is the one thing the work
+  # cannot start without. Progressive disclosure earns its keep on material that
+  # is large, optional, or usually unneeded; this is none of the three.
+  defp criterion_body(%{body: body}) when is_binary(body) do
+    body |> String.trim() |> fenced()
+  end
+
+  defp criterion_body(_criterion), do: fenced("")
+
+  defp fenced(""), do: no_scenario()
+  defp fenced(body), do: "\n```gherkin\n" <> body <> "\n```\n"
+
+  # A criterion with no body is a title and nothing else, and saying so beats
+  # printing an empty fence: the agent needs to know the scenario is missing
+  # rather than assume it was omitted from the prompt again — which, given the
+  # bug this replaced, is exactly the assumption it would make.
+  #
+  # Whitespace counts as none. A body of `"  \n "` renders an empty fence that
+  # reads as "the scenario is here and says nothing".
+  defp no_scenario,
+    do: "\n_No scenario recorded for this criterion — it is a title only._\n"
+
   defp criterion_surface_line(%{body: body}) when is_binary(body) do
     case infer_surface(when_steps(body)) do
       nil -> ""
