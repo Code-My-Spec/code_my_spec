@@ -29,7 +29,6 @@ defmodule CodeMySpec.Google.Gsc do
   route `Req` through a `ReqCassette` plug.
   """
 
-
   @base "https://searchconsole.googleapis.com"
   @webmasters @base <> "/webmasters/v3"
   @inspect_url @base <> "/v1/urlInspection/index:inspect"

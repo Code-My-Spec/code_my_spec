@@ -20,7 +20,7 @@ defmodule CodeMySpec.ComponentDesignFixture do
     |> validate_required(required_fields())
   end
 
-  def required_fields(), do: [:purpose, :public_api, :execution_flow]
+  def required_fields, do: [:purpose, :public_api, :execution_flow]
 
   def field_descriptions do
     %{

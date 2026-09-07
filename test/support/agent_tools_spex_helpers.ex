@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
 
   alias CodeMySpecSpex.Fixtures
 
-  
   @doc """
   Launch request for an agent on a real directory, defaulting to the coding
   type. Pass `%{"role" => "qa"}` for the criteria about what a type may reach.

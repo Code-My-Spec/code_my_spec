@@ -126,7 +126,7 @@ defmodule CodeMySpec.UsersFixtures do
     |> Map.put(:environment, Environment.new(:local, tmp_dir))
   end
 
-  def full_preferences_fixture() do
+  def full_preferences_fixture do
     scope = full_scope_fixture()
 
     UserPreferences.create_user_preferences(scope, %{

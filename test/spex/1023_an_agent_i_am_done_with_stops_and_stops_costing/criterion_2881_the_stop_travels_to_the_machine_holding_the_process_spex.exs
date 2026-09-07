@@ -31,7 +31,6 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-
   spex "A stop ends the process on the machine it named" do
     scenario "The stop travels to the machine holding the process" do
       given_ "two machines each running an agent with the same role on a copy at the same path",

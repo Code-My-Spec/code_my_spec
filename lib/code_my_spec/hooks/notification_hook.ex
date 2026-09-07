@@ -7,7 +7,6 @@ defmodule CodeMySpec.Hooks.NotificationHook do
   work it is describing.
   """
 
-
   require Logger
 
   alias CodeMySpec.Notifications.NotificationClient

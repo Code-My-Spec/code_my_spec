@@ -188,7 +188,6 @@ defmodule CodeMySpecSpex.Drill do
     end)
   end
 
-
   # unmaking something has the opposite one: the DNS record has to go before
   # the server it points at is released, or the address is recycled to another
   # customer while a name under this domain still resolves to it.

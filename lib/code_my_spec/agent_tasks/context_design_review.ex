@@ -17,7 +17,6 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-
   @doc """
   Generate the command/prompt for Claude to review a context design.
 

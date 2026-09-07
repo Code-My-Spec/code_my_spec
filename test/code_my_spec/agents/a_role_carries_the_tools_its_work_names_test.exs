@@ -71,8 +71,14 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
   # the names are in the source either way.
   defp source_of(module) do
     case module.__info__(:compile)[:source] do
-      nil -> nil
-      path -> path |> to_string() |> File.read() |> case(do: ({:ok, s} -> s; _ -> nil))
+      nil ->
+        nil
+
+      path ->
+        case path |> to_string() |> File.read() do
+          {:ok, s} -> s
+          _ -> nil
+        end
     end
   end
 

@@ -187,8 +187,7 @@ defmodule CodeMySpecWeb.StoryLive.Import do
   defp error_to_string(:too_many_files), do: "Only one file allowed"
   defp error_to_string(err), do: "Upload error: #{inspect(err)}"
 
-
-  defp markdown_placeholder_content() do
+  defp markdown_placeholder_content do
     "## Story Title\n\nStory description here.\n\n**Acceptance Criteria**\n- Criterion 1\n- Criterion 2\n\n## Another Story\n\nAnother story description."
   end
 end

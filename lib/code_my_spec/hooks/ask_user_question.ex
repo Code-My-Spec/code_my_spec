@@ -7,7 +7,6 @@ defmodule CodeMySpec.Hooks.AskUserQuestion do
   controller's own note on why that reads as an error in the transcript.
   """
 
-
   require Logger
 
   alias CodeMySpec.Notifications.QuestionClient

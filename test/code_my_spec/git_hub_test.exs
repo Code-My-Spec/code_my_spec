@@ -20,7 +20,6 @@ defmodule CodeMySpec.GitHubTest do
 
   @cassette_dir "test/cassettes/github"
 
-
   describe "create_repository/2" do
     test "creates a repo and returns the decoded body" do
       user = user_fixture()

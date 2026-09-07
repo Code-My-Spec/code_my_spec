@@ -8,7 +8,6 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.StoriesFixtures
 
-
   alias CodeMySpec.Components.{Component, ComponentRepository}
   alias CodeMySpec.Repo
 

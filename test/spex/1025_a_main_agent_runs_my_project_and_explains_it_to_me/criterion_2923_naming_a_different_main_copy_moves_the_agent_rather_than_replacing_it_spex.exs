@@ -93,7 +93,6 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
     end
   end
 
-
   defp conversation_id(html) do
     case Regex.run(~r"/agent-conversation/([0-9a-f-]{36})", html) do
       [_, id] -> id

@@ -3,7 +3,6 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
   import Ecto.Query, warn: false
 
-
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope

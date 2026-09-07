@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1038.Criterion3019Spex do
 
   import CodeMySpecSpex.AgentToolsHelpers
 
-  
   setup :register_log_in_setup_account
   setup :setup_active_project
 

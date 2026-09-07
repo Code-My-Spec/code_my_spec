@@ -43,7 +43,6 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-
   # The copy the epic actually landed on. Not `context.copy_id` — that is the
   # project's main checkout, and an epic never goes there: the main copy holds
   # one agent and it is the project's own, so an epic gets one made for it.

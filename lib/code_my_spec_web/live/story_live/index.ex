@@ -389,7 +389,6 @@ defmodule CodeMySpecWeb.StoryLive.Index do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-
   defp parse_acceptance_criteria(nil), do: []
   defp parse_acceptance_criteria(""), do: []
   defp parse_acceptance_criteria(criteria) when is_list(criteria), do: criteria
