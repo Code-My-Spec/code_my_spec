@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Permissions.TapOut
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
 
   schema do
@@ -21,6 +22,37 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   end
 
   @impl true
+  # An agent we run asks, stops, and is told what was decided.
+  #
+  # The session implementation writes its pending request into `session.state`
+  # and a waiter polls it. An agent has no session to write into — and did not
+  # need one: the permission request row *is* the pending state, and
+  # `session.state` was a second copy of it for a waiter an agent does not have.
+  #
+  # So this is the same shape as `ask_user_question`: the request is published,
+  # the tool returns, the agent stops, and `resolve_permission_request/2`
+  # delivers the decision as a message. Denied is the case that matters — an
+  # agent that asked to leave and heard nothing cannot tell a refusal from a
+  # decision nobody has made yet.
+  def execute(_params, %{assigns: %{agent_id: agent_id}} = frame)
+      when is_binary(agent_id) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, request} <- request_agent_tap_out(scope, agent_id) do
+      {:reply,
+       Response.tool()
+       |> Response.text("""
+       Tap-out requested (request_id=`#{request.id}`). A human decides.
+
+       Stop now. You will be told what was decided — approved and the loop is
+       done, declined and you carry on from where you left off. Do not wait and
+       do not ask again.
+       """), frame}
+    else
+      {:error, reason} ->
+        {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+    end
+  end
+
   def execute(params, frame) do
     session_id = Map.get(params, :session_id)
 
@@ -37,6 +69,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
     end
   end
+
+  defp request_agent_tap_out(%{user: %{id: user_id}}, agent_id) do
+    Notifications.create_permission_request(user_id, %{
+      "agent_id" => agent_id,
+      "tool_name" => "tap_out",
+      "tool_input" => %{"agent_id" => agent_id}
+    })
+  end
+
+  defp request_agent_tap_out(_scope, _agent_id), do: {:error, :no_user}
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do

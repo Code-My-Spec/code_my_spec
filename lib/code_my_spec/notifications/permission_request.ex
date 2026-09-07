@@ -20,6 +20,11 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     field :status, :string, default: "pending"
     field :decision, :string
 
+    # Which agent asked, so the decision can be delivered back to it. Nil for
+    # a Claude Code request, which is answered on the SSE connection already
+    # waiting on it.
+    belongs_to :agent, CodeMySpec.Agents.Agent, type: :binary_id
+
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
@@ -27,7 +32,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
 
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:user_id, :tool_name, :tool_input, :status, :decision])
+    |> cast(attrs, [:user_id, :agent_id, :tool_name, :tool_input, :status, :decision])
     |> validate_required([:user_id, :tool_name, :tool_input])
     |> validate_inclusion(:status, ~w(pending approved denied expired))
     |> validate_inclusion(:decision, ~w(allow deny ask), message: "must be allow, deny, or ask")

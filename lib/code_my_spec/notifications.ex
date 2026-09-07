@@ -214,6 +214,7 @@ defmodule CodeMySpec.Notifications do
             )
 
             broadcast_notifications_changed(updated.user_id)
+            deliver_decision_to_agent(updated)
 
             {:ok, updated}
 
@@ -225,6 +226,47 @@ defmodule CodeMySpec.Notifications do
         {:error, {:already_resolved, status}}
     end
   end
+
+  # Tell the agent what was decided.
+  #
+  # A Claude Code request is answered on the SSE connection already waiting on
+  # it — that is what `permission_request:<id>` is broadcast for. An agent we
+  # run has no such connection: it asked, it stopped, and the decision reaches
+  # it as a message or not at all.
+  #
+  # Denied is the case that matters. Approved and the loop ends, which the agent
+  # will notice by not being asked to continue; denied and it must keep going,
+  # and an agent that asked to leave and heard nothing has no way to tell a
+  # refusal from a decision nobody has made yet.
+  defp deliver_decision_to_agent(%{agent_id: nil}), do: :ok
+
+  defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
+    _ = CodeMySpec.Agents.deliver_answer(agent_id, decision_message(request))
+    :ok
+  end
+
+  defp decision_message(%{tool_name: "tap_out", decision: "allow"}) do
+    """
+    Your tap-out was approved. The loop is done — finish what is in front of you
+    and stop. Nothing will ask you to continue.
+    """
+  end
+
+  defp decision_message(%{tool_name: "tap_out"}) do
+    """
+    Your tap-out was declined. Keep going.
+
+    Pick the work back up where you left it. If you asked because you were stuck
+    rather than because you were finished, say what is blocking you — a second
+    identical request will be declined the same way.
+    """
+  end
+
+  defp decision_message(%{tool_name: tool, decision: "allow"}),
+    do: "Your request to use `#{tool}` was approved. Go ahead."
+
+  defp decision_message(%{tool_name: tool}),
+    do: "Your request to use `#{tool}` was declined. Do not retry it; find another way."
 
   @doc """
   Get a permission request by ID.
