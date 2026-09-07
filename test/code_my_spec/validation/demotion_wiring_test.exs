@@ -109,7 +109,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       path = @spex_path
       :ok = FileEdits.track_edit(ctx.session, path)
       problem_fixture(ctx.scope, %{source: "spex", severity: :error, file_path: path})
-      fresh_analysis_runs_fixture(ctx.scope, ["spex"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, reason, _key} = stop(ctx.scope, ctx.session)
       assert reason =~ "criterion_6493"
@@ -118,7 +118,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
     test "still blocks when the session never opened the spex file", ctx do
       path = @spex_path
       problem_fixture(ctx.scope, %{source: "spex", severity: :error, file_path: path})
-      fresh_analysis_runs_fixture(ctx.scope, ["spex"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, reason, _key} = stop(ctx.scope, ctx.session),
              "a latched story is red and the stop was allowed. Which files this turn " <>
@@ -140,7 +140,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
     test "a finding in a file it never edited does not block", ctx do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:ok, _} = stop(ctx.scope, ctx.session),
              "block_all would block on this; the session did not write it"
@@ -148,7 +148,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
     test "a finding in a file it did edit still blocks", ctx do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @mine})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session)
     end
@@ -156,7 +156,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
     test "with both, it blocks and the reason names only its own", ctx do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @mine})
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, reason, _key} = stop(ctx.scope, ctx.session)
       assert reason =~ @mine
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, @mine))
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @mine})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session)
     end
@@ -182,7 +182,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, @mine))
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:ok, _} = stop(ctx.scope, ctx.session)
     end
@@ -222,7 +222,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       File.touch!(path, System.os_time(:second) + 5)
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session),
              "unusable attribution must fail closed, not demote everything"
@@ -243,7 +243,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       File.touch!(path, System.os_time(:second) + 5)
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:ok, _} = stop(ctx.scope, ctx.session),
              "the project moved, but not by this session's hand — every edit it made " <>
@@ -259,7 +259,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       :ok = FileEdits.track_edit(ctx.session, ".code_my_spec/qa/884/brief.md")
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
-      fresh_analysis_runs_fixture(ctx.scope, ["credo"])
+      fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:ok, _} = stop(ctx.scope, ctx.session),
              "an agent that changed no project file is blocked by nothing (story 894)"

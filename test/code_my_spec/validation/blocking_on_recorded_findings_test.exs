@@ -41,7 +41,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
 
   test "a credo finding in block_all blocks", %{scope: scope} do
     problem_fixture(scope, %{source: "credo", severity: :error, file_path: @path})
-    fresh_analysis_runs_fixture(scope, ["credo"])
+    fresh_analysis_runs_fixture(scope)
 
     assert {:error, _reason, _key} = Validation.validate_stop(scope, nil),
            "block_all means every finding from this source blocks, and this is the " <>
@@ -51,7 +51,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
   # The other half: with nothing recorded there is nothing to block on, so a
   # passing assertion above cannot be an artefact of blocking on something else.
   test "no findings means no block", %{scope: scope} do
-    fresh_analysis_runs_fixture(scope, ["credo"])
+    fresh_analysis_runs_fixture(scope)
 
     assert {:ok, _} = Validation.validate_stop(scope, nil)
   end
@@ -80,7 +80,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
           }
         ])
 
-      fresh_analysis_runs_fixture(scope, ["credo"])
+      fresh_analysis_runs_fixture(scope)
 
       assert {:error, _reason, _key} = Validation.validate_stop(scope, nil)
     end
@@ -100,7 +100,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
 
       File.write!(Path.join(scope.cwd, @path), "defmodule MyApp.Accounts do\n  # edited\nend\n")
       {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
-      fresh_analysis_runs_fixture(scope, ["credo"])
+      fresh_analysis_runs_fixture(scope)
 
       assert {:ok, _} = Validation.validate_stop(scope, nil),
              "the finding cites bytes that no longer exist, so it is superseded — " <>

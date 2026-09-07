@@ -44,6 +44,15 @@ defmodule CodeMySpec.Analysis.BusySourceRequeueTest do
     %{scope: scope}
   end
 
+  # `ensure_stale_runs/3` dispatches inline in test env, so the sweep it
+  # triggers actually executes. Credo's own `available?/1` fails fast here
+  # (no real `mix.exs` in this scope's cwd), but spex has no such gate — it
+  # is a real (and doomed) `mix spex` subprocess unless told what to answer.
+  # Only the row that gets opened is under test, not what the analyzer says.
+  @analysis_test_output_files [
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
+
   defp open_run(scope, source) do
     {:ok, run} =
       RunsRepository.start_run(scope, %{source: source, kind: :full, args: %{"args" => []}})
@@ -64,7 +73,7 @@ defmodule CodeMySpec.Analysis.BusySourceRequeueTest do
     test "gets a second run row from a sweep", %{scope: scope} do
       first = open_run(scope, "spex")
 
-      Analysis.ensure_stale_runs(scope, ["spex"], [])
+      Analysis.ensure_stale_runs(scope, ["spex"], @analysis_test_output_files)
 
       others = spex_runs(scope) -- [first.id]
 
@@ -77,7 +86,8 @@ defmodule CodeMySpec.Analysis.BusySourceRequeueTest do
     test "a second source is unaffected by the first being busy", %{scope: scope} do
       open_run(scope, "spex")
 
-      %{enqueued: enqueued} = Analysis.ensure_stale_runs(scope, ["spex", "credo"], [])
+      %{enqueued: enqueued} =
+        Analysis.ensure_stale_runs(scope, ["spex", "credo"], @analysis_test_output_files)
 
       assert "spex" in enqueued
       assert "credo" in enqueued
@@ -98,7 +108,11 @@ defmodule CodeMySpec.Analysis.BusySourceRequeueTest do
   test "a quiet stop still opens a run for a running source", %{scope: scope} do
     first = open_run(scope, "spex")
 
-    Analysis.ensure_stale_runs(scope, ["spex"], only_failed: true)
+    Analysis.ensure_stale_runs(
+      scope,
+      ["spex"],
+      Keyword.put(@analysis_test_output_files, :only_failed, true)
+    )
 
     assert spex_runs(scope) -- [first.id] != []
   end

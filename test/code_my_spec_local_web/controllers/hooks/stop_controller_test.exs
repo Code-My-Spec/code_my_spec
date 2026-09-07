@@ -28,8 +28,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.SessionsFixtures
-  import CodeMySpec.UsersFixtures
+  import CodeMySpec.{AnalysisFixtures, SessionsFixtures, UsersFixtures}
   import ExUnit.CaptureLog
   import Plug.Conn
   import Plug.Test
@@ -71,7 +70,18 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     # "where this working copy is" disagree is not a thing to leave lying in a
     # fixture — the next analyzer to read one instead of the other finds the
     # same trap.
-    %{scope: %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}}
+    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+
+    # `@recorded`'s `test_output_files` controls compile/exunit/spex's
+    # *content* but not whether the subprocess runs — only spex has a full
+    # replay-skip, compile and exunit always shell out regardless. Nothing
+    # here has ever run for this scope, so every source is stale and every
+    # `post_stop` pays for a doomed `mix compile`/`mix test` in `tmp` on top
+    # of `@recorded`. Marking them fresh up front avoids the subprocess
+    # entirely, without needing `use_cmd_cassette`.
+    fresh_analysis_runs_fixture(scope)
+
+    %{scope: scope}
   end
 
   # `998f4d93` reports the comparison below failing about 1 run in 10, and

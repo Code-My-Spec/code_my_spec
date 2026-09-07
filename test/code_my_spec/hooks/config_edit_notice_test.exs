@@ -20,18 +20,23 @@ defmodule CodeMySpec.Hooks.ConfigEditNoticeTest do
 
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.UsersFixtures
+  import CodeMySpec.{AnalysisFixtures, UsersFixtures}
 
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Hooks.Stop
 
   setup do
     {:ok, tmp} = Briefly.create(directory: true)
+    scope = %{full_scope_fixture() | cwd: tmp}
 
-    %{
-      scope: %{full_scope_fixture() | cwd: tmp},
-      session: "sess-#{System.unique_integer([:positive])}"
-    }
+    # Nothing here is about compiler/credo/exunit/spex content — only
+    # whether a config-file edit gets noticed. Without this, every source
+    # has never run for this scope, so `decide/2` shells out a real (and
+    # here, doomed — `tmp` has no mix.exs) subprocess for each one on
+    # every test.
+    fresh_analysis_runs_fixture(scope)
+
+    %{scope: scope, session: "sess-#{System.unique_integer([:positive])}"}
   end
 
   defp decide(ctx), do: Stop.decide(ctx.scope, %{"session_id" => ctx.session})
