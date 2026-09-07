@@ -30,6 +30,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1965Spex do
       end
 
       when_ "he sets a secret once", context do
+        open_secrets_dialog(context.view)
+
         html =
           context.view
           # `key`, which is what the form is named — `name` matched no input at

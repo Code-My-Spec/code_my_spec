@@ -76,7 +76,13 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # arrive afterwards, so reading what `render_click/1` handed back
         # shows the page as it was *before* anything ran — every step
         # not_started, which reads as "nothing was provisioned".
-        html = await_provisioning(view)
+        await_provisioning(view)
+
+        # The environment rows this reads live behind their own dialog now
+        # (7ba5d249) — `paste_provider_credentials/1` above left the page on
+        # the *credentials* dialog, so this switches it before rendering.
+        open_environments_dialog(view)
+        html = Phoenix.LiveViewTest.render(view)
 
         servers = servers_by_environment(html)
 

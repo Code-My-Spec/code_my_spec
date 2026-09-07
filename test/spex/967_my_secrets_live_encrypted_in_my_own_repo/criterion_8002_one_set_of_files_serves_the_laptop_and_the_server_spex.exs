@@ -29,6 +29,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        open_secrets_dialog(view)
+
         view
         |> form("[data-test='secret-form']",
           # UAT, not "dev". The environments setup manages are prod and uat —

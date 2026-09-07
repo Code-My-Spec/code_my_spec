@@ -35,6 +35,10 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
+
         {:ok, Map.put(context, :view, view)}
       end
 

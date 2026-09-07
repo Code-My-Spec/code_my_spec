@@ -2987,7 +2987,51 @@ defmodule CodeMySpecSpex.Case do
   for replay because the HTTP never leaves; recording with one produces a
   cassette full of 401s that replays perfectly and proves nothing.
   """
+  # The credentials form lives behind its own dialog now (058d20ed) — reached
+  # by patching to `/provisioning/credentials`, not rendered on the plain
+  # index. The trigger button that opens it is always on the page regardless
+  # of the current `:live_action`, so clicking it is safe to call
+  # unconditionally: already on the credentials route, the patch is a no-op.
+  defp open_credentials_dialog(view) do
+    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='credentials-form']") do
+      view
+      |> Phoenix.LiveViewTest.element("[data-test='manage-credentials']")
+      |> Phoenix.LiveViewTest.render_click()
+    end
+  end
+
+  @doc """
+  Open the secrets dialog, the same way `open_credentials_dialog/1` opens the
+  credentials one — the secret form lives behind `/provisioning/secrets`
+  now (7ba5d249), not on the plain index. Public because, unlike credentials,
+  there is no single shared "paste and submit" helper every secret-form spex
+  goes through — each fills different keys — so callers open the dialog
+  themselves before filling it in.
+  """
+  def open_secrets_dialog(view) do
+    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='secret-form']") do
+      view
+      |> Phoenix.LiveViewTest.element("[data-test='manage-secrets']")
+      |> Phoenix.LiveViewTest.render_click()
+    end
+  end
+
+  @doc """
+  Open the environments dialog, the same way `open_credentials_dialog/1`
+  opens the credentials one — the add-environment form lives behind
+  `/provisioning/environments` now (7ba5d249), not on the plain index.
+  """
+  def open_environments_dialog(view) do
+    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='add-environment-form']") do
+      view
+      |> Phoenix.LiveViewTest.element("[data-test='manage-environments']")
+      |> Phoenix.LiveViewTest.render_click()
+    end
+  end
+
   def paste_provider_credentials(view) do
+    open_credentials_dialog(view)
+
     view
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
@@ -3057,6 +3101,8 @@ defmodule CodeMySpecSpex.Case do
   live key in the repository would not be.
   """
   def paste_storage_credentials(view) do
+    open_credentials_dialog(view)
+
     view
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{

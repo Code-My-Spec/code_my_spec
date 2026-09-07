@@ -44,12 +44,19 @@ defmodule CodeMySpecSpex.Story964.Criterion7985Spex do
       end
 
       then_ "setup refuses to start and says which credential is missing", context do
-        # Read inside the banner that names them. The page lists every provider
-        # it can connect, Resend among them, so `html =~ "Resend"` was true
-        # before the click and would still be true if the refusal named
-        # something else entirely — which is the half this step is about.
+        # The banner that names them lives inside the credentials dialog now
+        # (7ba5d249) — opening it is what "says which credential is missing"
+        # means to Sam. The page lists every provider it can connect, Resend
+        # among them, so `html =~ "Resend"` was true before the click and
+        # would still be true if the refusal named something else entirely —
+        # which is the half this step is about.
+        dialog_html =
+          context.view
+          |> element("[data-test='manage-credentials']")
+          |> render_click()
+
         assert has_element?(context.view, "[data-test='credentials-incomplete']", "Resend"),
-               "expected the refusal to name the missing Resend credential, got:\n#{context.html}"
+               "expected the refusal to name the missing Resend credential, got:\n#{dialog_html}"
 
         refute has_element?(context.view, "[data-test='setup-step'][data-state='running']"),
                "expected no step to be running after setup refused to start"

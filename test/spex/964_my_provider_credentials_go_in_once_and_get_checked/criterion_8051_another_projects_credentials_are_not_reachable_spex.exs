@@ -39,6 +39,10 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
+
+        view
         |> form("[data-test='credentials-form']",
           credentials: %{hetzner_api_token: "first-project-token"}
         )
@@ -69,8 +73,13 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
         |> element("a[phx-value-account-id='#{second_account_id(context)}']")
         |> render_click()
 
-        {:ok, view, html} =
+        {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.second_project.id}/provisioning")
+
+        html =
+          view
+          |> element("[data-test='manage-credentials']")
+          |> render_click()
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

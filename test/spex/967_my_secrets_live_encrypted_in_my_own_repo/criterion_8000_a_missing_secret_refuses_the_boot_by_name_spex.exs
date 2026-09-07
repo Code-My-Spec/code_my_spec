@@ -51,6 +51,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
         # Deliberately set only one of the required secrets, leaving
         # SECRET_KEY_BASE absent. Not clearing it afterwards — it was never
         # supplied.
+        open_secrets_dialog(view)
+
         view
         |> form("[data-test='secret-form']",
           secret: %{key: "DATABASE_URL", value: "ecto://...", environment: "uat"}

@@ -26,13 +26,17 @@ defmodule CodeMySpecSpex.Story841.Criterion1957Spex do
         {:ok, view, html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        assert html =~ "credentials-incomplete",
+        assert html =~ "Still needed:",
                "expected setup to refuse to start while credentials are missing"
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he pastes every pasted credential the run needs and saves", context do
+        context.view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
+
         html =
           context.view
           |> form("[data-test='credentials-form']",

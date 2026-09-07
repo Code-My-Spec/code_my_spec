@@ -33,6 +33,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1958Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
+
+        view
         |> form("[data-test='credentials-form']",
           credentials: %{"hetzner_api_token" => "spex-read-only-token"}
         )

@@ -124,6 +124,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # never reaches its script and the site never exists. Set after the
         # `secrets` step, which is what mints the age key they are encrypted
         # to.
+        #
+        # `paste_provider_credentials/1` above left the page on the
+        # *credentials* dialog — this switches it to secrets before the loop
+        # below fills that form.
+        open_secrets_dialog(view)
+
         for {key, value} <- [
               {"SECRET_KEY_BASE", String.duplicate("s", 64)},
               {"DATABASE_URL", "ecto://postgres:postgres@127.0.0.1/drill_uat"}

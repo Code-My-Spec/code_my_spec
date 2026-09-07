@@ -31,6 +31,10 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view
+        |> element("[data-test='manage-credentials']")
+        |> render_click()
+
+        view
         |> form("[data-test='credentials-form']",
           credentials: %{hetzner_api_token: "project-scoped-token"}
         )
@@ -44,8 +48,13 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
         # over in process state, only what the project itself holds.
         fresh_conn = Phoenix.ConnTest.build_conn() |> log_in_user(context.user)
 
-        {:ok, view, html} =
+        {:ok, view, _html} =
           live(fresh_conn, "/app/projects/#{context.project.id}/provisioning")
+
+        html =
+          view
+          |> element("[data-test='manage-credentials']")
+          |> render_click()
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

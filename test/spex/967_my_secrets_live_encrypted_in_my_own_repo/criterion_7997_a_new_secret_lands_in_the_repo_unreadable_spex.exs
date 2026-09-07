@@ -39,6 +39,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
       end
 
       when_ "he sets an API key for an environment", context do
+        open_secrets_dialog(context.view)
+
         context.view
         |> form("[data-test='secret-form']",
           secret: %{key: "RESEND_API_KEY", value: @plaintext, environment: "prod"}

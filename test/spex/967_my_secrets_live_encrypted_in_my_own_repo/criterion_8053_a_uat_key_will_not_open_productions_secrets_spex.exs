@@ -29,6 +29,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        open_secrets_dialog(view)
+
         view
         |> form("[data-test='secret-form']",
           secret: %{key: "DATABASE_URL", value: "ecto://uat", environment: "uat"}

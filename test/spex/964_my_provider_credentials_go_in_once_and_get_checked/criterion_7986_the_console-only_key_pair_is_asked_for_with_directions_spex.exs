@@ -34,8 +34,13 @@ defmodule CodeMySpecSpex.Story964.Criterion7986Spex do
       end
 
       when_ "setup asks Sam for the object storage key pair", context do
-        {:ok, view, html} =
+        {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        html =
+          view
+          |> element("[data-test='manage-credentials']")
+          |> render_click()
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
