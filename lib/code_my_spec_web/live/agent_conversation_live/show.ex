@@ -172,7 +172,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
-    |> assign(:analysis_running, running_analysis(scope))
+    |> assign(:analysis_running, running_analysis(scope, conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
@@ -780,17 +780,41 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Which analyzers are mid-run for this working copy, oldest first.
+  # Which analyzers are mid-run **on this agent's checkout**, oldest first.
   #
-  # Scoped to the copy by `running_since/1` itself: another checkout's sweep
-  # produces nothing for this one, and showing it would tell the person work is
-  # happening on their agent's tree when it is happening somewhere else.
-  defp running_analysis(scope) do
+  # `running_since/1` scopes to the working copy the scope names — and drops the
+  # filter entirely when it names none (`scope_to_harness/2`), which is exactly
+  # the web UI's case: a person browsing has no checkout selected. So this asked
+  # "is any copy of this project running anything", and with several checkouts
+  # the answer is almost always yes.
+  #
+  # John, watching it: "it's constantly saying analyzers are running. Pretty
+  # sure that's not true anymore." It was true, about somebody else's tree.
+  #
+  # The conversation is about one agent, and that agent has one checkout. That
+  # is the vantage the indicator is claiming, so that is the one it asks about.
+  defp running_analysis(scope, conversation) do
     scope
+    |> at_agents_copy(conversation)
     |> RunsRepository.running_since()
     |> Enum.sort_by(fn {_source, started_at} -> started_at end, DateTime)
     |> Enum.map(fn {source, _started_at} -> to_string(source) end)
   end
+
+  # A conversation with no agent is the operator's own thread and has no
+  # checkout; the project-wide answer is the only one available and is what it
+  # meant all along.
+  defp at_agents_copy(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
+        %{scope | active_working_copy_id: copy_id}
+
+      _ ->
+        scope
+    end
+  end
+
+  defp at_agents_copy(scope, _conversation), do: scope
 
   defp questions_for(nil), do: []
 
@@ -915,7 +939,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # subtracting the completed source: a sweep enqueues several, and the
   # arithmetic would be a second answer that can disagree with the rows.
   def handle_info({:analysis, _payload}, socket) do
-    {:noreply, assign(socket, :analysis_running, running_analysis(socket.assigns.current_scope))}
+    {:noreply,
+     assign(
+       socket,
+       :analysis_running,
+       running_analysis(socket.assigns.current_scope, socket.assigns.conversation)
+     )}
   end
 
   def handle_info({:new_message, message}, socket) do
