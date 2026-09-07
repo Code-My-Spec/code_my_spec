@@ -9,6 +9,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
@@ -253,11 +254,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     # column so we skip Ecto's enum cast on `type` — stale sessions
     # in the DB with deprecated `type` values would otherwise crash
     # `Repo.all/1` here, even though we only care about `tasks`.
-    task_arrays =
-      Session
-      |> where([s], s.project_id == ^project_id)
-      |> select([s], s.tasks)
-      |> Repo.all()
+    task_arrays = session_tasks(project_id) ++ agent_tasks(project_id)
 
     case find_task(task_arrays, task_id) do
       nil -> {:error, :task_not_found}
@@ -266,6 +263,38 @@ defmodule CodeMySpec.Qa.QaAttempts do
   end
 
   defp resolve_task_info(_scope, _task_id), do: {:error, :task_id_required}
+
+  defp session_tasks(project_id) do
+    Session
+    |> where([s], s.project_id == ^project_id)
+    |> select([s], s.tasks)
+    |> Repo.all()
+  end
+
+  # An agent we run holds its own tasks, and this looked only at sessions.
+  #
+  # So a QA agent under Alloy submitted its result against a real task id and
+  # got `task_not_found` — the honest answer to the wrong question. Watched on
+  # the war-epic copy, 2026-09-06: "QA is blocked: the required result
+  # submission returns `task_not_found` because this conversation has no
+  # registered session." The agent's own diagnosis was right, and the remedy it
+  # inferred — register a session — is not one it can perform, so it stopped,
+  # was nudged about the still-open `qa_complete`, and repeated for an hour.
+  #
+  # Both are searched rather than one chosen from the caller, because the task
+  # id is the only thing this is given and it is unique across both. Choosing
+  # would mean guessing which kind of caller sent it, and guessing wrong is the
+  # failure being fixed.
+  #
+  # Same `{:array, :map}` note as sessions: `tasks` is PG `jsonb[]`, not a
+  # single `jsonb`, so `@>` does not apply and the column is selected on its own
+  # to skip Ecto's cast of columns this does not care about.
+  defp agent_tasks(project_id) do
+    Agent
+    |> where([a], a.project_id == ^project_id)
+    |> select([a], a.tasks)
+    |> Repo.all()
+  end
 
   defp find_task(task_arrays, task_id) do
     task_arrays
