@@ -786,6 +786,43 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
+  @doc """
+  Tell every role on this project that work may have appeared.
+
+  `wake_roles/3` is per working copy and fires when a task completes, which
+  covers "somebody finished something that unblocked you". It does not cover
+  work arriving from outside the graph's own progress — and that is the case an
+  idle agent was promised.
+
+  A product agent on 2026-09-07, correctly, with nothing to do: "No product work
+  is currently available; I'll stop and wait to be woken when a product
+  requirement is unblocked." Four issues were filed over the next ninety
+  minutes, `issues_triaged` became actionable again, and nothing woke it. The
+  promise was true of task completions and of nothing else.
+
+  Project-wide rather than per copy because an issue belongs to the project; the
+  copy it will be triaged on is not a fact the issue carries.
+
+  Cheap for the same reason `wake_roles/3` is: `StopDecision.wake/2` renders the
+  menu and stays silent for a role with an empty one, so this wakes exactly the
+  agents that now have something and charges no turn to anybody else.
+  """
+  @spec wake_project_roles(Scope.t(), Ecto.UUID.t() | nil) :: :ok
+  def wake_project_roles(%Scope{} = scope, except_agent_id \\ nil) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&project_wakeable?(&1, except_agent_id))
+    |> Enum.each(&StopDecision.wake(scope, &1))
+
+    :ok
+  end
+
+  defp project_wakeable?(agent, except_agent_id) do
+    agent.continuous == true and
+      agent.status in [:starting, :running] and
+      agent.id != except_agent_id
+  end
+
   defp wakeable?(agent, copy_id, except_agent_id) do
     agent.working_copy_id == copy_id and
       agent.continuous == true and

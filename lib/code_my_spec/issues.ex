@@ -98,6 +98,24 @@ defmodule CodeMySpec.Issues do
   def create_issue(%Scope{} = scope, attrs) do
     with {:ok, issue} <- IssuesRepository.create_issue(scope, attrs) do
       broadcast(scope, {:created, issue})
+
+      # An incoming issue is product's work appearing. `issues_triaged` is
+      # product's requirement and becomes actionable the moment one is filed, so
+      # this is the event that makes the graph move — and nothing was listening
+      # to it.
+      #
+      # A product agent stopped correctly with an empty queue and said what it
+      # was waiting for: "I'll stop and wait to be woken when a product
+      # requirement is unblocked." Four issues arrived over the next ninety
+      # minutes and it never took another turn. Task completions were the only
+      # thing that woke anybody, and no task completed.
+      #
+      # After the write, so an agent that wakes and reads immediately sees the
+      # issue that woke it. `wake_project_roles/2` stays quiet for a role whose
+      # menu is empty, so a coding agent filing an issue mid-run does not wake
+      # itself or anybody with nothing to do.
+      CodeMySpec.Agents.wake_project_roles(scope)
+
       {:ok, issue}
     end
   end
