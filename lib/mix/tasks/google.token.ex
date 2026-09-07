@@ -166,8 +166,7 @@ defmodule Mix.Tasks.Google.Token do
     kept =
       existing
       |> String.split("\n")
-      |> Enum.reject(&String.starts_with?(&1, "GOOGLE_REFRESH_TOKEN="))
-      |> Enum.reject(&(&1 == ""))
+      |> Enum.reject(&(String.starts_with?(&1, "GOOGLE_REFRESH_TOKEN=") or &1 == ""))
 
     File.write!(path, Enum.join(kept ++ [line], "\n") <> "\n")
     Mix.shell().info("Wrote GOOGLE_REFRESH_TOKEN to #{path}")

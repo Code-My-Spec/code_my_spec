@@ -55,8 +55,7 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
 
     unreachable =
       Catalog.excluded()
-      |> Enum.reject(&(&1 in carried))
-      |> Enum.reject(&Map.has_key?(@unreachable_on_purpose, &1))
+      |> Enum.reject(&(&1 in carried or Map.has_key?(@unreachable_on_purpose, &1)))
 
     assert unreachable == [],
            """

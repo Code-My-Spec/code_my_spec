@@ -63,23 +63,21 @@ defmodule CodeMySpec.Host do
   def provision_app(%Scope{} = scope, %{name: name, port: port} = app, opts \\ []) do
     admin_key = Keyword.get(opts, :admin_age_pubkey) || System.get_env("ADMIN_AGE_PUBKEY")
 
-    cond do
-      is_nil(admin_key) or admin_key == "" ->
-        {:error,
-         "no admin age key — secrets must be encrypted to the admin key as well as the app's, " <>
-           "or losing the box loses the ability to read or rotate them"}
+    if is_nil(admin_key) or admin_key == "" do
+      {:error,
+       "no admin age key — secrets must be encrypted to the admin key as well as the app's, " <>
+         "or losing the box loses the ability to read or rotate them"}
+    else
+      args = [name, to_string(port)] ++ List.wrap(app[:domain])
 
-      true ->
-        args = [name, to_string(port)] ++ List.wrap(app[:domain])
+      run_opts = [env: [{"ADMIN_AGE_PUBKEY", admin_key}]] ++ Keyword.take(opts, [:cmd])
 
-        run_opts = [env: [{"ADMIN_AGE_PUBKEY", admin_key}]] ++ Keyword.take(opts, [:cmd])
-
-        scope
-        |> run("provision_app.sh", args, run_opts)
-        |> case do
-          {output, 0} -> {:ok, output}
-          {output, status} -> {:error, "provisioning #{name} failed (exit #{status}): #{output}"}
-        end
+      scope
+      |> run("provision_app.sh", args, run_opts)
+      |> case do
+        {output, 0} -> {:ok, output}
+        {output, status} -> {:error, "provisioning #{name} failed (exit #{status}): #{output}"}
+      end
     end
   end
 
@@ -111,7 +109,8 @@ defmodule CodeMySpec.Host do
   """
   @spec install(Scope.t()) :: :ok | {:error, term()}
   def install(%Scope{environment: env}) when not is_nil(env) do
-    for file <- ~w(provision_app.sh verify_isolation.sh templates/app.service templates/caddy-site) do
+    for file <-
+          ~w(provision_app.sh verify_isolation.sh templates/app.service templates/caddy-site) do
       source = Path.join([Application.app_dir(:code_my_spec), @scripts_dir, file])
       :ok = Environments.write_file(env, Path.join("/host", file), File.read!(source))
     end

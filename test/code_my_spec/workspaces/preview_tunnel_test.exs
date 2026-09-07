@@ -51,16 +51,14 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       params = Jason.decode!(body)
       send(test_pid, {:cloudflare, conn.request_path, params})
 
-      cond do
-        String.contains?(conn.request_path, "cfd_tunnel") ->
-          Req.Test.json(conn, %{
-            "success" => true,
-            "errors" => [],
-            "result" => %{"id" => @tunnel_id}
-          })
-
-        true ->
-          Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+      if String.contains?(conn.request_path, "cfd_tunnel") do
+        Req.Test.json(conn, %{
+          "success" => true,
+          "errors" => [],
+          "result" => %{"id" => @tunnel_id}
+        })
+      else
+        Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
       end
     end)
   end

@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
       then_ "and the record does not carry it either", context do
         agents = Fixtures.list_agents(context.scope)
 
-        assert length(agents) > 0,
+        assert agents != [],
                "no agent was recorded, so there is no record to check"
 
         for agent <- agents do

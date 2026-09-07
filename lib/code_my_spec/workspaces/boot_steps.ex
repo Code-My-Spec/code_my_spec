@@ -36,7 +36,14 @@ defmodule CodeMySpec.Workspaces.BootSteps do
 
   @total 6
 
-  @type step :: :starting_database | :generating | :reusing | :fetching_deps | :migrating | :starting_harness | :starting_app
+  @type step ::
+          :starting_database
+          | :generating
+          | :reusing
+          | :fetching_deps
+          | :migrating
+          | :starting_harness
+          | :starting_app
 
   @spec steps() :: [map()]
   def steps, do: @steps

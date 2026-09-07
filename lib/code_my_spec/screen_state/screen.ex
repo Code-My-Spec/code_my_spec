@@ -15,6 +15,8 @@ defmodule CodeMySpec.ScreenState.Screen do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
+  @type t :: %__MODULE__{}
+
   schema "screen_states" do
     # Shut. The panels are furniture around a conversation, and a screen that
     # opens with three panes open has decided for somebody what they came for.

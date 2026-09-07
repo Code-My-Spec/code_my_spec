@@ -88,11 +88,9 @@ defmodule CodeMySpec.Utils.StructIntrospector do
 
   # Get Ecto field type
   defp get_ecto_type(schema_module, field) do
-    try do
-      schema_module.__schema__(:type, field)
-    rescue
-      _ -> :any
-    end
+    schema_module.__schema__(:type, field)
+  rescue
+    _ -> :any
   end
 
   # Build comprehensive field specifications

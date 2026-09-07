@@ -197,7 +197,6 @@ defmodule CodeMySpec.Provisioning.SopsTest do
     dir
     |> Path.join("**/*")
     |> Path.wildcard()
-    |> Enum.filter(&File.regular?/1)
-    |> Enum.filter(&(File.read!(&1) =~ needle))
+    |> Enum.filter(&(File.regular?(&1) && File.read!(&1) =~ needle))
   end
 end

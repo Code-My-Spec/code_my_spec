@@ -154,8 +154,7 @@ defmodule CodeMySpec.CodeMode.Catalog do
   def out_of_scope(registered, allowed) do
     registered
     |> Enum.map(& &1.name())
-    |> Enum.reject(&Map.has_key?(@excluded, &1))
-    |> Enum.reject(&(&1 in allowed))
+    |> Enum.reject(&(Map.has_key?(@excluded, &1) or &1 in allowed))
     |> Enum.sort()
   end
 
