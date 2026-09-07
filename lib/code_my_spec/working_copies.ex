@@ -593,7 +593,7 @@ defmodule CodeMySpec.WorkingCopies do
   # to know about devices, and the useful thing to tell it is to update — not to
   # write a row that nothing can attribute and that `location/1` cannot answer
   # for.
-  defp create(project_id, label, device, working_copy_id \\ nil) do
+  defp create(project_id, label, device, working_copy_id) do
     case device_id(device) do
       nil ->
         {:error, :no_device}
@@ -998,6 +998,8 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
+  def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
   # Offboarding is the one operation that should release the machine's channel
   # and watchers, and it was the one that did not.
   #
@@ -1023,8 +1025,6 @@ defmodule CodeMySpec.WorkingCopies do
       _ -> :ok
     end
   end
-
-  def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
 
   @doc """
   Make a working copy for this project and staff it.
