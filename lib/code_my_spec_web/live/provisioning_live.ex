@@ -416,7 +416,18 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </div>
       </section>
 
-      <ol class="steps steps-vertical w-full">
+      <%!-- DaisyUI's `.steps` base rule is horizontal-first: `overflow: hidden`
+      plus an `overflow-x: auto` override, so a horizontal list clips vertical
+      spillover and scrolls sideways. `.steps-vertical` only flips
+      `grid-auto-flow` — it never resets that inherited `overflow-y: hidden`,
+      so a vertical list this tall clips itself, silently, with every step's
+      real content still in the DOM and readable as text. Confirmed live:
+      every step's card existed with the right text, but nothing between
+      "Domain" and the dedicated "Secrets" section ever painted a pixel.
+      `overflow-visible` here is a Tailwind *utility*, which sits in a later
+      cascade layer than DaisyUI's *component* classes, so it wins without
+      needing `!important`. --%>
+      <ol class="steps steps-vertical w-full overflow-visible">
         <li
           :for={step <- @plan}
           data-test="setup-step"
