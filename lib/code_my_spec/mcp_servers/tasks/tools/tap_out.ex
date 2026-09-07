@@ -48,5 +48,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   defp resolve_session(_scope, _),
     do:
       {:error,
-       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
+       "`tap_out` is built on a Claude Code session — it writes the pending " <>
+         "request into `session.state` — and an agent we run has no session to " <>
+         "write into. So this is not something you can call yet, and not " <>
+         "something a different spelling or a session id will fix.\n\n" <>
+         "If you want out of the loop, say so in your reply and stop. A human " <>
+         "reads that; nothing here does."}
 end

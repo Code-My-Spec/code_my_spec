@@ -50,7 +50,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents do
   defp resolve_session(_scope, _),
     do:
       {:error,
-       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
+       "No session_id and no agent id on this call, so there is nothing to act on.\n\n" <>
+         "If you are Claude Code: `register_session` with this conversation's id " <>
+         "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
+         "If you are an agent we run: your id travels on the connection and you " <>
+         "cannot supply it — this is a harness fault, not something to retry or " <>
+         "ask a person about. Report it with `create_issue` and carry on."}
 
   defp format([], _session), do: "No registered sub-agents on this session."
 
