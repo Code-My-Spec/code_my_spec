@@ -103,8 +103,38 @@ defmodule CodeMySpec.McpServers.CodeMode do
   def machine_tool_names(scope, allowed \\ nil) do
     scope
     |> machine_tools()
-    |> Enum.filter(&(is_nil(allowed) or &1 in allowed))
+    |> Enum.filter(&permitted?(&1, allowed))
   end
+
+  # The agent's list is about *our* tools, and this filters the *machine's*.
+  #
+  # Those are two vocabularies with nothing in common, so filtering one by the
+  # other let exactly one thing through: nothing. An agent with no list got
+  # every browser tool and an agent with any list got none — and the one whose
+  # entire job is a browser had a list. On 2026-09-07 the war-epic QA agent's
+  # browser sandbox bound 27 project tools, the exclusion stubs, and not one of
+  # the 85 browser tools its machine was reporting as `ready`.
+  #
+  # So the browser is a capability rather than 85 names. `@browser_capability`
+  # in the agent's list grants the machine's catalog whole, which is the only
+  # useful grain: the names are published by the machine, change when the
+  # browser server changes, and a role that may drive a browser may drive it.
+  #
+  # Per-name grants still work — a name that matches is still permitted — so a
+  # future "this agent may only read the page" stays expressible without
+  # unpicking this.
+  @browser_capability "browser"
+
+  @doc "The token that grants an agent the machine's browser tools."
+  @spec browser_capability() :: String.t()
+  def browser_capability, do: @browser_capability
+
+  defp permitted?(_name, nil), do: true
+
+  defp permitted?(name, allowed) when is_list(allowed),
+    do: @browser_capability in allowed or name in allowed
+
+  defp permitted?(_name, _allowed), do: false
 
   # The tools that live on the agent's machine — a browser, today.
   #

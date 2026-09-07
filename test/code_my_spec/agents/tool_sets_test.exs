@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.ToolSets
+  alias CodeMySpec.McpServers.CodeMode
   alias CodeMySpec.McpServers.ScriptableTools
 
   @roles [:qa, :coding, :product]
@@ -28,7 +29,12 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
 
   for role <- @roles do
     test "every tool granted to #{role} exists", %{real: real} do
-      granted = ToolSets.for_role(unquote(role))
+      # `browser` is a capability, not a tool. The machine publishes its own
+      # browser tool names and they are its business, so the grant is "may drive
+      # the browser" rather than 85 names that change when the browser server
+      # does — see `McpServers.CodeMode.browser_capability/0`. It is excused
+      # here by name so a *typo* in a real tool still fails this.
+      granted = ToolSets.for_role(unquote(role)) -- [CodeMode.browser_capability()]
       missing = Enum.reject(granted, &MapSet.member?(real, &1))
 
       assert missing == [],

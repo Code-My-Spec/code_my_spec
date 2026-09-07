@@ -27,6 +27,13 @@ defmodule CodeMySpec.Agents.ToolSets do
   # against a story it is testing, and nothing that edits the story itself: a
   # QA agent that can rewrite a criterion can make a failing run pass without
   # anybody deciding to.
+  #
+  # `browser` is a capability, not a tool. The machine publishes 85 browser
+  # tools and their names are its business, so the grant is "may drive the
+  # browser" — see `McpServers.CodeMode.browser_capability/0`. Without it a QA
+  # agent's browser sandbox binds nothing, which is what it did until
+  # 2026-09-07: an agent whose whole job is browser testing, with a machine
+  # reporting `ready`, calling into an empty catalog.
   @qa ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -36,11 +43,17 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_knowledge read_knowledge semantic_search
     list_tasks list_session_subagents
     web_search web_fetch
+    browser
   )
 
   # Writing code against a spec, and reading everything that says what the spec
   # is. No issue triage and no QA submission: a coding agent that can resolve
   # the issue it was given is grading its own work.
+  #
+  # `browser` for the same reason QA has it: work on a LiveView is checked by
+  # looking at it, and the `code-writer` agent type has carried browser tools
+  # since before roles existed. Product does not — it writes specs, and a spec
+  # is not verified by driving a page.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -52,6 +65,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     read_project_file write_project_file
     list_tasks clear_problems list_problems
     web_search web_fetch
+    browser
   )
 
   # Shaping what gets built, and never building it. The product half of the
