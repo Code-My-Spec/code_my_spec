@@ -64,6 +64,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
 
   defp render(story, epic) do
     Response.tool()
-    |> Response.text("Story \"#{story.title}\" (ID: #{story.id}) moved into epic \"#{epic.name}\".")
+    |> Response.text(~s[Story "#{story.title}" (ID: #{story.id}) moved into epic "#{epic.name}".])
   end
 end

@@ -418,8 +418,8 @@ defmodule CodeMySpecWeb.UserAuth do
     conn
     |> put_resp_header(
       "www-authenticate",
-      "Bearer realm=\"#{resource}\", error=\"#{error_code}\", " <>
-        "error_description=\"#{error_description}\", resource_metadata=\"#{resource_metadata}\""
+      ~s(Bearer realm="#{resource}", error="#{error_code}", ) <>
+        ~s(error_description="#{error_description}", resource_metadata="#{resource_metadata}")
     )
     |> put_status(:unauthorized)
     |> json(%{

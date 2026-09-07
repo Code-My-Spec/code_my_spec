@@ -321,7 +321,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "If that returns straight away and still says `spex: stale`, nothing was running: " <>
       "start one with " <>
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/run " <>
-      "-H 'content-type: application/json' -d '{\"source\":\"spex\"}'`, in the " <>
+      ~s(-H 'content-type: application/json' -d '{"source":"spex"}'`, in the ) <>
       "background — a sweep takes several minutes."
   end
 
@@ -329,7 +329,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     "Wait for the analyzers to finish, then evaluate this requirement again. Both " <>
       "endpoints are on the harness and name the working copy — " <>
       "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` to wait for a " <>
-      "run, and `.../analysis/run` with `{\"source\":\"spex\"}` to start one when the " <>
+      ~s(run, and `.../analysis/run` with `{"source":"spex"}` to start one when the ) <>
       "wait returns immediately and nothing has changed. The id is in " <>
       "`.cms_harness.json` in the working copy."
   end

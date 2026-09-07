@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
 
   spex "Assigning a story to a new epic moves it out of the old one" do
     scenario "The story belongs only to the new epic" do
-      given_ "the story \"#{@title}\" belongs to epic \"Political Systems\"", context do
+      given_ ~s(the story "#{@title}" belongs to epic "Political Systems"), context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, story_response, _frame} =

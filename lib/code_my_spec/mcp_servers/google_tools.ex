@@ -82,7 +82,10 @@ defmodule CodeMySpec.McpServers.GoogleTools do
   end
 
   def error(:not_found), do: err("Google integration not found for this user.")
-  def error(:no_refresh_token), do: err("Google token expired and no refresh token is stored. Reconnect Google.")
+
+  def error(:no_refresh_token),
+    do: err("Google token expired and no refresh token is stored. Reconnect Google.")
+
   def error(:no_working_dir), do: err("No working directory resolved for this request.")
   def error(:unauthorized), do: err("Unauthorized: could not resolve a project scope.")
   def error(:no_urls), do: err("No URLs provided for inspection.")
@@ -97,12 +100,18 @@ defmodule CodeMySpec.McpServers.GoogleTools do
       )
 
   def error({:invalid_data_state, value}),
-    do: err("Invalid data_state #{inspect(value)}. Use \"all\" or \"final\".")
+    do: err(~s(Invalid data_state #{inspect(value)}. Use "all" or "final".))
 
   def error(:empty_funnel_steps), do: err("funnel_steps must contain at least one step.")
-  def error({:invalid_funnel_step, i}), do: err("Funnel step #{i} must contain either a \"filter_expression\" or an \"event\" key.")
-  def error(:invalid_filters), do: err("Invalid filters: expected a non-empty list of filter objects.")
-  def error(:invalid_filter_shape), do: err("Each filter must have \"dimension\", \"operator\", and \"expression\" keys.")
+
+  def error({:invalid_funnel_step, i}),
+    do: err(~s(Funnel step #{i} must contain either a "filter_expression" or an "event" key.))
+
+  def error(:invalid_filters),
+    do: err("Invalid filters: expected a non-empty list of filter objects.")
+
+  def error(:invalid_filter_shape),
+    do: err(~s(Each filter must have "dimension", "operator", and "expression" keys.))
 
   def error(:no_developer_token),
     do:

@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.Init do
   @doc "Returns the ordered list of init step modules."
   def steps, do: @steps
 
-  @doc "Find a step module by its derived ID (e.g. \"auth\", \"phoenix_project\")."
+  @doc ~s[Find a step module by its derived ID (e.g. "auth", "phoenix_project").]
   def find_step(id) do
     Enum.find(@steps, fn mod -> step_id(mod) == id end)
   end
@@ -100,13 +100,14 @@ defmodule CodeMySpec.AgentTasks.Init do
           {mod, {:not_done, detail}} -> "**Next**: #{step_name(mod)} — #{detail}"
         end
 
-      {:ok, :invalid, """
-      # Init Progress: #{done}/#{total}
+      {:ok, :invalid,
+       """
+       # Init Progress: #{done}/#{total}
 
-      #{render_checklist(evaluated)}
+       #{render_checklist(evaluated)}
 
-      #{next_action}
-      """}
+       #{next_action}
+       """}
     end
   end
 
