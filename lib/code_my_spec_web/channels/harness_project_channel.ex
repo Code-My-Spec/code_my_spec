@@ -494,11 +494,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     scope = socket.assigns.scope
     port = msg["port"]
 
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Phoenix.Channel.reply(ref, decision_reply(hook, scope, payload, port))
-    end)
-
-    {:noreply, socket}
+    {:noreply,
+     reply_async(socket, ref, {"decision", hook}, fn ->
+       decision_reply(hook, scope, payload, port)
+     end)}
   end
 
   # A skill invocation for the working copy this channel serves — `4396345b`.
@@ -512,11 +511,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
 
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Phoenix.Channel.reply(ref, skill_reply(scope, params))
-    end)
-
-    {:noreply, socket}
+    {:noreply, reply_async(socket, ref, "skill_start", fn -> skill_reply(scope, params) end)}
   end
 
   # What an analyzer printed on the machine that has the working copy.
@@ -542,11 +537,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
 
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Phoenix.Channel.reply(ref, result_reply(scope, source, payload))
-    end)
-
-    {:noreply, socket}
+    {:noreply,
+     reply_async(socket, ref, {"analysis_result", source}, fn ->
+       result_reply(scope, source, payload)
+     end)}
   end
 
   # The agent's own `mix test`, routed through here so it counts.
@@ -569,11 +563,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
 
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Phoenix.Channel.reply(ref, run_for_agent(scope, source, args))
-    end)
-
-    {:noreply, socket}
+    {:noreply,
+     reply_async(socket, ref, {"analysis_run", source}, fn ->
+       run_for_agent(scope, source, args)
+     end)}
   end
 
   # Wait until this project's analyzers are idle, then report.
@@ -590,16 +583,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
 
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      result = CodeMySpec.Analysis.await_all(scope, timeout: :timer.minutes(20))
-
-      Phoenix.Channel.reply(
-        ref,
+    reply =
+      fn ->
+        result = CodeMySpec.Analysis.await_all(scope, timeout: :timer.minutes(20))
         {:ok, %{"state" => to_string(result), "summary" => wait_summary(scope)}}
-      )
-    end)
+      end
 
-    {:noreply, socket}
+    {:noreply, reply_async(socket, ref, "analysis_wait", reply)}
   end
 
   # The harness's answer to a filesystem request. See `handle_call/3` below.
@@ -936,27 +926,80 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # nothing can recover from.
   defp decode_stop_result(other), do: {:error, {:unexpected_stop_result, other}}
 
-  # Always answers, including when the decision raises.
+  # Every deferred reply on this channel, and the promise that one arrives.
   #
-  # Deciding inline, a crash took the channel down and the harness saw the
-  # socket close — bad, but loud. From a task it would kill nothing and send
-  # nothing, and the harness would sit out its full decision timeout on every
-  # turn, which reads as latency rather than as a crash. This is the hot path of
-  # every agent turn; silence is the one answer it must never give.
+  # Five handlers answer from a task rather than inline, because the work takes
+  # longer than the channel can be held for — a decision, a skill, a suite run,
+  # a 20-minute analyzer wait. `socket_ref/1` is what lets the answer outlive
+  # the call that asked for it.
+  #
+  # Silence is the one answer they must never give. Deciding inline, a crash
+  # took the channel down and the harness saw the socket close — bad, but loud.
+  # From an unwatched task it kills nothing and sends nothing, and the harness
+  # sits out its full timeout on every turn, which reads as latency rather than
+  # as a crash.
+  #
+  # Three of them bought that promise with a blanket `rescue` around the reply
+  # function. It was the wrong instrument twice over. It caught only what raised
+  # *inside* that function, so a task killed by its supervisor, an exit, or a
+  # throw still answered nothing — and the ownership error this found in testing
+  # is exactly that shape. And a rescue that turns every exception into
+  # `"decision_crashed"` is indistinguishable from a decision that was made.
+  #
+  # The channel monitors what it starts instead. A task that ends any way but
+  # `:normal` is answered by the process that is already watching it, which
+  # covers every way of dying rather than one, and leaves the reply functions
+  # free to return error tuples for the failures they actually have.
+  defp reply_async(socket, ref, label, fun) do
+    CodeMySpec.TaskSupervisor
+    |> Task.Supervisor.start_child(fn -> Phoenix.Channel.reply(ref, fun.()) end)
+    |> case do
+      {:ok, pid} ->
+        monitor = Process.monitor(pid)
+        assign(socket, :pending_replies, Map.put(pending_replies(socket), monitor, {ref, label}))
+
+      # No task, so nothing will ever reply and nothing is watching. Said here
+      # rather than matched, because a channel that dies for want of a task
+      # takes the harness's connection with it — the loudest possible version of
+      # the silence this function exists to prevent.
+      {:error, reason} ->
+        Logger.error("[HarnessProject] #{describe(label)} could not start: #{inspect(reason)}")
+
+        Phoenix.Channel.reply(ref, {:error, %{"reason" => "handler_unavailable"}})
+        socket
+    end
+  end
+
+  # The task got through `Phoenix.Channel.reply/2` — replying is the last thing
+  # it does — so the harness has its answer and there is nothing left to say.
+  defp resolve_pending(socket, monitor, :normal),
+    do: assign(socket, :pending_replies, Map.delete(pending_replies(socket), monitor))
+
+  defp resolve_pending(socket, monitor, reason) do
+    case Map.pop(pending_replies(socket), monitor) do
+      {nil, _} ->
+        socket
+
+      {{ref, label}, pending} ->
+        Logger.error("[HarnessProject] #{describe(label)} died: #{death_reason(reason)}")
+
+        Phoenix.Channel.reply(ref, {:error, %{"reason" => "handler_died", "at" => describe(label)}})
+
+        assign(socket, :pending_replies, pending)
+    end
+  end
+
+  defp pending_replies(socket), do: socket.assigns[:pending_replies] || %{}
+
+  defp describe({handler, detail}), do: "#{handler} (#{detail})"
+  defp describe(handler), do: handler
+
   defp decision_reply(hook, scope, payload, port) do
     case decide_hook(hook, scope, payload, port) do
       {:error, reason} -> {:error, %{"reason" => reason}}
       {200, body} -> {:ok, body}
       {status, body} when is_integer(status) -> {:error, %{"status" => status, "body" => body}}
     end
-  rescue
-    exception ->
-      Logger.error(
-        "[HarnessProject] #{hook} decision crashed: #{Exception.message(exception)}\n" <>
-          Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, %{"reason" => "decision_crashed", "hook" => hook}}
   end
 
   # Same crash-safety reasoning as `decision_reply/4` above: a bad skill
@@ -968,14 +1011,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {:error, reason, available} -> {:error, %{"error" => reason, "available" => available}}
       {:error, reason} -> {:error, %{"error" => reason}}
     end
-  rescue
-    exception ->
-      Logger.error(
-        "[HarnessProject] skill_start crashed: #{Exception.message(exception)}\n" <>
-          Exception.format_stacktrace(__STACKTRACE__)
-      )
-
-      {:error, %{"error" => "skill_crashed"}}
   end
 
   # Same contract as before, moved off the channel process. The two warnings
@@ -1002,14 +1037,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         Logger.warning("[HarnessProject] #{source} result rejected: #{inspect(reason)}")
         {:error, %{"reason" => inspect(reason)}}
     end
-  rescue
-    exception ->
-      Logger.error(
-        "[HarnessProject] #{source} result crashed while recording: " <>
-          Exception.message(exception)
-      )
-
-      {:error, %{"reason" => "record_crashed", "source" => source}}
   end
 
   # The harness reports outcomes the way the behaviour states them, so this only
@@ -1152,6 +1179,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.error("[HarnessProject] reconcile failed: #{inspect(reason)}")
     {:noreply, next_manifest(socket)}
   end
+
+  # A deferred reply's task, one way or another. `reply_async/4` explains why
+  # the channel watches these rather than the task guarding itself.
+  #
+  # Below the reconcile clause on purpose: that task is tracked in `:reconciling`
+  # and is not one of these, and a catch-all here would swallow its DOWN.
+  def handle_info({:DOWN, monitor, :process, _pid, reason}, socket),
+    do: {:noreply, resolve_pending(socket, monitor, reason)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -1439,13 +1474,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the banner names what broke and the first frames name where. Bounded at
   # five frames rather than unbounded, because a channel that dies in a loop
   # would otherwise fill the log with the same trace.
-  defp death_reason({exception, stacktrace}) when is_list(stacktrace) do
+  # `is_exception/1` rather than a rescue around the formatting. Not every
+  # two-tuple with a list in it is a crash, and asking whether this one is
+  # answers that up front — where a rescue answered it by trying and failing,
+  # and would have swallowed a genuine formatting bug alongside.
+  defp death_reason({exception, stacktrace})
+       when is_exception(exception) and is_list(stacktrace) do
     Exception.format_banner(:error, exception) <>
       "\n" <> Exception.format_stacktrace(Enum.take(stacktrace, 5))
-  rescue
-    # Not every two-tuple with a list in it is a crash. Anything this cannot
-    # format is still worth printing whole.
-    _ -> inspect({exception, stacktrace}, limit: :infinity, printable_limit: 2048)
   end
 
   defp death_reason(reason), do: inspect(reason, limit: :infinity, printable_limit: 2048)
