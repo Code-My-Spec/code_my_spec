@@ -140,6 +140,28 @@ defmodule CodeMySpec.Sessions do
 
   def open_task_for_agent(_scope, _agent_id), do: nil
 
+  @doc """
+  Every task an agent is actively working, across the project's active
+  sessions.
+
+  `open_task_for_agent/2` answers "does this agent hold anything" with
+  `find_value`, which stops at the first match — right for a yes/no check,
+  wrong for a count. An orchestrator can hand the same agent more than one
+  task across sessions, so this collects every match instead, filtered to
+  `:active` specifically: a `:prepared` task is queued, not underway, and
+  calling it active would claim work is happening before it has started.
+  """
+  @spec list_active_tasks_for_agent(Scope.t(), String.t()) :: [Task.t()]
+  def list_active_tasks_for_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+    scope
+    |> list_active_sessions()
+    |> Enum.flat_map(fn session ->
+      Enum.filter(session.tasks || [], &(&1.agent_id == agent_id and &1.status == :active))
+    end)
+  end
+
+  def list_active_tasks_for_agent(_scope, _agent_id), do: []
+
   @doc "Find an active session by external conversation ID (Claude session ID)."
   def get_by_external_id(%Scope{} = scope, external_id) when is_binary(external_id) do
     Session

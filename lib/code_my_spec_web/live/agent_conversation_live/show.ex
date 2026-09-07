@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
@@ -152,6 +153,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # the remote path broadcast on, deliberately in the same shape so a
       # subscriber cannot tell which machine ran the tool.
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{scope.active_project_id}")
+
+      # Each agent's task line is a live view of the same sessions the Sessions
+      # page watches — without this, starting or finishing a task only shows up
+      # here after something else happens to cause a re-render.
+      Sessions.subscribe_sessions(scope)
     end
 
     # Computed once and reused: `team_status/3` cross-references the same
@@ -654,10 +660,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     scope
     |> Rows.list(project, now)
-    |> Enum.map(&copy_status(&1, now, pending_sessions))
+    |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
   end
 
-  defp copy_status(row, now, pending_sessions) do
+  defp copy_status(row, scope, now, pending_sessions) do
     agents =
       Enum.map(row.agents, fn agent ->
         chat = Enum.find(row.chats, &(&1.agent.id == agent.id))
@@ -667,11 +673,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           agent: agent,
           chat: chat,
           liveness: Liveness.agent(agent, now),
-          question?: not is_nil(session) and MapSet.member?(pending_sessions, session)
+          question?: not is_nil(session) and MapSet.member?(pending_sessions, session),
+          task_label: task_label(scope, agent.id)
         }
       end)
 
     %{row: row, agents: agents, question?: Enum.any?(agents, & &1.question?)}
+  end
+
+  # What this agent is doing right now, in as few words as the number of
+  # tasks allows. One task names itself — the requirement is the one thing
+  # worth reading at a glance. More than one names only the count: two
+  # truncated task names in the line-and-a-half this panel affords is harder
+  # to read than either name alone, and the fast path this panel exists for
+  # is "click through to find out", not "read every title here".
+  defp task_label(scope, agent_id) do
+    case Sessions.list_active_tasks_for_agent(scope, agent_id) do
+      [] -> nil
+      [task] -> task.requirement_name || "1 task"
+      tasks -> "#{length(tasks)} tasks"
+    end
   end
 
   # What is waiting on this person anywhere on the project, minus what this
@@ -938,8 +959,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # The team-status panel's whole claim is "what is running, and who needs
   # you, right now" — the same news `WorkingCopyLive.Index` redraws on.
+  # `:session_changed` is in the mix too: it is what fires when a task
+  # activates or completes, which is the only way an agent's task line ever
+  # moves without somebody reloading the page.
   def handle_info({event, _payload}, socket)
-      when event in [:agents_reported, :agent_started, :agent_stopped] do
+      when event in [:agents_reported, :agent_started, :agent_stopped, :session_changed] do
     {:noreply, refresh_team_status(socket)}
   end
 
@@ -1429,7 +1453,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             ]}
           >
             <span class="truncate">{label}</span>
-            <.panel_attention :if={key == :activity} waiting={@waiting} />
+            <.panel_attention
+              :if={key == :activity}
+              alert?={@waiting != []}
+            />
             <.panel_offer :if={key == :dynamic} offer={@offer} />
           </button>
         </div>
@@ -1449,7 +1476,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_story={@dynamic_story}
           offer={@offer}
           activity={@activity}
-          waiting={@waiting}
           copies={@copies}
           project_id={@project_id}
           preview_src={@preview_src}
@@ -1502,7 +1528,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               }
             />
             <span class="flex-1 text-left">{label}</span>
-            <.panel_attention :if={key == :activity} waiting={@waiting} />
+            <.panel_attention
+              :if={key == :activity}
+              alert?={@waiting != []}
+            />
             <.panel_offer :if={key == :dynamic} offer={@offer} />
           </button>
         </div>
@@ -1538,7 +1567,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
               activity={@activity}
-              waiting={@waiting}
               copies={@copies}
               project_id={@project_id}
               preview_src={@preview_src}
@@ -1590,13 +1618,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     """
   end
 
-  attr :waiting, :list, required: true
+  # Used to carry a raw count — `{length(@waiting)}` — and `@waiting` is
+  # every pending question on the person's account, not this project's:
+  # `Notifications.list_pending_question_requests_for_user/1` has no
+  # project filter at all, so the number this printed had no ceiling and no
+  # relationship to anything on this screen. Reduced to presence only,
+  # because *some* signal has to reach a closed tab — 2953 exists because a
+  # question can come from a copy with no tracked agent at all (nothing an
+  # asked-for scope can name), so this can't be swapped for the per-agent
+  # tree's own `question?` flags the way the panel body was.
+  attr :alert?, :boolean, required: true
 
   defp panel_attention(assigns) do
     ~H"""
-    <span :if={@waiting != []} data-test="panel-attention" class="badge badge-xs badge-warning">
-      {length(@waiting)}
-    </span>
+    <span
+      :if={@alert?}
+      data-test="panel-attention"
+      class="size-1.5 shrink-0 rounded-full bg-warning"
+    />
     """
   end
 
@@ -1606,7 +1645,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :dynamic_story, :any, required: true
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
-  attr :waiting, :list, required: true
   attr :copies, :list, required: true
   attr :project_id, :string, required: true
   attr :preview_src, :string, default: nil
@@ -1750,36 +1788,43 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <span class="shrink-0 opacity-60">{copy.row.liveness.label}</span>
         </div>
 
-        <.link
-          :for={a <- copy.agents}
-          :if={a.chat}
-          navigate={~p"/app/projects/#{@project_id}/agent-conversation/#{a.chat.conversation.id}"}
-          data-test="team-agent"
-          data-agent-id={a.agent.id}
-          data-question={to_string(a.question?)}
-          class={[
-            "flex items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
-            a.question? && "font-semibold text-warning"
-          ]}
-        >
-          <.icon
-            :if={a.question?}
-            name="hero-question-mark-circle-solid"
-            class="size-3.5 shrink-0"
-          />
-          <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-          <span class="shrink-0 opacity-60">{a.liveness.label}</span>
-        </.link>
+        <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
+          <.link
+            :if={a.chat}
+            navigate={~p"/app/projects/#{@project_id}/agent-conversation/#{a.chat.conversation.id}"}
+            data-question={to_string(a.question?)}
+            class={[
+              "flex items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
+              a.question? && "font-semibold text-warning"
+            ]}
+          >
+            <.icon
+              :if={a.question?}
+              name="hero-question-mark-circle-solid"
+              class="size-3.5 shrink-0"
+            />
+            <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+            <span class="shrink-0 opacity-60">{a.liveness.label}</span>
+          </.link>
 
-        <div
-          :for={a <- copy.agents}
-          :if={!a.chat}
-          data-test="team-agent"
-          data-agent-id={a.agent.id}
-          class="flex items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
-        >
-          <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-          <span class="shrink-0">{a.liveness.label}</span>
+          <div
+            :if={!a.chat}
+            class="flex items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
+          >
+            <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+            <span class="shrink-0">{a.liveness.label}</span>
+          </div>
+
+          <%!-- One name, or a count — never both truncated names on one line.
+          One task is the thing worth reading here; more than one is a reason
+          to click through rather than a list to skim in a line-and-a-half. --%>
+          <p
+            :if={a.task_label}
+            data-test="team-agent-task"
+            class="truncate pl-9 text-[11px] opacity-50"
+          >
+            {a.task_label}
+          </p>
         </div>
       </div>
     </div>
