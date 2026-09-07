@@ -52,9 +52,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
       copies ->
         running = running_by_copy(scope)
 
-        copies
-        |> Enum.map(&line(&1, Map.get(running, &1.id, [])))
-        |> Enum.join("\n")
+        Enum.map_join(copies, "\n", &line(&1, Map.get(running, &1.id, [])))
     end
   end
 
@@ -77,9 +75,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
   defp describe_agents([]), do: "nothing running"
 
   defp describe_agents(agents) do
-    agents
-    |> Enum.map(&"#{&1.role} (#{&1.status})")
-    |> Enum.join(", ")
+    Enum.map_join(agents, ", ", &"#{&1.role} (#{&1.status})")
   end
 
   defp running_by_copy(scope) do

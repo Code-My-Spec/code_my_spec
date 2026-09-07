@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.EpicHelpers do
 
     # The half that does not exist yet. Named rather than worked around: this is
     # the call the implementation has to satisfy.
-    apply(CodeMySpec.EpicDispatch, :propose, [context.scope, epic_id])
+    CodeMySpec.EpicDispatch.propose(context.scope, epic_id)
 
     epic_id
   end
@@ -140,14 +140,14 @@ defmodule CodeMySpecSpex.EpicHelpers do
   @doc "A dispatched agent asking the user something."
   @spec agent_asks(map(), String.t()) :: :ok
   def agent_asks(context, text) do
-    apply(CodeMySpec.EpicDispatch, :record_question, [context.scope, context.epic, text])
+    CodeMySpec.EpicDispatch.record_question(context.scope, context.epic, text)
     :ok
   end
 
   @doc "A dispatched agent stopping without finishing."
   @spec agent_fails(map(), String.t()) :: :ok
   def agent_fails(context, reason) do
-    apply(CodeMySpec.EpicDispatch, :record_failure, [context.scope, context.epic, reason])
+    CodeMySpec.EpicDispatch.record_failure(context.scope, context.epic, reason)
     :ok
   end
 
@@ -160,7 +160,7 @@ defmodule CodeMySpecSpex.EpicHelpers do
   """
   @spec progress(map()) :: map()
   def progress(context) do
-    apply(CodeMySpec.EpicDispatch, :progress, [context.scope])
+    CodeMySpec.EpicDispatch.progress(context.scope)
   end
 
   defp extract_id(response) do

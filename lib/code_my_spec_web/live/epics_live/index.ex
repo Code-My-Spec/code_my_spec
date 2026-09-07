@@ -190,25 +190,26 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
     scope = socket.assigns.scope
 
     case Epics.get_epic(scope, id) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Epic not found")}
+      nil -> {:noreply, put_flash(socket, :error, "Epic not found")}
+      epic -> update_epic_readiness(socket, scope, epic, ready?)
+    end
+  end
 
-      epic ->
-        case Epics.set_epic_stories_ready(scope, epic, ready?) do
-          {:ok, count} ->
-            verb = if ready?, do: "released for development", else: "parked"
+  defp update_epic_readiness(socket, scope, epic, ready?) do
+    case Epics.set_epic_stories_ready(scope, epic, ready?) do
+      {:ok, count} ->
+        verb = if ready?, do: "released for development", else: "parked"
 
-            {:noreply,
-             socket
-             |> put_flash(
-               :info,
-               "#{count} #{noun(count)} in #{epic.name} #{verb}. Stories filed here later are unaffected."
-             )
-             |> load_board(scope)}
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "#{count} #{noun(count)} in #{epic.name} #{verb}. Stories filed here later are unaffected."
+         )
+         |> load_board(scope)}
 
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Could not update: #{inspect(reason)}")}
-        end
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not update: #{inspect(reason)}")}
     end
   end
 
@@ -341,57 +342,57 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={!@error && @project}>
-        <.header>
-          Epics
-          <:subtitle>
-            Drag stories between the columns to file them. Epics organize work —
-            filing a story does not release it; the release button does.
-          </:subtitle>
-          <:actions>
-            <.button patch={path(@socket, ~p"/app/projects/#{@slug}/epics/new")} class="btn btn-primary">
-              <.icon name="hero-plus" /> New epic
-            </.button>
-          </:actions>
-        </.header>
+    <div :if={!@error && @project}>
+      <.header>
+        Epics
+        <:subtitle>
+          Drag stories between the columns to file them. Epics organize work —
+          filing a story does not release it; the release button does.
+        </:subtitle>
+        <:actions>
+          <.button patch={path(@socket, ~p"/app/projects/#{@slug}/epics/new")} class="btn btn-primary">
+            <.icon name="hero-plus" /> New epic
+          </.button>
+        </:actions>
+      </.header>
 
-        <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <%!-- Epics stay in view while the unfiled column scrolls, so a drag
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <%!-- Epics stay in view while the unfiled column scrolls, so a drag
                 target is always on screen. --%>
-          <div class="flex flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[85vh] lg:overflow-y-auto">
-            <div class="local-sidebar-eyebrow">// epics</div>
+        <div class="flex flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[85vh] lg:overflow-y-auto">
+          <div class="local-sidebar-eyebrow">// epics</div>
 
-            <div :if={@epics == []} class="card bg-base-200" data-test="empty-state">
-              <div class="card-body">
-                <h2 class="card-title text-base">No epics yet</h2>
-                <p class="text-sm">Create one, then drag stories into it.</p>
-              </div>
+          <div :if={@epics == []} class="card bg-base-200" data-test="empty-state">
+            <div class="card-body">
+              <h2 class="card-title text-base">No epics yet</h2>
+              <p class="text-sm">Create one, then drag stories into it.</p>
             </div>
+          </div>
 
-            <div
-              :for={epic <- @epics}
-              class={[
-                "card bg-base-100 border",
-                epic.status == :proposed && "border-primary",
-                epic.status != :proposed && "border-base-300"
-              ]}
-              data-test="epic"
-              data-epic-id={epic.id}
-              data-epic-status={epic.status}
-            >
-              <div class="card-body p-4 gap-3">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <h3 class="font-semibold truncate">{epic.name}</h3>
-                    <p class="text-xs opacity-70">
-                      {length(epic_stories(epic))} stories · {ready_count(epic)} ready
-                    </p>
+          <div
+            :for={epic <- @epics}
+            class={[
+              "card bg-base-100 border",
+              epic.status == :proposed && "border-primary",
+              epic.status != :proposed && "border-base-300"
+            ]}
+            data-test="epic"
+            data-epic-id={epic.id}
+            data-epic-status={epic.status}
+          >
+            <div class="card-body p-4 gap-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <h3 class="font-semibold truncate">{epic.name}</h3>
+                  <p class="text-xs opacity-70">
+                    {length(epic_stories(epic))} stories · {ready_count(epic)} ready
+                  </p>
 
-                    <%!-- What is assigned and what is not. Story 895 put the
+                  <%!-- What is assigned and what is not. Story 895 put the
                     binding on *stories* — an epic carries no working copy of
                     its own, and its column was dropped when the axis moved
                     down — so this counts its members rather than reading a
@@ -405,227 +406,235 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
 
                     Unassigned is not a gap to fill: it is the shared backlog
                     every working copy is offered. --%>
-                    <div
-                      data-test="epic-assignment"
-                      data-assigned-count={assigned_count(epic)}
-                      class="mt-1 flex flex-wrap items-center gap-1"
-                    >
-                      <%= case {assigned_count(epic), length(epic_stories(epic))} do %>
-                        <% {0, 0} -> %>
-                          <span class="text-xs opacity-70">No stories yet</span>
-                        <% {0, _total} -> %>
-                          <span class="badge badge-ghost badge-sm" title="In the shared backlog — every working copy is offered these">
-                            Unassigned
-                          </span>
-                        <% {n, n} -> %>
-                          <span
-                            class="badge badge-info badge-outline badge-sm"
-                            title={"All #{n} stories are offered only to this checkout"}
-                          >
-                            {copy_names(epic)}
-                          </span>
-                        <% {n, total} -> %>
-                          <span class="badge badge-info badge-outline badge-sm" title="Offered only to this checkout">
-                            {copy_names(epic)}
-                          </span>
-                          <span class="badge badge-ghost badge-sm" title="In the shared backlog — every working copy is offered these">
-                            {total - n} unassigned
-                          </span>
-                      <% end %>
-                    </div>
+                  <div
+                    data-test="epic-assignment"
+                    data-assigned-count={assigned_count(epic)}
+                    class="mt-1 flex flex-wrap items-center gap-1"
+                  >
+                    <%= case {assigned_count(epic), length(epic_stories(epic))} do %>
+                      <% {0, 0} -> %>
+                        <span class="text-xs opacity-70">No stories yet</span>
+                      <% {0, _total} -> %>
+                        <span
+                          class="badge badge-ghost badge-sm"
+                          title="In the shared backlog — every working copy is offered these"
+                        >
+                          Unassigned
+                        </span>
+                      <% {n, n} -> %>
+                        <span
+                          class="badge badge-info badge-outline badge-sm"
+                          title={"All #{n} stories are offered only to this checkout"}
+                        >
+                          {copy_names(epic)}
+                        </span>
+                      <% {n, total} -> %>
+                        <span
+                          class="badge badge-info badge-outline badge-sm"
+                          title="Offered only to this checkout"
+                        >
+                          {copy_names(epic)}
+                        </span>
+                        <span
+                          class="badge badge-ghost badge-sm"
+                          title="In the shared backlog — every working copy is offered these"
+                        >
+                          {total - n} unassigned
+                        </span>
+                    <% end %>
+                  </div>
 
-                    <%!-- Where the work is happening. An epic dispatched with
+                  <%!-- Where the work is happening. An epic dispatched with
                     nowhere to go says so rather than looking finished: the
                     decision was the user's and it stands, but the work has not
                     started. --%>
-                    <p
-                      :if={epic.status in [:dispatched, :failed]}
-                      data-test="epic-working-copy"
-                      data-working-copy-id={List.first(epic_working_copy_ids(epic))}
-                      class="text-xs opacity-70"
-                    >
-                      <%= case epic_working_copy_ids(epic) do %>
-                        <% [] -> %>
-                          Agreed, and waiting for a checkout to build it on
-                        <% [_one] -> %>
-                          Being built on your project's checkout
-                        <% many -> %>
-                          Being built across {length(many)} checkouts
-                      <% end %>
-                    </p>
+                  <p
+                    :if={epic.status in [:dispatched, :failed]}
+                    data-test="epic-working-copy"
+                    data-working-copy-id={List.first(epic_working_copy_ids(epic))}
+                    class="text-xs opacity-70"
+                  >
+                    <%= case epic_working_copy_ids(epic) do %>
+                      <% [] -> %>
+                        Agreed, and waiting for a checkout to build it on
+                      <% [_one] -> %>
+                        Being built on your project's checkout
+                      <% many -> %>
+                        Being built across {length(many)} checkouts
+                    <% end %>
+                  </p>
 
-                    <p
-                      :if={epic.status == :failed && epic.failure_reason}
-                      data-test="epic-failure"
-                      class="text-xs text-warning"
-                    >
-                      It stopped: {epic.failure_reason}
-                    </p>
-                  </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    <.button
-                      patch={path(@socket, ~p"/app/projects/#{@slug}/epics/#{epic.slug}/edit")}
-                      class="btn btn-ghost btn-xs"
-                    >
-                      Edit
-                    </.button>
-                    <%!-- Agreeing is what starts work, and it is the only
+                  <p
+                    :if={epic.status == :failed && epic.failure_reason}
+                    data-test="epic-failure"
+                    class="text-xs text-warning"
+                  >
+                    It stopped: {epic.failure_reason}
+                  </p>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <.button
+                    patch={path(@socket, ~p"/app/projects/#{@slug}/epics/#{epic.slug}/edit")}
+                    class="btn btn-ghost btn-xs"
+                  >
+                    Edit
+                  </.button>
+                  <%!-- Agreeing is what starts work, and it is the only
                     thing that does. Offered only on an epic the agent has
                     actually put forward: a control on a draft would let work
                     start before anybody proposed it. --%>
-                    <button
-                      :if={epic.status == :proposed}
-                      type="button"
-                      phx-click="approve_epic"
-                      phx-value-id={epic.id}
-                      data-test="approve-epic"
-                      data-epic-id={epic.id}
-                      class="btn btn-primary btn-xs"
-                    >
-                      Build this
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="release_epic"
-                      phx-value-id={epic.id}
-                      data-test={"release-epic-#{epic.slug}"}
-                      class="btn btn-ghost btn-xs text-success"
-                    >
-                      Release
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="park_epic"
-                      phx-value-id={epic.id}
-                      class="btn btn-ghost btn-xs"
-                    >
-                      Park
-                    </button>
-                    <button
-                      type="button"
-                      phx-click={show_confirm("confirm-delete-epic-#{epic.id}")}
-                      class="btn btn-ghost btn-xs text-error"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <button
+                    :if={epic.status == :proposed}
+                    type="button"
+                    phx-click="approve_epic"
+                    phx-value-id={epic.id}
+                    data-test="approve-epic"
+                    data-epic-id={epic.id}
+                    class="btn btn-primary btn-xs"
+                  >
+                    Build this
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="release_epic"
+                    phx-value-id={epic.id}
+                    data-test={"release-epic-#{epic.slug}"}
+                    class="btn btn-ghost btn-xs text-success"
+                  >
+                    Release
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="park_epic"
+                    phx-value-id={epic.id}
+                    class="btn btn-ghost btn-xs"
+                  >
+                    Park
+                  </button>
+                  <button
+                    type="button"
+                    phx-click={show_confirm("confirm-delete-epic-#{epic.id}")}
+                    class="btn btn-ghost btn-xs text-error"
+                  >
+                    Delete
+                  </button>
                 </div>
-
-                <p :if={epic.description} class="text-sm opacity-70">{epic.description}</p>
-
-                <ul
-                  id={"epic-#{epic.id}-dropzone"}
-                  phx-hook=".EpicBoard"
-                  data-epic-id={epic.id}
-                  class="min-h-14 rounded border border-dashed border-base-300 p-2 space-y-2"
-                >
-                  <li
-                    :for={story <- epic_stories(epic)}
-                    id={"epic-#{epic.id}-story-#{story.id}"}
-                    data-story-id={story.id}
-                    class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
-                  >
-                    <span class="truncate text-sm">{story.title}</span>
-                    <.story_readiness_toggle story={story} />
-                  </li>
-                </ul>
               </div>
-            </div>
-          </div>
 
-          <div class="flex flex-col gap-4">
-            <div class="local-sidebar-eyebrow">// unfiled stories</div>
+              <p :if={epic.description} class="text-sm opacity-70">{epic.description}</p>
 
-            <div class="card bg-base-100 border border-base-300">
-              <div class="card-body p-4">
-                <p class="text-xs opacity-70 mb-2">
-                  Stories that belong to no epic. Drag one into an epic to file it.
-                </p>
-
-                <ul
-                  id="unassigned-dropzone"
-                  phx-hook=".EpicBoard"
-                  data-epic-id=""
-                  class="min-h-24 max-h-[60vh] overflow-y-auto rounded border border-dashed border-base-300 p-2 space-y-2"
+              <ul
+                id={"epic-#{epic.id}-dropzone"}
+                phx-hook=".EpicBoard"
+                data-epic-id={epic.id}
+                class="min-h-14 rounded border border-dashed border-base-300 p-2 space-y-2"
+              >
+                <li
+                  :for={story <- epic_stories(epic)}
+                  id={"epic-#{epic.id}-story-#{story.id}"}
+                  data-story-id={story.id}
+                  class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
                 >
-                  <li
-                    :for={story <- @unassigned}
-                    id={"unassigned-story-#{story.id}"}
-                    data-story-id={story.id}
-                    class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
-                  >
-                    <span class="truncate text-sm">{story.title}</span>
-                    <.story_readiness_toggle story={story} />
-                  </li>
-                </ul>
-
-                <p :if={@unassigned == []} class="text-sm opacity-60 mt-2">
-                  Every story belongs to an epic.
-                </p>
-              </div>
+                  <span class="truncate text-sm">{story.title}</span>
+                  <.story_readiness_toggle story={story} />
+                </li>
+              </ul>
             </div>
           </div>
         </div>
 
-        <%!-- Confirm dialogs live here, outside the board, on purpose. The
+        <div class="flex flex-col gap-4">
+          <div class="local-sidebar-eyebrow">// unfiled stories</div>
+
+          <div class="card bg-base-100 border border-base-300">
+            <div class="card-body p-4">
+              <p class="text-xs opacity-70 mb-2">
+                Stories that belong to no epic. Drag one into an epic to file it.
+              </p>
+
+              <ul
+                id="unassigned-dropzone"
+                phx-hook=".EpicBoard"
+                data-epic-id=""
+                class="min-h-24 max-h-[60vh] overflow-y-auto rounded border border-dashed border-base-300 p-2 space-y-2"
+              >
+                <li
+                  :for={story <- @unassigned}
+                  id={"unassigned-story-#{story.id}"}
+                  data-story-id={story.id}
+                  class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
+                >
+                  <span class="truncate text-sm">{story.title}</span>
+                  <.story_readiness_toggle story={story} />
+                </li>
+              </ul>
+
+              <p :if={@unassigned == []} class="text-sm opacity-60 mt-2">
+                Every story belongs to an epic.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Confirm dialogs live here, outside the board, on purpose. The
               epics column is `lg:sticky lg:max-h-[85vh] lg:overflow-y-auto` so
               it scrolls independently of the unfiled list — and that scroll
               container clipped the dialog to the column's width, cutting the
               confirm button off the right edge. Rendering them at page level
               keeps them clear of it. --%>
-        <.confirm_dialog
-          :for={epic <- @epics}
-          id={"confirm-delete-epic-#{epic.id}"}
-          title={"Delete epic \"#{epic.name}\"?"}
-          message="The stories in it are kept — they simply become unfiled."
-          confirm_label="Delete"
-          on_confirm={JS.push("delete", value: %{id: epic.id})}
-        />
+      <.confirm_dialog
+        :for={epic <- @epics}
+        id={"confirm-delete-epic-#{epic.id}"}
+        title={"Delete epic \"#{epic.name}\"?"}
+        message="The stories in it are kept — they simply become unfiled."
+        confirm_label="Delete"
+        on_confirm={JS.push("delete", value: %{id: epic.id})}
+      />
 
-        <dialog :if={@live_action in [:new, :edit]} id="epic-form-modal" class="modal modal-open">
-          <div class="modal-box max-w-2xl">
-            <.live_component
-              module={FormComponent}
-              id={(@epic && @epic.id) || :new}
-              action={@live_action}
-              epic={@epic}
-              scope={@scope}
-              return_to={path(@socket, ~p"/app/projects/#{@slug}/epics")}
-            />
-          </div>
-          <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/epics"))}>close</button>
-          </form>
-        </dialog>
-      </div>
+      <dialog :if={@live_action in [:new, :edit]} id="epic-form-modal" class="modal modal-open">
+        <div class="modal-box max-w-2xl">
+          <.live_component
+            module={FormComponent}
+            id={(@epic && @epic.id) || :new}
+            action={@live_action}
+            epic={@epic}
+            scope={@scope}
+            return_to={path(@socket, ~p"/app/projects/#{@slug}/epics")}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/epics"))}>close</button>
+        </form>
+      </dialog>
+    </div>
 
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".EpicBoard">
-        export default {
-          mounted() {
-            this.sortable = new window.Sortable(this.el, {
-              group: "epic-board",
-              animation: 150,
-              ghostClass: "opacity-40",
-              dragClass: "shadow-2xl",
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".EpicBoard">
+      export default {
+        mounted() {
+          this.sortable = new window.Sortable(this.el, {
+            group: "epic-board",
+            animation: 150,
+            ghostClass: "opacity-40",
+            dragClass: "shadow-2xl",
 
-              // `onAdd` fires on the receiving list, so `this.el` is the
-              // destination — an epic dropzone, or the unfiled column whose
-              // data-epic-id is empty.
-              onAdd: (evt) => {
-                this.pushEvent("move_story", {
-                  story_id: evt.item.dataset.storyId,
-                  epic_id: this.el.dataset.epicId || ""
-                })
-              }
-            })
-          },
+            // `onAdd` fires on the receiving list, so `this.el` is the
+            // destination — an epic dropzone, or the unfiled column whose
+            // data-epic-id is empty.
+            onAdd: (evt) => {
+              this.pushEvent("move_story", {
+                story_id: evt.item.dataset.storyId,
+                epic_id: this.el.dataset.epicId || ""
+              })
+            }
+          })
+        },
 
-          destroyed() {
-            if (this.sortable) this.sortable.destroy()
-          }
+        destroyed() {
+          if (this.sortable) this.sortable.destroy()
         }
-      </script>
+      }
+    </script>
     """
   end
-
 end

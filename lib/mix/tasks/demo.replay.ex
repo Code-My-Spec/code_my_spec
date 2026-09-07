@@ -71,28 +71,35 @@ defmodule Mix.Tasks.Demo.Replay do
 
     File.mkdir_p!(target)
 
-    IO.puts("target=#{target}  mcp=#{mcp_url || "(filesystem only)"}  sessions=#{length(paths)}\n")
+    IO.puts(
+      "target=#{target}  mcp=#{mcp_url || "(filesystem only)"}  sessions=#{length(paths)}\n"
+    )
 
     totals =
       paths
       |> Enum.with_index(1)
-      |> Enum.reduce(%Replayer.Result{}, fn {path, i}, acc ->
-        IO.puts("[#{i}/#{length(paths)}] #{Path.basename(path)}")
-
-        case Replayer.replay(path, target, replay_opts) do
-          {:ok, result} ->
-            print_summary(result)
-            merge(acc, result)
-
-          {:error, reason} ->
-            IO.puts(:stderr, "  ✗ could not replay: #{inspect(reason)}")
-            acc
-        end
-      end)
+      |> Enum.reduce(
+        %Replayer.Result{},
+        &replay_one(&1, &2, target, replay_opts, length(paths))
+      )
 
     IO.puts("\n==== TOTAL ====")
     print_summary(totals)
     print_failures(totals)
+  end
+
+  defp replay_one({path, i}, acc, target, replay_opts, total) do
+    IO.puts("[#{i}/#{total}] #{Path.basename(path)}")
+
+    case Replayer.replay(path, target, replay_opts) do
+      {:ok, result} ->
+        print_summary(result)
+        merge(acc, result)
+
+      {:error, reason} ->
+        IO.puts(:stderr, "  ✗ could not replay: #{inspect(reason)}")
+        acc
+    end
   end
 
   defp source_cwd_opt(opts) do

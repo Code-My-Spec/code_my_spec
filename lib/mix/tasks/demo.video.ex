@@ -46,31 +46,26 @@ defmodule Mix.Tasks.Demo.Video do
   @impl Mix.Task
   def run(argv) do
     {opts, paths, _} = OptionParser.parse(argv, strict: @switches)
-    session = List.first(paths) || Mix.raise("usage: mix demo.video SESSION_PATH [--view KEY ...]")
-
-    url = resolve_view(opts[:view] || "stories")
-    output = opts[:output] || "/tmp/demo.mp4"
-    # Capture browser at native 1080p — it becomes the PiP composite background,
-    # so the UI renders crisply with no upscaling.
-    viewport = opts[:viewport] || "1920x1080"
+    cfg = resolve_opts(opts, paths)
+    url = resolve_view(cfg.view)
 
     File.rm_rf!(Path.join(@workspace, "videos"))
     File.mkdir_p!(Path.join(@workspace, "videos"))
     File.rm(@cast)
 
     env = [
-      {"CMS_DEMO_SESSION", session},
+      {"CMS_DEMO_SESSION", cfg.session},
       {"CMS_DEMO_URL", url},
-      {"CMS_DEMO_FROM", to_string(opts[:from] || 0)},
-      {"CMS_DEMO_TO", to_string(opts[:to] || "")},
-      {"CMS_DEMO_DELAY", to_string(opts[:delay] || 200)},
-      {"CMS_DEMO_PACING", opts[:pacing] || ""},
-      {"CMS_DEMO_VIEWPORT", viewport},
+      {"CMS_DEMO_FROM", to_string(cfg.from)},
+      {"CMS_DEMO_TO", to_string(cfg.to || "")},
+      {"CMS_DEMO_DELAY", to_string(cfg.delay)},
+      {"CMS_DEMO_PACING", cfg.pacing},
+      {"CMS_DEMO_VIEWPORT", cfg.viewport},
       {"CMS_DEMO_VIDEO_DIR", Path.join(@workspace, "videos")},
       {"CMS_DEMO_CAST", @cast}
     ]
 
-    Mix.shell().info("▶ recording (view=#{opts[:view] || "stories"} from=#{opts[:from] || 0} to=#{opts[:to] || "end"})")
+    Mix.shell().info("▶ recording (view=#{cfg.view} from=#{cfg.from} to=#{cfg.to || "end"})")
     sh!("node", ["record.js"], cd: @workspace, env: env)
 
     Mix.shell().info("▶ terminal cast → mp4")
@@ -80,37 +75,80 @@ defmodule Mix.Tasks.Demo.Video do
     # Force 30 fps CFR — agg→gif inherits the cast's variable timing, which
     # xfade refuses to chain across. CFR makes scenes assemble-able.
     sh!("ffmpeg", [
-      "-y", "-i", "/tmp/terminal.gif",
-      "-pix_fmt", "yuv420p",
-      "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2",
-      "-vsync", "cfr",
+      "-y",
+      "-i",
+      "/tmp/terminal.gif",
+      "-pix_fmt",
+      "yuv420p",
+      "-vf",
+      "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+      "-vsync",
+      "cfr",
       @terminal_mp4
     ])
 
     Mix.shell().info("▶ browser webm → mp4")
     [webm | _] = Path.wildcard(Path.join(@workspace, "videos/*.webm"))
+
     sh!("ffmpeg", [
-      "-y", "-i", webm,
-      "-c:v", "libx264", "-pix_fmt", "yuv420p",
-      "-vf", "fps=30",
-      "-vsync", "cfr",
+      "-y",
+      "-i",
+      webm,
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-vf",
+      "fps=30",
+      "-vsync",
+      "cfr",
       @browser_mp4
     ])
 
-    layout = opts[:layout] || "pip"
-    filter = compose_filter(layout)
-    Mix.shell().info("▶ compose (layout=#{layout}) → 1080p 16:9 → #{output}")
+    filter = compose_filter(cfg.layout)
+    Mix.shell().info("▶ compose (layout=#{cfg.layout}) → 1080p 16:9 → #{cfg.output}")
 
     sh!("ffmpeg", [
-      "-y", "-i", @terminal_mp4, "-i", @browser_mp4,
-      "-filter_complex", filter,
-      "-map", "[v]",
-      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-shortest",
-      output
+      "-y",
+      "-i",
+      @terminal_mp4,
+      "-i",
+      @browser_mp4,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[v]",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-shortest",
+      cfg.output
     ])
 
-    %{size: size} = File.stat!(output)
-    Mix.shell().info("✓ #{output} (#{Float.round(size / 1024 / 1024, 2)} MB)")
+    %{size: size} = File.stat!(cfg.output)
+    Mix.shell().info("✓ #{cfg.output} (#{Float.round(size / 1024 / 1024, 2)} MB)")
+  end
+
+  defp resolve_opts(opts, paths) do
+    session =
+      List.first(paths) || Mix.raise("usage: mix demo.video SESSION_PATH [--view KEY ...]")
+
+    %{
+      session: session,
+      view: opts[:view] || "stories",
+      # Capture browser at native 1080p — it becomes the PiP composite
+      # background, so the UI renders crisply with no upscaling.
+      output: opts[:output] || "/tmp/demo.mp4",
+      viewport: opts[:viewport] || "1920x1080",
+      from: opts[:from] || 0,
+      to: opts[:to],
+      delay: opts[:delay] || 200,
+      pacing: opts[:pacing] || "",
+      layout: opts[:layout] || "pip"
+    }
   end
 
   # Layout filters — all output a single `[v]` stream at 1920×1080.
@@ -144,15 +182,21 @@ defmodule Mix.Tasks.Demo.Video do
       "[t][b]vstack=inputs=2[v]"
   end
 
-  defp compose_filter(other), do: Mix.raise("unknown --layout: #{inspect(other)} (pip | browser-only | sxs | vstack)")
+  defp compose_filter(other),
+    do: Mix.raise("unknown --layout: #{inspect(other)} (pip | browser-only | sxs | vstack)")
 
   defp resolve_view("stories"), do: base_url() <> "/app/projects/market-my-spec/stories"
   defp resolve_view("graph"), do: base_url() <> "/app/projects/market-my-spec/requirements/graph"
   defp resolve_view("files"), do: base_url() <> "/app/projects/market-my-spec/files"
   defp resolve_view("issues"), do: base_url() <> "/app/projects/market-my-spec/issues"
   defp resolve_view("architecture"), do: base_url() <> "/app/projects/market-my-spec/architecture"
-  defp resolve_view("three-amigos:" <> id), do: base_url() <> "/app/projects/market-my-spec/stories/#{id}/three-amigos"
-  defp resolve_view("story:" <> id), do: base_url() <> "/app/projects/market-my-spec/stories/#{id}"
+
+  defp resolve_view("three-amigos:" <> id),
+    do: base_url() <> "/app/projects/market-my-spec/stories/#{id}/three-amigos"
+
+  defp resolve_view("story:" <> id),
+    do: base_url() <> "/app/projects/market-my-spec/stories/#{id}"
+
   defp resolve_view("http" <> _ = raw), do: raw
   defp resolve_view(other), do: Mix.raise("unknown --view: #{inspect(other)}")
 

@@ -245,12 +245,10 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # would be inspected into one anyway, at a layer with no idea what it is
   # looking at.
   defp text(%{result: %{"content" => content}}) when is_list(content) do
-    content
-    |> Enum.map(fn
+    Enum.map_join(content, "\n", fn
       %{"text" => t} -> t
       other -> inspect(other)
     end)
-    |> Enum.join("\n")
   end
 
   defp text(%{result: result}), do: inspect(result)

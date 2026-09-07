@@ -318,7 +318,11 @@ defmodule CodeMySpec.Google.Gsc do
       "endDate" => end_date,
       "dimensions" => ["query"],
       "dimensionFilterGroups" => [
-        %{"filters" => [%{"dimension" => "page", "operator" => "equals", "expression" => page_url}]}
+        %{
+          "filters" => [
+            %{"dimension" => "page", "operator" => "equals", "expression" => page_url}
+          ]
+        }
       ],
       "rowLimit" => row_limit |> max(1) |> min(500),
       "orderBy" => [%{"metric" => "CLICK_COUNT", "direction" => "descending"}],
@@ -350,7 +354,8 @@ defmodule CodeMySpec.Google.Gsc do
          totals: %{
            clicks: total_clicks,
            impressions: total_impressions,
-           avg_ctr: if(total_impressions > 0, do: round4(total_clicks / total_impressions), else: 0)
+           avg_ctr:
+             if(total_impressions > 0, do: round4(total_clicks / total_impressions), else: 0)
          },
          row_count: length(rows),
          rows: rows
@@ -438,40 +443,39 @@ defmodule CodeMySpec.Google.Gsc do
         {:error, {:too_many_urls, length(urls)}}
 
       true ->
-        results =
-          Enum.map(urls, fn page_url ->
-            case inspect_url(token, site_url, page_url) do
-              {:ok, %{"inspectionResult" => inspection}} ->
-                index_status = Map.get(inspection, "indexStatusResult", %{})
-
-                rich_results =
-                  case Map.get(inspection, "richResultsResult") do
-                    %{"verdict" => "PASS", "detectedItems" => [_ | _] = items} ->
-                      items
-                      |> Enum.map(&Map.get(&1, "richResultType", "Unknown"))
-                      |> Enum.join(", ")
-
-                    _ ->
-                      "None"
-                  end
-
-                %{
-                  url: page_url,
-                  verdict: Map.get(index_status, "verdict", "UNKNOWN"),
-                  coverage_state: Map.get(index_status, "coverageState", "Unknown"),
-                  last_crawled: Map.get(index_status, "lastCrawlTime", "Never"),
-                  rich_results: rich_results
-                }
-
-              {:ok, _} ->
-                %{url: page_url, error: "No inspection data found"}
-
-              {:error, reason} ->
-                %{url: page_url, error: inspect(reason)}
-            end
-          end)
-
+        results = Enum.map(urls, &inspect_url_summary(token, site_url, &1))
         {:ok, %{site_url: site_url, count: length(results), results: results}}
+    end
+  end
+
+  defp inspect_url_summary(token, site_url, page_url) do
+    case inspect_url(token, site_url, page_url) do
+      {:ok, %{"inspectionResult" => inspection}} ->
+        index_status = Map.get(inspection, "indexStatusResult", %{})
+
+        %{
+          url: page_url,
+          verdict: Map.get(index_status, "verdict", "UNKNOWN"),
+          coverage_state: Map.get(index_status, "coverageState", "Unknown"),
+          last_crawled: Map.get(index_status, "lastCrawlTime", "Never"),
+          rich_results: rich_results_summary(inspection)
+        }
+
+      {:ok, _} ->
+        %{url: page_url, error: "No inspection data found"}
+
+      {:error, reason} ->
+        %{url: page_url, error: inspect(reason)}
+    end
+  end
+
+  defp rich_results_summary(inspection) do
+    case Map.get(inspection, "richResultsResult") do
+      %{"verdict" => "PASS", "detectedItems" => [_ | _] = items} ->
+        Enum.map_join(items, ", ", &Map.get(&1, "richResultType", "Unknown"))
+
+      _ ->
+        "None"
     end
   end
 
@@ -489,7 +493,13 @@ defmodule CodeMySpec.Google.Gsc do
         summary =
           Enum.reduce(
             urls,
-            %{not_indexed: [], canonical_issues: [], robots_blocked: [], fetch_issues: [], indexed: []},
+            %{
+              not_indexed: [],
+              canonical_issues: [],
+              robots_blocked: [],
+              fetch_issues: [],
+              indexed: []
+            },
             fn page_url, acc -> categorize_url(token, site_url, page_url, acc) end
           )
 
@@ -519,53 +529,65 @@ defmodule CodeMySpec.Google.Gsc do
     case inspect_url(token, site_url, page_url) do
       {:ok, %{"inspectionResult" => inspection}} ->
         index_status = Map.get(inspection, "indexStatusResult", %{})
-        verdict = Map.get(index_status, "verdict", "UNKNOWN")
-        coverage = Map.get(index_status, "coverageState", "Unknown")
-        lower = String.downcase(coverage)
 
-        acc =
-          if verdict != "PASS" or String.contains?(lower, "not indexed") or
-               String.contains?(lower, "excluded") do
-            update(acc, :not_indexed, "#{page_url} - #{coverage}")
-          else
-            update(acc, :indexed, page_url)
-          end
-
-        google_canonical = Map.get(index_status, "googleCanonical", "")
-        user_canonical = Map.get(index_status, "userCanonical", "")
-
-        acc =
-          if google_canonical != "" and user_canonical != "" and
-               google_canonical != user_canonical do
-            update(
-              acc,
-              :canonical_issues,
-              "#{page_url} - Google chose: #{google_canonical} instead of user-declared: #{user_canonical}"
-            )
-          else
-            acc
-          end
-
-        acc =
-          if Map.get(index_status, "robotsTxtState", "") == "BLOCKED" do
-            update(acc, :robots_blocked, page_url)
-          else
-            acc
-          end
-
-        fetch_state = Map.get(index_status, "pageFetchState", "")
-
-        if fetch_state != "SUCCESSFUL" and fetch_state != "" do
-          update(acc, :fetch_issues, "#{page_url} - #{fetch_state}")
-        else
-          acc
-        end
+        acc
+        |> flag_indexed(page_url, index_status)
+        |> flag_canonical_mismatch(page_url, index_status)
+        |> flag_robots_blocked(page_url, index_status)
+        |> flag_fetch_issue(page_url, index_status)
 
       {:ok, _} ->
         update(acc, :not_indexed, "#{page_url} - No inspection data found")
 
       {:error, reason} ->
         update(acc, :not_indexed, "#{page_url} - Error: #{inspect(reason)}")
+    end
+  end
+
+  defp flag_indexed(acc, page_url, index_status) do
+    verdict = Map.get(index_status, "verdict", "UNKNOWN")
+    coverage = Map.get(index_status, "coverageState", "Unknown")
+    lower = String.downcase(coverage)
+
+    if verdict != "PASS" or String.contains?(lower, "not indexed") or
+         String.contains?(lower, "excluded") do
+      update(acc, :not_indexed, "#{page_url} - #{coverage}")
+    else
+      update(acc, :indexed, page_url)
+    end
+  end
+
+  defp flag_canonical_mismatch(acc, page_url, index_status) do
+    google_canonical = Map.get(index_status, "googleCanonical", "")
+    user_canonical = Map.get(index_status, "userCanonical", "")
+
+    if google_canonical != "" and user_canonical != "" and
+         google_canonical != user_canonical do
+      update(
+        acc,
+        :canonical_issues,
+        "#{page_url} - Google chose: #{google_canonical} instead of user-declared: #{user_canonical}"
+      )
+    else
+      acc
+    end
+  end
+
+  defp flag_robots_blocked(acc, page_url, index_status) do
+    if Map.get(index_status, "robotsTxtState", "") == "BLOCKED" do
+      update(acc, :robots_blocked, page_url)
+    else
+      acc
+    end
+  end
+
+  defp flag_fetch_issue(acc, page_url, index_status) do
+    fetch_state = Map.get(index_status, "pageFetchState", "")
+
+    if fetch_state != "SUCCESSFUL" and fetch_state != "" do
+      update(acc, :fetch_issues, "#{page_url} - #{fetch_state}")
+    else
+      acc
     end
   end
 

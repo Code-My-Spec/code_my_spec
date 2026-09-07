@@ -110,39 +110,38 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   defp merge_token_response(cassette, overrides) when overrides == %{}, do: cassette
 
   defp merge_token_response(cassette, overrides) do
-    update_in(cassette, ["interactions"], fn interactions ->
-      Enum.map(interactions, fn interaction ->
-        if get_in(interaction, ["request", "uri"]) == @token_endpoint do
-          update_in(interaction, ["response", "body_json"], &Map.merge(&1, overrides))
-        else
-          interaction
-        end
-      end)
+    update_matching_interaction(cassette, @token_endpoint, fn interaction ->
+      update_in(interaction, ["response", "body_json"], &Map.merge(&1, overrides))
     end)
   end
 
   defp inject_id_token(cassette, id_token) do
-    update_in(cassette, ["interactions"], fn interactions ->
-      Enum.map(interactions, fn interaction ->
-        if get_in(interaction, ["request", "uri"]) == @token_endpoint do
-          put_in(interaction, ["response", "body_json", "id_token"], id_token)
-        else
-          interaction
-        end
-      end)
+    update_matching_interaction(cassette, @token_endpoint, fn interaction ->
+      put_in(interaction, ["response", "body_json", "id_token"], id_token)
     end)
   end
 
   defp inject_jwks(cassette, jwks) do
-    update_in(cassette, ["interactions"], fn interactions ->
-      Enum.map(interactions, fn interaction ->
-        if get_in(interaction, ["request", "uri"]) == @jwks_uri do
-          put_in(interaction, ["response", "body_json", "keys"], jwks)
-        else
-          interaction
-        end
-      end)
+    update_matching_interaction(cassette, @jwks_uri, fn interaction ->
+      put_in(interaction, ["response", "body_json", "keys"], jwks)
     end)
+  end
+
+  # Shared by every helper that rewrites one interaction in a cassette: find
+  # the request matching `target_uri` and apply `updater` to it, leaving
+  # every other interaction untouched.
+  defp update_matching_interaction(cassette, target_uri, updater) do
+    update_in(cassette, ["interactions"], fn interactions ->
+      Enum.map(interactions, &update_if_matching(&1, target_uri, updater))
+    end)
+  end
+
+  defp update_if_matching(interaction, target_uri, updater) do
+    if get_in(interaction, ["request", "uri"]) == target_uri do
+      updater.(interaction)
+    else
+      interaction
+    end
   end
 
   @github_shape_cassette_path "test/cassettes/oauth/github_login_shape.json"
@@ -180,14 +179,8 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   end
 
   defp inject_response_body(cassette, target_uri, body) do
-    update_in(cassette, ["interactions"], fn interactions ->
-      Enum.map(interactions, fn interaction ->
-        if get_in(interaction, ["request", "uri"]) == target_uri do
-          put_in(interaction, ["response", "body_json"], body)
-        else
-          interaction
-        end
-      end)
+    update_matching_interaction(cassette, target_uri, fn interaction ->
+      put_in(interaction, ["response", "body_json"], body)
     end)
   end
 
@@ -214,7 +207,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   the named cassette. Returns the resulting conn.
   """
   def do_google_callback(base_conn, cassette_name, state \\ "google-state") do
-    with_cassette cassette_name, cassette_opts(), fn plug ->
+    with_cassette(cassette_name, cassette_opts(), fn plug ->
       with_assent_plug(plug, fn ->
         base_conn
         |> Phoenix.ConnTest.init_test_session(%{})
@@ -223,7 +216,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
         |> put_session(:oauth_flow, :login)
         |> get("/auth/google/callback", %{"code" => "google-replay-code", "state" => state})
       end)
-    end
+    end)
   end
 
   @doc """
@@ -231,7 +224,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   the named cassette. Returns the resulting conn.
   """
   def do_github_callback(base_conn, cassette_name, state \\ "replay-state") do
-    with_cassette cassette_name, cassette_opts(), fn plug ->
+    with_cassette(cassette_name, cassette_opts(), fn plug ->
       with_assent_plug(plug, fn ->
         base_conn
         |> Phoenix.ConnTest.init_test_session(%{})
@@ -240,7 +233,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
         |> put_session(:oauth_flow, :login)
         |> get("/auth/github/callback", %{"code" => "replay-code", "state" => state})
       end)
-    end
+    end)
   end
 
   @doc """
@@ -301,5 +294,4 @@ defmodule CodeMySpecSpex.OAuthHelpers do
       "e" => Base.url_encode64(:binary.encode_unsigned(e), padding: false)
     }
   end
-
 end

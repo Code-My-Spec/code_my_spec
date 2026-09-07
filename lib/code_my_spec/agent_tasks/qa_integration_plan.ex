@@ -280,26 +280,27 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   # anything under the QA scripts directory — so "is it there" is a lookup.
   defp check_verify_scripts(rows, specs) do
     paths = MapSet.new(rows, & &1.path)
+    Enum.reduce_while(specs, :ok, fn spec, :ok -> check_verify_script(spec, paths) end)
+  end
 
-    Enum.reduce_while(specs, :ok, fn spec, :ok ->
-      case data(spec, "verify_script") do
-        nil ->
+  defp check_verify_script(spec, paths) do
+    case data(spec, "verify_script") do
+      nil ->
+        {:halt,
+         {:error,
+          "Integration spec `#{spec.path}` has no verify script path. " <>
+            "Add a `## Verify Script` section."}}
+
+      script ->
+        if MapSet.member?(paths, script) do
+          {:cont, :ok}
+        else
           {:halt,
            {:error,
-            "Integration spec `#{spec.path}` has no verify script path. " <>
-              "Add a `## Verify Script` section."}}
-
-        script ->
-          if MapSet.member?(paths, script) do
-            {:cont, :ok}
-          else
-            {:halt,
-             {:error,
-              "Verify script `#{script}` missing (referenced by `#{spec.path}`). " <>
-                "Create it and stop again."}}
-          end
-      end
-    end)
+            "Verify script `#{script}` missing (referenced by `#{spec.path}`). " <>
+              "Create it and stop again."}}
+        end
+    end
   end
 
   defp check_verified_status(specs) do

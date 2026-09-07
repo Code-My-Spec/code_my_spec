@@ -633,13 +633,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       run
       |> Enum.chunk_while(
         [],
-        fn message, acc ->
-          acc = [message | acc]
-
-          if MapSet.member?(break_after, message.id),
-            do: {:cont, Enum.reverse(acc), []},
-            else: {:cont, acc}
-        end,
+        &chunk_on_break(&1, &2, break_after),
         fn
           [] -> {:cont, []}
           acc -> {:cont, Enum.reverse(acc), []}
@@ -647,6 +641,14 @@ defmodule CodeMySpecWeb.ChatComponents do
       )
       |> Enum.reject(&(&1 == []))
     end
+  end
+
+  defp chunk_on_break(message, acc, break_after) do
+    acc = [message | acc]
+
+    if MapSet.member?(break_after, message.id),
+      do: {:cont, Enum.reverse(acc), []},
+      else: {:cont, acc}
   end
 
   # A piece of a split run folds on its own terms: two calls still collapse, one

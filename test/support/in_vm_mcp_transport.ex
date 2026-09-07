@@ -156,13 +156,11 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   defp answer(response), do: {:ok, text(response)}
 
   defp text(%{content: content}) when is_list(content) do
-    content
-    |> Enum.map(fn
+    Enum.map_join(content, "\n", fn
       %{text: t} -> t
       %{"text" => t} -> t
       other -> inspect(other)
     end)
-    |> Enum.join("\n")
   end
 
   defp text(other), do: inspect(other)

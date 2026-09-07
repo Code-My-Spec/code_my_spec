@@ -73,8 +73,7 @@ defmodule CodeMySpec.RequirementsFixtures do
         path = file_path_for(scope, component, role)
 
         if path do
-          valid = if validity_check?(attrs.name), do: satisfied, else: satisfied
-          seed_component_file(scope, component, role, path, valid)
+          seed_component_file(scope, component, role, path, satisfied)
         end
 
         attrs
@@ -129,8 +128,8 @@ defmodule CodeMySpec.RequirementsFixtures do
       ])
   end
 
-  defp existence_check?(name), do: name in ~w(spec_file implementation_file test_file review_file json_file design_file)
-  defp validity_check?(name), do: name in ~w(spec_valid review_valid test_spec_alignment)
+  defp existence_check?(name),
+    do: name in ~w(spec_file implementation_file test_file review_file json_file design_file)
 
   defp seed_component_file(scope, component, role, path, valid) do
     {_count, [file]} =

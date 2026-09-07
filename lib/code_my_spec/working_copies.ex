@@ -313,24 +313,7 @@ defmodule CodeMySpec.WorkingCopies do
           {:ok, WorkingCopy.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def designate_main(%Scope{active_project_id: project_id} = scope, working_copy_id)
       when is_binary(project_id) do
-    Repo.transaction(fn ->
-      case Repo.get_by(WorkingCopy, id: working_copy_id, project_id: project_id) do
-        nil ->
-          Repo.rollback(:not_found)
-
-        copy ->
-          # Cleared first. The index permits one row per project with `main`
-          # true, so writing the new one while the old still holds it is a
-          # constraint violation rather than a replacement.
-          from(w in WorkingCopy, where: w.project_id == ^project_id and w.main)
-          |> Repo.update_all(set: [main: false])
-
-          case copy |> WorkingCopy.changeset(%{main: true}) |> Repo.update() do
-            {:ok, designated} -> designated
-            {:error, changeset} -> Repo.rollback(changeset)
-          end
-      end
-    end)
+    Repo.transaction(fn -> designate_main_in_transaction(project_id, working_copy_id) end)
     |> case do
       {:ok, copy} ->
         # The agent goes where the designation goes. A project whose main copy
@@ -345,6 +328,25 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
+  defp designate_main_in_transaction(project_id, working_copy_id) do
+    case Repo.get_by(WorkingCopy, id: working_copy_id, project_id: project_id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      copy ->
+        # Cleared first. The index permits one row per project with `main`
+        # true, so writing the new one while the old still holds it is a
+        # constraint violation rather than a replacement.
+        from(w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+        |> Repo.update_all(set: [main: false])
+
+        case copy |> WorkingCopy.changeset(%{main: true}) |> Repo.update() do
+          {:ok, designated} -> designated
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+    end
+  end
+
   # The page that designated it is not the only one showing which copy is main.
   defp broadcast_designated(%Scope{active_project_id: project_id}, copy) do
     Phoenix.PubSub.broadcast(
@@ -354,15 +356,6 @@ defmodule CodeMySpec.WorkingCopies do
     )
   end
 
-  @doc """
-  Record where a harness says its working copy is.
-
-  Separate from `issue/3` because it is a different claim: `issue/3` answers
-  "who are you", this answers "where are you", and only the first is identity.
-  Called when a harness announces itself, so the root follows a checkout that
-  moves without the id changing underneath its files.
-  """
-  @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   @doc """
   What this copy's machine can do beyond the server's own tools.
 
@@ -413,6 +406,15 @@ defmodule CodeMySpec.WorkingCopies do
 
   def record_browser_status(_harness, _status, _error), do: :ok
 
+  @doc """
+  Record where a harness says its working copy is.
+
+  Separate from `issue/3` because it is a different claim: `issue/3` answers
+  "who are you", this answers "where are you", and only the first is identity.
+  Called when a harness announces itself, so the root follows a checkout that
+  moves without the id changing underneath its files.
+  """
+  @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
     # And designated, if this is the project's first checkout.
     #

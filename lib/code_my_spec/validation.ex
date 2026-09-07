@@ -1403,28 +1403,35 @@ defmodule CodeMySpec.Validation do
         assigned = Stories.list_story_working_copy_ids(scope)
         mine = scope.active_working_copy_id
         labels = copy_labels(assigned)
+        story_assignments_for(paths, assigned, mine, labels, by_path, by_number)
+    end
+  end
 
-        # A project nobody has assigned anything on gets no note at all.
-        #
-        # "This story is unassigned" is only worth saying where assignment is in
-        # use — everywhere else it is true of every story in the project and
-        # tells the reader nothing, while adding a paragraph to every stop. The
-        # axis lands empty and changes nothing, and that has to include the
-        # wording.
-        if assigned == %{} do
-          %{}
-        else
-          for path <- paths,
-              story_id = Map.get(by_path, path) || story_id_from_path(path, by_number),
-              not is_nil(story_id),
-              into: %{} do
-            case Map.get(assigned, story_id) do
-              nil -> {path, :unassigned}
-              ^mine -> {path, :mine}
-              other -> {path, {:elsewhere, Map.get(labels, other, other)}}
-            end
-          end
-        end
+  # A project nobody has assigned anything on gets no note at all.
+  #
+  # "This story is unassigned" is only worth saying where assignment is in
+  # use — everywhere else it is true of every story in the project and
+  # tells the reader nothing, while adding a paragraph to every stop. The
+  # axis lands empty and changes nothing, and that has to include the
+  # wording.
+  defp story_assignments_for(_paths, assigned, _mine, _labels, _by_path, _by_number)
+       when assigned == %{},
+       do: %{}
+
+  defp story_assignments_for(paths, assigned, mine, labels, by_path, by_number) do
+    for path <- paths,
+        story_id = Map.get(by_path, path) || story_id_from_path(path, by_number),
+        not is_nil(story_id),
+        into: %{} do
+      {path, assignment_for(story_id, assigned, mine, labels)}
+    end
+  end
+
+  defp assignment_for(story_id, assigned, mine, labels) do
+    case Map.get(assigned, story_id) do
+      nil -> :unassigned
+      ^mine -> :mine
+      other -> {:elsewhere, Map.get(labels, other, other)}
     end
   end
 

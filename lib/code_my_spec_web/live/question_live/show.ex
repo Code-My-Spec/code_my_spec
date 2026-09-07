@@ -18,15 +18,19 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
         {:ok, socket |> put_flash(:error, "Question not found") |> assign(request: nil)}
 
       request ->
-        if request.user_id != socket.assigns.current_scope.user.id do
-          {:ok, socket |> put_flash(:error, "Not authorized") |> assign(request: nil)}
-        else
-          if connected?(socket) do
-            Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "question_request:#{id}")
-          end
+        mount_request(socket, id, request)
+    end
+  end
 
-          {:ok, assign(socket, page_title: "Answer", request: request)}
-        end
+  defp mount_request(socket, id, request) do
+    if request.user_id != socket.assigns.current_scope.user.id do
+      {:ok, socket |> put_flash(:error, "Not authorized") |> assign(request: nil)}
+    else
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "question_request:#{id}")
+      end
+
+      {:ok, assign(socket, page_title: "Answer", request: request)}
     end
   end
 

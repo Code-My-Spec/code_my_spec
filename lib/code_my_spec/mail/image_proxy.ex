@@ -135,15 +135,19 @@ defmodule CodeMySpec.Mail.ImageProxy do
       # A hostname — resolve it, unless a test plug is short-circuiting the
       # actual fetch (then there's no real request to protect).
       {:error, _} ->
-        if plug_opt() == [] do
-          case :inet.getaddrs(charlist, :inet) do
-            {:ok, addrs} -> Enum.any?(addrs, &private_ip?/1)
-            # Fail closed on unresolvable hosts.
-            {:error, _} -> true
-          end
-        else
-          false
-        end
+        resolves_private_hostname?(charlist)
+    end
+  end
+
+  defp resolves_private_hostname?(charlist) do
+    if plug_opt() == [] do
+      case :inet.getaddrs(charlist, :inet) do
+        {:ok, addrs} -> Enum.any?(addrs, &private_ip?/1)
+        # Fail closed on unresolvable hosts.
+        {:error, _} -> true
+      end
+    else
+      false
     end
   end
 

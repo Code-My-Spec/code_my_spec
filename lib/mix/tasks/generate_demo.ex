@@ -87,30 +87,7 @@ defmodule Mix.Tasks.GenerateDemo do
   end
 
   defp join_multiline_commands(lines) do
-    {commands, current_command} =
-      Enum.reduce(lines, {[], ""}, fn line, {commands, accumulator} ->
-        trimmed_line = String.trim(line)
-
-        cond do
-          String.ends_with?(trimmed_line, "\\") ->
-            # This line continues, remove the backslash and accumulate
-            cleaned_line = String.trim_trailing(trimmed_line, "\\") |> String.trim()
-
-            new_accumulator =
-              if accumulator == "", do: cleaned_line, else: "#{accumulator} #{cleaned_line}"
-
-            {commands, new_accumulator}
-
-          accumulator != "" ->
-            # We're finishing a multiline command
-            completed_command = "#{accumulator} #{trimmed_line}" |> String.trim()
-            {[completed_command | commands], ""}
-
-          true ->
-            # Single line command
-            {[trimmed_line | commands], ""}
-        end
-      end)
+    {commands, current_command} = Enum.reduce(lines, {[], ""}, &accumulate_command/2)
 
     # Handle case where file ends with a multiline command
     final_commands = if current_command != "", do: [current_command | commands], else: commands
@@ -119,6 +96,30 @@ defmodule Mix.Tasks.GenerateDemo do
     |> Enum.reverse()
     # Only keep actual mix commands, filter out malformed (too short)
     |> Enum.filter(&(String.contains?(&1, "mix ") and String.length(&1) > 10))
+  end
+
+  defp accumulate_command(line, {commands, accumulator}) do
+    trimmed_line = String.trim(line)
+
+    cond do
+      String.ends_with?(trimmed_line, "\\") ->
+        # This line continues, remove the backslash and accumulate
+        cleaned_line = String.trim_trailing(trimmed_line, "\\") |> String.trim()
+
+        new_accumulator =
+          if accumulator == "", do: cleaned_line, else: "#{accumulator} #{cleaned_line}"
+
+        {commands, new_accumulator}
+
+      accumulator != "" ->
+        # We're finishing a multiline command
+        completed_command = "#{accumulator} #{trimmed_line}" |> String.trim()
+        {[completed_command | commands], ""}
+
+      true ->
+        # Single line command
+        {[trimmed_line | commands], ""}
+    end
   end
 
   defp generate_demo_with_commands(commands, delay) do
@@ -134,31 +135,7 @@ defmodule Mix.Tasks.GenerateDemo do
     results =
       commands
       |> Enum.with_index(1)
-      |> Enum.reduce_while(route_injections, fn {command, index}, route_acc ->
-        Mix.shell().info("[#{index}/#{total}] #{command}")
-
-        case execute_command(command) do
-          {:ok, output} ->
-            Mix.shell().info("  → SUCCESS")
-
-            # Extract routes from output
-            new_routes = extract_routes_from_output(output)
-            updated_routes = route_acc ++ new_routes
-
-            # Wait before next command (except last)
-            if index < total do
-              Mix.shell().info("  → Waiting #{delay}s...")
-              Process.sleep(trunc(delay * 1000))
-            end
-
-            {:cont, updated_routes}
-
-          {:error, reason} ->
-            Mix.shell().error("  → FAILED: #{inspect(reason)}")
-            Mix.shell().error("Error details: #{reason}")
-            {:halt, route_acc}
-        end
-      end)
+      |> Enum.reduce_while(route_injections, &run_demo_command(&1, &2, total, delay))
 
     # Inject all collected routes at once
     if results != [] do
@@ -170,6 +147,32 @@ defmodule Mix.Tasks.GenerateDemo do
     Mix.shell().info("1. Run: mix ecto.migrate")
     Mix.shell().info("2. Run: mix ecto.seed (if you have seed files)")
     Mix.shell().info("3. Run: mix phx.server")
+  end
+
+  defp run_demo_command({command, index}, route_acc, total, delay) do
+    Mix.shell().info("[#{index}/#{total}] #{command}")
+
+    case execute_command(command) do
+      {:ok, output} ->
+        Mix.shell().info("  → SUCCESS")
+
+        # Extract routes from output
+        new_routes = extract_routes_from_output(output)
+        updated_routes = route_acc ++ new_routes
+
+        # Wait before next command (except last)
+        if index < total do
+          Mix.shell().info("  → Waiting #{delay}s...")
+          Process.sleep(trunc(delay * 1000))
+        end
+
+        {:cont, updated_routes}
+
+      {:error, reason} ->
+        Mix.shell().error("  → FAILED: #{inspect(reason)}")
+        Mix.shell().error("Error details: #{reason}")
+        {:halt, route_acc}
+    end
   end
 
   defp execute_command(command) do

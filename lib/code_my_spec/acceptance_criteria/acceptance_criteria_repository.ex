@@ -91,18 +91,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       |> Repo.all()
       |> Enum.reject(fn {id, _} -> MapSet.member?(already, id) end)
       |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
-      |> Enum.flat_map(fn {id, previous} ->
-        case embedded_id(previous) do
-          nil ->
-            []
-
-          embedded ->
-            case Map.get(paths, embedded) do
-              nil -> []
-              found -> if same_dir?(previous, found), do: [{id, previous, found}], else: []
-            end
-        end
-      end)
+      |> Enum.flat_map(&repair_candidate(&1, paths))
 
     count =
       (by_row_id ++ by_recorded_id)
@@ -117,6 +106,16 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       end)
 
     {:ok, count}
+  end
+
+  defp repair_candidate({id, previous}, paths) do
+    with embedded when not is_nil(embedded) <- embedded_id(previous),
+         found when not is_nil(found) <- Map.get(paths, embedded),
+         true <- same_dir?(previous, found) do
+      [{id, previous, found}]
+    else
+      _ -> []
+    end
   end
 
   # Whether a recorded path has gone, asked of the checkout the manifest came

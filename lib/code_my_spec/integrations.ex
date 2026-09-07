@@ -337,25 +337,28 @@ defmodule CodeMySpec.Integrations do
   end
 
   defp refresh_serialized(scope, provider) do
-    Repo.transaction(fn ->
-      case IntegrationRepository.lock_integration(scope, provider) do
-        {:ok, integration} ->
-          # Re-check under the lock: whoever held it before us may have just
-          # refreshed, and burning a second rotation would spend a token that is
-          # now the only valid one.
-          if fresh?(integration) do
-            integration.access_token
-          else
-            case refresh_locked(scope, provider, integration) do
-              {:ok, refreshed} -> refreshed.access_token
-              {:error, reason} -> Repo.rollback(reason)
-            end
-          end
+    Repo.transaction(fn -> resolve_locked_token(scope, provider) end)
+  end
 
-        {:error, reason} ->
-          Repo.rollback(reason)
+  defp resolve_locked_token(scope, provider) do
+    case IntegrationRepository.lock_integration(scope, provider) do
+      {:ok, integration} -> access_token_for(scope, provider, integration)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  # Re-check under the lock: whoever held it before us may have just
+  # refreshed, and burning a second rotation would spend a token that is
+  # now the only valid one.
+  defp access_token_for(scope, provider, integration) do
+    if fresh?(integration) do
+      integration.access_token
+    else
+      case refresh_locked(scope, provider, integration) do
+        {:ok, refreshed} -> refreshed.access_token
+        {:error, reason} -> Repo.rollback(reason)
       end
-    end)
+    end
   end
 
   defp refresh_locked(scope, provider, integration) do

@@ -60,10 +60,7 @@ defmodule CodeMySpecSpex.Story967.Criterion2957Spex do
       end
 
       when_ "the agent points the dynamic tab at a story", context do
-        apply(CodeMySpec.ScreenState, :show, [
-          context.scope,
-          %{view: "story", story_id: context.story.id}
-        ])
+        CodeMySpec.ScreenState.show(context.scope, %{view: "story", story_id: context.story.id})
 
         {:ok, Map.put(context, :html, render(context.live))}
       end

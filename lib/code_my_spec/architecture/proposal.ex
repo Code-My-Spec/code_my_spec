@@ -693,23 +693,24 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp resolve_env(opts) do
     case Keyword.get(opts, :env) do
+      nil -> resolve_env_from_working_dir(opts)
+      env -> {:ok, env, false}
+    end
+  end
+
+  # Executing a proposal writes spec files. Defaulting the directory
+  # to this process's meant writing them into the server's own
+  # checkout, so the caller must say where.
+  defp resolve_env_from_working_dir(opts) do
+    case Keyword.get(opts, :working_dir) do
       nil ->
-        # Executing a proposal writes spec files. Defaulting the directory
-        # to this process's meant writing them into the server's own
-        # checkout, so the caller must say where.
-        case Keyword.get(opts, :working_dir) do
-          nil ->
-            {:error, :no_working_copy}
+        {:error, :no_working_copy}
 
-          working_dir ->
-            case Environments.create(:cli, working_dir: working_dir) do
-              {:ok, env} -> {:ok, env, true}
-              {:error, _} = err -> err
-            end
+      working_dir ->
+        case Environments.create(:cli, working_dir: working_dir) do
+          {:ok, env} -> {:ok, env, true}
+          {:error, _} = err -> err
         end
-
-      env ->
-        {:ok, env, false}
     end
   end
 

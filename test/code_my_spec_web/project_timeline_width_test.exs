@@ -29,18 +29,19 @@ defmodule CodeMySpecWeb.ProjectTimelineWidthTest do
 
   defp steps_per_phase do
     PlainLanguage.phases()
-    |> Enum.map(fn {key, _label} ->
-      count =
-        PlainLanguage.order()
-        |> Enum.count(fn name ->
-          case PlainLanguage.fetch(name) do
-            %{phase: ^key} -> true
-            _ -> false
-          end
-        end)
+    |> Enum.map(fn {key, _label} -> {key, count_steps_in_phase(key)} end)
+  end
 
-      {key, count}
-    end)
+  defp count_steps_in_phase(key) do
+    PlainLanguage.order()
+    |> Enum.count(&phase_match?(&1, key))
+  end
+
+  defp phase_match?(name, key) do
+    case PlainLanguage.fetch(name) do
+      %{phase: ^key} -> true
+      _ -> false
+    end
   end
 
   test "no phase is wider than five steps" do
