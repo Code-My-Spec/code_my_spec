@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
@@ -46,6 +47,19 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
   import CodeMySpecSpex.AgentToolsHelpers
 
   @impl_path "lib/example_context.ex"
+
+  # The same shared cassette + fixtures criterion 5098 (Story 555) uses for a
+  # clean pipeline run. Every one of the 9 `end_turn` calls below is a real
+  # stop for an agent that has edited a file, which re-triggers a full
+  # analyzer pass rather than a memoized one — see `Analysis.needs_run?/5`'s
+  # changed-files clause. Undriven, that is 9 real `mix compile` subprocesses
+  # (~900ms apiece) plus a real recursive `mix spex` each time (`spex_stale`
+  # runs regardless of file role) for a scenario that has nothing to do with
+  # either.
+  @end_turn_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -75,14 +89,21 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
         # Ended, and ended again, without the finding being resolved between
         # them. However many times an agent is told the same unfixable thing,
         # the tree is the same tree.
-        for _ <- 1..8, do: :ok = Fixtures.end_turn(context.scope, agent_id)
+        use_cmd_cassette "clean", record: :none do
+          for _ <- 1..8,
+              do: :ok = Fixtures.end_turn(context.scope, agent_id, @end_turn_opts)
+        end
 
         {:ok, Map.put(context, :agent_id, agent_id)}
       end
 
       when_ "the run lands with that same finding again", context do
         before = length(Fixtures.orchestrator_actions(context.scope, context.agent_id))
-        :ok = Fixtures.end_turn(context.scope, context.agent_id)
+
+        :ok =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
+          end
 
         {:ok,
          context

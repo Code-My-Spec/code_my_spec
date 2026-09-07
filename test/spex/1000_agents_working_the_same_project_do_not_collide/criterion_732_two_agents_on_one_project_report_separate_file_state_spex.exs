@@ -187,10 +187,21 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       end
 
       then_ "the other agent's stop hook reports nothing about it", context do
+        # The second checkout is real and empty — its own stop still runs the
+        # real pipeline (a real `mix compile` plus a real recursive `mix spex`,
+        # see criterion 3059's note) unless driven the same way the first
+        # agent's stop above is.
         other =
-          post_hook(context.second_working_copy_id, "/api/hooks/stop", %{
-            "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}"
-          })
+          use_cmd_cassette "clean", record: :none do
+            post_hook(context.second_working_copy_id, "/api/hooks/stop", %{
+              "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}",
+              "test_output_files" => %{
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+                "compile" =>
+                  Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+              }
+            })
+          end
 
         refute other["decision"] == "block",
                "the second agent was held by a failure from a checkout it does not have. " <>

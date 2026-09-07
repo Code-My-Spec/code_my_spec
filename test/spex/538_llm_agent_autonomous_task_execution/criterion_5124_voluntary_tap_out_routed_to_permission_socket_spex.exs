@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5124Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
@@ -89,11 +90,20 @@ defmodule CodeMySpecSpex.Story538.Criterion5124Spex do
 
       then_ "the autonomous loop has terminated — next stop is allowed", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "session_id" => context.session_id,
+              "test_output_files" => %{
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+                "compile" =>
+                  Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         assert response == %{},
                "loop must end after approval — expected empty allow, got: #{inspect(response)}"

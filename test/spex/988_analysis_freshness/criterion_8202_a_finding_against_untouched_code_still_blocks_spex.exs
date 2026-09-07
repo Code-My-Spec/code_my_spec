@@ -39,9 +39,18 @@ defmodule CodeMySpecSpex.Story988.Criterion8202Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+
+  # See criterion 3059's note: an uncassetted `validate_stop` runs a real
+  # `mix compile` and a real recursive `mix spex`, which has nothing to do
+  # with the credo finding this criterion is about.
+  @validate_stop_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -72,7 +81,12 @@ defmodule CodeMySpecSpex.Story988.Criterion8202Spex do
       end
 
       then_ "the finding still blocks the stop", context do
-        assert {:error, _} = Fixtures.validate_stop(context.scope),
+        result =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.validate_stop(context.scope, @validate_stop_opts)
+          end
+
+        assert {:error, _} = result,
                """
                Nothing moved. The finding describes exactly the bytes credo
                read, so it is still true and must still block.

@@ -1432,7 +1432,9 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
-  def end_turn(%Scope{} = scope, agent_id) do
+  def end_turn(scope, agent_id, opts \\ [])
+
+  def end_turn(%Scope{} = scope, agent_id, []) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
     # Both shapes, because this handler acknowledges and the sibling above does
@@ -1450,6 +1452,17 @@ defmodule CodeMySpecSpex.Fixtures do
       {:noreply, _socket} -> :ok
       {:reply, _reply, _socket} -> :ok
     end
+  end
+
+  # Cassette opts (`:compile_output_file` and friends — see
+  # `CodeMySpec.Validation.validate_stop/3`) have no wire representation: a
+  # real harness never sends them, and the channel payload above has nowhere
+  # to carry them. Driven straight through `Agents.record_turn_event/4`
+  # instead of the socket when a spex supplies any, which is the same escape
+  # `Hooks.Stop` already gives the external path — the channel round-trip
+  # this skips is a two-line passthrough with nothing of its own to exercise.
+  def end_turn(%Scope{} = scope, agent_id, opts) do
+    :ok = CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, opts)
   end
 
   def record_turn(%Scope{} = scope, request, response, opts \\ []) do
@@ -1837,8 +1850,14 @@ defmodule CodeMySpecSpex.Fixtures do
   # Drops the block key. `validate_stop/3` returns `{:error, reason, key}` — the
   # key is R8's repeat identity for the finding set, not something a spec has an
   # opinion about, and every one of these asserts on the reason.
-  def validate_stop(%Scope{} = scope) do
-    case CodeMySpec.Validation.validate_stop(scope, nil) do
+  #
+  # `opts` is the same cassette escape hatch `end_turn/3` carries
+  # (`:compile_output_file` and friends, test-only) — passed straight through
+  # to `Validation.validate_stop/3`.
+  def validate_stop(scope, opts \\ [])
+
+  def validate_stop(%Scope{} = scope, opts) do
+    case CodeMySpec.Validation.validate_stop(scope, nil, opts) do
       {:error, reason, _key} -> {:error, reason}
       other -> other
     end

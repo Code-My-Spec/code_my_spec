@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
@@ -53,8 +54,10 @@ defmodule CodeMySpec.Agents.StopDecision do
   turn that triggered it, and raising here would take down the channel process
   carrying an agent's transcript.
   """
-  @spec deliver(Scope.t(), Agent.t()) :: :ok
-  def deliver(%Scope{} = scope, %Agent{} = agent) do
+  @spec deliver(Scope.t(), Agent.t(), keyword()) :: :ok
+  def deliver(scope, agent, opts \\ [])
+
+  def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
     # Opened once, before anything is recorded into it, and that is not a
     # formality. `record_orchestrator_action/3` looks the conversation up by
     # agent and answers `:ok` when there is none — correct for a caller that
@@ -67,7 +70,7 @@ defmodule CodeMySpec.Agents.StopDecision do
       agent.id
     )
 
-    case decide_with_key(scope, agent) do
+    case decide_with_key(scope, agent, opts) do
       {nil, _key} ->
         :ok
 
@@ -158,7 +161,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   """
   @spec decide(Scope.t(), Agent.t()) :: String.t() | nil
   def decide(%Scope{} = scope, %Agent{} = agent) do
-    {message, _key} = decide_with_key(scope, agent)
+    {message, _key} = decide_with_key(scope, agent, [])
     message
   end
 
@@ -197,21 +200,23 @@ defmodule CodeMySpec.Agents.StopDecision do
   # Above the validation call rather than below it: a blocked tree is still no
   # reason to hammer an agent that cannot act on anything until it hears back,
   # and the findings will still be there when it wakes.
-  defp decide_with_key(%Scope{} = scope, %Agent{} = agent) do
+  defp decide_with_key(%Scope{} = scope, %Agent{} = agent, opts) do
     if Notifications.awaiting_answer?(agent.id) do
       {nil, nil}
     else
-      decide_with_work(scope, agent)
+      decide_with_work(scope, agent, opts)
     end
   end
 
-  defp decide_with_work(%Scope{} = scope, %Agent{} = agent) do
+  defp decide_with_work(%Scope{} = scope, %Agent{} = agent, opts) do
     # The role travels with the id because the decision depends on it: whether a
     # `block_changed` source is enforced for an agent with no session turns on
     # whether that agent writes code. Passed from the struct rather than looked
     # up again inside `Validation`, which has the id and would have to query for
     # what the caller is already holding.
-    case Validation.validate_stop(scope, nil, agent_id: agent.id, agent_role: agent.role) do
+    validate_opts = Keyword.merge(opts, agent_id: agent.id, agent_role: agent.role)
+
+    case Validation.validate_stop(scope, nil, validate_opts) do
       {:error, reason, key} ->
         # The role goes here too. A refusal names the findings and then says
         # what to do next, and "next" is this agent's own work for the same
@@ -381,7 +386,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # is, and it is right on every path — including the original one, where it
   # equals what the scope carried.
   defp dispatch(_scope, agent, ref, message) do
-    case CodeMySpec.Agents.Transport.impl().dispatch_message(
+    case Transport.impl().dispatch_message(
            agent.working_copy_id,
            agent,
            ref,

@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
@@ -30,6 +31,14 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
   import CodeMySpecSpex.AgentToolsHelpers
 
   @impl_path "lib/example_context.ex"
+
+  # See criterion 3059's note: every one of these `end_turn` calls re-triggers
+  # a full, real analyzer pass — a real `mix compile` and a real recursive
+  # `mix spex` — for a scenario that has nothing to do with either.
+  @end_turn_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -61,7 +70,11 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         # finding belongs to nobody, is demoted to advisory, and everything
         # below asserts against silence.
         Fixtures.record_agent_edit(agent_id, @impl_path)
-        for _ <- 1..8, do: :ok = Fixtures.end_turn(context.scope, agent_id)
+
+        use_cmd_cassette "clean", record: :none do
+          for _ <- 1..8,
+              do: :ok = Fixtures.end_turn(context.scope, agent_id, @end_turn_opts)
+        end
 
         {:ok,
          context
@@ -101,7 +114,10 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         # escape had failed when nothing had been enforceable.
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
-        :ok = Fixtures.end_turn(context.scope, context.agent_id)
+        :ok =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
+          end
 
         {:ok,
          Map.put(

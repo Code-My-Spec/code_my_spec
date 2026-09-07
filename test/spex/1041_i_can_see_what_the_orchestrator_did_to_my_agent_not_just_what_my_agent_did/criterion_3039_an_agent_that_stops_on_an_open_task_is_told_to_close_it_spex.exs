@@ -25,16 +25,26 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.SharedGivens
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  # See criterion 3059's note: an uncassetted stop runs a real `mix compile`
+  # and a real recursive `mix spex`, which has nothing to do with what this
+  # criterion checks.
+  @stop_test_output_files %{
+    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+  }
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -68,7 +78,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, started, _frame} =
-          CodeMySpec.McpServers.Tasks.Tools.StartTask.execute(
+          StartTask.execute(
             %{
               requirement_name: "stories_exist",
               entity_type: "project",
@@ -85,15 +95,18 @@ defmodule CodeMySpecSpex.Story985.Criterion3039Spex do
       end
 
       when_ "it tries to stop", context do
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
-          "session_id" => context.session_id
-        })
-        |> then(fn conn ->
-          assert conn.status == 200, "the stop hook did not answer: #{conn.status}"
-        end)
+        use_cmd_cassette "clean", record: :none do
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
+            "session_id" => context.session_id,
+            "test_output_files" => @stop_test_output_files
+          })
+          |> then(fn conn ->
+            assert conn.status == 200, "the stop hook did not answer: #{conn.status}"
+          end)
+        end
 
         {:ok, _live, html} = live(context.conn, context.conversation_path)
 

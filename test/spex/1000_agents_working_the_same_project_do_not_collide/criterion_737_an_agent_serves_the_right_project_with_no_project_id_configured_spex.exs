@@ -20,6 +20,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
+
+  # See criterion 3059's note: an uncassetted stop runs a real `mix compile`
+  # and a real recursive `mix spex`, which has nothing to do with what this
+  # criterion checks (project identity resolution).
+  @stop_test_output_files %{
+    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
+    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+  }
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -55,10 +64,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
 
       when_ "it reconnects and a hook arrives", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => "spex-no-project-id"})
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "session_id" => "spex-no-project-id",
+              "test_output_files" => @stop_test_output_files
+            })
+          end
 
         # Status captured rather than asserted here: a refusal *is* the failure
         # this criterion describes, and forcing 200 in the `when_` would kill the
@@ -91,10 +105,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         put_env!("CMS_PROJECT_ID", other_project_id)
 
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => "spex-hijack-attempt"})
+          use_cmd_cassette "clean", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "session_id" => "spex-hijack-attempt",
+              "test_output_files" => @stop_test_output_files
+            })
+          end
 
         refute response.resp_body =~ other_project_id,
                "an exported CMS_PROJECT_ID reached the agent's work. A developer with two " <>

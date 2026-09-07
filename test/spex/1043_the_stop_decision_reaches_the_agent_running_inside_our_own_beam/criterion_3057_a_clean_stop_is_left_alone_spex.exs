@@ -18,10 +18,19 @@ defmodule CodeMySpecSpex.Story1043.Criterion3057Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  # See criterion 3059's note: `end_turn` re-triggers a full, real analyzer
+  # pass, including a real recursive `mix spex` that has nothing to do with
+  # this scenario.
+  @end_turn_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +46,10 @@ defmodule CodeMySpecSpex.Story1043.Criterion3057Spex do
       when_ "the analyzers complete with no problems", context do
         # Nothing seeded, so there is nothing outstanding. The turn ending is
         # what asks, and the answer is that there is nothing to report.
-        :ok = Fixtures.end_turn(context.scope, context.agent_id)
+        :ok =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
+          end
 
         {:ok, context}
       end

@@ -1100,14 +1100,22 @@ defmodule CodeMySpec.Agents do
   decision. A spex driving "the machine reported a step" has to drive this, and
   a private function inside a channel handler cannot be driven at all.
   """
-  @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map(), keyword()) :: :ok
+  def record_turn_event(scope, agent_id, event, opts \\ [])
+
   # A turn ending is not a step, so nothing is written to the transcript for it.
   # It is the moment the orchestrator gets to speak — the internal equivalent of
   # an external agent's Stop hook firing, which is the one thing this runtime
   # never had. Story 1043.
-  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}) do
+  #
+  # `opts` carries the same cassette escape hatches `Hooks.Stop` already
+  # threads through `Validation.validate_stop/3` (`:compile_output_file` and
+  # friends, test-only). The wire never sends them — `HarnessProjectChannel`
+  # always calls this at arity 3 — so a real turn event is unaffected; only a
+  # spex driving this path directly can supply them.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}, opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
-      {:ok, agent} -> StopDecision.deliver(scope, agent)
+      {:ok, agent} -> StopDecision.deliver(scope, agent, opts)
       _ -> :ok
     end
   end
@@ -1119,7 +1127,7 @@ defmodule CodeMySpec.Agents do
   # is the channel already carrying "the harness did this to you", which is what
   # a cut-off is, and it renders distinctly for the same reason the stop
   # decision does.
-  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_cut_off"} = event) do
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_cut_off"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} ->
         Conversations.record_orchestrator_action(agent, event["text"] || "", kind: "cut_off")
@@ -1130,7 +1138,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  def record_turn_event(%Scope{} = scope, agent_id, event) do
+  def record_turn_event(%Scope{} = scope, agent_id, event, _opts) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
       record_edit(agent, event)

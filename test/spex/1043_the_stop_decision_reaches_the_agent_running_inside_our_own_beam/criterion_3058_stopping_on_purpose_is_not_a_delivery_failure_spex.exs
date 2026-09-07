@@ -18,12 +18,22 @@ defmodule CodeMySpecSpex.Story1043.Criterion3058Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import ExUnit.CaptureLog
 
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.AgentToolsHelpers
+
+  # See criterion 3059's note: `end_turn` re-triggers a full, real analyzer
+  # pass, including a real recursive `mix spex` that has nothing to do with
+  # this scenario. Left undriven it would also trip the `refute ... =~
+  # "[error]"` below for reasons unrelated to what this criterion tests.
+  @end_turn_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -48,7 +58,9 @@ defmodule CodeMySpecSpex.Story1043.Criterion3058Spex do
       when_ "the analyzers for its working copy complete with problems", context do
         logged =
           capture_log(fn ->
-            :ok = Fixtures.end_turn(context.scope, context.agent_id)
+            use_cmd_cassette "clean", record: :none do
+              :ok = Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
+            end
           end)
 
         {:ok, Map.put(context, :logged, logged)}

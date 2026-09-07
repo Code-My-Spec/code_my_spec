@@ -17,9 +17,18 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+
+  # See criterion 3059's note: an uncassetted `validate_stop` runs a real
+  # `mix compile` and a real recursive `mix spex`, which has nothing to do
+  # with the credo finding this criterion is about.
+  @validate_stop_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -47,7 +56,12 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
 
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
-        assert {:error, message} = Fixtures.validate_stop(context.scope)
+        result =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.validate_stop(context.scope, @validate_stop_opts)
+          end
+
+        assert {:error, message} = result
         assert message =~ "nesting too deep"
 
         refute message =~ "stale",
@@ -70,7 +84,12 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
       end
 
       then_ "the response marks credo stale and says not to re-fix", context do
-        assert {:error, message} = Fixtures.validate_stop(context.scope)
+        result =
+          use_cmd_cassette "clean", record: :none do
+            Fixtures.validate_stop(context.scope, @validate_stop_opts)
+          end
+
+        assert {:error, message} = result
 
         assert message =~ "stale",
                """

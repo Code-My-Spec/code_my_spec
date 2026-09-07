@@ -42,6 +42,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
@@ -60,6 +61,17 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
+
+  # `end_turn` re-triggers a real analyzer pass — see criterion 3059's note
+  # on `Analysis.needs_run?/5`'s changed-files clause. Neither agent here has
+  # written a file, but every stop still attempts a real recursive `mix spex`
+  # (`spex_stale` runs regardless of file role), which errors without a
+  # recording and — per this project's spex-fail-on-logged-error rule —
+  # fails a scenario that has nothing to do with either.
+  @end_turn_opts [
+    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
+    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
+  ]
 
   spex "Work is counted for the agent's own role" do
     scenario "A coding agent is not held open by product's queue" do
@@ -140,8 +152,10 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
     frame = %Frame{assigns: %{current_scope: context.scope}}
     {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
 
-    :ok = Fixtures.end_turn(context.scope, context.coding)
-    :ok = Fixtures.end_turn(context.scope, context.product)
+    use_cmd_cassette "clean", record: :none do
+      :ok = Fixtures.end_turn(context.scope, context.coding, @end_turn_opts)
+      :ok = Fixtures.end_turn(context.scope, context.product, @end_turn_opts)
+    end
 
     %{
       coding: offered(context.scope, context.coding),
