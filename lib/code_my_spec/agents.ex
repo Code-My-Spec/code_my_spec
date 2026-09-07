@@ -377,6 +377,46 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  Every agent on this machine, for the development route that lists them.
+
+  Scopeless, and it is the only listing that is. `list_agents/1` answers what
+  one project's operator may see; this answers what is running here, which is
+  the question a person debugging a stuck agent has — they do not yet know which
+  project it belongs to, and needing to know first is what made the agent
+  unreachable.
+
+  Reached only from `/dev/agents`, which is compiled out of a release.
+  """
+  @spec list_every_agent(keyword()) :: [Agent.t()]
+  defdelegate list_every_agent(opts \\ []), to: AgentsRepository
+
+  @doc """
+  Message an agent wherever it is, building its scope from the agent itself.
+
+  `message_agent/4` resolves inside the caller's project and refuses the rest —
+  a tenant boundary, and it stays. This is the development door beside it: the
+  caller is deliberately somewhere else, so there is nothing to scope *from* and
+  the agent names its own project.
+
+  Separate from `message_agent/4` rather than an option on it, so that widening
+  this cannot widen that. Reached only from `/dev/agents/:id/message`, which is
+  compiled out of a release.
+  """
+  @spec message_any_agent(Ecto.UUID.t(), String.t(), timeout()) ::
+          {:ok, String.t() | :still_working} | {:error, term()}
+  def message_any_agent(agent_id, text, timeout) when is_binary(agent_id) and is_binary(text) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        agent.working_copy_id
+        |> Transport.impl().message_agent(agent, text, timeout)
+        |> delivered_or_working()
+    end
+  end
+
+  @doc """
   Hand an agent the answer to something it asked, and let it carry on.
 
   The other half of `ask_user` for an agent we run. `check_answer` polls, which

@@ -26,6 +26,33 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_agents(%Scope{}), do: []
 
   @doc """
+  Every agent row on this machine, ignoring scope.
+
+  The only listing here that does. `list_agents/1` answers what one project's
+  operator may see; this answers what is running on this machine, which is what
+  a person debugging a stuck agent needs before they know whose it is.
+
+  Reached from `/dev/agents` only, and that route is compiled out of a release.
+  """
+  @spec list_every_agent(keyword()) :: [Agent.t()]
+  def list_every_agent(opts \\ []) do
+    Agent
+    |> then(fn q ->
+      case Keyword.get(opts, :project_id) do
+        id when is_binary(id) and id != "" -> where(q, [a], a.project_id == ^id)
+        _ -> q
+      end
+    end)
+    |> then(fn q ->
+      if Keyword.get(opts, :include_stopped, false),
+        do: q,
+        else: where(q, [a], a.status != :stopped)
+    end)
+    |> order_by([a], asc: a.role)
+    |> Repo.all()
+  end
+
+  @doc """
   Set continuous mode on every live agent of one working copy.
 
   `update_all` rather than a changeset each: this is a mode being switched, not

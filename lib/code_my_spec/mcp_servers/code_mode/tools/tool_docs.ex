@@ -25,8 +25,11 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   schema do
     field :name, :string, description: "A tool name, for its full documentation"
 
+    field :names, {:list, :string},
+      description: "Several tool names at once. Use instead of `name`, not with it"
+
     field :search, :string,
-      description: "Search tool names and descriptions. Ignored when name is given"
+      description: "Search tool names and descriptions. Ignored when a name is given"
   end
 
   @impl true
@@ -46,12 +49,50 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # `browser_wait_for_text` exists. So they are named, and named as belonging
   # somewhere else, which is the part a bare listing would get wrong.
   defp docs(scope, params) do
-    name = Map.get(params, :name)
     machine = Layer.machine_catalog(scope, nil, @docs_timeout)
 
-    case Map.has_key?(machine, name) do
-      true -> machine_page(machine, name)
-      false -> CodeMode.docs(Layer.catalog(scope), opts(params)) <> machine_note(machine)
+    case requested_names(params) do
+      [] -> CodeMode.docs(Layer.catalog(scope), opts(params)) <> machine_note(machine)
+      [one] -> page(scope, machine, one)
+      many -> Enum.map_join(many, "\n\n---\n\n", &page(scope, machine, &1))
+    end
+  end
+
+  # `names` as well as `name`, because agents ask about several at once and this
+  # took one.
+  #
+  # A key the schema does not declare is dropped, so `tool_docs({ names = [...]
+  # })` arrived as no arguments at all and answered with the general catalog —
+  # confidently, and about everything except what was asked. Reported as
+  # `684a54ee`: "tool_docs ignores requested tool names, always returns the
+  # general catalog instead."
+  #
+  # Watched cost it on 2026-09-07: a QA agent guessed `browser_list_pages`, asked
+  # `tool_docs` about it and four real browser tools, got the catalog, and was no
+  # closer to learning that the name it guessed does not exist.
+  defp requested_names(params) do
+    [Map.get(params, :name)]
+    |> Enum.concat(List.wrap(Map.get(params, :names)))
+    |> Enum.reject(&(is_nil(&1) or &1 == ""))
+    |> Enum.uniq()
+  end
+
+  # One tool's page, from whichever catalog holds it.
+  #
+  # A name in neither is said so plainly. That is the whole point of asking: an
+  # agent that guessed needs to hear it guessed, and the catalog it used to get
+  # back reads as an answer.
+  defp page(scope, machine, name) do
+    cond do
+      Map.has_key?(machine, name) ->
+        machine_page(machine, name)
+
+      Map.has_key?(Layer.catalog(scope), name) ->
+        CodeMode.docs(Layer.catalog(scope), name: name)
+
+      true ->
+        "`#{name}` is not a tool on this project or this machine. " <>
+          "Call `tool_docs` with `search` to find what is."
     end
   end
 

@@ -379,6 +379,24 @@ defmodule CodeMySpecWeb.Router do
       live_dashboard "/dashboard", metrics: CodeMySpecWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+
+    # Reaching an agent that is not on your project, from a terminal.
+    #
+    # `message_agent` resolves inside the caller's project and refuses the rest,
+    # which is a tenant boundary and stays. The cost is that whoever is
+    # debugging a stuck agent cannot ask it anything unless they are already
+    # scoped to it — four hours of watching a QA agent fail on 2026-09-07, with
+    # no way to say a word to it.
+    #
+    # Inside `:dev_routes`, so it is absent from a release rather than disabled
+    # in one. A cross-project message surface is exactly what must not ship by
+    # accident.
+    scope "/dev", CodeMySpecWeb do
+      pipe_through :api
+
+      get "/agents", DevAgentController, :index
+      post "/agents/:agent_id/message", DevAgentController, :message
+    end
   end
 
   ## Authentication routes
