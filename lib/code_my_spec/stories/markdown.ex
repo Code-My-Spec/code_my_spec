@@ -29,8 +29,6 @@ defmodule CodeMySpec.Stories.Markdown do
          sections <- split_into_sections(markdown),
          {:ok, stories} <- parse_story_sections(sections) do
       {:ok, stories}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -109,8 +107,6 @@ defmodule CodeMySpec.Stories.Markdown do
          {:ok, description} <- extract_description(lines),
          {:ok, criteria} <- extract_acceptance_criteria(lines) do
       {:ok, %{title: title, description: description, acceptance_criteria: criteria}}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 

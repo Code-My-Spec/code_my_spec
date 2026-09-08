@@ -21,8 +21,6 @@ defmodule CodeMySpec.BddSpecs.Parser do
     with {:ok, ast} <- parse_content(content),
          {:ok, metadata} <- extract_spec_data(ast) do
       build_spec(metadata, file_path)
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 

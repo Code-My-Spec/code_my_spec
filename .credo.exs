@@ -188,6 +188,7 @@
           {ExSlop.Check.Refactor.RedundantEnumJoinSeparator, []},
           {ExSlop.Check.Refactor.ReduceMapPut, []},
           {ExSlop.Check.Refactor.WithIdentityDo, []},
+          {ExSlop.Check.Refactor.WithIdentityElse, []},
           {Credo.Check.Warning.ApplicationConfigInModuleAttribute, []},
           {Credo.Check.Warning.BoolOperationOnSameValues, []},
           {Credo.Check.Warning.Dbg, []},

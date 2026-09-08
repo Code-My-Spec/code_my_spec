@@ -159,8 +159,6 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
         feedback = format_feedback(scope, entity, entity_type, result, definition)
         {:ok, :invalid, feedback}
       end
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 

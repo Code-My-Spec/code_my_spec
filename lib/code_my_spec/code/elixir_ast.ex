@@ -28,8 +28,6 @@ defmodule CodeMySpec.Code.ElixirAst do
         |> Enum.uniq()
 
       {:ok, dependencies}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 
