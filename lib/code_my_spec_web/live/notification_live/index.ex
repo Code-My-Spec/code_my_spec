@@ -12,6 +12,11 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
 
+  # A scroll increment for "Recent", not a cap — `more_resolved?` says whether
+  # another page exists, and the viewport-bottom hook keeps asking for one
+  # until it doesn't.
+  @resolved_page 20
+
   @impl true
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
@@ -31,16 +36,54 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def handle_event("load_more_resolved", _params, socket) do
+    {:noreply, load_more_resolved(socket)}
+  end
+
   defp load_notifications(socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    {pending, resolved} =
+    pending =
       user_id
-      |> Notifications.list_notifications()
+      |> Notifications.list_pending_notifications()
       |> Enum.map(&to_item/1)
-      |> Enum.split_with(&(&1.status == "pending"))
 
-    assign(socket, pending: pending, resolved: resolved)
+    resolved =
+      user_id
+      |> Notifications.list_resolved_notifications(limit: @resolved_page)
+      |> Enum.map(&to_item/1)
+
+    assign(socket,
+      pending: pending,
+      resolved: resolved,
+      more_resolved?: length(resolved) >= @resolved_page
+    )
+  end
+
+  # Re-fetching by the oldest item already on screen (rather than an offset)
+  # means a resolution landing between pages neither duplicates nor skips a
+  # row — the cursor is a value in the data, not a position in a list that
+  # just changed size.
+  defp load_more_resolved(%{assigns: %{resolved: []}} = socket), do: socket
+
+  defp load_more_resolved(socket) do
+    user_id = socket.assigns.current_scope.user.id
+    resolved = socket.assigns.resolved
+    oldest_at = List.last(resolved).inserted_at
+    seen_ids = for %{inserted_at: ^oldest_at, id: id} <- resolved, do: id
+
+    more =
+      user_id
+      |> Notifications.list_resolved_notifications(
+        limit: @resolved_page,
+        before: {oldest_at, seen_ids}
+      )
+      |> Enum.map(&to_item/1)
+
+    socket
+    |> update(:resolved, &(&1 ++ more))
+    |> assign(:more_resolved?, length(more) >= @resolved_page)
   end
 
   defp to_item(%QuestionRequest{} = r) do
@@ -104,8 +147,20 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
 
         <section :if={@resolved != []} class="mt-8">
           <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mb-2">Recent</h2>
-          <ul class="space-y-2">
+          <ul
+            id="resolved-notifications"
+            class="space-y-2"
+            phx-viewport-bottom={@more_resolved? && "load_more_resolved"}
+            data-more-resolved={to_string(@more_resolved?)}
+          >
             <.item :for={item <- @resolved} item={item} />
+            <p
+              :if={@more_resolved?}
+              data-test="loading-more"
+              class="py-2 text-center text-xs opacity-40"
+            >
+              loading more…
+            </p>
           </ul>
         </section>
       </div>
@@ -128,7 +183,9 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
       >
         <div class="card-body flex-row items-start gap-3">
           <.icon
-            name={if @item.type == :question, do: "hero-chat-bubble-left-right", else: "hero-shield-check"}
+            name={
+              if @item.type == :question, do: "hero-chat-bubble-left-right", else: "hero-shield-check"
+            }
             class={"size-5 mt-0.5 shrink-0#{if @item.status == "pending", do: " text-primary"}"}
           />
           <div class="min-w-0 flex-1">
@@ -139,7 +196,9 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
           </div>
           <div class="flex flex-col items-end gap-1 shrink-0">
             <span class={["badge badge-sm", status_class(@item.status)]}>{@item.status}</span>
-            <time class="text-xs opacity-50">{Calendar.strftime(@item.inserted_at, "%b %-d, %H:%M")}</time>
+            <time class="text-xs opacity-50">
+              {Calendar.strftime(@item.inserted_at, "%b %-d, %H:%M")}
+            </time>
           </div>
         </div>
       </.link>

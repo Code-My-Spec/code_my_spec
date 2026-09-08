@@ -39,7 +39,10 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     assert html =~ "Pending"
   end
 
-  test "pending items appear in the pending section, resolved in recent", %{conn: conn, user: user} do
+  test "pending items appear in the pending section, resolved in recent", %{
+    conn: conn,
+    user: user
+  } do
     answered = create_question(user.id, "Old question?")
     {:ok, _} = Notifications.answer_question_request(answered.id, %{"Old question?" => "yes"})
     create_question(user.id, "Fresh question?")
@@ -70,7 +73,10 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     refute html =~ "secret question?"
   end
 
-  test "list updates live when a question arrives and when it is answered", %{conn: conn, user: user} do
+  test "list updates live when a question arrives and when it is answered", %{
+    conn: conn,
+    user: user
+  } do
     {:ok, view, html} = live(conn, ~p"/app/notifications")
     assert html =~ "Nothing here yet"
 
@@ -89,6 +95,31 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
 
     create_permission(user.id)
     assert view |> element(".indicator-item") |> render() =~ "2"
+  end
+
+  test "scrolling to the bottom of Recent loads another page", %{conn: conn, user: user} do
+    ids =
+      for _ <- 1..25 do
+        req = create_permission(user.id)
+        {:ok, _} = Notifications.resolve_permission_request(req.id, "allow")
+        req.id
+      end
+
+    {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+    initial = view |> element("#resolved-notifications") |> render()
+    assert initial =~ ~s(data-more-resolved="true")
+    assert count_notifications(initial) == 20
+
+    after_scroll = render_hook(view, "load_more_resolved", %{})
+
+    assert count_notifications(after_scroll) == 25
+    assert after_scroll =~ ~s(data-more-resolved="false")
+    assert Enum.all?(ids, &(after_scroll =~ &1))
+  end
+
+  defp count_notifications(html) do
+    ~r/data-test="notification"/ |> Regex.scan(html) |> length()
   end
 
   # Was "expired question shows as expired in the inbox", setting a status

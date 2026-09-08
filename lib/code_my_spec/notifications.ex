@@ -83,6 +83,45 @@ defmodule CodeMySpec.Notifications do
     pending_notifications(user_id) ++ resolved_notifications(user_id)
   end
 
+  @doc """
+  Pending question and permission requests for the inbox, newest first.
+
+  Never paginated: there is no history to page through, only the (usually
+  small) set of things still waiting on an answer.
+  """
+  def list_pending_notifications(user_id) do
+    pending_notifications(user_id)
+  end
+
+  @doc """
+  One page of resolved question and permission requests, newest first.
+
+  `:before` asks for the page older than a given position, so the inbox can
+  load more as the user scrolls. `:limit` defaults to #{@resolved_limit}.
+
+  Merges two schemas by `inserted_at` rather than querying one after the
+  other: fetching `limit` candidates from *each* and merging guarantees the
+  true top `limit` combined, since neither schema alone can contribute more
+  than `limit` rows to any top-`limit` result.
+
+  `:before` is `{inserted_at, seen_ids}`, not a bare timestamp. Both schemas
+  store `inserted_at` at `:utc_datetime` (second) precision, so two requests
+  landing in the same second — ordinary on a box running several agents at
+  once — tie, and a bare `< inserted_at` cursor would silently drop whichever
+  one fell on the older side of that split. `seen_ids` names every row
+  already shown at the boundary second so the next page's tie-break is
+  `inserted_at == before and id not in seen_ids` instead.
+  """
+  def list_resolved_notifications(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, @resolved_limit)
+    before = Keyword.get(opts, :before)
+
+    ((resolved_page_query(QuestionRequest, user_id, limit, before) |> Repo.all()) ++
+       (resolved_page_query(PermissionRequest, user_id, limit, before) |> Repo.all()))
+    |> Enum.sort(&newest_first/2)
+    |> Enum.take(limit)
+  end
+
   @doc "Count a user's pending question and permission requests."
   def count_pending_notifications(user_id) do
     count_pending(QuestionRequest, user_id) + count_pending(PermissionRequest, user_id)
@@ -144,6 +183,38 @@ defmodule CodeMySpec.Notifications do
       where: r.user_id == ^user_id and r.status != "pending",
       order_by: [desc: r.inserted_at],
       limit: @resolved_limit
+    )
+  end
+
+  defp resolved_page_query(schema, user_id, limit, before) do
+    from(r in schema,
+      where: r.user_id == ^user_id and r.status != "pending",
+      order_by: [desc: r.inserted_at, desc: r.id],
+      limit: ^limit
+    )
+    |> before_cursor(before)
+  end
+
+  # `inserted_at` alone is not a total order at `:utc_datetime` precision —
+  # see `list_resolved_notifications/2`'s doc — so every place that orders by
+  # it for pagination breaks ties on `id` too, database query and in-memory
+  # merge alike, or the two would disagree about which of a tied pair comes
+  # first.
+  defp newest_first(a, b) do
+    case DateTime.compare(a.inserted_at, b.inserted_at) do
+      :eq -> a.id >= b.id
+      :gt -> true
+      :lt -> false
+    end
+  end
+
+  defp before_cursor(query, nil), do: query
+
+  defp before_cursor(query, {%DateTime{} = before, seen_ids}) do
+    where(
+      query,
+      [r],
+      r.inserted_at < ^before or (r.inserted_at == ^before and r.id not in ^seen_ids)
     )
   end
 
