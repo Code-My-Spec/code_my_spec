@@ -249,14 +249,73 @@ defmodule CodeMySpec.Compile do
   """
   @spec extract_compiler_errors(String.t()) :: [map()]
   def extract_compiler_errors(output) when is_binary(output) do
-    if Enum.any?(@transient_markers, &String.contains?(output, &1)) do
-      []
-    else
-      output
-      |> String.split("\n")
-      |> Enum.filter(&compiler_error_line?/1)
-      |> Enum.map(&%{"message" => String.trim(&1), "severity" => "error"})
+    cond do
+      # Asked first, because this is the failure that *looks* transient and
+      # never heals. It has to beat the transient markers rather than sit after
+      # them.
+      unsatisfied_deps?(output) ->
+        [unsatisfied_deps_problem(output)]
+
+      Enum.any?(@transient_markers, &String.contains?(output, &1)) ->
+        []
+
+      true ->
+        output
+        |> String.split("\n")
+        |> Enum.filter(&compiler_error_line?/1)
+        |> Enum.map(&%{"message" => String.trim(&1), "severity" => "error"})
     end
+  end
+
+  # The failure that looks transient and never heals.
+  #
+  # `mix.lock` is committed, so a dependency added in one worktree reaches every
+  # other the moment it pulls — and `deps/` is per-worktree and does not follow.
+  # The checkout then exits 1 with "Unchecked dependencies" and no diagnostics
+  # file, which is exactly the shape of a config change or lock contention, so
+  # it was classified as transient. It is not: nothing heals it but `deps.get`.
+  #
+  # Measured on 2026-09-08: `ex_slop` and an alloy fork landed on main, and
+  # seven checkouts on one machine began failing every analyzer in about a
+  # second. The run stayed open, the output was discarded, and every stop said
+  # "analysis pending" — for hours, with the one line that names the cause
+  # sitting in a `Logger.warning` nobody was reading.
+  #
+  # Reported as a problem rather than as an error, because the agent is standing
+  # in that checkout and can fix it. John: "shouldn't we send a message to the
+  # model in that case and tell it that it needs to fix that thing? Isn't that a
+  # deliverable message?" It is — the stop menu ranks problems first, so the
+  # agent is told before it is asked to do anything else, and told what to run.
+  @unsatisfied_deps_markers [
+    "Unchecked dependencies",
+    "Can't continue due to errors on dependencies"
+  ]
+
+  defp unsatisfied_deps?(output),
+    do: Enum.any?(@unsatisfied_deps_markers, &String.contains?(output, &1))
+
+  defp unsatisfied_deps_problem(output) do
+    %{
+        "message" =>
+          "This checkout cannot satisfy its own mix.lock, so no analyzer can run here. " <>
+            "Run `mix deps.get` in this working copy. " <>
+            "`mix.lock` is committed and `deps/` is not, so a dependency added in another " <>
+            "checkout arrives with the next pull and has to be fetched once. " <>
+            "Details: " <> first_dependency_complaint(output),
+      "severity" => "error"
+    }
+  end
+
+  # The lines mix prints under the banner name which dependencies, and that is
+  # the actionable half — "req is out of date" tells you the pull moved it,
+  # where the banner alone reads as a broken machine.
+  defp first_dependency_complaint(output) do
+    output
+    |> String.split("\n")
+    |> Enum.drop_while(&(not Enum.any?(@unsatisfied_deps_markers, fn m -> String.contains?(&1, m) end)))
+    |> Enum.take(6)
+    |> Enum.map_join(" ", &String.trim/1)
+    |> String.slice(0, 300)
   end
 
   defp compiler_error_line?(line) do
