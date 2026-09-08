@@ -153,6 +153,19 @@
           #
           ## Warnings
           #
+          # ExSlop's Warning checks — the highest-signal of its 40, correctness
+          # bugs rather than style (blanket rescues, N+1 queries, a GenServer
+          # doing nothing a Map/Agent/ETS wouldn't). See `plugins:` above for
+          # why these are listed individually rather than pulled in by
+          # registering the plugin.
+          #
+          {ExSlop.Check.Warning.BlanketRescue, []},
+          {ExSlop.Check.Warning.RescueWithoutReraise, []},
+          {ExSlop.Check.Warning.RepoAllThenFilter, []},
+          {ExSlop.Check.Warning.QueryInEnumMap, []},
+          {ExSlop.Check.Warning.GenserverAsKvStore, []},
+          {ExSlop.Check.Warning.PathExpandPriv, []},
+          {ExSlop.Check.Warning.DualKeyAccess, []},
           {Credo.Check.Warning.ApplicationConfigInModuleAttribute, []},
           {Credo.Check.Warning.BoolOperationOnSameValues, []},
           {Credo.Check.Warning.Dbg, []},
