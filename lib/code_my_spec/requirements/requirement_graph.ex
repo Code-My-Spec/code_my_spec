@@ -1458,6 +1458,43 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Enum.sort_by(nodes, &priority_sort_key(&1, story_by_id, component_priority, def_order))
   end
 
+  # Requirement name → its position along the story chain, longest-prerequisite
+  # path first. Derived from the same template the graph is built from, so
+  # adding a node to `story_graph/0` orders it without a second edit here.
+  defp story_req_depth(name) do
+    Map.get(story_req_order(), name, 999)
+  end
+
+  defp story_req_order do
+    defs = RequirementDefinitionData.story_requirements()
+    by_id = Map.new(defs, &{&1.id, &1})
+
+    defs
+    |> Enum.map(&{&1.name, chain_depth(&1, by_id, MapSet.new())})
+    |> Map.new()
+  end
+
+  # Depth is the longest prerequisite chain behind a node. `bdd_specs_passing`
+  # sits deeper than `bdd_specs_exist`, so finishing beats starting.
+  # The visited set guards a template that ever gains a cycle; without it a bad
+  # edit would hang the sort rather than mis-order it.
+  defp chain_depth(%{id: id, prerequisites: prereqs}, by_id, visited) do
+    if MapSet.member?(visited, id) do
+      0
+    else
+      visited = MapSet.put(visited, id)
+
+      prereqs
+      |> Enum.map(fn prereq_id ->
+        case Map.fetch(by_id, prereq_id) do
+          {:ok, prereq} -> 1 + chain_depth(prereq, by_id, visited)
+          :error -> 0
+        end
+      end)
+      |> Enum.max(fn -> 0 end)
+    end
+  end
+
   # Requirement name → position in the project graph definition list.
   defp project_req_order do
     RequirementDefinitionData.project_graph()
@@ -1470,9 +1507,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {tier, 0, Map.get(def_order, name, 999)}
   end
 
-  defp priority_sort_key(%{entity_type: "story", entity_id: id}, story_by_id, _comp, _def_order) do
+  # The third term is how far down its own chain the node sits, so a story
+  # already under way outranks a story nobody has started at the same priority.
+  #
+  # It was a hard-coded `0`, which made every story requirement identical to
+  # the sort except for the story's priority — and 32 of Broken Oaths' 61
+  # stories carry no priority at all, so they collapsed into one tie group
+  # resolved by whatever order the graph builder emitted. With three coding
+  # agents on one working copy each taking the next unclaimed node, that is
+  # three stories in flight and none of them finished: specs written across ten
+  # stories, code for none of them. The preferred motion is one story at a time
+  # — specs, then code, then QA — and the sort is where that gets said.
+  defp priority_sort_key(%{entity_type: "story", entity_id: id, name: name}, story_by_id, _comp, _def_order) do
     story = Map.get(story_by_id, id)
-    {1, (story && story.priority) || 999, 0}
+    {1, (story && story.priority) || 999, story_req_depth(name)}
   end
 
   defp priority_sort_key(

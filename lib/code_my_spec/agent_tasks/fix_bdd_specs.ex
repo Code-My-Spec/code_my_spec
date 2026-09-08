@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   end
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
@@ -150,13 +149,34 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # single red spex anywhere in the project would hold every story short
   # of ready — the exact symptom the deleted per-story checker guarded
   # against.
-  # Matched on `story.number`, because that is what the directory is named
-  # from. Comparing the parsed number to `story.id` matched nothing once the
-  # two diverged, so every story looked like it had no failing spex.
+  #
+  # Matched on `files.story_id`, which the sync resolves from the spec itself.
+  # Both previous attempts parsed the directory name and both were wrong for
+  # most of a project, in opposite directions: comparing to `story.id` "matched
+  # nothing once the two diverged", and comparing to `story.number` matched
+  # nothing for every directory named from an id.
+  #
+  # Neither failure was visible, because this feeds a `cond` whose empty branch
+  # latches `specs_ready`. A story whose specs could not be found read as a
+  # story whose specs all passed. Measured on Broken Oaths 2026-09-08: 38 of 54
+  # spec directories were id-prefixed, and 47 of 61 stories carried
+  # `specs_ready: true` over 127 red specs for features nobody had written —
+  # so `bdd_specs_passing` stopped being actionable and the only coding work
+  # the graph could still offer was writing yet more specs.
+  #
+  # A path lookup cannot fail this way. If a spec file is not linked to a story
+  # it simply is not that story's problem, and the gate stays shut rather than
+  # opening on an empty list.
   defp story_spex_problems(scope, story) do
+    story_paths =
+      scope
+      |> Files.list_story_files(story.id)
+      |> Enum.filter(&(&1.role == :bdd_spec))
+      |> MapSet.new(& &1.path)
+
     scope
     |> Problems.list_project_problems(source: "spex")
-    |> Enum.filter(&(Parser.derive_story_number(&1.file_path) == story.number))
+    |> Enum.filter(&MapSet.member?(story_paths, &1.file_path))
   end
 
   defp has_bdd_specs?(scope, story) do
@@ -169,13 +189,15 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # Problem Filtering
   # ============================================================================
 
+  # Same linkage as the gate, for the same reason: the prompt and the evaluator
+  # have to agree on which story a failing spec belongs to, or an agent is shown
+  # failures it will not be credited for fixing.
   defp filter_relevant_problems(scope, problems) do
-    by_number = Stories.list_story_ids_by_number(scope)
+    story_id_by_path = Files.bdd_spec_story_id_by_path(scope)
 
     problems
     |> Enum.map(fn problem ->
-      story_id = Map.get(by_number, Parser.derive_story_number(problem.file_path))
-      {problem, story_id}
+      {problem, Map.get(story_id_by_path, problem.file_path)}
     end)
     |> Enum.reject(fn {_problem, story_id} -> is_nil(story_id) end)
     |> Enum.group_by(fn {_problem, story_id} -> story_id end)

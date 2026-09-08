@@ -84,13 +84,27 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
     %{story | criteria: [criterion]}
   end
 
+  # Deliberately named from the story's *id*, not its number.
+  #
+  # Both conventions are live in real projects — Broken Oaths had 38 of 54
+  # directories named from the id and 16 from the number — and matching used to
+  # parse this name, so it worked for whichever convention the parser was
+  # written for and silently matched nothing for the other. Naming these
+  # fixtures the way the parser wanted made the tests agree with a bug.
+  #
+  # The linkage is `files.story_id` now, so the directory name is arbitrary.
+  # Using the one the old parser would get *wrong* is what keeps it that way.
   defp spex_file_path(story) do
-    # Match the convention `Parser.derive_story_number/1` reads: the directory
-    # is named from the story's durable number, not its primary key.
-    "test/spex/#{story.number}_test_story/criterion_1_test_criterion_spex.exs"
+    "test/spex/#{story.id}_test_story/criterion_1_test_criterion_spex.exs"
   end
 
+  # A spex problem and the spec file it came from, together — because that is
+  # the only way they occur in production. A `Problems` row whose path matches
+  # no synced file is not a story's failing spec; it is an orphan, and the
+  # prompt and the gate both correctly ignore it.
   defp create_spex_problem(scope, story) do
+    create_bdd_spec_file(scope, story)
+
     problem_fixture(scope, %{
       source: "spex",
       source_type: :test,

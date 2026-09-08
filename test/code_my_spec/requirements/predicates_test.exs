@@ -438,8 +438,20 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
       # Guard against the assertion below passing on empty lists: if these
       # lookups returned nothing, "no offenders" would be true and mean nothing.
+      #
+      # `bdd_specs_passing` was here and is now a `:delegate`. It read
+      # `specs_ready` as a bare field, and a bare field read cannot tell a latch
+      # that was earned from one set by a gate that could not find the story's
+      # specs and mistook that for their passing — which is what happened, on 47
+      # of 61 stories in one project. `SpecsPassingChecker` keeps the field as
+      # the latch and adds the contradiction test, and that needs the database
+      # twice, so it cannot be a query clause here.
+      #
+      # Nothing regressed by leaving: `Predicates.satisfied/4` has no production
+      # callers yet — `RequirementCalculator` interprets — so this is a query
+      # form waiting to be wired up, not a fast path that lost a member.
       assert field_checks.(RequirementDefinitionData.story_graph()) |> Enum.sort() ==
-               ["bdd_specs_passing", "component_linked"],
+               ["component_linked"],
              "the story graph is where field checks live; if this moved, the search " <>
                "below is looking in the wrong places"
 

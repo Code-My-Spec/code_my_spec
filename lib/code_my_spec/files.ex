@@ -313,6 +313,36 @@ defmodule CodeMySpec.Files do
     |> Repo.all()
   end
 
+  @doc """
+  Every BDD spec file's owning story, keyed by path.
+
+  The linkage the sync already resolves, offered as a map so a caller holding a
+  file path — a `Problems` row, say — can name its story without parsing the
+  path.
+
+  Parsing was the previous answer and it was wrong for most of a project. Spex
+  directories are named from `story.number` in some places and `story.id` in
+  others, so `derive_story_number/1` returned an id where a number was expected
+  and the comparison silently matched nothing. A gate asking "does this story
+  have failing specs" got `[]` and read it as "green". Measured on Broken Oaths
+  2026-09-08: 38 of 54 spec directories were id-prefixed, and 47 of 61 stories
+  carried `specs_ready: true` with their features unbuilt.
+
+  `files.story_id` is resolved at sync time from the spec itself and was correct
+  for every one of those directories, so nothing here needs a naming convention
+  to hold.
+  """
+  @spec bdd_spec_story_id_by_path(Scope.t()) :: %{String.t() => integer()}
+  def bdd_spec_story_id_by_path(%Scope{active_project_id: project_id} = scope) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
+    |> where([f], not is_nil(f.story_id))
+    |> scope_to_harness(scope)
+    |> select([f], {f.path, f.story_id})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   @doc "Get a file by path within the project."
   @spec get_by_path(Scope.t(), String.t()) :: File.t() | nil
   # `limit(1)` because a path is unique per *working copy*, not per project: two

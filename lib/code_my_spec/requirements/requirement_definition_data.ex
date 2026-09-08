@@ -811,8 +811,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "bdd_specs_passing",
         role: :coding,
         node_scope: :self,
-        check_type: :field_true,
-        config: %{field: :specs_ready},
+        # Was `:field_true` on `:specs_ready` alone. The field is still the
+        # latch; the delegate adds the one thing a bare field read cannot do —
+        # notice the latch was set by a gate that could not find the story's
+        # specs and mistook that for their passing. See `SpecsPassingChecker`.
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.SpecsPassingChecker, function: :passing?},
         satisfied_by: AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         # Phrased as the step, not the state. "BDD specs have gone green on a
