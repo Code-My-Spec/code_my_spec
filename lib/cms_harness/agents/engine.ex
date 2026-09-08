@@ -588,6 +588,41 @@ defmodule CmsHarness.Agents.Engine do
     state.on_event.(state.agent_id, %{event: :message, text: text})
   end
 
+  # A turn that finished and said nothing.
+  #
+  # This fell into the catch-all below and announced nothing at all, which is
+  # the failure mode this module's own comment names one clause up: "Quiet is
+  # what an agent thinking looks like, which is the one thing it must not be
+  # indistinguishable from." A turn that errored says so, a turn that was cut
+  # off says so, and a turn that simply produced nothing was silence.
+  #
+  # Measured 2026-09-08 on Broken Oaths: a `claude-code` coding agent took 146
+  # turns without speaking once, while a QA agent on the same machine, provider
+  # and model spoke 83 times. Nothing in any log said the turns were empty —
+  # they were indistinguishable from an agent choosing not to answer.
+  #
+  # Logged with the shape rather than the content, because the content is the
+  # part that is missing. `status` separates "ran and had nothing to say" from a
+  # status this function does not have a clause for, and the tool-call count
+  # separates a turn that acted silently from one that did nothing at all.
+  defp announce_outcome(state, {:ok, result}) do
+    require Logger
+
+    Logger.warning(
+      "[CmsHarness] agent #{state.agent_id} finished a turn with nothing to say: " <>
+        "status=#{inspect(Map.get(result, :status))} " <>
+        "text=#{inspect(Map.get(result, :text))} " <>
+        "messages=#{length(List.wrap(Map.get(result, :messages)))} " <>
+        "keys=#{inspect(result |> Map.from_struct() |> Map.keys())}"
+    )
+
+    :ok
+  rescue
+    # `result` is not always a struct, and a diagnostic must not be able to end
+    # a turn that otherwise succeeded.
+    _ -> :ok
+  end
+
   defp announce_outcome(_state, _result), do: :ok
 
   defp report_failure(state, reason) do
