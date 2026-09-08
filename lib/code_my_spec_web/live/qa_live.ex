@@ -97,7 +97,7 @@ defmodule CodeMySpecWeb.QaLive do
     total_pages = max(1, div(total + per_page - 1, per_page))
     page = socket.assigns.page |> max(1) |> min(total_pages)
     offset = (page - 1) * per_page
-    page_attempts = socket.assigns.attempts |> Enum.drop(offset) |> Enum.take(per_page)
+    page_attempts = Enum.slice(socket.assigns.attempts, offset, per_page)
 
     assign(socket,
       page: page,
