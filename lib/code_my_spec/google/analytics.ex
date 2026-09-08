@@ -70,7 +70,6 @@ defmodule CodeMySpec.Google.Analytics do
   Lists all properties for a given Google Analytics account.
 
   ## Parameters
-  - conn: The API connection
   - account_name: The account resource name (e.g., "accounts/123456")
 
   ## Examples
@@ -94,7 +93,6 @@ defmodule CodeMySpec.Google.Analytics do
   Gets details for a specific property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
 
   ## Examples
@@ -115,7 +113,6 @@ defmodule CodeMySpec.Google.Analytics do
   Lists custom dimensions for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
 
   ## Examples
@@ -136,7 +133,6 @@ defmodule CodeMySpec.Google.Analytics do
   Gets a custom dimension for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - dimension_name: The custom dimension resource name (e.g., "properties/123456/customDimensions/5678")
 
   ## Examples
@@ -157,7 +153,6 @@ defmodule CodeMySpec.Google.Analytics do
   Creates a custom dimension for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
   - custom_dimension: A map containing the custom dimension details:
     - displayName: Display name for the dimension
@@ -194,7 +189,6 @@ defmodule CodeMySpec.Google.Analytics do
   Updates a custom dimension for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - dimension_name: The custom dimension resource name (e.g., "properties/123456/customDimensions/5678")
   - custom_dimension: A map containing the fields to update
   - update_mask: Comma-separated list of field paths to update (e.g., "displayName,description") or "*" for all
@@ -228,7 +222,6 @@ defmodule CodeMySpec.Google.Analytics do
   Archived dimensions are no longer available for use but their historical data is preserved.
 
   ## Parameters
-  - conn: The API connection
   - dimension_name: The custom dimension resource name (e.g., "properties/123456/customDimensions/5678")
 
   ## Examples
@@ -250,7 +243,6 @@ defmodule CodeMySpec.Google.Analytics do
   Lists custom metrics for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
 
   ## Examples
@@ -271,7 +263,6 @@ defmodule CodeMySpec.Google.Analytics do
   Creates a custom metric for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
   - custom_metric: A map containing the custom metric details:
     - displayName: Display name for the metric
@@ -310,7 +301,6 @@ defmodule CodeMySpec.Google.Analytics do
   Gets a custom metric for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - metric_name: The custom metric resource name (e.g., "properties/123456/customMetrics/5678")
 
   ## Examples
@@ -331,7 +321,6 @@ defmodule CodeMySpec.Google.Analytics do
   Updates a custom metric for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - metric_name: The custom metric resource name (e.g., "properties/123456/customMetrics/5678")
   - custom_metric: A map containing the fields to update
   - update_mask: Comma-separated list of field paths to update (e.g., "displayName,description") or "*" for all
@@ -365,7 +354,6 @@ defmodule CodeMySpec.Google.Analytics do
   Archived metrics are no longer available for use but their historical data is preserved.
 
   ## Parameters
-  - conn: The API connection
   - metric_name: The custom metric resource name (e.g., "properties/123456/customMetrics/5678")
 
   ## Examples
@@ -386,7 +374,6 @@ defmodule CodeMySpec.Google.Analytics do
   Lists key events for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
   - page_size: Optional maximum number of resources to return (max 200)
   - page_token: Optional page token for pagination
@@ -415,7 +402,6 @@ defmodule CodeMySpec.Google.Analytics do
   Creates a key event for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - property_name: The property resource name (e.g., "properties/123456")
   - key_event: A map containing the key event details:
     - eventName: Name of the event to mark as a key event
@@ -450,7 +436,6 @@ defmodule CodeMySpec.Google.Analytics do
   Updates a key event for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - key_event_name: The key event resource name (e.g., "properties/123456/keyEvents/event_name")
   - key_event: A map containing the fields to update (must include name field)
   - update_mask: Comma-separated list of field paths to update in snake_case (e.g., "counting_method") or "*" for all
@@ -483,7 +468,6 @@ defmodule CodeMySpec.Google.Analytics do
   Deletes a key event for a given Google Analytics property.
 
   ## Parameters
-  - conn: The API connection
   - key_event_name: The key event resource name (e.g., "properties/123456/keyEvents/event_name")
 
   ## Examples

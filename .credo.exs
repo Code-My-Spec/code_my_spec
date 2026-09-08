@@ -166,6 +166,7 @@
           {ExSlop.Check.Warning.GenserverAsKvStore, []},
           {ExSlop.Check.Warning.PathExpandPriv, []},
           {ExSlop.Check.Warning.DualKeyAccess, []},
+          {ExSlop.Check.Readability.BoilerplateDocParams, []},
           {ExSlop.Check.Readability.NarratorComment, []},
           {ExSlop.Check.Refactor.ExplicitSumReduce, []},
           {ExSlop.Check.Refactor.FilterNil, []},
