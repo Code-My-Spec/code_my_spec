@@ -66,7 +66,16 @@ defmodule CodeMySpec.MixProject do
       # process: an agent is a supervised GenServer, so sending it a message is
       # a call rather than a held stdin pipe, and stopping it is termination
       # rather than signalling a process group across a reboot.
-      {:alloy, "~> 0.12"},
+      #
+      # Forked, not the Hex release, because `Alloy.Provider.ClaudeCode` (the
+      # "claude-code" provider `CmsHarness.Agents.Provider` routes to) has not
+      # shipped upstream. Without this, `provider: "claude-code"` resolves and
+      # compiles — the module reference is just a tuple until something calls
+      # it — and then dies at the first turn with `UndefinedFunctionError`,
+      # which is exactly what happened the first time anyone tried it.
+      # `main` on the fork tracks upstream `alloy-ex/alloy` 0.12.4 plus that
+      # one provider; revert to the Hex release if it ever ships there.
+      {:alloy, git: "https://github.com/Code-My-Spec/alloy.git", branch: "main"},
 
       # Phoenix default deps
       {:bcrypt_elixir, "~> 3.0"},
