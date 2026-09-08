@@ -80,6 +80,7 @@ defmodule CodeMySpec.Analytics do
     :ok
   end
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc "The `:telemetry.attach/4` handler `attach_test_subscriber/1` registers — must be public, `:telemetry` calls it from outside this module."
   def __test_subscriber_handler__(@telemetry_event, _measurements, metadata, pid) do
     if Process.alive?(pid) do

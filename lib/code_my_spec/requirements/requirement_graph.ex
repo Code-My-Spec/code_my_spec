@@ -1483,15 +1483,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       0
     else
       visited = MapSet.put(visited, id)
+      prereqs |> Enum.map(&prereq_depth(&1, by_id, visited)) |> Enum.max(fn -> 0 end)
+    end
+  end
 
-      prereqs
-      |> Enum.map(fn prereq_id ->
-        case Map.fetch(by_id, prereq_id) do
-          {:ok, prereq} -> 1 + chain_depth(prereq, by_id, visited)
-          :error -> 0
-        end
-      end)
-      |> Enum.max(fn -> 0 end)
+  defp prereq_depth(prereq_id, by_id, visited) do
+    case Map.fetch(by_id, prereq_id) do
+      {:ok, prereq} -> 1 + chain_depth(prereq, by_id, visited)
+      :error -> 0
     end
   end
 

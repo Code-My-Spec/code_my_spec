@@ -26,9 +26,8 @@ defmodule CodeMySpec.Stories.Markdown do
   @spec parse_markdown(binary()) :: {:ok, [story_attrs()]} | {:error, parse_error()}
   def parse_markdown(markdown) when is_binary(markdown) do
     with {:ok, :valid} <- validate_format(markdown),
-         sections <- split_into_sections(markdown),
-         {:ok, stories} <- parse_story_sections(sections) do
-      {:ok, stories}
+         sections <- split_into_sections(markdown) do
+      parse_story_sections(sections)
     end
   end
 
