@@ -115,9 +115,8 @@ defmodule CodeMySpec.Sessions.SessionType do
   def dump(_), do: :error
 
   def mapper do
-    Enum.map(@valid_types, fn type ->
+    Map.new(@valid_types, fn type ->
       {type |> Atom.to_string() |> String.split(".") |> List.last(), type}
     end)
-    |> Enum.into(%{})
   end
 end

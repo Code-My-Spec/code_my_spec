@@ -183,6 +183,7 @@
           {ExSlop.Check.Refactor.StringConcatInReduce, []},
           {ExSlop.Check.Refactor.TryRescueWithSafeAlternative, []},
           {ExSlop.Check.Refactor.UseMapJoin, []},
+          {ExSlop.Check.Refactor.MapIntoLiteral, []},
           {ExSlop.Check.Refactor.PreferEnumSlice, []},
           {ExSlop.Check.Refactor.ReduceMapPut, []},
           {ExSlop.Check.Refactor.WithIdentityDo, []},

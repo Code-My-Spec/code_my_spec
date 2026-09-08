@@ -55,10 +55,9 @@ defmodule CodeMySpec.Utils.ModuleType do
 
       @spec mapper() :: %{String.t() => module()}
       def mapper do
-        Enum.map(@valid_types, fn type ->
+        Map.new(@valid_types, fn type ->
           {type |> Atom.to_string() |> String.split(".") |> List.last(), type}
         end)
-        |> Enum.into(%{})
       end
 
       @spec valid_types() :: [module()]
