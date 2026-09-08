@@ -25,13 +25,49 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.all()
   end
 
+  @doc """
+  The project's own issues at a status and severity — what `issues_triaged` and
+  `issues_resolved` gate on, and what `AgentTasks.FixIssues` puts in front of an
+  agent.
+
+  Framework-scoped issues are excluded for everyone but the vendor, because a
+  tenant cannot resolve one. `vendor_lookup/2` states the other half of this
+  rule already: "the vendor reaches a framework issue in any project, because
+  that is where framework issues live", and `only_framework/1` refuses a tenant
+  the same rows. Counting them here asked a tenant to clear a queue it is not
+  allowed to touch, and a gate whose passing state depends on somebody else's
+  repository is a wall.
+
+  Measured on Broken Oaths 2026-09-08: 22 of the 33 issues holding
+  `issues_resolved` were `:framework` — `tool_docs ignores requested tool
+  names`, `Task tools unavailable without session owner`, `list_tasks cannot
+  identify the active agent`. A coding agent held that task for two hours and
+  resolved none of them, because none of them are in its repository. One of the
+  22 is a report of this defect, filed 09-06.
+
+  The vendor's own project keeps them: there, framework issues *are* app issues,
+  and `issues_resolved` should hold until they are fixed.
+
+  `attribute_to_story/3` already declines to attach a framework finding to a
+  story, on the argument that it is "about the tooling around the work, not the
+  work". This is that argument one level up: not the work, and not the project's
+  gate either.
+  """
   def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
     Issue
     |> by_project(scope.active_project.id)
     |> by_status(status)
     |> by_min_severity(min_severity)
+    |> exclude_framework_unless_vendor(scope)
     |> ordered_by_severity()
     |> Repo.all()
+  end
+
+  defp exclude_framework_unless_vendor(query, scope) do
+    case ensure_vendor(scope) do
+      :ok -> query
+      {:error, :not_the_vendor} -> where(query, [i], i.scope != :framework)
+    end
   end
 
   def list_by_story(%Scope{} = scope, story_id) do
