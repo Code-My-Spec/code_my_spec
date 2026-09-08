@@ -33,56 +33,53 @@ defmodule CmsHarness.Agents do
   the id resolves through the harness's registry while the harness is running,
   which is the honest scope for it.
   """
-  @spec launch(map()) :: {:ok, %{agent_id: String.t()}} | {:error, atom()}
+  @spec launch(map()) :: {:ok, %{agent_id: String.t(), pid: pid()}} | {:error, term()}
   def launch(%{"agent_id" => agent_id} = request) do
-    with {:ok, %{agent_id: id}} <-
-           Engine.start(
-             agent_id: agent_id,
-             provider: request["provider"],
-             credential: credential(request),
-             working_copy: request["working_copy"],
-             # Half of the system prompt; the engine composes it with the
-             # project's own guide, which only this side can read.
-             role_brief: request["role_brief"],
-             # Where the application is running, off the project's main working
-             # copy. Only the server knows it — it is a column there — and an
-             # agent that cannot answer it cannot open the thing it is testing.
-             app_url: request["app_url"],
-             # Which checkout this is, as the server knows it. The agent's own
-             # MCP session is addressed by it — `x-harness-id` is what makes a
-             # script act for this copy and no other — so an agent without it
-             # can edit its files and reach none of the project's tools.
-             #
-             # Read from the request when the server says, and from the copy's
-             # own config when it does not, because a caller that named a root
-             # has already said which checkout it means.
-             working_copy_id: request["working_copy_id"] || copy_id(request["working_copy"]),
-             model: request["model"],
-             # What this agent already knows. An agent dies with its harness
-             # and the transcript is the state — which is only true if the
-             # transcript actually arrives, and until it did, a restarted agent
-             # came back with no memory of anything it had been told.
-             messages: request["messages"],
-             # An OpenAI-compatible endpoint that is not the provider's own:
-             # a self-hosted gateway, a proxy, a company's own deployment. The
-             # provider has always read this and nothing has ever sent one.
-             base_url: request["base_url"],
-             # In front of the provider's HTTP client. A function, so only an
-             # in-process caller can set it — which is what a recording of a
-             # real turn needs and what nothing on the wire can carry.
-             req_options: request["req_options"],
-             # Where an agent finishes what it was part-way through before the
-             # process goes. Nothing on the wire sets it yet; the seam exists so
-             # a graceful stop is observable rather than merely intended.
-             on_stop: request["on_stop"],
-             # The channel for the copy this agent runs in, unless the caller
-             # names somewhere else. Settable for the same reason `on_stop` is:
-             # the default is right for the harness and it is not the only
-             # caller.
-             on_event: request["on_event"] || reporter_for(request["working_copy"])
-           ) do
-      {:ok, %{agent_id: id}}
-    end
+    Engine.start(
+      agent_id: agent_id,
+      provider: request["provider"],
+      credential: credential(request),
+      working_copy: request["working_copy"],
+      # Half of the system prompt; the engine composes it with the
+      # project's own guide, which only this side can read.
+      role_brief: request["role_brief"],
+      # Where the application is running, off the project's main working
+      # copy. Only the server knows it — it is a column there — and an
+      # agent that cannot answer it cannot open the thing it is testing.
+      app_url: request["app_url"],
+      # Which checkout this is, as the server knows it. The agent's own
+      # MCP session is addressed by it — `x-harness-id` is what makes a
+      # script act for this copy and no other — so an agent without it
+      # can edit its files and reach none of the project's tools.
+      #
+      # Read from the request when the server says, and from the copy's
+      # own config when it does not, because a caller that named a root
+      # has already said which checkout it means.
+      working_copy_id: request["working_copy_id"] || copy_id(request["working_copy"]),
+      model: request["model"],
+      # What this agent already knows. An agent dies with its harness
+      # and the transcript is the state — which is only true if the
+      # transcript actually arrives, and until it did, a restarted agent
+      # came back with no memory of anything it had been told.
+      messages: request["messages"],
+      # An OpenAI-compatible endpoint that is not the provider's own:
+      # a self-hosted gateway, a proxy, a company's own deployment. The
+      # provider has always read this and nothing has ever sent one.
+      base_url: request["base_url"],
+      # In front of the provider's HTTP client. A function, so only an
+      # in-process caller can set it — which is what a recording of a
+      # real turn needs and what nothing on the wire can carry.
+      req_options: request["req_options"],
+      # Where an agent finishes what it was part-way through before the
+      # process goes. Nothing on the wire sets it yet; the seam exists so
+      # a graceful stop is observable rather than merely intended.
+      on_stop: request["on_stop"],
+      # The channel for the copy this agent runs in, unless the caller
+      # names somewhere else. Settable for the same reason `on_stop` is:
+      # the default is right for the harness and it is not the only
+      # caller.
+      on_event: request["on_event"] || reporter_for(request["working_copy"])
+    )
   end
 
   def launch(_request), do: {:error, :agent_id_required}
