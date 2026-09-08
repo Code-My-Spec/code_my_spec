@@ -173,6 +173,7 @@
           {ExSlop.Check.Refactor.FlatMapFilter, []},
           {ExSlop.Check.Refactor.GraphemesLength, []},
           {ExSlop.Check.Refactor.IdentityMap, []},
+          {ExSlop.Check.Refactor.IdentityPassthrough, []},
           {ExSlop.Check.Refactor.ListFold, []},
           {ExSlop.Check.Refactor.ManualStringReverse, []},
           {ExSlop.Check.Refactor.ReduceAsMap, []},

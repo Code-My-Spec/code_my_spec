@@ -92,10 +92,7 @@ defmodule CodeMySpecWeb.ResendWebhookController do
   end
 
   defp decode_secret(secret) do
-    case secret |> String.replace_prefix("whsec_", "") |> Base.decode64() do
-      {:ok, key} -> {:ok, key}
-      :error -> :error
-    end
+    secret |> String.replace_prefix("whsec_", "") |> Base.decode64()
   end
 
   defp raw_body(conn) do

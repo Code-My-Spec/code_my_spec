@@ -43,10 +43,7 @@ defmodule CodeMySpec.Intake.Shaper do
   end
 
   def shape(%Plan{} = plan, turns) do
-    case impl().shape(plan, turns) do
-      {:ask, question} -> {:ask, question}
-      other -> other
-    end
+    impl().shape(plan, turns)
   end
 
   @doc "How many questions this conversation may spend."

@@ -68,10 +68,7 @@ defmodule CodeMySpec.Mail.ImageProxy do
       ]
       |> Keyword.merge(plug_opt())
 
-    case Req.request(opts) do
-      {:ok, resp} -> {:ok, resp}
-      {:error, reason} -> {:error, reason}
-    end
+    Req.request(opts)
   end
 
   defp ok_status(%{status: status}) when status in 200..299, do: :ok

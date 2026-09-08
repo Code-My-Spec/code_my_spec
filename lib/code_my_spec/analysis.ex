@@ -1178,10 +1178,7 @@ defmodule CodeMySpec.Analysis do
         input_fingerprint: job.fingerprint
       })
 
-    case Execution.execute(scope, run, job.opts) do
-      {:ok, finished} -> {:ok, finished}
-      {:error, reason} -> {:error, reason}
-    end
+    Execution.execute(scope, run, job.opts)
   end
 
   # The working copy, because that is what owns the build tree the queue exists

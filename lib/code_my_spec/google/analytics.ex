@@ -60,10 +60,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec list_accounts(Tesla.Client.t()) :: {:ok, map()} | {:error, term()}
   def list_accounts(conn) do
-    case Accounts.analyticsadmin_accounts_list(conn) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Accounts.analyticsadmin_accounts_list(conn)
   end
 
   @doc """
@@ -80,13 +77,10 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec list_properties(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def list_properties(conn, account_name) when is_binary(account_name) do
-    case Properties.analyticsadmin_properties_list(
-           conn,
-           filter: "parent:#{account_name}"
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_list(
+      conn,
+      filter: "parent:#{account_name}"
+    )
   end
 
   @doc """
@@ -103,10 +97,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec get_property(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def get_property(conn, property_name) when is_binary(property_name) do
-    case Properties.analyticsadmin_properties_get(conn, property_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_get(conn, property_name)
   end
 
   @doc """
@@ -123,10 +114,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec list_custom_dimensions(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def list_custom_dimensions(conn, property_name) when is_binary(property_name) do
-    case Properties.analyticsadmin_properties_custom_dimensions_list(conn, property_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_dimensions_list(conn, property_name)
   end
 
   @doc """
@@ -143,10 +131,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec get_custom_dimension(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def get_custom_dimension(conn, dimension_name) when is_binary(dimension_name) do
-    case Properties.analyticsadmin_properties_custom_dimensions_get(conn, dimension_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_dimensions_get(conn, dimension_name)
   end
 
   @doc """
@@ -175,14 +160,11 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def create_custom_dimension(conn, property_name, custom_dimension)
       when is_binary(property_name) and is_map(custom_dimension) do
-    case Properties.analyticsadmin_properties_custom_dimensions_create(
-           conn,
-           property_name,
-           body: custom_dimension
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_dimensions_create(
+      conn,
+      property_name,
+      body: custom_dimension
+    )
   end
 
   @doc """
@@ -205,15 +187,12 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def update_custom_dimension(conn, dimension_name, custom_dimension, update_mask)
       when is_binary(dimension_name) and is_map(custom_dimension) and is_binary(update_mask) do
-    case Properties.analyticsadmin_properties_custom_dimensions_patch(
-           conn,
-           dimension_name,
-           body: custom_dimension,
-           updateMask: update_mask
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_dimensions_patch(
+      conn,
+      dimension_name,
+      body: custom_dimension,
+      updateMask: update_mask
+    )
   end
 
   @doc """
@@ -233,10 +212,7 @@ defmodule CodeMySpec.Google.Analytics do
   @spec archive_custom_dimension(Tesla.Client.t(), String.t()) ::
           {:ok, map()} | {:error, term()}
   def archive_custom_dimension(conn, dimension_name) when is_binary(dimension_name) do
-    case Properties.analyticsadmin_properties_custom_dimensions_archive(conn, dimension_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_dimensions_archive(conn, dimension_name)
   end
 
   @doc """
@@ -253,10 +229,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec list_custom_metrics(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def list_custom_metrics(conn, property_name) when is_binary(property_name) do
-    case Properties.analyticsadmin_properties_custom_metrics_list(conn, property_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_metrics_list(conn, property_name)
   end
 
   @doc """
@@ -287,14 +260,11 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def create_custom_metric(conn, property_name, custom_metric)
       when is_binary(property_name) and is_map(custom_metric) do
-    case Properties.analyticsadmin_properties_custom_metrics_create(
-           conn,
-           property_name,
-           body: custom_metric
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_metrics_create(
+      conn,
+      property_name,
+      body: custom_metric
+    )
   end
 
   @doc """
@@ -311,10 +281,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec get_custom_metric(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def get_custom_metric(conn, metric_name) when is_binary(metric_name) do
-    case Properties.analyticsadmin_properties_custom_metrics_get(conn, metric_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_metrics_get(conn, metric_name)
   end
 
   @doc """
@@ -337,15 +304,12 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def update_custom_metric(conn, metric_name, custom_metric, update_mask)
       when is_binary(metric_name) and is_map(custom_metric) and is_binary(update_mask) do
-    case Properties.analyticsadmin_properties_custom_metrics_patch(
-           conn,
-           metric_name,
-           body: custom_metric,
-           updateMask: update_mask
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_metrics_patch(
+      conn,
+      metric_name,
+      body: custom_metric,
+      updateMask: update_mask
+    )
   end
 
   @doc """
@@ -364,10 +328,7 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec archive_custom_metric(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def archive_custom_metric(conn, metric_name) when is_binary(metric_name) do
-    case Properties.analyticsadmin_properties_custom_metrics_archive(conn, metric_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_custom_metrics_archive(conn, metric_name)
   end
 
   @doc """
@@ -392,10 +353,7 @@ defmodule CodeMySpec.Google.Analytics do
     opts = if page_size, do: [{:pageSize, page_size} | opts], else: opts
     opts = if page_token, do: [{:pageToken, page_token} | opts], else: opts
 
-    case Properties.analyticsadmin_properties_key_events_list(conn, property_name, opts) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_key_events_list(conn, property_name, opts)
   end
 
   @doc """
@@ -422,14 +380,11 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def create_key_event(conn, property_name, key_event)
       when is_binary(property_name) and is_map(key_event) do
-    case Properties.analyticsadmin_properties_key_events_create(
-           conn,
-           property_name,
-           body: key_event
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_key_events_create(
+      conn,
+      property_name,
+      body: key_event
+    )
   end
 
   @doc """
@@ -453,15 +408,12 @@ defmodule CodeMySpec.Google.Analytics do
           {:ok, map()} | {:error, term()}
   def update_key_event(conn, key_event_name, key_event, update_mask)
       when is_binary(key_event_name) and is_map(key_event) and is_binary(update_mask) do
-    case Properties.analyticsadmin_properties_key_events_patch(
-           conn,
-           key_event_name,
-           body: key_event,
-           updateMask: update_mask
-         ) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_key_events_patch(
+      conn,
+      key_event_name,
+      body: key_event,
+      updateMask: update_mask
+    )
   end
 
   @doc """
@@ -478,10 +430,6 @@ defmodule CodeMySpec.Google.Analytics do
   """
   @spec delete_key_event(Tesla.Client.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def delete_key_event(conn, key_event_name) when is_binary(key_event_name) do
-    case Properties.analyticsadmin_properties_key_events_delete(conn, key_event_name) do
-      {:ok, response} -> {:ok, response}
-      {:error, reason} -> {:error, reason}
-    end
+    Properties.analyticsadmin_properties_key_events_delete(conn, key_event_name)
   end
-
 end
