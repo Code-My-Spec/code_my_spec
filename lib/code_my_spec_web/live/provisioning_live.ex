@@ -822,7 +822,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       class="step"
     >
       <div class="card bg-base-100 w-full text-left">
-        <div class="card-body">
+        <div class="card-body p-4 gap-2">
           <div class="flex items-center justify-between gap-4">
             <div>
               <h3 class="card-title">
