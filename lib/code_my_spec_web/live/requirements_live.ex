@@ -752,7 +752,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
       %{
         name: prereq_name,
-        satisfied: !!(prereq && prereq.satisfied),
+        satisfied: (prereq && prereq.satisfied) == true,
         to: "/app/projects/#{slug}/requirements/#{prereq_name}"
       }
     end)
