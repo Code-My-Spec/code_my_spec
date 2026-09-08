@@ -9,6 +9,7 @@ defmodule CodeMySpec.Requirements do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -49,7 +50,7 @@ defmodule CodeMySpec.Requirements do
     # has not seen, and this count is what decides whether an agent is told to
     # stop — deciding a beat before the recompute means deciding from the older
     # answer. `:ok` when nothing is pending and when nobody is watching.
-    CodeMySpec.Requirements.GraphWatcher.settle(scope)
+    GraphWatcher.settle(scope)
 
     {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
 

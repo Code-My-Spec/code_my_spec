@@ -26,6 +26,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -175,7 +176,7 @@ defmodule CodeMySpec.Files.FileSync do
     # `GraphWatcher` asks the fingerprint anyway, so this is an optimisation
     # rather than a correctness rule. See `Requirements.GraphInputs`.
     if changed_paths != [] or upserted > 0 or removed > 0 do
-      CodeMySpec.Requirements.GraphInputs.changed(scope)
+      GraphInputs.changed(scope)
     end
 
     {:ok,
@@ -293,7 +294,7 @@ defmodule CodeMySpec.Files.FileSync do
     # nothing and changed nothing is the steady state of a quiet tree, and the
     # harness sends one every few minutes.
     if changed != [] or upserted > 0 or removed > 0 do
-      CodeMySpec.Requirements.GraphInputs.changed(scope)
+      GraphInputs.changed(scope)
     end
 
     %{
