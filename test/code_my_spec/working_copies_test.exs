@@ -218,21 +218,42 @@ defmodule CodeMySpec.WorkingCopiesTest do
       assert mine.project_id == scope.active_project_id
     end
 
-    test "rejoining refreshes the label, because a checkout can move", %{scope: scope} do
+    test "rejoining refreshes the label, while it is still the auto-generated one",
+         %{scope: scope} do
       {:ok, first} =
         WorkingCopies.issue(scope, nil,
-          label: "the harness at /old",
+          label: "the harness at /old on host-a",
           device: device_fixture(scope)
         )
 
       {:ok, same} =
         WorkingCopies.issue(scope, first.id,
-          label: "the harness at /new",
+          label: "the harness at /new on host-b",
           device: device_fixture(scope)
         )
 
       assert same.id == first.id
-      assert same.label == "the harness at /new"
+      assert same.label == "the harness at /new on host-b"
+    end
+
+    test "a name a person chose survives rejoining", %{scope: scope} do
+      {:ok, first} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /old on host-a",
+          device: device_fixture(scope)
+        )
+
+      {:ok, renamed} = WorkingCopies.relabel(scope, first, "Sam's branch")
+
+      {:ok, same} =
+        WorkingCopies.issue(scope, renamed.id,
+          label: "the harness at /old on host-a",
+          device: device_fixture(scope)
+        )
+
+      assert same.label == "Sam's branch",
+             "a checkout reconnecting sends its own computed default on every join — " <>
+               "applying that unconditionally is what silently undid every rename"
     end
 
     test "a join carrying no label leaves the last known one alone", %{scope: scope} do

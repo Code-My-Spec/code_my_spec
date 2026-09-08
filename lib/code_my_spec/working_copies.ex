@@ -37,6 +37,13 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
+  # `CmsHarness.Config.label/1`'s fallback shape — "the harness at <root> on
+  # <host>" — sent by a harness that nobody has named. `display_name/1` below
+  # matches the same shape (its own regex; it only needs the path, not the
+  # host) to shorten it for display. `touch/2` uses this one to tell that
+  # shape apart from a name a person actually chose.
+  @auto_label_pattern ~r{^the harness at\s+\S+ on\s+\S+}
+
   @doc """
   The harness for this id, or a new one if the caller has none.
 
@@ -659,12 +666,37 @@ defmodule CodeMySpec.WorkingCopies do
     )
   end
 
-  # The label is refreshed on every join because it can legitimately change —
-  # a checkout moves, a container is recreated with a new hostname — and it is
-  # display only, so following it costs nothing and keeps the operator's picker
-  # honest. A join that does not carry one leaves the last known label alone.
+  # The label refreshes on every join *while it is still the auto-generated
+  # one* — a checkout moves, a container is recreated with a new hostname,
+  # and following that costs nothing since nobody has named this copy yet.
+  #
+  # It used to refresh unconditionally, on the theory that the label is
+  # display only so keeping it current costs nothing. That reasoning skipped
+  # the one thing a join cannot tell apart from its own default: a name a
+  # person chose with `relabel/3`. `CmsHarness.Config.label/1` sends its
+  # computed default on *every* connect, and a harness reconnects on every
+  # restart and every server-side refresh — so a rename that survived until
+  # the next reconnect was luck, not the promise `relabel/3`'s own doc makes.
+  # John: "these the names of these working copies keeps reverting to the
+  # automatically generated crap."
   defp touch(harness, nil), do: save(harness, %{last_seen_at: now()})
-  defp touch(harness, label), do: save(harness, %{last_seen_at: now(), label: label})
+
+  defp touch(harness, label) do
+    if auto_label?(harness.label) do
+      save(harness, %{last_seen_at: now(), label: label})
+    else
+      save(harness, %{last_seen_at: now()})
+    end
+  end
+
+  # Whether a stored label is still nothing anybody chose — blank, or the
+  # "the harness at <root> on <host>" shape `CmsHarness.Config.label/1`
+  # falls back to. The same shape `display_name/1` recognizes to shorten for
+  # display; here it is what tells a join there is nothing to protect.
+  defp auto_label?(label) when is_binary(label) and label != "",
+    do: Regex.match?(@auto_label_pattern, label)
+
+  defp auto_label?(_label), do: true
 
   defp save(harness, attrs) do
     harness
