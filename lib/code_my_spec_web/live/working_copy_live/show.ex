@@ -87,6 +87,43 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # invents precision the page does not have.
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
+  defp main_copy_refusal?({_role, {:main_copy_occupied, _root}}), do: true
+  defp main_copy_refusal?(_failure), do: false
+
+  # Not an error. This copy is the one the project talks through, and it holds a
+  # single agent by design — a second conversation there is indistinguishable
+  # from the first.
+  defp main_copy_note([]),
+    do:
+      "This is the project's main checkout, which holds one agent on purpose — " <>
+        "the one the project talks through. Something is already running in it, " <>
+        "so nothing was started. Stop that agent, or staff a different checkout."
+
+  defp main_copy_note(started),
+    do:
+      "Started #{roster(started)}. This is the project's main checkout, which holds " <>
+        "one agent on purpose — the one the project talks through — so the other " <>
+        "roles were not started. Staff a different checkout for a full team."
+
+  defp staffing_result(report, socket) do
+    case report do
+      %{started: [], failed: []} ->
+        {:noreply, put_flash(socket, :info, "Every role is already staffed on this copy.")}
+
+      %{started: started, failed: []} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Started #{roster(started)}. Put them to work when you are ready.")
+         |> load(socket.assigns.project)}
+
+      %{started: started, failed: failed} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, staffing_trouble(started, failed))
+         |> load(socket.assigns.project)}
+    end
+  end
+
   @copy_roles [:product, :coding, :qa]
 
   # A copy is understaffed when any role has no live agent. Stopped ones do not
@@ -177,20 +214,23 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     scope = socket.assigns.current_scope
 
     case Agents.ensure_copy_agents(scope, socket.assigns.row.harness) do
-      %{started: [], failed: []} ->
-        {:noreply, put_flash(socket, :info, "Every role is already staffed on this copy.")}
+      # The project's main checkout holds one agent on purpose, so asking for a
+      # roster of three gets the first and two refusals. Said in words here
+      # rather than as `{:main_copy_occupied, "/Users/..."}`, which is an
+      # inspect of an internal tuple — `AgentsMapper` already writes this out
+      # for the MCP surface and the page was not using the same sentence.
+      %{failed: [_ | _] = failed} = report ->
+        if Enum.all?(failed, &main_copy_refusal?/1) do
+          {:noreply,
+           socket
+           |> put_flash(:info, main_copy_note(report.started))
+           |> load(socket.assigns.project)}
+        else
+          staffing_result(report, socket)
+        end
 
-      %{started: started, failed: []} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Started #{roster(started)}. Put them to work when you are ready.")
-         |> load(socket.assigns.project)}
-
-      %{started: started, failed: failed} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, staffing_trouble(started, failed))
-         |> load(socket.assigns.project)}
+      report ->
+        staffing_result(report, socket)
     end
   end
 

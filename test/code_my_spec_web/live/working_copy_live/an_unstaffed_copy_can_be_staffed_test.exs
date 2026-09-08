@@ -106,11 +106,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   test "pressing it reports what happened", context do
     copy = join_working_copy(context, "/tmp/press-it", "an unstaffed copy")
 
-    html =
-      context
-      |> show(copy)
-      |> element(~s([data-test="staff-copy"]))
-      |> render_click()
+    live = show(copy_context(context), copy)
+    live |> element(~s([data-test="staff-copy"])) |> render_click()
+
+    html = render(live)
 
     assert html =~ "agent" or html =~ "Could not staff",
            """
@@ -119,6 +118,33 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
            not happen is silence, because that is indistinguishable from a
            control wired to nothing.
            """
+  end
+
+  # Every failure is named, and none of them arrives as a raw tuple.
+  #
+  # This is the shape of what John hit: he pressed the button on the project's
+  # main checkout, got a product agent, and then
+  # `coding - {:main_copy_occupied, "/Users/..."}; qa - {:main_copy_occupied, ...}`
+  # — an inspect of an internal tuple, readable only if you already knew the
+  # atom was a reason and the string a path.
+  #
+  # The main-copy refusal itself is not reachable from here: `start_agent/2`
+  # checks the transport before that guard, so in this environment every role
+  # fails `:not_connected` first. What this pins is the property that covers it
+  # — a failure is reported by role, in a sentence, and never as a tuple.
+  test "failures are named without printing a tuple", context do
+    copy = join_working_copy(context, "/tmp/reports-clearly", "an unstaffed copy")
+
+    live = show(context, copy)
+    live |> element(~s([data-test="staff-copy"])) |> render_click()
+
+    html = render(live)
+
+    assert html =~ "Could not staff this copy" or html =~ "Started",
+           "the button was pressed and the page said nothing"
+
+    refute html =~ "{:main_copy_occupied",
+           "an internal tuple was printed at somebody"
   end
 
   # Idempotence is what lets the button be safe to press twice — and it is the
@@ -148,4 +174,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   end
 
   defp root_of(_copy), do: "/tmp/fully-staffed"
+
+  # `show/2` takes the context; naming the pass-through keeps the two click
+  # tests reading as "open the page, press the button, read the page".
+  defp copy_context(context), do: context
 end
