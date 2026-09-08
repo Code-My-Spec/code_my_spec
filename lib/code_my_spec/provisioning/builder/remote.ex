@@ -420,10 +420,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # `trust_command/1` is a no-op when the host is already trusted, so this is
   # only ever reached on a box that had to be changed.
   defp trust(run, host) do
-    case loopback?(host) do
-      true -> :ok
-      false -> attempt_trust(run, host)
-    end
+    if loopback?(host), do: :ok, else: attempt_trust(run, host)
   end
 
   defp attempt_trust(run, host) do

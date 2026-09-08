@@ -243,13 +243,11 @@ defmodule CodeMySpec.Billing do
   end
 
   defp already_applied(%Ecto.Changeset{} = changeset, event_id) do
-    case duplicate_event?(changeset) do
-      true ->
-        Logger.info("[Billing] ignoring redelivered Stripe event #{event_id}")
-        :ok
-
-      false ->
-        {:error, changeset}
+    if duplicate_event?(changeset) do
+      Logger.info("[Billing] ignoring redelivered Stripe event #{event_id}")
+      :ok
+    else
+      {:error, changeset}
     end
   end
 

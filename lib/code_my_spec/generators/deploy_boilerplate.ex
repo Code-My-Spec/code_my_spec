@@ -349,10 +349,9 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   end
 
   defp pipeline_check(scope, path) do
-    case String.contains?(scope, "pipe_through") do
-      true -> {:error, {:health_route_piped, path}}
-      false -> :ok
-    end
+    if String.contains?(scope, "pipe_through"),
+      do: {:error, {:health_route_piped, path}},
+      else: :ok
   end
 
   # Live first, the fast and common path: a real checkout answers this

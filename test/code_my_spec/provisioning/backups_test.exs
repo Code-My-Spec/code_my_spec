@@ -35,21 +35,19 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   @database_url "ecto://backups_test@localhost/prod"
 
   setup do
-    case Sops.available?() do
-      false ->
-        {:ok, skip: true}
+    if Sops.available?() do
+      {:ok, tmp} = Briefly.create(directory: true)
+      env = Environment.new(:local, tmp)
 
-      true ->
-        {:ok, tmp} = Briefly.create(directory: true)
-        env = Environment.new(:local, tmp)
+      {:ok, {pub, priv}} = Sops.generate_key()
+      :ok = Sops.write_config(env, %{"prod" => pub})
+      :ok = Sops.put_secret(env, "prod", "DATABASE_URL", @database_url, priv)
 
-        {:ok, {pub, priv}} = Sops.generate_key()
-        :ok = Sops.write_config(env, %{"prod" => pub})
-        :ok = Sops.put_secret(env, "prod", "DATABASE_URL", @database_url, priv)
+      write_backup_script(tmp)
 
-        write_backup_script(tmp)
-
-        {:ok, env: env, tmp: tmp, key: priv}
+      {:ok, env: env, tmp: tmp, key: priv}
+    else
+      {:ok, skip: true}
     end
   end
 

@@ -746,10 +746,9 @@ defmodule CodeMySpecSpex.Case do
       end)
       |> Enum.member?(conn.host)
 
-    case published? do
-      true -> Conn.send_resp(conn, 200, "ok")
-      false -> Conn.send_resp(conn, 404, "no site is published at #{conn.host}")
-    end
+    if published?,
+      do: Conn.send_resp(conn, 200, "ok"),
+      else: Conn.send_resp(conn, 404, "no site is published at #{conn.host}")
   end
 
   defp qualified_name(record, zone) do
@@ -1578,13 +1577,11 @@ defmodule CodeMySpecSpex.Case do
     fun.()
   rescue
     error in [ExUnit.AssertionError] ->
-      case System.monotonic_time(:millisecond) < deadline do
-        true ->
-          Process.sleep(25)
-          eventually(fun, deadline, :again)
-
-        false ->
-          reraise(error, __STACKTRACE__)
+      if System.monotonic_time(:millisecond) < deadline do
+        Process.sleep(25)
+        eventually(fun, deadline, :again)
+      else
+        reraise(error, __STACKTRACE__)
       end
   end
 
@@ -2293,10 +2290,9 @@ defmodule CodeMySpecSpex.Case do
     shims = Path.expand("~/.asdf/shims")
 
     path =
-      case File.dir?(shims) do
-        true -> [{"PATH", shims <> ":" <> (System.get_env("PATH") || "")}]
-        false -> []
-      end
+      if File.dir?(shims),
+        do: [{"PATH", shims <> ":" <> (System.get_env("PATH") || "")}],
+        else: []
 
     path ++ [{"PWD", dir} | @child_mix_env]
   end
@@ -2813,10 +2809,9 @@ defmodule CodeMySpecSpex.Case do
   # it from `on_exit` reaches the real GitHub with a placeholder credential
   # after the stub is gone.
   defp delete_repository_unless_faked(name) do
-    case Application.get_env(:code_my_spec, :spex_fakes, false) do
-      true -> :ok
-      false -> safe_teardown(name, fn -> Fixtures.delete_spex_repository(name) end)
-    end
+    if Application.get_env(:code_my_spec, :spex_fakes, false),
+      do: :ok,
+      else: safe_teardown(name, fn -> Fixtures.delete_spex_repository(name) end)
   end
 
   @doc """
@@ -4561,10 +4556,9 @@ defmodule CodeMySpecSpex.Case do
   # it, breaking the ten that currently work.
   @doc "Public so `with_full_cassette/3` can call it from the module its `quote` block expands into."
   def with_recorded_repository_owner(name, fun) do
-    case recording?() do
-      true -> fun.()
-      false -> replay_as_recorded_owner(recorded_repository_owner(name), fun)
-    end
+    if recording?(),
+      do: fun.(),
+      else: replay_as_recorded_owner(recorded_repository_owner(name), fun)
   end
 
   defp replay_as_recorded_owner(nil, fun), do: fun.()
@@ -4595,10 +4589,9 @@ defmodule CodeMySpecSpex.Case do
         |> Enum.map(&get_in(&1, ["request", "uri"]))
         |> Enum.filter(&is_binary/1)
 
-      case Enum.any?(uris, &(String.trim_trailing(&1, "/") == "https://api.github.com/user")) do
-        true -> nil
-        false -> owner_from_uris(uris)
-      end
+      if Enum.any?(uris, &(String.trim_trailing(&1, "/") == "https://api.github.com/user")),
+        do: nil,
+        else: owner_from_uris(uris)
     else
       _ -> nil
     end
@@ -5176,10 +5169,9 @@ defmodule CodeMySpecSpex.Case do
     # Passing the function through unwrapped runs it against the fakes, which
     # is what the caller wanted. Off for anything that has not installed them,
     # so nothing still on cassettes changes.
-    case Application.get_env(:code_my_spec, :spex_fakes, false) do
-      true -> fun.()
-      false -> recorded_provider_call(name, opts, fun)
-    end
+    if Application.get_env(:code_my_spec, :spex_fakes, false),
+      do: fun.(),
+      else: recorded_provider_call(name, opts, fun)
   end
 
   defp recorded_provider_call(name, opts, fun) do
@@ -5612,10 +5604,9 @@ defmodule CodeMySpecSpex.Case do
     # the calls left the harness for the real internet with a placeholder
     # credential, and 966/8003 spent its full three-minute timeout there
     # rather than failing.
-    case Application.get_env(:code_my_spec, :spex_fakes, false) do
-      true -> :ok
-      false -> record_teardown(scope, keys, opts)
-    end
+    if Application.get_env(:code_my_spec, :spex_fakes, false),
+      do: :ok,
+      else: record_teardown(scope, keys, opts)
   end
 
   defp record_teardown(scope, keys, opts) do

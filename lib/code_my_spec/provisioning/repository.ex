@@ -140,19 +140,17 @@ defmodule CodeMySpec.Provisioning.Repository do
   defp existing(scope, owner, name), do: GitHub.get_repository(scope, owner, name)
 
   defp resolve_existing(repo, _name, opts) do
-    case Keyword.get(opts, :adopt, false) do
-      true ->
-        {:ok, :adopted, repo}
-
-      false ->
-        {:name_taken,
-         %{
-           repository: repo,
-           choices: [:adopt, :rename],
-           message:
-             "A repository named #{repo["name"]} already exists on this account. " <>
-               "Adopt it as this project's remote, or choose another name."
-         }}
+    if Keyword.get(opts, :adopt, false) do
+      {:ok, :adopted, repo}
+    else
+      {:name_taken,
+       %{
+         repository: repo,
+         choices: [:adopt, :rename],
+         message:
+           "A repository named #{repo["name"]} already exists on this account. " <>
+             "Adopt it as this project's remote, or choose another name."
+       }}
     end
   end
 
@@ -273,11 +271,13 @@ defmodule CodeMySpec.Provisioning.Repository do
           :ok
         else
           {output, status} ->
-            {:error, "could not commit the CI workflow owner fix (#{status}): #{String.trim(output)}"}
+            {:error,
+             "could not commit the CI workflow owner fix (#{status}): #{String.trim(output)}"}
         end
 
       {output, status} ->
-        {:error, "could not check #{@ci_workflow_path} status (#{status}): #{String.trim(output)}"}
+        {:error,
+         "could not check #{@ci_workflow_path} status (#{status}): #{String.trim(output)}"}
     end
   end
 

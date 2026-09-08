@@ -382,10 +382,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       lock_expires_at: lock_expires_at
     }
 
-    case locked?(story) do
-      true -> {:error, :already_locked}
-      false -> update_lock_fields(story, attrs)
-    end
+    if locked?(story), do: {:error, :already_locked}, else: update_lock_fields(story, attrs)
   end
 
   def release_lock(%Scope{}, %Story{} = story) do
@@ -401,10 +398,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   def extend_lock(%Scope{} = scope, %Story{} = story, expires_in_minutes \\ 30) do
     lock_expires_at = DateTime.utc_now() |> DateTime.add(expires_in_minutes * 60, :second)
 
-    case lock_owner(story) == scope.user.id do
-      true -> update_lock_fields(story, %{lock_expires_at: lock_expires_at})
-      false -> {:error, :not_lock_owner}
-    end
+    if lock_owner(story) == scope.user.id,
+      do: update_lock_fields(story, %{lock_expires_at: lock_expires_at}),
+      else: {:error, :not_lock_owner}
   end
 
   def locked?(%Story{} = story) do

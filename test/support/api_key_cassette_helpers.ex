@@ -67,10 +67,7 @@ defmodule CodeMySpec.ApiKeyCassetteHelpers do
   to match it against.
   """
   def live_key do
-    case record?() do
-      true -> System.fetch_env!("ANTHROPIC_API_KEY")
-      false -> "replay-key"
-    end
+    if record?(), do: System.fetch_env!("ANTHROPIC_API_KEY"), else: "replay-key"
   end
 
   @doc """
@@ -82,10 +79,7 @@ defmodule CodeMySpec.ApiKeyCassetteHelpers do
   nothing like a key at all.
   """
   def broken_key do
-    case record?() do
-      true -> live_key() |> String.slice(0..-2//1)
-      false -> "replay-key-broken"
-    end
+    if record?(), do: live_key() |> String.slice(0..-2//1), else: "replay-key-broken"
   end
 
   def record?, do: System.get_env("API_KEY_RECORD") in ~w(1 true yes)

@@ -235,19 +235,17 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
 
   # Ensure we have valid printable UTF-8
   defp ensure_printable_utf8(text) do
-    case String.valid?(text) do
-      true ->
-        text
-
-      false ->
-        # Force conversion to valid UTF-8, replacing invalid sequences
-        text
-        |> :unicode.characters_to_binary(:latin1, :utf8)
-        |> case do
-          binary when is_binary(binary) -> binary
-          # If all else fails, return empty string
-          _ -> ""
-        end
+    if String.valid?(text) do
+      text
+    else
+      # Force conversion to valid UTF-8, replacing invalid sequences
+      text
+      |> :unicode.characters_to_binary(:latin1, :utf8)
+      |> case do
+        binary when is_binary(binary) -> binary
+        # If all else fails, return empty string
+        _ -> ""
+      end
     end
   end
 

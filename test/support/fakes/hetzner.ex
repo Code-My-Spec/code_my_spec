@@ -303,13 +303,11 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
 
   # Give the named server an address on the network it just joined.
   defp attach_if_named(%{"id" => server_id} = server, id, network) do
-    case to_string(server_id) == id do
-      true ->
-        entry = %{"network" => network, "ip" => "10.0.0.#{server_id}"}
-        Map.update(server, "private_net", [entry], &(&1 ++ [entry]))
-
-      false ->
-        server
+    if to_string(server_id) == id do
+      entry = %{"network" => network, "ip" => "10.0.0.#{server_id}"}
+      Map.update(server, "private_net", [entry], &(&1 ++ [entry]))
+    else
+      server
     end
   end
 

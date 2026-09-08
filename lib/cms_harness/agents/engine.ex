@@ -694,10 +694,7 @@ defmodule CmsHarness.Agents.Engine do
   end
 
   defp alive_or_gone(pid) do
-    case Process.alive?(pid) do
-      true -> {:ok, pid}
-      false -> {:error, :not_running}
-    end
+    if Process.alive?(pid), do: {:ok, pid}, else: {:error, :not_running}
   end
 
   @doc """
@@ -921,9 +918,6 @@ defmodule CmsHarness.Agents.Engine do
   # discovered from a tool call failing deep in the loop, where it arrives as a
   # confusing message about a path instead of "this copy is gone".
   defp working_copy_exists(path) do
-    case File.dir?(path) do
-      true -> :ok
-      false -> {:error, :working_copy_missing}
-    end
+    if File.dir?(path), do: :ok, else: {:error, :working_copy_missing}
   end
 end

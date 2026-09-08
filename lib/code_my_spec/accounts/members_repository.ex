@@ -51,10 +51,9 @@ defmodule CodeMySpec.Accounts.MembersRepository do
         changeset = Member.update_role_changeset(member, %{role: role})
         validated_changeset = Member.validate_owner_exists(changeset, Repo)
 
-        case validated_changeset.valid? do
-          true -> Repo.update(validated_changeset)
-          false -> {:error, validated_changeset}
-        end
+        if validated_changeset.valid?,
+          do: Repo.update(validated_changeset),
+          else: {:error, validated_changeset}
     end
   end
 

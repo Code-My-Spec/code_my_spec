@@ -332,16 +332,19 @@ defmodule CodeMySpec.Provisioning.Sops do
   @spec missing_secrets(Environments.Environment.t(), env_name(), String.t(), [String.t()]) ::
           {:ok, [String.t()]} | error()
   def missing_secrets(env, environment, private_key, required) do
-    case Environments.file_exists?(env, env_file(environment)) do
-      false ->
-        {:ok, required}
+    if Environments.file_exists?(env, env_file(environment)) do
+      case decrypt(env, environment, private_key) do
+        {:ok, present} ->
+          {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
 
-      true ->
-        case decrypt(env, environment, private_key) do
-          {:ok, present} -> {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
-          {:error, {:sops_failed, _status, output} = reason} -> unencrypted_scaffold(reason, output, required)
-          {:error, _reason} = error -> error
-        end
+        {:error, {:sops_failed, _status, output} = reason} ->
+          unencrypted_scaffold(reason, output, required)
+
+        {:error, _reason} = error ->
+          error
+      end
+    else
+      {:ok, required}
     end
   end
 
@@ -356,10 +359,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   ## Internals
 
   defp ensure_available do
-    case available?() do
-      true -> :ok
-      false -> {:error, :sops_unavailable}
-    end
+    if available?(), do: :ok, else: {:error, :sops_unavailable}
   end
 
   # `sops set` requires the file to exist and be encrypted already. A fresh

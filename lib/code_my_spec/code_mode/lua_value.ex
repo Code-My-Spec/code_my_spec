@@ -34,10 +34,9 @@ defmodule CodeMySpec.CodeMode.LuaValue do
   def from_lua([{_key, _value} | _rest] = table) do
     keys = Enum.map(table, &elem(&1, 0))
 
-    case array?(keys) do
-      true -> table |> Enum.sort_by(&elem(&1, 0)) |> Enum.map(&from_lua(elem(&1, 1)))
-      false -> Map.new(table, fn {key, value} -> {to_string(key), from_lua(value)} end)
-    end
+    if array?(keys),
+      do: table |> Enum.sort_by(&elem(&1, 0)) |> Enum.map(&from_lua(elem(&1, 1))),
+      else: Map.new(table, fn {key, value} -> {to_string(key), from_lua(value)} end)
   end
 
   # Lua has one number type, so every integer arrives as a float and a tool

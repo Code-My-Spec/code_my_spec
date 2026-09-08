@@ -92,10 +92,7 @@ defmodule CodeMySpec.Workspaces do
   # row behind. Trusting it showed the visitor "It's running" over a link that
   # refused the connection, so the claim is checked before it is repeated.
   defp boot_workspace(%Workspace{status: :running} = workspace, scope) do
-    case still_serving?(workspace) do
-      true -> {:ok, workspace}
-      false -> start_instance(workspace, scope)
-    end
+    if still_serving?(workspace), do: {:ok, workspace}, else: start_instance(workspace, scope)
   end
 
   # One page view calls this twice — LiveView mounts disconnected, then again
@@ -105,10 +102,9 @@ defmodule CodeMySpec.Workspaces do
   # answer to "bring one up", so only a `:booting` row with nothing behind it
   # starts anything.
   defp boot_workspace(%Workspace{status: :booting} = workspace, scope) do
-    case Runner.alive?(workspace.container_name) do
-      true -> {:ok, workspace}
-      false -> start_instance(workspace, scope)
-    end
+    if Runner.alive?(workspace.container_name),
+      do: {:ok, workspace},
+      else: start_instance(workspace, scope)
   end
 
   defp boot_workspace(existing, %Scope{} = scope), do: start_instance(existing, scope)

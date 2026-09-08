@@ -62,10 +62,9 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   end
 
   def call({__MODULE__, :browser}, tool, arguments) do
-    case tool in browser_tools() do
-      true -> {:ok, "#{tool} ran with #{inspect(arguments)}"}
-      false -> {:error, "This machine's browser has no tool called #{inspect(tool)}."}
-    end
+    if tool in browser_tools(),
+      do: {:ok, "#{tool} ran with #{inspect(arguments)}"},
+      else: {:error, "This machine's browser has no tool called #{inspect(tool)}."}
   end
 
   def call({__MODULE__, _headers}, tool, _arguments) do

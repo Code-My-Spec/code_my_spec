@@ -500,13 +500,11 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # "remove the `prod` environment to leave the apex alone", and that sentence
   # was false in the most expensive possible way.
   defp doomed?(scope, name, zone_name, opts) do
-    case apex?(name, zone_name) do
-      false ->
-        &at_or_under?(&1["name"], name)
-
-      true ->
-        ours = project_addresses(scope, opts)
-        &(&1["name"] == name and &1["content"] in ours)
+    if apex?(name, zone_name) do
+      ours = project_addresses(scope, opts)
+      &(&1["name"] == name and &1["content"] in ours)
+    else
+      &at_or_under?(&1["name"], name)
     end
   end
 

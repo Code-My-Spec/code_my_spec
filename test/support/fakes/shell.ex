@@ -140,7 +140,9 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # picked up the wrapper's closing quote as part of its last argument —
   # `uat` arrived as `uat'`, and every dump landed under the wrong
   # environment.
-  defp run(env, "ssh", args, _opts), do: {remote_answer(env, Enum.join(unwrap_last(args), " ")), 0}
+  defp run(env, "ssh", args, _opts),
+    do: {remote_answer(env, Enum.join(unwrap_last(args), " ")), 0}
+
   defp run(_env, "scp", _args, _opts), do: {"", 0}
 
   # `sh -c "git archive … | ssh … tar -x"` is how a tree reaches a box. The
@@ -271,10 +273,9 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # on `"'dump'"` instead of `"dump"` is how this fake answered nothing to a
   # dump it had a perfectly good answer for.
   defp unquote_arg(arg) do
-    case String.starts_with?(arg, "'") and String.ends_with?(arg, "'") do
-      true -> String.slice(arg, 1..-2//1)
-      false -> arg
-    end
+    if String.starts_with?(arg, "'") and String.ends_with?(arg, "'"),
+      do: String.slice(arg, 1..-2//1),
+      else: arg
   end
 
   # The key the generated script really writes: `dumps/<environment>/<app>-
@@ -303,9 +304,15 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # are shell strings rather than argv, composed by interpolation in `Remote`.
   defp remote_answer(env, command) do
     cond do
-      String.contains?(command, "{{.Architecture}}") -> "amd64\n"
-      String.contains?(command, "/v2/") -> "< HTTP/1.1 200 OK\n"
-      String.contains?(command, "uname -m") -> "x86_64\n"
+      String.contains?(command, "{{.Architecture}}") ->
+        "amd64\n"
+
+      String.contains?(command, "/v2/") ->
+        "< HTTP/1.1 200 OK\n"
+
+      String.contains?(command, "uname -m") ->
+        "x86_64\n"
+
       # The same script, on the box. `bin/backup` runs where `cms-postgres`
       # resolves — the environment's own server — so the backups step passes a
       # `:run` and the command arrives here as one shell line rather than as
@@ -313,7 +320,9 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       # the same story, which is what the step checks.
       String.contains?(command, "bin/backup") ->
         command |> backup_args() |> backup(bucket_from(command)) |> elem(0)
-      true -> docker_answer(env, command)
+
+      true ->
+        docker_answer(env, command)
     end
   end
 
@@ -444,14 +453,12 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     # detects this state by matching the message text, so a fake that refuses
     # with wording of its own reads as a genuine failure and the secrets step
     # reports `{:sops_failed, 1, …}` on a file that is perfectly fine.
-    case String.contains?(contents, "# sops:age:") do
-      true ->
-        {"Error: file is already being encrypted: it has a top-level entry called 'sops'\n", 1}
-
-      false ->
-        recipients = recipients_for(env, path)
-        Environments.write_file(env, path, contents <> "# sops:age:#{recipients}\n")
-        {"", 0}
+    if String.contains?(contents, "# sops:age:") do
+      {"Error: file is already being encrypted: it has a top-level entry called 'sops'\n", 1}
+    else
+      recipients = recipients_for(env, path)
+      Environments.write_file(env, path, contents <> "# sops:age:#{recipients}\n")
+      {"", 0}
     end
   end
 
@@ -477,11 +484,16 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   end
 
   defp put_line(contents, key, value) do
-    lines = contents |> String.split("\n", trim: true) |> Enum.reject(&String.starts_with?(&1, "#{key}="))
+    lines =
+      contents
+      |> String.split("\n", trim: true)
+      |> Enum.reject(&String.starts_with?(&1, "#{key}="))
+
     Enum.join(lines ++ ["#{key}=#{value}"], "\n") <> "\n"
   end
 
-  defp hash(seed), do: :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+  defp hash(seed),
+    do: :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 16)
 
   defp listing(env) do
     case Environments.list_directory(env, ".") do

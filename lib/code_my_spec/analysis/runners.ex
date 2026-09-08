@@ -481,10 +481,7 @@ defmodule CodeMySpec.Analysis.Runners do
   # failures keep preferring their own frame. Its blast radius is exactly the
   # set that lands on `unknown` now.
   defp declared_spec(spec_file) when is_binary(spec_file) do
-    case String.ends_with?(spec_file, "_spex.exs") do
-      true -> {spec_file, nil}
-      false -> {nil, nil}
-    end
+    if String.ends_with?(spec_file, "_spex.exs"), do: {spec_file, nil}, else: {nil, nil}
   end
 
   defp declared_spec(_spec_file), do: {nil, nil}

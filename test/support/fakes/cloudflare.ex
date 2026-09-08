@@ -108,7 +108,8 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
       "proxied" => body["proxied"] || false
     }
 
-    {ok(record), put_records(%{state | next_id: state.next_id + 1}, zone, records(state, zone) ++ [record])}
+    {ok(record),
+     put_records(%{state | next_id: state.next_id + 1}, zone, records(state, zone) ++ [record])}
   end
 
   # The update path. `ensure_dns_record/5` reaches here when a record with this
@@ -141,21 +142,23 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
   # matching `["accounts", _, "registrar" | _]` would shadow the ones below it,
   # and the single-domain lookup 965 depends on would never be reached.
   defp route(method, ["accounts", acct, "registrar" | rest], body, params, state) do
-    case :registrar in state.scopes do
-      true -> registrar(method, [acct | rest], body, params, state)
-      false -> {{403, failure(unscoped_message())}, state}
-    end
+    if :registrar in state.scopes,
+      do: registrar(method, [acct | rest], body, params, state),
+      else: {{403, failure(unscoped_message())}, state}
   end
 
   defp route(method, segments, _body, _params, state) do
-    {{501, failure("#{method} /#{Enum.join(segments, "/")} is not modelled by the Cloudflare fake")},
+    {{501,
+      failure("#{method} /#{Enum.join(segments, "/")} is not modelled by the Cloudflare fake")},
      state}
   end
 
   # -- helpers --
 
   defp records(state, zone), do: Map.get(state.records, zone, [])
-  defp put_records(state, zone, records), do: %{state | records: Map.put(state.records, zone, records)}
+
+  defp put_records(state, zone, records),
+    do: %{state | records: Map.put(state.records, zone, records)}
 
   defp matching_zones(state, %{"name" => name}),
     do: Enum.filter(state.zones, &(&1["name"] == name))
@@ -164,7 +167,8 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
 
   # Only the fields a caller may change. Without this a PUT could rewrite the
   # id or move a record between zones, and a bug that did so would pass.
-  defp sanitise(body), do: Map.take(body, ["name", "type", "content", "ttl", "priority", "proxied"])
+  defp sanitise(body),
+    do: Map.take(body, ["name", "type", "content", "ttl", "priority", "proxied"])
 
   defp unscoped_message do
     "Actor 'com.cloudflare.api.token' requires permission " <>
@@ -186,10 +190,9 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
     # name and whether the extension is one it sells. That distinction is
     # criterion 7988's whole subject — "what the registrar actually said, and
     # no more" — and 404ing instead made every unknown name an error.
-    case name in state.registrar do
-      true -> {ok(%{"name" => name, "available" => false}), state}
-      false -> {ok(%{"name" => name, "supported_tld" => supported_tld?(name)}), state}
-    end
+    if name in state.registrar,
+      do: {ok(%{"name" => name, "available" => false}), state},
+      else: {ok(%{"name" => name, "supported_tld" => supported_tld?(name)}), state}
   end
 
   defp registrar("POST", [_acct, "domains"], body, _params, state) do

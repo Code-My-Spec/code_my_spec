@@ -159,10 +159,9 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   end
 
   defp check_availability(analyzer_module, scope) do
-    case analyzer_module.available?(scope) do
-      true -> {:ok, :available}
-      false -> {:error, "Analyzer #{analyzer_module.name()} is not available"}
-    end
+    if analyzer_module.available?(scope),
+      do: {:ok, :available},
+      else: {:error, "Analyzer #{analyzer_module.name()} is not available"}
   rescue
     exception ->
       Logger.error("Error checking analyzer availability: #{inspect(exception)}")

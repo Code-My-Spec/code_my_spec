@@ -86,10 +86,7 @@ defmodule CodeMySpec.CodeMode.Docs do
   defp arguments(_schema), do: "  none"
 
   defp requirement(name, required) do
-    case name in required do
-      true -> ", required"
-      false -> ""
-    end
+    if name in required, do: ", required", else: ""
   end
 
   defp described(%{"description" => description}) when is_binary(description),

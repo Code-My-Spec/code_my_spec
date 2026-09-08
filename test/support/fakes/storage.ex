@@ -75,7 +75,10 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     {:ok, body, conn} = read_body(conn)
 
     {status, headers, response} =
-      Agent.get_and_update(agent, &route(conn.method, bucket(conn), key(conn), body, conn.query_params, &1))
+      Agent.get_and_update(
+        agent,
+        &route(conn.method, bucket(conn), key(conn), body, conn.query_params, &1)
+      )
 
     Enum.reduce(headers, conn, fn {k, v}, acc -> Conn.put_resp_header(acc, k, v) end)
     |> Conn.send_resp(status, response)
@@ -107,10 +110,9 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   # test that hangs rather than fails — which is how this fake first looked
   # broken when it was merely incomplete.
   defp route("HEAD", bucket, "", _body, _params, state) do
-    case Map.has_key?(state.buckets, bucket) do
-      true -> {{200, [], ""}, state}
-      false -> {{404, [], ""}, state}
-    end
+    if Map.has_key?(state.buckets, bucket),
+      do: {{200, [], ""}, state},
+      else: {{404, [], ""}, state}
   end
 
   defp route("GET", nil, _key, _body, _params, state) do

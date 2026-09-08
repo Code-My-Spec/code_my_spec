@@ -250,10 +250,9 @@ defmodule CodeMySpec.McpServers.CodeMode do
   # degraded mode — it is what every tool gave scripts before `script_result/2`
   # existed, and most still do.
   defp execute(tool, params, frame) do
-    case ScriptResult.implemented?(tool.handler) do
-      true -> script_result(tool, params, frame)
-      false -> reply(tool, params, frame)
-    end
+    if ScriptResult.implemented?(tool.handler),
+      do: script_result(tool, params, frame),
+      else: reply(tool, params, frame)
   end
 
   defp script_result(tool, params, frame) do

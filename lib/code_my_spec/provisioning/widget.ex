@@ -200,10 +200,7 @@ defmodule CodeMySpec.Provisioning.Widget do
 
         presence = %{status: 200, present: present, openable: openable}
 
-        case openable do
-          true -> {:ok, presence}
-          false -> {:error, presence}
-        end
+        if openable, do: {:ok, presence}, else: {:error, presence}
 
       {:ok, %{status: status}} ->
         {:error, %{status: status, present: false, openable: false}}
@@ -252,10 +249,9 @@ defmodule CodeMySpec.Provisioning.Widget do
         # "absent" fails too. A page with no widget on it degrades perfectly
         # and proves nothing, so a site where the install had silently done
         # nothing was reported as resilient.
-        case usable and state not in ["connected", "absent"] do
-          true -> {:ok, probe}
-          false -> {:error, probe}
-        end
+        if usable and state not in ["connected", "absent"],
+          do: {:ok, probe},
+          else: {:error, probe}
 
       {:ok, %{status: status}} ->
         {:error, %{page_status: status, page_usable: false, widget_state: "unknown"}}

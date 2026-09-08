@@ -167,15 +167,13 @@ defmodule CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth do
   end
 
   defp to_authorization({:ok, %Req.Response{body: body}}) do
-    case pending?(body) do
-      true -> {:error, :pending}
-      false -> {:error, {:device_auth_failed, body}}
-    end
+    if pending?(body), do: {:error, :pending}, else: {:error, {:device_auth_failed, body}}
   end
 
   defp to_authorization({:error, reason}), do: {:error, reason}
 
   defp to_tokens({:ok, %Req.Response{status: 200, body: body}}), do: {:ok, body}
+
   defp to_tokens({:ok, %Req.Response{status: status, body: body}}),
     do: {:error, {:token_exchange_failed, status, body}}
 

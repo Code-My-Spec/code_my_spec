@@ -519,10 +519,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   defp deploy_script(env, opts) do
     script = Keyword.get(opts, :deploy_script, "bin/deploy")
 
-    case Keyword.has_key?(opts, :run) do
-      true -> script
-      false -> resolve_script(env, script)
-    end
+    if Keyword.has_key?(opts, :run), do: script, else: resolve_script(env, script)
   end
 
   # Where the script runs, which is not always where `env` points. `opts[:run]`

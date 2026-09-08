@@ -228,10 +228,9 @@ defmodule CodeMySpec.Transcripts.Player do
   defp add_word(word, [], _width), do: [word]
 
   defp add_word(word, [current | rest], width) do
-    case String.length(current) + 1 + String.length(word) <= width do
-      true -> [current <> " " <> word | rest]
-      false -> [word, current | rest]
-    end
+    if String.length(current) + 1 + String.length(word) <= width,
+      do: [current <> " " <> word | rest],
+      else: [word, current | rest]
   end
 
   # Task/QA tools (start_task, evaluate_task, submit_qa_result, create_issue,

@@ -87,10 +87,7 @@ defmodule CodeMySpec.Agents.StopDecision do
         send_to(scope, agent, message)
 
       {message, key} ->
-        case stuck?(agent, key) do
-          true -> :ok
-          false -> send_to(scope, agent, message)
-        end
+        if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
     end
 
     # Beside the decision, not instead of it. An agent that stops with a failing
@@ -345,10 +342,7 @@ defmodule CodeMySpec.Agents.StopDecision do
         # The external path does not have this bug: there the nudge is part of
         # the stop hook's own response, which is delivered by definition. Only
         # an agent we run needed the dispatch.
-        case already_said? do
-          true -> :ok
-          false -> deliver_message(scope, agent, message)
-        end
+        if already_said?, do: :ok, else: deliver_message(scope, agent, message)
     end
   end
 

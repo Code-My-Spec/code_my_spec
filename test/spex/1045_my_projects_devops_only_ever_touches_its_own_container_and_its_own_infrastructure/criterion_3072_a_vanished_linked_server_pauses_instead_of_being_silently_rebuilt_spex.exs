@@ -54,7 +54,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
         {:reply, first_response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
 
-        {:ok, context |> Map.put(:first_response, first_response) |> Map.put(:hetzner_state, state)}
+        {:ok,
+         context |> Map.put(:first_response, first_response) |> Map.put(:hetzner_state, state)}
       end
 
       when_ "the box is destroyed at the provider, and the step runs again", context do
@@ -100,24 +101,22 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
       "private_net" => [%{"network" => 99, "ip" => "10.0.0.2"}]
     }
 
-    case Agent.get(state, & &1) do
-      true ->
-        json(conn, %{
-          "servers" => [
-            %{
-              "id" => 1,
-              "name" => "now-gone-box",
-              "status" => "running",
-              "location" => %{"name" => "fsn1"},
-              "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
-              "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
-            },
-            steady_uat_box
-          ]
-        })
-
-      false ->
-        json(conn, %{"servers" => [steady_uat_box]})
+    if Agent.get(state, & &1) do
+      json(conn, %{
+        "servers" => [
+          %{
+            "id" => 1,
+            "name" => "now-gone-box",
+            "status" => "running",
+            "location" => %{"name" => "fsn1"},
+            "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
+            "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
+          },
+          steady_uat_box
+        ]
+      })
+    else
+      json(conn, %{"servers" => [steady_uat_box]})
     end
   end
 
@@ -134,6 +133,7 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
       ]
     })
   end
+
   defp reply(conn, "GET", "/v1/datacenters", _state), do: json(conn, %{"datacenters" => []})
   defp reply(conn, "GET", "/v1/server_types", _state), do: json(conn, %{"server_types" => []})
 
@@ -141,7 +141,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
     json(conn, %{"ssh_key" => %{"id" => 1, "fingerprint" => "aa:bb"}})
   end
 
-  defp reply(conn, _method, _path, _state), do: json(conn, %{"network" => %{"id" => 1, "name" => "net"}})
+  defp reply(conn, _method, _path, _state),
+    do: json(conn, %{"network" => %{"id" => 1, "name" => "net"}})
 
   defp json(conn, body) do
     conn

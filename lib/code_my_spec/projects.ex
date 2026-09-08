@@ -396,10 +396,9 @@ defmodule CodeMySpec.Projects do
   # Whichever key style the caller used. A form sends strings and a fixture
   # sends atoms, and mixing them in one map means the changeset reads only half.
   defp put_attr(attrs, key, value) when is_map(attrs) do
-    case Enum.any?(Map.keys(attrs), &is_atom/1) do
-      true -> Map.put(attrs, String.to_existing_atom(key), value)
-      false -> Map.put(attrs, key, value)
-    end
+    if Enum.any?(Map.keys(attrs), &is_atom/1),
+      do: Map.put(attrs, String.to_existing_atom(key), value),
+      else: Map.put(attrs, key, value)
   end
 
   @doc """

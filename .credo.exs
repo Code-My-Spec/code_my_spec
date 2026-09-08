@@ -172,6 +172,7 @@
           {ExSlop.Check.Readability.NarratorDoc, []},
           {ExSlop.Check.Readability.ObviousComment, []},
           {ExSlop.Check.Readability.UnaliasedModuleUse, []},
+          {ExSlop.Check.Refactor.CaseTrueFalse, []},
           {ExSlop.Check.Refactor.ExplicitSumReduce, []},
           {ExSlop.Check.Refactor.FilterNil, []},
           {ExSlop.Check.Refactor.FlatMapFilter, []},
@@ -217,14 +218,14 @@
           {Credo.Check.Warning.UnusedStringOperation, []},
           {Credo.Check.Warning.UnusedTupleOperation, []},
           {Credo.Check.Warning.WrongTestFileExtension, []}
-          | (if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
-               do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
-               else: []
-             ) ++
-               if(File.exists?(".code_my_spec/credo_checks/local/checks.exs"),
-                 do: elem(Code.eval_file(".code_my_spec/credo_checks/local/checks.exs"), 0),
-                 else: []
-               ))
+          | if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+              do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+              else: []
+            ) ++
+              if(File.exists?(".code_my_spec/credo_checks/local/checks.exs"),
+                do: elem(Code.eval_file(".code_my_spec/credo_checks/local/checks.exs"), 0),
+                else: []
+              )
         ],
         disabled: [
           #

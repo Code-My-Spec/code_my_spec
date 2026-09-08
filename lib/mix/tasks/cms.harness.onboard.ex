@@ -104,12 +104,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     put_device_flag(args)
     put_server_url_flag(args, root)
 
-    case Enum.member?(args, "--check") do
-      true ->
-        check(env, root)
-
-      false ->
-        onboard(env, root, relay_model_turns?, project_flag(args))
+    if Enum.member?(args, "--check") do
+      check(env, root)
+    else
+      onboard(env, root, relay_model_turns?, project_flag(args))
     end
   end
 

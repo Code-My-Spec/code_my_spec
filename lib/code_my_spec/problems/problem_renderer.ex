@@ -67,10 +67,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         _ -> render_flat(sorted, opts)
       end
 
-    case include_summary do
-      true -> render_summary(problems) <> "\n\n" <> rendered
-      false -> rendered
-    end
+    if include_summary, do: render_summary(problems) <> "\n\n" <> rendered, else: rendered
   end
 
   @doc """
@@ -139,10 +136,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     parts = parts ++ Enum.map(selected, &render_compact(&1, true))
 
     parts =
-      case truncated_count > 0 do
-        true -> parts ++ ["", "(#{truncated_count} more problems not shown)"]
-        false -> parts
-      end
+      if truncated_count > 0,
+        do: parts ++ ["", "(#{truncated_count} more problems not shown)"],
+        else: parts
 
     parts = parts ++ ["", "Please fix these issues and try again."]
 
@@ -447,20 +443,18 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
             false
         end)
 
-    case foreign? do
-      true ->
-        "\n  A red spex blocks even in a file this session did not touch — spex is " <>
-          "the one source attribution does not demote. That is because the latch " <>
-          "making it blocking is earned, not asserted: `specs_ready` is set by a " <>
-          "green spex run and cleared when the story is released or parked. So " <>
-          "these went green once, and something has changed since. Usually that is " <>
-          "a regression in this working copy; it can also be a precondition this " <>
-          "checkout does not have — see any note below. Fix it, or if the story is " <>
-          "genuinely mid-rework, park it — changing `ready_for_dev` clears the " <>
-          "latch and these stop blocking."
-
-      false ->
-        ""
+    if foreign? do
+      "\n  A red spex blocks even in a file this session did not touch — spex is " <>
+        "the one source attribution does not demote. That is because the latch " <>
+        "making it blocking is earned, not asserted: `specs_ready` is set by a " <>
+        "green spex run and cleared when the story is released or parked. So " <>
+        "these went green once, and something has changed since. Usually that is " <>
+        "a regression in this working copy; it can also be a precondition this " <>
+        "checkout does not have — see any note below. Fix it, or if the story is " <>
+        "genuinely mid-rework, park it — changing `ready_for_dev` clears the " <>
+        "latch and these stop blocking."
+    else
+      ""
     end
   end
 
@@ -488,13 +482,11 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp killed_note([]), do: ""
 
   defp killed_note(items) do
-    case Enum.all?(items, &killed?/1) do
-      true ->
-        "\n  (#{killed_subject(length(items))} the machine, not the code: check load " <>
-          "and concurrent runs, and clear these rather than editing anything.)"
-
-      false ->
-        ""
+    if Enum.all?(items, &killed?/1) do
+      "\n  (#{killed_subject(length(items))} the machine, not the code: check load " <>
+        "and concurrent runs, and clear these rather than editing anything.)"
+    else
+      ""
     end
   end
 
@@ -1204,10 +1196,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     base = "#{location}: [#{severity}] #{message}"
 
     rendered =
-      case include_source do
-        true -> "#{base} (#{problem.source})"
-        false -> base
-      end
+      if include_source, do: "#{base} (#{problem.source})", else: base
 
     maybe_truncate(rendered, max_length)
   end
@@ -1251,10 +1240,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     ]
 
     lines =
-      case include_source do
-        true -> lines ++ ["Source: #{problem.source}"]
-        false -> lines
-      end
+      if include_source, do: lines ++ ["Source: #{problem.source}"], else: lines
 
     Enum.join(lines, "\n")
   end

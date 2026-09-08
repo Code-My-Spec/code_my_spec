@@ -98,10 +98,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # exactly what the generated clause does.
   @impl Anubis.Server
   def handle_request(%{"method" => "tools/call", "params" => %{"name" => name}} = request, frame) do
-    case moved?(name) do
-      true -> {:reply, moved_response(name), frame}
-      false -> Handlers.handle(request, __MODULE__, frame)
-    end
+    if moved?(name),
+      do: {:reply, moved_response(name), frame},
+      else: Handlers.handle(request, __MODULE__, frame)
   end
 
   def handle_request(request, frame) do

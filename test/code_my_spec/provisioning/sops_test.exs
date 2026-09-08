@@ -20,32 +20,27 @@ defmodule CodeMySpec.Provisioning.SopsTest do
   @moduletag :sops
 
   setup_all do
-    case Sops.available?() do
-      true -> :ok
-      false -> {:ok, skip: true}
-    end
+    if Sops.available?(), do: :ok, else: {:ok, skip: true}
   end
 
   setup context do
-    case Sops.available?() do
-      false ->
-        {:ok, skip: true}
+    if Sops.available?() do
+      {:ok, tmp} = Briefly.create(directory: true)
+      env = Environment.new(:local, tmp)
 
-      true ->
-        {:ok, tmp} = Briefly.create(directory: true)
-        env = Environment.new(:local, tmp)
+      {:ok, {uat_pub, uat_priv}} = Sops.generate_key()
+      {:ok, {prod_pub, prod_priv}} = Sops.generate_key()
+      :ok = Sops.write_config(env, %{"uat" => uat_pub, "prod" => prod_pub})
 
-        {:ok, {uat_pub, uat_priv}} = Sops.generate_key()
-        {:ok, {prod_pub, prod_priv}} = Sops.generate_key()
-        :ok = Sops.write_config(env, %{"uat" => uat_pub, "prod" => prod_pub})
-
-        Map.merge(context, %{
-          env: env,
-          tmp: tmp,
-          uat: %{pub: uat_pub, priv: uat_priv},
-          prod: %{pub: prod_pub, priv: prod_priv}
-        })
-        |> then(&{:ok, &1})
+      Map.merge(context, %{
+        env: env,
+        tmp: tmp,
+        uat: %{pub: uat_pub, priv: uat_priv},
+        prod: %{pub: prod_pub, priv: prod_priv}
+      })
+      |> then(&{:ok, &1})
+    else
+      {:ok, skip: true}
     end
   end
 

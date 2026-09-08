@@ -59,10 +59,7 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
 
-    case authorized?(conn) do
-      true -> dispatch(conn, agent)
-      false -> unauthorized(conn)
-    end
+    if authorized?(conn), do: dispatch(conn, agent), else: unauthorized(conn)
   end
 
   # A revoked token is a 401, which is what GitHub answers and what

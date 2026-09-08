@@ -284,10 +284,7 @@ defmodule CodeMySpec.Environments do
   """
   @spec lookup_registered(any()) :: Environment.t() | nil
   def lookup_registered(project_id) do
-    case running?(@registry) do
-      false -> nil
-      true -> registered(project_id)
-    end
+    if running?(@registry), do: registered(project_id), else: nil
   end
 
   defp registered(project_id) do

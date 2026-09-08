@@ -120,10 +120,7 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   # exist", and a check that responded to an ownership error by creating a
   # database would be the silent-swallow shape this file has fought twice.
   defp unanswerable(reason) do
-    case missing_database?(reason) do
-      true -> provision()
-      false -> report(reason)
-    end
+    if missing_database?(reason), do: provision(), else: report(reason)
   end
 
   defp report(reason) do

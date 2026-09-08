@@ -519,10 +519,7 @@ defmodule CodeMySpec.Provisioning do
   # absent unconditionally, which is exactly the input that already sends
   # `run_step/3` to `run_and_record/4` below.
   defp forced_or_verified(scope, key, opts) do
-    case Keyword.get(opts, :force, false) do
-      true -> {:ok, :absent}
-      false -> safe_verify(scope, key, opts)
-    end
+    if Keyword.get(opts, :force, false), do: {:ok, :absent}, else: safe_verify(scope, key, opts)
   end
 
   # A verify that raises is not a verdict the resource is gone — it is the

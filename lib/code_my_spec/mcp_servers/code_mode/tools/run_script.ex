@@ -91,14 +91,12 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # Capped before the alert is appended, not after: the alert is the part that
   # says the tree is broken, and cutting the answer must not cut that off.
   defp render(%Result{} = result, scope, params) do
-    case Result.failed?(result) do
-      true ->
-        text = AgentAlert.append(CodeMode.cap(failure(result)), scope, params)
-        Response.tool() |> Response.error(text)
-
-      false ->
-        text = AgentAlert.append(CodeMode.cap(success(result)), scope, params)
-        Response.tool() |> Response.text(text)
+    if Result.failed?(result) do
+      text = AgentAlert.append(CodeMode.cap(failure(result)), scope, params)
+      Response.tool() |> Response.error(text)
+    else
+      text = AgentAlert.append(CodeMode.cap(success(result)), scope, params)
+      Response.tool() |> Response.text(text)
     end
   end
 

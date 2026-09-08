@@ -104,7 +104,13 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
          {:ok, published} <- publish.(scope) do
       case await_render(published, opts) do
         {:ok, render} ->
-          %{state: :rendered, published: published, render: render, proven_at: now.(), reason: nil}
+          %{
+            state: :rendered,
+            published: published,
+            render: render,
+            proven_at: now.(),
+            reason: nil
+          }
 
         {:error, {:not_rendered, render}} ->
           %{
@@ -117,9 +123,12 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
       end
     else
       {:error, {:not_publishable, missing}} ->
-        failure(:trigger_failed, "Publishing is not configured — #{Enum.join(missing, ", ")} " <>
-          "missing. Sync is trigger-only, so a publish without a reachable client would " <>
-          "never reach the site.")
+        failure(
+          :trigger_failed,
+          "Publishing is not configured — #{Enum.join(missing, ", ")} " <>
+            "missing. Sync is trigger-only, so a publish without a reachable client would " <>
+            "never reach the site."
+        )
 
       {:error, %{message: message} = err} ->
         # A failed trigger leaves the objects in the bucket, and the publish
@@ -153,10 +162,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   # shape as an S3 failure, so the message is what distinguishes them. Getting
   # this wrong would file a lost trigger as a storage problem.
   defp publish_failure_state(message) do
-    case message =~ ~r/trigger/i do
-      true -> :trigger_failed
-      false -> :publish_failed
-    end
+    if message =~ ~r/trigger/i, do: :trigger_failed, else: :publish_failed
   end
 
   defp failure(state, reason, published \\ nil) do
@@ -221,10 +227,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
         contains = String.contains?(body, expect)
         render = %{status: 200, path: path, body_contains: contains}
 
-        case contains do
-          true -> {:ok, render}
-          false -> {:error, {:not_rendered, render}}
-        end
+        if contains, do: {:ok, render}, else: {:error, {:not_rendered, render}}
 
       {:ok, %{status: status}} ->
         {:error, {:not_rendered, %{status: status, path: path, body_contains: false}}}

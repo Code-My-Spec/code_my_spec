@@ -69,10 +69,7 @@ defmodule CodeMySpec.Accounts do
         nil
 
       account ->
-        case Authorization.authorize(:read_account, scope, account.id) do
-          false -> nil
-          true -> account
-        end
+        if Authorization.authorize(:read_account, scope, account.id), do: account, else: nil
     end
   end
 
@@ -222,6 +219,7 @@ defmodule CodeMySpec.Accounts do
   def own_role(%Scope{} = scope, account_id) do
     MembersRepository.get_user_role(scope.user.id, account_id)
   end
+
   @doc """
   The user who owns `account_id`, or `nil`.
 

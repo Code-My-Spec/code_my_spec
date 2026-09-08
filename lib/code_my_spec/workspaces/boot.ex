@@ -32,10 +32,9 @@ defmodule CodeMySpec.Workspaces.Boot do
   defp check(%Workspace{} = workspace, deadline) do
     workspace = record_progress(workspace)
 
-    case Runner.healthy?(workspace.port) do
-      true -> Workspaces.mark_running(workspace)
-      false -> keep_waiting(workspace, deadline)
-    end
+    if Runner.healthy?(workspace.port),
+      do: Workspaces.mark_running(workspace),
+      else: keep_waiting(workspace, deadline)
   end
 
   # Only writes when the phase actually moved on, so a slow phase doesn't
@@ -70,17 +69,11 @@ defmodule CodeMySpec.Workspaces.Boot do
   end
 
   defp container_state(%Workspace{container_name: name}) do
-    case Runner.alive?(name) do
-      true -> :alive
-      false -> :dead
-    end
+    if Runner.alive?(name), do: :alive, else: :dead
   end
 
   defp time_left(deadline) do
-    case System.monotonic_time(:millisecond) < deadline do
-      true -> :waiting
-      false -> :expired
-    end
+    if System.monotonic_time(:millisecond) < deadline, do: :waiting, else: :expired
   end
 
   defp timeout, do: config(:boot_timeout, @timeout)

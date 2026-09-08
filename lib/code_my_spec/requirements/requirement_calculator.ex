@@ -183,12 +183,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp check(%{check_type: :all_deployed, config: config}, scope, _entity, _files, _ctx) do
     environment = environment_from(config)
 
-    case Deploys.environment_deployed?(scope, environment) do
-      true ->
-        {true, %{status: "every released story is live on #{environment}"}}
-
-      false ->
-        {false, %{status: "not every released story is live on #{environment}"}}
+    if Deploys.environment_deployed?(scope, environment) do
+      {true, %{status: "every released story is live on #{environment}"}}
+    else
+      {false, %{status: "not every released story is live on #{environment}"}}
     end
   end
 
@@ -388,13 +386,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     do: {false, %{reason: "deployed check missing :environment in config"}}
 
   defp deployed_verdict(scope, %{id: story_id}, environment) do
-    case Deploys.deployed?(scope, story_id, environment) do
-      true ->
-        {true, %{status: "deployed to #{environment} and health-verified"}}
-
-      false ->
-        {false,
-         %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
+    if Deploys.deployed?(scope, story_id, environment) do
+      {true, %{status: "deployed to #{environment} and health-verified"}}
+    else
+      {false,
+       %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
     end
   end
 

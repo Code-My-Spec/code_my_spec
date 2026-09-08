@@ -12,13 +12,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKeyTest do
   @moduletag :sops
 
   setup context do
-    case Sops.available?() do
-      false ->
-        {:ok, skip: true}
-
-      true ->
-        scope = full_scope_fixture()
-        {:ok, Map.merge(context, %{scope: scope, project: scope.active_project})}
+    if Sops.available?() do
+      scope = full_scope_fixture()
+      {:ok, Map.merge(context, %{scope: scope, project: scope.active_project})}
+    else
+      {:ok, skip: true}
     end
   end
 

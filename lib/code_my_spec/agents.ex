@@ -1681,10 +1681,9 @@ defmodule CodeMySpec.Agents do
   end
 
   defp honour_setting(%ModelSetting{provider: provider, model: model}, role, connected) do
-    case provider in connected do
-      true -> {:ok, {provider, model}, :set}
-      false -> resolved_default(role, connected)
-    end
+    if provider in connected,
+      do: {:ok, {provider, model}, :set},
+      else: resolved_default(role, connected)
   end
 
   defp honour_setting(nil, role, connected), do: resolved_default(role, connected)
@@ -1740,10 +1739,9 @@ defmodule CodeMySpec.Agents do
     # model call, minutes later, in a log nobody is reading — which is the
     # failure the credential ordering above exists to prevent, arriving through
     # the front door instead.
-    case provider in connected_providers(scope) do
-      true -> AgentsRepository.put_model_setting(scope, role, provider, model)
-      false -> {:error, :unknown_provider}
-    end
+    if provider in connected_providers(scope),
+      do: AgentsRepository.put_model_setting(scope, role, provider, model),
+      else: {:error, :unknown_provider}
   end
 
   @doc """
@@ -1776,10 +1774,9 @@ defmodule CodeMySpec.Agents do
   # sentinel `safe_atom/1` returns for a name that does not exist — and a
   # refusal naming `:__unknown__` tells the caller a word it never sent.
   defp known_role(role, asked) do
-    case role in Agent.roles() do
-      true -> {:ok, role}
-      false -> {:error, {:unknown_role, asked, Agent.roles()}}
-    end
+    if role in Agent.roles(),
+      do: {:ok, role},
+      else: {:error, {:unknown_role, asked, Agent.roles()}}
   end
 
   # `to_existing_atom` so a caller cannot grow the atom table by asking for

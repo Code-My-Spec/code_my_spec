@@ -282,12 +282,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     # bug (402f9439): the devops-drill project has a `prod` row and
     # `devops: :uat`, `permitted_environment_rows/1` filters `prod` out, and
     # this reported every one of zero environments satisfied.
-    case environments != [] and Enum.all?(environments, &secrets_ready?(scope, &1)) do
-      true ->
-        {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
-
-      false ->
-        {:ok, :absent}
+    if environments != [] and Enum.all?(environments, &secrets_ready?(scope, &1)) do
+      {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
+    else
+      {:ok, :absent}
     end
   end
 
@@ -2650,10 +2648,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp origin_of(origin, host) when is_binary(origin) and is_binary(host) do
-    case uri_host(origin) == host do
-      true -> "deployed_site"
-      false -> "elsewhere"
-    end
+    if uri_host(origin) == host, do: "deployed_site", else: "elsewhere"
   end
 
   defp origin_of(_origin, _host), do: "unknown"
@@ -3124,10 +3119,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp dns_records_satisfied(records, environments) do
-    case Enum.all?(environments, &record_points_at?(records, &1)) do
-      true -> {:ok, :satisfied, Enum.flat_map(environments, &dns_resources_for/1)}
-      false -> {:ok, :absent}
-    end
+    if Enum.all?(environments, &record_points_at?(records, &1)),
+      do: {:ok, :satisfied, Enum.flat_map(environments, &dns_resources_for/1)},
+      else: {:ok, :absent}
   end
 
   # Present *and* pointing at this environment's server. A record left over
@@ -3262,18 +3256,16 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp dns_record_type(_type), do: :txt
 
   defp sending_domain_outcome(scope, sending, domain, acc) do
-    case sending_published?(scope, sending, domain) do
-      true ->
-        {:cont,
-         {:ok,
-          acc ++
-            [
-              %{kind: "sending_domain", location: "resend/#{domain["name"]}"},
-              %{kind: "verification", location: "1 attempts"}
-            ]}}
-
-      false ->
-        {:halt, :absent}
+    if sending_published?(scope, sending, domain) do
+      {:cont,
+       {:ok,
+        acc ++
+          [
+            %{kind: "sending_domain", location: "resend/#{domain["name"]}"},
+            %{kind: "verification", location: "1 attempts"}
+          ]}}
+    else
+      {:halt, :absent}
     end
   end
 

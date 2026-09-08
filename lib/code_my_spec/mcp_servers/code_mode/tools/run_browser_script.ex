@@ -102,10 +102,9 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript do
   end
 
   defp render(%Result{} = result, scope) do
-    case Result.failed?(result) do
-      true -> Response.tool() |> Response.error(failure(result, scope))
-      false -> Response.tool() |> Response.text(success(result))
-    end
+    if Result.failed?(result),
+      do: Response.tool() |> Response.error(failure(result, scope)),
+      else: Response.tool() |> Response.text(success(result))
   end
 
   defp success(result) do
