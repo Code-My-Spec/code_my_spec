@@ -56,6 +56,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   require Logger
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
@@ -168,7 +169,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     :exit, _ -> nil
   end
 
-
   @doc """
   Start a watcher for every project that has an agent in the loop.
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   """
   @spec watch_active_projects() :: :ok
   def watch_active_projects do
-    CodeMySpec.Agents.AgentsRepository.continuous_project_scopes()
+    AgentsRepository.continuous_project_scopes()
     |> Enum.each(fn scope ->
       case ensure_watching(scope) do
         {:ok, _pid} ->

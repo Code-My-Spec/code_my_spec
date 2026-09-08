@@ -17,6 +17,7 @@ defmodule CodeMySpec.Issues do
   alias CodeMySpec.Documents.QaIssue
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   # -- Reads ------------------------------------------------------------------
@@ -346,9 +347,8 @@ defmodule CodeMySpec.Issues do
     # and asks the fingerprint whether anything really moved. An incoming issue
     # makes `issues_triaged` actionable, which is work appearing that no reader
     # would notice. See `Requirements.GraphInputs`.
-    CodeMySpec.Requirements.GraphInputs.changed(scope)
+    GraphInputs.changed(scope)
   end
 
   defp broadcast(_scope, _message), do: :ok
-
 end

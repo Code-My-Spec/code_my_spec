@@ -25,6 +25,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
@@ -126,7 +127,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   test "a harness manifest announces when it changed something", ctx do
     GraphInputs.subscribe(ctx.scope.active_project_id)
 
-    CodeMySpec.Files.FileSync.reconcile(ctx.scope, [
+    FileSync.reconcile(ctx.scope, [
       %{
         path: "lib/example/thing.ex",
         role: :implementation,
@@ -142,7 +143,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   test "a manifest that changed nothing stays quiet", ctx do
     GraphInputs.subscribe(ctx.scope.active_project_id)
 
-    CodeMySpec.Files.FileSync.reconcile(ctx.scope, [])
+    FileSync.reconcile(ctx.scope, [])
 
     refute_receive {:graph_inputs_changed, _project_id}, 300
   end

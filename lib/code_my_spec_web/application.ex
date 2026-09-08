@@ -8,6 +8,7 @@ defmodule CodeMySpecWeb.Application do
   require Logger
 
   alias CodeMySpec.Analytics.GoogleAnalytics
+  alias CodeMySpec.Requirements.GraphWatcher
 
   @impl true
   def start(_type, _args) do
@@ -57,7 +58,7 @@ defmodule CodeMySpecWeb.Application do
         # failing to seed is not a reason to refuse to boot: the next stop
         # decision on a project starts its watcher anyway.
         Supervisor.child_spec(
-          {Task, &CodeMySpec.Requirements.GraphWatcher.watch_active_projects/0},
+          {Task, &GraphWatcher.watch_active_projects/0},
           id: :watch_active_projects,
           restart: :temporary
         ),
