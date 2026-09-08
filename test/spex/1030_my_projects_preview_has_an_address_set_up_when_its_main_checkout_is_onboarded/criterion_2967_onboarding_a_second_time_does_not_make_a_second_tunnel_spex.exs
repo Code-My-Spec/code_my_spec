@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Workspaces.PreviewTunnel
+  alias Req.Test
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -107,17 +108,17 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
   end
 
   defp stub_cloudflare(test_pid) do
-    Req.Test.stub(PreviewTunnel, fn conn ->
+    Test.stub(PreviewTunnel, fn conn ->
       send(test_pid, {:cloudflare, conn.request_path})
 
       if String.contains?(conn.request_path, "cfd_tunnel") do
-        Req.Test.json(conn, %{
+        Test.json(conn, %{
           "success" => true,
           "errors" => [],
           "result" => %{"id" => "d00dfeed-0000-4000-8000-000000002967"}
         })
       else
-        Req.Test.json(conn, %{
+        Test.json(conn, %{
           "success" => true,
           "errors" => [],
           "result" => %{"id" => "rec-2967"}

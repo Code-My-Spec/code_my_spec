@@ -19,6 +19,10 @@ defmodule CodeMySpecSpex.Case do
   alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
+  alias Phoenix.ConnTest
+  alias Phoenix.LiveViewTest
+  alias Plug.Conn
+  alias Req.Test
 
   # `get/2` and `assert_reply/4` are macros. This module's own function bodies
   # need them at compile time — the `using` block's imports only reach the spex
@@ -244,7 +248,7 @@ defmodule CodeMySpecSpex.Case do
 
     stage_local_only_push()
 
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    {:ok, conn: ConnTest.build_conn()}
   end
 
   @doc """
@@ -267,7 +271,7 @@ defmodule CodeMySpecSpex.Case do
   Make the deployed site unreachable, at the layer where it is unreachable.
 
   A publish POSTs a trigger to the site; a site that is down refuses the
-  connection, and `Req.Test.transport_error/2` is that, exactly — not a 500,
+  connection, and `Test.transport_error/2` is that, exactly — not a 500,
   which is a site that answered.
 
   This used to be arranged by pointing the client at `127.0.0.1:9` and letting
@@ -278,8 +282,8 @@ defmodule CodeMySpecSpex.Case do
   failure is the faithful way through it.
   """
   def trigger_unreachable(_context) do
-    Req.Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
-      Req.Test.transport_error(conn, :econnrefused)
+    Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
+      Test.transport_error(conn, :econnrefused)
     end)
 
     :ok
@@ -321,13 +325,13 @@ defmodule CodeMySpecSpex.Case do
   only, so a spex that installs it alone still shells out for real — and the
   server step's first `ssh` goes to the TEST-NET address the Hetzner fake hands
   back, which never answers. That surfaced as 966/8003 timing out after three
-  minutes with a stack in `Phoenix.LiveViewTest.call/2`: the click blocks
+  minutes with a stack in `LiveViewTest.call/2`: the click blocks
   behind the subprocess, so the report names the LiveView and not the half that
   is missing. Unless a criterion's subject is a real binary — 967's encryption,
   964/7987's scan of the working tree — use both.
   """
   def fake_providers(context) do
-    Req.Test.set_req_test_to_shared(%{})
+    Test.set_req_test_to_shared(%{})
 
     # Which the cassette helpers read, so a `given_` that wraps itself in one
     # runs against these fakes instead of replaying a file recorded against
@@ -342,7 +346,7 @@ defmodule CodeMySpecSpex.Case do
     # report `cannot find mock/stub`. That is ordering-dependent by
     # construction: it passes in isolation and fails somewhere in a full run,
     # which is the most expensive kind of failure to attribute.
-    on_exit(fn -> Req.Test.set_req_test_to_private(self()) end)
+    on_exit(fn -> Test.set_req_test_to_private(self()) end)
 
     # The credentials too. A step looks one up before it makes a request, so a
     # scope with no connection stops on its own precondition and the criterion
@@ -380,7 +384,7 @@ defmodule CodeMySpecSpex.Case do
           Keyword.merge(previous, api_token: "fake-token", plug: {Req.Test, client})
         )
 
-        Req.Test.stub(client, &fake.call(&1, agent))
+        Test.stub(client, &fake.call(&1, agent))
         on_exit(fn -> Application.put_env(:code_my_spec, client, previous) end)
 
         {client, agent}
@@ -409,7 +413,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous_dns, plug: {Req.Test, CodeMySpec.Provisioning.Dns})
     )
 
-    Req.Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
+    Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
 
     # The *other* DNS seam, and the last recorded thing in this setup. The
     # page's "does this record resolve" check goes through `:dns_resolver`,
@@ -441,7 +445,7 @@ defmodule CodeMySpecSpex.Case do
     # `verify(:deploy, …)` clause — the step has no early return. The steps
     # that do verify by probe (tls) take an injected one, which is what
     # `certificate_issued_by_the_step/1` is for.
-    Req.Test.stub(CodeMySpec.Provisioning.Deploy, &serve_site(&1, cloudflare))
+    Test.stub(CodeMySpec.Provisioning.Deploy, &serve_site(&1, cloudflare))
 
     # The same site, fetched for what it renders rather than whether it
     # answers. `Widget.verify_present/2` reads the page for two published
@@ -454,8 +458,8 @@ defmodule CodeMySpecSpex.Case do
     # prevent.
     markers = Fixtures.widget_markers()
 
-    Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
-      Plug.Conn.send_resp(
+    Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
+      Conn.send_resp(
         conn,
         200,
         "<html><body><div #{markers.present}>" <>
@@ -468,10 +472,10 @@ defmodule CodeMySpecSpex.Case do
     # site to fetch it — so without this the publish reports "no mock or stub
     # for CodeMySpec.Content.TriggerClient", which is a harness sentence where
     # a publishing failure should be.
-    Req.Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
+    Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(
         202,
         Jason.encode!(%{"sync_id" => "sync-#{System.unique_integer([:positive])}"})
       )
@@ -487,8 +491,8 @@ defmodule CodeMySpecSpex.Case do
     # bucket.
     storage = Map.fetch!(agents, S3Client)
 
-    Req.Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
-      Plug.Conn.send_resp(conn, 200, published_page(storage))
+    Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
+      Conn.send_resp(conn, 200, published_page(storage))
     end)
 
     on_exit(fn ->
@@ -592,8 +596,8 @@ defmodule CodeMySpecSpex.Case do
   address it was.
   """
   def site_serves_nothing(_context) do
-    Req.Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
-      Plug.Conn.send_resp(conn, 200, "<html><body>nothing published here</body></html>")
+    Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
+      Conn.send_resp(conn, 200, "<html><body>nothing published here</body></html>")
     end)
 
     :ok
@@ -630,8 +634,8 @@ defmodule CodeMySpecSpex.Case do
   def widget_backend_is_down(_context) do
     markers = Fixtures.widget_markers()
 
-    Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
-      Plug.Conn.send_resp(conn, 200, """
+    Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
+      Conn.send_resp(conn, 200, """
       <html><body>
         <h1>Sam's site</h1>
         <div #{markers.present} #{markers.state}="unavailable">
@@ -742,8 +746,8 @@ defmodule CodeMySpecSpex.Case do
       |> Enum.member?(conn.host)
 
     case published? do
-      true -> Plug.Conn.send_resp(conn, 200, "ok")
-      false -> Plug.Conn.send_resp(conn, 404, "no site is published at #{conn.host}")
+      true -> Conn.send_resp(conn, 200, "ok")
+      false -> Conn.send_resp(conn, 404, "no site is published at #{conn.host}")
     end
   end
 
@@ -801,8 +805,8 @@ defmodule CodeMySpecSpex.Case do
       Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
       token =
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("authorization", "Bearer " <> app_access_token(ctx.project))
+        ConnTest.build_conn()
+        |> Conn.put_req_header("authorization", "Bearer " <> app_access_token(ctx.project))
         |> get("/api/widget/socket_token")
         |> json_response(200)
         |> Map.fetch!("socket_token")
@@ -1530,11 +1534,11 @@ defmodule CodeMySpecSpex.Case do
   three.
   """
   def post_hook(target, path, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", working_copy_id(target))
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
+    ConnTest.build_conn()
+    |> Conn.put_req_header("x-harness-id", working_copy_id(target))
+    |> Conn.put_req_header("content-type", "application/json")
+    |> ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
+    |> ConnTest.json_response(200)
   end
 
   @doc "The harness id out of a context, a scope, or itself."
@@ -1642,7 +1646,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp await_step_state(view, step, state, deadline, _last) do
-    html = Phoenix.LiveViewTest.render(view)
+    html = LiveViewTest.render(view)
 
     cond do
       html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/ ->
@@ -1862,7 +1866,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp print_step_trace(view, keys) do
-    doc = view |> Phoenix.LiveViewTest.render() |> Floki.parse_document!()
+    doc = view |> LiveViewTest.render() |> Floki.parse_document!()
 
     for key <- keys do
       step = Floki.find(doc, "[data-test='setup-step'][data-step='#{key}']")
@@ -2437,11 +2441,11 @@ defmodule CodeMySpecSpex.Case do
   """
   @spec click_inbound_probe(term()) :: String.t()
   def click_inbound_probe(view) do
-    element = Phoenix.LiveViewTest.element(view, "[data-test='mail-inbound-probe']")
+    element = LiveViewTest.element(view, "[data-test='mail-inbound-probe']")
 
     case probe_inbox() do
-      nil -> Phoenix.LiveViewTest.render_click(element)
-      address -> Phoenix.LiveViewTest.render_click(element, %{"to" => address})
+      nil -> LiveViewTest.render_click(element)
+      address -> LiveViewTest.render_click(element, %{"to" => address})
     end
   end
 
@@ -2465,8 +2469,8 @@ defmodule CodeMySpecSpex.Case do
   @spec resolve_inbound_probe_pause(term(), String.t()) :: :ok
   def resolve_inbound_probe_pause(view, address) do
     view
-    |> Phoenix.LiveViewTest.form("[data-test='inbound-probe-address']", %{"probe_to" => address})
-    |> Phoenix.LiveViewTest.render_submit()
+    |> LiveViewTest.form("[data-test='inbound-probe-address']", %{"probe_to" => address})
+    |> LiveViewTest.render_submit()
 
     await_step(view, :inbound)
   end
@@ -2692,7 +2696,7 @@ defmodule CodeMySpecSpex.Case do
     #
     # This is the payload a browser sends: unchecked boxes are absent from the
     # form data entirely, which is exactly how `toggle_options` reads them.
-    Phoenix.LiveViewTest.render_change(view, "toggle_options", %{
+    LiveViewTest.render_change(view, "toggle_options", %{
       "options" => Map.new(options, &{to_string(&1), "true"})
     })
   end
@@ -2839,14 +2843,14 @@ defmodule CodeMySpecSpex.Case do
   A no-op when the run did not pause, so it is safe to call unconditionally.
   """
   def adopt_repository_if_paused(view) do
-    if Phoenix.LiveViewTest.has_element?(view, "[data-test='adopt-existing-repository']") do
+    if LiveViewTest.has_element?(view, "[data-test='adopt-existing-repository']") do
       view
-      |> Phoenix.LiveViewTest.element("[data-test='adopt-existing-repository']")
-      |> Phoenix.LiveViewTest.render_click()
+      |> LiveViewTest.element("[data-test='adopt-existing-repository']")
+      |> LiveViewTest.render_click()
 
       view
-      |> Phoenix.LiveViewTest.element("[data-test='start-setup']")
-      |> Phoenix.LiveViewTest.render_click()
+      |> LiveViewTest.element("[data-test='start-setup']")
+      |> LiveViewTest.render_click()
 
       await_provisioning(view)
     end
@@ -2880,7 +2884,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp await_environment_server(view, environment, deadline, _last) do
-    html = Phoenix.LiveViewTest.render(view)
+    html = LiveViewTest.render(view)
 
     server =
       html
@@ -2903,7 +2907,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp await_start(view, deadline) do
-    html = Phoenix.LiveViewTest.render(view)
+    html = LiveViewTest.render(view)
 
     # Started means *any* step has moved, not that every step has. The old
     # test — nothing is `not_started` — is only true of a run that got all the
@@ -2935,7 +2939,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp settle(view, deadline) do
-    html = Phoenix.LiveViewTest.render(view)
+    html = LiveViewTest.render(view)
 
     cond do
       not (html =~ ~s(data-state="running")) ->
@@ -2968,7 +2972,7 @@ defmodule CodeMySpecSpex.Case do
 
   defp rendered_options(view) do
     view
-    |> Phoenix.LiveViewTest.render()
+    |> LiveViewTest.render()
     |> Floki.parse_document!()
     |> Floki.find("[data-test='setup-options-form'] input[type='checkbox']")
     |> Floki.attribute("name")
@@ -2993,10 +2997,10 @@ defmodule CodeMySpecSpex.Case do
   # of the current `:live_action`, so clicking it is safe to call
   # unconditionally: already on the credentials route, the patch is a no-op.
   defp open_credentials_dialog(view) do
-    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='credentials-form']") do
+    if not LiveViewTest.has_element?(view, "[data-test='credentials-form']") do
       view
-      |> Phoenix.LiveViewTest.element("[data-test='manage-credentials']")
-      |> Phoenix.LiveViewTest.render_click()
+      |> LiveViewTest.element("[data-test='manage-credentials']")
+      |> LiveViewTest.render_click()
     end
   end
 
@@ -3009,10 +3013,10 @@ defmodule CodeMySpecSpex.Case do
   themselves before filling it in.
   """
   def open_secrets_dialog(view) do
-    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='secret-form']") do
+    if not LiveViewTest.has_element?(view, "[data-test='secret-form']") do
       view
-      |> Phoenix.LiveViewTest.element("[data-test='manage-secrets']")
-      |> Phoenix.LiveViewTest.render_click()
+      |> LiveViewTest.element("[data-test='manage-secrets']")
+      |> LiveViewTest.render_click()
     end
   end
 
@@ -3022,10 +3026,10 @@ defmodule CodeMySpecSpex.Case do
   `/provisioning/environments` now (7ba5d249), not on the plain index.
   """
   def open_environments_dialog(view) do
-    if not Phoenix.LiveViewTest.has_element?(view, "[data-test='add-environment-form']") do
+    if not LiveViewTest.has_element?(view, "[data-test='add-environment-form']") do
       view
-      |> Phoenix.LiveViewTest.element("[data-test='manage-environments']")
-      |> Phoenix.LiveViewTest.render_click()
+      |> LiveViewTest.element("[data-test='manage-environments']")
+      |> LiveViewTest.render_click()
     end
   end
 
@@ -3033,7 +3037,7 @@ defmodule CodeMySpecSpex.Case do
     open_credentials_dialog(view)
 
     view
-    |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
+    |> LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
         "hetzner_api_token" =>
           recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
@@ -3043,7 +3047,7 @@ defmodule CodeMySpecSpex.Case do
           recording_credential("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
       }
     })
-    |> Phoenix.LiveViewTest.render_submit()
+    |> LiveViewTest.render_submit()
   end
 
   @doc """
@@ -3104,7 +3108,7 @@ defmodule CodeMySpecSpex.Case do
     open_credentials_dialog(view)
 
     view
-    |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
+    |> LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
         "hetzner_s3_access_key_id" =>
           recording_credential("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
@@ -3112,7 +3116,7 @@ defmodule CodeMySpecSpex.Case do
           recording_credential("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
       }
     })
-    |> Phoenix.LiveViewTest.render_submit()
+    |> LiveViewTest.render_submit()
   end
 
   defp project_name(%{active_project: %{name: name}}) when is_binary(name), do: name
@@ -3885,8 +3889,8 @@ defmodule CodeMySpecSpex.Case do
     # `@endpoint` the calling module set, and this helper lives here rather
     # than in the spex.
     conn
-    |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :get, "/pricing")
-    |> Phoenix.ConnTest.html_response(200)
+    |> ConnTest.dispatch(CodeMySpecWeb.Endpoint, :get, "/pricing")
+    |> ConnTest.html_response(200)
     |> Floki.parse_document!()
     |> Floki.find("[data-test='current-plan']")
     |> Floki.attribute("data-plan")
@@ -4263,11 +4267,11 @@ defmodule CodeMySpecSpex.Case do
   """
   def run_step_interaction(view, :deploy) do
     view
-    |> Phoenix.LiveViewTest.form(
+    |> LiveViewTest.form(
       "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
       %{"environment" => "uat"}
     )
-    |> Phoenix.LiveViewTest.render_submit()
+    |> LiveViewTest.render_submit()
   end
 
   # A step that runs independently per environment (secrets, tls, storage,
@@ -4283,10 +4287,10 @@ defmodule CodeMySpecSpex.Case do
 
       [_only] ->
         view
-        |> Phoenix.LiveViewTest.element(
+        |> LiveViewTest.element(
           "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
         )
-        |> Phoenix.LiveViewTest.render_click()
+        |> LiveViewTest.render_click()
 
       environments ->
         raise "#{key} has one row per environment (#{inspect(environments)}) — call " <>
@@ -4297,10 +4301,10 @@ defmodule CodeMySpecSpex.Case do
   @doc "Trigger one environment's row of a per-environment step's run."
   def run_step_interaction(view, key, environment) do
     view
-    |> Phoenix.LiveViewTest.element(
+    |> LiveViewTest.element(
       "[data-test='setup-step'][data-step='#{key}'][data-environment='#{environment}'] [data-test='run-step']"
     )
-    |> Phoenix.LiveViewTest.render_click()
+    |> LiveViewTest.render_click()
   end
 
   # One entry per matched card, `nil` for a project-wide one rather than
@@ -4313,7 +4317,7 @@ defmodule CodeMySpecSpex.Case do
   # already means something else there.
   defp setup_step_environments(view, key) do
     view
-    |> Phoenix.LiveViewTest.render()
+    |> LiveViewTest.render()
     |> Floki.parse_document!()
     |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
     |> Enum.map(&(&1 |> Floki.attribute("data-environment") |> List.first()))
@@ -4370,7 +4374,7 @@ defmodule CodeMySpecSpex.Case do
       end
 
     view
-    |> Phoenix.LiveViewTest.render()
+    |> LiveViewTest.render()
     |> Floki.parse_document!()
     |> Floki.find(selector)
     |> Floki.attribute("data-state")
@@ -4419,7 +4423,7 @@ defmodule CodeMySpecSpex.Case do
 
     await_restart(view, key, before, 600)
     await_step(view, key)
-    Phoenix.LiveViewTest.render(view)
+    LiveViewTest.render(view)
   end
 
   defp await_restart(view, key, before, attempts) when attempts > 1 do
@@ -4439,7 +4443,7 @@ defmodule CodeMySpecSpex.Case do
 
   defp step_started_at(view, key) do
     view
-    |> Phoenix.LiveViewTest.render()
+    |> LiveViewTest.render()
     |> Floki.parse_document!()
     |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
     |> Floki.attribute("data-started-at")
@@ -4452,7 +4456,7 @@ defmodule CodeMySpecSpex.Case do
   Every `given_` in this epic starts here; spelling it out 60 times invites
   the drift where one of them mounts a different path.
 
-  A macro rather than a function because `Phoenix.LiveViewTest.live/2` is one,
+  A macro rather than a function because `LiveViewTest.live/2` is one,
   and it reads `@endpoint` from the module it expands in. Called as a function
   from here it would resolve against this module's endpoint instead of the
   spex's — and two spex in this epic deliberately set a different one.
@@ -5932,8 +5936,8 @@ defmodule CodeMySpecSpex.Case do
     token = Fixtures.generate_user_session_token(user)
 
     conn
-    |> Phoenix.ConnTest.init_test_session(%{})
-    |> Plug.Conn.put_session(:user_token, token)
+    |> ConnTest.init_test_session(%{})
+    |> Conn.put_session(:user_token, token)
   end
 
   @doc """

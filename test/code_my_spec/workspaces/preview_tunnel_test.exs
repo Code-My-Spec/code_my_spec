@@ -26,6 +26,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
+  alias Req.Test
 
   @tunnel_id "d3f1c0de-0000-4000-8000-000000000001"
 
@@ -46,19 +47,19 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   # assert the *shape* of the create call, and the shape is what decides
   # whether cloudflared can use the result at all.
   defp stub_cloudflare(test_pid) do
-    Req.Test.stub(PreviewTunnel, fn conn ->
+    Test.stub(PreviewTunnel, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       params = Jason.decode!(body)
       send(test_pid, {:cloudflare, conn.request_path, params})
 
       if String.contains?(conn.request_path, "cfd_tunnel") do
-        Req.Test.json(conn, %{
+        Test.json(conn, %{
           "success" => true,
           "errors" => [],
           "result" => %{"id" => @tunnel_id}
         })
       else
-        Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+        Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
       end
     end)
   end
@@ -183,10 +184,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   # update. Reports the PATCH body so a test can tell "left alone" from
   # "rewritten", which is the whole distinction here.
   defp taken(test_pid, existing_content) do
-    Req.Test.stub(PreviewTunnel, fn conn ->
+    Test.stub(PreviewTunnel, fn conn ->
       cond do
         String.contains?(conn.request_path, "cfd_tunnel") ->
-          Req.Test.json(conn, %{
+          Test.json(conn, %{
             "success" => true,
             "errors" => [],
             "result" => %{"id" => @tunnel_id}
@@ -196,17 +197,17 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
           {:ok, raw, conn} = Plug.Conn.read_body(conn)
           send(test_pid, {:patched, Jason.decode!(raw)})
 
-          Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+          Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
 
         conn.method == "GET" ->
-          Req.Test.json(conn, %{
+          Test.json(conn, %{
             "success" => true,
             "errors" => [],
             "result" => [%{"id" => "rec-1", "content" => existing_content}]
           })
 
         true ->
-          Req.Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
+          Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
       end
     end)
   end

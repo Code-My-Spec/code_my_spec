@@ -29,6 +29,7 @@ defmodule CmsHarness.HookDecision do
   """
 
   alias CmsHarness.Project.ChannelClient
+  alias CodeMySpec.BootVersion
 
   @deciding_hooks ~w(stop subagent-stop)
 
@@ -447,10 +448,10 @@ defmodule CmsHarness.HookDecision do
   # server URL and launch directory are invisible to a peer process, and killing
   # it without a correct relaunch takes hooks down for every working copy.
   defp boot_drift do
-    case CodeMySpec.BootVersion.drift() do
+    case BootVersion.drift() do
       {:drifted, booted, current} ->
-        drift_sentence(CodeMySpec.BootVersion.stale_kind(), booted, current) <>
-          contract_verdict(CodeMySpec.BootVersion.contract_changed?(booted, current))
+        drift_sentence(BootVersion.stale_kind(), booted, current) <>
+          contract_verdict(BootVersion.contract_changed?(booted, current))
 
       :none ->
         ""

@@ -25,6 +25,7 @@ defmodule CodeMySpec.Chat.Runner do
   alias CodeMySpec.Chat.{McpToolRegistry, Provider, ToolRegistry}
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias ReqLLM.Response
 
   # Rounds of tool-calling per reply, not total calls — one round may carry
   # several. High enough for an interview that lists then creates, low enough
@@ -142,15 +143,15 @@ defmodule CodeMySpec.Chat.Runner do
 
   # No tool calls means the model is talking, which is how a turn ends.
   defp continue(conversation, messages, tools, round, response) do
-    case ReqLLM.Response.tool_calls(response) do
+    case Response.tool_calls(response) do
       [] ->
-        emit_text(conversation, ReqLLM.Response.text(response))
+        emit_text(conversation, Response.text(response))
         :ok
 
       calls ->
         # Text the model emitted alongside its calls is part of the transcript;
         # dropping it loses the "here is what I am about to do" half of a turn.
-        emit_text(conversation, ReqLLM.Response.text(response))
+        emit_text(conversation, Response.text(response))
 
         results = Enum.map(calls, &execute_live_call(conversation, tools, &1))
 

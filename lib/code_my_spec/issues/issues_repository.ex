@@ -8,6 +8,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias Ecto.Changeset
 
   def list_issues(%Scope{} = scope) do
     Issue
@@ -295,12 +296,12 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   defp scoped_changeset(%Scope{} = scope, attrs) do
     %Issue{}
     |> Issue.changeset(attrs)
-    |> Ecto.Changeset.put_change(:project_id, resolve_project_id(scope))
-    |> Ecto.Changeset.put_change(:account_id, resolve_account_id(scope))
+    |> Changeset.put_change(:project_id, resolve_project_id(scope))
+    |> Changeset.put_change(:account_id, resolve_account_id(scope))
     # From the scope, never from the caller — an issue is raised *by* a working
     # copy, and letting a report name someone else's would make the field worse
     # than absent. Nil where there is no checkout, which is the web UI.
-    |> Ecto.Changeset.put_change(:working_copy_id, scope.active_working_copy_id)
+    |> Changeset.put_change(:working_copy_id, scope.active_working_copy_id)
   end
 
   def upsert_issue(%Scope{} = scope, attrs) do
@@ -309,11 +310,11 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     changeset = scoped_changeset(scope, attrs)
 
     title =
-      Ecto.Changeset.get_change(changeset, :title) || Ecto.Changeset.get_field(changeset, :title)
+      Changeset.get_change(changeset, :title) || Changeset.get_field(changeset, :title)
 
     story_id =
-      Ecto.Changeset.get_change(changeset, :story_id) ||
-        Ecto.Changeset.get_field(changeset, :story_id)
+      Changeset.get_change(changeset, :story_id) ||
+        Changeset.get_field(changeset, :story_id)
 
     case Repo.insert(changeset,
            on_conflict: :nothing,
@@ -363,10 +364,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
 
     %Issue{id: remote_issue.id}
     |> Issue.changeset(attrs)
-    |> Ecto.Changeset.put_change(:project_id, remote_issue.project_id)
-    |> Ecto.Changeset.put_change(:account_id, remote_issue.account_id)
-    |> Ecto.Changeset.put_change(:status, remote_issue.status)
-    |> Ecto.Changeset.put_change(:synced_from_server, true)
+    |> Changeset.put_change(:project_id, remote_issue.project_id)
+    |> Changeset.put_change(:account_id, remote_issue.account_id)
+    |> Changeset.put_change(:status, remote_issue.status)
+    |> Changeset.put_change(:synced_from_server, true)
     |> Repo.insert(
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: :id
@@ -424,7 +425,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Repo.delete(issue)
   rescue
     Ecto.StaleEntryError ->
-      {:error, Ecto.Changeset.change(issue) |> Ecto.Changeset.add_error(:id, "does not exist")}
+      {:error, Changeset.change(issue) |> Changeset.add_error(:id, "does not exist")}
   end
 
   def list_filtered(%Scope{} = scope, filters) when is_map(filters) do

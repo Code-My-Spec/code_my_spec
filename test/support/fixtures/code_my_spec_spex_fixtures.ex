@@ -118,6 +118,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.WorkspaceWatchers
   alias Ecto.Changeset
+  alias Phoenix.ConnTest
 
   import Ecto.Query, only: [from: 2]
 
@@ -1737,7 +1738,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Migrate a project the way the local harness does — through the endpoint."
   def migrate(%Scope{} = scope, payload) do
-    Phoenix.ConnTest.build_conn()
+    ConnTest.build_conn()
     |> Plug.Conn.put_req_header("content-type", "application/json")
     |> Plug.Conn.assign(:current_scope, scope)
     |> CodeMySpecWeb.MigrationsController.create(payload)
@@ -1959,16 +1960,16 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
     response =
-      Phoenix.ConnTest.build_conn()
+      ConnTest.build_conn()
       |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
       |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> Phoenix.ConnTest.dispatch(
+      |> ConnTest.dispatch(
         CodeMySpecLocalWeb.Endpoint,
         :post,
         "/api/skills/start",
         %{"skill" => "implement", "external_id" => external_id}
       )
-      |> Phoenix.ConnTest.json_response(200)
+      |> ConnTest.json_response(200)
 
     case response do
       %{"prompt" => _} -> :ok

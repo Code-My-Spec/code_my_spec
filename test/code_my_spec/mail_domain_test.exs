@@ -20,6 +20,7 @@ defmodule CodeMySpec.MailDomainTest do
   alias CodeMySpec.Mail
   alias CodeMySpec.Mail.ResendClient
   alias CodeMySpec.Projects
+  alias Req.Test
 
   @records [
     %{"type" => "TXT", "name" => "resend._domainkey", "value" => "p=ABC", "status" => "pending"},
@@ -30,17 +31,22 @@ defmodule CodeMySpec.MailDomainTest do
     plug = fn conn ->
       case {conn.method, conn.request_path} do
         {"POST", "/domains"} ->
-          Req.Test.json(conn, %{"id" => "dom_1", "name" => "x", "status" => "not_started", "records" => @records})
+          Test.json(conn, %{
+            "id" => "dom_1",
+            "name" => "x",
+            "status" => "not_started",
+            "records" => @records
+          })
 
         {"POST", "/domains/dom_1/verify"} ->
-          Req.Test.json(conn, %{"id" => "dom_1", "status" => status})
+          Test.json(conn, %{"id" => "dom_1", "status" => status})
 
         {"GET", "/domains/dom_1"} ->
-          Req.Test.json(conn, %{"id" => "dom_1", "status" => status, "records" => @records})
+          Test.json(conn, %{"id" => "dom_1", "status" => status, "records" => @records})
       end
     end
 
-    Req.Test.stub(ResendClient, plug)
+    Test.stub(ResendClient, plug)
   end
 
   describe "setup_domain/3" do
@@ -67,20 +73,33 @@ defmodule CodeMySpec.MailDomainTest do
           {"POST", "/domains"} ->
             conn
             |> Plug.Conn.put_resp_content_type("application/json")
-            |> Plug.Conn.resp(403, Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"}))
+            |> Plug.Conn.resp(
+              403,
+              Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"})
+            )
 
           {"GET", "/domains"} ->
-            Req.Test.json(conn, %{
+            Test.json(conn, %{
               "object" => "list",
-              "data" => [%{"id" => "dom_existing", "name" => "inbound.sam-ships.com", "status" => "verified"}]
+              "data" => [
+                %{
+                  "id" => "dom_existing",
+                  "name" => "inbound.sam-ships.com",
+                  "status" => "verified"
+                }
+              ]
             })
 
           {"GET", "/domains/dom_existing"} ->
-            Req.Test.json(conn, %{"id" => "dom_existing", "status" => "verified", "records" => @records})
+            Test.json(conn, %{
+              "id" => "dom_existing",
+              "status" => "verified",
+              "records" => @records
+            })
         end
       end
 
-      Req.Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, plug)
       scope = full_scope_fixture()
 
       assert {:ok, project, records} =
@@ -129,11 +148,11 @@ defmodule CodeMySpec.MailDomainTest do
     test "sends via the provider and records the returned provider id" do
       plug = fn conn ->
         case {conn.method, conn.request_path} do
-          {"POST", "/emails"} -> Req.Test.json(conn, %{"id" => "email_1"})
+          {"POST", "/emails"} -> Test.json(conn, %{"id" => "email_1"})
         end
       end
 
-      Req.Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, plug)
       scope = full_scope_fixture()
       {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
 
@@ -151,7 +170,7 @@ defmodule CodeMySpec.MailDomainTest do
       # left the process and the test proved the *unconfigured* path rather
       # than the failing-provider one it is named for — the two reach the same
       # `{:error, _}` in `deliver/3` from opposite directions.
-      Req.Test.stub(ResendClient, fn conn ->
+      Test.stub(ResendClient, fn conn ->
         Plug.Conn.send_resp(conn, 500, ~s({"message":"upstream unavailable"}))
       end)
 
@@ -245,11 +264,11 @@ defmodule CodeMySpec.MailDomainTest do
       plug = fn conn ->
         case {conn.method, conn.request_path} do
           {"GET", "/emails/receiving/" <> _} ->
-            Req.Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
+            Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
         end
       end
 
-      Req.Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, plug)
 
       {:ok, email} =
         Mail.route_inbound(ctx.project, %{
@@ -315,10 +334,12 @@ defmodule CodeMySpec.MailDomainTest do
               Jason.encode!(received)
           end
 
-        conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, body)
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
       end
 
-      Req.Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, plug)
     end
 
     test "inserts inbound the project never recorded and reports counts", ctx do

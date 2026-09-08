@@ -18,6 +18,7 @@ defmodule CodeMySpec.Transcripts.Player do
   alias CodeMySpec.Transcripts
   alias CodeMySpec.Transcripts.ClaudeCode.{Entry, ToolCall}
   alias CodeMySpec.Transcripts.Replayer
+  alias IO.ANSI
 
   @harness_prefix "mcp__plugin_codemyspec_local__"
   @text_cap 700
@@ -94,15 +95,15 @@ defmodule CodeMySpec.Transcripts.Player do
         :ok
 
       invocation = command_invocation(trimmed) ->
-        puts([IO.ANSI.bright(), IO.ANSI.green(), "▶ ", invocation, IO.ANSI.reset()])
+        puts([ANSI.bright(), ANSI.green(), "▶ ", invocation, ANSI.reset()])
         beat(delay_for(index, ctx))
 
       type == "user" ->
-        puts([IO.ANSI.bright(), IO.ANSI.green(), "▶ ", cap(trimmed, @text_cap), IO.ANSI.reset()])
+        puts([ANSI.bright(), ANSI.green(), "▶ ", cap(trimmed, @text_cap), ANSI.reset()])
         beat(delay_for(index, ctx))
 
       true ->
-        puts([IO.ANSI.bright(), IO.ANSI.white(), cap(trimmed, @text_cap), IO.ANSI.reset()])
+        puts([ANSI.bright(), ANSI.white(), cap(trimmed, @text_cap), ANSI.reset()])
         beat(delay_for(index, ctx))
     end
   end
@@ -114,7 +115,7 @@ defmodule CodeMySpec.Transcripts.Player do
          index,
          ctx
        ) do
-    puts([IO.ANSI.cyan(), "⏺ AskUserQuestion", IO.ANSI.reset()])
+    puts([ANSI.cyan(), "⏺ AskUserQuestion", ANSI.reset()])
 
     questions = input["questions"] || []
 
@@ -127,16 +128,16 @@ defmodule CodeMySpec.Transcripts.Player do
 
     for q <- questions do
       puts([
-        IO.ANSI.cyan(),
+        ANSI.cyan(),
         "  │ ",
-        IO.ANSI.bright(),
-        IO.ANSI.white(),
+        ANSI.bright(),
+        ANSI.white(),
         to_string(q["header"] || ""),
-        IO.ANSI.reset(),
-        IO.ANSI.white(),
+        ANSI.reset(),
+        ANSI.white(),
         "  ",
         to_string(q["question"] || ""),
-        IO.ANSI.reset()
+        ANSI.reset()
       ])
 
       for o <- q["options"] || [], do: render_option(o, per_option)
@@ -146,7 +147,7 @@ defmodule CodeMySpec.Transcripts.Player do
   # -- tool action: render Claude-Code style + fire the real op -------------
   defp render_block(%{"type" => "tool_use"} = block, _type, index, ctx) do
     tool_call = block |> ToolCall.new() |> inject_session_id(ctx)
-    puts([IO.ANSI.cyan(), "⏺ ", action_label(tool_call), IO.ANSI.reset()])
+    puts([ANSI.cyan(), "⏺ ", action_label(tool_call), ANSI.reset()])
     Replayer.fire(tool_call, ctx)
     beat(delay_for(index, ctx))
   end
@@ -171,19 +172,19 @@ defmodule CodeMySpec.Transcripts.Player do
   # paced named.
   defp render_option(option, per_option) do
     puts([
-      IO.ANSI.cyan(),
+      ANSI.cyan(),
       "  │   ",
-      IO.ANSI.yellow(),
+      ANSI.yellow(),
       "○ ",
       to_string(option["label"] || ""),
-      IO.ANSI.reset()
+      ANSI.reset()
     ])
 
     option["description"]
     |> wrap(@option_width)
     |> Enum.take(@option_desc_lines)
     |> Enum.each(fn line ->
-      puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
+      puts([ANSI.cyan(), "  │     ", ANSI.faint(), line, ANSI.reset()])
     end)
 
     beat(per_option)
@@ -197,11 +198,11 @@ defmodule CodeMySpec.Transcripts.Player do
 
       for {line, i} <- Enum.with_index(lines) do
         prefix = if i == 0, do: "  ⎿  ", else: "     "
-        colour = if i == 0, do: IO.ANSI.faint(), else: IO.ANSI.green()
-        puts([colour, prefix, cap(String.trim(line), @result_cap), IO.ANSI.reset()])
+        colour = if i == 0, do: ANSI.faint(), else: ANSI.green()
+        puts([colour, prefix, cap(String.trim(line), @result_cap), ANSI.reset()])
       end
     else
-      puts([IO.ANSI.faint(), "  ⎿  ", cap(first_line(text), @result_cap), IO.ANSI.reset()])
+      puts([ANSI.faint(), "  ⎿  ", cap(first_line(text), @result_cap), ANSI.reset()])
     end
   end
 

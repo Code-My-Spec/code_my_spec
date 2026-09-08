@@ -51,6 +51,7 @@ defmodule CmsHarness.Web.McpController do
   alias CmsHarness.Token
   alias CmsHarness.Web.UpstreamError
   alias CmsHarness.WorkingCopies
+  alias Req.Request
 
   # Everything the MCP transport puts on a request that means something to the
   # far end. `authorization` is deliberately absent — Claude Code sends none,
@@ -91,10 +92,10 @@ defmodule CmsHarness.Web.McpController do
     req =
       request(conn, project, token, :get, nil, :infinity)
       |> Req.merge(into: &relay_chunk/2)
-      |> Req.Request.put_private(:cms_relay, %{conn: conn, chunking?: false, buffer: []})
+      |> Request.put_private(:cms_relay, %{conn: conn, chunking?: false, buffer: []})
 
-    {req, result} = Req.Request.run_request(req)
-    finish_stream(result, Req.Request.get_private(req, :cms_relay))
+    {req, result} = Request.run_request(req)
+    finish_stream(result, Request.get_private(req, :cms_relay))
   end
 
   defp dispatch(%{method: method} = conn, project, token) when method in ~w(POST DELETE) do
@@ -243,7 +244,7 @@ defmodule CmsHarness.Web.McpController do
   # body — so they are held in `state.buffer` and sent as one plain response
   # once the whole thing is known, in `finish_stream/2`.
   defp relay_chunk({:data, data}, {request, %{status: 200} = resp}) do
-    %{conn: conn, chunking?: chunking?} = state = Req.Request.get_private(request, :cms_relay)
+    %{conn: conn, chunking?: chunking?} = state = Request.get_private(request, :cms_relay)
     conn = if chunking?, do: conn, else: begin_event_stream(conn, resp)
 
     case chunk(conn, data) do
@@ -259,11 +260,11 @@ defmodule CmsHarness.Web.McpController do
   end
 
   defp relay_chunk({:data, data}, {request, resp}) do
-    state = Req.Request.get_private(request, :cms_relay)
+    state = Request.get_private(request, :cms_relay)
     {:cont, {put_relay(request, %{state | buffer: [state.buffer, data]}), resp}}
   end
 
-  defp put_relay(request, state), do: Req.Request.put_private(request, :cms_relay, state)
+  defp put_relay(request, state), do: Request.put_private(request, :cms_relay, state)
 
   defp begin_event_stream(conn, response) do
     conn

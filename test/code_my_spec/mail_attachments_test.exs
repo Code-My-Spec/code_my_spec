@@ -15,6 +15,7 @@ defmodule CodeMySpec.MailAttachmentsTest do
   alias CodeMySpec.Mail
   alias CodeMySpec.Mail.{Attachments, EmailAttachment, ResendClient}
   alias CodeMySpec.Repo
+  alias Req.Test
 
   @domain "att.example.com"
 
@@ -42,23 +43,23 @@ defmodule CodeMySpec.MailAttachmentsTest do
     plug = fn conn ->
       cond do
         conn.host == "api.resend.com" and String.ends_with?(conn.request_path, "/attachments") ->
-          Req.Test.json(conn, %{"data" => attachments})
+          Test.json(conn, %{"data" => attachments})
 
         conn.host == "inbound-cdn.resend.com" ->
           Plug.Conn.send_resp(conn, download_status, "FILEBYTES:" <> conn.request_path)
 
         true ->
-          Req.Test.json(conn, %{})
+          Test.json(conn, %{})
       end
     end
 
-    Req.Test.stub(ResendClient, plug)
+    Test.stub(ResendClient, plug)
   end
 
   defp stub_s3 do
     test_pid = self()
 
-    Req.Test.stub(S3Client, fn conn ->
+    Test.stub(S3Client, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:s3_put, conn.request_path, body})
       Plug.Conn.send_resp(conn, 200, "")
@@ -177,7 +178,9 @@ defmodule CodeMySpec.MailAttachmentsTest do
     assert %EmailAttachment{} = found = Mail.get_attachment(ctx.scope, stored.id)
     assert found.id == stored.id
     assert {:ok, url} = Mail.attachment_download_url(found)
-    assert url =~ stored.s3_key |> URI.encode() |> String.replace("/", "%2F") or url =~ "invoice.pdf"
+
+    assert url =~ stored.s3_key |> URI.encode() |> String.replace("/", "%2F") or
+             url =~ "invoice.pdf"
 
     # A scope on another project can't see it.
     other = full_scope_fixture()

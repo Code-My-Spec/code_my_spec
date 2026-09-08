@@ -3,12 +3,14 @@ defmodule CodeMySpecWeb.ContentController do
 
   alias CodeMySpec.Content
   alias CodeMySpec.Content.ContentRepository
+  alias CodeMySpecWeb.ContentHTML
 
   @index_config %{
     blog: %{
       badge: "Blog",
       title: "Latest Articles",
-      description: "Insights on structured AI development, avoiding LLM-generated technical debt, and building production-ready Phoenix applications.",
+      description:
+        "Insights on structured AI development, avoiding LLM-generated technical debt, and building production-ready Phoenix applications.",
       icon: "hero-document-text",
       empty_message: "No posts yet",
       page_title: "Phoenix AI Development Blog — CodeMySpec",
@@ -19,7 +21,8 @@ defmodule CodeMySpecWeb.ContentController do
     documentation: %{
       badge: "Documentation",
       title: "Documentation",
-      description: "Technical guides, API references, and tutorials for getting the most out of CodeMySpec.",
+      description:
+        "Technical guides, API references, and tutorials for getting the most out of CodeMySpec.",
       icon: "hero-book-open",
       empty_message: "No documentation yet",
       page_title: "Documentation — CodeMySpec",
@@ -30,7 +33,8 @@ defmodule CodeMySpecWeb.ContentController do
     page: %{
       badge: "Pages",
       title: "Pages",
-      description: "Reviews, comparisons, and resources for AI-assisted development tools and workflows.",
+      description:
+        "Reviews, comparisons, and resources for AI-assisted development tools and workflows.",
       icon: "hero-squares-2x2",
       empty_message: "No pages yet",
       page_title: "Pages — CodeMySpec",
@@ -98,7 +102,12 @@ defmodule CodeMySpecWeb.ContentController do
       "@type" => "BreadcrumbList",
       "itemListElement" => [
         %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
-        %{"@type" => "ListItem", "position" => 2, "name" => config.badge, "item" => "#{base_url}#{config.item_path_prefix}"}
+        %{
+          "@type" => "ListItem",
+          "position" => 2,
+          "name" => config.badge,
+          "item" => "#{base_url}#{config.item_path_prefix}"
+        }
       ]
     }
 
@@ -166,7 +175,12 @@ defmodule CodeMySpecWeb.ContentController do
     case load_and_verify_content(scope, slug, content_type, is_protected) do
       {:ok, content} ->
         template = get_in(content.metadata || %{}, ["metadata", "template"]) || "default"
-        render(conn, template_action(template), build_show_assigns(content, template, is_protected))
+
+        render(
+          conn,
+          template_action(template),
+          build_show_assigns(content, template, is_protected)
+        )
 
       {:error, _reason} ->
         # Unknown / not-yet-published / expired slugs return a plain 404 at
@@ -196,9 +210,9 @@ defmodule CodeMySpecWeb.ContentController do
       og_type: if(is_article, do: "article", else: "website"),
       article_published_time: if(is_article, do: format_iso8601(content.publish_at)),
       canonical_url: base_url <> canonical,
-      preload_image: CodeMySpecWeb.ContentHTML.blog_hero_image(content),
-      preload_image_srcset: CodeMySpecWeb.ContentHTML.blog_hero_srcset(content),
-      preload_image_sizes: CodeMySpecWeb.ContentHTML.blog_hero_sizes(),
+      preload_image: ContentHTML.blog_hero_image(content),
+      preload_image_srcset: ContentHTML.blog_hero_srcset(content),
+      preload_image_sizes: ContentHTML.blog_hero_sizes(),
       json_ld: build_json_ld(content, is_protected)
     ]
   end
@@ -304,7 +318,10 @@ defmodule CodeMySpecWeb.ContentController do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = build_canonical_url(content, is_protected)
     url = base_url <> canonical
-    og_image = content.og_image || blog_og_image(content, base_url) || CodeMySpecWeb.ImageUrl.image_url("og-default.png", base_url)
+
+    og_image =
+      content.og_image || blog_og_image(content, base_url) ||
+        CodeMySpecWeb.ImageUrl.image_url("og-default.png", base_url)
 
     ctx = %{
       content: content,
@@ -329,7 +346,13 @@ defmodule CodeMySpecWeb.ContentController do
   defp schemas_for_type(:page, ctx), do: [page_schema(ctx)]
   defp schemas_for_type(_, ctx), do: [minimal_webpage_schema(ctx)]
 
-  defp blog_posting_schema(%{content: content, url: url, image: image, author: author, publisher: publisher}) do
+  defp blog_posting_schema(%{
+         content: content,
+         url: url,
+         image: image,
+         author: author,
+         publisher: publisher
+       }) do
     tag_names = Enum.map(content.tags || [], & &1.name)
     keywords = if tag_names == [], do: nil, else: Enum.join(tag_names, ", ")
     category = get_in(content.metadata || %{}, ["metadata", "category"])
@@ -353,7 +376,13 @@ defmodule CodeMySpecWeb.ContentController do
     |> maybe_put("articleSection", category)
   end
 
-  defp tech_article_schema(%{content: content, url: url, image: image, author: author, publisher: publisher}) do
+  defp tech_article_schema(%{
+         content: content,
+         url: url,
+         image: image,
+         author: author,
+         publisher: publisher
+       }) do
     %{
       "@context" => "https://schema.org",
       "@type" => "TechArticle",
@@ -521,7 +550,11 @@ defmodule CodeMySpecWeb.ContentController do
 
   defp build_breadcrumb(content, base_url) do
     type_label =
-      Map.get(@type_labels, content.content_type, content.content_type |> to_string() |> String.capitalize())
+      Map.get(
+        @type_labels,
+        content.content_type,
+        content.content_type |> to_string() |> String.capitalize()
+      )
 
     type_path = Map.fetch!(@content_type_paths, content.content_type)
 

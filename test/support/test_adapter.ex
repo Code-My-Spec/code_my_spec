@@ -36,6 +36,7 @@ defmodule CodeMySpec.Support.TestAdapter do
 
   @behaviour CodeMySpec.Git.Behaviour
 
+  alias CodeMySpec.Compile
   alias CodeMySpec.Environments.Environment
 
   @code_repo_fixture_path "../code_my_spec_test_repos/test_phoenix_project"
@@ -460,9 +461,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        CodeMySpec.Compile.execute(
-          environment: Environment.new(:local, code_repo_fixture_abs)
-        )
+        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_ok_cache_abs)
 
@@ -481,9 +480,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        CodeMySpec.Compile.execute(
-          environment: Environment.new(:local, code_repo_fixture_abs)
-        )
+        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_warnings_cache_abs)
 
@@ -506,9 +503,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        CodeMySpec.Compile.execute(
-          environment: Environment.new(:local, code_repo_fixture_abs)
-        )
+        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_errors_cache_abs)
 

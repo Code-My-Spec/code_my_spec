@@ -8,6 +8,7 @@ defmodule CodeMySpecWeb.Plugs.GaClientIdTest do
 
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpecWeb.Plugs.GaClientId
+  alias Plug.Test
 
   # The session cookie name is "_ga_<container>" where container = the
   # configured measurement_id minus its "G-" prefix. Derive it the same way
@@ -27,10 +28,10 @@ defmodule CodeMySpecWeb.Plugs.GaClientIdTest do
 
   defp run(cookies) do
     cookies
-    |> Enum.reduce(Plug.Test.conn(:get, "/"), fn {name, val}, conn ->
-      Plug.Test.put_req_cookie(conn, name, val)
+    |> Enum.reduce(Test.conn(:get, "/"), fn {name, val}, conn ->
+      Test.put_req_cookie(conn, name, val)
     end)
-    |> Plug.Test.init_test_session(%{})
+    |> Test.init_test_session(%{})
     |> GaClientId.call(GaClientId.init([]))
   end
 

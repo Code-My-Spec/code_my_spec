@@ -31,6 +31,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   use Boundary, classify_to: CodeMySpec
 
   alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage, Teardown}
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -172,13 +173,13 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     # Sequenced rather than `&&`. `put_dynamic_repo/1` answers with the repo it
     # replaced, which is always truthy, so the conditional never decided
     # anything — it just read as though the `:ok` were contingent on it.
-    case CodeMySpec.Repo.start_link(config) do
+    case Repo.start_link(config) do
       {:ok, _} ->
-        CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo)
+        Repo.put_dynamic_repo(:leak_audit_dev_repo)
         :ok
 
       {:error, {:already_started, _}} ->
-        CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo)
+        Repo.put_dynamic_repo(:leak_audit_dev_repo)
         :ok
 
       other ->
@@ -191,7 +192,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     with :ok <- start_dev_repo(),
          %{id: user_id} = user <-
-           CodeMySpec.Repo.one(
+           Repo.one(
              from u in CodeMySpec.Users.User,
                join: i in "integrations",
                on: i.user_id == u.id,
@@ -199,7 +200,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
                limit: 1
            ),
          account_id when not is_nil(account_id) <-
-           CodeMySpec.Repo.one(
+           Repo.one(
              from p in "user_preferences",
                where: p.user_id == ^user_id,
                select: type(p.active_account_id, :binary_id)

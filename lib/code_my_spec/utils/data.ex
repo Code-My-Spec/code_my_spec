@@ -45,6 +45,7 @@ defmodule CodeMySpec.Utils.Data do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
+  alias Ecto.Changeset
   alias PaperTrail.Version
 
   import Ecto.Query
@@ -423,7 +424,7 @@ defmodule CodeMySpec.Utils.Data do
       inserted_at = parse_datetime(version_data.inserted_at)
 
       %Version{id: version_data.id}
-      |> Ecto.Changeset.change(
+      |> Changeset.change(
         event: version_data.event,
         item_type: version_data.item_type,
         item_id: version_data.item_id,
@@ -441,9 +442,9 @@ defmodule CodeMySpec.Utils.Data do
     Enum.each(stories_data, fn story_data ->
       %Story{id: story_data.id}
       |> Story.changeset(story_data)
-      |> Ecto.Changeset.put_change(:account_id, story_data.account_id)
-      |> Ecto.Changeset.put_change(:first_version_id, story_data[:first_version_id])
-      |> Ecto.Changeset.put_change(:current_version_id, story_data[:current_version_id])
+      |> Changeset.put_change(:account_id, story_data.account_id)
+      |> Changeset.put_change(:first_version_id, story_data[:first_version_id])
+      |> Changeset.put_change(:current_version_id, story_data[:current_version_id])
       |> Repo.insert!()
     end)
   end

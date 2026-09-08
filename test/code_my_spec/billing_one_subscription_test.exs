@@ -39,6 +39,7 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Billing
+  alias Plug.Conn
 
   setup do
     Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
@@ -71,12 +72,12 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
     test_pid = self()
 
     Req.Test.stub(CodeMySpec.Billing.StripeClient, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      {:ok, body, conn} = Conn.read_body(conn)
       send(test_pid, {:stripe, conn.method, conn.request_path, body})
 
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, Jason.encode!(Map.fetch!(routes, conn.request_path)))
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(200, Jason.encode!(Map.fetch!(routes, conn.request_path)))
     end)
   end
 
