@@ -6,6 +6,26 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript do
       browser_wait_for_text({ text = "Overview", timeout = 20000 })
       return browser_get_url({})
 
+  ## The names come from the machine, so look them up
+
+  `tool_docs({ search = "wait" })` lists what this machine's browser actually
+  offers; `tool_docs({ name = "browser_wait_for_text" })` gives one tool's
+  arguments and a runnable example. Call it **directly**, not from inside a
+  script — the catalog refuses it there, because reading the documentation is
+  something you do before writing the script.
+
+  Do this rather than guessing. The catalog is whatever the installed vibium
+  publishes over MCP, which is not the Playwright or Puppeteer API an agent has
+  otherwise read a great deal of, and the two are similar enough to be
+  dangerous. Watched on 2026-09-08: a QA agent spent forty-five minutes without
+  a successful tool call, on `browser_wait_for_timeout` — Playwright's
+  `page.waitForTimeout`, which does not exist here. The waits that do are
+  `browser_sleep`, `browser_wait`, `browser_wait_for_text`,
+  `browser_wait_for_url`, `browser_wait_for_load` and `browser_wait_for_fn`.
+
+  A nil global in this sandbox means the name is wrong, not that the browser is
+  broken.
+
   Separate from `run_script`, and separate on purpose. The browser's tools are a
   different kind of thing under a wall clock: several of them **wait by design**
   — `browser_wait_for_text`, `browser_wait_for_url` and `browser_sleep` all take

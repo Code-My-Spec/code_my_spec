@@ -136,7 +136,54 @@ defmodule CodeMySpec.CodeMode do
       Result.error(:compile, Exception.message(error))
 
     error in Lua.RuntimeException ->
-      Result.error(kind(error), Exception.message(error))
+      Result.error(kind(error), explain(Exception.message(error), catalog))
+  end
+
+  # "attempt to call a nil value (global 'x')" is the one runtime error that
+  # says nothing useful. `Bindings` already makes this argument for the tools it
+  # deliberately withholds — absence "reads as a misspelling", so an agent
+  # "tries variations of the name instead of learning it is not for it" — and
+  # binds a stub that explains. A name that exists in no catalog at all had no
+  # such stub and fell through to the bare message.
+  #
+  # It is the likeliest error an agent makes here, because the browser catalog
+  # comes from whatever vibium publishes and an agent has read far more
+  # Playwright than vibium. Watched on 2026-09-08: a QA agent spent forty-five
+  # minutes without a successful call, on `browser_wait_for_timeout` —
+  # Playwright's `page.waitForTimeout`. `browser_sleep` was bound the whole
+  # time, one edit distance away in intent and nowhere near it in spelling.
+  #
+  # So the message names the remedy and, when the catalog holds something close,
+  # the name itself. Cheap: it runs only on a failure that already ended the
+  # script.
+  defp explain(message, catalog) do
+    case Regex.run(~r/attempt to call a nil value \(global '([^']+)'\)/, message) do
+      [_, name] -> message <> did_you_mean(name, catalog)
+      _ -> message
+    end
+  end
+
+  defp did_you_mean(name, catalog) do
+    suggestion =
+      catalog
+      |> Enum.map(fn {known, _} -> known end)
+      |> Enum.filter(&(String.jaro_distance(&1, name) > 0.82))
+      |> Enum.sort_by(&(-String.jaro_distance(&1, name)))
+      |> Enum.take(3)
+
+    case suggestion do
+      [] ->
+        "\n\nNo tool is bound under that name. `tool_docs({ search = \"...\" })`, " <>
+          "called directly rather than from a script, lists what this machine " <>
+          "actually offers — the catalog is whatever is installed here, not the " <>
+          "Playwright or Puppeteer API."
+
+      names ->
+        "\n\nNo tool is bound under that name. Did you mean " <>
+          Enum.map_join(names, " or ", &"`#{&1}`") <>
+          "? `tool_docs({ name = \"#{hd(names)}\" })`, called directly, gives its " <>
+          "arguments and a runnable example."
+    end
   end
 
   # A script that returns nothing is a script run for its writes, which is a
