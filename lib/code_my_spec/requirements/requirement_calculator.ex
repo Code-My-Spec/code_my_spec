@@ -26,6 +26,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @type computed_requirement :: %{
           name: String.t(),
@@ -72,10 +73,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp check(%{check_type: :path_exists, config: config}, scope, _entity, _files, ctx) do
     cond do
-      path = config["path"] || config[:path] ->
+      path = MapAccess.get(config, :path) ->
         check_path_exists(scope, ctx, path)
 
-      prefix = config["path_prefix"] || config[:path_prefix] ->
+      prefix = MapAccess.get(config, :path_prefix) ->
         check_path_prefix(scope, ctx, prefix)
 
       true ->
@@ -153,8 +154,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
-    module = config[:module] || config["module"]
-    function = config[:function] || config["function"] || :check
+    module = MapAccess.get(config, :module)
+    function = MapAccess.get(config, :function, :check)
 
     if is_nil(module) do
       {false, %{reason: "delegate check missing :module in config"}}
@@ -301,15 +302,15 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # -- Config helpers --
 
   defp config_role(config) do
-    config[:role] || config["role"] || raise "file check missing :role in config"
+    MapAccess.get(config, :role) || raise "file check missing :role in config"
   end
 
   defp config_source(config) do
-    config[:source] || config["source"] || raise "no_problems check missing :source in config"
+    MapAccess.get(config, :source) || raise "no_problems check missing :source in config"
   end
 
   defp config_field(config) do
-    config[:field] || config["field"] || raise "field_present check missing :field in config"
+    MapAccess.get(config, :field) || raise "field_present check missing :field in config"
   end
 
   # Names the module, because "evaluate the task" is not actionable to a reader
@@ -381,7 +382,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   #
   # One valid copy is enough. Reporting invalid because some other working
   # copy has a stale row would block an agent on a file it cannot see.
-  defp environment_from(config), do: config[:environment] || config["environment"]
+  defp environment_from(config), do: MapAccess.get(config, :environment)
 
   defp deployed_verdict(_scope, _entity, nil),
     do: {false, %{reason: "deployed check missing :environment in config"}}

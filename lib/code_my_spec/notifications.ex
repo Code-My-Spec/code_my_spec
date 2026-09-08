@@ -11,6 +11,7 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   Subscribe a user to push notifications.
@@ -446,7 +447,7 @@ defmodule CodeMySpec.Notifications do
   defp answer_message(%{questions: questions, answers: answers}) do
     body =
       Enum.map_join(questions, "\n\n", fn question ->
-        text = question["question"] || question[:question]
+        text = MapAccess.get(question, :question)
         "Q: #{text}\nA: #{said(answers, text)}"
       end)
 

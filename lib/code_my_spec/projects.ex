@@ -8,6 +8,7 @@ defmodule CodeMySpec.Projects do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   Subscribes to scoped notifications about any project changes.
@@ -388,8 +389,7 @@ defmodule CodeMySpec.Projects do
     end
   end
 
-  defp deploy_key_in(attrs) when is_map(attrs),
-    do: Map.get(attrs, "deploy_key") || Map.get(attrs, :deploy_key)
+  defp deploy_key_in(attrs) when is_map(attrs), do: MapAccess.get(attrs, :deploy_key)
 
   defp deploy_key_in(_attrs), do: nil
 

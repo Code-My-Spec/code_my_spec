@@ -22,6 +22,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Utils.MapAccess
 
   schema do
     field :agent_id, :string, required: true, doc: "Id of the agent to send this to"
@@ -41,6 +42,6 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
     end
   end
 
-  defp agent_id(params), do: params["agent_id"] || params[:agent_id]
-  defp message(params), do: params["message"] || params[:message]
+  defp agent_id(params), do: MapAccess.get(params, :agent_id)
+  defp message(params), do: MapAccess.get(params, :message)
 end

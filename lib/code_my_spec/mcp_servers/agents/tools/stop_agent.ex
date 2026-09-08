@@ -12,6 +12,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StopAgent do
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Utils.MapAccess
 
   schema do
     field :agent_id, :string, required: true, doc: "Id of the agent to stop"
@@ -27,5 +28,5 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StopAgent do
     end
   end
 
-  defp agent_id(params), do: params["agent_id"] || params[:agent_id]
+  defp agent_id(params), do: MapAccess.get(params, :agent_id)
 end

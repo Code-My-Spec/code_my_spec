@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Fakes.Resend do
   `test/spex/TESTING_PROVISIONING.md`.
   """
 
+  alias CodeMySpec.Utils.MapAccess
   alias Plug.Conn
 
   @doc "Fresh account state. One per test."
@@ -138,8 +139,7 @@ defmodule CodeMySpecSpex.Fakes.Resend do
         # Accepted, and never delivered. The API says yes; the message goes
         # nowhere. Nothing in the response distinguishes this from a send that
         # will arrive, which is the whole difficulty.
-        {{200, %{"id" => "suppressed-#{state.next_id}"}},
-         %{state | next_id: state.next_id + 1}}
+        {{200, %{"id" => "suppressed-#{state.next_id}"}}, %{state | next_id: state.next_id + 1}}
 
       not sending_domain?(state, to, body["from"]) ->
         {{403, %{"name" => "validation_error", "message" => "domain is not verified"}}, state}
@@ -266,8 +266,8 @@ defmodule CodeMySpecSpex.Fakes.Resend do
 
   defp capabilities(caps) when is_map(caps) do
     %{
-      "sending" => to_string(caps["sending"] || caps[:sending] || "enabled"),
-      "receiving" => to_string(caps["receiving"] || caps[:receiving] || "disabled")
+      "sending" => to_string(MapAccess.get(caps, :sending, "enabled")),
+      "receiving" => to_string(MapAccess.get(caps, :receiving, "disabled"))
     }
   end
 
@@ -347,7 +347,10 @@ defmodule CodeMySpecSpex.Fakes.Resend do
   defp full(domain), do: domain
 
   defp replace(state, domain) do
-    %{state | domains: Enum.map(state.domains, &if(&1["id"] == domain["id"], do: domain, else: &1))}
+    %{
+      state
+      | domains: Enum.map(state.domains, &if(&1["id"] == domain["id"], do: domain, else: &1))
+    }
   end
 
   defp with_domain(state, id, fun) do

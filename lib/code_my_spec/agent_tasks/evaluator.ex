@@ -26,6 +26,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   Evaluate a task: sync files, run side effects, check requirement.
@@ -253,7 +254,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   end
 
   defp format_feedback(_scope, _entity, _type, result, _definition) do
-    reason = result.details[:reason] || result.details["reason"] || "Requirement not satisfied"
+    reason = MapAccess.get(result.details, :reason, "Requirement not satisfied")
     "Requirement not met: #{reason}"
   end
 

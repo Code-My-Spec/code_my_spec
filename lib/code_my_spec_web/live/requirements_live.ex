@@ -22,6 +22,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
+  alias CodeMySpec.Utils.MapAccess
 
   @impl true
   def mount(_params, _session, socket) do
@@ -720,7 +721,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp basis(node) do
     details = node.details || %{}
 
-    details["status"] || details["reason"] || details[:status] || details[:reason]
+    MapAccess.get(details, :status) || MapAccess.get(details, :reason)
   end
 
   defp entity_req_items(nodes, entity_type, entity_id, to_fun) do

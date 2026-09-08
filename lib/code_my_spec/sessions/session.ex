@@ -16,6 +16,7 @@ defmodule CodeMySpec.Sessions.Session do
   alias CodeMySpec.Sessions.Subagent
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Users.User
+  alias CodeMySpec.Utils.MapAccess
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
@@ -172,7 +173,7 @@ defmodule CodeMySpec.Sessions.Session do
   """
   @spec register_subagent(t(), map()) :: Ecto.Changeset.t()
   def register_subagent(%__MODULE__{} = session, attrs) do
-    agent_id = Map.get(attrs, :agent_id) || Map.get(attrs, "agent_id")
+    agent_id = MapAccess.get(attrs, :agent_id)
     existing = session.subagents || []
 
     updated =

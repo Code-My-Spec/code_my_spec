@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6070Spex do
   use CodeMySpecSpex.Case
   import Phoenix.ChannelTest
 
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -61,11 +62,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6070Spex do
                         %{events: [%{name: "local_init_complete"} | _]} = payload},
                        1_000
 
-        identifier =
-          payload[:user_id] ||
-            payload[:client_id] ||
-            payload["user_id"] ||
-            payload["client_id"]
+        identifier = MapAccess.get(payload, :user_id) || MapAccess.get(payload, :client_id)
 
         assert identifier == user_id_str or identifier == context.user.id,
                "expected GA payload to identify user #{user_id_str}; got: #{inspect(identifier)}"

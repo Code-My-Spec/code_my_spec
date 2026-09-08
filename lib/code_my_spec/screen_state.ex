@@ -37,6 +37,7 @@ defmodule CodeMySpec.ScreenState do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.ScreenState.Screen
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   This person's screen for this project, defaults included.
@@ -79,8 +80,8 @@ defmodule CodeMySpec.ScreenState do
   @spec show(map(), map()) :: {:ok, Screen.t()} | {:error, Ecto.Changeset.t()} | :error
   def show(scope, %{} = attrs) do
     put(scope, %{
-      offered_view: attrs[:view] || attrs["view"],
-      offered_story_id: attrs[:story_id] || attrs["story_id"]
+      offered_view: MapAccess.get(attrs, :view),
+      offered_story_id: MapAccess.get(attrs, :story_id)
     })
   end
 

@@ -53,6 +53,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
   # The roster a working copy does its work with. Not `:main` — that one is the
@@ -278,8 +279,8 @@ defmodule CodeMySpec.Agents do
   # — so reading only the id would leave the one surface that starts agents
   # unguarded.
   defp names?(attrs, copy) do
-    id = attrs[:working_copy_id] || attrs["working_copy_id"]
-    root = attrs[:working_copy] || attrs["working_copy"]
+    id = MapAccess.get(attrs, :working_copy_id)
+    root = MapAccess.get(attrs, :working_copy)
 
     id == copy.id or (is_binary(root) and root != "" and Path.expand(root) == copy.root)
   end

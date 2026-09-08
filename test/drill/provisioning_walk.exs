@@ -91,6 +91,7 @@ defmodule CodeMySpecSpex.Drill do
   alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Sops
   alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpecSpex.Fixtures
 
   # Long enough for the full plan against cold infrastructure. The walk does not
@@ -174,7 +175,10 @@ defmodule CodeMySpecSpex.Drill do
   # own docstring exists to explain.
   defp tear_down_environments(scope) do
     Enum.map(environments(), fn name ->
-      IO.puts("\n─── environment #{name} " <> String.duplicate("─", max(0, 48 - String.length(name))))
+      IO.puts(
+        "\n─── environment #{name} " <> String.duplicate("─", max(0, 48 - String.length(name)))
+      )
+
       started = System.monotonic_time(:millisecond)
 
       outcome =
@@ -220,8 +224,10 @@ defmodule CodeMySpecSpex.Drill do
   defp report_teardown(key, {:ok, handled}, elapsed) do
     {skipped, removed} = Enum.split_with(handled, &(origin_of(&1) == "adopted"))
 
-    IO.puts("  removed #{length(removed)}, skipped #{length(skipped)} as adopted, " <>
-              "in #{seconds(elapsed)}")
+    IO.puts(
+      "  removed #{length(removed)}, skipped #{length(skipped)} as adopted, " <>
+        "in #{seconds(elapsed)}"
+    )
 
     for resource <- removed, do: IO.puts("    · removed #{resource_line(resource)}")
     for resource <- skipped, do: IO.puts("    · kept    #{resource_line(resource)}")
@@ -241,8 +247,7 @@ defmodule CodeMySpecSpex.Drill do
     }
   end
 
-  defp origin_of(resource),
-    do: Map.get(resource, :origin) || Map.get(resource, "origin") || "adopted"
+  defp origin_of(resource), do: MapAccess.get(resource, :origin, "adopted")
 
   defp report(key, {:ok, step}, elapsed) do
     IO.puts("  #{step.state} in #{seconds(elapsed)}")
@@ -604,7 +609,8 @@ defmodule CodeMySpecSpex.Drill do
   ## Configuration
 
   defp steps_to_run(project) do
-    planned = project |> Provisioning.setup_options() |> Sequence.for_options() |> Enum.map(& &1.key)
+    planned =
+      project |> Provisioning.setup_options() |> Sequence.for_options() |> Enum.map(& &1.key)
 
     case env_list("CMS_DRILL_STEPS") do
       [] -> planned
@@ -687,9 +693,9 @@ defmodule CodeMySpecSpex.Drill do
   defp tearing_down?, do: System.get_env("CMS_DRILL_TEARDOWN") in ~w(1 true yes)
 
   defp resource_line(resource) do
-    kind = Map.get(resource, :kind) || Map.get(resource, "kind")
-    location = Map.get(resource, :location) || Map.get(resource, "location")
-    origin = Map.get(resource, :origin) || Map.get(resource, "origin")
+    kind = MapAccess.get(resource, :kind)
+    location = MapAccess.get(resource, :location)
+    origin = MapAccess.get(resource, :origin)
 
     "#{kind} #{location}" <> if(origin, do: " (#{origin})", else: "")
   end

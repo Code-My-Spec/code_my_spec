@@ -26,12 +26,13 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapperPlacementTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.McpServers.Agents.AgentsMapper
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
   defp text(response) do
     response
     |> Map.get(:content, [])
-    |> Enum.map_join("\n", fn part -> Map.get(part, :text) || Map.get(part, "text") || "" end)
+    |> Enum.map_join("\n", &MapAccess.get(&1, :text, ""))
   end
 
   defp agent_on(scope, root) do

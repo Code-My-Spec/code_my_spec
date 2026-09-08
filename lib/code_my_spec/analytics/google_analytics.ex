@@ -24,6 +24,8 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
 
   require Logger
 
+  alias CodeMySpec.Utils.MapAccess
+
   @telemetry_event CodeMySpec.Analytics.telemetry_event()
 
   @doc """
@@ -45,7 +47,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
 
     Logger.info("GA MP handler received event",
       event: metadata.event,
-      user_id: metadata.payload[:user_id] || metadata.payload["user_id"],
+      user_id: MapAccess.get(metadata.payload, :user_id),
       origin: origin
     )
 
@@ -78,8 +80,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
   end
 
   defp build_payload(event_name, payload) do
-    user_id =
-      payload[:user_id] || payload["user_id"]
+    user_id = MapAccess.get(payload, :user_id)
 
     %{
       client_id: client_id(payload),
@@ -103,7 +104,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
   end
 
   defp maybe_put_session_id(params, payload) do
-    case payload[:ga_session_id] || payload["ga_session_id"] do
+    case MapAccess.get(payload, :ga_session_id) do
       sid when is_binary(sid) and sid != "" -> Map.put(params, "session_id", sid)
       _ -> params
     end
@@ -117,8 +118,8 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
   #      Same user always gets the same id even without a _ga cookie (first_cli_connect).
   #   3. Last resort: UUID. Should not happen for conversion events in practice.
   defp client_id(payload) do
-    explicit = payload[:ga_client_id] || payload["ga_client_id"]
-    user_id = payload[:user_id] || payload["user_id"]
+    explicit = MapAccess.get(payload, :ga_client_id)
+    user_id = MapAccess.get(payload, :user_id)
 
     cond do
       is_binary(explicit) and explicit != "" ->
@@ -174,7 +175,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
 
     measurement_id = Keyword.get(config, :measurement_id)
     api_secret = Keyword.get(config, :api_secret)
-    user_id = payload[:user_id] || payload["user_id"]
+    user_id = MapAccess.get(payload, :user_id)
 
     if is_nil(measurement_id) or is_nil(api_secret) do
       # Debug, not warning. GA being unconfigured is a steady state, not an

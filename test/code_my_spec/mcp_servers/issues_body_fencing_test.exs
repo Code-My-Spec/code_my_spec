@@ -29,6 +29,7 @@ defmodule CodeMySpec.McpServers.IssuesBodyFencingTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.Utils.MapAccess
 
   defp issue(attrs) do
     Map.merge(
@@ -57,7 +58,7 @@ defmodule CodeMySpec.McpServers.IssuesBodyFencingTest do
   defp text(response) do
     response
     |> Map.get(:content, [])
-    |> Enum.map_join("\n", fn item -> Map.get(item, :text) || Map.get(item, "text") || "" end)
+    |> Enum.map_join("\n", &MapAccess.get(&1, :text, ""))
   end
 
   describe "a body carrying tool-call markup" do

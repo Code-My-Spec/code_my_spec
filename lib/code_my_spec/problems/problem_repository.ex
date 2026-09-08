@@ -9,6 +9,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
   @doc """
@@ -681,7 +682,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   defp insert_single_problem(problem_data, project_id, working_copy_id, fingerprints) do
     attrs = problem_data |> to_attrs_map() |> Map.put(:project_id, project_id)
-    fingerprint = Map.get(fingerprints, attrs[:file_path] || attrs["file_path"])
+    fingerprint = Map.get(fingerprints, MapAccess.get(attrs, :file_path))
 
     attrs =
       attrs

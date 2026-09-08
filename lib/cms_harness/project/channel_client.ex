@@ -63,6 +63,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Utils.MapAccess
 
   # Long enough for a transatlantic round trip against a busy server, short
   # enough that a hung hook is a hook that eventually answers. It is paid on
@@ -2161,7 +2162,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # string keys; this gives it the one field its reader asks for.
   defp atomize_components(components) do
     Map.new(components, fn {id, component} ->
-      {id, %{module_name: component["module_name"] || component[:module_name]}}
+      {id, %{module_name: MapAccess.get(component, :module_name)}}
     end)
   end
 

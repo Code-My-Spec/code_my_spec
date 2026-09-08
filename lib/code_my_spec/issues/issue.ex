@@ -4,6 +4,8 @@ defmodule CodeMySpec.Issues.Issue do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Utils.MapAccess
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           title: String.t(),
@@ -118,7 +120,7 @@ defmodule CodeMySpec.Issues.Issue do
 
   @doc false
   def status_changeset(issue, attrs) do
-    new_status = attrs[:status] || attrs["status"]
+    new_status = MapAccess.get(attrs, :status)
 
     issue
     |> cast(attrs, [:status, :category, :resolution, :story_id])

@@ -13,8 +13,10 @@ defmodule CodeMySpec.Qa.QaAttempts do
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   Submit a QA outcome for an active qa_complete task.
@@ -32,7 +34,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   @spec submit(Scope.t(), map()) ::
           {:ok, QaAttempt.t()} | {:error, Ecto.Changeset.t() | atom()}
   def submit(%Scope{} = scope, params) do
-    task_id = Map.get(params, :task_id) || Map.get(params, "task_id")
+    task_id = MapAccess.get(params, :task_id)
 
     with :ok <- validate_findings_path(params) do
       Repo.transaction(fn ->
@@ -64,8 +66,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # After the transaction commits, not inside it: `GraphWatcher` recomputes on
   # this, and a recompute that read the attempt before it committed would decide
   # from a row that might roll back. Only on success for the same reason.
-  defp announce_graph_change(scope, {:ok, _attempt}),
-    do: CodeMySpec.Requirements.GraphInputs.changed(scope)
+  defp announce_graph_change(scope, {:ok, _attempt}), do: GraphInputs.changed(scope)
 
   defp announce_graph_change(_scope, _other), do: :ok
 
@@ -75,8 +76,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # finding disappeared. Refuse the submission so the agent has to call
   # `create_issue` first.
   defp validate_findings_path(params) do
-    status = Map.get(params, :status) || Map.get(params, "status")
-    issue_ids = Map.get(params, :issue_ids) || Map.get(params, "issue_ids") || []
+    status = MapAccess.get(params, :status)
+    issue_ids = MapAccess.get(params, :issue_ids, [])
 
     cond do
       status in [:pass, "pass"] ->
@@ -93,9 +94,9 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp build_attrs(params, story_id, agent_id, task_id, parent_attempt_id) do
     %{
       story_id: story_id,
-      status: Map.get(params, :status) || Map.get(params, "status"),
-      scenarios: Map.get(params, :scenarios) || Map.get(params, "scenarios") || [],
-      issue_ids: Map.get(params, :issue_ids) || Map.get(params, "issue_ids") || [],
+      status: MapAccess.get(params, :status),
+      scenarios: MapAccess.get(params, :scenarios, []),
+      issue_ids: MapAccess.get(params, :issue_ids, []),
       agent_id: agent_id,
       task_id: task_id,
       parent_attempt_id: parent_attempt_id,

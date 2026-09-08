@@ -107,6 +107,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -3957,7 +3958,7 @@ defmodule CodeMySpecSpex.Fixtures do
   defp server_names(kinds) do
     if want?(kinds, :servers) do
       case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
-        {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
+        {:ok, list} -> Enum.map(list, &MapAccess.get(&1, :name))
         _ -> []
       end
     else

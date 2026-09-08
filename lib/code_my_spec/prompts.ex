@@ -6,6 +6,8 @@ defmodule CodeMySpec.Prompts do
   plus child checklists with API URLs.
   """
 
+  alias CodeMySpec.Utils.MapAccess
+
   @doc """
   Builds an orchestration prompt for a scope: :children requirement.
 
@@ -20,14 +22,14 @@ defmodule CodeMySpec.Prompts do
   - `base_url` — API base for child endpoints (e.g., `/api/projects/my-project/requirements/project_setup`)
   """
   def build_children_prompt(parent_text, checklist, base_url) do
-    done = Enum.count(checklist, &(&1[:satisfied] || &1["satisfied"]))
+    done = Enum.count(checklist, &MapAccess.get(&1, :satisfied))
     total = length(checklist)
 
     items =
       Enum.map_join(checklist, "\n", fn item ->
-        name = item[:name] || item["name"]
-        id = item[:id] || item["id"]
-        satisfied = item[:satisfied] || item["satisfied"]
+        name = MapAccess.get(item, :name)
+        id = MapAccess.get(item, :id)
+        satisfied = MapAccess.get(item, :satisfied)
 
         if satisfied do
           "- [x] #{name}"

@@ -54,6 +54,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @api_base "https://api.hetzner.cloud/v1"
 
@@ -754,10 +755,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   defp rule_identity(rule) do
     {
-      rule["direction"] || rule[:direction],
-      rule["protocol"] || rule[:protocol],
-      to_string(rule["port"] || rule[:port]),
-      MapSet.new(rule["source_ips"] || rule[:source_ips] || [])
+      MapAccess.get(rule, :direction),
+      MapAccess.get(rule, :protocol),
+      to_string(MapAccess.get(rule, :port)),
+      MapSet.new(MapAccess.get(rule, :source_ips, []))
     }
   end
 

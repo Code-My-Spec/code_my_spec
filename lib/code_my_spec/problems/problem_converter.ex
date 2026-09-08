@@ -6,6 +6,7 @@ defmodule CodeMySpec.Problems.ProblemConverter do
   """
 
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Utils.MapAccess
 
   @doc """
   Transforms Credo analysis results into normalized Problem structs.
@@ -51,9 +52,7 @@ defmodule CodeMySpec.Problems.ProblemConverter do
 
   # Credo's JSON output gives string keys; the doctest example uses atom keys.
   # `field/2` looks up either form.
-  defp field(data, key) when is_atom(key) do
-    Map.get(data, key) || Map.get(data, Atom.to_string(key))
-  end
+  defp field(data, key) when is_atom(key), do: MapAccess.get(data, key)
 
   @doc """
   Transforms compiler warnings/errors into normalized Problem structs.
@@ -75,14 +74,14 @@ defmodule CodeMySpec.Problems.ProblemConverter do
   """
   @spec from_compiler(map()) :: Problem.t()
   def from_compiler(compiler_data) do
-    message = compiler_data[:message] || compiler_data["message"]
+    message = field(compiler_data, :message)
 
     %Problem{
-      severity: map_compiler_severity(compiler_data[:severity] || compiler_data["severity"]),
+      severity: map_compiler_severity(field(compiler_data, :severity)),
       source: "compiler",
       source_type: :static_analysis,
-      file_path: compiler_data[:file] || compiler_data["file"],
-      line: compiler_data[:line] || compiler_data["line"],
+      file_path: field(compiler_data, :file),
+      line: field(compiler_data, :line),
       message: message,
       category: categorize_compiler_message(message),
       rule: nil,
@@ -127,8 +126,8 @@ defmodule CodeMySpec.Problems.ProblemConverter do
   end
 
   def from_test_failure(test_error) when is_map(test_error) do
-    test_name = test_error[:test] || test_error["test"]
-    error_message = test_error[:message] || test_error["message"]
+    test_name = field(test_error, :test)
+    error_message = field(test_error, :message)
 
     message =
       case test_name do
@@ -140,15 +139,15 @@ defmodule CodeMySpec.Problems.ProblemConverter do
       severity: :error,
       source: "exunit",
       source_type: :test,
-      file_path: test_error[:file] || test_error["file"],
-      line: test_error[:line] || test_error["line"],
+      file_path: field(test_error, :file),
+      line: field(test_error, :line),
       message: message,
       category: "test_failure",
       rule: nil,
       metadata: %{
         "full_message" => error_message,
         "test" => test_name,
-        "stacktrace" => test_error[:stacktrace] || test_error["stacktrace"]
+        "stacktrace" => field(test_error, :stacktrace)
       }
     }
   end

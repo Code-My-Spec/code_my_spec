@@ -20,6 +20,7 @@ defmodule CodeMySpec.Intake do
   alias CodeMySpec.Personas
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @token_bytes 32
 
@@ -199,7 +200,7 @@ defmodule CodeMySpec.Intake do
   @spec turns(Plan.t()) :: [%{question: String.t(), answer: String.t()}]
   def turns(%Plan{shaping_turns: turns}) when is_list(turns) do
     Enum.map(turns, fn turn ->
-      %{question: turn["question"] || turn[:question], answer: turn["answer"] || turn[:answer]}
+      %{question: MapAccess.get(turn, :question), answer: MapAccess.get(turn, :answer)}
     end)
   end
 

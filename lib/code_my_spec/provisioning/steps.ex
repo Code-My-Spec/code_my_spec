@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Servers
   alias CodeMySpec.Servers.Server
   alias CodeMySpec.TempFile
+  alias CodeMySpec.Utils.MapAccess
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -2561,9 +2562,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp content_proof(%{render: render, proven_at: proven_at} = result) do
     %{
       kind: "content_proof",
-      location: render[:path] || render["path"] || "",
+      location: MapAccess.get(render, :path, ""),
       identifier:
-        "state=rendered status=#{render[:status] || render["status"]} " <>
+        "state=rendered status=#{MapAccess.get(render, :status)} " <>
           "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)} " <>
           "version=#{content_version(result)}"
     }
@@ -2589,10 +2590,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     Enum.map(objects, fn object ->
       %{
         kind: "content_object",
-        location: object[:key] || object["key"] || "",
+        location: MapAccess.get(object, :key, ""),
         identifier:
-          "owner=#{object[:owner] || object["owner"] || "user"} " <>
-            "bucket=#{object[:bucket] || object["bucket"]}"
+          "owner=#{MapAccess.get(object, :owner, "user")} " <>
+            "bucket=#{MapAccess.get(object, :bucket)}"
       }
     end)
   end
@@ -2603,7 +2604,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp uploaded?(_), do: false
 
   defp title_present?(render) do
-    contains = render[:body_contains] || render["body_contains"]
+    contains = MapAccess.get(render, :body_contains)
     contains not in [nil, false, []]
   end
 
@@ -2613,11 +2614,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp widget_render(%{presence: %{} = presence}) do
     %{
       kind: "widget_render",
-      location: to_string(presence[:status] || presence["status"]),
+      location: to_string(MapAccess.get(presence, :status)),
       identifier:
-        "status=#{presence[:status] || presence["status"]} " <>
-          "present=#{presence[:present] || presence["present"]} " <>
-          "openable=#{presence[:openable] || presence["openable"]}"
+        "status=#{MapAccess.get(presence, :status)} " <>
+          "present=#{MapAccess.get(presence, :present)} " <>
+          "openable=#{MapAccess.get(presence, :openable)}"
     }
   end
 
@@ -2662,10 +2663,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp widget_proof(%{proof: %{} = proof, proven_at: proven_at}) do
     %{
       kind: "widget_proof",
-      location: to_string(proof[:origin] || proof["origin"] || "deployed_site"),
+      location: to_string(MapAccess.get(proof, :origin, "deployed_site")),
       identifier:
-        "state=#{proof[:state] || proof["state"]} " <>
-          "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
+        "state=#{MapAccess.get(proof, :state)} " <>
+          "origin=#{MapAccess.get(proof, :origin)} proven_at=#{iso(proven_at)}"
     }
   end
 

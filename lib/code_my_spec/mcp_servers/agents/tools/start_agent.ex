@@ -21,6 +21,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Utils.MapAccess
 
   schema do
     field :role, :string, doc: "Agent type: main, product, coding or qa. Defaults to main."
@@ -53,23 +54,19 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
 
   defp attrs(params) do
     %{
-      role: params["role"] || params[:role] || "main",
+      role: MapAccess.get(params, :role, "main"),
       provider: provider(params),
       engine: engine(params),
-      working_copy: params["working_copy"] || params[:working_copy],
-      working_copy_id: params["working_copy_id"] || params[:working_copy_id]
+      working_copy: MapAccess.get(params, :working_copy),
+      working_copy_id: MapAccess.get(params, :working_copy_id)
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
 
-  defp provider(params), do: params["provider"] || params[:provider]
+  defp provider(params), do: MapAccess.get(params, :provider)
 
-  defp engine(params) do
-    params["engine"] ||
-      params[:engine]
-      |> to_engine()
-  end
+  defp engine(params), do: params |> MapAccess.get(:engine) |> to_engine()
 
   defp to_engine("claude_code"), do: :claude_code
   defp to_engine(_other), do: :alloy

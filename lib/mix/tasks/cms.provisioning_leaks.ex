@@ -32,6 +32,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage, Teardown}
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   @spex_prefix "spex-"
 
@@ -393,7 +394,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   end
 
   defp unattached?(firewall) do
-    (firewall["applied_to"] || firewall[:applied_to] || []) == []
+    MapAccess.get(firewall, :applied_to, []) == []
   end
 
   defp delete_firewall(name) do
