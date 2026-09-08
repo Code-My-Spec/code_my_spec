@@ -413,6 +413,32 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Stop one agent by id, resolving its project from its own row.
+
+  The counterpart to `message_any_agent/3`, and it exists for the same reason:
+  somebody looking at the fleet is not inside any one project's scope, and the
+  two useful things to do to an agent you can see are talk to it and stop it.
+  Only one of those was reachable, so a working copy that had accumulated three
+  coding agents could be observed and not thinned.
+
+  Scoped `stop_agent/2` remains the only stop an agent itself can reach. This
+  one sits behind the dev-only router scope that is compiled out of production,
+  beside the message route that already crosses projects there.
+
+  The project comes off the agent's row rather than from the caller, so this
+  cannot stop an agent while a wrong project id claims the write — the
+  repository's `:cross_project` guard is doing its job, not being worked around.
+  """
+  @spec stop_any_agent(Ecto.UUID.t()) ::
+          {:ok, Agent.t()} | {:error, :no_such_agent | term()}
+  def stop_any_agent(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil -> {:error, :no_such_agent}
+      agent -> stop_agent(%Scope{active_project_id: agent.project_id}, agent.id)
+    end
+  end
+
   # Dispatched, so the caller's patience is not the agent's turn limit.
   #
   # `message_agent/4` runs the whole turn inside a `GenServer.call` with the

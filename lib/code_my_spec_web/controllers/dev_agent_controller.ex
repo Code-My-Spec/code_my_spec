@@ -98,6 +98,19 @@ defmodule CodeMySpecWeb.DevAgentController do
     conn |> put_status(422) |> json(%{error: "message is required and must not be empty"})
   end
 
+  def stop(conn, %{"agent_id" => agent_id}) do
+    case Agents.stop_any_agent(agent_id) do
+      {:ok, agent} ->
+        json(conn, %{status: "stopped", agent_id: agent.id, role: agent.role})
+
+      {:error, :no_such_agent} ->
+        conn |> put_status(404) |> json(%{error: "no agent with id #{agent_id}"})
+
+      {:error, reason} ->
+        conn |> put_status(502) |> json(%{error: inspect(reason), agent_id: agent_id})
+    end
+  end
+
   # Dispatch unless the caller asked to wait. The default matters: waiting is
   # what caps the turn, and the caller who forgets to think about it is the one
   # driving a long run.

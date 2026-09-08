@@ -397,6 +397,12 @@ defmodule CodeMySpecWeb.Router do
       get "/agents", DevAgentController, :index
       post "/agents/:agent_id/message", DevAgentController, :message
 
+      # Thinning a working copy that has collected more agents than it can feed.
+      # Three coding agents on one checkout is three stories in flight and seven
+      # concurrent analyzer runs against one Postgres — observable through
+      # `/dev/agents` and, until this, not fixable from the same place.
+      post "/agents/:agent_id/stop", DevAgentController, :stop
+
       # What the database believes against what the runtime is doing, and the
       # disagreements between them. Same compile-time gating and the same
       # reason: it reads across every project.
