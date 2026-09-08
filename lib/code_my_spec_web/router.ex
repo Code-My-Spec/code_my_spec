@@ -396,6 +396,15 @@ defmodule CodeMySpecWeb.Router do
 
       get "/agents", DevAgentController, :index
       post "/agents/:agent_id/message", DevAgentController, :message
+
+      # What the database believes against what the runtime is doing, and the
+      # disagreements between them. Same compile-time gating and the same
+      # reason: it reads across every project.
+      get "/state", DevStateController, :index
+
+      # A GET so it needs nothing but a URL. Not idempotent, and says so in what
+      # it answers: which sources it enqueued and which were already current.
+      get "/state/run", DevStateController, :run
     end
   end
 

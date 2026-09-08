@@ -151,6 +151,25 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def settle(_no_project), do: :ok
 
   @doc """
+  What this project's watcher is doing, or `nil` when nothing is watching it.
+
+  For `/dev/state`, which exists because the hard failures this week were all
+  the database and the runtime disagreeing — a watcher that did not survive a
+  deploy looks exactly like a graph that has not moved, and neither is visible
+  from a table.
+  """
+  @spec status(Ecto.UUID.t()) :: %{pending: boolean(), last_recompute: DateTime.t() | nil} | nil
+  def status(project_id) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+      [{pid, _}] -> GenServer.call(pid, :status, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+
+  @doc """
   Start a watcher for every project that has an agent in the loop.
 
   Watchers live in memory, so a restart takes them all — and nothing recreated
@@ -186,10 +205,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   @impl true
   def init({project_id, scope}) do
     GraphInputs.subscribe(project_id)
-    {:ok, %{project_id: project_id, scope: scope, timer: nil}}
+    {:ok, %{project_id: project_id, scope: scope, timer: nil, last_recompute: nil}}
   end
 
   @impl true
+  def handle_call(:status, _from, state),
+    do: {:reply, %{pending: state.timer != nil, last_recompute: state.last_recompute}, state}
+
   def handle_call(:settle, _from, %{timer: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:settle, _from, %{timer: timer} = state) do
@@ -248,7 +270,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end)
     end
 
-    state
+    %{state | last_recompute: DateTime.utc_now()}
   rescue
     error ->
       # A watcher is a background convenience and must not take a project's
