@@ -127,6 +127,7 @@ defmodule CodeMySpec.MixProject do
       # nothing told anyone to create.
       {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "master"},
       {:credo, "~> 1.7.13"},
+      {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},
       # `code_my_spec_generators` is deliberately NOT a dependency here. Every
