@@ -171,9 +171,10 @@ defmodule CmsHarness.Sync do
   # with the usual ignorable scaffolding says this once rather than every ninety
   # seconds, and a file that newly stops being tracked says so the moment it
   # does.
-  @doc false
-  # Exposed so a test can drive it without a whole sync; the log line is the
-  # behaviour under test.
+  @doc """
+  Exposed so a test can drive it without a whole sync; the log line is the
+  behaviour under test.
+  """
   def report_skipped(root) do
     log_unclassified(Environment.new(:local, root), root)
   end
@@ -203,7 +204,7 @@ defmodule CmsHarness.Sync do
     )
   end
 
-  @doc false
+  @doc "The `Task.Supervisor` registry name for this checkout's scans/analyzer runs."
   def task_supervisor(root),
     do: {:via, Registry, {CmsHarness.Registry, {:tasks, root}}}
 end

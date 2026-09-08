@@ -168,6 +168,7 @@
           {ExSlop.Check.Warning.DualKeyAccess, []},
           {ExSlop.Check.Readability.BoilerplateDocParams, []},
           {ExSlop.Check.Readability.NarratorComment, []},
+          {ExSlop.Check.Readability.DocFalseOnPublicFunction, []},
           {ExSlop.Check.Readability.NarratorDoc, []},
           {ExSlop.Check.Readability.ObviousComment, []},
           {ExSlop.Check.Readability.UnaliasedModuleUse, []},

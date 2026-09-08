@@ -191,7 +191,7 @@ defmodule CodeMySpec.Requirements do
     |> Enum.filter(&(&1.artifact_type == artifact_type))
   end
 
-  @doc false
+  @doc "Filters `requirements` by name/exclude/artifact-type opts."
   def check_requirements(_scope, _entity, requirements, opts) when is_list(requirements) do
     include_types = Keyword.get(opts, :include, [])
     exclude_types = Keyword.get(opts, :exclude, [])
@@ -210,6 +210,6 @@ defmodule CodeMySpec.Requirements do
     end)
   end
 
-  @doc false
+  @doc "No-op. Called from `files_live.ex` on project reset; nothing here needs clearing."
   def clear_all_project_requirements(_scope), do: :ok
 end

@@ -170,7 +170,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     "Current state: "
   ]
 
-  @doc false
+  @doc "Whether a turn's request is a `@client_wrappers` prompt rather than a user message."
   def client_side_call?(request) do
     case request_text(request) do
       text when is_binary(text) -> Enum.any?(@client_wrappers, &String.starts_with?(text, &1))
@@ -275,9 +275,8 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   #
   # Now the same shape `Chat.Runner` already writes — a `tool_calls` array of
   # `{id, name, arguments}` — so both writers agree and the view stops guessing.
-  @doc false
   @spec tool_calls(map()) :: [%{id: String.t(), name: String.t(), input: map()}]
-  def tool_calls(%{"content" => content}) when is_list(content) do
+  defp tool_calls(%{"content" => content}) when is_list(content) do
     for %{"type" => "tool_use", "name" => name} = block <- content do
       %{
         id: block["id"],
@@ -287,15 +286,14 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     end
   end
 
-  def tool_calls(_response), do: []
+  defp tool_calls(_response), do: []
 
   # The results in this turn's request, one entry each, with the id of the call
   # every one of them answers.
-  @doc false
   @spec tool_results(map()) :: [
           %{call_id: String.t(), name: String.t(), text: String.t(), failed?: boolean()}
         ]
-  def tool_results(%{"messages" => messages}) when is_list(messages) do
+  defp tool_results(%{"messages" => messages}) when is_list(messages) do
     case List.last(messages) do
       %{"content" => content} when is_list(content) ->
         for %{"type" => "tool_result"} = block <- content do
@@ -312,7 +310,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     end
   end
 
-  def tool_results(_request), do: []
+  defp tool_results(_request), do: []
 
   defp normalize({:ok, _record}), do: :ok
   defp normalize({:error, reason}), do: {:error, reason}
@@ -320,7 +318,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   # A turn that only calls tools is still legible afterwards (8173). The model
   # answers with `tool_use` blocks and no prose, so rendering only `text` would
   # leave the conversation blank for exactly the turns that did the work.
-  @doc false
+  @doc "The assistant's prose for a turn — falls back to a thinking-only summary when the turn was all tool calls."
   @spec response_text(map()) :: String.t() | nil
   def response_text(%{"content" => content}) when is_list(content) do
     case content |> Enum.map(&block_text/1) |> Enum.reject(&is_nil/1) |> join() do
@@ -384,7 +382,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     end
   end
 
-  @doc false
+  @doc "The user's text for a turn's last message, with injected wrapper text stripped."
   @spec request_text(map()) :: String.t() | nil
   def request_text(%{"messages" => messages}) when is_list(messages) do
     messages

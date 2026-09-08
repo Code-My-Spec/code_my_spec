@@ -99,7 +99,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # table name. That is the trade the library forces and it is a bounded one: an
   # atom per agent start against a table of a million, where the alternative is
   # one working session per machine.
-  @doc false
+  @doc "Public so the session-tagged client name/version can be asserted directly."
   @spec client_info(term()) :: map()
   def client_info(name),
     do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
@@ -141,7 +141,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # Anubis does, and its `ArgumentError: unknown registry: :transport` reaches a
   # person as "the agent was not started on its machine", which reads like the
   # machine's fault. So it is tested directly.
-  @doc false
+  @doc "Public so the registry-name wrapping can be asserted directly rather than found later as an Anubis crash."
   @spec transport_name(term()) :: term()
   def transport_name({:via, Registry, {registry, key}}),
     do: {:via, Registry, {registry, {:transport, key}}}

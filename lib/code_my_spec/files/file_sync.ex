@@ -166,7 +166,6 @@ defmodule CodeMySpec.Files.FileSync do
         "#{removed} removed, total #{total_ms}ms"
     )
 
-
     # Files are what most of the graph is computed from, so a sync that changed
     # anything is the biggest single reason it moved. Only when something
     # actually changed: a scan that upserted nothing and removed nothing is the
@@ -808,7 +807,7 @@ defmodule CodeMySpec.Files.FileSync do
   # is `sync/2`'s path — a manual full sync or app boot — and fired twice in the
   # log this came from, against `walk/2`'s 197. Rare and operator-initiated is
   # exactly when an error level earns its keep.
-  @doc false
+  @doc "The log level for a scan refusal — `:info` for a routine one, `:error` otherwise."
   def scan_refusal_level(:not_supported_on_harness), do: :info
   def scan_refusal_level(_reason), do: :error
 
@@ -1086,11 +1085,11 @@ defmodule CodeMySpec.Files.FileSync do
   defdelegate fingerprint_entries(env, entries), to: Scanner
   defdelegate validate_entry(entry, env, component_by_id, strict?), to: Scanner
 
-  @doc false
+  @doc "Convenience over `validate_entry/4` defaulting `strict?` to true."
   def validate_entry(entry, env, component_by_id),
     do: Scanner.validate_entry(entry, env, component_by_id, true)
 
-  @doc false
+  @doc "Convenience over `Scanner.resolve_owners/2` that builds the read model from `scope`."
   def resolve_owners(scope, entries),
     do: Scanner.resolve_owners(entries, Files.read_model(scope))
 end

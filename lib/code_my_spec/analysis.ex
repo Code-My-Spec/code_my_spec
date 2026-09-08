@@ -126,12 +126,13 @@ defmodule CodeMySpec.Analysis do
     %{enqueued: stale_sources, memoized: memoized_sources}
   end
 
-  @doc false
-  # Which of `requests` need running, split from those that do not.
-  #
-  # Public so the property that matters can be asserted without dispatching:
-  # what this decides must agree with `fresh_sources/2`. They did not, and the
-  # disagreement was a livelock — see `needs_run?/5`.
+  @doc """
+  Which of `requests` need running, split from those that do not.
+
+  Public so the property that matters can be asserted without dispatching:
+  what this decides must agree with `fresh_sources/2`. They did not, and the
+  disagreement was a livelock — see `needs_run?/5`.
+  """
   @spec plan_runs([term()], map(), map(), boolean()) :: {list(), list()}
   def plan_runs(requests, fingerprints, latest, only_failed) do
     requests
@@ -1187,9 +1188,10 @@ defmodule CodeMySpec.Analysis do
   #
   # Both callers derive it the same way, so a lookup can never miss a server the
   # other one started.
-  @doc false
-  # Public only so the property that matters can be asserted directly: two
-  # checkouts of one project get different queues, the same checkout gets one.
+  @doc """
+  Public only so the property that matters can be asserted directly: two
+  checkouts of one project get different queues, the same checkout gets one.
+  """
   def server_key(%Scope{active_working_copy_id: working_copy_id})
       when not is_nil(working_copy_id),
       do: {:harness, to_string(working_copy_id)}

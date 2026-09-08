@@ -315,7 +315,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  @doc false
+  @doc """
+  Public only so it can be tested directly, for the same reason
+  `address_model_turns/4` is: it writes over a file that already holds this
+  copy's identity, and "keeps what was already there" has to be checkable
+  rather than asserted in a comment.
+  """
   def record_preview(_env, _root, _id, preview) when preview == %{}, do: :ok
 
   # Merged over what the file already says, never written from scratch. By the
@@ -325,12 +330,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # credential. `HarnessConfig.write/2` merges for exactly this reason; this
   # path cannot call it because the copy may be on another machine, so it does
   # the same thing through `Environments`.
-  #
-  # Public only so it can be tested directly, for the same reason
-  # `address_model_turns/4` is: it writes over a file that already holds this
-  # copy's identity, and "keeps what was already there" has to be checkable
-  # rather than asserted in a comment.
-  @doc false
   def record_preview(env, root, id, preview) do
     body =
       env
@@ -366,8 +365,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp address(env, root, id, true), do: address_model_turns(env, root, id)
   defp address(env, root, id, false), do: address_mcp(env, root, id)
 
-  @doc false
-  def address_mcp(env, root, id), do: write_settings(env, root, id, false, nil)
+  defp address_mcp(env, root, id), do: write_settings(env, root, id, false, nil)
 
   # A brand-new worktree has neither of the dev-only surfaces this repo keeps
   # outside git: `envs/.env` (other secrets this build reads, and the fixture
@@ -1060,10 +1058,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # this file and not anyone's `.zshrc`, and because it lands next to the URL
   # that already carries the same id — one place, one value.
   #
-  # Public only so it can be tested directly. It is the one thing here that
-  # writes a file the operator owns, so "keeps what was already there" has to be
-  # checkable rather than asserted in a comment.
-  @doc false
+  @doc """
+  Public only so it can be tested directly. It is the one thing here that
+  writes a file the operator owns, so "keeps what was already there" has to be
+  checkable rather than asserted in a comment.
+  """
   def address_model_turns(env, root, id, base_url \\ nil) do
     # Rendered by the shared function, not here. This string existed twice and the
     # two disagreed — `/api/harnesses/<id>` against `/harnesses/<id>/anthropic`,

@@ -160,7 +160,7 @@ defmodule CodeMySpec.Stories.Story do
     timestamps(type: :utc_datetime)
   end
 
-  @doc false
+  @doc "Casts and validates a story's own fields — does not touch locking."
   def changeset(story, attrs) do
     story
     |> cast(attrs, [
@@ -282,7 +282,7 @@ defmodule CodeMySpec.Stories.Story do
   defp present?(value) when is_binary(value), do: String.trim(value) != ""
   defp present?(_), do: false
 
-  @doc false
+  @doc "Casts the lock fields (`locked_at`, `lock_expires_at`, `locked_by`) only."
   def lock_changeset(story, attrs) do
     story
     |> cast(attrs, [

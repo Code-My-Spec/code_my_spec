@@ -330,8 +330,7 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc false
-  # Called from the scanning task with the finished manifest.
+  @doc "Called from the scanning task with the finished manifest."
   @spec deliver_observations(String.t(), [map()]) :: :ok
   def deliver_observations(root, observations) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
@@ -340,9 +339,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc false
-  # Called from the scanning task with the app name read straight out of
-  # this checkout's own `mix.exs`.
+  @doc """
+  Called from the scanning task with the app name read straight out of
+  this checkout's own `mix.exs`.
+  """
   @spec deliver_module_name(String.t(), String.t()) :: :ok
   def deliver_module_name(root, name) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
@@ -351,9 +351,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc false
-  # Called from the scanning task with the health-route verdict, checked
-  # against this checkout's own real router.ex/endpoint.ex.
+  @doc """
+  Called from the scanning task with the health-route verdict, checked
+  against this checkout's own real router.ex/endpoint.ex.
+  """
   @spec deliver_health_route_status(String.t(), String.t()) :: :ok
   def deliver_health_route_status(root, status) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
@@ -362,9 +363,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc false
-  # Called from the scanning task with `git rev-parse HEAD`, read straight out
-  # of this checkout.
+  @doc """
+  Called from the scanning task with `git rev-parse HEAD`, read straight out
+  of this checkout.
+  """
   @spec deliver_head_commit(String.t(), String.t()) :: :ok
   def deliver_head_commit(root, sha) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
@@ -373,8 +375,7 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc false
-  # Called from the analysis queue with a finished (or failed) run.
+  @doc "Called from the analysis queue with a finished (or failed) run."
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
@@ -648,7 +649,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # the cache.
   @read_model_refresh_ms 60_000
 
-  @doc false
+  @doc "Public so a test can assert against the real interval rather than a copy."
   def read_model_refresh_ms, do: @read_model_refresh_ms
 
   defp schedule_read_model_refresh,
@@ -1302,12 +1303,13 @@ defmodule CmsHarness.Project.ChannelClient do
   # `handle_message("stop_agent", ...)` does the same translation in the other
   # direction and got it right, which is why stopping worked and starting never
   # did.
-  @doc false
-  # Public only so a test can feed it a handle `Runner.start/3` actually
-  # produced. Everything else here is private; this one is wire-format
-  # translation between two modules that were written against different names
-  # for the same two values, and the round-trip test hand-wrote the correct
-  # payload — so nothing ever fed the real encoder a real handle.
+  @doc """
+  Public only so a test can feed it a handle `Runner.start/3` actually
+  produced. Everything else here is private; this one is wire-format
+  translation between two modules that were written against different names
+  for the same two values, and the round-trip test hand-wrote the correct
+  payload — so nothing ever fed the real encoder a real handle.
+  """
   def encode_start_result({:ok, %{agent_id: agent_id}}),
     do: %{"status" => "ok", "agent_id" => agent_id}
 

@@ -2524,10 +2524,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # closes its own YAML string on the inner quote and leaves `ENV[` dangling
   # as a second scalar. The tag's text survives, which is all either caller
   # reads it for.
-  # Public for its own test: the rewrite is subtle enough that it is worth
-  # asserting on directly rather than through two callers that both swallow a
-  # failure.
-  @doc false
+  @doc """
+  Public for its own test: the rewrite is subtle enough that it is worth
+  asserting on directly rather than through two callers that both swallow a
+  failure.
+  """
   @spec parse_deploy_config(String.t()) :: {:ok, map()} | {:error, term()}
   def parse_deploy_config(body) do
     body
@@ -2832,10 +2833,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The commit is the tag, because "which image is this" and "which code is
   # this" should not be two questions.
   #
-  # Public for its own test: reaching it through `run(:deploy, ...)` means
-  # buying a whole build pipeline (registry, builder SSH, a linked server) just
-  # to exercise a tagging decision that never touches any of them.
-  @doc false
+  @doc """
+  Public for its own test: reaching it through `run(:deploy, ...)` means
+  buying a whole build pipeline (registry, builder SSH, a linked server) just
+  to exercise a tagging decision that never touches any of them.
+  """
   @spec image_tag(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def image_tag(scope, opts) do
     case Keyword.get(opts, :tag) || head_commit(scope) do
@@ -3661,10 +3663,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # wide enough that a real backtrace fits inside it whole; deferred to
   # rather than repeated here so the two never drift apart again.
   #
-  # Public for its own test, same reason as `image_tag/2`: reaching this
-  # through `run(:deploy, ...)` means driving a whole failed deploy just to
-  # exercise a string-formatting decision that depends on none of it.
-  @doc false
+  @doc """
+  Public for its own test, same reason as `image_tag/2`: reaching this
+  through `run(:deploy, ...)` means driving a whole failed deploy just to
+  exercise a string-formatting decision that depends on none of it.
+  """
   @spec with_output(String.t(), term()) :: String.t()
   def with_output(reason, output) when is_binary(output) do
     case String.trim(output) do
@@ -5082,12 +5085,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # owns that checkout's own doing (or already done by hand, as it was for
   # MarketMySpec's `envs/*.enc.env`), so there is nothing for this to do here.
   #
-  # Public for its own test, same reason as `image_tag/2`: reaching this
-  # through `run(:deploy, ...)` means buying the whole pre-build gate chain
-  # (secrets, config-target check, script presence) just to exercise a
-  # reachability guard that precedes all of them in the pipeline but depends
-  # on none of them.
-  @doc false
+  @doc """
+  Public for its own test, same reason as `image_tag/2`: reaching this
+  through `run(:deploy, ...)` means buying the whole pre-build gate chain
+  (secrets, config-target check, script presence) just to exercise a
+  reachability guard that precedes all of them in the pipeline but depends
+  on none of them.
+  """
   @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
   def commit_generated_configuration(%{environment: %{cwd: cwd}}) when not is_binary(cwd),
     do: :ok

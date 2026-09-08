@@ -204,7 +204,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # with an empty JSONL no matter what the directory contains. Expand directory
   # args to their *_spex.exs files here so `mix spex test/spex/some_story/`
   # runs what the caller meant.
-  @doc false
+  @doc """
+  Expands any directory args (that `mix spex` would otherwise silently pass
+  through with zero tests loaded) into their `*_spex.exs` files.
+  """
   def expand_directory_args(args, project_root, env_or_nil \\ nil) do
     env = env_or_nil || Environment.new(:local, project_root)
 
@@ -287,9 +290,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # Here rather than server-side: `Runners.from_raw/2` converts where there is
   # no working copy and no cwd to relativize against, which is how this went
   # unnoticed.
-  @doc false
-  # Public only so the rule can be asserted without a live `mix spex` — the same
-  # reason `Runners.spex_location/1` is, and for the same kind of rule.
+  @doc """
+  Public only so the rule can be asserted without a live `mix spex` — the same
+  reason `Runners.spex_location/1` is, and for the same kind of rule.
+  """
   def relativize_error_file(failure, project_root)
 
   def relativize_error_file(%Failure{} = failure, project_root) do

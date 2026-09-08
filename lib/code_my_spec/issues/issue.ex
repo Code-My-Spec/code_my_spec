@@ -110,7 +110,7 @@ defmodule CodeMySpec.Issues.Issue do
     :attachments
   ]
 
-  @doc false
+  @doc "Casts and validates the castable fields; does not touch status transitions."
   def changeset(issue, attrs) do
     issue
     |> cast(attrs, @castable_fields)
@@ -118,7 +118,7 @@ defmodule CodeMySpec.Issues.Issue do
     |> unique_constraint([:title, :story_id, :project_id])
   end
 
-  @doc false
+  @doc "Validates a status transition, requiring a resolution/story link where the new status needs one."
   def status_changeset(issue, attrs) do
     new_status = MapAccess.get(attrs, :status)
 

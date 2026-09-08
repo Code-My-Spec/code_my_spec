@@ -4559,7 +4559,7 @@ defmodule CodeMySpecSpex.Case do
   # we read. A cassette carrying `GET /user` is left alone — handing it an
   # owner would skip a recorded interaction and desynchronise everything after
   # it, breaking the ten that currently work.
-  @doc false
+  @doc "Public so `with_full_cassette/3` can call it from the module its `quote` block expands into."
   def with_recorded_repository_owner(name, fun) do
     case recording?() do
       true -> fun.()
@@ -4630,7 +4630,7 @@ defmodule CodeMySpecSpex.Case do
     if File.exists?(path), do: path
   end
 
-  @doc false
+  @doc "Public so `with_full_cassette/3` can call it from the module its `quote` block expands into."
   def scrub_cmd_cassette(name) do
     if recording?() do
       for dir <- ["test/fixtures/cassettes", "test/cassettes"] do
@@ -4834,15 +4834,13 @@ defmodule CodeMySpecSpex.Case do
   # Leaves a pool secret as it found it; anything else is a real key and is
   # replaced. Idempotent by construction, which is what the block rule needs to
   # survive the filters being applied twice.
-  @doc false
-  def redact_bare_secret(match) do
+  defp redact_bare_secret(match) do
     if Enum.any?(@replay_keypairs, fn {_pub, secret} -> secret == match end),
       do: match,
       else: elem(hd(@replay_keypairs), 1)
   end
 
-  @doc false
-  def replay_keypair(match) do
+  defp replay_keypair(match) do
     recorded_public =
       case Regex.run(~r/# public key: (age1[a-z0-9]+)/, match) do
         [_, key] -> key
@@ -4870,7 +4868,7 @@ defmodule CodeMySpecSpex.Case do
       "# public key: #{public}\n#{secret}"
   end
 
-  @doc false
+  @doc "The regex/replacement pairs cassette recording scrubs bodies against. Exposed for `cassette_filtering_test.exs`."
   def sensitive_patterns do
     [
       # age keypairs. `age-keygen` writes both halves to stdout, so they land
@@ -4938,10 +4936,11 @@ defmodule CodeMySpecSpex.Case do
     ]
   end
 
-  # Belt and braces on the response body, because a regex over serialised JSON
-  # is guessing at structure. This walks the parsed body instead, so a token
-  # nested somewhere the pattern did not anticipate still gets redacted.
-  @doc false
+  @doc """
+  Belt and braces on the response body, because a regex over serialised JSON
+  is guessing at structure. This walks the parsed body instead, so a token
+  nested somewhere the pattern did not anticipate still gets redacted.
+  """
   def redact_token_fields(response) do
     case response do
       %{"body_json" => body} when is_map(body) ->
@@ -4955,7 +4954,7 @@ defmodule CodeMySpecSpex.Case do
   @secret_keys ~w(access_token refresh_token id_token client_secret secret
                   private_key secret_access_key password token)
 
-  @doc false
+  @doc "Recursively replaces `@secret_keys` values with `<REDACTED>` in a map."
   def redact(%{} = map) do
     Map.new(map, fn
       {k, v} when is_binary(v) ->
@@ -4999,7 +4998,7 @@ defmodule CodeMySpecSpex.Case do
   #
   # Falling back to `shared: true` gives that block its own session, which is
   # what it had before and is correct for a block that is on its own anyway.
-  @doc false
+  @doc "Attaches `opts` to the shared cassette session, if a live one exists."
   @spec cassette_session(keyword()) :: keyword()
   def cassette_session(opts) do
     case Process.get(:cms_cassette_session) do
@@ -5507,13 +5506,12 @@ defmodule CodeMySpecSpex.Case do
   # to whoever reads it next.
   @normalized_public_key "ssh-ed25519 AAAA-normalized-by-spex-cassette-filter spex"
 
-  @doc false
   @spec normalize_volatile_request(map()) :: map()
-  def normalize_volatile_request(%{"body_json" => body} = request) when is_map(body) do
+  defp normalize_volatile_request(%{"body_json" => body} = request) when is_map(body) do
     %{request | "body_json" => normalize_body(body)}
   end
 
-  def normalize_volatile_request(request), do: request
+  defp normalize_volatile_request(request), do: request
 
   # Same problem: the inbound probe mints a fresh subject and recipient per run,
   # so its `POST /emails` body never matches. The domain survives, so `:body`

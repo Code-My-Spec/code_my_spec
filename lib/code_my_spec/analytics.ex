@@ -80,14 +80,14 @@ defmodule CodeMySpec.Analytics do
     :ok
   end
 
-  @doc false
+  @doc "The `:telemetry.attach/4` handler `attach_test_subscriber/1` registers — must be public, `:telemetry` calls it from outside this module."
   def __test_subscriber_handler__(@telemetry_event, _measurements, metadata, pid) do
     if Process.alive?(pid) do
       send(pid, {:analytics_event, metadata.event, metadata.payload})
     end
   end
 
-  @doc false
+  @doc "The event name test subscribers attach to."
   def telemetry_event, do: @telemetry_event
 
   defp handler_id(pid) do

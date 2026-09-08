@@ -294,10 +294,11 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  @doc false
-  # Public only so the property that matters can be asserted directly: mtime
-  # moves, git state does not, and the blocking set follows what the session
-  # recorded rather than the clock. Same reasoning as `blocking_key/1`.
+  @doc """
+  Public only so the property that matters can be asserted directly: mtime
+  moves, git state does not, and the blocking set follows what the session
+  recorded rather than the clock. Same reasoning as `blocking_key/1`.
+  """
   def changed_files_for_task(scope, %{started_at: started_at}, opts) do
     scope
     |> Files.changed_since(started_at)
@@ -614,12 +615,13 @@ defmodule CodeMySpec.Validation do
   # else's. An empty set from a session that genuinely wrote nothing is
   # different, and the renderer treats it as "no evidence" rather than "all
   # foreign" for the same reason.
-  @doc false
-  # Public so the cwd-less case can be asserted directly, the same reason
-  # `HookDecision.channel_age_note/1` and `HealthController.degraded?/1` are.
-  # The bug this guards against was a `nil` that reads as "attribution
-  # unavailable", and the only way to catch that regressing is to look at the
-  # value rather than at the sentence built from it.
+  @doc """
+  Public so the cwd-less case can be asserted directly, the same reason
+  `HookDecision.channel_age_note/1` and `HealthController.degraded?/1` are.
+  The bug this guards against was a `nil` that reads as "attribution
+  unavailable", and the only way to catch that regressing is to look at the
+  value rather than at the sentence built from it.
+  """
   @spec session_paths_for_test(Scope.t(), keyword(), boolean()) :: MapSet.t() | nil
   def session_paths_for_test(scope, opts, project_changed? \\ false),
     do: session_paths(scope, opts, project_changed?)
@@ -1076,9 +1078,10 @@ defmodule CodeMySpec.Validation do
   # `Fingerprint` over every file row in the working copy — 4,544 on this
   # project — for an answer this does not use.
   #
-  # Public so the property can be asserted directly, the same reason
-  # `blocking_key/1` and `split_unattributed/2` are.
-  @doc false
+  @doc """
+  Public so the property can be asserted directly, the same reason
+  `blocking_key/1` and `split_unattributed/2` are.
+  """
   def run_timing(_scope, []), do: {%{}, %{}, %{}}
 
   def run_timing(scope, sources) do
@@ -1517,9 +1520,10 @@ defmodule CodeMySpec.Validation do
   #
   # The findings themselves are stable. A fixed problem, a new one, or a moved
   # line all change this; waiting does not.
-  @doc false
-  # Public only so the property that matters can be asserted directly: stable
-  # while a source ages, different the moment a finding changes.
+  @doc """
+  Public only so the property that matters can be asserted directly: stable
+  while a source ages, different the moment a finding changes.
+  """
   def blocking_key([]), do: nil
 
   def blocking_key(blocking) do

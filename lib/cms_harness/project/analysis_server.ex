@@ -71,9 +71,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  @doc false
-  # Test seam: block until the queue is empty. Not used in production — the
-  # server learns a run finished by being told, not by anyone waiting.
+  @doc """
+  Test seam: block until the queue is empty. Not used in production — the
+  server learns a run finished by being told, not by anyone waiting.
+  """
   @spec idle?(String.t()) :: boolean()
   def idle?(root) do
     case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
@@ -227,11 +228,12 @@ defmodule CmsHarness.Project.AnalysisServer do
   # buy latency by making a worse failure more likely.
   @cost %{"compiler" => 0, "credo" => 1, "exunit" => 2, "spex" => 3}
 
-  @doc false
-  # Public only so the ordering can be tested without standing up a server and
-  # timing four real analyzers. Named apart from the client-API `enqueue/2`
-  # above: same name and arity, entirely different meaning, and they resolved
-  # to the right clause only because one guards on `is_list`.
+  @doc """
+  Public only so the ordering can be tested without standing up a server and
+  timing four real analyzers. Named apart from the client-API `enqueue/2`
+  above: same name and arity, entirely different meaning, and they resolved
+  to the right clause only because one guards on `is_list`.
+  """
   def insert_by_cost(queue, entry) do
     # `sort_by/2` is stable, so two runs of one source keep their arrival order
     # and only the cheap-vs-expensive ordering changes.

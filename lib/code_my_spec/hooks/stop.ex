@@ -586,10 +586,7 @@ defmodule CodeMySpec.Hooks.Stop do
     %{}
   end
 
-  @doc false
-  # Which sources blocked, and how many problems each contributed, as
-  # `exunit=1,credo=6`.
-  #
+  @doc "Which sources blocked, and how many problems each contributed, as `exunit=1,credo=6`."
   # Read back out of the reason text rather than threaded down from the
   # validator: the reason is already built from exactly this, and threading it
   # through six call sites to avoid one regex would be the more fragile of the
@@ -657,10 +654,11 @@ defmodule CodeMySpec.Hooks.Stop do
     subagent_task_live?(session, live_agent_ids(scope, session))
   end
 
-  @doc false
-  # Public, and split from the lookup, so the rule can be asserted without a
-  # database: the interesting cases are all about which agent ids are live, and
-  # `Configurations.get_or_create/1` inserts on miss.
+  @doc """
+  Public, and split from the lookup, so the rule can be asserted without a
+  database: the interesting cases are all about which agent ids are live, and
+  `Configurations.get_or_create/1` inserts on miss.
+  """
   @spec subagent_task_live?(Session.t(), MapSet.t(String.t())) :: boolean()
   def subagent_task_live?(session, live_agent_ids) do
     Enum.any?(session.tasks || [], fn task ->
