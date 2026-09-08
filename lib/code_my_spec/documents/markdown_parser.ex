@@ -108,7 +108,7 @@ defmodule CodeMySpec.Documents.MarkdownParser do
         {head, [last]} = Enum.split(parts, -1)
         head ++ [Inflex.singularize(last) |> String.capitalize()]
       end)
-      |> Enum.join("")
+      |> Enum.join()
 
     module_name = Module.concat([CodeMySpec.Documents.Parsers, "#{parser_name}Parser"])
 

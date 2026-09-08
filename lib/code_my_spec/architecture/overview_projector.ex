@@ -198,7 +198,7 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
         parts
       end
 
-    Enum.join(parts, "")
+    Enum.join(parts)
   end
 
   defp has_dependencies?(%Component{dependencies: []}), do: false

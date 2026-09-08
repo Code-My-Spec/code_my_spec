@@ -185,6 +185,7 @@
           {ExSlop.Check.Refactor.UseMapJoin, []},
           {ExSlop.Check.Refactor.MapIntoLiteral, []},
           {ExSlop.Check.Refactor.PreferEnumSlice, []},
+          {ExSlop.Check.Refactor.RedundantEnumJoinSeparator, []},
           {ExSlop.Check.Refactor.ReduceMapPut, []},
           {ExSlop.Check.Refactor.WithIdentityDo, []},
           {Credo.Check.Warning.ApplicationConfigInModuleAttribute, []},

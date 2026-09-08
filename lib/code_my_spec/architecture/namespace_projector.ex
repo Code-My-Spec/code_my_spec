@@ -210,13 +210,13 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
 
     # Build the line for this node
     line_parts = [
-      Enum.join(prefix, ""),
+      Enum.join(prefix),
       connector,
       node.segment,
       format_component_info(node.component, show_types, show_descriptions)
     ]
 
-    line = line_parts |> Enum.reject(&(&1 == "")) |> Enum.join("")
+    line = line_parts |> Enum.reject(&(&1 == "")) |> Enum.join()
 
     # Format children
     child_prefix = prefix ++ [child_prefix_addon]
@@ -254,7 +254,7 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
         parts
       end
 
-    Enum.join(parts, "")
+    Enum.join(parts)
   end
 
   # Collapse description to single line, truncate if too long
