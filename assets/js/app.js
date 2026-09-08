@@ -41,6 +41,23 @@ let Hooks = {
   live_pane_group,
   live_pane,
   live_pane_resizer,
+  // A turn's timestamp renders server-side in UTC — the one zone every
+  // request agrees on — and is corrected here to whatever the reader's own
+  // browser thinks the time is. `phx-update="ignore"` on the element means
+  // this only ever needs to run once per element: nothing about a past
+  // message's own timestamp changes after it is first rendered, so there is
+  // no `updated()` to write.
+  LocalTime: {
+    mounted() {
+      const iso = this.el.getAttribute("datetime");
+      const at = iso && new Date(iso);
+      if (!at || Number.isNaN(at.getTime())) return;
+      this.el.textContent = at.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    },
+  },
   // A transcript opens at its newest turn, like every other chat, and that is
   // also what makes "scroll up for older" mean anything: a page that opens at
   // the top of the last fifty starts you in the middle of the story with the

@@ -47,7 +47,9 @@ defmodule CodeMySpecWeb.ChatComponents do
     assigns = assign(assigns, :marker, "chat-#{role}")
 
     ~H"""
-    <.notice id={@id} marker={@marker}>{Message.text(@message)}</.notice>
+    <.notice id={@id} marker={@marker} inserted_at={@message.inserted_at}>
+      {Message.text(@message)}
+    </.notice>
     """
   end
 
@@ -76,7 +78,7 @@ defmodule CodeMySpecWeb.ChatComponents do
     >
       <.icon name="hero-adjustments-horizontal" class="size-4 shrink-0 opacity-60" />
 
-      <div class="min-w-0">
+      <div class="min-w-0 flex-1">
         <span>{Message.text(@message)}</span>
 
         <span
@@ -95,6 +97,13 @@ defmodule CodeMySpecWeb.ChatComponents do
           — {tool_lead(@message)} <code>{orchestrator_tool(@message)}</code>{tool_tail(@message)}
         </span>
       </div>
+
+      <.local_time
+        :if={@message.inserted_at}
+        id={"#{@id}-time"}
+        at={@message.inserted_at}
+        class="shrink-0 text-xs opacity-50"
+      />
     </div>
     """
   end
@@ -109,6 +118,7 @@ defmodule CodeMySpecWeb.ChatComponents do
         call_id={call["id"]}
         agent_role={@message.agent_role}
         result={@results[call["id"]]}
+        inserted_at={@message.inserted_at}
       />
     </div>
     """
@@ -126,6 +136,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       call_id={@message.tool_call_id}
       agent_role={@message.agent_role}
       result={@message}
+      inserted_at={@message.inserted_at}
     />
     """
   end
@@ -145,6 +156,35 @@ defmodule CodeMySpecWeb.ChatComponents do
   defp orphan_name(%{sender_id: "agent:" <> name}) when name != "", do: name
   defp orphan_name(_message), do: "tool"
 
+  @doc """
+  When a turn landed, in the reader's own clock rather than the server's.
+
+  Rendered server-side in UTC — the one zone every request agrees on — and
+  then corrected in the browser by the `LocalTime` hook, which is the only
+  place that actually knows the reader's offset. `phx-update="ignore"`
+  because nothing about a past message's timestamp ever changes after it is
+  first rendered, and without it a later patch (the next turn arriving) would
+  morph this element's text back to the server's UTC fallback, undoing every
+  local time the hook had already set.
+  """
+  attr :id, :string, required: true
+  attr :at, :any, required: true, doc: "a DateTime"
+  attr :class, :string, default: "shrink-0 opacity-50"
+
+  def local_time(assigns) do
+    ~H"""
+    <time
+      id={@id}
+      phx-hook="LocalTime"
+      phx-update="ignore"
+      datetime={DateTime.to_iso8601(@at)}
+      class={@class}
+    >
+      {Calendar.strftime(@at, "%b %-d, %H:%M")} UTC
+    </time>
+    """
+  end
+
   defp plain_turn(assigns) do
     ~H"""
     <.chat_message
@@ -154,6 +194,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       label={@message.agent_role}
       sender_id={@message.sender_id}
       text={Message.text(@message)}
+      inserted_at={@message.inserted_at}
     />
     """
   end
@@ -165,6 +206,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :label, :string, default: nil
   attr :sender_id, :string, default: nil
   attr :text, :string, required: true
+  attr :inserted_at, :any, default: nil, doc: "a DateTime, when the turn carries one"
 
   slot :extra,
     doc:
@@ -201,7 +243,13 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-long={to_string(@long)}
       class={["chat", side(@role, @own_role)]}
     >
-      <div :if={@label} class="chat-header text-xs opacity-60">{@label}</div>
+      <div
+        :if={@label || @inserted_at}
+        class="chat-header flex items-center gap-2 text-xs opacity-60"
+      >
+        <span :if={@label}>{@label}</span>
+        <.local_time :if={@inserted_at} id={"#{@id}-time"} at={@inserted_at} />
+      </div>
       <%!-- min-w-0 so the bubble may shrink below its content: without it a
             flex/grid ancestor sizes to the longest unbroken token, and the
             wrapping rules never get the chance to apply. --%>
@@ -286,6 +334,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :call_id, :string, default: nil
   attr :agent_role, :string, default: nil
   attr :result, :any, default: nil, doc: "the %Message{} answering this call, if it has returned"
+  attr :inserted_at, :any, default: nil, doc: "a DateTime, when the call carries one"
 
   @args_limit 2_000
 
@@ -333,6 +382,16 @@ defmodule CodeMySpecWeb.ChatComponents do
         <span class="min-w-0 break-all font-mono font-medium">{@name}</span>
         <span :if={@summary} class="min-w-0 flex-1 truncate opacity-60">{@summary}</span>
         <span :if={@agent_role} class="shrink-0 text-xs uppercase opacity-40">{@agent_role}</span>
+        <%!-- Keyed on `call_id` rather than `@id` — the calls looped over in a
+              multi-call turn share one `@id` (or none at all; that clause
+              never passes one), while `call_id` is the tool_use block's own
+              id and is always unique. --%>
+        <.local_time
+          :if={@inserted_at}
+          id={"tool-call-#{@call_id}-time"}
+          at={@inserted_at}
+          class="shrink-0 text-xs opacity-40"
+        />
       </summary>
 
       <div class="space-y-3 border-t border-base-300 px-3 pb-3 pt-2">
@@ -435,6 +494,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   """
   attr :id, :string, default: nil
   attr :marker, :string, required: true
+  attr :inserted_at, :any, default: nil, doc: "a DateTime, when the notice carries one"
   slot :inner_block, required: true
 
   def notice(assigns) do
@@ -442,9 +502,15 @@ defmodule CodeMySpecWeb.ChatComponents do
     <div
       id={@id}
       data-test={@marker}
-      class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+      class="flex items-start justify-between gap-2 rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
     >
-      {render_slot(@inner_block)}
+      <div class="min-w-0">{render_slot(@inner_block)}</div>
+      <.local_time
+        :if={@inserted_at}
+        id={"#{@id}-time"}
+        at={@inserted_at}
+        class="shrink-0 text-xs opacity-60"
+      />
     </div>
     """
   end

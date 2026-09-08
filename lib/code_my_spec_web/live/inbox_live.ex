@@ -384,6 +384,7 @@ defmodule CodeMySpecWeb.InboxLive do
               label={sender_label(message.role)}
               sender_id={message.sender_id}
               text={Message.text(message)}
+              inserted_at={message.inserted_at}
             >
               <:extra>
                 <div :for={{att, idx} <- Enum.with_index(Message.files(message))} class="mt-1">
