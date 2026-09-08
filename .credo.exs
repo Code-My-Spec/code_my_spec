@@ -169,6 +169,7 @@
           {ExSlop.Check.Readability.BoilerplateDocParams, []},
           {ExSlop.Check.Readability.NarratorComment, []},
           {ExSlop.Check.Readability.NarratorDoc, []},
+          {ExSlop.Check.Readability.ObviousComment, []},
           {ExSlop.Check.Readability.UnaliasedModuleUse, []},
           {ExSlop.Check.Refactor.ExplicitSumReduce, []},
           {ExSlop.Check.Refactor.FilterNil, []},

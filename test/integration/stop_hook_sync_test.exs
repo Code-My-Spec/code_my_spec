@@ -123,7 +123,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       refute resp.isError
 
-      # Get the active task
       session = Sessions.get_session(scope, session_id)
       task = Enum.find(session.tasks, &(&1.status == :active))
       assert task
@@ -181,7 +180,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       refute resp.isError
 
-      # Verify the task is active with manual validation
       session = Sessions.get_session(scope, session.id)
       task = Enum.find(session.tasks, &(&1.status == :active))
       assert task

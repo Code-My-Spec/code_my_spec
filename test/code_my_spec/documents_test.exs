@@ -167,7 +167,6 @@ defmodule CodeMySpec.DocumentsTest do
     end
 
     test "validates OR logic - succeeds when first alternative is present" do
-      # Create a test document type with OR logic
       markdown = """
       # Test
 
@@ -376,13 +375,11 @@ defmodule CodeMySpec.DocumentsTest do
       File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts"))
       File.mkdir_p!(Path.join(tmp_dir, "lib/code_my_spec/accounts"))
 
-      # Create a spec file
       File.write!(
         Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts/user.spec.md"),
         "# CodeMySpec.Accounts.User\n"
       )
 
-      # Create an impl file
       File.write!(
         Path.join(tmp_dir, "lib/code_my_spec/accounts/account.ex"),
         "defmodule CodeMySpec.Accounts.Account do\nend"

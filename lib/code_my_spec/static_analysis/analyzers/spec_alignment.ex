@@ -128,13 +128,23 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
         functions = Map.get(sections, "functions", [])
 
         function_problems =
-          analyze_module_alignment(functions, impl_path, test_path, spec_file_path, project_id, env)
+          analyze_module_alignment(
+            functions,
+            impl_path,
+            test_path,
+            spec_file_path,
+            project_id,
+            env
+          )
 
         # Also check top-level Test Assertions (used by LiveView/component specs)
         top_level_problems =
           case Map.get(sections, "test assertions") do
-            nil -> []
-            assertions_text -> check_top_level_test_assertions(assertions_text, test_path, project_id, env)
+            nil ->
+              []
+
+            assertions_text ->
+              check_top_level_test_assertions(assertions_text, test_path, project_id, env)
           end
 
         function_problems ++ top_level_problems
@@ -144,7 +154,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       end
     else
       {:error, reason} ->
-        # Create a problem about the invalid spec
         [
           %Problem{
             severity: :error,
@@ -191,7 +200,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     Path.join(["test", "#{relative_path}_test.exs"])
   end
 
-  defp analyze_module_alignment(spec_functions, impl_path, test_path, _spec_file_path, project_id, env)
+  defp analyze_module_alignment(
+         spec_functions,
+         impl_path,
+         test_path,
+         _spec_file_path,
+         project_id,
+         env
+       )
        when is_list(spec_functions) do
     impl_problems = compare_implementations(spec_functions, impl_path, project_id, env)
     test_problems = compare_test_assertions(spec_functions, test_path, project_id, env)
@@ -553,7 +569,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   Used by FileSync to validate test files during sync.
   """
-  @spec check_test_alignment(String.t(), String.t()) :: {:ok, :aligned} | {:ok, :misaligned, map()}
+  @spec check_test_alignment(String.t(), String.t()) ::
+          {:ok, :aligned} | {:ok, :misaligned, map()}
   def check_test_alignment(spec_content, test_content) do
     spec_assertions = extract_top_level_assertions(spec_content)
 
@@ -670,9 +687,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     extract_tests_from_ast(ast, []) |> Enum.reverse() |> Enum.uniq()
   end
 
-  defp extract_tests_from_ast({:defmodule, _, [_, [do: body]]}, acc), do: extract_tests_from_ast(body, acc)
-  defp extract_tests_from_ast({:__block__, _, exprs}, acc), do: Enum.reduce(exprs, acc, &extract_tests_from_ast/2)
-  defp extract_tests_from_ast({:describe, _, [_name, [do: body]]}, acc), do: extract_tests_from_ast(body, acc)
+  defp extract_tests_from_ast({:defmodule, _, [_, [do: body]]}, acc),
+    do: extract_tests_from_ast(body, acc)
+
+  defp extract_tests_from_ast({:__block__, _, exprs}, acc),
+    do: Enum.reduce(exprs, acc, &extract_tests_from_ast/2)
+
+  defp extract_tests_from_ast({:describe, _, [_name, [do: body]]}, acc),
+    do: extract_tests_from_ast(body, acc)
+
   defp extract_tests_from_ast({:test, _, [name | _]}, acc) when is_binary(name), do: [name | acc]
   defp extract_tests_from_ast(_, acc), do: acc
 end

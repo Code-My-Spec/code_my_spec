@@ -13,7 +13,6 @@ defmodule CodeMySpec.BddSpecsTest do
   # ============================================================================
 
   defp create_test_project_with_specs(scope, specs) do
-    # Create a temporary directory to act as project root
     dir = CodeMySpec.TempFile.dir("bdd_specs_test")
     spex_dir = Path.join(dir, "test/spex")
     File.mkdir_p!(spex_dir)
@@ -32,7 +31,6 @@ defmodule CodeMySpec.BddSpecsTest do
     %{scope | active_project: project}
   end
 
-  # Create an Environment struct for BddSpecs functions
   defp create_environment(scope) do
     %Environment{
       type: :local,

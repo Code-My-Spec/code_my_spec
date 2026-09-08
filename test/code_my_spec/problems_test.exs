@@ -15,7 +15,6 @@ defmodule CodeMySpec.ProblemsTest do
   alias CodeMySpec.Problems
 
   test "module exists and exports expected functions" do
-    # Ensure the module is loaded
     Code.ensure_loaded!(Problems)
 
     # Verify the context module exists and has the expected delegates

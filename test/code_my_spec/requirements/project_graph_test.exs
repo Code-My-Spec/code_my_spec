@@ -54,9 +54,11 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
 
       %{nodes: _nodes, edges: edges} = Requirements.project_graph(scope)
 
-      edge_types = Enum.map(edges, fn e ->
-        {elem(e.from, 0), elem(e.to, 0)}
-      end) |> Enum.uniq()
+      edge_types =
+        Enum.map(edges, fn e ->
+          {elem(e.from, 0), elem(e.to, 0)}
+        end)
+        |> Enum.uniq()
 
       # Same-entity edges exist (project prereqs)
       assert {"project", "project"} in edge_types
@@ -74,7 +76,6 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "component nodes include context, its children, and dependencies" do
       {scope, _tmp_dir} = setup_full_project()
 
-      # Verify the components exist in the DB first
       all_components = Components.list_components(scope)
       module_names = Enum.map(all_components, & &1.module_name) |> Enum.sort()
       assert "MyApp.Accounts" in module_names
@@ -232,7 +233,6 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
         parent_component_id: context.id
       })
 
-    # Create a dependency component
     {:ok, repo} =
       Components.create_component(scope, %{
         name: "Repo",
@@ -246,7 +246,6 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       target_component_id: repo.id
     })
 
-    # Create a story linked to the context
     {:ok, story} =
       Stories.create_story(scope, %{
         ready_for_dev: true,

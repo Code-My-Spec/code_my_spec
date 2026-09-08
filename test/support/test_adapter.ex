@@ -399,7 +399,6 @@ defmodule CodeMySpec.Support.TestAdapter do
           "post_cache_test.exs"
         ])
 
-      # Ensure the directory exists and write the test file
       File.mkdir_p!(Path.dirname(test_path))
       File.write!(test_path, failing_test_content)
 
@@ -570,7 +569,6 @@ defmodule CodeMySpec.Support.TestAdapter do
     if not File.exists?(@spex_results_failing_cache) do
       IO.puts("[TestAdapter] Setting up failing spex test...")
 
-      # Create a failing spex test
       failing_spex_content = """
       defmodule TestPhoenixProject.FailingSpex do
         use SexySpex

@@ -116,7 +116,6 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
   end
 
   defp build_tree(components) do
-    # Create a map of module_name -> component for quick lookup
     component_map =
       components
       |> Enum.map(fn component -> {component.module_name, component} end)
@@ -208,7 +207,6 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
         {_, false} -> {"├── ", "│   "}
       end
 
-    # Build the line for this node
     line_parts = [
       Enum.join(prefix),
       connector,

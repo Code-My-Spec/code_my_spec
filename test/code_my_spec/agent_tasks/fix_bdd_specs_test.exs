@@ -52,7 +52,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   defp create_implemented_component(scope, module_name \\ "MyAppWeb.UserLive") do
     component = component_fixture(scope, %{type: "liveview", module_name: module_name})
 
-    # Add a satisfied implementation_file requirement
     requirement_fixture(scope, component, %{
       name: "implementation_file",
       artifact_type: :code,
@@ -67,7 +66,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   defp create_unimplemented_component(scope, module_name \\ "MyAppWeb.PendingLive") do
     component = component_fixture(scope, %{type: "liveview", module_name: module_name})
 
-    # Add an unsatisfied implementation_file requirement
     requirement_fixture(scope, component, %{
       name: "implementation_file",
       artifact_type: :code,

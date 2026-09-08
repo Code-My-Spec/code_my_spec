@@ -99,7 +99,6 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
       assert length(result) == 1
       assert hd(result).id == child.id
     end
-
   end
 
   describe "list_components/1" do
@@ -632,7 +631,6 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
     end
 
     test "returns error if component already exists with same module_name", %{scope: scope} do
-      # Create an existing component
       _existing =
         component_fixture(scope, %{
           name: "OldName",
@@ -767,5 +765,4 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
       assert Ecto.assoc_loaded?(root_result.component.outgoing_dependencies)
     end
   end
-
 end

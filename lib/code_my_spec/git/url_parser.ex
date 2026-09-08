@@ -81,7 +81,6 @@ defmodule CodeMySpec.Git.URLParser do
   defp map_host_to_provider(_), do: {:error, :unsupported_provider}
 
   defp build_authenticated_url(%URI{} = uri, token) do
-    # Build the authenticated URL by injecting token as userinfo
     authenticated_uri = %URI{uri | userinfo: token_to_userinfo(token)}
     {:ok, URI.to_string(authenticated_uri)}
   end

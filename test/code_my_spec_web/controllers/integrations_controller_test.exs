@@ -70,7 +70,6 @@ defmodule CodeMySpecWeb.IntegrationsControllerTest do
 
   describe "DELETE /auth/:provider" do
     test "deletes existing integration", %{conn: conn, scope: scope} do
-      # Create an integration first
       {:ok, _integration} = create_test_integration(scope, :github)
 
       conn = delete(conn, ~p"/auth/github")

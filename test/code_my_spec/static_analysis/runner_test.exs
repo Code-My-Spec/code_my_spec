@@ -122,7 +122,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
-      # Create a spec file that will generate a problem
       spec_content = """
       # MyModule
 
@@ -319,6 +318,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "logs warnings for failed analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_warnings", ignore: [[:opts, :cd]] do
+        # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
         # Create a situation where at least one analyzer might fail
         log =
           capture_log(fn ->

@@ -273,7 +273,6 @@ defmodule CodeMySpec.Git.CLITest do
       # Clone the repository
       {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
 
-      # Create a conflict to force pull failure
       readme_path = Path.join(clone_path, "README.md")
       File.write!(readme_path, "# Conflicting change\n")
       System.cmd("git", ["add", "."], cd: clone_path)

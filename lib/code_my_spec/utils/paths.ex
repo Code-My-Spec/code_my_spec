@@ -244,10 +244,12 @@ defmodule CodeMySpec.Utils.Paths do
   @spec spec_path(String.t()) :: {:ok, String.t()} | {:error, :not_a_context_path}
   def spec_path(path) when is_binary(path) do
     with {:ok, context_path} <- resolve_context_path(path) do
+      # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
       # Extract the context name from the context path
       # e.g., "lib/code_my_spec/accounts" -> "accounts"
       context_name = Path.basename(context_path)
 
+      # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
       # Build the spec directory path
       # e.g., "lib/code_my_spec/accounts" -> ".code_my_spec/spec/code_my_spec"
       spec_base_dir =

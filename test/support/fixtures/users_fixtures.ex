@@ -71,7 +71,6 @@ defmodule CodeMySpec.UsersFixtures do
   end
 
   def user_scope_fixture(user, account) do
-    # Set the active account for the user
     Scope.for_user(user)
     |> Map.put(:active_account_id, account.id)
     |> Map.put(:active_account, account)

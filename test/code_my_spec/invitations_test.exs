@@ -57,7 +57,6 @@ defmodule CodeMySpec.InvitationsTest do
       owner = user_fixture()
       account = account_with_owner_fixture(owner)
 
-      # Create a regular member (not admin/owner)
       member = user_fixture()
       add_member_to_account(member, account.id, :member)
       member_scope = user_scope_fixture(member, account)
@@ -332,7 +331,6 @@ defmodule CodeMySpec.InvitationsTest do
       _expired1 = expired_invitation_fixture(account, owner)
       _expired2 = expired_invitation_fixture(account, owner)
 
-      # Create a current invitation
       current = invitation_fixture(account, owner)
 
       assert :ok = Invitations.cleanup_expired_invitations()

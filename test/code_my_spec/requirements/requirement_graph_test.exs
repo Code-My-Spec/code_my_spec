@@ -62,6 +62,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       scope = kickoff_context.scope
       persona_id = kickoff_context.persona_id
 
+      # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
       # Create a component without a spec, story-linked to satisfy
       # stories_exist + the architecture orphan check.
       {:ok, _component} =

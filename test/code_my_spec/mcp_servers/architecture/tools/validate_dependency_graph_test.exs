@@ -155,6 +155,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
     test "handles complex dependency graph with one cycle" do
       scope = full_scope_fixture()
 
+      # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
       # Create a chain: A→B→C→D
       comp_a = component_fixture(scope, %{module_name: "MyApp.A", type: "controller"})
       comp_b = component_fixture(scope, %{module_name: "MyApp.B", type: "context"})

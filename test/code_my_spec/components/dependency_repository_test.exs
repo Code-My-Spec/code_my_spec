@@ -193,7 +193,6 @@ defmodule CodeMySpec.Components.DependencyRepositoryTest do
 
       dependency = dependency_fixture(scope, source, target, %{type: :use})
 
-      # Delete the dependency directly to make it stale
       Repo.delete!(dependency)
 
       # Attempting to delete the stale dependency should fail with appropriate error

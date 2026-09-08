@@ -117,10 +117,10 @@ defmodule CodeMySpec.ArchitectureTest do
     test "excludes contexts that are dependencies of story-linked components" do
       scope = full_scope_fixture()
 
-      # Create a context that will have a story
       entry_point = component_fixture(scope, %{type: "context", name: "EntryPoint"})
       _story = story_fixture(scope, %{component_id: entry_point.id})
 
+      # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
       # Create a dependency context (should not be orphaned)
       dependency_context = component_fixture(scope, %{type: "context", name: "Dependency"})
 

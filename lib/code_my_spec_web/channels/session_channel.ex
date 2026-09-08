@@ -12,7 +12,6 @@ defmodule CodeMySpecWeb.SessionChannel do
     # Parse session_id from the topic
     case Integer.parse(session_id_str) do
       {session_id, ""} ->
-        # Verify the user has access to this session
         user_id = socket.assigns[:user_id]
 
         if user_id do

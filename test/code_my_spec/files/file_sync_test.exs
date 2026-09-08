@@ -264,7 +264,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
       assert Files.get_by_path(scope, "lib/my_app/old.ex")
 
-      # Delete the file
       File.rm!(path)
 
       {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
@@ -275,7 +274,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
     test "assigns component_id to implementation files" do
       {scope, tmp_dir} = setup_project()
 
-      # Create a component in DB
       {:ok, component} =
         CodeMySpec.Components.create_component(scope, %{
           name: "Accounts",
@@ -652,7 +650,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
-      # Add a new file
       write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
 
       {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)

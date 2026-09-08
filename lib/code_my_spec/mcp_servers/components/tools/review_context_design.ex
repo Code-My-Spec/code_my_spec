@@ -108,7 +108,6 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
   end
 
   defp format_component_tree(%{"component" => comp}) do
-    # Format the main component
     stories_text = format_component_stories(comp["stories"])
     deps_text = format_component_dependencies(comp["dependencies"])
 

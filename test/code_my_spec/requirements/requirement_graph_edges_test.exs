@@ -32,13 +32,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       context = create_component(scope, "MyApp.Accounts", "context")
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: context.id
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: context.id
+        })
 
       sync!(scope, tmp_dir)
 
@@ -56,13 +57,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       context = create_component(scope, "MyApp.Accounts", "context")
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: context.id
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: context.id
+        })
 
       sync!(scope, tmp_dir)
 
@@ -89,7 +91,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {:ok, story} =
         Stories.create_story(scope, %{
-        ready_for_dev: true,
+          ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"],
@@ -103,6 +105,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       qa = find_node(nodes, "story", story.id, "qa_complete")
       assert qa
       refute qa.satisfied
+
       refute Map.has_key?(qa, :locally_satisfied),
              "qa_complete's leaf check is already false (no qa_result file) — clamping skips it"
     end
@@ -119,24 +122,29 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   # and nothing is emitted twice.
   describe "the parent/child fan-out no longer emits an edge twice" do
     defp parent_and_child(scope, tmp_dir) do
-      {:ok, parent} = Components.create_component(scope, %{
-        name: "Todos", type: "context", module_name: "MyApp.Todos"
-      })
+      {:ok, parent} =
+        Components.create_component(scope, %{
+          name: "Todos",
+          type: "context",
+          module_name: "MyApp.Todos"
+        })
 
-      {:ok, child} = Components.create_component(scope, %{
-        name: "Todo",
-        type: "schema",
-        module_name: "MyApp.Todos.Todo",
-        parent_component_id: parent.id
-      })
+      {:ok, child} =
+        Components.create_component(scope, %{
+          name: "Todo",
+          type: "schema",
+          module_name: "MyApp.Todos.Todo",
+          parent_component_id: parent.id
+        })
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: parent.id
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: parent.id
+        })
 
       write_file(tmp_dir, "lib/my_app/todos.ex", impl_content("MyApp.Todos"))
       write_file(tmp_dir, "lib/my_app/todos/todo.ex", impl_content("MyApp.Todos.Todo"))
@@ -184,7 +192,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       # Repository type has tests_passing in its requirements
       component = create_component(scope, "MyApp.WidgetRepo", "repository")
 
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget_repo.spec.md", spec_content("MyApp.WidgetRepo", "repository"))
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/widget_repo.spec.md",
+        spec_content("MyApp.WidgetRepo", "repository")
+      )
+
       write_file(tmp_dir, "lib/my_app/widget_repo.ex", impl_content("MyApp.WidgetRepo"))
       sync!(scope, tmp_dir)
 
@@ -192,7 +205,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       tests_passing = find_node(nodes, "component", component.id, "tests_passing")
       assert tests_passing, "repository should have tests_passing requirement"
-      refute tests_passing.satisfied, "tests_passing should not be vacuously satisfied with no test file"
+
+      refute tests_passing.satisfied,
+             "tests_passing should not be vacuously satisfied with no test file"
     end
 
     test "bdd_specs_exist is unsatisfied when no bdd spec files exist" do
@@ -200,13 +215,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       component = create_component(scope, "MyApp.Widget", "repository")
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: component.id
-      })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: component.id
+        })
 
       sync!(scope, tmp_dir)
 
@@ -223,19 +240,21 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       # Use schema — same pattern as existing working tests
-      {:ok, component} = Components.create_component(scope, %{
-        name: "Widget",
-        type: "schema",
-        module_name: "MyApp.Widget"
-      })
+      {:ok, component} =
+        Components.create_component(scope, %{
+          name: "Widget",
+          type: "schema",
+          module_name: "MyApp.Widget"
+        })
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: component.id
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: component.id
+        })
 
       # Write a file so sync detects the component
       write_file(tmp_dir, "lib/my_app/widget.ex", impl_content("MyApp.Widget"))
@@ -244,20 +263,24 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Entry: bdd_specs_exist → component.spec_file
-      entry = Enum.find(edges, fn e ->
-        e.from == {"story", story.id, "bdd_specs_exist"} and
-        e.to == {"component", component.id, "spec_file"}
-      end)
+      entry =
+        Enum.find(edges, fn e ->
+          e.from == {"story", story.id, "bdd_specs_exist"} and
+            e.to == {"component", component.id, "spec_file"}
+        end)
+
       assert entry, "should have entry edge from story.bdd_specs_exist to component.spec_file"
 
       # Exit: component.implementation_file → story.bdd_specs_passing
       # (terminal for schema). The specs-passing gate sits between the
       # component tree and QA, so component terminals land there rather
       # than on qa_complete directly.
-      exit_edge = Enum.find(edges, fn e ->
-        e.from == {"component", component.id, "implementation_file"} and
-        e.to == {"story", story.id, "bdd_specs_passing"}
-      end)
+      exit_edge =
+        Enum.find(edges, fn e ->
+          e.from == {"component", component.id, "implementation_file"} and
+            e.to == {"story", story.id, "bdd_specs_passing"}
+        end)
+
       assert exit_edge, "should have exit edge from component terminal to story.bdd_specs_passing"
     end
 
@@ -266,25 +289,34 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       # Surface component depends on a context
-      {:ok, surface} = Components.create_component(scope, %{
-        name: "TodoListLive", type: "live_context", module_name: "MyApp.TodoListLive"
-      })
-      {:ok, context} = Components.create_component(scope, %{
-        name: "Todos", type: "context", module_name: "MyApp.Todos"
-      })
+      {:ok, surface} =
+        Components.create_component(scope, %{
+          name: "TodoListLive",
+          type: "live_context",
+          module_name: "MyApp.TodoListLive"
+        })
 
-      {:ok, _dep} = Components.create_dependency(scope, %{
-        source_component_id: surface.id,
-        target_component_id: context.id
-      })
+      {:ok, context} =
+        Components.create_component(scope, %{
+          name: "Todos",
+          type: "context",
+          module_name: "MyApp.Todos"
+        })
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: surface.id
-      })
+      {:ok, _dep} =
+        Components.create_dependency(scope, %{
+          source_component_id: surface.id,
+          target_component_id: context.id
+        })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: surface.id
+        })
 
       write_file(tmp_dir, "lib/my_app/todo_list_live.ex", impl_content("MyApp.TodoListLive"))
       write_file(tmp_dir, "lib/my_app/todos.ex", impl_content("MyApp.Todos"))
@@ -293,10 +325,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Should have entry edge to context (direct dependency)
-      ctx_entry = Enum.find(edges, fn e ->
-        e.from == {"story", story.id, "bdd_specs_exist"} and
-        e.to == {"component", context.id, "spec_file"}
-      end)
+      ctx_entry =
+        Enum.find(edges, fn e ->
+          e.from == {"story", story.id, "bdd_specs_exist"} and
+            e.to == {"component", context.id, "spec_file"}
+        end)
+
       assert ctx_entry, "should have entry edge to direct dependency context"
     end
 
@@ -323,32 +357,47 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
-      {:ok, surface} = Components.create_component(scope, %{
-        name: "TodoListLive", type: "live_context", module_name: "MyApp.TodoListLive"
-      })
-      {:ok, context} = Components.create_component(scope, %{
-        name: "Todos", type: "context", module_name: "MyApp.Todos"
-      })
-      {:ok, deep_dep} = Components.create_component(scope, %{
-        name: "Accounts", type: "context", module_name: "MyApp.Accounts"
-      })
+      {:ok, surface} =
+        Components.create_component(scope, %{
+          name: "TodoListLive",
+          type: "live_context",
+          module_name: "MyApp.TodoListLive"
+        })
 
-      {:ok, _} = Components.create_dependency(scope, %{
-        source_component_id: surface.id,
-        target_component_id: context.id
-      })
-      {:ok, _} = Components.create_dependency(scope, %{
-        source_component_id: context.id,
-        target_component_id: deep_dep.id
-      })
+      {:ok, context} =
+        Components.create_component(scope, %{
+          name: "Todos",
+          type: "context",
+          module_name: "MyApp.Todos"
+        })
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: surface.id
-      })
+      {:ok, deep_dep} =
+        Components.create_component(scope, %{
+          name: "Accounts",
+          type: "context",
+          module_name: "MyApp.Accounts"
+        })
+
+      {:ok, _} =
+        Components.create_dependency(scope, %{
+          source_component_id: surface.id,
+          target_component_id: context.id
+        })
+
+      {:ok, _} =
+        Components.create_dependency(scope, %{
+          source_component_id: context.id,
+          target_component_id: deep_dep.id
+        })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: surface.id
+        })
 
       write_file(tmp_dir, "lib/my_app/todo_list_live.ex", impl_content("MyApp.TodoListLive"))
       write_file(tmp_dir, "lib/my_app/todos.ex", impl_content("MyApp.Todos"))
@@ -388,17 +437,22 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Fan-out: parent.spec_valid → child.spec_file
-      fan_out = Enum.find(edges, fn e ->
-        e.from == {"component", parent.id, "spec_valid"} and
-        e.to == {"component", child.id, "spec_file"}
-      end)
-      assert fan_out, "live_context should create fan-out edge from spec_valid to liveview child spec_file"
+      fan_out =
+        Enum.find(edges, fn e ->
+          e.from == {"component", parent.id, "spec_valid"} and
+            e.to == {"component", child.id, "spec_file"}
+        end)
+
+      assert fan_out,
+             "live_context should create fan-out edge from spec_valid to liveview child spec_file"
 
       # Fan-in: child.spec_valid → parent.review_file
-      fan_in = Enum.find(edges, fn e ->
-        e.from == {"component", child.id, "spec_valid"} and
-        e.to == {"component", parent.id, "review_file"}
-      end)
+      fan_in =
+        Enum.find(edges, fn e ->
+          e.from == {"component", child.id, "spec_valid"} and
+            e.to == {"component", parent.id, "review_file"}
+        end)
+
       assert fan_in, "liveview child should create fan-in edge to live_context review_file"
     end
 
@@ -413,17 +467,22 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Fan-out: parent.spec_valid → child.spec_file (children wait for parent design)
-      fan_out = Enum.find(edges, fn e ->
-        e.from == {"component", parent.id, "spec_valid"} and
-        e.to == {"component", child.id, "spec_file"}
-      end)
-      assert fan_out, "context should create fan-out edge from spec_valid to schema child spec_file"
+      fan_out =
+        Enum.find(edges, fn e ->
+          e.from == {"component", parent.id, "spec_valid"} and
+            e.to == {"component", child.id, "spec_file"}
+        end)
+
+      assert fan_out,
+             "context should create fan-out edge from spec_valid to schema child spec_file"
 
       # Fan-in: child.implementation_file (schema's terminal — schemas have no tests) → parent.implementation_file
-      fan_in = Enum.find(edges, fn e ->
-        e.from == {"component", child.id, "implementation_file"} and
-        e.to == {"component", parent.id, "implementation_file"}
-      end)
+      fan_in =
+        Enum.find(edges, fn e ->
+          e.from == {"component", child.id, "implementation_file"} and
+            e.to == {"component", parent.id, "implementation_file"}
+        end)
+
       assert fan_in, "schema child should fan-in to context implementation_file"
     end
   end
@@ -437,36 +496,51 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       child = create_child_component(scope, "MyApp.Accounts.User", "schema", parent.id)
 
       # Write parent AND child spec files (child must exist for sync to track it)
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", spec_content("MyApp.Accounts", "context"))
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md", spec_content("MyApp.Accounts.User", "schema"))
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts.spec.md",
+        spec_content("MyApp.Accounts", "context")
+      )
+
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts/user.spec.md",
+        spec_content("MyApp.Accounts.User", "schema")
+      )
+
       sync!(scope, tmp_dir)
 
-      # Validate the parent spec (mark valid)
-      parent_spec = CodeMySpec.Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+      parent_spec =
+        CodeMySpec.Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+
       maybe_mark_validated(parent_spec)
 
-      # Compute the graph
       {nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Verify parent spec_valid is satisfied
-      parent_spec_valid = Enum.find(nodes, fn n ->
-        n.entity_type == "component" and n.entity_id == parent.id and n.name == "spec_valid"
-      end)
+      parent_spec_valid =
+        Enum.find(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == parent.id and n.name == "spec_valid"
+        end)
 
       assert parent_spec_valid, "parent spec_valid node should exist"
       assert parent_spec_valid.satisfied, "parent spec_valid should be satisfied after validation"
 
       # Verify fan-out edge exists: parent.spec_valid → child.spec_file
-      fan_out = Enum.find(edges, fn e ->
-        e.from == {"component", parent.id, "spec_valid"} and
-        e.to == {"component", child.id, "spec_file"}
-      end)
+      fan_out =
+        Enum.find(edges, fn e ->
+          e.from == {"component", parent.id, "spec_valid"} and
+            e.to == {"component", child.id, "spec_file"}
+        end)
+
       assert fan_out, "fan-out edge should exist from parent.spec_valid to child.spec_file"
 
       # Child spec_file node should exist and be satisfied (file was written)
-      child_spec = Enum.find(nodes, fn n ->
-        n.entity_type == "component" and n.entity_id == child.id and n.name == "spec_file"
-      end)
+      child_spec =
+        Enum.find(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == child.id and n.name == "spec_file"
+        end)
+
       assert child_spec, "child spec_file node should exist in graph"
     end
   end
@@ -476,21 +550,23 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"]
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"]
+        })
 
       sync!(scope, tmp_dir)
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      prereq_edge = Enum.find(edges, fn e ->
-        e.from == {"story", story.id, "bdd_specs_passing"} and
-        e.to == {"story", story.id, "qa_complete"}
-      end)
+      prereq_edge =
+        Enum.find(edges, fn e ->
+          e.from == {"story", story.id, "bdd_specs_passing"} and
+            e.to == {"story", story.id, "qa_complete"}
+        end)
 
       assert prereq_edge, "qa_complete should have prerequisite edge from bdd_specs_passing"
     end
@@ -499,21 +575,25 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"]
-      })
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"]
+        })
 
       sync!(scope, tmp_dir)
 
       actionable = RequirementGraph.next_actionable(scope)
-      qa_complete = Enum.find(actionable, fn n ->
-        n.entity_type == "story" and n.entity_id == story.id and n.name == "qa_complete"
-      end)
 
-      refute qa_complete, "qa_complete should not be actionable when bdd_specs_exist is unsatisfied"
+      qa_complete =
+        Enum.find(actionable, fn n ->
+          n.entity_type == "story" and n.entity_id == story.id and n.name == "qa_complete"
+        end)
+
+      refute qa_complete,
+             "qa_complete should not be actionable when bdd_specs_exist is unsatisfied"
     end
   end
 
@@ -523,13 +603,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       component = create_component(scope, "MyApp.Widget", "schema")
-      {:ok, story} = Stories.create_story(scope, %{
-        ready_for_dev: true,
-        title: "Test Story",
-        description: "As a user...",
-        acceptance_criteria: ["AC1"],
-        component_id: component.id
-      })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: component.id
+        })
 
       sync!(scope, tmp_dir)
 
@@ -541,8 +623,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert linked
       # component_linked uses field_present check — the field value should be in details
       assert linked.details[:component_id] == component.id ||
-             linked.details["component_id"] == component.id,
-        "field_present details should include the field name as key, got: #{inspect(linked.details)}"
+               linked.details["component_id"] == component.id,
+             "field_present details should include the field name as key, got: #{inspect(linked.details)}"
     end
   end
 
@@ -620,15 +702,16 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       actionable = actionable_component_names(scope)
 
       refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
-        "child impl should NOT be actionable"
+             "child impl should NOT be actionable"
 
       # === STEP 2: Overwrite parent spec with valid content ===
       write_file(tmp_dir, parent_path, spec_content("MyApp.Accounts", "context"))
       sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
+
       refute {"MyApp.Accounts", "review_file"} in actionable,
-        "review should NOT be actionable until all children have valid specs"
+             "review should NOT be actionable until all children have valid specs"
 
       # === STEP 3: Overwrite children specs with valid content ===
       write_file(tmp_dir, user_path, spec_content("MyApp.Accounts.User", "repository"))
@@ -636,10 +719,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
+
       assert {"MyApp.Accounts", "review_file"} in actionable,
-        "review should be actionable after all children spec_valid. Got: #{inspect(actionable)}"
+             "review should be actionable after all children spec_valid. Got: #{inspect(actionable)}"
+
       refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
-        "child impl should NOT be actionable before review_valid"
+             "child impl should NOT be actionable before review_valid"
 
       # === STEP 4: Write valid review → children can implement ===
       # Review files live at .code_my_spec/spec/{module_path}/design_review.md
@@ -650,23 +735,34 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       # for each child. The graph surfaces them in parallel and relies on the
       # agent to order them sensibly — it does not enforce TDD.
       actionable = actionable_component_names(scope)
+
       assert {"MyApp.Accounts.User", "test_file"} in actionable,
-        "child1 test_file should be actionable after review_valid. Got: #{inspect(actionable)}"
+             "child1 test_file should be actionable after review_valid. Got: #{inspect(actionable)}"
+
       assert {"MyApp.Accounts.Token", "test_file"} in actionable,
-        "child2 test_file should be actionable after review_valid"
+             "child2 test_file should be actionable after review_valid"
 
       # === STEP 5: Write tests → children can implement ===
       # Tests auto-align because the children's specs have no Test Assertions
       # section, so SpecAlignment returns {:ok, :aligned} → valid: true on sync.
-      write_file(tmp_dir, "test/my_app/accounts/user_test.exs",
-        "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend")
-      write_file(tmp_dir, "test/my_app/accounts/token_test.exs",
-        "defmodule MyApp.Accounts.TokenTest do\n  use ExUnit.Case\nend")
+      write_file(
+        tmp_dir,
+        "test/my_app/accounts/user_test.exs",
+        "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend"
+      )
+
+      write_file(
+        tmp_dir,
+        "test/my_app/accounts/token_test.exs",
+        "defmodule MyApp.Accounts.TokenTest do\n  use ExUnit.Case\nend"
+      )
+
       sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
+
       assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
-        "child1 impl should be actionable after tests written. Got: #{inspect(actionable)}"
+             "child1 impl should be actionable after tests written. Got: #{inspect(actionable)}"
 
       # === STEP 6: Implement children → parent can implement ===
       write_file(tmp_dir, "lib/my_app/accounts/user.ex", impl_content("MyApp.Accounts.User"))
@@ -678,8 +774,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope)
 
       actionable = actionable_component_names(scope)
+
       assert {"MyApp.Accounts", "implementation_file"} in actionable,
-        "parent impl should be actionable after all children reach terminal. Got: #{inspect(actionable)}"
+             "parent impl should be actionable after all children reach terminal. Got: #{inspect(actionable)}"
     end
   end
 
@@ -724,7 +821,10 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
   defp create_child_component(scope, module_name, type, parent_id) do
     component = create_component(scope, module_name, type)
-    {:ok, component} = Components.update_component(scope, component, %{parent_component_id: parent_id})
+
+    {:ok, component} =
+      Components.update_component(scope, component, %{parent_component_id: parent_id})
+
     component
   end
 

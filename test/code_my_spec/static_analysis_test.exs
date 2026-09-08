@@ -39,7 +39,6 @@ defmodule CodeMySpec.StaticAnalysisTest do
   # ============================================================================
 
   test "module exists and exports expected functions" do
-    # Ensure the module is loaded
     Code.ensure_loaded!(StaticAnalysis)
 
     # Verify the context module exists and has the expected delegates

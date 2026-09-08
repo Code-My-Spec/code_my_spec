@@ -317,7 +317,6 @@ defmodule CodeMySpec.Invitations do
   end
 
   defp add_user_to_account(user, invitation) do
-    # Get the inviter to create a scope with proper permissions
     inviter = Users.get_user!(invitation.invited_by_id)
     inviter_scope = %Scope{user: inviter, active_account_id: invitation.account_id}
 

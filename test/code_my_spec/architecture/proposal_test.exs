@@ -414,7 +414,6 @@ defmodule CodeMySpec.Architecture.ProposalTest do
     end
 
     test "skips writing spec file if it already exists", %{tmp_dir: tmp_dir, scope: scope} do
-      # Create a pre-existing spec file with custom content
       existing_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards.spec.md")
       File.mkdir_p!(Path.dirname(existing_spec_path))
       existing_content = "# Existing Spec\n\nThis content should be preserved."

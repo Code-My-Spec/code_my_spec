@@ -1518,7 +1518,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # three stories in flight and none of them finished: specs written across ten
   # stories, code for none of them. The preferred motion is one story at a time
   # — specs, then code, then QA — and the sort is where that gets said.
-  defp priority_sort_key(%{entity_type: "story", entity_id: id, name: name}, story_by_id, _comp, _def_order) do
+  defp priority_sort_key(
+         %{entity_type: "story", entity_id: id, name: name},
+         story_by_id,
+         _comp,
+         _def_order
+       ) do
     story = Map.get(story_by_id, id)
     {1, (story && story.priority) || 999, story_req_depth(name)}
   end
@@ -1535,6 +1540,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
   # Build a map of component_id → best (lowest) story priority.
   # A component inherits priority from:
   # 1. Stories that directly link to it (story.component_id)

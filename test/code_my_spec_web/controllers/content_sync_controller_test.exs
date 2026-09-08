@@ -44,7 +44,6 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
   }
 
   setup do
-    # Set the deploy key in application config for tests
     original_deploy_key = Application.get_env(:code_my_spec, :deploy_key)
     Application.put_env(:code_my_spec, :deploy_key, @valid_deploy_key)
     on_exit(fn -> restore_deploy_key(original_deploy_key) end)

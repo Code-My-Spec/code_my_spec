@@ -73,7 +73,6 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
   defp filter_by_contexts(components, nil), do: components
 
   defp filter_by_contexts(components, context_module_names) do
-    # Build a map of context IDs that match the filter
     context_ids =
       components
       |> Enum.filter(fn component ->
@@ -143,7 +142,6 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
         "## #{context.name}\n\n"
       end
 
-    # Format the context itself as a component
     context_content =
       format_component(context, include_descriptions, include_dependencies)
 

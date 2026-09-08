@@ -5794,6 +5794,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do
+    # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
     # Create a real stub directory with a mix.exs to satisfy the
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real
     # file I/O still goes through the in-memory environment — the stub
