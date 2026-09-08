@@ -628,8 +628,8 @@ defmodule CodeMySpec.Notifications do
   def collect_answers(questions, params) do
     questions
     |> Enum.with_index()
-    |> Enum.reduce(%{}, fn {question, i}, acc ->
-      Map.put(acc, question["question"], resolve_answer(params["q_#{i}"], params["q_#{i}_other"]))
+    |> Map.new(fn {question, i} ->
+      {question["question"], resolve_answer(params["q_#{i}"], params["q_#{i}_other"])}
     end)
   end
 

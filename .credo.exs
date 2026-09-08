@@ -184,6 +184,7 @@
           {ExSlop.Check.Refactor.TryRescueWithSafeAlternative, []},
           {ExSlop.Check.Refactor.UseMapJoin, []},
           {ExSlop.Check.Refactor.PreferEnumSlice, []},
+          {ExSlop.Check.Refactor.ReduceMapPut, []},
           {ExSlop.Check.Refactor.WithIdentityDo, []},
           {Credo.Check.Warning.ApplicationConfigInModuleAttribute, []},
           {Credo.Check.Warning.BoolOperationOnSameValues, []},
