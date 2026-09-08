@@ -98,6 +98,23 @@ defmodule CodeMySpecWeb.DevAgentController do
     conn |> put_status(422) |> json(%{error: "message is required and must not be empty"})
   end
 
+  def staff(conn, %{"working_copy_id" => copy_id}) do
+    case Agents.staff_any_copy(copy_id) do
+      {:ok, result} ->
+        json(conn, %{
+          status: "staffed",
+          working_copy_id: copy_id,
+          started:
+            Enum.map(result.started, &%{id: &1.id, role: &1.role, provider: &1.provider, model: &1.model}),
+          failed: Enum.map(result.failed, fn {role, reason} -> %{role: role, reason: inspect(reason)} end),
+          continuous: result.continuous
+        })
+
+      {:error, reason} ->
+        conn |> put_status(404) |> json(%{error: inspect(reason), working_copy_id: copy_id})
+    end
+  end
+
   def stop(conn, %{"agent_id" => agent_id}) do
     case Agents.stop_any_agent(agent_id) do
       {:ok, agent} ->

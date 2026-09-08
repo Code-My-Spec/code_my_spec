@@ -403,6 +403,12 @@ defmodule CodeMySpecWeb.Router do
       # `/dev/agents` and, until this, not fixable from the same place.
       post "/agents/:agent_id/stop", DevAgentController, :stop
 
+      # Staffing has to happen in the server's own VM. The channel registry
+      # lives here, so a `mix run` script writes three agent rows, delivers an
+      # orchestrator message into the database, and reaches no harness at all —
+      # three agents stuck in `starting` with a menu each and nothing running.
+      post "/copies/:working_copy_id/staff", DevAgentController, :staff
+
       # What the database believes against what the runtime is doing, and the
       # disagreements between them. Same compile-time gating and the same
       # reason: it reads across every project.

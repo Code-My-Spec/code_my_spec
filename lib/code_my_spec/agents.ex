@@ -711,6 +711,71 @@ defmodule CodeMySpec.Agents do
   def ensure_copy_agents(%Scope{}, _copy), do: %{started: [], failed: [{:copy, :no_checkout}]}
 
   @doc """
+  Staff one working copy and put it into continuous mode, resolving the project
+  and the owner from the copy itself.
+
+  The counterpart to `stop_any_agent/1`, and it exists because the alternative
+  does not work. Staffing from a `mix run` script creates the rows and reaches
+  no harness: the channel registry lives in the server's own VM, so a second
+  BEAM writes three agents that will never start and an orchestrator message
+  nobody receives. Watched 2026-09-08 — three `claude-code` agents in
+  `starting`, a menu in each transcript, and not one line in `harness.log`.
+
+  Whoever's model settings decide the provider has to be the owner rather than
+  the caller, since the caller here is an operator route with no session. Read
+  from the account, so a copy is staffed the way its owner configured it.
+  """
+  @spec staff_any_copy(Ecto.UUID.t()) ::
+          {:ok, map()} | {:error, :no_such_copy | :no_owner}
+  def staff_any_copy(copy_id) when is_binary(copy_id) do
+    with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+         {:ok, scope} <- owner_scope(copy) do
+      result = ensure_copy_agents(scope, copy)
+      {:ok, continuous} = set_copy_continuous(scope, copy_id, true)
+      {:ok, Map.put(result, :continuous, continuous)}
+    end
+  end
+
+  defp owner_scope(%{project_id: project_id, id: copy_id}) do
+    case Repo.get(CodeMySpec.Projects.Project, project_id) do
+      nil ->
+        {:error, :no_such_copy}
+
+      project ->
+        case account_owner(project.account_id) do
+          nil ->
+            {:error, :no_owner}
+
+          user ->
+            {:ok,
+             %Scope{
+               user: user,
+               user_id: user.id,
+               active_project: project,
+               active_project_id: project.id,
+               active_account_id: project.account_id,
+               active_working_copy_id: copy_id
+             }}
+        end
+    end
+  end
+
+  # The earliest member, which is the account's creator. An account with
+  # several people has several sets of model settings and no rule here can pick
+  # between them — the owner is the least surprising answer and the only one
+  # that is stable.
+  defp account_owner(account_id) do
+    account_id
+    |> CodeMySpec.Accounts.MembersRepository.list_account_members()
+    |> Enum.sort_by(& &1.id)
+    |> List.first()
+    |> case do
+      nil -> nil
+      member -> member.user
+    end
+  end
+
+  @doc """
   Put a working copy's agents into continuous mode, or take them out of it.
 
   Story 538's R13: continuous mode is turned on and off deliberately. Until this
