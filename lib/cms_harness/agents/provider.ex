@@ -62,10 +62,34 @@ defmodule CmsHarness.Agents.Provider do
   # there is no Req client to put anything in front of, and accepting the option
   # there would look like it worked.
 
-  # `codex exec` reads its own `auth.json`; Alloy copies the one named here into
-  # an isolated `CODEX_HOME` so an agent never inherits the machine's MCP or
-  # plugin configuration — the same isolation the Pi config directory gave us,
-  # and the reason a shared home is not an option on a multi-tenant box.
+  # `codex exec` runs against **this machine's own Codex login**, in this
+  # machine's own `CODEX_HOME`. Nothing is minted, copied, or managed.
+  #
+  # It used to be handed an `auth.json` to copy into an isolated home, and that
+  # is unworkable rather than merely awkward. A ChatGPT refresh token is
+  # single-use: the CLI rotates it on startup and every other copy dies. With
+  # four agents each holding a private copy of one token, the first to start
+  # invalidated the rest — `codex_auth/1` in `CmsHarness.Agents` predicted this
+  # in as many words ("rotates the refresh token and invalidates every other
+  # copy of it, including the one in our database") and it happened anyway,
+  # because the prediction was about a race no amount of care in one writer can
+  # win.
+  #
+  # Measured 2026-09-08: every agent on Broken Oaths failing with "your access
+  # token could not be refreshed because your refresh token was already used",
+  # intermittently since 09-03 — and John's own `codex` CLI logged out along
+  # with them, because the token the agents burned was his.
+  #
+  # John's call, and it is the only posture that is also right on terms of
+  # service: an agent here is the user's own machine running the user's own
+  # Codex login, exactly as if they had typed `codex` themselves. We do not hold
+  # their subscription, so we cannot leak it, rotate it, or get them banned for
+  # how we used it.
+  #
+  # The cost is real and accepted: an agent inherits this machine's Codex
+  # configuration — its MCP servers and plugins — where an isolated home gave it
+  # none. That is wrong on a shared box, and a shared box is what this decision
+  # rules out.
   #
   # No model unless one was asked for, and that is the opposite of the other two
   # clauses on purpose. A ChatGPT plan decides which models it serves, and
@@ -82,7 +106,7 @@ defmodule CmsHarness.Agents.Provider do
          {Alloy.Provider.Codex,
           %{
             model: Keyword.get(opts, :model),
-            auth_path: auth_path(credential),
+            codex_home: codex_home(credential),
             timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
           }}
      ]}
@@ -161,18 +185,20 @@ defmodule CmsHarness.Agents.Provider do
   @spec names() :: [String.t()]
   def names, do: ["anthropic", "openai-codex", "zai", "claude-code"]
 
-  # The credential's own auth file, or this machine's codex login.
+  # This machine's Codex home, which the CLI already owns.
   #
-  # The fallback is an interim and a known compromise. Minting a per-tenant
-  # `auth.json` needs an `id_token` our openai integration does not store — the
-  # open question on story 956 — so until it does, a codex agent runs on
-  # whatever `codex` is logged in as here. Right on a single-tenant box, wrong
-  # on a shared one, and deliberate either way: failing instead would report a
-  # missing credential for one that is connected and working.
-  defp auth_path(credential) do
-    case fetch(credential, :auth_path) do
-      {:ok, path} -> path
-      {:error, _} -> Path.expand("~/.codex/auth.json")
+  # `Alloy.Provider.Codex` uses a `:codex_home` as given and only falls back to
+  # building an isolated one — and copying an `auth.json` into it — when none is
+  # named. Naming it is what keeps one login in one place with one writer
+  # rotating it.
+  #
+  # A credential may still name its own, for a deployment that has somewhere
+  # better to point. What it may no longer do is hand over a token for us to
+  # write down.
+  defp codex_home(credential) do
+    case fetch(credential, :codex_home) do
+      {:ok, path} -> Path.expand(path)
+      {:error, _} -> Path.expand("~/.codex")
     end
   end
 
