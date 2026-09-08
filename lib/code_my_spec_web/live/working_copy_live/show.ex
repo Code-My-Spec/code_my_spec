@@ -87,6 +87,32 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # invents precision the page does not have.
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
+  @copy_roles [:product, :coding, :qa]
+
+  # A copy is understaffed when any role has no live agent. Stopped ones do not
+  # count — `ensure_copy_agents/2` uses the same rule, so the button appears
+  # exactly when pressing it would do something.
+  defp understaffed?(agents) do
+    live = MapSet.new(agents, & &1.role)
+    Enum.any?(@copy_roles, &(not MapSet.member?(live, &1)))
+  end
+
+  defp roster(agents) do
+    case Enum.map(agents, &to_string(&1.role)) do
+      [one] -> "a #{one} agent"
+      roles -> "#{length(roles)} agents — #{Enum.join(roles, ", ")}"
+    end
+  end
+
+  defp staffing_trouble([], failed),
+    do: "Could not staff this copy: " <> failures(failed)
+
+  defp staffing_trouble(started, failed),
+    do: "Started #{roster(started)}, but " <> failures(failed)
+
+  defp failures(failed),
+    do: Enum.map_join(failed, "; ", fn {role, reason} -> "#{role} — #{inspect(reason)}" end)
+
   defp load(socket, project) do
     now = DateTime.utc_now()
 
@@ -140,6 +166,34 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # Re-loads afterwards for the reason `designate_main` does: the label, the
   # state line and the button all read from the agents, and the page's copy of
   # them is stale the moment this returns.
+  # Idempotent, so a second click on a partly-staffed copy fills the gaps rather
+  # than doubling the roster: `ensure_copy_agents/2` skips any role already live.
+  #
+  # Both halves of the report are said. A copy whose harness is connected for
+  # one role and not another gets the agents it can have, and the ones it cannot
+  # are the operator's next problem — swallowing them would leave somebody
+  # looking at a roster that is quietly short.
+  def handle_event("staff_copy", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    case Agents.ensure_copy_agents(scope, socket.assigns.row.harness) do
+      %{started: [], failed: []} ->
+        {:noreply, put_flash(socket, :info, "Every role is already staffed on this copy.")}
+
+      %{started: started, failed: []} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Started #{roster(started)}. Put them to work when you are ready.")
+         |> load(socket.assigns.project)}
+
+      %{started: started, failed: failed} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, staffing_trouble(started, failed))
+         |> load(socket.assigns.project)}
+    end
+  end
+
   def handle_event("toggle_working", _params, socket) do
     scope = socket.assigns.current_scope
     working? = working?(socket.assigns.row.agents)
@@ -333,13 +387,38 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             keep working when a turn ends, and until this it had no switch: the
             only way in was an agent happening to work the start_implementation
             task, and the only way out was tap_out, which asks a human. --%>
-            <div :if={@row.agents != []} class="flex items-center gap-2">
-              <span data-test="loop-state" class="text-xs opacity-70">
+            <div class="flex items-center gap-2">
+              <%!-- Staffing had no button. It happened as a side effect of
+              minting a copy or of dispatching an epic onto one, so an existing,
+              onboarded, unstaffed copy — which is an ordinary state — had no
+              route at all. The only control here was "Put to work", which flips
+              a flag on *running* agents and answers "Nothing is running on this
+              copy to put to work" when there are none. The one action needed
+              agents to already exist.
+
+              John, looking at a copy with 45 stopped agents on it: "I know it's
+              onboarded properly, it has no agents. How do I get my agents?"
+
+              Shown whenever a role is missing rather than only when the list is
+              empty: a copy running QA and nothing else is short two agents, and
+              `ensure_copy_agents/2` skips the roles already live. --%>
+              <.button
+                :if={understaffed?(@row.agents)}
+                type="button"
+                phx-click="staff_copy"
+                data-test="staff-copy"
+                class="btn btn-sm btn-primary"
+              >
+                Staff it
+              </.button>
+
+              <span :if={@row.agents != []} data-test="loop-state" class="text-xs opacity-70">
                 {if working?(@row.agents),
                   do: "Working — each agent picks its own next task",
                   else: "Idle — agents stop at the end of a turn"}
               </span>
               <.button
+                :if={@row.agents != []}
                 type="button"
                 phx-click="toggle_working"
                 data-test="toggle-working"
@@ -350,8 +429,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             </div>
           </div>
 
+          <%!-- What to do about it, not just that it is so. The old text said
+          "Nothing is running on this copy." and stopped there, which is the
+          sentence that sent somebody looking for a control that does not
+          exist. --%>
           <p :if={@row.agents == []} data-test="no-agents" class="py-10 text-center opacity-60">
-            Nothing is running on this copy.
+            Nothing is running on this copy. <strong>Staff it</strong>
+            starts one agent per role — product, coding and QA — in this checkout.
+            Approving an epic onto a copy does the same thing.
           </p>
 
           <%!-- `data-agent-id` carries identity, not just role. "The same three
