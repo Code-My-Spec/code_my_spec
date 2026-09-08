@@ -19,7 +19,16 @@ defmodule CmsHarness.FakeUpstreamPortTest do
   that the returned number describes a socket this process is actually holding.
   """
 
-  use ExUnit.Case, async: true
+  # Sync, because `start!/1` calls `reset/0`, and `reset/0` overwrites
+  # `FakeUpstream`'s `:persistent_term` state — the response, the request log,
+  # the exchange answer — which is node-global. Async here means every one of
+  # these tests can reset a response another test (turn_record_refusal_test,
+  # mcp_controller_test, permission_controller_test — all sync for exactly
+  # this) configured a moment earlier but has not yet asserted on, so the
+  # second test's setup silently rewrites the first test's fixture mid-run.
+  # That reads as the first test's own assertion being wrong on a full-suite
+  # run and passing every time it runs alone.
+  use ExUnit.Case, async: false
 
   alias CmsHarnessTest.FakeUpstream
 
