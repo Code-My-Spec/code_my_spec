@@ -26,6 +26,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.SpecsPassingChecker
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
@@ -117,9 +118,17 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   defp evaluate_story(scope, story, task) do
     cond do
-      story.specs_ready == true ->
-        # Already latched. A stale run or a fresh failure elsewhere must
-        # not un-latch it; only a chain restart or a manual clear does.
+      latched_and_uncontradicted?(scope, story) ->
+        # Already latched. A stale run, or a fresh failure on somebody else's
+        # story, must not un-latch it — that asymmetry is why the node can
+        # exist at all.
+        #
+        # What it must not survive is a fresh run showing *this* story's own
+        # specs red, because that means the latch was never earned. It was set
+        # by a gate that matched problems to stories by parsing a directory
+        # name and found none, and finding none is the branch that latches.
+        # Evaluating such a story answered `:valid` instantly and forever, so
+        # the story sailed to QA with its feature unbuilt.
         {:ok, :valid}
 
       not has_bdd_specs?(scope, story) ->
@@ -138,6 +147,13 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
             {:ok, :invalid, build_feedback(Enum.map(problems, &{&1, story}))}
         end
     end
+  end
+
+  # The same question `bdd_specs_passing` asks, asked the same way, because an
+  # evaluator and the requirement it closes disagreeing is how a story reads
+  # done on one surface and undone on another.
+  defp latched_and_uncontradicted?(scope, story) do
+    match?({true, _}, SpecsPassingChecker.passing?(scope, story))
   end
 
   defp story_for(scope, %{story_id: story_id}) when not is_nil(story_id),
