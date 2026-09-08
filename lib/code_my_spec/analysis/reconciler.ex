@@ -55,8 +55,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   def reconcile(%Scope{} = scope, %Run{} = run, result, opts) do
     problems =
       result.problems
-      |> Enum.map(&stamp_project(&1, scope))
-      |> Enum.map(&patch_file_path/1)
+      |> Enum.map(&(&1 |> stamp_project(scope) |> patch_file_path()))
       |> stamp_component_ids(scope, run.source)
 
     file_scope = clear_scope(scope, run)

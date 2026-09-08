@@ -149,8 +149,7 @@ defmodule CodeMySpec.Stories.Markdown do
           lines
           |> Enum.drop(index + 1)
           |> Enum.filter(&String.starts_with?(&1, "- "))
-          |> Enum.map(&String.trim_leading(&1, "- "))
-          |> Enum.map(&String.trim/1)
+          |> Enum.map(&(&1 |> String.trim_leading("- ") |> String.trim()))
           |> Enum.reject(&(&1 == ""))
 
         {:ok, criteria}

@@ -42,8 +42,7 @@ defmodule CodeMySpec.Rules do
       {:ok, entries} ->
         entries
         |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map(&Path.join(@rules_dir, &1))
-        |> Enum.map(&parse_env_rule_file(env, &1))
+        |> Enum.map(&parse_env_rule_file(env, Path.join(@rules_dir, &1)))
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(fn {:ok, rule} -> rule end)
 

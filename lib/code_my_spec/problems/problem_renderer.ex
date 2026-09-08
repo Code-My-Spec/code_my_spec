@@ -737,8 +737,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp escalation(sources, last_ran, run_duration, flight, overtaken) do
     age =
       sources
-      |> Enum.map(&Map.get(last_ran, &1))
-      |> Enum.map(&staleness_seconds/1)
+      |> Enum.map(&(last_ran |> Map.get(&1) |> staleness_seconds()))
       |> Enum.max(fn -> 0 end)
 
     rerunning = Enum.filter(sources, &(&1 in flight.sources))

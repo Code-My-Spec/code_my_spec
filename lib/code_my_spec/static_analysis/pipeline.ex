@@ -112,8 +112,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
     problems =
       result.data.compiler_results
-      |> Enum.map(&ProblemConverter.from_compiler/1)
-      |> Enum.map(&%{&1 | project_id: scope.active_project_id})
+      |> Enum.map(&%{ProblemConverter.from_compiler(&1) | project_id: scope.active_project_id})
 
     Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
     Problems.create_problems(scope, problems)

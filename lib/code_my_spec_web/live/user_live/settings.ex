@@ -12,7 +12,11 @@ defmodule CodeMySpecWeb.UserLive.Settings do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path} pending_notifications={@pending_notifications}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -409,9 +413,12 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         disconnect_warning: "Agent types set to Z.ai will fall back to another provider."
       }
     ]
-    |> Enum.map(&Map.put(&1, :connected, Integrations.connected?(scope, &1.provider)))
-    |> Enum.map(&Map.put_new(&1, :device_flow, false))
-    |> Enum.map(&Map.put_new(&1, :api_key, false))
+    |> Enum.map(fn provider ->
+      provider
+      |> Map.put(:connected, Integrations.connected?(scope, provider.provider))
+      |> Map.put_new(:device_flow, false)
+      |> Map.put_new(:api_key, false)
+    end)
   end
 
   # Matched against the providers that exist rather than converted, so a posted

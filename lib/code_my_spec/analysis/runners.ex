@@ -298,8 +298,7 @@ defmodule CodeMySpec.Analysis.Runners do
   defp spex_result(failures, exit_code) do
     problems =
       failures
-      |> Enum.map(&spex_failure_to_problem/1)
-      |> Enum.map(&%{&1 | source: "spex"})
+      |> Enum.map(&%{spex_failure_to_problem(&1) | source: "spex"})
 
     summarize(problems, exit_code, %{"failures" => length(failures)})
   end
@@ -320,13 +319,15 @@ defmodule CodeMySpec.Analysis.Runners do
       raw
       |> diagnostics()
       |> Enum.map(fn failure ->
-        ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
-          file: failure["file"],
-          line: failure["line"],
-          message: failure["message"]
-        })
+        %{
+          ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
+            file: failure["file"],
+            line: failure["line"],
+            message: failure["message"]
+          })
+          | source: "exunit"
+        }
       end)
-      |> Enum.map(&%{&1 | source: "exunit"})
 
     {:ok,
      %{

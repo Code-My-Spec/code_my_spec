@@ -30,8 +30,7 @@ defmodule CodeMySpec.Architecture.SpecStub do
       module_name
       |> String.trim()
       |> String.split(".")
-      |> Enum.map(&String.trim/1)
-      |> Enum.map(&Macro.underscore/1)
+      |> Enum.map(&(&1 |> String.trim() |> Macro.underscore()))
 
     Path.join([Paths.spec_dir() | path_parts]) <> ".spec.md"
   end

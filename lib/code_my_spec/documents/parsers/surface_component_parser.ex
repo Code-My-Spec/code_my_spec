@@ -113,11 +113,11 @@ defmodule CodeMySpec.Documents.Parsers.SurfaceComponentParser do
   defp parse_story_ids(text) do
     text
     |> String.split(~r/,\s*/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.map(&Integer.parse/1)
-    |> Enum.map(fn
-      {int, _} -> int
-      :error -> nil
+    |> Enum.map(fn part ->
+      case part |> String.trim() |> Integer.parse() do
+        {int, _} -> int
+        :error -> nil
+      end
     end)
     |> Enum.reject(&is_nil/1)
   end
