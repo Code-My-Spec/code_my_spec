@@ -931,6 +931,7 @@ defmodule CodeMySpec.Validation do
         |> Enum.uniq(),
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
@@ -1339,6 +1340,7 @@ defmodule CodeMySpec.Validation do
     ctx = %{
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
@@ -1354,11 +1356,12 @@ defmodule CodeMySpec.Validation do
     %{
       specs_ready_story_ids: ready_ids,
       criterion_story_ids: by_path,
+      spec_file_story_ids: by_spec_file,
       story_ids_by_number: by_number
     } = ctx
 
     Enum.split_with(problems, fn problem ->
-      case Map.get(by_path, problem.file_path) || story_id_from_path(problem.file_path, by_number) do
+      case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
         nil -> true
         story_id -> MapSet.member?(ready_ids, story_id)
       end
@@ -1366,6 +1369,29 @@ defmodule CodeMySpec.Validation do
   end
 
   defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
+  # Criteria first, then the file row, then the directory name.
+  #
+  # The last of those is a guess and was doing most of the work. Spex
+  # directories are named from `story.number` in some projects and `story.id` in
+  # others, so `derive_story_number/1` hands back an id where a number is
+  # expected, the lookup misses, and the problem lands in the `nil` branch —
+  # which enforces. An unwritten feature's red spec then blocks a stop as though
+  # it were a regression, and the agent is shown a backlog with no owner.
+  #
+  # Broken Oaths on 2026-09-08: 38 of 54 directories id-named, and 90 of 145
+  # spex problems enforced this way over features nobody had written yet.
+  #
+  # `files.story_id` is resolved at sync time from the spec itself and was
+  # correct for every directory of both conventions, so it goes ahead of the
+  # parse. The parse stays last rather than being deleted: a spec file that has
+  # not been synced yet has no row, and a directory name is better than nothing
+  # there.
+  defp story_id_for(file_path, by_path, by_spec_file, by_number) do
+    Map.get(by_path, file_path) ||
+      Map.get(by_spec_file, file_path) ||
+      story_id_from_path(file_path, by_number)
+  end
 
   defp story_id_from_path(file_path, by_number) do
     case Parser.derive_story_number(file_path) do

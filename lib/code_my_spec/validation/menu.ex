@@ -203,9 +203,33 @@ defmodule CodeMySpec.Validation.Menu do
        when is_atom(role) and not is_nil(role) and role not in @problem_roles,
        do: 0
 
+  # Counted through `Validation.enforceable/2`, which is what the gate actually
+  # blocks on — not everything recorded.
+  #
+  # That function's own doc says why it is public: "two copies of what counts as
+  # enforceable drift, and the drift is silent." This was the third copy, and it
+  # drifted the furthest, because the population it counted was the whole
+  # project.
+  #
+  # What the gap looked like. A spex failure on a story that has not reached
+  # `bdd_specs_passing` is the red bar that drives the implementation — expected,
+  # by design, and `split_by_story_enforcement/3` already holds it back from the
+  # gate for exactly that reason. The menu counted it anyway. Broken Oaths on
+  # 2026-09-08 opened every coding stop with "133 problems in this working copy"
+  # over a backlog that was 127 unwritten features across ten stories, ranked
+  # above the agent's own requirements, none of it its work and none of it
+  # blocking anything. The agent read the list, correctly found nothing of its
+  # own in it, and stopped. Every time.
+  #
+  # John: "those specs should not be contributing to the problems yet because
+  # the development's not done."
+  #
+  # Three extra reads on a path that already recomputes a graph, and it is the
+  # difference between a directive an agent can act on and a wall.
   defp count(scope, :problems, _role, _owner) do
     scope
     |> ProblemRepository.list_project_problems(severity: :error)
+    |> then(&CodeMySpec.Validation.enforceable(scope, &1))
     |> length()
   end
 
