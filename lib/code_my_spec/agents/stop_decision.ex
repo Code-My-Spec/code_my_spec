@@ -264,8 +264,13 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
 
-  defp stuck?(%Agent{} = agent, key) do
-    slot = {__MODULE__, agent.id}
+  # `tag` separates the counters. One slot per agent meant the decision and the
+  # nudge would overwrite each other's count, and the nudge would never reach a
+  # threshold because every decision reset it.
+  defp stuck?(agent, key, tag \\ :decision)
+
+  defp stuck?(%Agent{} = agent, key, tag) do
+    slot = {__MODULE__, tag, agent.id}
     seen = :persistent_term.get(slot, nil)
 
     count =
@@ -342,7 +347,25 @@ defmodule CodeMySpec.Agents.StopDecision do
         # The external path does not have this bug: there the nudge is part of
         # the stop hook's own response, which is delivered by definition. Only
         # an agent we run needed the dispatch.
-        if already_said?, do: :ok, else: deliver_message(scope, agent, message)
+        # Repeat-suppressed, like the decision beside it. It was not, and that
+        # asymmetry is the whole reason this message became noise: the menu goes
+        # quiet under `stuck?/2` when it repeats, and the nudge kept going out
+        # alone. An agent holding a task it cannot close — `issues_resolved`
+        # against issues in somebody else's repository — is then nudged on every
+        # single stop, forever, with nothing else being said.
+        #
+        # Measured 2026-09-08 over eight hours on one coding agent: 251 nudges
+        # against 85 menus. John: "I keep seeing this ... or some variation
+        # hitting the agent. Why?"
+        #
+        # Keyed on the task id, so closing one task and opening another says it
+        # again — what is suppressed is repeating *the same* instruction to an
+        # agent that has already heard it five times and not acted.
+        cond do
+          already_said? -> :ok
+          stuck?(agent, task.id, :nudge) -> :ok
+          true -> deliver_message(scope, agent, message)
+        end
     end
   end
 
