@@ -1,7 +1,6 @@
 defmodule CodeMySpec.ProblemsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  problem entities for testing.
+  Test data for `CodeMySpec.Problems`.
   """
 
   alias CodeMySpec.Problems.Problem

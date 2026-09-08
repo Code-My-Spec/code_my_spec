@@ -512,6 +512,7 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
   def fake(%{fakes: fakes}, :github), do: Map.fetch!(fakes, CodeMySpec.GitHub)
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc """
   The servers the account holds, for a `then_` asking what a run built.
   The provider's own state rather than the run's report: a step that says it

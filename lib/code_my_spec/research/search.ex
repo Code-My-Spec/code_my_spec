@@ -42,6 +42,7 @@ defmodule CodeMySpec.Research.Search do
     end
   end
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc "The provider that would be used, its module and key. Also drives refusals."
   @spec provider() :: {:ok, module(), String.t()} | {:error, error()}
   def provider do

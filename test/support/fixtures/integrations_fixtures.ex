@@ -1,7 +1,6 @@
 defmodule CodeMySpec.IntegrationsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Integrations` context.
+  Test data for `CodeMySpec.Integrations`.
   """
 
   alias CodeMySpec.Integrations.Integration

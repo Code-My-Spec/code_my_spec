@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.HarnessProjectChannel do
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @moduledoc """
   The **data plane** for one working copy: the channel a light harness holds
   while it serves that checkout.
@@ -1001,7 +1002,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {{ref, label}, pending} ->
         Logger.error("[HarnessProject] #{describe(label)} died: #{death_reason(reason)}")
 
-        Phoenix.Channel.reply(ref, {:error, %{"reason" => "handler_died", "at" => describe(label)}})
+        Phoenix.Channel.reply(
+          ref,
+          {:error, %{"reason" => "handler_died", "at" => describe(label)}}
+        )
 
         assign(socket, :pending_replies, pending)
     end

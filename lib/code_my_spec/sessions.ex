@@ -113,6 +113,7 @@ defmodule CodeMySpec.Sessions do
     |> Enum.map(&maybe_prune_orphan_tasks/1)
   end
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc """
   The open task an agent is holding, wherever it lives.
 

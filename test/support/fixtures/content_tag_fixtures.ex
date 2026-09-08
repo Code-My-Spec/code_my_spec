@@ -1,7 +1,6 @@
 defmodule CodeMySpec.ContentTagFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Content.ContentTag` schema.
+  Test data for `CodeMySpec.Content.ContentTag`.
   """
 
   alias CodeMySpec.Content.ContentTag

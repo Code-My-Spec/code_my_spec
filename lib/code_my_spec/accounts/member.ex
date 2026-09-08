@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Accounts.Member do
   @moduledoc """
-  The Member schema manages the many-to-many relationship between accounts and users with role-based permissions.
+  The many-to-many relationship between accounts and users, with role-based permissions.
 
   ## Role Hierarchy
   - `:owner` - Full control, can manage all aspects including deletion

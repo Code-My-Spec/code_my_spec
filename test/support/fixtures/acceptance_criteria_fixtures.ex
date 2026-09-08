@@ -1,7 +1,6 @@
 defmodule CodeMySpec.AcceptanceCriteriaFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.AcceptanceCriteria` context.
+  Test data for `CodeMySpec.AcceptanceCriteria`.
   """
 
   alias CodeMySpec.AcceptanceCriteria

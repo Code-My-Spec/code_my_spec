@@ -1,7 +1,6 @@
 defmodule CodeMySpec.ProjectsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Projects` context.
+  Test data for `CodeMySpec.Projects`.
   """
 
   @doc """

@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Content do
   @moduledoc """
-  The Content Context manages published content for public and authenticated viewing.
+  Published content for public and authenticated viewing.
 
   This is the production-ready content system that serves blog posts, pages, landing pages,
   and documentation to end users. Content is single-tenant (no account_id/project_id), and

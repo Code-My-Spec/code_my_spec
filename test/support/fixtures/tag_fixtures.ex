@@ -1,7 +1,6 @@
 defmodule CodeMySpec.TagFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Content.Tag` schema.
+  Test data for `CodeMySpec.Content.Tag`.
 
   Note: Tags are single-tenant (no account_id/project_id).
   The project and account parameters are kept for backwards compatibility

@@ -1,7 +1,6 @@
 defmodule CodeMySpec.UserPreferencesFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.UserPreferences` context.
+  Test data for `CodeMySpec.UserPreferences`.
   """
 
   import CodeMySpec.AccountsFixtures

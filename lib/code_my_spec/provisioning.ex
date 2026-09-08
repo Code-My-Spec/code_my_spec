@@ -80,6 +80,7 @@ defmodule CodeMySpec.Provisioning do
     widget: CodeMySpec.Provisioning.Widget
   }
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc "The module that owns a step, or nil for steps with no provider yet."
   @spec runner(atom()) :: module() | nil
   def runner(key), do: Map.get(@runners, key)

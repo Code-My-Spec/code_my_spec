@@ -1,7 +1,6 @@
 defmodule CodeMySpec.DependencyFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  dependency entities via the `CodeMySpec.Components.DependencyRepository`.
+  Test data for `CodeMySpec.Components.DependencyRepository`.
   """
 
   alias CodeMySpec.Components.DependencyRepository

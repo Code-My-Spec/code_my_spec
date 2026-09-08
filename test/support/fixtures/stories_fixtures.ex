@@ -1,7 +1,6 @@
 defmodule CodeMySpec.StoriesFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Stories` context.
+  Test data for `CodeMySpec.Stories`.
   """
 
   @doc """

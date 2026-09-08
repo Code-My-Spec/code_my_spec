@@ -1,7 +1,6 @@
 defmodule CodeMySpec.InvitationsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Invitations` context.
+  Test data for `CodeMySpec.Invitations`.
   """
 
   import CodeMySpec.AccountsFixtures

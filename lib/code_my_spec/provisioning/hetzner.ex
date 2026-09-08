@@ -670,6 +670,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc """
   The address a server holds on a private network.
 

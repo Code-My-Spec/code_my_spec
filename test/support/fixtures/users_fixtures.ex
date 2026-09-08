@@ -1,7 +1,6 @@
 defmodule CodeMySpec.UsersFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Users` context.
+  Test data for `CodeMySpec.Users`.
   """
 
   import Ecto.Query

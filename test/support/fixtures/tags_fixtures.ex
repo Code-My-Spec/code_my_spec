@@ -1,7 +1,6 @@
 defmodule CodeMySpec.TagsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Tags` context.
+  Test data for `CodeMySpec.Tags`.
   """
 
   alias CodeMySpec.Repo

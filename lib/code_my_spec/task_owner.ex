@@ -1,4 +1,5 @@
 defmodule CodeMySpec.TaskOwner do
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @moduledoc """
   The two things that can hold a task, behind one set of calls.
 

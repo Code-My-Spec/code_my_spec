@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.Layouts do
   @moduledoc """
-  This module holds layouts and related functionality
-  used by your application.
+  Page layouts (`app`, `marketing`, `live`) and shared chrome — flash group,
+  theme toggle.
   """
   use CodeMySpecWeb, :html
 

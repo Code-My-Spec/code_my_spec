@@ -1421,6 +1421,7 @@ defmodule CodeMySpecSpex.Fixtures do
   produces the push lives in `cms_harness`, so a spec drives the channel's own
   entry rather than a second version of it.
   """
+  # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc "The open task an agent holds, wherever it lives. See `Sessions.open_task_for_agent/2`."
   defdelegate open_task_for_agent(scope, agent_id), to: CodeMySpec.Sessions
 

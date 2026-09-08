@@ -1,7 +1,6 @@
 defmodule CodeMySpec.ContentFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Content` context.
+  Test data for `CodeMySpec.Content`.
 
   NOTE: project and account parameters are kept for backwards compatibility
   but are ignored since Content schema no longer has multi-tenant fields.

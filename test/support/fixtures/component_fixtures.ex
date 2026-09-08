@@ -1,7 +1,6 @@
 defmodule CodeMySpec.ComponentsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Components` context.
+  Test data for `CodeMySpec.Components`.
   """
 
   alias CodeMySpec.Components

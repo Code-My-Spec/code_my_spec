@@ -1,7 +1,6 @@
 defmodule CodeMySpec.OauthFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  OAuth-related entities.
+  Test data for OAuth integrations.
   """
 
   def oauth_application_fixture(attrs \\ %{}) do
