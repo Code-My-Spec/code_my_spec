@@ -208,7 +208,28 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp parse(request), do: {:error, request}
 
-  defp queued?(state, source), do: Enum.any?(state.queue, &(&1.source == source))
+  # In flight means queued *or* running, and it did not mean running.
+  #
+  # The clause above already refuses a second pending run for one source,
+  # because it "would only deliver the same answer twice". A run that has been
+  # dequeued and is executing is not in the queue, so a request arriving while
+  # spex was mid-sweep was accepted and stacked behind it — and with a
+  # continuous agent stopping every ten seconds, the next one stacked behind
+  # that.
+  #
+  # Measured on Broken Oaths 2026-09-08: 397 superseded runs against 25
+  # completed in ninety minutes, and no spex sweep finishing for thirty-four
+  # minutes on a suite that takes under three. `bdd_specs_passing` needs a fresh
+  # spex run to latch, so the agent holding that requirement waited on a sweep
+  # that could not land, said so in as many words — "purely waiting on the
+  # background spex sweep" — and stopped, which queued another one.
+  #
+  # The running sweep answers for the request that arrives during it. That is
+  # the same sentence as the queued case, one state later.
+  defp queued?(state, source) do
+    Enum.any?(state.queue, &(&1.source == source)) or
+      match?(%{source: ^source}, state.running)
+  end
 
   # Cheapest first. Measured on this harness: compiler ~9s, credo ~10s,
   # exunit ~2m10s, spex ~2m35s — more than an order of magnitude between the
