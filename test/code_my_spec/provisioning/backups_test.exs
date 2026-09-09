@@ -35,33 +35,35 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   @database_url "ecto://backups_test@localhost/prod"
 
   setup do
-    if Sops.available?() do
-      {:ok, tmp} = Briefly.create(directory: true)
-      env = Environment.new(:local, tmp)
+    build_context(Sops.available?())
+  end
 
-      {:ok, {pub, priv}} = Sops.generate_key()
-      :ok = Sops.write_config(env, %{"prod" => pub})
-      :ok = Sops.put_secret(env, "prod", "DATABASE_URL", @database_url, priv)
+  defp build_context(false), do: {:ok, skip: true}
 
-      write_backup_script(tmp)
+  defp build_context(true) do
+    {:ok, tmp} = Briefly.create(directory: true)
+    env = Environment.new(:local, tmp)
 
-      {:ok, env: env, tmp: tmp, key: priv}
-    else
-      {:ok, skip: true}
-    end
+    {:ok, {pub, priv}} = Sops.generate_key()
+    :ok = Sops.write_config(env, %{"prod" => pub})
+    :ok = Sops.put_secret(env, "prod", "DATABASE_URL", @database_url, priv)
+
+    write_backup_script(tmp)
+
+    {:ok, env: env, tmp: tmp, key: priv}
   end
 
   describe "the environment handed to bin/backup" do
     test "carries the age key, so the script decrypts its own DATABASE_URL", ctx do
-      if ctx[:skip], do: :ok, else: assert_decrypts(ctx)
+      assert_decrypts(ctx)
     end
 
     test "without the key, the script cannot read its credentials", ctx do
-      if ctx[:skip], do: :ok, else: assert_fails_without_key(ctx)
+      assert_fails_without_key(ctx)
     end
 
     test "the file's value wins over a passed database_url, so the key is the fix", ctx do
-      if ctx[:skip], do: :ok, else: assert_file_wins(ctx)
+      assert_file_wins(ctx)
     end
 
     # Found live against broken_oaths: `put_database_url/3` (steps.ex) has
@@ -72,9 +74,14 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
     # through, the same class of gap `assert_file_wins` already guards for
     # `database_url`.
     test "restore_admin_url reaches the script as CMS_RESTORE_ADMIN_URL", ctx do
-      if ctx[:skip], do: :ok, else: assert_restore_admin_url_passed(ctx)
+      assert_restore_admin_url_passed(ctx)
     end
   end
+
+  # sops absent on this machine: the setup above already reported it via
+  # `skip`, and there is nothing to decrypt against, so the assertion these
+  # would make cannot mean anything here.
+  defp assert_decrypts(%{skip: true}), do: :ok
 
   defp assert_decrypts(ctx) do
     assert {:ok, key, _source_rows} =
@@ -89,6 +96,8 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
     assert key == "prod/#{@database_url}"
   end
 
+  defp assert_fails_without_key(%{skip: true}), do: :ok
+
   defp assert_fails_without_key(ctx) do
     # The regression itself: same call, no key. sops has no identity, the
     # script's `source` yields nothing, and the dump has no credentials.
@@ -97,6 +106,8 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
 
     assert message =~ "no DATABASE_URL"
   end
+
+  defp assert_file_wins(%{skip: true}), do: :ok
 
   # Records why the key, and not the connection string, was the right thing to
   # pass. The script sources its env file unconditionally, so a `DATABASE_URL`
@@ -115,6 +126,8 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
 
     assert key == "prod/#{@database_url}"
   end
+
+  defp assert_restore_admin_url_passed(%{skip: true}), do: :ok
 
   defp assert_restore_admin_url_passed(ctx) do
     assert {:error, message} =
