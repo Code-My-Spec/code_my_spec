@@ -28,25 +28,56 @@ defmodule CodeMySpec.MailDomainTest do
   ]
 
   defp install_plug(status) do
-    plug = fn conn ->
-      case {conn.method, conn.request_path} do
-        {"POST", "/domains"} ->
-          Test.json(conn, %{
-            "id" => "dom_1",
-            "name" => "x",
-            "status" => "not_started",
-            "records" => @records
-          })
+    Test.stub(ResendClient, &domain_response(&1, status))
+  end
 
-        {"POST", "/domains/dom_1/verify"} ->
-          Test.json(conn, %{"id" => "dom_1", "status" => status})
+  defp domain_response(%{method: "POST", request_path: "/domains"} = conn, _status) do
+    Test.json(conn, %{
+      "id" => "dom_1",
+      "name" => "x",
+      "status" => "not_started",
+      "records" => @records
+    })
+  end
 
-        {"GET", "/domains/dom_1"} ->
-          Test.json(conn, %{"id" => "dom_1", "status" => status, "records" => @records})
-      end
-    end
+  defp domain_response(%{method: "POST", request_path: "/domains/dom_1/verify"} = conn, status) do
+    Test.json(conn, %{"id" => "dom_1", "status" => status})
+  end
 
-    Test.stub(ResendClient, plug)
+  defp domain_response(%{method: "GET", request_path: "/domains/dom_1"} = conn, status) do
+    Test.json(conn, %{"id" => "dom_1", "status" => status, "records" => @records})
+  end
+
+  defp adopt_existing_domain_response(%{method: "POST", request_path: "/domains"} = conn) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.resp(
+      403,
+      Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"})
+    )
+  end
+
+  defp adopt_existing_domain_response(%{method: "GET", request_path: "/domains"} = conn) do
+    Test.json(conn, %{
+      "object" => "list",
+      "data" => [
+        %{"id" => "dom_existing", "name" => "inbound.sam-ships.com", "status" => "verified"}
+      ]
+    })
+  end
+
+  defp adopt_existing_domain_response(
+         %{method: "GET", request_path: "/domains/dom_existing"} = conn
+       ) do
+    Test.json(conn, %{"id" => "dom_existing", "status" => "verified", "records" => @records})
+  end
+
+  defp send_email_response(%{method: "POST", request_path: "/emails"} = conn) do
+    Test.json(conn, %{"id" => "email_1"})
+  end
+
+  defp fetch_body_response(%{method: "GET", request_path: "/emails/receiving/" <> _} = conn) do
+    Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
   end
 
   describe "setup_domain/3" do
@@ -68,38 +99,7 @@ defmodule CodeMySpec.MailDomainTest do
     end
 
     test "adopts an already-registered domain when the provider rejects creation" do
-      plug = fn conn ->
-        case {conn.method, conn.request_path} do
-          {"POST", "/domains"} ->
-            conn
-            |> Plug.Conn.put_resp_content_type("application/json")
-            |> Plug.Conn.resp(
-              403,
-              Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"})
-            )
-
-          {"GET", "/domains"} ->
-            Test.json(conn, %{
-              "object" => "list",
-              "data" => [
-                %{
-                  "id" => "dom_existing",
-                  "name" => "inbound.sam-ships.com",
-                  "status" => "verified"
-                }
-              ]
-            })
-
-          {"GET", "/domains/dom_existing"} ->
-            Test.json(conn, %{
-              "id" => "dom_existing",
-              "status" => "verified",
-              "records" => @records
-            })
-        end
-      end
-
-      Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, &adopt_existing_domain_response/1)
       scope = full_scope_fixture()
 
       assert {:ok, project, records} =
@@ -146,13 +146,7 @@ defmodule CodeMySpec.MailDomainTest do
 
   describe "send_outbound/2 (Resend delivery)" do
     test "sends via the provider and records the returned provider id" do
-      plug = fn conn ->
-        case {conn.method, conn.request_path} do
-          {"POST", "/emails"} -> Test.json(conn, %{"id" => "email_1"})
-        end
-      end
-
-      Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, &send_email_response/1)
       scope = full_scope_fixture()
       {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
 
@@ -261,14 +255,7 @@ defmodule CodeMySpec.MailDomainTest do
     end
 
     test "pulls text/html from the Receiving API when the event carries none", ctx do
-      plug = fn conn ->
-        case {conn.method, conn.request_path} do
-          {"GET", "/emails/receiving/" <> _} ->
-            Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
-        end
-      end
-
-      Test.stub(ResendClient, plug)
+      Test.stub(ResendClient, &fetch_body_response/1)
 
       {:ok, email} =
         Mail.route_inbound(ctx.project, %{
@@ -325,22 +312,19 @@ defmodule CodeMySpec.MailDomainTest do
       }
 
       plug = fn conn ->
-        body =
-          case {conn.method, conn.request_path} do
-            {"GET", "/emails/receiving/" <> _} ->
-              Jason.encode!(%{"text" => "Recovered body", "html" => "<p>Recovered body</p>"})
-
-            {"GET", "/emails/receiving"} ->
-              Jason.encode!(received)
-          end
-
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, body)
+        |> Plug.Conn.send_resp(200, sync_body(conn, received))
       end
 
       Test.stub(ResendClient, plug)
     end
+
+    defp sync_body(%{method: "GET", request_path: "/emails/receiving/" <> _}, _received),
+      do: Jason.encode!(%{"text" => "Recovered body", "html" => "<p>Recovered body</p>"})
+
+    defp sync_body(%{method: "GET", request_path: "/emails/receiving"}, received),
+      do: Jason.encode!(received)
 
     test "inserts inbound the project never recorded and reports counts", ctx do
       sync_plug()
