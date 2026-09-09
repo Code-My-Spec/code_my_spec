@@ -75,6 +75,22 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Map.new()
   end
 
+  @doc """
+  Every story's working copy, keyed by story id.
+
+  Which checkout owns a story, so a finding about it can be told from a finding
+  about somebody else's work. Spec files are on disk and stories are assigned,
+  and the two drift — a copy that once held an epic keeps its files after the
+  epic moves — so the file's location is not the answer and the assignment is.
+  """
+  def list_working_copy_ids_by_story(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and not is_nil(s.working_copy_id))
+    |> select([s], {s.id, s.working_copy_id})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   def list_project_stories(%Scope{} = scope) do
     stories =
       Story

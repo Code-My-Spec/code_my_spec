@@ -71,6 +71,9 @@ defmodule CodeMySpec.Stories do
   directory name back to the story that owns it.
   """
   def list_story_ids_by_number(scope), do: impl().list_story_ids_by_number(scope)
+
+  @doc "Which working copy owns each story."
+  def list_working_copy_ids_by_story(scope), do: impl().list_working_copy_ids_by_story(scope)
   def project_has_stories?(scope), do: impl().project_has_stories?(scope)
 
   @doc """
