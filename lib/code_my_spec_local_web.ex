@@ -25,6 +25,7 @@ defmodule CodeMySpecLocalWeb do
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,
       CodeMySpec.Projects,
+      CodeMySpec.Users,
       # Story LiveViews are shared with the cloud app and live there. The edge
       # only runs this way: CodeMySpecWeb reaches back through the
       # `:story_host` assign, never by naming this boundary.

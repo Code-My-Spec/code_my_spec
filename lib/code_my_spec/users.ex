@@ -3,6 +3,18 @@ defmodule CodeMySpec.Users do
   The Users context.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec,
+      CodeMySpec.Analytics,
+      CodeMySpec.Environments,
+      CodeMySpec.Mailer,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
   alias CodeMySpec.Repo
 
@@ -136,7 +148,11 @@ defmodule CodeMySpec.Users do
 
   Returns `{:ok, user, :existing | :new}`.
   """
-  def find_or_register_oauth_user(provider, %{provider_user_id: provider_user_id, email: email}, opts \\ []) do
+  def find_or_register_oauth_user(
+        provider,
+        %{provider_user_id: provider_user_id, email: email},
+        opts \\ []
+      ) do
     alias CodeMySpec.Integrations.IntegrationRepository
 
     result =

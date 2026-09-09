@@ -36,7 +36,8 @@ defmodule CodeMySpec.Hooks do
       CodeMySpec.Environments,
       CodeMySpec.FileEdits,
       CodeMySpec.McpServers,
-      CodeMySpec.Repo
+      CodeMySpec.Repo,
+      CodeMySpec.Users
     ],
     exports: :all
 end

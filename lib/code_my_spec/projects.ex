@@ -5,7 +5,7 @@ defmodule CodeMySpec.Projects do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Oauth, CodeMySpec.Repo, CodeMySpec.Utils],
+    deps: [CodeMySpec, CodeMySpec.Oauth, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Utils],
     exports: :all
 
   import Ecto.Query, warn: false

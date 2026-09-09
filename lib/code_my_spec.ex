@@ -33,6 +33,7 @@ defmodule CodeMySpec do
       CodeMySpec.TempFile,
       CodeMySpec.Tests,
       CodeMySpec.Uploads,
+      CodeMySpec.Users,
       CodeMySpec.Utils,
       CodeMySpec.Vault
     ],

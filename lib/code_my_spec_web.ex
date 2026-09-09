@@ -37,6 +37,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Oauth,
       CodeMySpec.Projects,
       CodeMySpec.Uploads,
+      CodeMySpec.Users,
       CodeMySpec.Utils
     ],
     exports: :all

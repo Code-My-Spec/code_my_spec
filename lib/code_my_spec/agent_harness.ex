@@ -38,7 +38,8 @@ defmodule CodeMySpec.AgentHarness do
       CodeMySpec.McpServers,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
-      CodeMySpec.Repo
+      CodeMySpec.Repo,
+      CodeMySpec.Users
     ],
     exports: :all
 

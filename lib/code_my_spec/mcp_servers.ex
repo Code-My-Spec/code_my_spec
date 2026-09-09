@@ -23,6 +23,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Research,
+      CodeMySpec.Users,
       CodeMySpec.Utils
     ],
     exports: :all
