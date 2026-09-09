@@ -114,7 +114,13 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   @impl true
   def handle_cast({:enqueue, runs}, state) do
-    {:noreply, runs |> Enum.reduce(state, &accept/2) |> maybe_start_next()}
+    state =
+      runs
+      |> Enum.reduce(state, &accept/2)
+      |> settle()
+      |> maybe_start_next()
+
+    {:noreply, state}
   end
 
   @impl true
@@ -191,7 +197,7 @@ defmodule CmsHarness.Project.AnalysisServer do
           push_result(state.project.root, run_id, source, {:superseded, "already queued"})
           state
         else
-          entry = %{run_id: run_id, source: source, args: args}
+          entry = %{run_id: run_id, source: source, args: args, settled: false}
           %{state | queue: insert_by_cost(state.queue, entry)}
         end
 
@@ -256,10 +262,39 @@ defmodule CmsHarness.Project.AnalysisServer do
   to the right clause only because one guards on `is_list`.
   """
   def insert_by_cost(queue, entry) do
-    # `sort_by/2` is stable, so two runs of one source keep their arrival order
-    # and only the cheap-vs-expensive ordering changes.
-    Enum.sort_by(queue ++ [entry], &Map.get(@cost, &1.source, 9))
+    # Cheapest first *among what is waiting together*, and never ahead of
+    # something that was already waiting.
+    #
+    # This sorted the whole queue on every arrival, so a compiler request
+    # landing while spex sat queued went in front of it. That is right for one
+    # batch — the two an agent can act on immediately should arrive first — and
+    # wrong the moment requests keep coming, because the cheap one keeps
+    # arriving and the expensive one never reaches the front.
+    #
+    # Measured on Broken Oaths 2026-09-08, after in-flight runs were allowed to
+    # finish: six compiler sweeps completed in thirty seconds and not one spex
+    # sweep, on a copy whose coding agent was blocked waiting for exactly that
+    # spex result. `bdd_specs_passing` needs a fresh one to latch, so the
+    # requirement could not be satisfied by any amount of correct work.
+    #
+    # `waiting` is everything that has been in the queue at least one arrival;
+    # a new entry sorts only against the arrivals it shares a batch with, which
+    # is what `@cost` was reasoning about in the first place.
+    # Absent reads as unsettled, so a caller building an entry by hand — every
+    # direct test of this ordering — still sorts the way the cost table says.
+    {waiting, arriving} = Enum.split_while(queue, &Map.get(&1, :settled, false))
+
+    sorted =
+      (arriving ++ [entry])
+      |> Enum.sort_by(&Map.get(@cost, &1.source, 9))
+
+    waiting ++ sorted
   end
+
+  # Everything currently queued has now waited through an arrival, so the next
+  # one sorts behind it rather than in front. Called when a batch is done.
+  defp settle(%{queue: queue} = state),
+    do: %{state | queue: Enum.map(queue, &Map.put(&1, :settled, true))}
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
