@@ -155,6 +155,41 @@ defmodule CodeMySpec.Conversations.Message do
     ])
     |> validate_required([:role, :conversation_id])
     |> validate_parts()
+    |> name_an_empty_writer()
+  end
+
+  # Who wrote a message with nothing in it.
+  #
+  # I have guarded this four times — a missing `"text"` key, a `nil` text, a
+  # blank binary, and finally the rendered parts — and empty rows kept arriving
+  # from a caller I could not find by reading. Each guard was a guess about the
+  # shape; none of them was a way to find the writer.
+  #
+  # So the row names it. One `Logger.warning` with the stack, only on the path
+  # that should no longer happen, is worth more than a fifth guess: an empty
+  # message renders as the agent having spoken and said nothing, and a coding
+  # agent showing 99 of those against 0 real ones cost a day of looking inside a
+  # provider for a fault that was never there.
+  #
+  # Not a validation. Refusing the insert would lose whatever else the row
+  # carries, and the point is to learn where it comes from, not to drop it.
+  defp name_an_empty_writer(changeset) do
+    case Ecto.Changeset.get_field(changeset, :content) do
+      [] ->
+        require Logger
+
+        Logger.warning(
+          "[Conversations] an empty message reached the changeset — " <>
+            "role=#{inspect(Ecto.Changeset.get_field(changeset, :role))} " <>
+            "sender=#{inspect(Ecto.Changeset.get_field(changeset, :sender_id))}\n" <>
+            Exception.format_stacktrace()
+        )
+
+        changeset
+
+      _ ->
+        changeset
+    end
   end
 
   # Every part declares a type we know how to render. An unknown type would
