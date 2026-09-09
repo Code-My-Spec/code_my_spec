@@ -55,10 +55,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Epics
   alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.ProjectTimeline
@@ -158,6 +160,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # page watches — without this, starting or finishing a task only shows up
       # here after something else happens to cause a re-render.
       Sessions.subscribe_sessions(scope)
+
+      # The dynamic panel's own content, live. Without these, "stories" and
+      # "epics" were only ever a snapshot taken the moment the tab last
+      # switched — an agent creating a new epic while you watched something
+      # else, or adding a story to an epic already on screen, changed nothing
+      # you could see without navigating away and back. Epics additionally
+      # drives the panel to the epic view itself on any epic event, the same
+      # way `show_in_panel` does when the agent remembers to call it — this is
+      # the version that does not depend on the agent remembering.
+      Epics.subscribe(scope)
+      Stories.subscribe_stories(scope)
     end
 
     # Computed once and reused: `team_status/3` cross-references the same
@@ -303,12 +316,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         socket
         |> assign(:dynamic_stories, [])
         |> assign(:dynamic_story, story)
+        |> assign(:dynamic_epics, [])
+
+      "epics" ->
+        socket
+        |> assign(:dynamic_stories, [])
+        |> assign(:dynamic_story, nil)
+        |> assign(:dynamic_epics, safe_epics(scope))
 
       _ ->
         socket
         |> assign(:dynamic_stories, safe_stories(scope))
         |> assign(:dynamic_story, nil)
+        |> assign(:dynamic_epics, [])
     end
+  end
+
+  # A panel that cannot list epics should say so and leave the rest of the
+  # screen alone, same reasoning as `safe_stories/1` below.
+  defp safe_epics(scope) do
+    Epics.list_epics(scope)
+  rescue
+    _ -> []
   end
 
   # A panel that cannot list stories should say so and leave the rest of the
@@ -986,6 +1015,40 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, refresh_team_status(socket)}
   end
 
+  # An epic changing refreshes the panel in place when it is already showing
+  # epics, and offers the switch to it otherwise — the same offer/take path
+  # `show_in_panel` uses when the agent remembers to call it, so a narrow
+  # screen still waits for a tap and a wide one takes it immediately.
+  # `ScreenState.show/2` broadcasts `:screen_changed`, which the handler above
+  # applies; this only decides whether to ask.
+  def handle_info({event, _epic_payload}, socket)
+      when event in [:epic_created, :epic_updated, :epic_deleted, :epic_stories_released] do
+    if socket.assigns.dynamic_view == "epics" do
+      {:noreply, assign_dynamic(socket)}
+    else
+      {:ok, _screen} = ScreenState.show(socket.assigns.current_scope, %{view: "epics"})
+      {:noreply, socket}
+    end
+  end
+
+  # Refreshes the stories view in place when one is already showing. Scoped to
+  # this project: `Stories.subscribe_stories/1`'s topic is account-wide, so an
+  # edit to a sibling project's story would otherwise redraw a list that never
+  # included it. Unlike epics, a story change does not offer a switch — stories
+  # is already the panel's default view.
+  def handle_info({event, %Story{project_id: project_id}}, socket)
+      when event in [:created, :updated, :deleted] do
+    socket =
+      if project_id == socket.assigns.project.id and
+           socket.assigns.dynamic_view in ["stories", "story"] do
+        assign_dynamic(socket)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   # The team-status panel's whole claim is "what is running, and who needs
   # you, right now" — the same news `WorkingCopyLive.Index` redraws on.
   # `:session_changed` is in the mix too: it is what fires when a task
@@ -1059,6 +1122,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
+          dynamic_epics={@dynamic_epics}
           offer={@offer}
           activity={@activity}
           waiting={@waiting}
@@ -1148,6 +1212,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
+              dynamic_epics={@dynamic_epics}
               offer={@offer}
               activity={@activity}
               waiting={@waiting}
@@ -1437,6 +1502,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
+  attr :dynamic_epics, :list, required: true
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
@@ -1503,6 +1569,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
+          dynamic_epics={@dynamic_epics}
           offer={@offer}
           activity={@activity}
           copies={@copies}
@@ -1595,6 +1662,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
+              dynamic_epics={@dynamic_epics}
               activity={@activity}
               copies={@copies}
               project_id={@project_id}
@@ -1672,6 +1740,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
+  attr :dynamic_epics, :list, required: true
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :copies, :list, required: true
@@ -1736,10 +1805,32 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         That story is not on this project, or has been deleted.
       </p>
 
+      <%!-- Epics, most recently named first — same list shape as stories below,
+      switched to on any epic event (see `handle_info/2`) so an epic the agent
+      just created appears without anybody asking for it. --%>
+      <div :if={@dynamic_view == "epics"}>
+        <p :if={@dynamic_epics == []} class="opacity-70">
+          No epics yet. Ask the agent to group some stories into one.
+        </p>
+
+        <ul class="space-y-1">
+          <li :for={epic <- @dynamic_epics} data-test="dynamic-epic">
+            <.link
+              navigate={~p"/app/projects/#{epic.project_id}/epics/#{epic.slug}"}
+              class="flex items-baseline gap-2 link link-hover"
+            >
+              <span class={["block size-2 shrink-0 rounded-full", epic_status_dot(epic.status)]} />
+              <span class="truncate">{epic.name}</span>
+              <span class="shrink-0 text-xs opacity-60">{length(epic.stories)}</span>
+            </.link>
+          </li>
+        </ul>
+      </div>
+
       <%!-- Otherwise the project's stories, most recent first. The list is the
       default because it is the one view that is useful before anybody has asked
       for anything in particular. --%>
-      <div :if={@dynamic_view != "story"}>
+      <div :if={@dynamic_view not in ["story", "epics"]}>
         <p :if={@dynamic_stories == []} class="opacity-70">
           No stories yet. Ask the agent for one.
         </p>
@@ -1862,4 +1953,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural
+
+  # Mirrors the story dot's done/not-yet split, widened to the epic's four
+  # states: dispatched is done, proposed is waiting on a person (the same
+  # amber the team-status panel uses for "needs you"), draft is not yet, and
+  # failed is its own color because it is not simply "not yet" — the agent
+  # tried and stopped.
+  defp epic_status_dot(:dispatched), do: "bg-success"
+  defp epic_status_dot(:proposed), do: "bg-warning"
+  defp epic_status_dot(:failed), do: "bg-error"
+  defp epic_status_dot(_draft), do: "bg-base-content/20"
 end

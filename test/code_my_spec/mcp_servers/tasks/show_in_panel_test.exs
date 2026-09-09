@@ -65,6 +65,13 @@ defmodule CodeMySpec.McpServers.Tasks.ShowInPanelTest do
     assert ScreenState.get(ctx.scope).offered_view == "stories"
   end
 
+  test "pointing the panel at epics needs no story either", ctx do
+    {:reply, response, _frame} = ShowInPanel.execute(%{view: "epics"}, ctx.frame)
+
+    refute response.isError
+    assert ScreenState.get(ctx.scope).offered_view == "epics"
+  end
+
   test "a story that is not on this project is refused", ctx do
     {:reply, response, _frame} =
       ShowInPanel.execute(%{view: "story", story_id: 99_999_999}, ctx.frame)

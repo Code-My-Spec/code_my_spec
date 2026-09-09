@@ -201,6 +201,78 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       assert render(view) =~ "move to the next requirement"
     end
+
+    test "an epic created while the dynamic tab is open switches it to epics, live", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      render_hook(view, "viewport", %{"width" => 1440})
+      view |> element(~s([data-test="panel-tab-dynamic"])) |> render_click()
+
+      html = render(view)
+      assert html =~ ~s(data-dynamic-view="stories")
+
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding polish"})
+
+      # Two hops, two messages: the epic event's own handler calls
+      # `ScreenState.show/2`, which broadcasts `:screen_changed` to the same
+      # process — a second message this render() has to let through before the
+      # switch is visible. The first render() below processes `:epic_created`
+      # (and, in doing so, enqueues `:screen_changed` behind it); the second
+      # sees `:screen_changed` applied.
+      render(view)
+      html = render(view)
+      assert html =~ ~s(data-dynamic-view="epics")
+      assert html =~ epic.name
+    end
+
+    test "a second epic appearing while epics are already shown appears without reloading", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      scope = %{scope | active_project_id: project.id, active_project: project}
+      {:ok, first} = CodeMySpec.Epics.create_epic(scope, %{name: "Already there"})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      render_hook(view, "viewport", %{"width" => 1440})
+      view |> element(~s([data-test="panel-tab-dynamic"])) |> render_click()
+      CodeMySpec.ScreenState.show(scope, %{view: "epics"})
+      html = render(view)
+      assert html =~ first.name
+
+      {:ok, second} = CodeMySpec.Epics.create_epic(scope, %{name: "Just arrived"})
+
+      html = render(view)
+      assert html =~ first.name
+      assert html =~ second.name
+    end
+
+    test "a new story appearing while the stories view is shown appears without reloading", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      render_hook(view, "viewport", %{"width" => 1440})
+      view |> element(~s([data-test="panel-tab-dynamic"])) |> render_click()
+
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{title: "Freshly asked for"})
+
+      html = render(view)
+
+      assert html =~ story.title,
+             "the stories view did not pick up a story created after the panel opened"
+    end
   end
 
   # Two agents on one checkout are two rows, and the page has to say which is

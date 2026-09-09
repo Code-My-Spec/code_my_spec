@@ -40,12 +40,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
   schema do
     field :view, :string,
       required: true,
-      doc: ~s(What the panel should show. "stories" for the project's list, "story" for one.)
+      doc:
+        ~s(What the panel should show. "stories" for the project's list, "story" for one, ) <>
+          ~s("epics" for the project's epics.)
 
     field :story_id, :integer, doc: "Which story, when view is \"story\". Ignored otherwise."
   end
 
-  @views ~w(stories story)
+  @views ~w(stories story epics)
 
   @impl true
   def execute(%{view: view} = params, frame) when view in @views do
@@ -88,6 +90,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
   # wrong thing for an id that was never right — the agent can fix the second
   # and only the agent knows it made it up.
   defp check_story(_scope, "stories", _id), do: :ok
+  defp check_story(_scope, "epics", _id), do: :ok
   defp check_story(_scope, "story", nil), do: {:error, :no_such_story}
 
   defp check_story(scope, "story", id) do
@@ -101,4 +104,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
 
   defp said("stories", _id),
     do: "The panel is showing this project's stories."
+
+  defp said("epics", _id),
+    do: "The panel is showing this project's epics."
 end
