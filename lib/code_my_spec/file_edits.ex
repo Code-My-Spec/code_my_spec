@@ -22,6 +22,8 @@ defmodule CodeMySpec.FileEdits do
   rows, which matters because `clear_edits/1` is keyed on that column.
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+
   import Ecto.Query
   alias CodeMySpec.FileEdits.FileEdit
   alias CodeMySpec.Repo
@@ -78,23 +80,6 @@ defmodule CodeMySpec.FileEdits do
 
   def get_edited_files_for_agent(_agent_id), do: []
 
-  @doc """
-  Forget everything an agent has edited.
-
-  For the end of a unit of work rather than the end of a turn — an agent is
-  answerable for what it wrote until somebody decides it is not.
-  """
-  @spec clear_agent_edits(String.t()) :: :ok
-  def clear_agent_edits(agent_id) when is_binary(agent_id) do
-    FileEdit
-    |> where([e], e.agent_id == ^agent_id)
-    |> Repo.delete_all()
-
-    :ok
-  end
-
-  def clear_agent_edits(_agent_id), do: :ok
-
   defp agent_session_id(agent_id), do: "agent:" <> agent_id
 
   @doc """
@@ -118,64 +103,5 @@ defmodule CodeMySpec.FileEdits do
     |> where([e], e.external_session_id == ^external_session_id and e.agent_id == ^agent_id)
     |> select([e], e.file_path)
     |> Repo.all()
-  end
-
-  @doc """
-  Clear all edits for an external session.
-  """
-  @spec clear_edits(String.t()) :: :ok
-  def clear_edits(external_session_id) do
-    FileEdit
-    |> where([e], e.external_session_id == ^external_session_id)
-    |> Repo.delete_all()
-
-    :ok
-  end
-
-  @doc """
-  Remove specific file paths from tracking for an external session.
-  Used to clean up validated files that passed all checks.
-
-  When agent_id is provided, only removes records for that agent.
-  Otherwise removes all matching records regardless of agent.
-  """
-  @spec remove_edited_files(String.t(), [String.t()], String.t() | nil) :: :ok
-  def remove_edited_files(external_session_id, file_paths, agent_id \\ nil)
-
-  def remove_edited_files(_external_session_id, [], _agent_id), do: :ok
-
-  def remove_edited_files(external_session_id, file_paths, nil) when is_list(file_paths) do
-    FileEdit
-    |> where([e], e.external_session_id == ^external_session_id)
-    |> where([e], e.file_path in ^file_paths)
-    |> Repo.delete_all()
-
-    :ok
-  end
-
-  def remove_edited_files(external_session_id, file_paths, agent_id) when is_list(file_paths) do
-    FileEdit
-    |> where([e], e.external_session_id == ^external_session_id and e.agent_id == ^agent_id)
-    |> where([e], e.file_path in ^file_paths)
-    |> Repo.delete_all()
-
-    :ok
-  end
-
-  @doc """
-  List all file edit records.
-  """
-  @spec list_all() :: [FileEdit.t()]
-  def list_all do
-    Repo.all(FileEdit)
-  end
-
-  @doc """
-  Delete all file edit records.
-  """
-  @spec truncate_all() :: :ok
-  def truncate_all do
-    Repo.delete_all(FileEdit)
-    :ok
   end
 end

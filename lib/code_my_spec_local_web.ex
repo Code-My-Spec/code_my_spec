@@ -20,6 +20,7 @@ defmodule CodeMySpecLocalWeb do
       # `Application.start_harness/0`. One binary that can be either.
       CmsHarness,
       CodeMySpec.Environments,
+      CodeMySpec.FileEdits,
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,
       # Story LiveViews are shared with the cloud app and live there. The edge

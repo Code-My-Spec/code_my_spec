@@ -34,6 +34,7 @@ defmodule CodeMySpec.Hooks do
     deps: [
       CodeMySpec,
       CodeMySpec.Environments,
+      CodeMySpec.FileEdits,
       CodeMySpec.McpServers,
       CodeMySpec.Repo
     ],
