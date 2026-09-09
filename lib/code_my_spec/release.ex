@@ -3,6 +3,8 @@ defmodule CodeMySpec.Release do
   Used for executing DB release tasks when run in production without Mix
   installed.
   """
+  use Boundary, top_level?: true, deps: [CodeMySpec.Utils], exports: :all
+
   alias CodeMySpec.Utils.Data
 
   @app :code_my_spec

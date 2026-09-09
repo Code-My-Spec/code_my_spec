@@ -25,6 +25,7 @@ defmodule CodeMySpec do
       CodeMySpec.Oauth,
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
+      CodeMySpec.Release,
       CodeMySpec.Repo,
       CodeMySpec.Research,
       CodeMySpec.Rules,
