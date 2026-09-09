@@ -231,13 +231,15 @@ defmodule CmsHarness.AgentsTest do
   end
 
   defp wait_for_registration(root, attempts) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
-      [] ->
-        Process.sleep(5)
-        wait_for_registration(root, attempts - 1)
-
-      [_] ->
-        :ok
-    end
+    CmsHarness.Registry
+    |> Registry.lookup({:channel, root})
+    |> registration_result(root, attempts)
   end
+
+  defp registration_result([], root, attempts) do
+    Process.sleep(5)
+    wait_for_registration(root, attempts - 1)
+  end
+
+  defp registration_result([_], _root, _attempts), do: :ok
 end

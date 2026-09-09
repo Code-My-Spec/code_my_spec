@@ -29,11 +29,11 @@ defmodule CmsHarness.DeviceTest do
 
     @impl true
     def announce(device_id, _token, _attrs) do
-      case Process.get(:device_test_reply) do
-        nil -> {:ok, %{device_id: device_id, working_copies: %{}}}
-        reply -> reply
-      end
+      announce_reply(device_id, Process.get(:device_test_reply))
     end
+
+    defp announce_reply(device_id, nil), do: {:ok, %{device_id: device_id, working_copies: %{}}}
+    defp announce_reply(_device_id, reply), do: reply
   end
 
   setup do

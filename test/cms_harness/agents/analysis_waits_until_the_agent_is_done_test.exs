@@ -58,22 +58,26 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     counter = :counters.new(1, [])
 
     fn conn ->
-      if :counters.get(counter, 1) == 0 do
-        :counters.add(counter, 1, 1)
-        send(test_pid, {:holding_turn, self()})
-
-        receive do
-          :release -> :ok
-        after
-          10_000 -> :ok
-        end
-      end
+      hold_first_turn(counter, test_pid, :counters.get(counter, 1))
 
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.resp(200, reply_body())
     end
   end
+
+  defp hold_first_turn(counter, test_pid, 0) do
+    :counters.add(counter, 1, 1)
+    send(test_pid, {:holding_turn, self()})
+
+    receive do
+      :release -> :ok
+    after
+      10_000 -> :ok
+    end
+  end
+
+  defp hold_first_turn(_counter, _test_pid, _count), do: :ok
 
   defp start_agent(root, plug, events) do
     id = "turn-end-#{System.unique_integer([:positive])}"

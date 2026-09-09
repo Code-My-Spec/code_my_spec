@@ -38,12 +38,7 @@ defmodule CmsHarness.WorkingCopiesEnvOverrideTest do
     # own settings.local.json would actually set.
     System.put_env("CMS_HARNESS_ID", Ecto.UUID.generate())
 
-    on_exit(fn ->
-      case previous do
-        nil -> System.delete_env("CMS_HARNESS_ID")
-        value -> System.put_env("CMS_HARNESS_ID", value)
-      end
-    end)
+    on_exit(fn -> restore_harness_id(previous) end)
 
     known = WorkingCopies.all()
 
@@ -55,4 +50,7 @@ defmodule CmsHarness.WorkingCopiesEnvOverrideTest do
            "root b answered with the env var's id instead of its own — " <>
              "got #{inspect(known)}"
   end
+
+  defp restore_harness_id(nil), do: System.delete_env("CMS_HARNESS_ID")
+  defp restore_harness_id(value), do: System.put_env("CMS_HARNESS_ID", value)
 end

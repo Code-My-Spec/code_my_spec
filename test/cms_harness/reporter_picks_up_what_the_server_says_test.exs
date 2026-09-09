@@ -80,16 +80,16 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
   # tree dies with whichever test happened to start it and the next one either
   # raises `unknown registry` or starts a second tree beside the first.
   defp ensure_started(name, start) do
-    case Process.whereis(name) do
-      nil ->
-        {:ok, pid} = start.()
-        Process.unlink(pid)
-        :ok
-
-      _pid ->
-        :ok
-    end
+    start_if_needed(Process.whereis(name), start)
   end
+
+  defp start_if_needed(nil, start) do
+    {:ok, pid} = start.()
+    Process.unlink(pid)
+    :ok
+  end
+
+  defp start_if_needed(_pid, _start), do: :ok
 
   defp restore(key, nil), do: Application.delete_env(:code_my_spec, key)
   defp restore(key, value), do: Application.put_env(:code_my_spec, key, value)
@@ -121,9 +121,9 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
     WorkingCopyReporter.report(pid)
 
     assert root in served(),
-             "the harness was told it is carrying this copy and did not pick it up. " <>
-               "Every restart drops every copy nobody has a session open in, and the " <>
-               "agents on them go unreachable with nothing saying so."
+           "the harness was told it is carrying this copy and did not pick it up. " <>
+             "Every restart drops every copy nobody has a session open in, and the " <>
+             "agents on them go unreachable with nothing saying so."
   end
 
   test "a copy the server names that is not on disk is left alone", %{dir: dir} do

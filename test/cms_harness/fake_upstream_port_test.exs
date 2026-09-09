@@ -80,13 +80,15 @@ defmodule CmsHarness.FakeUpstreamPortTest do
     {:ok, chosen} = :inet.port(probe)
     :gen_tcp.close(probe)
 
-    case FakeUpstream.start!(port: chosen) do
-      ^chosen -> true
-      _other -> honour_an_explicit_port(attempts_left - 1)
-    end
+    started_port_matches?(FakeUpstream.start!(port: chosen), chosen, attempts_left)
   rescue
     # `start_supervised!` raises when Bandit cannot bind, which is what losing
     # the race looks like from here.
     _ -> honour_an_explicit_port(attempts_left - 1)
   end
+
+  defp started_port_matches?(port, port, _attempts_left), do: true
+
+  defp started_port_matches?(_started, _chosen, attempts_left),
+    do: honour_an_explicit_port(attempts_left - 1)
 end

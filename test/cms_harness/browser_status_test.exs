@@ -76,17 +76,20 @@ defmodule CmsHarness.BrowserStatusTest do
   describe "a machine whose browser will not answer" do
     setup do
       prior = Application.get_env(:code_my_spec, :harness_mcp_transport)
-      Application.put_env(:code_my_spec, :harness_mcp_transport, CmsHarness.BrowserStatusTest.Mute)
+
+      Application.put_env(
+        :code_my_spec,
+        :harness_mcp_transport,
+        CmsHarness.BrowserStatusTest.Mute
+      )
+
       # A real path, so this is not the no-browser branch wearing a disguise.
       Application.put_env(:code_my_spec, :vibium_executable, "/usr/bin/true")
       Browser.forget()
 
       on_exit(fn ->
         Browser.forget()
-
-        if prior,
-          do: Application.put_env(:code_my_spec, :harness_mcp_transport, prior),
-          else: Application.delete_env(:code_my_spec, :harness_mcp_transport)
+        restore_mcp_transport(prior)
       end)
 
       :ok
@@ -117,4 +120,10 @@ defmodule CmsHarness.BrowserStatusTest do
     # Recomputes rather than raising on a cleared cache.
     assert Browser.tool_names() == []
   end
+
+  defp restore_mcp_transport(nil),
+    do: Application.delete_env(:code_my_spec, :harness_mcp_transport)
+
+  defp restore_mcp_transport(prior),
+    do: Application.put_env(:code_my_spec, :harness_mcp_transport, prior)
 end
