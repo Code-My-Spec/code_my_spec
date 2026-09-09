@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Requirements.ProjectGraphTest do
+defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures
@@ -10,6 +10,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -17,11 +18,11 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  describe "project_graph/1 — full project with stories, contexts, and dependencies" do
+  describe "compute_graph/1 — full project with stories, contexts, and dependencies" do
     test "produces %Requirement{} structs, not bare maps" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
       assert nodes != []
 
@@ -33,7 +34,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "nodes span all three entity types" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
       types = nodes |> Enum.map(& &1.entity_type) |> Enum.uniq() |> Enum.sort()
 
       assert types == ["component", "project", "story"]
@@ -42,7 +43,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "no rollup nodes (component_complete, all_stories_complete) in output" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
       names = MapSet.new(nodes, & &1.name)
 
       refute MapSet.member?(names, "component_complete")
@@ -52,7 +53,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "edges include cross-entity dependencies" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: _nodes, edges: edges} = Requirements.project_graph(scope)
+      {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       edge_types =
         Enum.map(edges, fn e ->
@@ -82,7 +83,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       assert "MyApp.Accounts.User" in module_names
       assert "MyApp.Accounts.Repo" in module_names
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
       component_names =
         nodes
@@ -99,7 +100,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "story nodes use the story title as entity_name" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
       story_names =
         nodes
@@ -113,7 +114,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "story requirements include bdd_specs_exist and qa_complete" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
       story_req_names =
         nodes
@@ -129,7 +130,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     test "each node has all required Requirement struct fields" do
       {scope, _tmp_dir} = setup_full_project()
 
-      %{nodes: nodes} = Requirements.project_graph(scope)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
       node = hd(nodes)
 
       assert is_binary(node.entity_type)

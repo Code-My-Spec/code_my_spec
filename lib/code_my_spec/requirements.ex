@@ -62,20 +62,6 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
-  Returns the full computed requirements graph for a project.
-
-  Nodes are `%Requirement{}` structs. Edges include both same-entity
-  prerequisites and cross-entity dependencies (component tree → story,
-  stories → project). The graph is complete — actionability is determined
-  purely by edge traversal.
-  """
-  @spec project_graph(Scope.t()) :: %{nodes: [Requirement.t()], edges: [map()]}
-  def project_graph(%Scope{} = scope) do
-    {nodes, edges} = RequirementGraph.compute_graph(scope)
-    %{nodes: nodes, edges: edges}
-  end
-
-  @doc """
   Returns the next actionable requirements across the entire project,
   with cross-entity gates applied.
   """

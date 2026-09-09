@@ -33,8 +33,8 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
   @endpoint CodeMySpecLocalWeb.Endpoint
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -130,7 +130,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
   describe "project_graph/1 topology-flow properties" do
     test "intra-entity edges flow downward (toward target)", ctx do
       sync_three_children(ctx)
-      %{nodes: nodes, edges: edges} = Requirements.project_graph(ctx.scope)
+      {nodes, edges} = RequirementGraph.compute_graph(ctx.scope)
       sigma = GraphProjector.project_graph(ctx.scope)
 
       by_key = Map.new(sigma.nodes, &{&1.key, &1})
@@ -169,7 +169,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
 
     test "fan-in nodes (indegree >= 2) sit at-or-below all their sources", ctx do
       sync_three_children(ctx)
-      %{nodes: nodes, edges: edges} = Requirements.project_graph(ctx.scope)
+      {nodes, edges} = RequirementGraph.compute_graph(ctx.scope)
       sigma = GraphProjector.project_graph(ctx.scope)
 
       indeg = Topology.indegree(nodes, edges)
@@ -231,7 +231,13 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
       spec_content = spec_content_for(type, module_name, deps)
 
       :ok = Environments.write_file(env, Content.spec_path(module_name), spec_content)
-      :ok = Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
+
+      :ok =
+        Environments.write_file(
+          env,
+          Content.impl_path(module_name),
+          Content.impl_file(module_name)
+        )
     end)
   end
 

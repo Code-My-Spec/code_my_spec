@@ -280,8 +280,19 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # Which of the project's own requirements are met. An empty list when the
   # graph cannot answer — a timeline that shows everything as not-started is
   # wrong in a way somebody can see, which beats a page that will not render.
+  #
+  # `cached_all/1`, not `project_graph/1`. This is a `:html` function
+  # component, called fresh on every render of every page that carries it —
+  # and `AgentConversationLive.Show` carries it on the one page that
+  # re-renders on every turn a busy main agent takes. `project_graph/1`
+  # always recomputes: 37 seconds against a 22k-component project, measured
+  # on this project, on a LiveView process that cannot do anything else
+  # while it runs — which is what "the page never finishes loading and then
+  # restarts" actually was. `cached_all/1` is the same nodes off the
+  # fingerprinted read model — a hit skips node/edge computation entirely,
+  # and a miss recomputes once rather than once per render.
   defp satisfied_names(scope) do
-    %{nodes: nodes} = Requirements.project_graph(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     for node <- nodes, node.satisfied, do: node.name
   rescue

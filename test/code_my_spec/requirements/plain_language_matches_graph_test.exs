@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
 
   `ProjectTimeline` draws one step per name in `PlainLanguage.order/0` and marks
   it done by looking that name up among the satisfied nodes of
-  `Requirements.project_graph/1`. Nothing checked that the two lists agree, and
+  `Requirements.cached_all/1`. Nothing checked that the two lists agree, and
   they drifted: `PlainLanguage` described `story_work` while the graph produces
   `work_dispatched`.
 
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every step the timeline can draw is a node the graph produces", %{scope: scope} do
-    %{nodes: nodes} = Requirements.project_graph(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     graph_names = nodes |> Enum.map(& &1.name) |> MapSet.new()
     described = PlainLanguage.order() |> MapSet.new()
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every node the graph produces has words the timeline can draw", %{scope: scope} do
-    %{nodes: nodes} = Requirements.project_graph(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     graph_names = nodes |> Enum.map(& &1.name) |> MapSet.new()
     described = PlainLanguage.order() |> MapSet.new()
