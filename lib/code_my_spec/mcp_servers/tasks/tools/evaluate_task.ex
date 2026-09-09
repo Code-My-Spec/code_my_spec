@@ -105,14 +105,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   end
 
   defp handle_evaluate(scope, owner, task, frame) do
-    Logger.warning(
-      "[EvaluateTask][DIAG] task=#{task.id} component_id=#{inspect(Map.get(task, :component_id))} " <>
-        "scope.active_working_copy_id=#{inspect(scope.active_working_copy_id)} " <>
-        "scope.cwd=#{inspect(scope.cwd)} " <>
-        "scope.environment=#{inspect(scope.environment && scope.environment.__struct__)} " <>
-        "scope.active_project_id=#{inspect(scope.active_project_id)}"
-    )
-
     task_module = task.session_type
 
     if is_nil(task_module) do
