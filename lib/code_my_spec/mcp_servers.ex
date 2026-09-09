@@ -13,6 +13,12 @@ defmodule CodeMySpec.McpServers do
   """
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Paths, CodeMySpec.Repo],
+    deps: [
+      CodeMySpec,
+      CodeMySpec.Environments,
+      CodeMySpec.Paths,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Repo
+    ],
     exports: :all
 end
