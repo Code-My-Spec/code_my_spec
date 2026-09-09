@@ -17,6 +17,17 @@ defmodule CodeMySpec.Embeddings do
   every entry point returns `{:error, :embeddings_unavailable}`.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Dependencies,
+      CodeMySpec.Environments,
+      CodeMySpec.Paths,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Users.Scope
 
   @doc """

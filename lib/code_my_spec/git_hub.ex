@@ -15,6 +15,11 @@ defmodule CodeMySpec.GitHub do
   - Create a repository for the authenticated user
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Integrations, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Integrations
   alias CodeMySpec.Users.Scope
 

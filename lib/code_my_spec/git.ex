@@ -19,6 +19,11 @@ defmodule CodeMySpec.Git do
   5. Clean up credentials from git configuration
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.Integrations, CodeMySpec.Users],
+    exports: :all
+
   @behaviour CodeMySpec.Git.Behaviour
 
   alias CodeMySpec.Git.CLI

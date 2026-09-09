@@ -13,6 +13,17 @@ defmodule CodeMySpec.ContentPublishing do
   so we query by id, never `scope.active_account.id`).
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Content,
+      CodeMySpec.Environments,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   alias CodeMySpec.Content.CloudflareClient

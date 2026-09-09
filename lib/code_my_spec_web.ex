@@ -29,6 +29,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.BootVersion,
       CodeMySpec.CmsUsers,
       CodeMySpec.Content,
+      CodeMySpec.ContentPublishing,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,

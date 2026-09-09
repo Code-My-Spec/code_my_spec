@@ -31,6 +31,11 @@ defmodule CodeMySpec.Google do
   What is *not* expected is reaching for `Google.Auth`, which is now this.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Integrations, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Google.Auth
 
   @doc """

@@ -8,6 +8,7 @@ defmodule CodeMySpec.Projects do
     deps: [
       CodeMySpec,
       CodeMySpec.Auth,
+      CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
       CodeMySpec.Users,
