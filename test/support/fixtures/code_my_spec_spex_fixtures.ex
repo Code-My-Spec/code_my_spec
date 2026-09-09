@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Fixtures do
     deps: [
       CmsHarness,
       CodeMySpec,
+      CodeMySpec.Accounts,
       CodeMySpec.AgentHarness,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,

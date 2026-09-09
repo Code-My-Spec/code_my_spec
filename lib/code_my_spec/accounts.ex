@@ -3,6 +3,11 @@ defmodule CodeMySpec.Accounts do
   The Accounts context.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Authorization, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Accounts.{Account, AccountsRepository, MembersRepository}
   alias CodeMySpec.Authorization
   alias CodeMySpec.Users.Scope

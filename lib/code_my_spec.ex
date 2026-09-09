@@ -10,9 +10,11 @@ defmodule CodeMySpec do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Accounts,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
       CodeMySpec.Auth,
+      CodeMySpec.Authorization,
       CodeMySpec.BootVersion,
       CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.CmsUsers,

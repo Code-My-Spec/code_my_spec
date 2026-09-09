@@ -8,6 +8,11 @@ defmodule CodeMySpec.Authorization do
   requires `:owner`).
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Accounts, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Users.Scope
 
