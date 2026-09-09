@@ -25,8 +25,10 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Paths,
+      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
+      CodeMySpec.Users,
       CodeMySpec.Utils,
       CodeMySpecTest,
       CodeMySpecWeb
