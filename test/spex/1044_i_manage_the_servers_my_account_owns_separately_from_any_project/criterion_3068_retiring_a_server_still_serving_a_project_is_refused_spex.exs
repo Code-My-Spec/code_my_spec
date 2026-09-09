@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3068Spex do
         |> render_click()
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+
         {:reply, _response, _frame} =
           LinkServer.execute(%{environment: "prod", server_name: "in-use-box"}, frame)
 

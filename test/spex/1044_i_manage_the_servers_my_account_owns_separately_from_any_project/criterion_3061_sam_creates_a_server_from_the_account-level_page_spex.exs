@@ -22,8 +22,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3061Spex do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
-      reply(conn, conn.method, conn.request_path, payload, state)
+      reply(conn, conn.method, conn.request_path, decode(body), state)
     end
 
     Req.Test.stub(Hetzner, plug)
@@ -93,6 +92,9 @@ defmodule CodeMySpecSpex.Story1044.Criterion3061Spex do
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(201, Jason.encode!(body))
   end
+
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
 
   spex "Sam provisions a new server from the account-level page" do
     scenario "the chosen size and location are created and linked" do

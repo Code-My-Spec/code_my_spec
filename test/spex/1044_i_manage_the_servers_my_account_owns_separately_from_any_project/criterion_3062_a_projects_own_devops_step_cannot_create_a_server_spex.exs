@@ -20,11 +20,9 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
 
         plug = fn conn ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
-          payload = if body == "", do: %{}, else: Jason.decode!(body)
+          payload = decode(body)
 
-          if conn.method == "POST" and conn.request_path == "/v1/servers" do
-            send(test_pid, {:server_creation_attempted, payload["name"]})
-          end
+          notify_if_server_create(test_pid, conn.method, conn.request_path, payload["name"])
 
           reply(conn, conn.method, conn.request_path)
         end
@@ -46,8 +44,8 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
 
       then_ "the provider is never asked to create a server", context do
         refute_received {:server_creation_attempted, _name},
-                         "the :server step must not reach the provider's create-server path " <>
-                           "for an environment nothing has linked"
+                        "the :server step must not reach the provider's create-server path " <>
+                          "for an environment nothing has linked"
 
         {:ok, context}
       end
@@ -60,6 +58,14 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
       end
     end
   end
+
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
+
+  defp notify_if_server_create(test_pid, "POST", "/v1/servers", name),
+    do: send(test_pid, {:server_creation_attempted, name})
+
+  defp notify_if_server_create(_test_pid, _method, _path, _name), do: :ok
 
   defp reply(conn, "GET", "/v1/servers"), do: json(conn, %{"servers" => []})
   defp reply(conn, "GET", "/v1/firewalls"), do: json(conn, %{"firewalls" => []})

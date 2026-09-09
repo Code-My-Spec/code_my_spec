@@ -20,8 +20,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3063Spex do
 
         plug = fn conn ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
-          payload = if body == "", do: %{}, else: Jason.decode!(body)
-          reply(conn, conn.method, conn.request_path, payload)
+          reply(conn, conn.method, conn.request_path, decode(body))
         end
 
         Req.Test.stub(Hetzner, plug)
@@ -76,6 +75,9 @@ defmodule CodeMySpecSpex.Story1044.Criterion3063Spex do
       end
     end
   end
+
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
 
   defp reply(conn, "GET", "/v1/servers", _payload) do
     json(conn, %{

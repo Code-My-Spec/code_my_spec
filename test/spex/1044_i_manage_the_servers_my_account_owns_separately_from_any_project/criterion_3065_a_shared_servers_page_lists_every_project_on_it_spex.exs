@@ -36,7 +36,11 @@ defmodule CodeMySpecSpex.Story1044.Criterion3065Spex do
       end
 
       given_ "a second project exists in the same account", context do
-        second = CodeMySpecSpex.Fixtures.project_fixture_unlinked(context.scope, %{name: "second-project"})
+        second =
+          CodeMySpecSpex.Fixtures.project_fixture_unlinked(context.scope, %{
+            name: "second-project"
+          })
+
         {:ok, Map.put(context, :second_project, second)}
       end
 
