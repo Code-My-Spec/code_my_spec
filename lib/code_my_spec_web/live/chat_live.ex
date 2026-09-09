@@ -69,7 +69,7 @@ defmodule CodeMySpecWeb.ChatLive do
     |> assign(:turn, nil)
     |> assign(:editing?, false)
     |> assign_story(scope)
-    |> stream(:messages, Conversations.list_messages(conversation), reset: true)
+    |> assign_turns(Conversations.list_messages(conversation))
   end
 
   # Everything the end of a turn settles, in one place so the async and inline
@@ -79,7 +79,25 @@ defmodule CodeMySpecWeb.ChatLive do
     |> assign(:thinking?, false)
     |> assign(:turn, nil)
     |> assign_story(socket.assigns.scope)
-    |> stream(:messages, Conversations.list_messages(socket.assigns.conversation), reset: true)
+    |> assign_turns(Conversations.list_messages(socket.assigns.conversation))
+  end
+
+  # A plain assign, not a stream — same reasoning as `AgentConversationLive`'s
+  # `assign_turns/2`. A tool result answers a call that already rendered, so it
+  # has to join something already on the page, and a stream cannot do that:
+  # `stream_insert/3` only appends. Rendering the call and its result as two
+  # separate stream entries is what put the same `call_id` (and so the same DOM
+  # id) on the page twice — a crash the moment a turn both called a tool and
+  # showed what it returned, which is every turn that calls one. This
+  # conversation is one short interview, not a paginated feed, so re-folding
+  # the whole list on every arrival costs nothing.
+  defp assign_turns(socket, messages) do
+    {items, results} = ChatComponents.group_turns(messages)
+
+    socket
+    |> assign(:messages, messages)
+    |> assign(:items, items)
+    |> assign(:results, results)
   end
 
   defp async?, do: Application.get_env(:code_my_spec, :chat_turn_async, true)
@@ -121,16 +139,26 @@ defmodule CodeMySpecWeb.ChatLive do
       #
       # The monitor gives both endings for free: `{ref, :ok}` when the turn
       # returns, `{:DOWN, ...}` when it dies, and both clear the indicator.
-      task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
-        Runner.run(conversation, text)
-      end)
+      task =
+        Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+          Runner.run(conversation, text)
+        end)
 
       {:noreply, socket |> assign(:thinking?, true) |> assign(:turn, task.ref)}
     else
       # Inline in test, where a task in another process cannot see the sandbox's
       # transaction. Same reasoning as `intake_shaping_async` — and the state a
       # test wants to assert is the finished turn rather than a race toward it.
+      #
+      # `Runner.run/2` running inline means every `{:new_message, _}` this turn
+      # broadcasts (we are subscribed to our own conversation topic) lands in
+      # this process's mailbox *before* `handle_event` returns, unread.
+      # `finish_turn` below already reloads every message from the database, so
+      # each of those queued broadcasts is the same message a second time —
+      # left unflushed, `handle_info/2` appends it again right after this
+      # returns, and `assign_turns/2` renders that message's id twice.
       :ok = Runner.run(conversation, text)
+      flush_new_message_broadcasts()
       {:noreply, finish_turn(socket)}
     end
   end
@@ -174,9 +202,17 @@ defmodule CodeMySpecWeb.ChatLive do
     end
   end
 
+  defp flush_new_message_broadcasts do
+    receive do
+      {:new_message, _} -> flush_new_message_broadcasts()
+    after
+      0 -> :ok
+    end
+  end
+
   @impl true
   def handle_info({:new_message, message}, socket) do
-    {:noreply, stream_insert(socket, :messages, message)}
+    {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
   end
 
   # The turn is over, whatever it produced. `Conversations` broadcasts each
@@ -217,11 +253,12 @@ defmodule CodeMySpecWeb.ChatLive do
         class="mx-auto flex w-full max-w-3xl flex-col"
       >
         <div class="min-h-0 flex-1 overflow-y-auto py-4">
-          <div id="chat-turns" phx-update="stream" class="space-y-3">
-            <ChatComponents.turn
-              :for={{dom_id, message} <- @streams.messages}
-              id={dom_id}
-              message={message}
+          <div id="chat-turns" class="space-y-3">
+            <ChatComponents.turn_item
+              :for={item <- @items}
+              id={"turn-#{item.id}"}
+              item={item}
+              results={@results}
             />
           </div>
 
