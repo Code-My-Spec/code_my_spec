@@ -19,6 +19,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
       CodeMySpec.Paths,
+      CodeMySpec.Projects,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Research,

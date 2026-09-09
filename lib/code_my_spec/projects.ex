@@ -3,6 +3,11 @@ defmodule CodeMySpec.Projects do
   The Projects context.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec, CodeMySpec.Oauth, CodeMySpec.Repo, CodeMySpec.Utils],
+    exports: :all
+
   import Ecto.Query, warn: false
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Projects.Project

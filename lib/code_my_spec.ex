@@ -24,6 +24,7 @@ defmodule CodeMySpec do
       CodeMySpec.Mailer,
       CodeMySpec.Oauth,
       CodeMySpec.Paths,
+      CodeMySpec.Projects,
       CodeMySpec.PublicUrl,
       CodeMySpec.Release,
       CodeMySpec.Repo,

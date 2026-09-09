@@ -33,7 +33,13 @@ defmodule CodeMySpec.AgentHarness do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.McpServers, CodeMySpec.Environments, CodeMySpec.Repo],
+    deps: [
+      CodeMySpec,
+      CodeMySpec.McpServers,
+      CodeMySpec.Environments,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo
+    ],
     exports: :all
 
   @pubsub CodeMySpec.PubSub

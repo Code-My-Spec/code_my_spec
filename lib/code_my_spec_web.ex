@@ -35,6 +35,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,
       CodeMySpec.Oauth,
+      CodeMySpec.Projects,
       CodeMySpec.Uploads,
       CodeMySpec.Utils
     ],
