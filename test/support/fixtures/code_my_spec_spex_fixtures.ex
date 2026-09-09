@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CodeMySpec,
       CodeMySpec.AgentHarness,
+      CodeMySpec.Analytics,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,

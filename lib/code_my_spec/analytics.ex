@@ -26,6 +26,8 @@ defmodule CodeMySpec.Analytics do
       assert_receive {:analytics_event, :something, %{}}
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Utils], exports: :all
+
   @type event_name :: atom()
   @type payload :: map()
 
