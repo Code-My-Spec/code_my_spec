@@ -16,6 +16,7 @@ defmodule CodeMySpec do
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
+      CodeMySpec.Research,
       CodeMySpec.TempFile,
       CodeMySpec.Uploads,
       CodeMySpec.Vault
