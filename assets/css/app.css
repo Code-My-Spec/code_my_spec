@@ -248,6 +248,38 @@ body {
     overflow-x: auto;
 }
 
+/* A bubble already knows its own readable text color — `chat-bubble-primary`
+ * sets it to `--color-primary-content`, which the theme deliberately swaps
+ * per mode: dark text in light mode, where `primary` itself is a dark teal,
+ * and light text in dark mode, where `primary` is a *light* teal. Typography's
+ * own `prose`/`prose-invert` presets don't know that swap happened — they
+ * hardcode a fixed gray or a fixed near-white regardless of theme — so the
+ * "invert for the filled bubble" rule this project added read correctly in
+ * light mode (light text, dark bubble) and produced barely-opaque near-white
+ * text on dark mode's *light* teal, which is what "very difficult to read"
+ * was.
+ *
+ * Unlayered, like the rules above, so it beats Tailwind's own utility layer
+ * regardless of class order in the markup — no `prose-invert` conditional
+ * needed on either side of the transcript any more. Code blocks are left
+ * alone (`--tw-prose-pre-*`): a fixed dark editor look there is wanted, not
+ * a bug. */
+.chat-prose {
+    --tw-prose-body: inherit;
+    --tw-prose-headings: inherit;
+    --tw-prose-lead: inherit;
+    --tw-prose-links: inherit;
+    --tw-prose-bold: inherit;
+    --tw-prose-counters: inherit;
+    --tw-prose-bullets: inherit;
+    --tw-prose-quotes: inherit;
+    --tw-prose-quote-borders: inherit;
+    --tw-prose-captions: inherit;
+    --tw-prose-code: inherit;
+    --tw-prose-th-borders: inherit;
+    --tw-prose-td-borders: inherit;
+}
+
 /* iOS Safari zooms the whole page in on focus when the focused field's
  * font-size is under 16px. daisyUI's `.input`/`.textarea`/`.select` are 14px
  * (0.875rem) at the default size and 12px at `-sm` — both trigger it. This is

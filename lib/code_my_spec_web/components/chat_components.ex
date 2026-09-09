@@ -264,16 +264,19 @@ defmodule CodeMySpecWeb.ChatComponents do
               `prose` is the typography plugin, already loaded in app.css.
               Without it Tailwind's reset leaves `<ul>` at `list-style: none`
               and no indent, so a list parses correctly and renders as
-              unmarked lines. `max-w-none` because the bubble sets the width,
-              and `prose-invert` inside a filled bubble.
+              unmarked lines. `max-w-none` because the bubble sets the width.
+
+              No `prose-invert` — `.chat-prose` in app.css makes every prose
+              color token `inherit` instead, from the bubble's own
+              `chat-bubble-primary`/`text-base-content`, which already knows
+              which text color is readable on itself per theme. A hardcoded
+              invert-or-not here can only match one theme at a time; ask this
+              once and it works in both.
 
               Prose only. Arguments and results are code and stay in <pre>. --%>
         <div
           :if={@text != "" and not @long}
-          class={[
-            "chat-prose prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1",
-            side(@role, @own_role) == "chat-end" && "prose-invert"
-          ]}
+          class="chat-prose prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1"
         >
           {md_html(@text)}
         </div>
@@ -290,10 +293,7 @@ defmodule CodeMySpecWeb.ChatComponents do
               show all {byte_size(@text)} characters
             </span>
           </summary>
-          <div class={[
-            "chat-prose prose prose-sm mt-2 max-w-none border-t border-current/20 pt-2 prose-p:my-1",
-            side(@role, @own_role) == "chat-end" && "prose-invert"
-          ]}>
+          <div class="chat-prose prose prose-sm mt-2 max-w-none border-t border-current/20 pt-2 prose-p:my-1">
             {md_html(@text)}
           </div>
         </details>
