@@ -101,11 +101,13 @@ defmodule CodeMySpecSpex.Story686.Criterion7951Spex do
 
   # MCP responses carry record ids in the text footer.
   defp story_id!(response) do
-    body = response_text(response)
-
-    case Regex.run(~r/\(ID: (\d+)\)/, body) do
-      [_, id] -> id
-      _ -> raise "could not read story id from response: #{body}"
-    end
+    response |> response_text() |> story_id_from()
   end
+
+  defp story_id_from(body), do: story_id_match(Regex.run(~r/\(ID: (\d+)\)/, body), body)
+
+  defp story_id_match([_, id], _body), do: id
+
+  defp story_id_match(_no_match, body),
+    do: raise("could not read story id from response: #{body}")
 end
