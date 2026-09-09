@@ -207,31 +207,51 @@ defmodule CodeMySpec.Conversations do
   #
   # `{:ok, nil}` rather than an error: a caller with nothing to say has not done
   # anything wrong, and every one of them ignores the message it gets back.
-  def add_agent_message(%Conversation{} = _conversation, _agent_role, _kind, text)
-      when text in [nil, ""] do
-    {:ok, nil}
-  end
-
-  def add_agent_message(%Conversation{} = conversation, agent_role, kind, text)
-      when is_binary(text) do
-    if String.trim(text) == "" do
+  # Judged by what it renders to, not by what it looks like.
+  #
+  # Guarding the input shape was a search, and I ran it three times: `nil`, then
+  # `""`, then a blank binary, and empty rows kept arriving — because the
+  # harness sends a turn's content as a list of blocks and a turn that produced
+  # none sends `[]`. Not nil, not a binary, straight past every guard and into a
+  # row whose content is empty for a fourth reason.
+  #
+  # `parts_for/1` is the only thing that knows what a message will actually
+  # contain. Ask it once, refuse when it has nothing, and there is no fifth
+  # shape left to discover.
+  #
+  # What those rows cost: a coding agent showing 99 empty messages against 0
+  # substantive ones reads as a model returning nothing, and I spent a day
+  # inside a credential rotation, a provider switch and Alloy's response parsing
+  # looking for a fault that was never there.
+  #
+  # `{:ok, nil}` rather than an error — a caller with nothing to say has not
+  # done anything wrong, and every one of them ignores what it gets back.
+  def add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
+    if said_nothing?(text) do
       {:ok, nil}
     else
-      do_add_agent_message(conversation, agent_role, kind, text)
+      do_add_agent_message(conversation, agent_role, kind, parts_for(text))
     end
   end
 
-  def add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
-    do_add_agent_message(conversation, agent_role, kind, text)
-  end
+  # Whether anything was said, which is a different question from what to store.
+  #
+  # Trimming decides; it does not edit. The first cut of this stored the trimmed
+  # text and a 17 kB transcript came back one byte short — the record has to be
+  # what the model actually received, which is the whole argument for keeping a
+  # wall of prose rather than truncating it.
+  defp said_nothing?(nil), do: true
+  defp said_nothing?([]), do: true
+  defp said_nothing?(text) when is_binary(text), do: String.trim(text) == ""
+  defp said_nothing?(other), do: parts_for(other) == []
 
-  defp do_add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
+  defp do_add_agent_message(%Conversation{} = conversation, agent_role, kind, parts) do
     %Message{}
     |> Message.agent_changeset(%{
       conversation_id: conversation.id,
       role: agent_message_role(kind),
       agent_role: agent_role,
-      content: parts_for(text),
+      content: parts,
       sender_id: "agent:#{agent_role}"
     })
     |> Repo.insert()
@@ -408,6 +428,10 @@ defmodule CodeMySpec.Conversations do
   # gain a blank text part it never had.
   defp parts_for(nil), do: []
   defp parts_for(""), do: []
+  # An empty list of content blocks. The harness sends a turn's content this
+  # way and a turn that produced none sends `[]` — not nil, not a binary,
+  # straight past the other two guards.
+  defp parts_for([]), do: []
   defp parts_for(text), do: [Message.text_part(text)]
 
   # Harness kind -> Message role. Tool calls render distinctly; everything else
