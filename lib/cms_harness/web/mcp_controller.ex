@@ -66,6 +66,14 @@ defmodule CmsHarness.Web.McpController do
   @post_timeout to_timeout(minute: 5)
 
   def proxy(conn, _params) do
+    Logger.warning(
+      "[CmsHarness][DIAG] incoming MCP request path=#{conn.request_path} " <>
+        "path_params=#{inspect(conn.path_params)} " <>
+        "query_params=#{inspect(conn.query_params)} " <>
+        "raw_x_harness_id=#{inspect(get_req_header(conn, "x-harness-id"))} " <>
+        "resolved_working_copy_id=#{inspect(working_copy_id(conn))}"
+    )
+
     with {:ok, project} <- project(conn),
          {:ok, token} <- Token.access_token(project.root) do
       dispatch(conn, project, token)
