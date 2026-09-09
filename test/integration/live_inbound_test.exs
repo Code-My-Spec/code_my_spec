@@ -46,9 +46,7 @@ defmodule CodeMySpec.LiveInboundTest do
     resend = System.get_env("CMS_RESEND_TOKEN")
     cloudflare = System.get_env("CMS_CLOUDFLARE_TOKEN")
 
-    if is_nil(resend) or is_nil(cloudflare) do
-      raise "set CMS_RESEND_TOKEN and CMS_CLOUDFLARE_TOKEN to run the live inbound test"
-    end
+    ensure_live_credentials!(is_nil(resend) or is_nil(cloudflare))
 
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
 
@@ -136,7 +134,9 @@ defmodule CodeMySpec.LiveInboundTest do
     assert published != [], "no MX for #{ctx.name} in the zone"
 
     for record <- published do
-      IO.puts("  published  -> #{record["name"]} MX #{record["content"]} priority #{record["priority"]}")
+      IO.puts(
+        "  published  -> #{record["name"]} MX #{record["content"]} priority #{record["priority"]}"
+      )
 
       assert record["content"] =~ "inbound-smtp",
              "the published MX is not Resend's receiving host"
@@ -224,9 +224,17 @@ defmodule CodeMySpec.LiveInboundTest do
       # than a test that never ran.
       {:ok, %{body: %{"result" => left}}} = cf_req.(:get, "/zones/#{zone_id}/dns_records")
 
-      if Enum.any?(left, &(&1["name"] == name)) do
-        IO.warn("live inbound test left DNS records for #{name} behind")
-      end
+      warn_if_leftover_dns(Enum.any?(left, &(&1["name"] == name)), name)
     end
   end
+
+  defp warn_if_leftover_dns(true, name),
+    do: IO.warn("live inbound test left DNS records for #{name} behind")
+
+  defp warn_if_leftover_dns(false, _name), do: :ok
+
+  defp ensure_live_credentials!(true),
+    do: raise("set CMS_RESEND_TOKEN and CMS_CLOUDFLARE_TOKEN to run the live inbound test")
+
+  defp ensure_live_credentials!(false), do: :ok
 end

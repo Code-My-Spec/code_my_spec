@@ -102,12 +102,17 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
     journey = Files.get_by_path(scope, Paths.qa_journey_plan())
     error = journey.validation_errors["errors"]["plan"]
 
-    if error do
-      refute error =~ "tools registry",
-             "the journey plan is being validated against the `qa_plan` schema — " <>
-               "it has its own registered document type, and judging it by the " <>
-               "wrong one tells an agent to fix a correct file"
-    end
+    # This fixture is missing journey_plan's own required "prerequisites"
+    # section, so a real complaint is expected — the question is which
+    # schema names it.
+    assert error =~ "prerequisites",
+           "expected the missing-section complaint to name the journey plan's " <>
+             "own required section, got: #{inspect(error)}"
+
+    refute error =~ "tools registry",
+           "the journey plan is being validated against the `qa_plan` schema — " <>
+             "it has its own registered document type, and judging it by the " <>
+             "wrong one tells an agent to fix a correct file"
   end
 
   defp qa_plan_body do

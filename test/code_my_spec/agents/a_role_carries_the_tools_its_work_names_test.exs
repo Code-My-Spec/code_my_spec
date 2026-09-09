@@ -70,17 +70,17 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
   # or executed — the prompt is built from a scope this test does not have, and
   # the names are in the source either way.
   defp source_of(module) do
-    case module.__info__(:compile)[:source] do
-      nil ->
-        nil
-
-      path ->
-        case path |> to_string() |> File.read() do
-          {:ok, s} -> s
-          _ -> nil
-        end
-    end
+    module.__info__(:compile)[:source] |> read_source()
   end
+
+  defp read_source(nil), do: nil
+
+  defp read_source(path) do
+    path |> to_string() |> File.read() |> read_result()
+  end
+
+  defp read_result({:ok, s}), do: s
+  defp read_result(_error), do: nil
 
   defp tools_named_in(source, catalogue) do
     ~r/`([a-z][a-z0-9_]{2,})`/
