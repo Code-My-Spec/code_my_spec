@@ -12,8 +12,8 @@ defmodule CodeMySpec do
     deps: [
       CodeMySpec.BootVersion,
       CodeMySpec.Code,
-      CodeMySpec.Compile,
       CodeMySpec.CodeMode,
+      CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,
@@ -27,6 +27,7 @@ defmodule CodeMySpec do
       CodeMySpec.Research,
       CodeMySpec.Rules,
       CodeMySpec.TempFile,
+      CodeMySpec.Tests,
       CodeMySpec.Uploads,
       CodeMySpec.Vault
     ],

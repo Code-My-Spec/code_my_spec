@@ -46,7 +46,8 @@ defmodule CmsHarness do
       CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Paths,
-      CodeMySpec.RecordingLock
+      CodeMySpec.RecordingLock,
+      CodeMySpec.Tests
     ],
     exports: :all
 end

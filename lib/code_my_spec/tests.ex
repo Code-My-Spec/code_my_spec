@@ -4,6 +4,11 @@ defmodule CodeMySpec.Tests do
   Provides a clean functional interface for test execution and result analysis.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.TempFile],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Environments
