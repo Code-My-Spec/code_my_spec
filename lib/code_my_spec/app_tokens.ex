@@ -37,6 +37,11 @@ defmodule CodeMySpec.AppTokens do
   queried against, which keeps it out of query logs.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Projects.Project
@@ -130,7 +135,8 @@ defmodule CodeMySpec.AppTokens do
   than drop (criterion 8055), and that is only possible if "expired" is
   distinguishable from "wrong".
   """
-  @spec verify_socket_token(String.t(), non_neg_integer()) :: {:ok, Project.t()} | {:error, refusal()}
+  @spec verify_socket_token(String.t(), non_neg_integer()) ::
+          {:ok, Project.t()} | {:error, refusal()}
   def verify_socket_token(token, max_age \\ @max_age_seconds)
 
   def verify_socket_token(token, max_age) when is_binary(token) do

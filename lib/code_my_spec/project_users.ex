@@ -8,6 +8,8 @@ defmodule CodeMySpec.ProjectUsers do
   for enriched user / ICP marketing data.
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Projects], exports: :all
+
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectUsers.{Client, Page}
 

@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec,
       CodeMySpec.AgentHarness,
       CodeMySpec.Analytics,
+      CodeMySpec.AppTokens,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,

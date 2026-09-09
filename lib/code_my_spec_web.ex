@@ -25,7 +25,9 @@ defmodule CodeMySpecWeb do
       # is top-level for the same reason `Hooks` is — it reaches McpServers.
       CodeMySpec.AgentHarness,
       CodeMySpec.Analytics,
+      CodeMySpec.AppTokens,
       CodeMySpec.BootVersion,
+      CodeMySpec.CmsUsers,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,
@@ -33,9 +35,12 @@ defmodule CodeMySpecWeb do
       # rather than domain code because the stop decision reaches into
       # McpServers, which `CodeMySpec` deliberately does not depend on.
       CodeMySpec.Hooks,
+      CodeMySpec.Knowledge,
+      CodeMySpec.Logging,
       CodeMySpec.McpServers,
       CodeMySpec.Oauth,
       CodeMySpec.Projects,
+      CodeMySpec.ProjectUsers,
       CodeMySpec.Uploads,
       CodeMySpec.Users,
       CodeMySpec.Utils

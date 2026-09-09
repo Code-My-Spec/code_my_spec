@@ -40,6 +40,11 @@ defmodule CodeMySpec.Host do
   them fail on a broken one.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.Users],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Environments

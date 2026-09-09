@@ -19,10 +19,13 @@ defmodule CodeMySpecLocalWeb do
       # `cms harness` boots the light harness from this same application — see
       # `Application.start_harness/0`. One binary that can be either.
       CmsHarness,
+      CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Hooks,
+      CodeMySpec.Knowledge,
+      CodeMySpec.Logging,
       CodeMySpec.McpServers,
       CodeMySpec.Projects,
       CodeMySpec.Users,

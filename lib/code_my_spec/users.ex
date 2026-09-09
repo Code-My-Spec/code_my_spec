@@ -8,6 +8,7 @@ defmodule CodeMySpec.Users do
     deps: [
       CodeMySpec,
       CodeMySpec.Analytics,
+      CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
       CodeMySpec.Mailer,
       CodeMySpec.Projects,

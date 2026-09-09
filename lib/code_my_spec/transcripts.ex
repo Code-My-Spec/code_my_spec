@@ -8,6 +8,8 @@ defmodule CodeMySpec.Transcripts do
   written during agent sessions.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   alias CodeMySpec.Transcripts.ClaudeCode.FileExtractor
   alias CodeMySpec.Transcripts.ClaudeCode.Parser
   alias CodeMySpec.Transcripts.ClaudeCode.Transcript

@@ -25,6 +25,11 @@ defmodule CodeMySpec.TaskHelp do
   `test/code_my_spec/task_help_test.exs`.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Environments
   alias CodeMySpec.TaskHelp.Help
   alias CodeMySpec.Users.Scope

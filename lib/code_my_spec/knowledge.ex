@@ -23,6 +23,11 @@ defmodule CodeMySpec.Knowledge do
   live in one place.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Users.Scope
 

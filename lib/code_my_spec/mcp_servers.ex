@@ -18,6 +18,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
+      CodeMySpec.Knowledge,
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.PublicUrl,

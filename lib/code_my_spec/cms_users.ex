@@ -8,6 +8,11 @@ defmodule CodeMySpec.CmsUsers do
   re-run overwrites it.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
