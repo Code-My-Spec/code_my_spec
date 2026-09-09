@@ -58,6 +58,165 @@ defmodule CodeMySpec.DevState do
   end
 
   @doc """
+  Whether the agents on a project are actually working.
+
+  `report/1` answers what the database and the runtime each believe. This
+  answers a different question and it is the one that matters when a fleet looks
+  busy and is not: are they *acting*.
+
+  Six things, because these are the six I reached for by hand every ten minutes
+  for a day and got wrong twice by reading the easy one:
+
+    * `tool_calls` and `files_changed` — the only two numbers that mean work.
+      Message counts do not: on 2026-09-08 a fleet produced 1,847 messages and 4
+      tool calls in six hours, and I reported it as healthy more than once
+      because the transcripts were moving.
+    * `empty_turns` — turns that finished with nothing. A high ratio against
+      `spoke` is an agent talking to itself.
+    * `provider_errors` — the failures that look like an agent choosing not to
+      act: a rejected tool call, an expired credential, an exhausted quota.
+      Every one of those cost hours to find because it read as reticence.
+    * `actionable` per role — what the graph offers *this* agent where it
+      stands. Harness-scoped, because that is the scope an agent computes in and
+      the unscoped answer is a different, more optimistic number.
+    * `gating_issues` — what holds `issues_resolved`, by scope, so "blocked on
+      somebody else's repository" is visible rather than inferred.
+
+  Windowed, because a cumulative count cannot distinguish an agent that worked
+  this morning from one working now.
+  """
+  @spec fleet(Ecto.UUID.t(), pos_integer()) :: map()
+  def fleet(project_id, minutes \\ 15) when is_binary(project_id) do
+    since = DateTime.utc_now() |> DateTime.add(-minutes * 60, :second) |> DateTime.to_naive()
+
+    project = Repo.get!(Project, project_id)
+    agents =
+      [project_id: project.id]
+      |> AgentsRepository.list_every_agent()
+      |> Enum.reject(&(&1.status == :stopped))
+
+    %{
+      project: project.name,
+      window_minutes: minutes,
+      agents: Enum.map(agents, &agent_activity(&1, since)),
+      gating_issues: gating_issues(project_id),
+      files_changed: Enum.map(agents, & &1.working_copy) |> Enum.uniq() |> files_changed(minutes)
+    }
+  end
+
+  defp agent_activity(agent, since) do
+    counts = message_counts(agent.id, since)
+
+    %{
+      id: agent.id,
+      role: agent.role,
+      status: agent.status,
+      provider: agent.provider,
+      model: agent.model,
+      continuous: agent.continuous,
+      tool_calls: counts.tools,
+      spoke: counts.spoke,
+      empty_turns: counts.empty,
+      provider_errors: counts.errors,
+      last_message: counts.last,
+      active_task: active_task_name(agent),
+      actionable: actionable_for(agent)
+    }
+  end
+
+  # One pass. Four separate counts was four table scans of the same rows, and
+  # the point of this is to be cheap enough to call every ten minutes.
+  defp message_counts(agent_id, since) do
+    query =
+      from(m in "conversation_messages",
+        join: c in "conversations",
+        on: c.id == m.conversation_id,
+        where: c.agent_id == type(^agent_id, Ecto.UUID) and m.inserted_at > ^since,
+        select: %{
+          tools: filter(count(m.id), m.role == "tool"),
+          spoke:
+            filter(count(m.id), m.role == "assistant" and fragment("?::text <> '[]'", m.content)),
+          empty:
+            filter(count(m.id), m.role == "assistant" and fragment("?::text = '[]'", m.content)),
+          errors:
+            filter(
+              count(m.id),
+              fragment(
+                "?::text ~* '(arguments|exec failed|usage limit|token .*expired|could not be refreshed)'",
+                m.content
+              )
+            ),
+          last: max(m.inserted_at)
+        }
+      )
+
+    Repo.one(query) || %{tools: 0, spoke: 0, empty: 0, errors: 0, last: nil}
+  end
+
+  defp active_task_name(agent) do
+    case CodeMySpec.Agents.Agent.active_task(agent) do
+      nil -> nil
+      task -> task.requirement_name
+    end
+  end
+
+  # In the agent's own scope. An agent computes the graph where it stands, and
+  # the project-wide answer is a different number — 12 against 0 on Broken
+  # Oaths, because the unfinished stories were parked on another working copy.
+  defp actionable_for(%{role: role, working_copy_id: copy_id, project_id: project_id})
+       when is_binary(copy_id) do
+    project = Repo.get(Project, project_id)
+
+    scope = %Scope{
+      active_project: project,
+      active_project_id: project_id,
+      active_account_id: project && project.account_id,
+      active_working_copy_id: copy_id
+    }
+
+    CodeMySpec.Requirements.actionable_count(scope, role)
+  rescue
+    _ -> nil
+  end
+
+  defp actionable_for(_agent), do: nil
+
+  # By scope, because "blocked" and "blocked on something this project is not
+  # allowed to touch" are different answers and only one of them is the
+  # project's problem.
+  defp gating_issues(project_id) do
+    from(i in "issues",
+      where:
+        i.project_id == type(^project_id, Ecto.UUID) and i.status == "accepted" and
+          i.severity in ["medium", "high", "critical"],
+      group_by: i.scope,
+      select: {i.scope, count(i.id)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  # What is on disk, which no transcript can fake.
+  defp files_changed(roots, minutes) do
+    roots
+    |> Enum.filter(&(is_binary(&1) and File.dir?(&1)))
+    |> Enum.map(fn root ->
+      cutoff = System.os_time(:second) - minutes * 60
+
+      count =
+        Path.wildcard(Path.join(root, "{lib,test}/**/*.{ex,exs,heex}"))
+        |> Enum.count(fn path ->
+          case File.stat(path, time: :posix) do
+            {:ok, %{mtime: mtime}} -> mtime > cutoff
+            _ -> false
+          end
+        end)
+
+      %{root: root, changed: count}
+    end)
+  end
+
+  @doc """
   Ask for analyzer runs on one checkout, and say what the queue decided.
 
   `ensure_stale_runs/3` is the same call the stop hook makes, and it answers

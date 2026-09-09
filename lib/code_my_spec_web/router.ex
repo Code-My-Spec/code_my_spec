@@ -417,6 +417,11 @@ defmodule CodeMySpecWeb.Router do
       # A GET so it needs nothing but a URL. Not idempotent, and says so in what
       # it answers: which sources it enqueued and which were already current.
       get "/state/run", DevStateController, :run
+
+      # Are the agents actually working. Six numbers that took six hand-written
+      # queries every ten minutes, and one of them — message volume — is the one
+      # that lies.
+      get "/fleet", DevStateController, :fleet
     end
   end
 

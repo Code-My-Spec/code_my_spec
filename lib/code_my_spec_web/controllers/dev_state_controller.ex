@@ -28,6 +28,25 @@ defmodule CodeMySpecWeb.DevStateController do
 
   def index(conn, params), do: json(conn, DevState.report(params["project_id"]))
 
+  # Whether the agents are working, as opposed to what the database believes.
+  #
+  # `index` answers belief; this answers behaviour. Tool calls and files on disk
+  # are the only two numbers that cannot be faked by a transcript, and the
+  # window keeps a fleet that worked this morning from reading as one working
+  # now.
+  def fleet(conn, params) do
+    case params["project_id"] do
+      id when is_binary(id) and id != "" ->
+        minutes = params |> Map.get("minutes", "15") |> String.to_integer()
+        json(conn, DevState.fleet(id, minutes))
+
+      _ ->
+        conn |> put_status(422) |> json(%{error: "project_id is required"})
+    end
+  rescue
+    error -> conn |> put_status(500) |> json(%{error: Exception.message(error)})
+  end
+
   def run(conn, params) do
     case DevState.request_run(params["working_copy_id"], params["source"]) do
       {:ok, report} -> json(conn, report)
