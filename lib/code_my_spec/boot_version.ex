@@ -29,6 +29,8 @@ defmodule CodeMySpec.BootVersion do
   (`5e59a29d`).
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   @key {__MODULE__, :boot}
 
   @doc """

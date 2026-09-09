@@ -41,6 +41,7 @@ defmodule CmsHarness do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
       CodeMySpec.Paths,

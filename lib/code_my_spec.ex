@@ -10,6 +10,7 @@ defmodule CodeMySpec do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.BootVersion,
       CodeMySpec.Code,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,

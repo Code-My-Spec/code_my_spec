@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb do
       # The harness channel records the turns a sprite reports. `AgentHarness`
       # is top-level for the same reason `Hooks` is — it reaches McpServers.
       CodeMySpec.AgentHarness,
+      CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       # The harness channel decides hooks. `Hooks` is its own top-level boundary
       # rather than domain code because the stop decision reaches into
