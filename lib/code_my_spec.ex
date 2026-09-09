@@ -14,6 +14,7 @@ defmodule CodeMySpec do
       CodeMySpec.Code,
       CodeMySpec.CodeMode,
       CodeMySpec.Compile,
+      CodeMySpec.Encrypted.Binary,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,
