@@ -140,4 +140,66 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
 
     assert {true, _} = SpecsPassingChecker.passing?(scope, mine)
   end
+
+  # `passing?/3` is what `RequirementCalculator`'s delegate dispatch actually
+  # calls inside `compute_graph/1` — it exists so a graph with many stories
+  # reads freshness from the preload's `ctx.analysis_fresh` once instead of
+  # every story re-running `Analysis.fresh?/2`'s full `Files.list_files/1`
+  # fetch. It must answer exactly like `passing?/2`, just from the ctx.
+  describe "passing?/3 (the ctx-aware path compute_graph/1 actually calls)" do
+    test "a fresh ctx reads the same as a fresh direct check", %{scope: scope} do
+      story = story_with_red_specs(scope)
+      fresh_analysis_runs_fixture(scope)
+
+      assert {false, details} =
+               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => true}})
+
+      assert details.reason =~ "fail on the current spex run"
+    end
+
+    test "a stale ctx cannot clear the latch, same as the stale direct check", %{scope: scope} do
+      story = story_with_red_specs(scope)
+
+      assert {true, details} =
+               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => false}})
+
+      assert details.status =~ "no fresh spex run"
+    end
+
+    test "a ctx with no \"spex\" entry in analysis_fresh treats it as stale, not as a crash", %{
+      scope: scope
+    } do
+      story = story_with_red_specs(scope)
+      fresh_analysis_runs_fixture(scope)
+
+      # `%{analysis_fresh: %{}}` still matches the ctx-aware clause — it is a
+      # map, just one that never learned about "spex". `Map.get(fresh, "spex",
+      # false)` treats that the same as a ctx that positively says stale: the
+      # latch stands, same as `passing?/2` sees when nothing has run at all.
+      assert {true, details} =
+               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{}})
+
+      assert details.status =~ "no fresh spex run"
+    end
+
+    test "a ctx that isn't a map with :analysis_fresh falls back to a direct check", %{
+      scope: scope
+    } do
+      story = story_with_red_specs(scope, red: false)
+      fresh_analysis_runs_fixture(scope)
+
+      assert {true, _} = SpecsPassingChecker.passing?(scope, story, %{})
+    end
+
+    test "the specs_ready latch itself is still checked before touching freshness", %{
+      scope: scope
+    } do
+      story = story_fixture(scope, %{title: "Not Started"})
+
+      assert {false, details} =
+               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => true}})
+
+      assert details.reason =~ "not gone green"
+    end
+  end
 end

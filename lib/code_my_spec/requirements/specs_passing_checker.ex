@@ -56,6 +56,38 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
     end
   end
 
+  @doc """
+  Same as `passing?/2`, but takes the requirement graph's preloaded context.
+
+  `Analysis.fresh?/2` computes its fingerprint via `Fingerprint.current/2`,
+  which re-fetches every File row for the project — `Files.list_files/1`,
+  the same full-table read `Preloader.load/1` already did once. This
+  requirement is checked once per story, so on a project with any real
+  number of stories, `passing?/2` was paying that full-table fetch again
+  for every single one: measured on this project (708492f9), 118 stories ×
+  ~390ms — 45.9s of a 50.8s graph computation, on a codebase where every
+  other check combined cost under a second. `ctx.analysis_fresh` is the
+  same answer, computed once in the preload this graph already ran.
+
+  `RequirementCalculator`'s delegate dispatch calls this arity whenever it
+  has a context to hand it (every call inside `compute_graph/1`);
+  `passing?/2` remains the fallback for a caller with none.
+  """
+  @spec passing?(term(), term(), map()) :: {boolean(), map()}
+  def passing?(_scope, %{specs_ready: ready}, _ctx) when ready != true do
+    {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
+  end
+
+  def passing?(scope, %{id: story_id}, %{analysis_fresh: fresh}) when is_map(fresh) do
+    if Map.get(fresh, "spex", false) do
+      check_against_fresh_run(scope, story_id)
+    else
+      {true, %{status: "Specs ready (no fresh spex run to re-check against)"}}
+    end
+  end
+
+  def passing?(scope, entity, _ctx), do: passing?(scope, entity)
+
   defp check_against_fresh_run(scope, story_id) do
     case failing_own_specs(scope, story_id) do
       [] ->
