@@ -93,11 +93,11 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
       events = record_events()
 
       with_session(fn session ->
-        with_cassette "alloy_turn_answer", replay_opts(session), fn plug ->
+        with_cassette("alloy_turn_answer", replay_opts(session), fn plug ->
           agent = start_agent(root, plug, events)
           {:ok, _} = Machine.send_message(agent, "ref-1", @question)
           Machine.await_idle(agent)
-        end
+        end)
       end)
 
       assert Enum.any?(collected(events), fn event ->
@@ -113,7 +113,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
       events = record_events()
 
       with_session(fn session ->
-        with_cassette "alloy_turn_reads_a_file", replay_opts(session), fn plug ->
+        with_cassette("alloy_turn_reads_a_file", replay_opts(session), fn plug ->
           agent = start_agent(root, plug, events)
 
           {:ok, _} =
@@ -124,7 +124,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
             )
 
           Machine.await_idle(agent)
-        end
+        end)
       end)
 
       steps = collected(events)
@@ -177,15 +177,15 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
     for name <- @cassettes, do: File.rm(Path.join(@cassette_dir, name <> ".json"))
 
     with_session(fn session ->
-      with_cassette "alloy_turn_answer", record_opts(session), fn plug ->
+      with_cassette("alloy_turn_answer", record_opts(session), fn plug ->
         agent = start_agent(root, plug, events, api_key: key)
         {:ok, _} = Machine.send_message(agent, "ref-1", @question)
         Machine.await_idle(agent)
-      end
+      end)
     end)
 
     with_session(fn session ->
-      with_cassette "alloy_turn_reads_a_file", record_opts(session), fn plug ->
+      with_cassette("alloy_turn_reads_a_file", record_opts(session), fn plug ->
         agent = start_agent(root, plug, events, api_key: key)
 
         {:ok, _} =
@@ -196,7 +196,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
           )
 
         Machine.await_idle(agent)
-      end
+      end)
     end)
 
     for name <- @cassettes do
@@ -320,15 +320,13 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
     ]
   end
 
-  # A shared session for one cassette, ended whatever happens.
+  # A shared session for one cassette, ended whatever happens — on_exit runs
+  # even when fun.(session) raises, the same guarantee try/after gave, on
+  # ExUnit's own mechanism for it.
   defp with_session(fun) do
     session = ReqCassette.start_shared_session()
-
-    try do
-      fun.(session)
-    after
-      ReqCassette.end_shared_session(session)
-    end
+    on_exit(fn -> ReqCassette.end_shared_session(session) end)
+    fun.(session)
   end
 
   # The key, from the environment or from where this project keeps one.
@@ -345,23 +343,23 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
       )
   end
 
-  defp key_from_env_file do
-    case File.read("envs/dev.env") do
-      {:ok, contents} -> parse_key(contents)
-      {:error, _} -> nil
-    end
-  end
+  defp key_from_env_file, do: parse_key_file(File.read("envs/dev.env"))
+
+  defp parse_key_file({:ok, contents}), do: parse_key(contents)
+  defp parse_key_file({:error, _}), do: nil
 
   defp parse_key(contents) do
     contents
     |> String.split("\n")
-    |> Enum.find_value(fn line ->
-      case String.split(line, "=", parts: 2) do
-        ["ANTHROPIC_API_KEY", value] -> value |> String.trim() |> String.trim("\"") |> presence()
-        _ -> nil
-      end
-    end)
+    |> Enum.find_value(&key_line_value/1)
   end
+
+  defp key_line_value(line), do: line |> String.split("=", parts: 2) |> value_for_key_line()
+
+  defp value_for_key_line(["ANTHROPIC_API_KEY", value]),
+    do: value |> String.trim() |> String.trim("\"") |> presence()
+
+  defp value_for_key_line(_other), do: nil
 
   defp presence(""), do: nil
   defp presence(value), do: value
