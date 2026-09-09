@@ -21,7 +21,8 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
-      CodeMySpec.Research
+      CodeMySpec.Research,
+      CodeMySpec.Utils
     ],
     exports: :all
 end

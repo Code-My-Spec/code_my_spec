@@ -1,14 +1,15 @@
 defmodule CodeMySpec.Utils do
   @moduledoc false
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec, CodeMySpec.Paths, CodeMySpec.Repo],
+    exports: :all
+
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Paths
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Utils.Paths, as: UtilPaths
-
-  # Delegate path-related functions to Utils.Paths module
-  defdelegate resolve_context_path(path), to: UtilPaths
-  defdelegate module_to_path(module_name), to: UtilPaths
 
   def component_files(
         %Component{module_name: module_name, type: type},

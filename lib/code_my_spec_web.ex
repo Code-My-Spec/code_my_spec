@@ -34,7 +34,8 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,
       CodeMySpec.Oauth,
-      CodeMySpec.Uploads
+      CodeMySpec.Uploads,
+      CodeMySpec.Utils
     ],
     exports: :all
 

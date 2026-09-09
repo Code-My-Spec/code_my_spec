@@ -7,6 +7,7 @@ defmodule CodeMySpecSpex do
       CodeMySpec.McpServers,
       CodeMySpec.RecordingLock,
       CodeMySpec.TempFile,
+      CodeMySpec.Utils,
       CodeMySpecSpex.Fixtures,
       # The harness-side counterpart to `Fixtures`: spex that are about what
       # a machine did have to drive the harness, and may not reference

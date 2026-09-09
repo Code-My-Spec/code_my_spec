@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
+      CodeMySpec.Utils,
       CodeMySpecTest,
       CodeMySpecWeb
     ]

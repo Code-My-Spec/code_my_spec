@@ -30,6 +30,7 @@ defmodule CodeMySpec do
       CodeMySpec.TempFile,
       CodeMySpec.Tests,
       CodeMySpec.Uploads,
+      CodeMySpec.Utils,
       CodeMySpec.Vault
     ],
     exports: :all
