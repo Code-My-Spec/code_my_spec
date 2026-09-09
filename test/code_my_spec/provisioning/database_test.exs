@@ -43,13 +43,17 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
   defp running_recorder(owner, status \\ 0) do
     fn [command] ->
       send(owner, {:ran, command})
-
-      case command do
-        "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
-        _ -> {"", status}
-      end
+      running_response(command, status)
     end
   end
+
+  defp running_response("docker ps -q -f name=" <> _, _status), do: {"c0ffeec0ffee", 0}
+  defp running_response(_command, status), do: {"", status}
+
+  defp ps_banner_response("docker ps -q -f name=" <> _),
+    do: {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
+
+  defp ps_banner_response(_command), do: {"", 0}
 
   defp credential, do: %{username: "app_sam_s_app", password: "pw", database: "app_sam_s_app_uat"}
   defp admin_credential, do: %{username: "postgres", password: "adminpw"}
@@ -122,6 +126,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       assert {:ok, _} = ensure_container()
 
       commands = collect_commands()
+
       refute Enum.any?(commands, &(&1 =~ "/var/lib/postgresql/data")),
              "mounting at .../data is the pg17-and-earlier convention — pg18 refuses to boot on it"
     end
@@ -182,14 +187,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     test "banner noise on the ps check is not mistaken for a running container" do
       run = fn [command] ->
         send(self(), {:ran, command})
-
-        case command do
-          "docker ps -q -f name=" <> _ ->
-            {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
-
-          _ ->
-            {"", 0}
-        end
+        ps_banner_response(command)
       end
 
       assert {:ok, _} = ensure_container(run: run)
@@ -271,7 +269,8 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
 
     test "a container that will not start is an error, not a success" do
-      assert {:error, {:database_start_failed, 125, _}} = ensure_container(run: recorder(self(), 125))
+      assert {:error, {:database_start_failed, 125, _}} =
+               ensure_container(run: recorder(self(), 125))
     end
   end
 
@@ -365,11 +364,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
           {"c0ffeec0ffee", 0}
 
         ["docker exec" <> _ = cmd] ->
-          if cmd =~ "SELECT 1 FROM pg_database" do
-            {"1", 0}
-          else
-            {"", 0}
-          end
+          role_exists_response(String.contains?(cmd, "SELECT 1 FROM pg_database"))
 
         [_] ->
           {"", 0}
@@ -377,6 +372,9 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
       assert {:ok, _} = serve(run: run)
     end
+
+    defp role_exists_response(true), do: {"1", 0}
+    defp role_exists_response(false), do: {"", 0}
   end
 
   describe "url/1" do
@@ -384,7 +382,8 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     # network, and an address would be a second thing to keep correct whenever
     # either is recreated.
     test "addresses the database by the name the app can resolve" do
-      assert Database.url(credential()) == "ecto://app_sam_s_app:pw@cms-postgres/app_sam_s_app_uat"
+      assert Database.url(credential()) ==
+               "ecto://app_sam_s_app:pw@cms-postgres/app_sam_s_app_uat"
     end
   end
 
