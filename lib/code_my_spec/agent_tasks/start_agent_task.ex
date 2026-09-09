@@ -434,8 +434,18 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       # framework-knowledge re-embed + hex doc re-projection belong to
       # boot / mix.lock-poll / explicit `sync_project`, not every task
       # start.
-      with {:ok, _file_result} <- FileSync.sync(scope, base_dir: base_dir, embed: false),
-           {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: base_dir) do
+      #
+      # `changed_paths` threaded through to `ComponentSync` — this function's
+      # own doc says "incremental only", but without this it forced a full,
+      # non-incremental resync of every component in the project on every
+      # `start_task` call regardless of what actually changed. Same bug as
+      # `GetNextRequirement`, the other end of this loop.
+      with {:ok, file_result} <- FileSync.sync(scope, base_dir: base_dir, embed: false),
+           {:ok, comp_result} <-
+             FileComponentSync.sync_from_files(scope,
+               base_dir: base_dir,
+               changed_paths: file_result.changed_paths
+             ) do
         {:ok,
          %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
       else

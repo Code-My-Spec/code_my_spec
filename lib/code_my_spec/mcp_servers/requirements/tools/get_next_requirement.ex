@@ -31,17 +31,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        # Sync files + components before computing the graph.
-        # `embed: false` because this is a read path — re-embedding the
-        # framework knowledge corpus and re-projecting hex docs on every
-        # `get_next_requirement` is the wrong coupling. The
-        # `FileWatcherServer` boot pass + mix.lock-poll already keep the
-        # embedding store fresh during a session. The explicit
-        # `sync_project` MCP tool is the place for a manual full embed.
-        if scope.cwd do
-          FileSync.sync(scope, base_dir: scope.cwd, embed: false)
-          FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
-        end
+        sync_files(scope)
 
         # Resolve active sub-agents from the most recent session for this
         # project so the mapper can produce role-aware dispatch directives
@@ -64,6 +54,36 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         scope = build_init_scope(frame)
         {:ok, prompt} = Init.command(scope, %{})
         {:reply, RequirementsMapper.init_required_response(prompt), frame}
+    end
+  end
+
+  # Sync files + components before computing the graph.
+  # `embed: false` because this is a read path — re-embedding the framework
+  # knowledge corpus and re-projecting hex docs on every `get_next_requirement`
+  # is the wrong coupling. The `FileWatcherServer` boot pass + mix.lock-poll
+  # already keep the embedding store fresh during a session. The explicit
+  # `sync_project` MCP tool is the place for a manual full embed.
+  #
+  # `changed_paths` threaded through to `ComponentSync`, matching
+  # `AgentTasks.Evaluator.sync_files/1` — without it, this scoped every single
+  # call to a full, non-incremental resync of every component in the project
+  # (1067 components, ~2100 raw UPDATEs, 7-25s) regardless of whether this
+  # call's own scan found anything to change. Called once per agent loop
+  # iteration, that was the dominant source of load on a large project, and it
+  # also perpetually invalidated the requirements graph cache by marking every
+  # component "changed" on every call.
+  defp sync_files(%{cwd: nil}), do: :ok
+
+  defp sync_files(%{cwd: cwd} = scope) do
+    case FileSync.sync(scope, base_dir: cwd, embed: false) do
+      {:ok, file_result} ->
+        FileComponentSync.sync_from_files(scope,
+          base_dir: cwd,
+          changed_paths: file_result.changed_paths
+        )
+
+      {:error, _reason} ->
+        :ok
     end
   end
 
