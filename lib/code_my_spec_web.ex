@@ -27,6 +27,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Events,
+      CodeMySpec.ExternalUsers,
       # The harness channel decides hooks. `Hooks` is its own top-level boundary
       # rather than domain code because the stop decision reaches into
       # McpServers, which `CodeMySpec` deliberately does not depend on.

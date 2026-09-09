@@ -10,6 +10,8 @@ defmodule CodeMySpec.ExternalUsers do
   `Conversations` threads end-users.
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.ExternalUsers.ExternalUser
