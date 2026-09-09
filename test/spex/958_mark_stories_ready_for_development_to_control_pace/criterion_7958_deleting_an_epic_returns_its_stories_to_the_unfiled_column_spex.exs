@@ -94,11 +94,15 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
   # membership assertions to the unfiled dropzone so a story still shown under
   # an epic cannot satisfy them.
   defp unfiled_section(html) do
-    case String.split(html, "unassigned-dropzone", parts: 2) do
-      [_, tail] -> tail
-      _ -> raise "unfiled dropzone not found on the board: #{html}"
-    end
+    html
+    |> String.split("unassigned-dropzone", parts: 2)
+    |> unfiled_tail(html)
   end
+
+  defp unfiled_tail([_, tail], _html), do: tail
+
+  defp unfiled_tail(_no_split, html),
+    do: raise("unfiled dropzone not found on the board: #{html}")
 
   defp file_story(frame, title, epic_name) do
     {:reply, response, _frame} =

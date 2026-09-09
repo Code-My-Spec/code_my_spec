@@ -94,17 +94,13 @@ defmodule CodeMySpecSpex.Story970.Criterion7978Spex do
       end
 
       then_ "the probe would receive 200 rather than a redirect", context do
-        # If the generator does not set force_ssl at all, the probe cannot be
-        # redirected and the criterion holds trivially — but record which case
-        # applies rather than passing silently on the absence.
-        case context.with_force_ssl do
-          [] ->
-            refute Enum.any?(context.configs, fn {_p, body} -> body =~ ~r/force_ssl/ end),
-                   "expected either no force_ssl at all, or force_ssl with a health exclusion"
-
-          _ ->
-            assert true
-        end
+        # The generator's runtime.exs always sets force_ssl in prod
+        # (`DeployArtifacts.runtime_config/2`), so this never holds trivially
+        # on an absent force_ssl — the health exclusion checked above is what
+        # actually keeps the probe from being redirected.
+        assert context.with_force_ssl != [],
+               "expected force_ssl to actually be configured, so the health " <>
+                 "exclusion checked above is not proving something vacuous"
 
         {:ok, context}
       end

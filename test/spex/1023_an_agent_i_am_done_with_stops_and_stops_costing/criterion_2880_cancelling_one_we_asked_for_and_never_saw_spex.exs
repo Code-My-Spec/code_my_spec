@@ -60,14 +60,9 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
         {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
 
         agent_id =
-          Regex.run(
-            ~r/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
-            response_text(listing)
-          )
-          |> case do
-            [id | _] -> id
-            _ -> flunk("no agent in the listing: #{response_text(listing)}")
-          end
+          ~r/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
+          |> Regex.run(response_text(listing))
+          |> agent_id_match(listing)
 
         {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => agent_id}, frame)
 
@@ -103,4 +98,9 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
       end
     end
   end
+
+  defp agent_id_match([id | _], _listing), do: id
+
+  defp agent_id_match(_no_match, listing),
+    do: flunk("no agent in the listing: #{response_text(listing)}")
 end

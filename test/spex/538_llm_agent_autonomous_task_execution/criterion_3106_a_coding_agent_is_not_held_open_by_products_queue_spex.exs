@@ -185,11 +185,15 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
     |> Fixtures.orchestrator_actions(agent_id)
     |> Enum.map(&inspect/1)
     |> Enum.reverse()
-    |> Enum.find_value(0, fn said ->
-      case Regex.run(~r/Next: (\d+) requirement/, said) do
-        [_, n] -> String.to_integer(n)
-        nil -> nil
-      end
-    end)
+    |> Enum.find_value(0, &requirement_count/1)
   end
+
+  defp requirement_count(said) do
+    ~r/Next: (\d+) requirement/
+    |> Regex.run(said)
+    |> requirement_count_match()
+  end
+
+  defp requirement_count_match([_, n]), do: String.to_integer(n)
+  defp requirement_count_match(nil), do: nil
 end

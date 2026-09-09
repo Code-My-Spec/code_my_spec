@@ -126,16 +126,16 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
   defp follow(conn, from, pattern, what) do
     html = conn |> get(from) |> html_response(200)
 
-    case Regex.run(pattern, html) do
-      [path] ->
-        String.trim_trailing(path, ~s("))
+    pattern |> Regex.run(html) |> follow_match(what)
+  end
 
-      nil ->
-        flunk(
-          "nothing on #{what} leads to the visitor's cloud project. A copy with " <>
-            "no route to it is an artifact we run rather than a checkout they own."
-        )
-    end
+  defp follow_match([path], _what), do: String.trim_trailing(path, ~s("))
+
+  defp follow_match(nil, what) do
+    flunk(
+      "nothing on #{what} leads to the visitor's cloud project. A copy with " <>
+        "no route to it is an artifact we run rather than a checkout they own."
+    )
   end
 
   defp await(view, pattern, attempts \\ 250)
@@ -145,12 +145,13 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
 
   defp await(view, pattern, attempts) do
     html = render(view)
+    await_result(html =~ pattern, html, view, pattern, attempts)
+  end
 
-    if html =~ pattern do
-      html
-    else
-      Process.sleep(20)
-      await(view, pattern, attempts - 1)
-    end
+  defp await_result(true, html, _view, _pattern, _attempts), do: html
+
+  defp await_result(false, _html, view, pattern, attempts) do
+    Process.sleep(20)
+    await(view, pattern, attempts - 1)
   end
 end

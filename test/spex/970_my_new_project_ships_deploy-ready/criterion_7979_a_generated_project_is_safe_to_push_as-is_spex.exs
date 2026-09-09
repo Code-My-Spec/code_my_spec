@@ -53,10 +53,9 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
         # assertions below are about is the *shape* — `envs/…​.enc.…` present,
         # a plaintext `.env` absent — not which directory the listing came from.
         envs =
-          case Environments.list_directory(context.environment, "envs") do
-            {:ok, names} -> Enum.map(names, &("envs/" <> &1))
-            _ -> []
-          end
+          context.environment
+          |> Environments.list_directory("envs")
+          |> env_paths()
 
         entries = top ++ envs
 
@@ -92,13 +91,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
       then_ "pushing the repo exposes no secret", context do
         # Any file the generator wrote that carries a secret-shaped value
         # would ship on the first push.
-        offenders =
-          Enum.filter(context.entries, fn path ->
-            case Environments.read_file(context.environment, path) do
-              {:ok, body} -> body =~ ~r/(SECRET_KEY_BASE|CLOAK_KEY|AGE-SECRET-KEY)\s*=\s*\S+/
-              _ -> false
-            end
-          end)
+        offenders = Enum.filter(context.entries, &carries_secret?(context.environment, &1))
 
         assert offenders == [],
                "expected no generated file to carry a real secret value, found in: #{inspect(offenders)}"
@@ -107,4 +100,18 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
       end
     end
   end
+
+  defp env_paths({:ok, names}), do: Enum.map(names, &("envs/" <> &1))
+  defp env_paths(_error), do: []
+
+  defp carries_secret?(environment, path) do
+    environment
+    |> Environments.read_file(path)
+    |> secret_body?()
+  end
+
+  defp secret_body?({:ok, body}),
+    do: body =~ ~r/(SECRET_KEY_BASE|CLOAK_KEY|AGE-SECRET-KEY)\s*=\s*\S+/
+
+  defp secret_body?(_error), do: false
 end

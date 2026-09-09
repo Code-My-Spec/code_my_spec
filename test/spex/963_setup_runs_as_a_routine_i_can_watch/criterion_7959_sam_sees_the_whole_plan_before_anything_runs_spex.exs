@@ -82,16 +82,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
 
       then_ "each step is marked not started", context do
         for {step, environment} <- context.rendered_order do
-          selector =
-            case environment do
-              nil ->
-                "[data-test='setup-step'][data-step='#{step}'][data-state='not_started']"
-
-              env ->
-                "[data-test='setup-step'][data-step='#{step}'][data-environment='#{env}'][data-state='not_started']"
-            end
-
-          assert has_element?(context.view, selector),
+          assert has_element?(context.view, step_selector(step, environment)),
                  "expected step #{step} (#{environment || "project"}) to be marked not_started " <>
                    "before the run begins"
         end
@@ -105,4 +96,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
       end
     end
   end
+
+  defp step_selector(step, nil),
+    do: "[data-test='setup-step'][data-step='#{step}'][data-state='not_started']"
+
+  defp step_selector(step, env),
+    do:
+      "[data-test='setup-step'][data-step='#{step}'][data-environment='#{env}'][data-state='not_started']"
 end

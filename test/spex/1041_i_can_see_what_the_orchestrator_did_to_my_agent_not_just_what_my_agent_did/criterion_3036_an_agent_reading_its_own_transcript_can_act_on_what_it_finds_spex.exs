@@ -78,7 +78,8 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
           # same way the 555 spex feed analyzer output, so the problems are
           # real records rather than a number written into the assertion.
           "test_output_files" => %{
-            "compile" => Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
+            "compile" =>
+              Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
           }
         })
         |> then(fn conn ->
@@ -108,10 +109,9 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
         # link and always will — what matters is whether the *action* offers a
         # click where it should offer a call.
         action =
-          case Regex.run(~r{<div[^>]*data-test="orchestrator-action".*?</div>}s, context.transcript) do
-            [markup] -> markup
-            nil -> flunk("no orchestrator action to read")
-          end
+          ~r{<div[^>]*data-test="orchestrator-action".*?</div>}s
+          |> Regex.run(context.transcript)
+          |> orchestrator_action_match()
 
         refute action =~ ~r{<a\s},
                "the action points at a page. A person clicks it and an agent cannot, " <>
@@ -121,4 +121,7 @@ defmodule CodeMySpecSpex.Story985.Criterion3036Spex do
       end
     end
   end
+
+  defp orchestrator_action_match([markup]), do: markup
+  defp orchestrator_action_match(nil), do: flunk("no orchestrator action to read")
 end

@@ -88,10 +88,9 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
 
       then_ "and it is not in the conversation I have with the main agent", context do
         main =
-          case Regex.run(~r/data-test="main-agent"[^>]*href="[^"]*\/agent-conversation\/([0-9a-f-]{36})"/s, context.index) do
-            [_, id] -> id
-            nil -> nil
-          end
+          ~r/data-test="main-agent"[^>]*href="[^"]*\/agent-conversation\/([0-9a-f-]{36})"/s
+          |> Regex.run(context.index)
+          |> main_agent_id_match()
 
         refute main && main in context.holding,
                "a dispatched agent's question landed in the project conversation. That " <>
@@ -102,4 +101,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
       end
     end
   end
+
+  defp main_agent_id_match([_, id]), do: id
+  defp main_agent_id_match(nil), do: nil
 end

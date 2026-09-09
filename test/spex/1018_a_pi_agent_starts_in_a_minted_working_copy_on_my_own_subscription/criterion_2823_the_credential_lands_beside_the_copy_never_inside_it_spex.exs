@@ -108,10 +108,10 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
     # Reloaded rather than taken from the struct in hand: a virtual field is
     # populated in memory on the way through, and the question is what survives
     # to the database.
-    case Map.get(agent, :credential) do
-      nil -> nil
-      %{} = credential when map_size(credential) == 0 -> nil
-      other -> other
-    end
+    agent |> Map.get(:credential) |> persisted_credential_value()
   end
+
+  defp persisted_credential_value(nil), do: nil
+  defp persisted_credential_value(%{} = credential) when map_size(credential) == 0, do: nil
+  defp persisted_credential_value(other), do: other
 end
