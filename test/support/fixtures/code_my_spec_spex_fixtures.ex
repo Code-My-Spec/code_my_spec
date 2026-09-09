@@ -124,6 +124,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.WorkspaceWatchers
   alias Ecto.Changeset
   alias Phoenix.ConnTest
+  alias Plug.Conn
 
   import Ecto.Query, only: [from: 2]
 
@@ -3134,11 +3135,11 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec stub_capturing_authorization(module(), pid(), String.t()) :: :ok
   def stub_capturing_authorization(client, test_pid, response_body) do
     Req.Test.stub(client, fn conn ->
-      send(test_pid, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
+      send(test_pid, {:authorization, Conn.get_req_header(conn, "authorization")})
 
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, response_body)
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(200, response_body)
     end)
   end
 
