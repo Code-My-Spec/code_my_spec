@@ -15,6 +15,13 @@ defmodule CodeMySpecSpex.Story608.Criterion6523Spex do
   (the agent calls `get_issue`, which returns the scope), not via a
   prompt-embedded section.
 
+  The count itself is `:app`-only (`IssuesRepository.list_by_status_and_min_severity/3`,
+  since `b933ad0a`): a `:qa` or `:docs` finding is about the tooling
+  around the work, not the work, so it does not gate this project's
+  loop. The `:qa` and `:docs` issues stay in this scenario's fixtures
+  to prove that — they still must not appear in the count or be
+  embedded in the prompt.
+
   Surface: `start_task` for `issues_resolved` (FixIssues.command/2).
   """
 
@@ -28,7 +35,7 @@ defmodule CodeMySpecSpex.Story608.Criterion6523Spex do
   setup :setup_active_project
 
   spex "Fix prompt is JIT-discovery shaped, not backlog-embedded" do
-    scenario "5 accepted issues across 3 scopes — prompt names the tools and embeds no bodies" do
+    scenario "5 accepted issues across 3 scopes — only the 3 :app ones gate; prompt names the tools and embeds no bodies" do
       given_ "5 accepted med+ issues across :app, :qa, :docs", context do
         scope = context.scope
 
@@ -99,9 +106,10 @@ defmodule CodeMySpecSpex.Story608.Criterion6523Spex do
         {:ok, context}
       end
 
-      then_ "the prompt reports the accepted med+ count", context do
-        assert context.prompt =~ ~r/\*\*5 accepted issue\(s\)\*\*/,
-               "expected prompt to report the count of 5 med+ accepted issues, got:\n#{context.prompt}"
+      then_ "the prompt reports the accepted med+ count, :app issues only", context do
+        assert context.prompt =~ ~r/\*\*3 accepted issue\(s\)\*\*/,
+               "expected prompt to report the count of the 3 :app-scoped accepted issues " <>
+                 "(the :qa and :docs ones don't gate this project), got:\n#{context.prompt}"
 
         {:ok, context}
       end
