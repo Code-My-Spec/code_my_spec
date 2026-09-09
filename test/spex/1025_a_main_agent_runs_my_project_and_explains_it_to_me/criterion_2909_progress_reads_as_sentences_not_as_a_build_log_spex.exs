@@ -87,9 +87,11 @@ defmodule CodeMySpecSpex.Story963.Criterion2909Spex do
   end
 
   defp summary_text(html) do
-    case Regex.run(~r/data-test="project-summary"[^>]*>(.*?)</s, html) do
-      [_, text] -> text
-      nil -> ""
-    end
+    ~r/data-test="project-summary"[^>]*>(.*?)</s
+    |> Regex.run(html)
+    |> summary_text_match()
   end
+
+  defp summary_text_match([_, text]), do: text
+  defp summary_text_match(nil), do: ""
 end

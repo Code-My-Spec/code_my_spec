@@ -104,9 +104,11 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
   end
 
   defp conversation_id(html) do
-    case Regex.run(~r"/agent-conversation/([0-9a-f-]{36})", html) do
-      [_, id] -> id
-      nil -> nil
-    end
+    ~r"/agent-conversation/([0-9a-f-]{36})"
+    |> Regex.run(html)
+    |> conversation_id_match()
   end
+
+  defp conversation_id_match([_, id]), do: id
+  defp conversation_id_match(nil), do: nil
 end
