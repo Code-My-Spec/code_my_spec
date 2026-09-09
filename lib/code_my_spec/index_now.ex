@@ -3,6 +3,8 @@ defmodule CodeMySpec.IndexNow do
   Notifies search engines of new/updated URLs via the IndexNow protocol.
   Supports Bing, Yandex, and Naver.
   """
+  use Boundary, top_level?: true, deps: [CodeMySpec.PublicUrl], exports: :all
+
   require Logger
 
   @api_url "https://api.indexnow.org/IndexNow"
