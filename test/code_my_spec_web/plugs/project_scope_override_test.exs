@@ -122,11 +122,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverrideTest do
       prev = Application.get_env(:code_my_spec, :code_my_spec_project_id)
       Application.put_env(:code_my_spec, :code_my_spec_project_id, cms_project.id)
 
-      on_exit(fn ->
-        if prev,
-          do: Application.put_env(:code_my_spec, :code_my_spec_project_id, prev),
-          else: Application.delete_env(:code_my_spec, :code_my_spec_project_id)
-      end)
+      on_exit(fn -> restore_project_id(prev) end)
 
       %{cms_project: cms_project, cms_account: cms_account}
     end
@@ -187,4 +183,10 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverrideTest do
       assert result.status == 403
     end
   end
+
+  defp restore_project_id(nil),
+    do: Application.delete_env(:code_my_spec, :code_my_spec_project_id)
+
+  defp restore_project_id(prev),
+    do: Application.put_env(:code_my_spec, :code_my_spec_project_id, prev)
 end

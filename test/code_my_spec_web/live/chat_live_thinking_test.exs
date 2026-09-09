@@ -44,16 +44,15 @@ defmodule CodeMySpecWeb.ChatLiveThinkingTest do
   defp with_async_turns(fun) do
     prior = Application.get_env(:code_my_spec, :chat_turn_async)
     Application.put_env(:code_my_spec, :chat_turn_async, true)
+    on_exit(fn -> restore_chat_turn_async(prior) end)
 
-    try do
-      fun.()
-    after
-      case prior do
-        nil -> Application.delete_env(:code_my_spec, :chat_turn_async)
-        value -> Application.put_env(:code_my_spec, :chat_turn_async, value)
-      end
-    end
+    fun.()
   end
+
+  defp restore_chat_turn_async(nil), do: Application.delete_env(:code_my_spec, :chat_turn_async)
+
+  defp restore_chat_turn_async(value),
+    do: Application.put_env(:code_my_spec, :chat_turn_async, value)
 
   defp chat(conn, project_id) do
     {:ok, live, _html} = live(conn, "/app/projects/#{project_id}/chat")

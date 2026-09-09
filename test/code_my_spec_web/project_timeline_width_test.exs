@@ -38,11 +38,13 @@ defmodule CodeMySpecWeb.ProjectTimelineWidthTest do
   end
 
   defp phase_match?(name, key) do
-    case PlainLanguage.fetch(name) do
-      %{phase: ^key} -> true
-      _ -> false
-    end
+    name
+    |> PlainLanguage.fetch()
+    |> phase_key_match?(key)
   end
+
+  defp phase_key_match?(%{phase: key}, key), do: true
+  defp phase_key_match?(_fetched, _key), do: false
 
   test "no phase is wider than five steps" do
     counts = steps_per_phase()

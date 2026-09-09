@@ -95,7 +95,10 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksControllerTest do
         build_post(scope, "pre-tool-use", %{
           "toolCall" => %{
             "name" => "run_command",
-            "args" => %{"CommandLine" => "mix test test/foo_test.exs", "Cwd" => "/workspace/project"}
+            "args" => %{
+              "CommandLine" => "mix test test/foo_test.exs",
+              "Cwd" => "/workspace/project"
+            }
           },
           "conversationId" => "conv-2"
         })
@@ -200,11 +203,7 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksControllerTest do
 
       assert conn.status == 200
       body = Jason.decode!(conn.resp_body)
-      assert body["decision"] in ["stop", "continue"]
-
-      if body["decision"] == "continue" do
-        assert is_binary(body["reason"]) and body["reason"] != ""
-      end
+      assert body["decision"] == "stop"
 
       # Never leaks Claude Code dialect
       refute Map.has_key?(body, "systemMessage")

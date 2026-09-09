@@ -40,11 +40,15 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
     {:ok, _reply, channel} =
       UserSocket
       |> socket("harness_test", %{scope: scope})
-      |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
-        "label" => "the harness at /workspace/app",
-        "harness_id" => scope.active_working_copy_id,
-        "device" => %{"id" => device_fixture(scope).id}
-      })
+      |> subscribe_and_join(
+        HarnessProjectChannel,
+        "harness_project:#{scope.active_project_id}",
+        %{
+          "label" => "the harness at /workspace/app",
+          "harness_id" => scope.active_working_copy_id,
+          "device" => %{"id" => device_fixture(scope).id}
+        }
+      )
 
     %{scope: scope, channel: channel}
   end
@@ -111,13 +115,16 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
   end
 
   defp await_new_handler(before, tries) do
-    case MapSet.difference(handlers(), before) |> MapSet.to_list() do
-      [pid | _] ->
-        pid
+    handlers()
+    |> MapSet.difference(before)
+    |> MapSet.to_list()
+    |> new_handler_result(before, tries)
+  end
 
-      [] ->
-        Process.sleep(10)
-        await_new_handler(before, tries - 1)
-    end
+  defp new_handler_result([pid | _], _before, _tries), do: pid
+
+  defp new_handler_result([], before, tries) do
+    Process.sleep(10)
+    await_new_handler(before, tries - 1)
   end
 end

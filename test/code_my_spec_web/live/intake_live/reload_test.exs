@@ -37,16 +37,18 @@ defmodule CodeMySpecWeb.IntakeLive.ReloadTest do
     def conclude(_plan, _turns), do: {:ok, %{needs_sign_in: false, separate_copies: false}}
 
     def counter do
-      case :persistent_term.get({__MODULE__, :counter}, nil) do
-        nil ->
-          ref = :counters.new(1, [])
-          :persistent_term.put({__MODULE__, :counter}, ref)
-          ref
-
-        ref ->
-          ref
-      end
+      {__MODULE__, :counter}
+      |> :persistent_term.get(nil)
+      |> counter_ref()
     end
+
+    defp counter_ref(nil) do
+      ref = :counters.new(1, [])
+      :persistent_term.put({__MODULE__, :counter}, ref)
+      ref
+    end
+
+    defp counter_ref(ref), do: ref
 
     def calls, do: :counters.get(counter(), 1)
     def reset, do: :counters.put(counter(), 1, 0)
