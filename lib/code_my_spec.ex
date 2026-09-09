@@ -23,6 +23,7 @@ defmodule CodeMySpec do
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Research,
+      CodeMySpec.Rules,
       CodeMySpec.TempFile,
       CodeMySpec.Uploads,
       CodeMySpec.Vault
