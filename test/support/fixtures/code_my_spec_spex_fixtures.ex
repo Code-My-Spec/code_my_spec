@@ -1664,8 +1664,18 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def text_block(text), do: %{"type" => "text", "text" => text}
 
-  def tool_block(name, input),
-    do: %{"type" => "tool_use", "id" => "toolu_spex", "name" => name, "input" => input}
+  # A real Anthropic response never repeats a block id within one message, and
+  # a turn that calls several tools at once is exactly what the grouping UI
+  # (story 984) needs to exercise — a fixed id here duplicated the DOM id
+  # LiveView renders per call and crashed the render instead of the assertion.
+  def tool_block(name, input) do
+    %{
+      "type" => "tool_use",
+      "id" => "toolu_spex_#{System.unique_integer([:positive])}",
+      "name" => name,
+      "input" => input
+    }
+  end
 
   def user_request(content) do
     %{
