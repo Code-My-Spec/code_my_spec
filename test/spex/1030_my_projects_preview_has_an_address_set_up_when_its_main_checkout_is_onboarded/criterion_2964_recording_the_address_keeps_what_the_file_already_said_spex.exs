@@ -64,21 +64,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
             )
           )
 
-        Req.Test.stub(PreviewTunnel, fn conn ->
-          if String.contains?(conn.request_path, "cfd_tunnel") do
-            Req.Test.json(conn, %{
-              "success" => true,
-              "errors" => [],
-              "result" => %{"id" => "c0ffee11-0000-4000-8000-000000002964"}
-            })
-          else
-            Req.Test.json(conn, %{
-              "success" => true,
-              "errors" => [],
-              "result" => %{"id" => "rec-2964"}
-            })
-          end
-        end)
+        Req.Test.stub(PreviewTunnel, &cloudflare_response/1)
 
         {:ok, context}
       end
@@ -130,4 +116,19 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
     {:ok, contents} = Environments.read_file(context.environment, @harness_config)
     Jason.decode!(contents)
   end
+
+  defp cloudflare_response(conn),
+    do: cloudflare_json(conn, String.contains?(conn.request_path, "cfd_tunnel"))
+
+  defp cloudflare_json(conn, true) do
+    Req.Test.json(conn, %{
+      "success" => true,
+      "errors" => [],
+      "result" => %{"id" => "c0ffee11-0000-4000-8000-000000002964"}
+    })
+  end
+
+  defp cloudflare_json(conn, false),
+    do:
+      Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-2964"}})
 end

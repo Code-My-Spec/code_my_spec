@@ -110,22 +110,23 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
   defp stub_cloudflare(test_pid) do
     Test.stub(PreviewTunnel, fn conn ->
       send(test_pid, {:cloudflare, conn.request_path})
-
-      if String.contains?(conn.request_path, "cfd_tunnel") do
-        Test.json(conn, %{
-          "success" => true,
-          "errors" => [],
-          "result" => %{"id" => "d00dfeed-0000-4000-8000-000000002967"}
-        })
-      else
-        Test.json(conn, %{
-          "success" => true,
-          "errors" => [],
-          "result" => %{"id" => "rec-2967"}
-        })
-      end
+      cloudflare_response(conn)
     end)
   end
+
+  defp cloudflare_response(conn),
+    do: cloudflare_json(conn, String.contains?(conn.request_path, "cfd_tunnel"))
+
+  defp cloudflare_json(conn, true) do
+    Test.json(conn, %{
+      "success" => true,
+      "errors" => [],
+      "result" => %{"id" => "d00dfeed-0000-4000-8000-000000002967"}
+    })
+  end
+
+  defp cloudflare_json(conn, false),
+    do: Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-2967"}})
 
   defp flush_cloudflare do
     receive do
