@@ -138,6 +138,7 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
       ]
     })
   end
+
   defp reply(conn, "GET", "/v1/datacenters"), do: json(conn, %{"datacenters" => []})
   defp reply(conn, "GET", "/v1/server_types"), do: json(conn, %{"server_types" => []})
 

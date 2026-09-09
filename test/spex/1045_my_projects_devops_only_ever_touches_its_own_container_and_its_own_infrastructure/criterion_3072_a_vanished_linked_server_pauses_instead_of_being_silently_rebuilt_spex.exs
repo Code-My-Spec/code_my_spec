@@ -101,23 +101,7 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
       "private_net" => [%{"network" => 99, "ip" => "10.0.0.2"}]
     }
 
-    if Agent.get(state, & &1) do
-      json(conn, %{
-        "servers" => [
-          %{
-            "id" => 1,
-            "name" => "now-gone-box",
-            "status" => "running",
-            "location" => %{"name" => "fsn1"},
-            "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
-            "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
-          },
-          steady_uat_box
-        ]
-      })
-    else
-      json(conn, %{"servers" => [steady_uat_box]})
-    end
+    servers_response(conn, Agent.get(state, & &1), steady_uat_box)
   end
 
   defp reply(conn, "GET", "/v1/firewalls", _state), do: json(conn, %{"firewalls" => []})
@@ -143,6 +127,26 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
   defp reply(conn, _method, _path, _state),
     do: json(conn, %{"network" => %{"id" => 1, "name" => "net"}})
+
+  defp servers_response(conn, true, steady_uat_box) do
+    json(conn, %{
+      "servers" => [
+        %{
+          "id" => 1,
+          "name" => "now-gone-box",
+          "status" => "running",
+          "location" => %{"name" => "fsn1"},
+          "public_net" => %{"ipv4" => %{"ip" => "203.0.113.1"}},
+          "private_net" => [%{"network" => 99, "ip" => "10.0.0.1"}]
+        },
+        steady_uat_box
+      ]
+    })
+  end
+
+  defp servers_response(conn, false, steady_uat_box) do
+    json(conn, %{"servers" => [steady_uat_box]})
+  end
 
   defp json(conn, body) do
     conn

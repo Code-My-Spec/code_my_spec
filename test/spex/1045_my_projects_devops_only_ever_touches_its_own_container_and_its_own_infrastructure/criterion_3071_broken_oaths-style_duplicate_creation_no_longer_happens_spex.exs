@@ -26,11 +26,9 @@ defmodule CodeMySpecSpex.Story1045.Criterion3071Spex do
 
         plug = fn conn ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
-          payload = if body == "", do: %{}, else: Jason.decode!(body)
+          payload = decode(body)
 
-          if conn.method == "POST" and conn.request_path == "/v1/servers" do
-            send(test_pid, {:server_created, payload["name"]})
-          end
+          notify_if_server_create(test_pid, conn.method, conn.request_path, payload["name"])
 
           reply(conn, conn.method, conn.request_path)
         end
@@ -47,13 +45,21 @@ defmodule CodeMySpecSpex.Story1045.Criterion3071Spex do
 
       then_ "no server was ever created on the provider", context do
         refute_received {:server_created, _name},
-                         "a dedicated server was created for an unlinked environment — this " <>
-                           "is exactly the broken_oaths incident this story exists to close"
+                        "a dedicated server was created for an unlinked environment — this " <>
+                          "is exactly the broken_oaths incident this story exists to close"
 
         {:ok, context}
       end
     end
   end
+
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
+
+  defp notify_if_server_create(test_pid, "POST", "/v1/servers", name),
+    do: send(test_pid, {:server_created, name})
+
+  defp notify_if_server_create(_test_pid, _method, _path, _name), do: :ok
 
   defp reply(conn, "GET", "/v1/servers") do
     json(conn, %{
