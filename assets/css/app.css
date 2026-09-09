@@ -261,9 +261,20 @@ body {
  *
  * Unlayered, like the rules above, so it beats Tailwind's own utility layer
  * regardless of class order in the markup — no `prose-invert` conditional
- * needed on either side of the transcript any more. Code blocks are left
- * alone (`--tw-prose-pre-*`): a fixed dark editor look there is wanted, not
- * a bug. */
+ * needed on either side of the transcript any more.
+ *
+ * `--tw-prose-code` and `--tw-prose-pre-*` are deliberately left out. Every
+ * other token here renders directly on the bubble's own background, so
+ * inheriting the bubble's text color is exactly right. Inline `code` and
+ * `pre` do not: daisyUI's own `.prose` integration (`assets/vendor/daisyui`)
+ * gives each of them an *independent* chip — code a `--color-base-200` fill
+ * with a border, pre a `--color-neutral` one — paired with its own
+ * `--color-base-content`/`--color-neutral-content` for contrast against
+ * *that* chip, not against the bubble around it. Inheriting here was the
+ * second bug this same fix introduced: white bubble text inherited onto a
+ * light `--color-base-200` chip is white-on-white, which is a worse version
+ * of the exact problem this rule exists to solve. Let daisyUI's own already-
+ * correct pairing stand for both. */
 .chat-prose {
     --tw-prose-body: inherit;
     --tw-prose-headings: inherit;
@@ -275,7 +286,6 @@ body {
     --tw-prose-quotes: inherit;
     --tw-prose-quote-borders: inherit;
     --tw-prose-captions: inherit;
-    --tw-prose-code: inherit;
     --tw-prose-th-borders: inherit;
     --tw-prose-td-borders: inherit;
 }
