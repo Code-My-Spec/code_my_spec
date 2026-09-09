@@ -1375,6 +1375,8 @@ defmodule CodeMySpec.Validation do
     end)
   end
 
+  defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
   # A story assigned to another working copy is another copy's work, whatever
   # its spec files happen to be sitting in this checkout.
   #
@@ -1401,8 +1403,6 @@ defmodule CodeMySpec.Validation do
       _elsewhere -> false
     end
   end
-
-  defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
 
   # Criteria first, then the file row, then the directory name.
   #
