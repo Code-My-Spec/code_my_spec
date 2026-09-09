@@ -50,11 +50,13 @@ defmodule CodeMySpec.EpicDispatchDestinationTest do
   defp placement(story), do: Repo.get!(Story, story.id).working_copy_id
 
   defp rooted?(scope) do
-    case WorkingCopies.main(scope) do
-      %{root: root} -> is_binary(root) and root != ""
-      _ -> false
-    end
+    scope
+    |> WorkingCopies.main()
+    |> has_root?()
   end
+
+  defp has_root?(%{root: root}), do: is_binary(root) and root != ""
+  defp has_root?(_other), do: false
 
   test "with no rooted checkout, the epic is dispatched and goes nowhere", %{
     scope: scope,

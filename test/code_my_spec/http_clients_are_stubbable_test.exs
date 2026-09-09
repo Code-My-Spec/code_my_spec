@@ -183,9 +183,11 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
   end
 
   defp module_name({_path, source}) do
-    case Regex.run(@defmodule, source) do
-      [_, name] -> [Module.concat([name])]
-      _ -> []
-    end
+    @defmodule
+    |> Regex.run(source)
+    |> module_name_match()
   end
+
+  defp module_name_match([_, name]), do: [Module.concat([name])]
+  defp module_name_match(_no_match), do: []
 end

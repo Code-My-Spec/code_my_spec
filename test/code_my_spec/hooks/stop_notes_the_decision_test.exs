@@ -63,13 +63,15 @@ defmodule CodeMySpec.Hooks.StopNotesTheDecisionTest do
   end
 
   defp orchestrator_messages(agent) do
-    case Repo.get_by(Conversation, agent_id: agent.id) do
-      nil ->
-        []
+    Conversation
+    |> Repo.get_by(agent_id: agent.id)
+    |> orchestrator_messages_of()
+  end
 
-      conversation ->
-        conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
-    end
+  defp orchestrator_messages_of(nil), do: []
+
+  defp orchestrator_messages_of(conversation) do
+    conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
   end
 
   test "a stop decision is written to the agent's thread", %{scope: scope, agent: agent} do

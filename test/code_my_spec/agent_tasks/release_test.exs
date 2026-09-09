@@ -46,9 +46,14 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     File.mkdir_p!(Path.join(tmp_dir, Paths.releases_dir()))
 
     {_, 0} = Environments.cmd(scope.environment, "git", ["init", "-q"])
-    {_, 0} = Environments.cmd(scope.environment, "git", ["config", "user.email", "test@example.com"])
+
+    {_, 0} =
+      Environments.cmd(scope.environment, "git", ["config", "user.email", "test@example.com"])
+
     {_, 0} = Environments.cmd(scope.environment, "git", ["config", "user.name", "Test"])
-    {_, 0} = Environments.cmd(scope.environment, "git", ["commit", "--allow-empty", "-q", "-m", "root"])
+
+    {_, 0} =
+      Environments.cmd(scope.environment, "git", ["commit", "--allow-empty", "-q", "-m", "root"])
 
     {:ok, root: tmp_dir, scope: scope}
   end
@@ -73,8 +78,10 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   # genuinely exercised.
   defp opts(gh_status) do
     [
-      cmd: fn env, "git", args -> Environments.cmd(env, "git", args)
-             _env, "gh", _args -> {"", gh_status} end
+      cmd: fn
+        env, "git", args -> Environments.cmd(env, "git", args)
+        _env, "gh", _args -> {"", gh_status}
+      end
     ]
   end
 
@@ -147,9 +154,13 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     root: root,
     scope: scope
   } do
+    # A single-digit id has no non-empty proper prefix. Nine filler stories
+    # first guarantees the id under test has at least two digits by the time
+    # it's created, regardless of what the sequence already stood at.
+    for _ <- 1..9, do: StoriesFixtures.story_fixture(scope)
+
     story = deploy_story!(scope)
     shorter = String.slice(to_string(story.id), 0..-2//1)
-    shorter = if shorter == "", do: "0", else: shorter
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{shorter}\n")
     tag(scope.environment, "1.0.0")

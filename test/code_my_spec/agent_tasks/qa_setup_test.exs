@@ -266,15 +266,20 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
 
       error = record.validation_errors["errors"]["plan"]
 
-      # `qa_plan` requires App Overview / Tools Registry / Seed Strategy. If the
-      # journey plan is being judged by that schema, the complaint names them.
-      if error do
-        refute error =~ "tools registry",
-               "the journey plan is being validated against the qa_plan schema, " <>
-                 "which tells an agent to fix a file that is already correct"
+      # This fixture is missing `journey_plan`'s own required "prerequisites"
+      # section, so a real complaint is expected — the question is which
+      # schema it names. `qa_plan` requires App Overview / Tools Registry /
+      # Seed Strategy; if the journey plan were being judged by that schema
+      # instead of its own, the complaint would name those instead.
+      assert error =~ "prerequisites",
+             "expected the missing-section complaint to name the journey " <>
+               "plan's own required section, got: #{inspect(error)}"
 
-        refute error =~ "seed strategy"
-      end
+      refute error =~ "tools registry",
+             "the journey plan is being validated against the qa_plan schema, " <>
+               "which tells an agent to fix a file that is already correct"
+
+      refute error =~ "seed strategy"
     end
   end
 end
