@@ -32,8 +32,19 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     # the account secrets table, once in several dozen runs, isolated
     # nowhere else. Nothing here ever opens a real connection with either
     # key — every test already routes SSH through `succeeding_run/0`.
-    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_public_key", "ssh-ed25519 AAAAfake test-fixture")
-    {:ok, _} = AccountSecrets.put_value(scope, "server_ssh_private_key", "-----BEGIN FAKE KEY-----\nfixture\n-----END FAKE KEY-----\n")
+    {:ok, _} =
+      AccountSecrets.put_value(
+        scope,
+        "server_ssh_public_key",
+        "ssh-ed25519 AAAAfake test-fixture"
+      )
+
+    {:ok, _} =
+      AccountSecrets.put_value(
+        scope,
+        "server_ssh_private_key",
+        "-----BEGIN FAKE KEY-----\nfixture\n-----END FAKE KEY-----\n"
+      )
 
     {:ok, scope: scope}
   end
@@ -51,8 +62,9 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
     assert_received {:ran, "GET", "/v1/servers"}
     refute_received {:ran, "POST", "/v1/servers"}
+
     refute_received {:ran, "POST", "/v1/networks"},
-                     "expected the box's own already-attached network to be adopted, not a new one created"
+                    "expected the box's own already-attached network to be adopted, not a new one created"
   end
 
   test "creates a new box when the provider has no server by that name", %{scope: scope} do
@@ -67,8 +79,9 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     assert server["name"] == "fresh-box"
 
     assert_received {:ran, "POST", "/v1/servers"}
+
     assert_received {:ran, "POST", "/v1/networks"},
-                     "expected a network to be created for a genuinely new box"
+                    "expected a network to be created for a genuinely new box"
   end
 
   # The account, not just this one call, is what a network's range must not
@@ -84,7 +97,7 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      payload = decode(body)
       send(test_pid, {:ran, conn.method, conn.request_path, payload})
       collision_reply(conn, conn.method, conn.request_path, payload)
     end
@@ -99,11 +112,16 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     assert {:ok, _server} = Steps.provision_account_server(scope, "third-box", opts)
 
     assert_receive {:ran, "POST", "/v1/networks", payload}
-    assert payload["ip_range"] == "10.2.0.0/16", "expected the next free index, got #{inspect(payload)}"
+
+    assert payload["ip_range"] == "10.2.0.0/16",
+           "expected the next free index, got #{inspect(payload)}"
   end
 
   defp collision_reply(conn, "GET", "/v1/servers", _payload), do: json(conn, %{"servers" => []})
-  defp collision_reply(conn, "GET", "/v1/firewalls", _payload), do: json(conn, %{"firewalls" => []})
+
+  defp collision_reply(conn, "GET", "/v1/firewalls", _payload),
+    do: json(conn, %{"firewalls" => []})
+
   defp collision_reply(conn, "GET", "/v1/ssh_keys", _payload), do: json(conn, %{"ssh_keys" => []})
 
   defp collision_reply(conn, "GET", "/v1/networks", _payload) do
@@ -178,6 +196,12 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
   defp succeeding_run, do: fn [_command] -> {"", 0} end
 
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
+
+  defp server_ip(true), do: nil
+  defp server_ip(false), do: "203.0.113.10"
+
   defp record_requests(owner, opts) do
     existing = Keyword.get(opts, :existing, false)
     no_address = Keyword.get(opts, :no_address, false)
@@ -185,7 +209,7 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path})
       reply(conn, conn.method, conn.request_path, payload, existing, no_address, refuse_create)
     end
@@ -194,7 +218,7 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
   end
 
   defp reply(conn, "GET", "/v1/servers", _payload, true, no_address, _refuse) do
-    ip = if no_address, do: nil, else: "203.0.113.10"
+    ip = server_ip(no_address)
 
     json(conn, %{
       "servers" => [
@@ -246,12 +270,14 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(
       412,
-      Jason.encode!(%{"error" => %{"code" => "resource_unavailable", "message" => "error during placement"}})
+      Jason.encode!(%{
+        "error" => %{"code" => "resource_unavailable", "message" => "error during placement"}
+      })
     )
   end
 
   defp reply(conn, "POST", "/v1/servers", payload, _existing, no_address, false) do
-    ip = if no_address, do: nil, else: "203.0.113.10"
+    ip = server_ip(no_address)
 
     json(conn, %{
       "server" => %{
