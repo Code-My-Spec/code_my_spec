@@ -52,17 +52,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       params = Jason.decode!(body)
       send(test_pid, {:cloudflare, conn.request_path, params})
 
-      if String.contains?(conn.request_path, "cfd_tunnel") do
-        Test.json(conn, %{
-          "success" => true,
-          "errors" => [],
-          "result" => %{"id" => @tunnel_id}
-        })
-      else
-        Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
-      end
+      cloudflare_json(conn, String.contains?(conn.request_path, "cfd_tunnel"))
     end)
   end
+
+  defp cloudflare_json(conn, true),
+    do: Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => @tunnel_id}})
+
+  defp cloudflare_json(conn, false),
+    do: Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
 
   test "provisions a tunnel and points the address at it", %{copy: copy} do
     stub_cloudflare(self())
@@ -184,32 +182,43 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   # update. Reports the PATCH body so a test can tell "left alone" from
   # "rewritten", which is the whole distinction here.
   defp taken(test_pid, existing_content) do
-    Test.stub(PreviewTunnel, fn conn ->
-      cond do
-        String.contains?(conn.request_path, "cfd_tunnel") ->
-          Test.json(conn, %{
-            "success" => true,
-            "errors" => [],
-            "result" => %{"id" => @tunnel_id}
-          })
+    Test.stub(PreviewTunnel, &taken_response(&1, test_pid, existing_content))
+  end
 
-        conn.method == "PATCH" ->
-          {:ok, raw, conn} = Plug.Conn.read_body(conn)
-          send(test_pid, {:patched, Jason.decode!(raw)})
+  defp taken_response(conn, test_pid, existing_content) do
+    cfd_tunnel_response(
+      String.contains?(conn.request_path, "cfd_tunnel"),
+      conn,
+      test_pid,
+      existing_content
+    )
+  end
 
-          Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+  defp cfd_tunnel_response(true, conn, _test_pid, _existing_content) do
+    Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => @tunnel_id}})
+  end
 
-        conn.method == "GET" ->
-          Test.json(conn, %{
-            "success" => true,
-            "errors" => [],
-            "result" => [%{"id" => "rec-1", "content" => existing_content}]
-          })
+  defp cfd_tunnel_response(false, conn, test_pid, existing_content) do
+    method_response(conn.method, conn, test_pid, existing_content)
+  end
 
-        true ->
-          Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
-      end
-    end)
+  defp method_response("PATCH", conn, test_pid, _existing_content) do
+    {:ok, raw, conn} = Plug.Conn.read_body(conn)
+    send(test_pid, {:patched, Jason.decode!(raw)})
+
+    Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+  end
+
+  defp method_response("GET", conn, _test_pid, existing_content) do
+    Test.json(conn, %{
+      "success" => true,
+      "errors" => [],
+      "result" => [%{"id" => "rec-1", "content" => existing_content}]
+    })
+  end
+
+  defp method_response(_other, conn, _test_pid, _existing_content) do
+    Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
   end
 
   test "a worktree is refused before anything is provisioned", %{scope: scope, copy: _copy} do

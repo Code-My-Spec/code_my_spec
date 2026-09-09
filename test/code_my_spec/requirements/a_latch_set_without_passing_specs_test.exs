@@ -46,20 +46,24 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
         %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
       ])
 
-    if Keyword.get(opts, :red, true) do
-      problem_fixture(scope, %{
-        source: "spex",
-        source_type: :test,
-        file_path: path,
-        message: "no match of right hand side value: []",
-        severity: :error,
-        category: "spex"
-      })
-    end
+    maybe_add_red_problem(Keyword.get(opts, :red, true), scope, path)
 
     {:ok, story} = Stories.set_specs_ready(scope, story, true)
     story
   end
+
+  defp maybe_add_red_problem(true, scope, path) do
+    problem_fixture(scope, %{
+      source: "spex",
+      source_type: :test,
+      file_path: path,
+      message: "no match of right hand side value: []",
+      severity: :error,
+      category: "spex"
+    })
+  end
+
+  defp maybe_add_red_problem(false, _scope, _path), do: :ok
 
   setup do
     %{scope: full_scope_fixture()}

@@ -939,19 +939,11 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     end
 
     test "a failed migration still refuses the swap", %{env: env} do
-      run = fn [command] ->
-        if String.contains?(command, "migrate") do
-          {"boom", 1}
-        else
-          flunk("swap ran after a failed migration")
-        end
-      end
-
       result =
         Deploy.run(env, "prod",
           deploy_script: "bin/deploy",
           host: "app.example.com",
-          run: run,
+          run: &deploy_run_migrate_only/1,
           remote_dir: "/build"
         )
 
@@ -959,4 +951,11 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       refute Result.swapped?(result)
     end
   end
+
+  defp deploy_run_migrate_only([command]) do
+    migrate_response(String.contains?(command, "migrate"), command)
+  end
+
+  defp migrate_response(true, _command), do: {"boom", 1}
+  defp migrate_response(false, _command), do: flunk("swap ran after a failed migration")
 end

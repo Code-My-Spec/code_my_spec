@@ -20,29 +20,34 @@ defmodule CodeMySpec.Provisioning.SopsTest do
   @moduletag :sops
 
   setup_all do
-    if Sops.available?(), do: :ok, else: {:ok, skip: true}
+    setup_all_result(Sops.available?())
   end
+
+  defp setup_all_result(true), do: :ok
+  defp setup_all_result(false), do: {:ok, skip: true}
 
   setup context do
-    if Sops.available?() do
-      {:ok, tmp} = Briefly.create(directory: true)
-      env = Environment.new(:local, tmp)
-
-      {:ok, {uat_pub, uat_priv}} = Sops.generate_key()
-      {:ok, {prod_pub, prod_priv}} = Sops.generate_key()
-      :ok = Sops.write_config(env, %{"uat" => uat_pub, "prod" => prod_pub})
-
-      Map.merge(context, %{
-        env: env,
-        tmp: tmp,
-        uat: %{pub: uat_pub, priv: uat_priv},
-        prod: %{pub: prod_pub, priv: prod_priv}
-      })
-      |> then(&{:ok, &1})
-    else
-      {:ok, skip: true}
-    end
+    build_context(context, Sops.available?())
   end
+
+  defp build_context(context, true) do
+    {:ok, tmp} = Briefly.create(directory: true)
+    env = Environment.new(:local, tmp)
+
+    {:ok, {uat_pub, uat_priv}} = Sops.generate_key()
+    {:ok, {prod_pub, prod_priv}} = Sops.generate_key()
+    :ok = Sops.write_config(env, %{"uat" => uat_pub, "prod" => prod_pub})
+
+    Map.merge(context, %{
+      env: env,
+      tmp: tmp,
+      uat: %{pub: uat_pub, priv: uat_priv},
+      prod: %{pub: prod_pub, priv: prod_priv}
+    })
+    |> then(&{:ok, &1})
+  end
+
+  defp build_context(_context, false), do: {:ok, skip: true}
 
   describe "generate_key/0" do
     test "returns a distinct public and private key each time" do

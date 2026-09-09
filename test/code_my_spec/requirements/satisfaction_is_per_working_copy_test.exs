@@ -69,11 +69,11 @@ defmodule CodeMySpec.Requirements.SatisfactionIsPerWorkingCopyTest do
 
     nodes
     |> Enum.find(&(&1.name == "bdd_specs_exist" and &1.entity_id == story.id))
-    |> case do
-      nil -> :absent
-      requirement -> requirement.satisfied
-    end
+    |> satisfied_or_absent()
   end
+
+  defp satisfied_or_absent(nil), do: :absent
+  defp satisfied_or_absent(requirement), do: requirement.satisfied
 
   defp two_copies(scope) do
     {:ok, has_them} =

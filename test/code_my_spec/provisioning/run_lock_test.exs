@@ -129,11 +129,13 @@ defmodule CodeMySpec.Provisioning.RunLockTest do
   defp wait_until(_fun, 0), do: flunk("condition never became true")
 
   defp wait_until(fun, attempts) do
-    if fun.() do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until(fun, attempts - 1)
-    end
+    poll_result(fun.(), fun, attempts)
+  end
+
+  defp poll_result(true, _fun, _attempts), do: :ok
+
+  defp poll_result(false, fun, attempts) do
+    Process.sleep(10)
+    wait_until(fun, attempts - 1)
   end
 end
