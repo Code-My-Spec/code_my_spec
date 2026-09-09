@@ -115,6 +115,7 @@ defmodule CodeMySpec.DevState do
       model: agent.model,
       continuous: agent.continuous,
       tool_calls: counts.tools,
+      tool_results: counts.tool_results,
       spoke: counts.spoke,
       empty_turns: counts.empty,
       provider_errors: counts.errors,
@@ -133,11 +134,34 @@ defmodule CodeMySpec.DevState do
         on: c.id == m.conversation_id,
         where: c.agent_id == type(^agent_id, Ecto.UUID) and m.inserted_at > ^since,
         select: %{
-          tools: filter(count(m.id), m.role == "tool"),
+          # The `tool_calls` column, not `role == "tool"`.
+          #
+          # `add_tool_call/5` stores a call as `role: :assistant, content: [],
+          # tool_calls: [...]` — `content: []` is right there, because a tool
+          # call has no prose. `role == "tool"` is the tool *result*, and only
+          # a failed one gets a row at all.
+          #
+          # So this counted a working agent's calls as zero and its `content:
+          # []` rows as empty turns. Measured 2026-09-09: 96 tool calls in
+          # twenty minutes reported as `tools=0 empty=96`, and I read the agent
+          # as idle for most of a night on the strength of it. I built this view
+          # so message counts could not mislead me and then wrote two counters
+          # that misled me the same way.
+          tools:
+            filter(
+              count(m.id),
+              not is_nil(m.tool_calls) and fragment("? <> '[]'::jsonb", m.tool_calls)
+            ),
+          tool_results: filter(count(m.id), m.role == "tool"),
           spoke:
             filter(count(m.id), m.role == "assistant" and fragment("?::text <> '[]'", m.content)),
+          # Prose-less and call-less: a turn that genuinely produced nothing.
           empty:
-            filter(count(m.id), m.role == "assistant" and fragment("?::text = '[]'", m.content)),
+            filter(
+              count(m.id),
+              m.role == "assistant" and fragment("?::text = '[]'", m.content) and
+                (is_nil(m.tool_calls) or fragment("? = '[]'::jsonb", m.tool_calls))
+            ),
           errors:
             filter(
               count(m.id),
@@ -150,7 +174,8 @@ defmodule CodeMySpec.DevState do
         }
       )
 
-    Repo.one(query) || %{tools: 0, spoke: 0, empty: 0, errors: 0, last: nil}
+    Repo.one(query) ||
+      %{tools: 0, tool_results: 0, spoke: 0, empty: 0, errors: 0, last: nil}
   end
 
   defp active_task_name(agent) do
