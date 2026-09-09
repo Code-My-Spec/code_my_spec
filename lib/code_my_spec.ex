@@ -17,6 +17,7 @@ defmodule CodeMySpec do
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Mailer,
+      CodeMySpec.Oauth,
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,

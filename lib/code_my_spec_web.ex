@@ -32,6 +32,7 @@ defmodule CodeMySpecWeb do
       # McpServers, which `CodeMySpec` deliberately does not depend on.
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,
+      CodeMySpec.Oauth,
       CodeMySpec.Uploads
     ],
     exports: :all

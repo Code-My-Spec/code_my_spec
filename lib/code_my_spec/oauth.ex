@@ -8,6 +8,8 @@ defmodule CodeMySpec.Oauth do
   Dynamic Client Registration controllers need.
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Repo
 
