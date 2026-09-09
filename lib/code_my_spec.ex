@@ -9,6 +9,6 @@ defmodule CodeMySpec do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpec.TempFile],
+    deps: [CodeMySpec.Environments, CodeMySpec.Paths, CodeMySpec.Repo, CodeMySpec.TempFile],
     exports: :all
 end

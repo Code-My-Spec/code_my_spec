@@ -7,6 +7,8 @@ defmodule CodeMySpec.Paths do
   module instead of hardcoding strings.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   @base_dir ".code_my_spec"
 
   # ============================================================================
@@ -23,9 +25,6 @@ defmodule CodeMySpec.Paths do
   @doc "Spec files directory (`.code_my_spec/spec`)."
   def spec_dir, do: Path.join(@base_dir, "spec")
 
-  @doc "Status files directory (`.code_my_spec/status`)."
-  def status_dir, do: Path.join(@base_dir, "status")
-
   @doc "Persona research directory (`.code_my_spec/personas`)."
   def personas_dir, do: Path.join(@base_dir, "personas")
 
@@ -41,21 +40,11 @@ defmodule CodeMySpec.Paths do
   @doc "Hex doc projection directory (`.code_my_spec/hex_docs`). Populated by the projector that reads EEP-48 docs from compiled BEAMs in `_build/<env>/lib/<package>/ebin`."
   def hex_docs_dir, do: Path.join(@base_dir, "hex_docs")
 
-  @doc "Tools directory (`.code_my_spec/tools`). Copied from app's priv/tools/ on CLI startup."
-  def tools_dir, do: Path.join(@base_dir, "tools")
-
   @doc "Rules directory (`.code_my_spec/rules`)."
   def rules_dir, do: Path.join(@base_dir, "rules")
 
   @doc "Design assets directory (`.code_my_spec/design`)."
   def design_dir, do: Path.join(@base_dir, "design")
-
-  @doc """
-  Braindump directory (`.code_my_spec/issues`). Hand-written notes, read by
-  `Issues.create_from_braindump/3`. Not a projection — triaged issues live only
-  in the database and are reached through the MCP tools.
-  """
-  def issues_dir, do: Path.join(@base_dir, "issues")
 
   @doc "QA results directory (`.code_my_spec/qa`)."
   def qa_dir, do: Path.join(@base_dir, "qa")
@@ -66,17 +55,8 @@ defmodule CodeMySpec.Paths do
   @doc "Integrations directory (`.code_my_spec/integrations`)."
   def integrations_dir, do: Path.join(@base_dir, "integrations")
 
-  @doc "DevOps artifacts directory (`.code_my_spec/devops`)."
-  def devops_dir, do: Path.join(@base_dir, "devops")
-
-  @doc "DevOps setup record (`.code_my_spec/devops/setup.md`)."
-  def devops_setup_record, do: Path.join(devops_dir(), "setup.md")
-
   @doc "Prod release records directory (`.code_my_spec/releases`)."
   def releases_dir, do: Path.join(@base_dir, "releases")
-
-  @doc "Release record for one version (`.code_my_spec/releases/<version>.md`)."
-  def release_record(version), do: Path.join(releases_dir(), "#{version}.md")
 
   @doc "Credo custom checks directory (`.code_my_spec/credo_checks`)."
   def credo_checks_dir, do: Path.join(@base_dir, "credo_checks")
@@ -92,12 +72,6 @@ defmodule CodeMySpec.Paths do
 
   @doc "Transient research prompts directory (`.code_my_spec/tasks/research`)."
   def research_dir, do: Path.join(tasks_dir(), "research")
-
-  @doc "Sessions directory (`.code_my_spec/sessions`)."
-  def sessions_dir, do: Path.join(@base_dir, "sessions")
-
-  @doc "Completed sessions directory (`.code_my_spec/sessions/completed`)."
-  def completed_sessions_dir, do: Path.join(@base_dir, "sessions/completed")
 
   # ============================================================================
   # Well-known files
@@ -130,9 +104,6 @@ defmodule CodeMySpec.Paths do
   @doc "Design system HTML file."
   def design_system_path, do: Path.join(@base_dir, "design/design_system.html")
 
-  @doc "Implementation status JSON file."
-  def implementation_status_path, do: Path.join(@base_dir, "status/implementation_status.json")
-
   # ============================================================================
   # Derived paths (take a module path or topic name)
   # ============================================================================
@@ -146,36 +117,12 @@ defmodule CodeMySpec.Paths do
   @doc "Design review file path for a context module path."
   def review_file(module_path), do: Path.join(spec_dir(), "#{module_path}/design_review.md")
 
-  @doc "Decision record file for a topic."
-  def decision_file(topic), do: Path.join(decisions_dir(), "#{topic}.md")
-
-  @doc "Research prompt file for a topic."
-  def research_file(topic), do: Path.join(research_dir(), "#{topic}.md")
-
-  @doc "Integration spec file for a named integration."
-  def integration_file(name), do: Path.join(integrations_dir(), "#{name}.md")
-
-  @doc "Knowledge directory for a topic."
-  def knowledge_topic_dir(topic), do: Path.join(knowledge_dir(), topic)
-
-  @doc "Status file for a named entity (e.g., app name)."
-  def status_file(name), do: Path.join(status_dir(), "#{name}.md")
-
   # ============================================================================
   # Glob patterns
   # ============================================================================
 
-  @doc "Glob pattern for all spec files."
-  def spec_glob, do: Path.join(spec_dir(), "**/*.spec.md")
-
-  @doc "Glob pattern for decision files."
-  def decisions_glob, do: Path.join(decisions_dir(), "*.md")
-
   @doc "Glob pattern for knowledge files under a topic."
   def knowledge_topic_glob(topic), do: Path.join(knowledge_dir(), "#{topic}/**")
-
-  @doc "Glob pattern for research prompt files."
-  def research_glob, do: Path.join(research_dir(), "*.md")
 
   # ============================================================================
   # Prefix helpers (for stripping/adding spec dir prefix)
