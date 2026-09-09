@@ -71,11 +71,13 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
   # breaks the CodeMySpecSpex boundary. A free account badges no tier, since
   # free is not one of the purchasable ones, so an absent badge is `:free`.
   defp plan(conn) do
-    case plan_on_page(conn) do
-      nil -> :free
-      tier -> String.to_existing_atom(tier)
-    end
+    conn
+    |> plan_on_page()
+    |> plan_atom()
   end
+
+  defp plan_atom(nil), do: :free
+  defp plan_atom(tier), do: String.to_existing_atom(tier)
 
   # The tier belongs inside metadata, where the handler reads it — merging it
   # at the object level looked right and silently sent no tier at all.
