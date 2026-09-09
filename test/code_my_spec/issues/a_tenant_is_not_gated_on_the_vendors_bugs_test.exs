@@ -67,6 +67,53 @@ defmodule CodeMySpec.Issues.ATenantIsNotGatedOnTheVendorsBugsTest do
            "only :app is about the application under development"
   end
 
+  # The same rule `Validation.split_by_story_enforcement/3` applies to spex
+  # findings: an issue about a story assigned to another working copy is that
+  # copy's work.
+  #
+  # Broken Oaths 2026-09-09: the coding agent on the war-epic copy could not
+  # close `issues_resolved` because of one issue on story 947, which belongs to
+  # an epic living on the main checkout. John had already told it to leave that
+  # story alone, and the agent said so: the gap "stays open by deliberate user
+  # decision, not by anything left for me to do." It was right, and still held.
+  test "an issue about another copy's story does not gate this one", %{scope: scope} do
+    theirs = a_copy(scope, "somebody else's checkout")
+    mine = a_copy(scope, "this checkout")
+
+    story =
+      CodeMySpec.StoriesFixtures.story_fixture(scope, %{
+        title: "Another Copy's Story",
+        working_copy_id: theirs
+      })
+
+    accepted(scope, %{scope: :app, title: "a defect in that story", story_id: story.id})
+
+    here = %{scope | active_working_copy_id: mine}
+
+    assert Issues.list_by_status_and_min_severity(here, :accepted, :medium) == [],
+           "an agent cannot fix a story that belongs to a checkout it is not standing in"
+  end
+
+  # Nobody else owns it, and dropping it would let a finding belong to no one.
+  test "an issue with no story still gates", %{scope: scope} do
+    mine = a_copy(scope, "this checkout")
+    accepted(scope, %{scope: :app, title: "a defect nobody attributed"})
+
+    here = %{scope | active_working_copy_id: mine}
+
+    assert length(Issues.list_by_status_and_min_severity(here, :accepted, :medium)) == 1
+  end
+
+  defp a_copy(scope, label) do
+    {:ok, copy} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: label,
+        device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+      )
+
+    copy.id
+  end
+
   # The other direction, and the reason this is not a blanket exclusion. In the
   # CodeMySpec project a framework issue *is* an app issue, and `issues_resolved`
   # should hold until it is fixed.

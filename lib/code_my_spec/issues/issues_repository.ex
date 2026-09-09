@@ -7,6 +7,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias Ecto.Changeset
 
@@ -70,9 +71,39 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> by_status(status)
     |> by_min_severity(min_severity)
     |> exclude_framework_unless_vendor(scope)
+    |> exclude_other_copies_stories(scope)
     |> ordered_by_severity()
     |> Repo.all()
   end
+
+  # An issue about a story assigned to another working copy is that copy's work.
+  #
+  # The same rule `Validation.split_by_story_enforcement/3` applies to spex
+  # findings, and it belongs here for the same reason: a gate whose passing
+  # state depends on work outside the gated unit is a wall.
+  #
+  # Measured on Broken Oaths 2026-09-09: the coding agent on the war-epic copy
+  # could not close `issues_resolved` because of one issue on story 947, which
+  # belongs to "Diplomacy and Alliances" and lives on the main checkout. John
+  # had already told it to leave that story alone — "park it, shouldn't be in
+  # this copy" — and the agent said so plainly: the gap "stays open by
+  # deliberate user decision, not by anything left for me to do." It was right,
+  # and it was still held.
+  #
+  # An issue with no story, or one whose story is unassigned, gates everywhere.
+  # Nobody else owns it, and dropping it would let a finding belong to no one.
+  defp exclude_other_copies_stories(query, %Scope{active_working_copy_id: here})
+       when is_binary(here) do
+    from(i in query,
+      left_join: s in Story,
+      on: s.id == i.story_id,
+      where:
+        is_nil(i.story_id) or is_nil(s.working_copy_id) or
+          s.working_copy_id == type(^here, Ecto.UUID)
+    )
+  end
+
+  defp exclude_other_copies_stories(query, %Scope{}), do: query
 
   defp exclude_framework_unless_vendor(query, scope) do
     case ensure_vendor(scope) do
