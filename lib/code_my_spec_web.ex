@@ -29,7 +29,8 @@ defmodule CodeMySpecWeb do
       # rather than domain code because the stop decision reaches into
       # McpServers, which `CodeMySpec` deliberately does not depend on.
       CodeMySpec.Hooks,
-      CodeMySpec.McpServers
+      CodeMySpec.McpServers,
+      CodeMySpec.Uploads
     ],
     exports: :all
 

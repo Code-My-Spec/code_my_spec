@@ -15,7 +15,8 @@ defmodule CodeMySpec do
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
-      CodeMySpec.TempFile
+      CodeMySpec.TempFile,
+      CodeMySpec.Uploads
     ],
     exports: :all
 end

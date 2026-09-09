@@ -3,6 +3,8 @@ defmodule CodeMySpec.Uploads do
   S3 upload helpers for presigned URLs.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   def presigned_upload_url(key, content_type, opts \\ []) do
     bucket = bucket()
     expires_in = Keyword.get(opts, :expires_in, 300)
@@ -17,17 +19,11 @@ defmodule CodeMySpec.Uploads do
     bucket = bucket()
     expires_in = Keyword.get(opts, :expires_in, 3600)
 
-    ExAws.S3.presigned_url(ExAws.Config.new(:s3), :get, bucket, key,
-      expires_in: expires_in
-    )
+    ExAws.S3.presigned_url(ExAws.Config.new(:s3), :get, bucket, key, expires_in: expires_in)
   end
 
   def generate_key(project_id, filename) do
     "issues/#{project_id}/#{Ecto.UUID.generate()}/#{filename}"
-  end
-
-  def delete_object(key) do
-    ExAws.S3.delete_object(bucket(), key) |> ExAws.request()
   end
 
   defp bucket do
