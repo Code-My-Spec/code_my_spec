@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec,
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
+      CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Paths,
       CodeMySpec.Repo,

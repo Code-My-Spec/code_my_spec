@@ -14,6 +14,7 @@ defmodule CodeMySpec do
       CodeMySpec.Code,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
+      CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Mailer,
       CodeMySpec.Paths,

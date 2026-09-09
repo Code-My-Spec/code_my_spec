@@ -20,6 +20,8 @@ defmodule CodeMySpec.Events do
       # => false
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Events.Event
