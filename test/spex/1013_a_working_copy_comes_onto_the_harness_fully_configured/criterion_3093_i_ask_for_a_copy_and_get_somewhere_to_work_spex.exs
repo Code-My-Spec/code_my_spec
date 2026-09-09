@@ -40,15 +40,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion3093Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp created_path(text) do
-    # Stops at a comma or a period: the line reads "at <root>." when the copy is
-    # fully staffed and "at <root>, and it is not fully staffed." when it is
-    # not, and anchoring to end-of-line matched neither reliably.
-    case Regex.run(~r{Made a working copy at ([^\s,]+?)[.,]?(?:\s|$)}, text) do
-      [_, path] -> path
-      _ -> ""
-    end
-  end
+  # Stops at a comma or a period: the line reads "at <root>." when the copy is
+  # fully staffed and "at <root>, and it is not fully staffed." when it is
+  # not, and anchoring to end-of-line matched neither reliably.
+  defp created_path(text),
+    do: path_from(Regex.run(~r{Made a working copy at ([^\s,]+?)[.,]?(?:\s|$)}, text))
+
+  defp path_from([_, path]), do: path
+  defp path_from(_no_match), do: ""
 
   spex "An agent asks for a working copy and gets one it can work in" do
     scenario "I ask for a copy and get somewhere to work" do

@@ -39,12 +39,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp created_id(text) do
-    case Regex.run(~r/^id: (\S+)/m, text) do
-      [_, id] -> id
-      _ -> ""
-    end
-  end
+  defp created_id(text), do: id_from(Regex.run(~r/^id: (\S+)/m, text))
+
+  defp id_from([_, id]), do: id
+  defp id_from(_no_match), do: ""
 
   spex "A working copy created this way comes up with its agents already on it" do
     scenario "The copy I asked for arrives staffed" do

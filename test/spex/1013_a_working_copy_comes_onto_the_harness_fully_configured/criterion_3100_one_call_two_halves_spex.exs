@@ -44,12 +44,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp created_id(text) do
-    case Regex.run(~r/^id: (\S+)/m, text) do
-      [_, id] -> id
-      _ -> ""
-    end
-  end
+  defp created_id(text), do: id_from(Regex.run(~r/^id: (\S+)/m, text))
+
+  defp id_from([_, id]), do: id
+  defp id_from(_no_match), do: ""
 
   spex "The harness does the work on disk and the server does the work on the record" do
     scenario "One call, two halves" do

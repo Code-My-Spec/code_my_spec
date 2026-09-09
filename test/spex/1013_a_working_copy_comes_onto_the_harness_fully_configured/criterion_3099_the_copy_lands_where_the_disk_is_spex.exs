@@ -41,12 +41,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion3099Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp created_id(text) do
-    case Regex.run(~r/^id: (\S+)/m, text) do
-      [_, id] -> id
-      _ -> ""
-    end
-  end
+  defp created_id(text), do: id_from(Regex.run(~r/^id: (\S+)/m, text))
+
+  defp id_from([_, id]), do: id
+  defp id_from(_no_match), do: ""
 
   spex "A working copy is created on a machine that is running a harness" do
     scenario "The copy lands where the disk is" do
