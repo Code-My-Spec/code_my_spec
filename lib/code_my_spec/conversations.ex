@@ -187,7 +187,45 @@ defmodule CodeMySpec.Conversations do
   message (so the operator inbox renders it live). `kind` is the harness message
   kind (`"assistant"` / `"tool"` / `"status"`); `agent_role` is the speaking lane.
   """
+  # A message with nothing in it is not a message.
+  #
+  # `parts_for/1` answers `[]` for `nil` and for `""`, so a caller with no text
+  # inserted a row whose entire content was an empty list — and it renders as
+  # the agent having spoken and said nothing.
+  #
+  # Guarded here rather than at each caller, which is the third attempt at this
+  # and the first one that can be right. I guarded `write_turn_event/3` for a
+  # missing key, then for a `nil` text, and empty rows kept arriving from a
+  # caller I had not found: 47 on one coding agent in eight minutes, stamped
+  # `agent:coding`, after two commits that were each supposed to have ended
+  # them. Whichever caller it is, it cannot write one now.
+  #
+  # The cost of those rows was a day of misdiagnosis. A coding agent showing 99
+  # empty messages against 0 substantive ones reads as a model returning
+  # nothing, and I went through a credential rotation, a provider switch and
+  # Alloy's response parsing looking for a fault that was never there.
+  #
+  # `{:ok, nil}` rather than an error: a caller with nothing to say has not done
+  # anything wrong, and every one of them ignores the message it gets back.
+  def add_agent_message(%Conversation{} = _conversation, _agent_role, _kind, text)
+      when text in [nil, ""] do
+    {:ok, nil}
+  end
+
+  def add_agent_message(%Conversation{} = conversation, agent_role, kind, text)
+      when is_binary(text) do
+    if String.trim(text) == "" do
+      {:ok, nil}
+    else
+      do_add_agent_message(conversation, agent_role, kind, text)
+    end
+  end
+
   def add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
+    do_add_agent_message(conversation, agent_role, kind, text)
+  end
+
+  defp do_add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
     %Message{}
     |> Message.agent_changeset(%{
       conversation_id: conversation.id,

@@ -91,6 +91,26 @@ defmodule CodeMySpec.Agents.AStepThatSaidNothingIsNotAStepTest do
     assert messages(ctx.conversation) == []
   end
 
+  # Guarded at the writer, which is the third attempt at this and the first that
+  # can be complete. Guarding `write_turn_event/3` for a missing key, then for a
+  # nil text, still left empty rows arriving from a caller I had not found — 47
+  # on one coding agent in eight minutes, stamped `agent:coding`, after two
+  # commits that were each meant to have ended them.
+  test "the writer itself refuses an empty message, whatever the caller", ctx do
+    {:ok, conversation} =
+      CodeMySpec.Conversations.find_or_create_agent_conversation(
+        ctx.scope.active_account_id,
+        ctx.scope.active_project_id,
+        ctx.agent.id
+      )
+
+    assert {:ok, nil} = Conversations.add_agent_message(conversation, "coding", "assistant", "")
+    assert {:ok, nil} = Conversations.add_agent_message(conversation, "coding", "assistant", nil)
+    assert {:ok, nil} = Conversations.add_agent_message(conversation, "coding", "assistant", "  ")
+
+    assert messages(ctx.conversation) == []
+  end
+
   # The half that must keep working: a step that said something is still a step.
   test "an event with text is written", ctx do
     Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
