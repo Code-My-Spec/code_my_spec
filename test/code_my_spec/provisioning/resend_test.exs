@@ -144,18 +144,17 @@ defmodule CodeMySpec.Provisioning.ResendTest do
       {:ok, calls} = Agent.start_link(fn -> 0 end)
 
       stub(fn conn ->
-        n = Agent.get_and_update(calls, &{&1 + 1, &1 + 1})
-
-        if n == 1 do
-          json(conn, 429, %{"name" => "rate_limit_exceeded", "message" => "Too many requests."})
-        else
-          json(conn, 200, %{"data" => []})
-        end
+        rate_limited_list_response(conn, Agent.get_and_update(calls, &{&1 + 1, &1 + 1}))
       end)
 
       assert {:ok, []} = Resend.list_domains(@scope)
       assert Agent.get(calls, & &1) == 2, "the 429 was not retried"
     end
+
+    defp rate_limited_list_response(conn, 1),
+      do: json(conn, 429, %{"name" => "rate_limit_exceeded", "message" => "Too many requests."})
+
+    defp rate_limited_list_response(conn, _n), do: json(conn, 200, %{"data" => []})
 
     test "a persistent rate limit is eventually reported rather than retried forever" do
       stub(fn conn ->
@@ -194,19 +193,27 @@ defmodule CodeMySpec.Provisioning.ResendTest do
       # verification is not an attempt — counting it would make the reported
       # attempt count one higher than the number of times setup actually
       # looked.
-      stub(fn conn ->
-        if conn.method == "POST" do
-          json(conn, 200, %{"id" => "d1", "object" => "domain"})
-        else
-          n = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
-          status = if n >= 3, do: "verified", else: "pending"
-          json(conn, 200, %{"id" => "d1", "status" => status, "records" => @live_records})
-        end
-      end)
+      stub(&poll_response(&1, counter))
 
       assert {:ok, %{attempts: 3, verified_at: %DateTime{}}} =
                Resend.poll_until_verified(@scope, "d1", interval_ms: 0, sleep: fn _ -> :ok end)
     end
+
+    defp poll_response(%{method: "POST"} = conn, _counter),
+      do: json(conn, 200, %{"id" => "d1", "object" => "domain"})
+
+    defp poll_response(conn, counter) do
+      n = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
+
+      json(conn, 200, %{
+        "id" => "d1",
+        "status" => verification_status(n),
+        "records" => @live_records
+      })
+    end
+
+    defp verification_status(n) when n >= 3, do: "verified"
+    defp verification_status(_n), do: "pending"
 
     # Criterion 8027 again, from the other side: giving up must name the
     # record, not just the timeout.
