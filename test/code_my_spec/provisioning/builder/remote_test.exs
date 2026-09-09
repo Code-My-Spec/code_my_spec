@@ -351,32 +351,32 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
 
       run = fn [command] ->
         send(test_pid, {:ran, command})
-
-        cond do
-          String.starts_with?(command, "command -v kamal") ->
-            {"", 1}
-
-          String.starts_with?(command, "apt-get") ->
-            :counters.add(counter, 1, 1)
-            if :counters.get(counter, 1) < 2, do: {"broken .so", 1}, else: {"", 0}
-        end
+        flaky_compile_response(command, counter)
       end
 
       assert :ok = Remote.ensure_kamal(run)
       assert :counters.get(counter, 1) == 2
     end
 
+    defp flaky_compile_response("command -v kamal" <> _, _counter), do: {"", 1}
+
+    defp flaky_compile_response("apt-get" <> _, counter) do
+      :counters.add(counter, 1, 1)
+      compile_attempt_response(:counters.get(counter, 1) < 2)
+    end
+
+    defp compile_attempt_response(true), do: {"broken .so", 1}
+    defp compile_attempt_response(false), do: {"", 0}
+
     test "gives up after repeated compile failures rather than retrying forever" do
-      run = fn [command] ->
-        cond do
-          String.starts_with?(command, "command -v kamal") -> {"", 1}
-          String.starts_with?(command, "apt-get") -> {"mkmf.log: extconf failed", 1}
-        end
-      end
+      run = fn [command] -> always_broken_compile_response(command) end
 
       assert {:error, {1, output}} = Remote.ensure_kamal(run)
       assert output =~ "extconf failed"
     end
+
+    defp always_broken_compile_response("command -v kamal" <> _), do: {"", 1}
+    defp always_broken_compile_response("apt-get" <> _), do: {"mkmf.log: extconf failed", 1}
 
     test "reports a real failure rather than proceeding without kamal" do
       run =
