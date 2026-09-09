@@ -65,13 +65,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8045Spex do
                 "Bearer #{context.stored_credential}"
               )
 
-            conn =
-              case method do
-                :get -> get(conn, path)
-                :post -> post(conn, path, %{})
-              end
-
-            {name, conn.status}
+            {name, call(conn, method, path).status}
           end)
 
         {:ok, Map.put(context, :results, results)}
@@ -103,4 +97,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8045Spex do
       end
     end
   end
+
+  defp call(conn, :get, path), do: get(conn, path)
+  defp call(conn, :post, path), do: post(conn, path, %{})
 end

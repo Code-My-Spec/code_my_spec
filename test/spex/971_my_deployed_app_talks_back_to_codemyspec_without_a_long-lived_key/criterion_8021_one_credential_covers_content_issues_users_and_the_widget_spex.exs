@@ -55,13 +55,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8021Spex do
               |> Plug.Conn.put_req_header("content-type", "application/json")
               |> Plug.Conn.put_req_header("authorization", "Bearer #{context.token}")
 
-            conn =
-              case method do
-                :get -> get(conn, path)
-                :post -> post(conn, path, %{})
-              end
-
-            {name, conn.status}
+            {name, call(conn, method, path).status}
           end)
 
         {:ok, Map.put(context, :results, results)}
@@ -81,4 +75,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8021Spex do
       end
     end
   end
+
+  defp call(conn, :get, path), do: get(conn, path)
+  defp call(conn, :post, path), do: post(conn, path, %{})
 end
