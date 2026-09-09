@@ -174,14 +174,14 @@ defmodule CodeMySpec.Conversations.Message do
   # Not a validation. Refusing the insert would lose whatever else the row
   # carries, and the point is to learn where it comes from, not to drop it.
   defp name_an_empty_writer(changeset) do
-    case Ecto.Changeset.get_field(changeset, :content) do
+    case get_field(changeset, :content) do
       [] ->
         require Logger
 
         Logger.warning(
           "[Conversations] an empty message reached the changeset — " <>
-            "role=#{inspect(Ecto.Changeset.get_field(changeset, :role))} " <>
-            "sender=#{inspect(Ecto.Changeset.get_field(changeset, :sender_id))}\n" <>
+            "role=#{inspect(get_field(changeset, :role))} " <>
+            "sender=#{inspect(get_field(changeset, :sender_id))}\n" <>
             Exception.format_stacktrace()
         )
 

@@ -38,7 +38,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Projects
   alias CodeMySpec.WorkingCopies
 
   schema do

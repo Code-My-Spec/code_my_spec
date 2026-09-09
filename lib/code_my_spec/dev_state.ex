@@ -90,6 +90,7 @@ defmodule CodeMySpec.DevState do
     since = DateTime.utc_now() |> DateTime.add(-minutes * 60, :second) |> DateTime.to_naive()
 
     project = Repo.get!(Project, project_id)
+
     agents =
       [project_id: project.id]
       |> AgentsRepository.list_every_agent()
@@ -229,16 +230,20 @@ defmodule CodeMySpec.DevState do
       cutoff = System.os_time(:second) - minutes * 60
 
       count =
-        Path.wildcard(Path.join(root, "{lib,test}/**/*.{ex,exs,heex}"))
-        |> Enum.count(fn path ->
-          case File.stat(path, time: :posix) do
-            {:ok, %{mtime: mtime}} -> mtime > cutoff
-            _ -> false
-          end
-        end)
+        root
+        |> Path.join("{lib,test}/**/*.{ex,exs,heex}")
+        |> Path.wildcard()
+        |> Enum.count(&changed_since?(&1, cutoff))
 
       %{root: root, changed: count}
     end)
+  end
+
+  defp changed_since?(path, cutoff) do
+    case File.stat(path, time: :posix) do
+      {:ok, %{mtime: mtime}} -> mtime > cutoff
+      _ -> false
+    end
   end
 
   @doc """

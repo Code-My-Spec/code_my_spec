@@ -17,7 +17,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Conversations
 
   require Logger
 

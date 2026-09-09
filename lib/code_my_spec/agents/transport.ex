@@ -100,12 +100,6 @@ defmodule CodeMySpec.Agents.Transport do
             ) :: :ok | {:error, term()}
 
   @doc """
-  Ask the machine serving `working_copy_id` to end this agent's process group.
-
-  `:ok` means the group is gone and the caller may record the stop.
-  `{:error, reason}` means it is not, and the caller must not.
-  """
-  @doc """
   Call a tool that lives on the machine rather than here.
 
   A browser is an MCP server on somebody's box, so a script calling one has to
@@ -124,6 +118,12 @@ defmodule CodeMySpec.Agents.Transport do
               timeout()
             ) :: {:ok, String.t()} | {:error, term()}
 
+  @doc """
+  Ask the machine serving `working_copy_id` to end this agent's process group.
+
+  `:ok` means the group is gone and the caller may record the stop.
+  `{:error, reason}` means it is not, and the caller must not.
+  """
   @callback stop_agent(working_copy_id :: String.t(), agent :: Agent.t(), timeout()) ::
               :ok | {:error, term()}
 
