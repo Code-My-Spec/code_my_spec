@@ -45,7 +45,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
         raw_harness_id = header(conn, "x-harness-id")
         raw_project_id = header(conn, "x-project-id")
 
-        if List.last(conn.path_info) == "mcp" do
+        if "mcp" in conn.path_info do
           Logger.warning(
             "[ProjectScopeOverride][DIAG] path=#{conn.request_path} " <>
               "raw_x_harness_id=#{inspect(raw_harness_id)} " <>
