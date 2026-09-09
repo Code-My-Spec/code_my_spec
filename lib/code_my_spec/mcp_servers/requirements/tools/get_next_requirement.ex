@@ -79,7 +79,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
       {:ok, file_result} ->
         FileComponentSync.sync_from_files(scope,
           base_dir: cwd,
-          changed_paths: file_result.changed_paths
+          changed_paths: file_result.changed_paths,
+          removed_module_names: file_result.removed_module_names
         )
 
       {:error, _reason} ->

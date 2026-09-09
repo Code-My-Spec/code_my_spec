@@ -145,7 +145,8 @@ defmodule CodeMySpec.Validation do
   defp local_validate_stop(%Scope{} = scope, task, opts, cwd, sync_result) do
     FileComponentSync.sync_from_files(scope,
       base_dir: cwd,
-      changed_paths: sync_result.changed_paths
+      changed_paths: sync_result.changed_paths,
+      removed_module_names: sync_result.removed_module_names
     )
 
     # An agent with no session names its own changed set, exactly as it does on

@@ -212,7 +212,8 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
         {:ok, file_result} ->
           FileComponentSync.sync_from_files(scope,
             base_dir: scope.cwd,
-            changed_paths: file_result.changed_paths
+            changed_paths: file_result.changed_paths,
+            removed_module_names: file_result.removed_module_names
           )
 
         {:error, _reason} ->

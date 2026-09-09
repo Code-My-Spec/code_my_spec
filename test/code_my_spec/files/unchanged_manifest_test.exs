@@ -221,6 +221,90 @@ defmodule CodeMySpec.Files.UnchangedManifestTest do
            "and the owner has to still be there — preserving it is the point"
   end
 
+  # `project_components/2` used to call `ComponentSync.sync_from_files(scope)`
+  # with no scoping at all — a full, non-incremental resync of every component
+  # in the project on every manifest that touched even one file. Scoping it to
+  # `changed_paths` + `removed_module_names` means a deletion is no longer
+  # covered by "re-derive everything and diff against what's left" — it has to
+  # be pruned by name instead, which is exactly the case this guards: the
+  # component's only file is gone, and nothing else in the project claims its
+  # module.
+  test "a removed spec's component is pruned once nothing claims its module any more", %{
+    scope: scope
+  } do
+    spec_path = ".code_my_spec/spec/demo/widget.spec.md"
+
+    spec_obs =
+      observation(spec_path, %{
+        role: :spec,
+        validation_errors: %{
+          "data" => %{
+            "module_name" => "Demo.Widget",
+            "type" => "context",
+            "description" => nil,
+            "dependencies" => []
+          }
+        }
+      })
+
+    FileSync.reconcile_and_project(scope, [spec_obs])
+
+    component = CodeMySpec.Components.get_component_by_module_name(scope, "Demo.Widget")
+    assert component, "precondition: the spec's component was synced"
+
+    result = FileSync.reconcile_and_project(scope, [])
+
+    assert result.removed == 1
+
+    refute CodeMySpec.Components.get_component(scope, component.id), """
+    The component survived its only file being deleted.
+
+    The incremental path has no full file list to diff against any more, so it
+    has to check the module the removed file named, individually, against what
+    the project still has on disk — and prune it when nothing does.
+    """
+  end
+
+  # The mirror case: a module still claimed by a surviving file (its impl,
+  # say) must not be pruned just because one of its files — the spec — was
+  # removed. `cleanup_removed/3`'s full-merge diff got this for free by
+  # re-deriving `merged` from every remaining file; the incremental path has
+  # to check the live `files` table instead, and this is the case that check
+  # exists for.
+  test "a module still claimed by a surviving file is not pruned", %{scope: scope} do
+    spec_path = ".code_my_spec/spec/demo/widget.spec.md"
+    impl_path = "lib/demo/widget.ex"
+
+    module_data = %{
+      "data" => %{
+        "module_name" => "Demo.Widget",
+        "type" => "context",
+        "description" => nil,
+        "dependencies" => []
+      }
+    }
+
+    spec_obs = observation(spec_path, %{role: :spec, validation_errors: module_data})
+    impl_obs = observation(impl_path, %{role: :implementation, validation_errors: module_data})
+
+    FileSync.reconcile_and_project(scope, [spec_obs, impl_obs])
+
+    component = CodeMySpec.Components.get_component_by_module_name(scope, "Demo.Widget")
+    assert component, "precondition: the component was synced from both files"
+
+    # Only the spec goes; the impl survives.
+    result = FileSync.reconcile_and_project(scope, [impl_obs])
+
+    assert result.removed == 1
+
+    assert CodeMySpec.Components.get_component(scope, component.id), """
+    The component was pruned even though its impl file is still right there.
+
+    A module claimed by any surviving spec or impl file must not be deleted —
+    losing one side of the pair is not the same as losing the component.
+    """
+  end
+
   test "a story that resolve_owners drops is still cleared", %{scope: scope} do
     # The mirror of the clause above, asserted because the fix is deliberately
     # asymmetric: nothing else writes `story_id`, so a nil there really is this

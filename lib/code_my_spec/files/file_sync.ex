@@ -184,6 +184,7 @@ defmodule CodeMySpec.Files.FileSync do
        upserted: upserted,
        removed: removed,
        changed_paths: changed_paths,
+       removed_module_names: ComponentSync.removed_module_names(removed_records),
        total_files: length(file_entries)
      }}
   end
@@ -383,13 +384,25 @@ defmodule CodeMySpec.Files.FileSync do
   # The components, projected — unless no file moved, in which case they cannot
   # have.
   #
-  # This is the expensive half. `925 components synced in 9000-9900ms` is what
-  # the join storm was actually made of; the upsert alongside it is the smaller
-  # cost. Components are derived from File rows and nothing else, so a manifest
-  # that wrote no row and deleted none leaves every one of them exactly as it
-  # was, and re-deriving them is 9 seconds spent to arrive back where we
-  # started — while holding a pooled connection the next socket upgrade is
-  # queued behind.
+  # Used to call `ComponentSync.sync_from_files(scope)` with no scoping at
+  # all — a full, non-incremental resync of every component in the project on
+  # every manifest that touched even one file. `925 components synced in
+  # 9000-9900ms` was that cost when this comment was written; on a
+  # 1067-component project with several worktrees editing concurrently, the
+  # same call was measured firing every 10-40s at 10-50s apiece, each holding
+  # a pooled connection the whole time — not a one-off cost any more but a
+  # standing one that does not scale with either the project or the number of
+  # checkouts editing it.
+  #
+  # Scoped to `changed_entries` and `removed_module_names` instead: an
+  # incremental resync of the components those files actually named, plus a
+  # targeted orphan check for whatever a removed file named (see
+  # `ComponentSync.removed_module_names/1` and `cleanup_orphaned/3`). A
+  # manifest that only touches a handful of files now does a handful of
+  # components' worth of work rather than the whole project's. The full,
+  # non-incremental form is still what the explicit `/codemyspec:sync` and
+  # `sync_project` surfaces call — this is the automatic, every-manifest path,
+  # and it should not be paying the full-project price on every tick.
   #
   # Keyed on `removed` as well as `changed_entries`, because a deletion changes
   # the projection without changing any surviving row.
@@ -401,8 +414,16 @@ defmodule CodeMySpec.Files.FileSync do
   # also the one that makes the skip visible.
   defp project_components(_scope, %{changed_entries: [], removed: 0}), do: :unchanged
 
-  defp project_components(scope, _summary) do
-    {:ok, components} = ComponentSync.sync_from_files(scope)
+  defp project_components(scope, summary) do
+    changed_paths = Enum.map(summary.changed_entries, & &1.path)
+    removed_module_names = ComponentSync.removed_module_names(summary.removed_records)
+
+    {:ok, components} =
+      ComponentSync.sync_from_files(scope,
+        changed_paths: changed_paths,
+        removed_module_names: removed_module_names
+      )
+
     length(components.all_components)
   end
 
@@ -900,6 +921,7 @@ defmodule CodeMySpec.Files.FileSync do
        upserted: upserted,
        removed: removed,
        changed_paths: changed_paths,
+       removed_module_names: ComponentSync.removed_module_names(removed_records),
        total_files: length(file_entries)
      }}
   end

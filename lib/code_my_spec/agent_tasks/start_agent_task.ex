@@ -444,7 +444,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
            {:ok, comp_result} <-
              FileComponentSync.sync_from_files(scope,
                base_dir: base_dir,
-               changed_paths: file_result.changed_paths
+               changed_paths: file_result.changed_paths,
+               removed_module_names: file_result.removed_module_names
              ) do
         {:ok,
          %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}

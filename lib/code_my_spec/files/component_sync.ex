@@ -43,11 +43,19 @@ defmodule CodeMySpec.Files.ComponentSync do
     is read via `scope.environment` so the dispatcher can route to in-memory
     implementations for tests.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
+  - `:removed_module_names` — module names named by spec/impl files that were
+    just removed (see `removed_module_names/1`). An incremental sync has no
+    other way to learn one of its components might now be orphaned — it never
+    reads the files that *didn't* change, so it can't rebuild the full
+    "every module any file still names" set `cleanup_removed/3` needs. Each
+    name here is checked against the live `files` table instead, and pruned
+    only if nothing claims it any more.
   """
   @spec sync_from_files(Scope.t(), keyword()) :: {:ok, sync_result()}
   def sync_from_files(%Scope{} = scope, opts \\ []) do
     _ = Keyword.get(opts, :base_dir)
     changed_paths = Keyword.get(opts, :changed_paths)
+    removed_module_names = Keyword.get(opts, :removed_module_names, [])
     incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
     env = scope.environment
@@ -66,12 +74,45 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     merged = merge_by_module_name(spec_data, impl_data)
 
-    if merged == [] do
+    if merged == [] and removed_module_names == [] do
       ms = System.monotonic_time(:millisecond) - start
       Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
       {:ok, %{all_components: [], changed_component_ids: []}}
     else
-      do_sync(scope, merged, incremental? or unreadable > 0, start, unreadable)
+      do_sync(
+        scope,
+        merged,
+        incremental? or unreadable > 0,
+        start,
+        unreadable,
+        removed_module_names
+      )
+    end
+  end
+
+  @doc """
+  Module names named by files that are gone — worth checking whether their
+  component is now orphaned.
+
+  Called by `FileSync` right after a reconcile removes rows, on the removed
+  records themselves (their old `validation_errors` still carry whatever
+  module name the scanner last stored for them, same as a live file's does).
+  A file with no stored module name — `:test`/doc roles, or a row scanned
+  before this was recorded — contributes nothing, the same way it contributes
+  nothing to `merge_by_module_name/2` for a live file.
+  """
+  @spec removed_module_names([File.t()]) :: [String.t()]
+  def removed_module_names(removed_records) do
+    removed_records
+    |> Enum.filter(&(&1.role in [:spec, :implementation]))
+    |> Enum.flat_map(&removed_module_name/1)
+    |> Enum.uniq()
+  end
+
+  defp removed_module_name(%File{validation_errors: errors}) do
+    case stored_component_data(errors) do
+      %{"module_name" => name} when is_binary(name) -> [name]
+      _ -> []
     end
   end
 
@@ -131,7 +172,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   # Refusing to prune on an incomplete picture is the same rule the harness
   # already applies to an empty scan, and for the same reason: sending it "would
   # have deleted every file this project has on the server".
-  defp do_sync(scope, merged, incremental?, start, unreadable) do
+  defp do_sync(scope, merged, incremental?, start, unreadable, removed_module_names) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
@@ -155,9 +196,16 @@ defmodule CodeMySpec.Files.ComponentSync do
       )
     end
 
-    unless incremental? do
-      all_module_names = MapSet.new(merged, & &1.module_name)
-      cleanup_removed(scope, existing_components, all_module_names)
+    cond do
+      not incremental? ->
+        all_module_names = MapSet.new(merged, & &1.module_name)
+        cleanup_removed(scope, existing_components, all_module_names)
+
+      removed_module_names != [] ->
+        cleanup_orphaned(scope, removed_module_names, existing_map)
+
+      true ->
+        :ok
     end
 
     affected_map = Map.new(synced_components, &{&1.module_name, &1})
@@ -486,6 +534,31 @@ defmodule CodeMySpec.Files.ComponentSync do
     existing
     |> Enum.reject(&(&1.module_name in current_names))
     |> Enum.each(&Components.delete_component(scope, &1))
+  end
+
+  # `cleanup_removed/3`'s incremental counterpart. It decides by set
+  # difference against every module the full scan just re-derived; this batch
+  # only re-derived the modules that changed, so it has no such set to diff
+  # against. Each removed file's module name is checked individually instead —
+  # does any spec or impl file in this project still claim it — and only the
+  # ones nothing claims any more get deleted. A module named by both a spec and
+  # an impl file loses one and keeps the other's claim, same as it always did;
+  # this only prunes when *both* are gone.
+  defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
+    module_names
+    |> Enum.map(&Map.get(existing_map, &1))
+    |> Enum.reject(&(is_nil(&1) or component_still_claimed?(project_id, &1.module_name)))
+    |> Enum.each(&Components.delete_component(scope, &1))
+  end
+
+  defp component_still_claimed?(project_id, module_name) do
+    File
+    |> where(
+      [f],
+      f.project_id == ^project_id and f.role in [:spec, :implementation] and
+        fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
+    )
+    |> Repo.exists?()
   end
 
   # -- Backfill file ownership --
