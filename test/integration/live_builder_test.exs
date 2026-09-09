@@ -31,10 +31,7 @@ defmodule CodeMySpec.LiveBuilderTest do
 
   setup do
     token = System.get_env("HETZNER_API_TOKEN")
-
-    if is_nil(token) or token == "" do
-      raise "HETZNER_API_TOKEN is not set — source envs/.env first"
-    end
+    ensure_token!(token)
 
     Application.put_env(:code_my_spec, Hetzner, api_token: token)
 
@@ -87,7 +84,7 @@ defmodule CodeMySpec.LiveBuilderTest do
     destroyed = self()
 
     assert {:ok, result} =
-             Builder.build(ctx.scope, ctx.name, [
+             Builder.build(ctx.scope, ctx.name,
                # x86, because no ARM type is available at Hetzner right now.
                architecture: :x86,
                ssh_key_ids: [ctx.key["id"]],
@@ -96,7 +93,7 @@ defmodule CodeMySpec.LiveBuilderTest do
                  send(destroyed, {:destroying, id})
                  Hetzner.delete_server(scope, id)
                end
-             ])
+             )
 
     assert result.architecture == :x86
     assert_received {:destroying, _server_id}
@@ -143,33 +140,33 @@ defmodule CodeMySpec.LiveBuilderTest do
     end
   end
 
+  defp ensure_token!(token) when is_binary(token) and token != "", do: :ok
+  defp ensure_token!(_token), do: raise("HETZNER_API_TOKEN is not set — source envs/.env first")
+
   defp ip(%{"server" => server}), do: ip(server)
   defp ip(%{"public_net" => %{"ipv4" => %{"ip" => ip}}}), do: ip
   defp ip(%{"ip" => ip}), do: ip
 
   defp await_ssh(_run, 0), do: {:error, :unreachable}
 
-  defp await_ssh(run, attempts) do
-    case run.("true") do
-      {_, 0} ->
-        :ok
+  defp await_ssh(run, attempts), do: await_ssh_result(run.("true"), run, attempts)
 
-      _ ->
-        Process.sleep(3_000)
-        await_ssh(run, attempts - 1)
-    end
+  defp await_ssh_result({_, 0}, _run, _attempts), do: :ok
+
+  defp await_ssh_result(_other, run, attempts) do
+    Process.sleep(3_000)
+    await_ssh(run, attempts - 1)
   end
 
   defp eventually_absent(_scope, _name, 0), do: false
 
-  defp eventually_absent(scope, name, attempts) do
-    case Hetzner.find_server(scope, name) do
-      {:error, :not_found} ->
-        true
+  defp eventually_absent(scope, name, attempts),
+    do: eventually_absent_result(Hetzner.find_server(scope, name), scope, name, attempts)
 
-      _ ->
-        Process.sleep(2_000)
-        eventually_absent(scope, name, attempts - 1)
-    end
+  defp eventually_absent_result({:error, :not_found}, _scope, _name, _attempts), do: true
+
+  defp eventually_absent_result(_other, scope, name, attempts) do
+    Process.sleep(2_000)
+    eventually_absent(scope, name, attempts - 1)
   end
 end
