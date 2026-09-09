@@ -18,6 +18,8 @@ defmodule CodeMySpec.Code do
   in-memory call.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   alias CodeMySpec.Code.ElixirAst
 
   @doc "Modules a file depends on, from its `alias`, `import` and `use` statements."
