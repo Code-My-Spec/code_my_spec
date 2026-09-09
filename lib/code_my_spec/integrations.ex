@@ -27,6 +27,11 @@ defmodule CodeMySpec.Integrations do
   - `normalize_user/1` - Transforms provider user data to domain model
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Encrypted.Binary, CodeMySpec.PublicUrl, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   alias Assent.Strategy.OAuth2
   alias CodeMySpec.Integrations.{Integration, IntegrationRepository}
   alias CodeMySpec.Integrations.Providers.ApiKey

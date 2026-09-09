@@ -10,6 +10,7 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Analytics,
       CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
+      CodeMySpec.Integrations,
       CodeMySpec.Mailer,
       CodeMySpec.Projects,
       CodeMySpec.Repo

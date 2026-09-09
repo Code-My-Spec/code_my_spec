@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Auth,
       CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
@@ -24,6 +25,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Research,
+      CodeMySpec.ScreenState,
       CodeMySpec.Users,
       CodeMySpec.Utils
     ],

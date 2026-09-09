@@ -24,6 +24,11 @@ defmodule CodeMySpec.Content do
   NO account_id or project_id filtering. All queries are unscoped from a multi-tenant perspective.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Utils],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   require Logger

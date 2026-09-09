@@ -28,6 +28,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.AppTokens,
       CodeMySpec.BootVersion,
       CodeMySpec.CmsUsers,
+      CodeMySpec.Content,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,
@@ -35,12 +36,14 @@ defmodule CodeMySpecWeb do
       # rather than domain code because the stop decision reaches into
       # McpServers, which `CodeMySpec` deliberately does not depend on.
       CodeMySpec.Hooks,
+      CodeMySpec.Integrations,
       CodeMySpec.Knowledge,
       CodeMySpec.Logging,
       CodeMySpec.McpServers,
       CodeMySpec.Oauth,
       CodeMySpec.Projects,
       CodeMySpec.ProjectUsers,
+      CodeMySpec.ScreenState,
       CodeMySpec.Uploads,
       CodeMySpec.Users,
       CodeMySpec.Utils

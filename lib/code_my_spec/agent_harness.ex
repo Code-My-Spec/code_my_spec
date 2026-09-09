@@ -35,6 +35,7 @@ defmodule CodeMySpec.AgentHarness do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Auth,
       CodeMySpec.McpServers,
       CodeMySpec.Environments,
       CodeMySpec.Projects,

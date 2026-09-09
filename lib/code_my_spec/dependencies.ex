@@ -30,6 +30,11 @@ defmodule CodeMySpec.Dependencies do
   verifiable.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   # Matches Files.upsert_files/2 — SQLite's bound-parameter ceiling is the

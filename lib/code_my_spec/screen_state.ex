@@ -33,6 +33,11 @@ defmodule CodeMySpec.ScreenState do
   `%Screen{}`'s defaults, so nothing downstream has a "first visit" branch.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Utils],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Repo
