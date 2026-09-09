@@ -1387,7 +1387,41 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  defp write_turn_event(conversation, agent, event) do
+  # A step that said nothing is not a step.
+  #
+  # `parts_for("")` answers `[]`, so a textless event became a message whose
+  # whole content was an empty list. They arrive constantly — a turn produces
+  # dozens — and each one is a row, a broadcast, and a line in the transcript
+  # that renders as the agent having spoken and said nothing.
+  #
+  # The cost was not storage. Measured 2026-09-08: a coding agent showed 99
+  # empty messages against 0 substantive ones, and I read that as "the model is
+  # returning nothing" and spent most of a day inside the provider — through
+  # Codex, through a credential rotation, through Alloy's response parsing —
+  # looking for a fault that was never there. The transcript was reporting
+  # bookkeeping as speech.
+  #
+  # `announce_outcome/2` in `CmsHarness.Agents.Engine` is where a turn's *text*
+  # is reported, and it has its own clause for a turn that finished with nothing
+  # to say. This is the step channel, and a step with no text has nothing to
+  # tell anybody.
+  defp write_turn_event(_conversation, _agent, event)
+       when not is_map_key(event, "text") do
+    :ok
+  end
+
+  defp write_turn_event(conversation, agent, %{"text" => text} = event)
+       when is_binary(text) do
+    if String.trim(text) == "" do
+      :ok
+    else
+      write_step(conversation, agent, event)
+    end
+  end
+
+  defp write_turn_event(conversation, agent, event), do: write_step(conversation, agent, event)
+
+  defp write_step(conversation, agent, event) do
     Conversations.add_agent_message(
       conversation,
       # `to_string`, because `role` became an `Ecto.Enum` in story 983 and
