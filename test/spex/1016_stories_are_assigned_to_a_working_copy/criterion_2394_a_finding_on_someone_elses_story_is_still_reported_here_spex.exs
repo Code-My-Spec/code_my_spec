@@ -204,11 +204,16 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
   # rather than the closing bracket, for the reason `EpicHelpers` records:
   # `[^)]+` swallows the slug and hands back a uuid with prose attached.
   defp epic_id(response) do
-    case Regex.run(~r/\(ID: ([0-9a-f-]{36})/, inspect(response)) do
-      [_, id] -> id
-      nil -> flunk("could not read an epic id out of: #{inspect(response)}")
-    end
+    response
+    |> inspect()
+    |> then(&Regex.run(~r/\(ID: ([0-9a-f-]{36})/, &1))
+    |> epic_id_match(response)
   end
+
+  defp epic_id_match([_, id], _response), do: id
+
+  defp epic_id_match(nil, response),
+    do: flunk("could not read an epic id out of: #{inspect(response)}")
 
   # A spex run reporting one failure at `path`.
   #

@@ -187,11 +187,16 @@ defmodule CodeMySpecSpex.Story895.Criterion2407Spex do
   end
 
   defp epic_id(response) do
-    case Regex.run(~r/\(ID: ([0-9a-f-]{36})/, inspect(response)) do
-      [_, id] -> id
-      nil -> flunk("could not read an epic id out of: #{inspect(response)}")
-    end
+    response
+    |> inspect()
+    |> then(&Regex.run(~r/\(ID: ([0-9a-f-]{36})/, &1))
+    |> epic_id_match(response)
   end
+
+  defp epic_id_match([_, id], _response), do: id
+
+  defp epic_id_match(nil, response),
+    do: flunk("could not read an epic id out of: #{inspect(response)}")
 
   defp spex_jsonl(path) do
     file = TempFile.path("spex_2407", ".jsonl")
