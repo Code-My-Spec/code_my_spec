@@ -30,13 +30,17 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   `issues_resolved` gate on, and what `AgentTasks.FixIssues` puts in front of an
   agent.
 
-  Framework-scoped issues are excluded for everyone but the vendor, because a
-  tenant cannot resolve one. `vendor_lookup/2` states the other half of this
-  rule already: "the vendor reaches a framework issue in any project, because
-  that is where framework issues live", and `only_framework/1` refuses a tenant
-  the same rows. Counting them here asked a tenant to clear a queue it is not
-  allowed to touch, and a gate whose passing state depends on somebody else's
-  repository is a wall.
+  Only `:app` issues gate, because only `:app` issues are about the application
+  under development. `attribute_to_story/3` already says this one level down —
+  a `:framework`, `:qa` or `:docs` finding is "about the tooling around the
+  work, not the work" — and the same sentence decides the project gate.
+
+  Framework issues additionally belong to somebody else. `vendor_lookup/2`
+  states it: "the vendor reaches a framework issue in any project, because that
+  is where framework issues live", and `only_framework/1` refuses a tenant the
+  same rows. Counting them asked a tenant to clear a queue it is not allowed to
+  touch, and a gate whose passing state depends on another repository is a
+  wall.
 
   Measured on Broken Oaths 2026-09-08: 22 of the 33 issues holding
   `issues_resolved` were `:framework` — `tool_docs ignores requested tool
@@ -44,6 +48,13 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   identify the active agent`. A coding agent held that task for two hours and
   resolved none of them, because none of them are in its repository. One of the
   22 is a report of this defect, filed 09-06.
+
+  Excluding `:framework` alone left two, and they made the case for the rest:
+  `run_browser_script returns stale tool_docs catalog` and `QA session loop
+  repeats identical nudge every turn` — both CodeMySpec's own defects, filed
+  under `:qa` because that is the pass they were found on. The agent read all
+  34, checked the two that might have touched its code, and reported back that
+  neither did. It was right, and it was still held.
 
   The vendor's own project keeps them: there, framework issues *are* app issues,
   and `issues_resolved` should hold until they are fixed.
@@ -65,8 +76,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
 
   defp exclude_framework_unless_vendor(query, scope) do
     case ensure_vendor(scope) do
-      :ok -> query
-      {:error, :not_the_vendor} -> where(query, [i], i.scope != :framework)
+      # The vendor's own project is where framework issues live, and there they
+      # are app issues: `issues_resolved` should hold until they are fixed.
+      :ok -> where(query, [i], i.scope in [:app, :framework])
+      {:error, :not_the_vendor} -> where(query, [i], i.scope == :app)
     end
   end
 

@@ -49,18 +49,22 @@ defmodule CodeMySpec.Issues.ATenantIsNotGatedOnTheVendorsBugsTest do
     assert issue.scope == :app
   end
 
-  test "qa and docs findings still count", %{scope: scope} do
+  # This asserted the opposite, and the opposite was wrong. Excluding
+  # `:framework` alone left Broken Oaths' coding agent held by two `:qa` issues
+  # — `run_browser_script returns stale tool_docs catalog` and `QA session loop
+  # repeats identical nudge every turn` — both CodeMySpec's own defects, filed
+  # under `:qa` because that is the pass they were found on. The agent read all
+  # 34 accepted issues, checked the two that might have touched its code, and
+  # reported that neither did. It was right, and it was still held.
+  #
+  # `attribute_to_story/3` had the rule the whole time: a `:framework`, `:qa` or
+  # `:docs` finding is "about the tooling around the work, not the work".
+  test "qa and docs findings do not gate the project either", %{scope: scope} do
     accepted(scope, %{scope: :qa, title: "the QA seed leaves no city"})
     accepted(scope, %{scope: :docs, title: "the README names a removed flag"})
 
-    scopes =
-      scope
-      |> Issues.list_by_status_and_min_severity(:accepted, :medium)
-      |> Enum.map(& &1.scope)
-      |> Enum.sort()
-
-    assert scopes == [:docs, :qa],
-           "only :framework belongs to somebody else; the rest are this project's"
+    assert Issues.list_by_status_and_min_severity(scope, :accepted, :medium) == [],
+           "only :app is about the application under development"
   end
 
   # The other direction, and the reason this is not a blanket exclusion. In the
