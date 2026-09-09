@@ -38,6 +38,7 @@ defmodule CodeMySpec.Agents do
 
   require Logger
 
+  alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Credential
@@ -788,7 +789,7 @@ defmodule CodeMySpec.Agents do
   # that is stable.
   defp account_owner(account_id) do
     account_id
-    |> CodeMySpec.Accounts.MembersRepository.list_account_members()
+    |> MembersRepository.list_account_members()
     |> Enum.sort_by(& &1.id)
     |> List.first()
     |> case do
