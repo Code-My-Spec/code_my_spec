@@ -23,6 +23,8 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
 
   import Plug.Conn
 
+  require Logger
+
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -36,8 +38,24 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   @impl true
   def call(conn, _opts) do
     case conn.assigns[:current_scope] do
-      nil -> conn
-      scope -> override(conn, scope, header(conn, "x-harness-id"), header(conn, "x-project-id"))
+      nil ->
+        conn
+
+      scope ->
+        raw_harness_id = header(conn, "x-harness-id")
+        raw_project_id = header(conn, "x-project-id")
+
+        if List.last(conn.path_info) == "mcp" do
+          Logger.warning(
+            "[ProjectScopeOverride][DIAG] path=#{conn.request_path} " <>
+              "raw_x_harness_id=#{inspect(raw_harness_id)} " <>
+              "raw_x_project_id=#{inspect(raw_project_id)} " <>
+              "path_params=#{inspect(conn.path_params)} " <>
+              "pre_override_working_copy_id=#{inspect(scope.active_working_copy_id)}"
+          )
+        end
+
+        override(conn, scope, raw_harness_id, raw_project_id)
     end
   end
 
