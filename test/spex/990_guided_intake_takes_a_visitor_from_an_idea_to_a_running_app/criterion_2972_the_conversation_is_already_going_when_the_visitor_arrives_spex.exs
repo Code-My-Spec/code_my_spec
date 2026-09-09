@@ -50,15 +50,13 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
     previous = Application.get_env(:code_my_spec, Credential)
     Application.put_env(:code_my_spec, Credential, platform_api_key: "sk-platform-2972")
 
-    on_exit(fn ->
-      case previous do
-        nil -> Application.delete_env(:code_my_spec, Credential)
-        config -> Application.put_env(:code_my_spec, Credential, config)
-      end
-    end)
+    on_exit(fn -> restore_credential_env(previous) end)
 
     :ok
   end
+
+  defp restore_credential_env(nil), do: Application.delete_env(:code_my_spec, Credential)
+  defp restore_credential_env(config), do: Application.put_env(:code_my_spec, Credential, config)
 
   spex "The visitor lands in a conversation rather than in front of a button" do
     scenario "The conversation is already going when the visitor arrives" do
@@ -123,12 +121,11 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
 
   defp follow(conn, from, pattern, what) do
     html = conn |> get(from) |> html_response(200)
-
-    case Regex.run(pattern, html) do
-      [path] -> String.trim_trailing(path, ~s("))
-      nil -> flunk("nothing on #{what} leads to the visitor's cloud project.")
-    end
+    path_from(Regex.run(pattern, html), what)
   end
+
+  defp path_from([path], _what), do: String.trim_trailing(path, ~s("))
+  defp path_from(nil, what), do: flunk("nothing on #{what} leads to the visitor's cloud project.")
 
   defp await(view, pattern, attempts \\ 250)
 
@@ -137,12 +134,13 @@ defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
 
   defp await(view, pattern, attempts) do
     html = render(view)
+    await_result(html =~ pattern, html, view, pattern, attempts)
+  end
 
-    if html =~ pattern do
-      html
-    else
-      Process.sleep(20)
-      await(view, pattern, attempts - 1)
-    end
+  defp await_result(true, html, _view, _pattern, _attempts), do: html
+
+  defp await_result(false, _html, view, pattern, attempts) do
+    Process.sleep(20)
+    await(view, pattern, attempts - 1)
   end
 end
