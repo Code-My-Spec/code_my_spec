@@ -37,6 +37,8 @@ defmodule CodeMySpec.CodeMode do
   differ, is in `.code_my_spec/knowledge/code_mode/lua_for_mcp.md`.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   alias CodeMySpec.CodeMode.{Bindings, Catalog, Docs, LuaValue, Result, Sandbox}
 
   @doc """
