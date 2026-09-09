@@ -50,21 +50,28 @@ defmodule CodeMySpec.McpServers.HandoverIsNotedTest do
     Phoenix.ConnTest.build_conn()
     |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
     |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/session-start", %{
-      "session_id" => session_id
-    })
+    |> Phoenix.ConnTest.dispatch(
+      CodeMySpecLocalWeb.Endpoint,
+      :post,
+      "/api/hooks/session-start",
+      %{
+        "session_id" => session_id
+      }
+    )
 
     %{scope: scope, agent: agent, session_id: session_id}
   end
 
   defp actions(agent) do
-    case CodeMySpec.Repo.get_by(Conversation, agent_id: agent.id) do
-      nil ->
-        []
+    Conversation
+    |> CodeMySpec.Repo.get_by(agent_id: agent.id)
+    |> actions_of()
+  end
 
-      conversation ->
-        conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
-    end
+  defp actions_of(nil), do: []
+
+  defp actions_of(conversation) do
+    conversation |> Conversations.list_messages() |> Enum.filter(&(&1.role == :orchestrator))
   end
 
   defp text(message) do

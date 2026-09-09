@@ -35,12 +35,15 @@ defmodule CodeMySpec.McpServers.Bootstrap.InstallersTest do
     out = FileSync.validate_entry(%{path: path, role: role, component_id: nil}, env, %{}, true)
     _ = tmp
 
-    case out[:validation_errors] do
-      %{errors: e} -> e |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
-      %{"errors" => e} -> e |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
-      _ -> %{}
-    end
+    errors_map(out[:validation_errors])
   end
+
+  defp errors_map(%{errors: e}), do: e |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
+
+  defp errors_map(%{"errors" => e}),
+    do: e |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
+
+  defp errors_map(_other), do: %{}
 
   test "install_all installs every harness file", %{tmp: tmp, env: env} do
     assert {installed, []} = Installers.install_all(env)
@@ -53,7 +56,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.InstallersTest do
     assert File.dir?(Path.join(tmp, Paths.credo_checks_local_dir()))
 
     rules = File.ls!(Path.join(tmp, Paths.rules_dir()))
-    assert Enum.any?(rules, &String.ends_with?(&1, ".md")), "expected rule files, got #{inspect(rules)}"
+
+    assert Enum.any?(rules, &String.ends_with?(&1, ".md")),
+           "expected rule files, got #{inspect(rules)}"
   end
 
   test "installed files satisfy the sync-time validators", %{tmp: tmp, env: env} do

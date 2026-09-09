@@ -12,13 +12,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ImportAgeKeyTest do
   @moduletag :sops
 
   setup context do
-    if Sops.available?() do
-      scope = full_scope_fixture()
-      {:ok, Map.merge(context, %{scope: scope, project: scope.active_project})}
-    else
-      {:ok, skip: true}
-    end
+    build_context(context, Sops.available?())
   end
+
+  defp build_context(context, true) do
+    scope = full_scope_fixture()
+    {:ok, Map.merge(context, %{scope: scope, project: scope.active_project})}
+  end
+
+  defp build_context(_context, false), do: {:ok, skip: true}
 
   describe "execute/2" do
     # The reason this exists at all: a key generated on a real checkout this

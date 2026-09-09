@@ -40,21 +40,23 @@ defmodule CodeMySpec.MailAttachmentsTest do
   end
 
   defp stub_resend(attachments, download_status \\ 200) do
-    plug = fn conn ->
-      cond do
-        conn.host == "api.resend.com" and String.ends_with?(conn.request_path, "/attachments") ->
-          Test.json(conn, %{"data" => attachments})
-
-        conn.host == "inbound-cdn.resend.com" ->
-          Plug.Conn.send_resp(conn, download_status, "FILEBYTES:" <> conn.request_path)
-
-        true ->
-          Test.json(conn, %{})
-      end
-    end
-
-    Test.stub(ResendClient, plug)
+    Test.stub(ResendClient, &resend_response(&1, attachments, download_status))
   end
+
+  defp resend_response(%{host: "api.resend.com"} = conn, attachments, _download_status) do
+    attachments_response(String.ends_with?(conn.request_path, "/attachments"), conn, attachments)
+  end
+
+  defp resend_response(%{host: "inbound-cdn.resend.com"} = conn, _attachments, download_status) do
+    Plug.Conn.send_resp(conn, download_status, "FILEBYTES:" <> conn.request_path)
+  end
+
+  defp resend_response(conn, _attachments, _download_status), do: Test.json(conn, %{})
+
+  defp attachments_response(true, conn, attachments),
+    do: Test.json(conn, %{"data" => attachments})
+
+  defp attachments_response(false, conn, _attachments), do: Test.json(conn, %{})
 
   defp stub_s3 do
     test_pid = self()

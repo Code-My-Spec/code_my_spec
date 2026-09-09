@@ -43,12 +43,12 @@ defmodule CodeMySpec.Intake.PlannerProviderTest do
     )
 
     for key <- [:anthropic_api_key, :openai_api_key] do
-      case Keyword.get(keys, key) do
-        nil -> Application.delete_env(:req_llm, key)
-        value -> Application.put_env(:req_llm, key, value)
-      end
+      set_or_clear(key, Keyword.get(keys, key))
     end
   end
+
+  defp set_or_clear(key, nil), do: Application.delete_env(:req_llm, key)
+  defp set_or_clear(key, value), do: Application.put_env(:req_llm, key, value)
 
   test "an OpenAI model with an OpenAI key uses the model" do
     configure("openai:gpt-5-mini", openai_api_key: "sk-test")
