@@ -71,12 +71,9 @@ defmodule CodeMySpecSpex.Story817.Criterion6600Spex do
     with_cassette(name, @cassette_opts, fn plug ->
       original = Application.get_env(:code_my_spec, Ads, [])
       Application.put_env(:code_my_spec, Ads, Keyword.put(original, :plug, plug))
+      ExUnit.Callbacks.on_exit(fn -> Application.put_env(:code_my_spec, Ads, original) end)
 
-      try do
-        fun.()
-      after
-        Application.put_env(:code_my_spec, Ads, original)
-      end
+      fun.()
     end)
   end
 end
