@@ -55,6 +55,34 @@ defmodule CodeMySpec.BillingTest do
 
   defp reload(account), do: Accounts.get_account_by_id(account.id)
 
+  defp respond_to_start(%{request_path: "/v1/customers"} = conn),
+    do: json(conn, %{"id" => "cus_1"})
+
+  defp respond_to_start(%{request_path: "/v1/subscriptions"} = conn) do
+    json(conn, %{
+      "id" => "sub_1",
+      "latest_invoice" => %{"confirmation_secret" => %{"client_secret" => "pi_1_secret"}}
+    })
+  end
+
+  defp respond_no_confirmation_secret(%{request_path: "/v1/customers"} = conn),
+    do: json(conn, %{"id" => "cus_1"})
+
+  defp respond_no_confirmation_secret(%{request_path: "/v1/subscriptions"} = conn),
+    do: json(conn, %{"id" => "sub_1", "latest_invoice" => %{}})
+
+  defp respond_tracking_customer_creation(%{request_path: "/v1/customers"} = conn, test_pid) do
+    send(test_pid, :customer_created)
+    json(conn, %{"id" => "cus_1"})
+  end
+
+  defp respond_tracking_customer_creation(%{request_path: "/v1/subscriptions"} = conn, _test_pid) do
+    json(conn, %{
+      "id" => "sub_1",
+      "latest_invoice" => %{"confirmation_secret" => %{"client_secret" => "s"}}
+    })
+  end
+
   defp event(type, account_id, extra \\ %{}) do
     %{
       "id" => "evt_#{System.unique_integer([:positive])}",
@@ -69,15 +97,7 @@ defmodule CodeMySpec.BillingTest do
     test "returns the secret the browser confirms, and grants nothing yet" do
       scope = owner_scope()
 
-      stub(fn conn ->
-        case conn.request_path do
-          "/v1/customers" -> json(conn, %{"id" => "cus_1"})
-          "/v1/subscriptions" -> json(conn, %{
-            "id" => "sub_1",
-            "latest_invoice" => %{"confirmation_secret" => %{"client_secret" => "pi_1_secret"}}
-          })
-        end
-      end)
+      stub(&respond_to_start/1)
 
       assert {:ok, %{client_secret: "pi_1_secret", subscription_id: "sub_1"}} =
                Billing.start_subscription(scope, :light)
@@ -89,12 +109,7 @@ defmodule CodeMySpec.BillingTest do
     test "a subscription with no confirmation secret is an error, not a silent pass" do
       scope = owner_scope()
 
-      stub(fn conn ->
-        case conn.request_path do
-          "/v1/customers" -> json(conn, %{"id" => "cus_1"})
-          "/v1/subscriptions" -> json(conn, %{"id" => "sub_1", "latest_invoice" => %{}})
-        end
-      end)
+      stub(&respond_no_confirmation_secret/1)
 
       assert {:error, :no_client_secret} = Billing.start_subscription(scope, :light)
     end
@@ -103,19 +118,7 @@ defmodule CodeMySpec.BillingTest do
       scope = owner_scope()
       test_pid = self()
 
-      stub(fn conn ->
-        case conn.request_path do
-          "/v1/customers" ->
-            send(test_pid, :customer_created)
-            json(conn, %{"id" => "cus_1"})
-
-          "/v1/subscriptions" ->
-            json(conn, %{
-              "id" => "sub_1",
-              "latest_invoice" => %{"confirmation_secret" => %{"client_secret" => "s"}}
-            })
-        end
-      end)
+      stub(&respond_tracking_customer_creation(&1, test_pid))
 
       {:ok, _} = Billing.start_subscription(scope, :light)
       assert_received :customer_created
@@ -187,7 +190,11 @@ defmodule CodeMySpec.BillingTest do
       assert :ok = Billing.apply_event(evt)
 
       assert reload(account).plan == :light
-      assert Repo.aggregate(from(e in CodeMySpec.Billing.StripeEvent, where: e.event_id == ^evt["id"]), :count) == 1
+
+      assert Repo.aggregate(
+               from(e in CodeMySpec.Billing.StripeEvent, where: e.event_id == ^evt["id"]),
+               :count
+             ) == 1
     end
 
     test "a deleted subscription returns the account to free" do
