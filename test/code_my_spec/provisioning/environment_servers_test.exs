@@ -337,7 +337,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
       two_networks_reply(conn, conn.method, conn.request_path, payload, servers, networks)
     end
@@ -404,7 +404,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
       two_networks_reply(conn, conn.method, conn.request_path, payload, servers, networks)
     end
@@ -445,7 +445,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
+      payload = decode(body)
       send(owner, {:ran, conn.method, conn.request_path, payload})
       shared_reply(conn, conn.method, conn.request_path, payload, servers, network)
     end
@@ -564,14 +564,11 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # every command in that one server's own sequence and none of the other's,
   # without needing to know which docker/ssh command comes first or last.
   defp refusing_run(bad_ip) do
-    fn [command] ->
-      if String.contains?(command, bad_ip) do
-        {"refused", 1}
-      else
-        {"", 0}
-      end
-    end
+    fn [command] -> refuse_if_matches(String.contains?(command, bad_ip)) end
   end
+
+  defp refuse_if_matches(true), do: {"refused", 1}
+  defp refuse_if_matches(false), do: {"", 0}
 
   # Succeeds unconditionally — the zone test's claim is about which networks
   # get asked for and which servers land on them, not about any one remote
@@ -589,22 +586,23 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # tenant setup failing without blocking another's — not about container
   # bootstrap, which `database_test.exs`/`registry_test.exs` already cover.
   defp already_provisioned_run(base_run) do
-    fn [command] = args ->
-      cond do
-        command =~ "docker ps -q -f name=^/cms-registry$" ->
-          {"c0ffeec0ffee\n", 0}
-
-        command =~ "docker ps -q -f name=^/cms-postgres$" ->
-          {"c0ffeec0ffee\n", 0}
-
-        command =~ "docker inspect --format '{{.Config.Image}}' cms-postgres" ->
-          {"pgvector/pgvector:pg18\n", 0}
-
-        true ->
-          base_run.(args)
-      end
-    end
+    fn [command] = args -> provisioned_response(command, base_run, args) end
   end
+
+  defp provisioned_response("docker ps -q -f name=^/cms-registry$", _base_run, _args),
+    do: {"c0ffeec0ffee\n", 0}
+
+  defp provisioned_response("docker ps -q -f name=^/cms-postgres$", _base_run, _args),
+    do: {"c0ffeec0ffee\n", 0}
+
+  defp provisioned_response(
+         "docker inspect --format '{{.Config.Image}}' cms-postgres",
+         _base_run,
+         _args
+       ),
+       do: {"pgvector/pgvector:pg18\n", 0}
+
+  defp provisioned_response(_command, base_run, args), do: base_run.(args)
 
   # Like `record_requests/2`, but with the full network shape
   # `serve_registries/5` actually reads: a private IP per server (so
