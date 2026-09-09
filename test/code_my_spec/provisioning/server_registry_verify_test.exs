@@ -41,7 +41,13 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     {public, _private} = key_for(scope, "uat")
     :ok = Sops.write_config(scope.environment, %{"uat" => public})
     put_secret(scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
-    put_secret(scope, "uat", "CMS_RESTORE_ADMIN_URL", "postgresql://u_restore:p@10.0.0.5:5432/postgres")
+
+    put_secret(
+      scope,
+      "uat",
+      "CMS_RESTORE_ADMIN_URL",
+      "postgresql://u_restore:p@10.0.0.5:5432/postgres"
+    )
 
     {:ok, scope: scope}
   end
@@ -110,28 +116,35 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     setup _ctx do
       # `find_network(scope, "some-name")` — the project's own base name —
       # would have matched this one; it is not what `private_net` lists.
-      Req.Test.stub(Hetzner, fn conn ->
-        server = %{
-          "id" => 1,
-          "name" => @server_name,
-          "location" => %{"name" => "fsn1"},
-          "public_net" => %{"ipv4" => %{"ip" => @public_ip}},
-          "private_net" => [%{"network" => @network_id, "ip" => @private_ip}]
-        }
-
-        decoy = %{"id" => 999, "name" => "some-name"}
-        real = %{"id" => @network_id, "name" => "unrelated-legacy-network"}
-
-        case {conn.method, conn.request_path} do
-          {"GET", "/v1/servers"} -> json(conn, %{"servers" => [server]})
-          {"GET", "/v1/networks"} -> json(conn, %{"networks" => [decoy, real]})
-          {"GET", "/v1/firewalls"} -> json(conn, %{"firewalls" => []})
-          {"GET", "/v1/ssh_keys"} -> json(conn, %{"ssh_keys" => []})
-        end
-      end)
+      Req.Test.stub(Hetzner, &decoy_network_response/1)
 
       :ok
     end
+
+    defp decoy_network_response(%{method: "GET", request_path: "/v1/servers"} = conn) do
+      server = %{
+        "id" => 1,
+        "name" => @server_name,
+        "location" => %{"name" => "fsn1"},
+        "public_net" => %{"ipv4" => %{"ip" => @public_ip}},
+        "private_net" => [%{"network" => @network_id, "ip" => @private_ip}]
+      }
+
+      json(conn, %{"servers" => [server]})
+    end
+
+    defp decoy_network_response(%{method: "GET", request_path: "/v1/networks"} = conn) do
+      decoy = %{"id" => 999, "name" => "some-name"}
+      real = %{"id" => @network_id, "name" => "unrelated-legacy-network"}
+
+      json(conn, %{"networks" => [decoy, real]})
+    end
+
+    defp decoy_network_response(%{method: "GET", request_path: "/v1/firewalls"} = conn),
+      do: json(conn, %{"firewalls" => []})
+
+    defp decoy_network_response(%{method: "GET", request_path: "/v1/ssh_keys"} = conn),
+      do: json(conn, %{"ssh_keys" => []})
 
     test "verify(:server, …) reads the server's own attached network, not a name match", ctx do
       run = fn [command] ->
@@ -201,13 +214,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       previous = Application.get_env(:code_my_spec, :environment)
       Application.put_env(:code_my_spec, :environment, Local)
 
-      on_exit(fn ->
-        if previous do
-          Application.put_env(:code_my_spec, :environment, previous)
-        else
-          Application.delete_env(:code_my_spec, :environment)
-        end
-      end)
+      on_exit(fn -> restore_environment_env(previous) end)
 
       directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
 
@@ -237,13 +244,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       previous = Application.get_env(:code_my_spec, :environment)
       Application.put_env(:code_my_spec, :environment, Local)
 
-      on_exit(fn ->
-        if previous do
-          Application.put_env(:code_my_spec, :environment, previous)
-        else
-          Application.delete_env(:code_my_spec, :environment)
-        end
-      end)
+      on_exit(fn -> restore_environment_env(previous) end)
 
       directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
 
@@ -259,6 +260,11 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
   # probe now (`running_bind/2`'s correction), so the curl is no longer
   # necessarily the first `:ran` message — drains the mailbox instead of
   # grabbing just the next one.
+  defp restore_environment_env(nil), do: Application.delete_env(:code_my_spec, :environment)
+
+  defp restore_environment_env(previous),
+    do: Application.put_env(:code_my_spec, :environment, previous)
+
   defp find_ran(pattern, acc \\ []) do
     receive do
       {:ran, command} -> find_ran(pattern, [command | acc])
