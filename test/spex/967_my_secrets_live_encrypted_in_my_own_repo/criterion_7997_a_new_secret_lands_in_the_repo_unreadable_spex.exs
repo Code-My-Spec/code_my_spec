@@ -68,12 +68,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
         {:ok, entries} = Environments.list_directory(context.environment, ".")
 
         offenders =
-          Enum.filter(entries, fn path ->
-            case Environments.read_file(context.environment, path) do
-              {:ok, body} -> String.contains?(body, @plaintext)
-              _ -> false
-            end
-          end)
+          Enum.filter(entries, &contains_plaintext?(context.environment, &1))
 
         assert offenders == [],
                "expected no plaintext anywhere in the tree, found in: #{inspect(offenders)}"
@@ -82,4 +77,13 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
       end
     end
   end
+
+  defp contains_plaintext?(environment, path) do
+    environment
+    |> Environments.read_file(path)
+    |> body_contains_plaintext?()
+  end
+
+  defp body_contains_plaintext?({:ok, body}), do: String.contains?(body, @plaintext)
+  defp body_contains_plaintext?(_error), do: false
 end
