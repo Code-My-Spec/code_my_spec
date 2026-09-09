@@ -11,6 +11,7 @@ defmodule CodeMySpec do
     top_level?: true,
     deps: [
       CodeMySpec.Environments,
+      CodeMySpec.Mailer,
       CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
