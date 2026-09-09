@@ -1441,7 +1441,14 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp write_turn_event(conversation, agent, event), do: write_step(conversation, agent, event)
+  # `%{"text" => nil}` is the shape that got through the first pass at this.
+  # `is_binary/1` on the clause above sends it here, `parts_for(nil)` answers
+  # `[]`, and the empty row is back — 45 of them on one agent in ten minutes,
+  # after the fix that was supposed to have ended them.
+  #
+  # There is no fourth kind of step. Either an event carries text worth showing
+  # or it does not, and everything reaching here does not.
+  defp write_turn_event(_conversation, _agent, _event), do: :ok
 
   defp write_step(conversation, agent, event) do
     Conversations.add_agent_message(

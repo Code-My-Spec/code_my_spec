@@ -81,6 +81,16 @@ defmodule CodeMySpec.Agents.AStepThatSaidNothingIsNotAStepTest do
            "an event with no text was inspected into the transcript as if it were prose"
   end
 
+  # The shape that got through the first pass. `is_binary/1` sent it to the
+  # catch-all, `parts_for(nil)` answered `[]`, and the empty rows came straight
+  # back — 45 on one agent in ten minutes, after the fix that was meant to end
+  # them.
+  test "an event whose text is nil writes nothing", ctx do
+    Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "step", "text" => nil})
+
+    assert messages(ctx.conversation) == []
+  end
+
   # The half that must keep working: a step that said something is still a step.
   test "an event with text is written", ctx do
     Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
