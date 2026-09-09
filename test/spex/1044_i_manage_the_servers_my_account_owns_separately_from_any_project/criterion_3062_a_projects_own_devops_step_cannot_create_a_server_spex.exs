@@ -22,7 +22,12 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
           {:ok, body, conn} = Plug.Conn.read_body(conn)
           payload = decode(body)
 
-          notify_if_server_create(test_pid, conn.method, conn.request_path, payload["name"])
+          CodeMySpecSpex.Fixtures.notify_server_create(
+            test_pid,
+            conn.method,
+            conn.request_path,
+            {:server_creation_attempted, payload["name"]}
+          )
 
           reply(conn, conn.method, conn.request_path)
         end
@@ -61,11 +66,6 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
 
   defp decode(""), do: %{}
   defp decode(body), do: Jason.decode!(body)
-
-  defp notify_if_server_create(test_pid, "POST", "/v1/servers", name),
-    do: send(test_pid, {:server_creation_attempted, name})
-
-  defp notify_if_server_create(_test_pid, _method, _path, _name), do: :ok
 
   defp reply(conn, "GET", "/v1/servers"), do: json(conn, %{"servers" => []})
   defp reply(conn, "GET", "/v1/firewalls"), do: json(conn, %{"firewalls" => []})

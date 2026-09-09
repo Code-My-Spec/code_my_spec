@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,8 +44,8 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
     scenario "An agent mid-commit gets to finish it" do
       given_ "an agent part-way through writing files and committing them", context do
         dir = TempFile.dir("spex_2884")
-        File.mkdir_p!(dir)
-        on_exit(fn -> File.rm_rf(dir) end)
+        RealDisk.mkdir_p!(dir)
+        on_exit(fn -> RealDisk.rm_rf(dir) end)
 
         marker = Path.join(dir, "commit-finished")
         agent = Fixtures.running_agent(context.scope, working_copy: dir)
@@ -55,10 +56,10 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
         # not — that difference is the criterion.
         start_agent(agent.id,
           working_copy: dir,
-          on_stop: fn -> File.write!(marker, "done") end
+          on_stop: fn -> RealDisk.write!(marker, "done") end
         )
 
-        refute File.exists?(marker),
+        refute RealDisk.exists?(marker),
                "the premise is work that has not finished yet"
 
         {:ok,
@@ -74,7 +75,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
       end
 
       then_ "it is asked to stop before anything forces it", context do
-        assert File.exists?(context.marker),
+        assert RealDisk.exists?(context.marker),
                "the agent was killed outright rather than asked. Anything it was " <>
                  "part-way through — a commit, a file write — is lost, and what is " <>
                  "left behind sits in a checkout somebody else picks up."

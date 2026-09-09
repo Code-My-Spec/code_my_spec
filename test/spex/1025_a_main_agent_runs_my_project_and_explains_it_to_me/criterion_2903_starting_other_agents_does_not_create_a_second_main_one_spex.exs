@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2903Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -44,7 +45,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2903Spex do
     scenario "Starting other agents does not create a second main one" do
       given_ "a project whose main agent is running", context do
         copy = CodeMySpec.TempFile.dir("spex_2903")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
         designate_main_copy(context, joined.working_copy_id)
@@ -61,7 +62,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2903Spex do
 
       when_ "agents are started on its working copies", context do
         copy = CodeMySpec.TempFile.dir("spex_2903")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         one = Fixtures.running_agent(context.scope, working_copy: copy)
         two = Fixtures.running_agent(context.scope, working_copy: copy)

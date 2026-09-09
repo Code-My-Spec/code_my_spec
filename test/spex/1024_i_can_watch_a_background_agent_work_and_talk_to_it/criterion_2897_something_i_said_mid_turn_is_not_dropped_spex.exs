@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -44,7 +45,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2897Spex do
     scenario "Something I said mid-turn is not dropped" do
       given_ "an agent in the middle of a turn", context do
         copy = CodeMySpec.TempFile.dir("spex_2897")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
 

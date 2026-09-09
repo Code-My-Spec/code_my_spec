@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,7 +46,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
     scenario "I redirect an agent without a terminal" do
       given_ "an agent running on my working copy", context do
         copy = CodeMySpec.TempFile.dir("spex_2895")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
 

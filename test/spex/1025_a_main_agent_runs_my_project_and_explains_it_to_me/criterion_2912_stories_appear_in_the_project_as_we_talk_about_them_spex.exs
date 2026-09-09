@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2912Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -49,7 +50,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2912Spex do
     scenario "Stories appear in the project as we talk about them" do
       given_ "I am telling the main agent what I want built", context do
         copy = CodeMySpec.TempFile.dir("spex_2912")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
         designate_main_copy(context, joined.working_copy_id)

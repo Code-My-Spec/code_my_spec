@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
         test_pid = self()
 
         Req.Test.stub(PreviewTunnel, fn conn ->
-          send(test_pid, {:cloudflare_called, conn.request_path})
+          CodeMySpecSpex.Fixtures.notify_call(test_pid, :cloudflare_called, conn.request_path)
           cloudflare_response(conn)
         end)
 

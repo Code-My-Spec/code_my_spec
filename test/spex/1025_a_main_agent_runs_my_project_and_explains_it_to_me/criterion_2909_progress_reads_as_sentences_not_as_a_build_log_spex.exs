@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2909Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -49,7 +50,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2909Spex do
     scenario "Progress reads as sentences, not as a build log" do
       given_ "work is happening on one of my working copies", context do
         copy = CodeMySpec.TempFile.dir("spex_2909")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
         designate_main_copy(context, joined.working_copy_id)

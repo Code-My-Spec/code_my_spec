@@ -34,6 +34,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2860Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2860Spex do
 
         working_copy_id = joined.working_copy_id
 
-        File.write!(
+        RealDisk.write!(
           Path.join(root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: working_copy_id, root: root})
         )
@@ -69,7 +70,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2860Spex do
         # The checkout is fine. Nothing is deleted here, and nothing is reported
         # either — the machine is off, which is precisely the state where the
         # old model went wrong.
-        assert File.dir?(root),
+        assert RealDisk.dir?(root),
                "the premise is an intact checkout on an unreachable machine; if " <>
                  "the directory were gone this would be a different criterion"
 

@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2890Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,7 +33,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2890Spex do
     scenario "An agent still working comes back to finish" do
       given_ "an agent part-way through a story on a working copy", context do
         copy = CodeMySpec.TempFile.dir("spex_2890")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)

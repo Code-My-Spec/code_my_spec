@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2862Spex do
   import CodeMySpecSpex.PathReportHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -48,7 +49,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2862Spex do
         joined = join_working_copy(context, root, "the copy on the volume", device_id: device)
         working_copy_id = joined.working_copy_id
 
-        File.write!(
+        RealDisk.write!(
           Path.join(root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: working_copy_id, root: root})
         )
@@ -56,7 +57,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2862Spex do
         reporter = harness(context, device, %{working_copy_id => root})
 
         # The volume goes away. Not deleted — unmounted, which from the
-        # harness's side is the same `File.dir?` answer and is the whole reason
+        # harness's side is the same `RealDisk.dir?` answer and is the whole reason
         # this criterion exists.
         remove(root)
         report(reporter)
@@ -80,9 +81,9 @@ defmodule CodeMySpecSpex.Story1014.Criterion2862Spex do
 
       when_ "its harness next reports the path present", context do
         # The volume is mounted again, with the checkout on it exactly as it was.
-        File.mkdir_p!(context.root)
+        RealDisk.mkdir_p!(context.root)
 
-        File.write!(
+        RealDisk.write!(
           Path.join(context.root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: context.working_copy_id, root: context.root})
         )

@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -43,7 +44,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
     scenario "What it did outlives it" do
       given_ "an agent that did work", context do
         copy = CodeMySpec.TempFile.dir("spex_2899")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)

@@ -33,6 +33,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2823Spex do
 
         copy = context.scope.cwd
 
-        assert is_binary(copy) and File.dir?(copy),
+        assert is_binary(copy) and RealDisk.dir?(copy),
                "the premise is a real checkout to look inside; without one this " <>
                  "asserts nothing about what was written into it"
 

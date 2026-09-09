@@ -26,7 +26,12 @@ defmodule CodeMySpecSpex.Story1045.Criterion3073Spex do
         plug = fn conn ->
           {:ok, _body, conn} = Plug.Conn.read_body(conn)
 
-          notify_if_server_create(test_pid, conn.method, conn.request_path)
+          CodeMySpecSpex.Fixtures.notify_server_create(
+            test_pid,
+            conn.method,
+            conn.request_path,
+            :server_created
+          )
 
           reply(conn, conn.method, conn.request_path)
         end
@@ -56,11 +61,6 @@ defmodule CodeMySpecSpex.Story1045.Criterion3073Spex do
       end
     end
   end
-
-  defp notify_if_server_create(test_pid, "POST", "/v1/servers"),
-    do: send(test_pid, :server_created)
-
-  defp notify_if_server_create(_test_pid, _method, _path), do: :ok
 
   defp reply(conn, "GET", "/v1/servers"), do: json(conn, %{"servers" => []})
   defp reply(conn, "GET", "/v1/firewalls"), do: json(conn, %{"firewalls" => []})

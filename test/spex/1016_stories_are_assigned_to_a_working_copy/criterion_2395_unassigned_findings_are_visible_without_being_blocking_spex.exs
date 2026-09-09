@@ -48,6 +48,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2395Spex do
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.TempFile
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @red_fixture_dir "test/fixtures/validation/pipeline_spex_failure"
@@ -206,7 +207,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2395Spex do
   defp spex_jsonl(path) do
     file = TempFile.path("spex_2395", ".jsonl")
 
-    File.write!(
+    RealDisk.write!(
       file,
       Jason.encode!(%{
         "spex" => "intentional failure",

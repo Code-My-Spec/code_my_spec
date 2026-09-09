@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2879Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,7 +33,6 @@ defmodule CodeMySpecSpex.Story1023.Criterion2879Spex do
   spex "One lane stops without taking its team with it" do
     scenario "Two lanes on one copy, one of them stopped" do
       given_ "a working copy running a coding lane and a QA lane", context do
-
         coding =
           Fixtures.running_agent(context.scope,
             role: "coding",
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2879Spex do
         qa =
           Fixtures.running_agent(context.scope, role: "qa", working_copy: @copy)
 
-        File.mkdir_p!(@copy)
+        RealDisk.mkdir_p!(@copy)
         start_agent(coding.id, working_copy: @copy)
         start_agent(qa.id, working_copy: @copy)
 

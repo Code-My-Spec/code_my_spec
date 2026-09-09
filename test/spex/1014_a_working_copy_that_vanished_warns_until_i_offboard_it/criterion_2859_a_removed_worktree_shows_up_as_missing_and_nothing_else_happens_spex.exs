@@ -34,6 +34,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2859Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @observed_file "lib/the_copy/thing.ex"
@@ -60,7 +61,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2859Spex do
 
         # The config file names the id it was actually issued. Written after the
         # join because the join is what issues it.
-        File.write!(
+        RealDisk.write!(
           Path.join(root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: working_copy_id, root: root})
         )

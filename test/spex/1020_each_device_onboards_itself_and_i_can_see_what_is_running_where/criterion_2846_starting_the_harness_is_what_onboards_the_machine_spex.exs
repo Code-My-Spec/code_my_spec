@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -42,15 +43,15 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
         dir =
           Path.join(System.tmp_dir!(), "spex-1020-install-#{System.unique_integer([:positive])}")
 
-        File.mkdir_p!(dir)
-        on_exit(fn -> File.rm_rf(dir) end)
+        RealDisk.mkdir_p!(dir)
+        on_exit(fn -> RealDisk.rm_rf(dir) end)
 
         file = Path.join(dir, "device.json")
         previous = Application.get_env(:code_my_spec, :device_config_path)
         Application.put_env(:code_my_spec, :device_config_path, file)
         on_exit(fn -> Application.put_env(:code_my_spec, :device_config_path, previous) end)
 
-        refute File.exists?(file),
+        refute RealDisk.exists?(file),
                "the premise is a machine that has never onboarded; a file here " <>
                  "would make this assert nothing"
 
@@ -76,11 +77,11 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
       then_ "it is issued an identity and writes it beside the install", context do
         assert {:ok, %{device_id: device_id}} = context.result
 
-        assert File.exists?(context.device_file),
+        assert RealDisk.exists?(context.device_file),
                "the harness onboarded and wrote nothing down, so its next start " <>
                  "asks for another identity and every restart is a new machine"
 
-        assert File.read!(context.device_file) =~ device_id,
+        assert RealDisk.read!(context.device_file) =~ device_id,
                "the file does not carry the identity that was issued. It lives " <>
                  "beside the install rather than in a checkout precisely so it " <>
                  "survives restarts and cannot be cloned — a file that holds the " <>

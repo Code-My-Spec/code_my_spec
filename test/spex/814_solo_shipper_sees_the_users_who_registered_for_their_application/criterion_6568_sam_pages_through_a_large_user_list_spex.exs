@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story814.Criterion6568Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.RealDisk
+
   @endpoint CodeMySpecWeb.Endpoint
   @client_api_url "https://app.example.com"
 
@@ -72,7 +74,7 @@ defmodule CodeMySpecSpex.Story814.Criterion6568Spex do
   defp cassette_response_body(name) do
     ["test", "cassettes", "project_users", "#{name}.json"]
     |> Path.join()
-    |> File.read!()
+    |> RealDisk.read!()
     |> Jason.decode!()
     |> get_in(["interactions", Access.at(0), "response", "body"])
   end

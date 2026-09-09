@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2918Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -55,7 +56,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2918Spex do
         first = CodeMySpec.TempFile.dir("spex_2918_first")
         second = CodeMySpec.TempFile.dir("spex_2918_second")
         third = CodeMySpec.TempFile.dir("spex_2918_third")
-        Enum.each([first, second, third], &File.mkdir_p!/1)
+        Enum.each([first, second, third], &RealDisk.mkdir_p!/1)
 
         joined = join_working_copy(context, first, "the main checkout")
         join_working_copy(context, second, "another checkout")

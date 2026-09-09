@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion3093Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -91,7 +92,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion3093Spex do
 
         path = created_path(text)
 
-        assert File.dir?(path),
+        assert RealDisk.dir?(path),
                "the reply names a directory that is not there: #{inspect(path)}. A " <>
                  "path the agent cannot cd into is worse than a refusal — it goes " <>
                  "and works in it."

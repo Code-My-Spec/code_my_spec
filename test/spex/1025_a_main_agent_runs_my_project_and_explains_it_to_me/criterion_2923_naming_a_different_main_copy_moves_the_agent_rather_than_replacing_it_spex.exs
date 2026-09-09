@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -47,7 +48,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
     scenario "Naming a different main copy moves the agent rather than replacing it" do
       given_ "a main agent I have been talking to for weeks", context do
         first = CodeMySpec.TempFile.dir("spex_2923_first")
-        File.mkdir_p!(first)
+        RealDisk.mkdir_p!(first)
         joined = join_working_copy(context, first, "where it started")
 
         designate_main_copy(context, joined.working_copy_id)
@@ -60,7 +61,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2923Spex do
 
       when_ "a different working copy is designated the main one", context do
         second = CodeMySpec.TempFile.dir("spex_2923_second")
-        File.mkdir_p!(second)
+        RealDisk.mkdir_p!(second)
         joined = join_working_copy(context, second, "where it moves to")
 
         designate_main_copy(context, joined.working_copy_id)

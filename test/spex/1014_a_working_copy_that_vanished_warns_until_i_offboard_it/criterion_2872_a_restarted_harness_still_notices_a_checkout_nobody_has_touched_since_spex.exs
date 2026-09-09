@@ -41,6 +41,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2872Spex do
   import CodeMySpecSpex.PathReportHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -64,7 +65,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2872Spex do
 
         working_copy_id = joined.working_copy_id
 
-        File.write!(
+        RealDisk.write!(
           Path.join(root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: working_copy_id, root: root})
         )

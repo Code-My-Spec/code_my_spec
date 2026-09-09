@@ -40,6 +40,7 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -55,8 +56,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
       given_ "a Pi agent working on a copy", context do
         talkable_root = CodeMySpec.TempFile.dir("spex_2833_talkable")
         other_root = CodeMySpec.TempFile.dir("spex_2833_other")
-        File.mkdir_p!(talkable_root)
-        File.mkdir_p!(other_root)
+        RealDisk.mkdir_p!(talkable_root)
+        RealDisk.mkdir_p!(other_root)
 
         {talkable, socket} =
           join_working_copy_socket(context, talkable_root, "talkable checkout")

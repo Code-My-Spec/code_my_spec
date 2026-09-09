@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,7 +42,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2900Spex do
     scenario "I change my mind before it lands" do
       given_ "a message of mine waiting for the agent to finish its turn", context do
         copy = CodeMySpec.TempFile.dir("spex_2900")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
 

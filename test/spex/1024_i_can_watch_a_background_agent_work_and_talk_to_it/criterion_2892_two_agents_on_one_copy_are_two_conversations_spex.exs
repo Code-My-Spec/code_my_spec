@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2892Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -51,7 +52,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2892Spex do
     scenario "Two agents on one copy are two conversations" do
       given_ "one working copy", context do
         copy = CodeMySpec.TempFile.dir("spex_2892")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         # The scope's own copy, because that is the one an agent started here is
         # filed under. Joining a second one and opening that lists no agents,

@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,7 +41,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
         # cannot be a plausible-looking constant: `/workspace/app` is not
         # writable on the machine these run on.
         shared_path = CodeMySpec.TempFile.dir("spex_2881_shared")
-        File.mkdir_p!(shared_path)
+        RealDisk.mkdir_p!(shared_path)
 
         on_this_machine =
           Fixtures.running_agent(context.scope,

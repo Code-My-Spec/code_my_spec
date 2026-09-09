@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2913Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -47,7 +48,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2913Spex do
     scenario "Nothing the agent writes is trapped in the chat" do
       given_ "the main agent has shaped an epic in conversation", context do
         copy = CodeMySpec.TempFile.dir("spex_2913")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
         designate_main_copy(context, joined.working_copy_id)

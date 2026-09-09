@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -37,7 +38,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
     scenario "The send box does not accept what it cannot deliver" do
       given_ "a conversation whose agent is not running", context do
         copy = CodeMySpec.TempFile.dir("spex_2898")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         # Started for real and stopped through the operator's own surface, which
         # is the ordinary state of any agent that has finished.

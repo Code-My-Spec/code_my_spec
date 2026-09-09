@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
   import Phoenix.LiveViewTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -33,7 +34,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
     scenario "A message that could not be delivered says so" do
       given_ "an agent whose machine cannot be reached", context do
         copy = CodeMySpec.TempFile.dir("spex_2896")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)

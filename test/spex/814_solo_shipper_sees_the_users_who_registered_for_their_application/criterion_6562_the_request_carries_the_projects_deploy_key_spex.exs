@@ -38,15 +38,11 @@ defmodule CodeMySpecSpex.Story814.Criterion6562Spex do
         |> form("#project-form", project: %{client_api_url: @client_api_url})
         |> render_submit()
 
-        test_pid = self()
-
-        Req.Test.stub(CodeMySpec.ProjectUsers, fn conn ->
-          send(test_pid, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
-
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, ~s({"data":[],"page":1,"page_size":50,"total":0}))
-        end)
+        CodeMySpecSpex.Fixtures.stub_capturing_authorization(
+          CodeMySpec.ProjectUsers,
+          self(),
+          ~s({"data":[],"page":1,"page_size":50,"total":0})
+        )
 
         {:ok, Map.put(context, :deploy_key, deploy_key)}
       end

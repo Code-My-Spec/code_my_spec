@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2919Spex do
 
   alias CodeMySpecSpex.Fixtures
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -51,13 +52,13 @@ defmodule CodeMySpecSpex.Story963.Criterion2919Spex do
     scenario "A subagent's work reports back through the main agent" do
       given_ "the main agent has delegated something like persona research", context do
         copy = CodeMySpec.TempFile.dir("spex_2919")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the main checkout")
 
         designate_main_copy(context, joined.working_copy_id)
 
         other = CodeMySpec.TempFile.dir("spex_2919_other")
-        File.mkdir_p!(other)
+        RealDisk.mkdir_p!(other)
         Fixtures.running_agent(context.scope, working_copy: other)
 
         {:ok, context}

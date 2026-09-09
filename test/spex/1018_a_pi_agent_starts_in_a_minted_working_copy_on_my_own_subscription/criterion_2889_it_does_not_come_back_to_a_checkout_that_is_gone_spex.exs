@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2889Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -31,15 +32,15 @@ defmodule CodeMySpecSpex.Story1018.Criterion2889Spex do
     scenario "It does not come back to a checkout that is gone" do
       given_ "an agent that was running on a copy which has since been removed", context do
         copy = CodeMySpec.TempFile.dir("spex_2889")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
         start_agent(agent.id, working_copy: copy)
         :ok = stop_agent_process(agent.id)
 
-        File.rm_rf!(copy)
+        RealDisk.rm_rf!(copy)
 
-        refute File.dir?(copy),
+        refute RealDisk.dir?(copy),
                "the premise is a checkout that is gone; with one still there this " <>
                  "asserts nothing about refusing"
 

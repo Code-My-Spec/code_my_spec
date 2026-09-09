@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -53,7 +54,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2894Spex do
     scenario "A turn that fails still shows what it did first" do
       given_ "an agent that has already done something", context do
         copy = CodeMySpec.TempFile.dir("spex_2894")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         agent = Fixtures.running_agent(context.scope, working_copy: copy)
 

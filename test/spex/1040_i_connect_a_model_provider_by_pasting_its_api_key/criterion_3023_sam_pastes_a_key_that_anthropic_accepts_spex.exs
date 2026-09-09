@@ -21,12 +21,10 @@ defmodule CodeMySpecSpex.Story1040.Criterion3023Spex do
   spex "I connect a model provider by pasting its API key" do
     scenario "Sam pastes a key that Anthropic accepts" do
       given_ "Anthropic will accept the key, and says so when asked", context do
-        owner = self()
-
-        Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
-          send(owner, {:asked, conn.host})
-          Req.Test.json(conn, %{"ok" => true})
-        end)
+        CodeMySpecSpex.Fixtures.stub_accepting_and_noting_host(
+          CodeMySpec.Integrations.Providers.ApiKey,
+          self()
+        )
 
         {:ok, context}
       end

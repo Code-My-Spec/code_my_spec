@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
   `.cms_harness.json` still names an id the server has forgotten, and running
   onboarding again mints a new one. That is criterion 2868's half.
 
-  The checkout is checked file by file rather than by `File.dir?` alone. A remedy
+  The checkout is checked file by file rather than by `RealDisk.dir?` alone. A remedy
   that emptied the directory but left it standing would pass a directory check
   and would be the failure this criterion is about.
   """
@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
   import CodeMySpecSpex.PathReportHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -52,13 +53,13 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
         working_copy_id = joined.working_copy_id
 
         config = Path.join(root, ".cms_harness.json")
-        File.write!(config, Jason.encode!(%{working_copy_id: working_copy_id, root: root}))
+        RealDisk.write!(config, Jason.encode!(%{working_copy_id: working_copy_id, root: root}))
 
         # Work in the checkout, so "the directory is untouched" means something
         # more than "an empty directory is still empty".
         source = Path.join([root, "lib", "kept.ex"])
-        File.mkdir_p!(Path.dirname(source))
-        File.write!(source, "defmodule Kept do\\nend\\n")
+        RealDisk.mkdir_p!(Path.dirname(source))
+        RealDisk.write!(source, "defmodule Kept do\\nend\\n")
 
         harness(context, device, %{working_copy_id => root})
 
@@ -96,16 +97,16 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
       end
 
       then_ "and the directory it named is untouched, config file and all", context do
-        assert File.dir?(context.root),
+        assert RealDisk.dir?(context.root),
                "offboarding deleted the checkout. The row is ours and the " <>
                  "directory is not, and this button sits one click away in a list " <>
                  "of rows that look alike."
 
-        assert File.exists?(context.source),
+        assert RealDisk.exists?(context.source),
                "the checkout is still standing but its contents are gone, which " <>
                  "is the same loss with a directory left behind to hide it"
 
-        assert File.exists?(context.config),
+        assert RealDisk.exists?(context.config),
                "`.cms_harness.json` was removed from a checkout the server no " <>
                  "longer knows about. Nothing on the server has any business " <>
                  "reaching into a working copy — and re-onboarding is what " <>

@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2891Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -36,7 +37,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2891Spex do
     scenario "An agent I stopped is not resurrected by a restart" do
       given_ "two agents on a working copy, one of which I stop", context do
         copy = CodeMySpec.TempFile.dir("spex_2891")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
 
         keep = Fixtures.running_agent(context.scope, role: "coding", working_copy: copy)
         done = Fixtures.running_agent(context.scope, role: "qa", working_copy: copy)

@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2904Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -53,7 +54,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2904Spex do
         # having to start an *agent*. A project with nowhere to run one is
         # criterion 2906's subject, and it demands the opposite of this.
         copy = CodeMySpec.TempFile.dir("spex_2904")
-        File.mkdir_p!(copy)
+        RealDisk.mkdir_p!(copy)
         joined = join_working_copy(context, copy, "the checkout I just made")
 
         designate_main_copy(context, joined.working_copy_id)

@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story963.Criterion2920Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -46,8 +47,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2920Spex do
       given_ "a project with more than one working copy", context do
         first = CodeMySpec.TempFile.dir("spex_2920_first")
         second = CodeMySpec.TempFile.dir("spex_2920_second")
-        File.mkdir_p!(first)
-        File.mkdir_p!(second)
+        RealDisk.mkdir_p!(first)
+        RealDisk.mkdir_p!(second)
 
         one = join_working_copy(context, first, "the first checkout")
         two = join_working_copy(context, second, "the second checkout")

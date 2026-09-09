@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6579Spex do
   import Phoenix.ChannelTest
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.RealDisk
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -47,8 +48,8 @@ defmodule CodeMySpecSpex.Story815.Criterion6579Spex do
         wait_for_channel(chan_x)
 
         dir2 = CodeMySpec.TempFile.dir("spex")
-        File.mkdir_p!(dir2)
-        on_exit(fn -> File.rm_rf(dir2) end)
+        RealDisk.mkdir_p!(dir2)
+        on_exit(fn -> RealDisk.rm_rf(dir2) end)
 
         project2 =
           Fixtures.project_fixture(context.scope,

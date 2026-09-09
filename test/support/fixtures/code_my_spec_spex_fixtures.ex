@@ -3107,6 +3107,53 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Framework-issue remote stub --
 
+  # -- Stub call observation (`send/2` stays out of _spex.exs files) --
+
+  @doc """
+  Notes a matching-method-and-path call for a spex's own
+  `assert_received`/`refute_received`, without the spex file touching
+  `send/2` directly (`NoDirectSendInSpex`). Sends `message` to `test_pid`
+  only when `method`/`path` name the create-server request; every other
+  request is silently ignored.
+  """
+  @spec notify_server_create(pid(), String.t(), String.t(), term()) :: :ok
+  def notify_server_create(test_pid, "POST", "/v1/servers", message), do: send(test_pid, message)
+  def notify_server_create(_test_pid, _method, _path, _message), do: :ok
+
+  @doc """
+  Notes every call reaching a stub, tagged `{tag, request_path}`, for a
+  spex's own `assert_received`/`refute_received`.
+  """
+  @spec notify_call(pid(), atom(), String.t()) :: :ok
+  def notify_call(test_pid, tag, request_path), do: send(test_pid, {tag, request_path})
+
+  @doc """
+  Stub `client` to answer 200 with `response_body`, noting each call's
+  `authorization` header for a spex's own `assert_received`.
+  """
+  @spec stub_capturing_authorization(module(), pid(), String.t()) :: :ok
+  def stub_capturing_authorization(client, test_pid, response_body) do
+    Req.Test.stub(client, fn conn ->
+      send(test_pid, {:authorization, Plug.Conn.get_req_header(conn, "authorization")})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, response_body)
+    end)
+  end
+
+  @doc """
+  Stub `client` to accept and answer `%{"ok" => true}`, noting each call's
+  host for a spex's own `assert_received`.
+  """
+  @spec stub_accepting_and_noting_host(module(), pid()) :: :ok
+  def stub_accepting_and_noting_host(client, test_pid) do
+    Req.Test.stub(client, fn conn ->
+      send(test_pid, {:asked, conn.host})
+      Req.Test.json(conn, %{"ok" => true})
+    end)
+  end
+
   # -- Project configuration (Stories 608, etc.) --
 
   @doc """

@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2868Spex do
   import CodeMySpecSpex.PathReportHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -52,7 +53,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2868Spex do
         joined = join_working_copy(context, root, "the first copy", device_id: device)
         first_id = joined.working_copy_id
 
-        File.write!(
+        RealDisk.write!(
           Path.join(root, ".cms_harness.json"),
           Jason.encode!(%{working_copy_id: first_id, root: root})
         )
@@ -71,9 +72,9 @@ defmodule CodeMySpecSpex.Story1014.Criterion2868Spex do
         # The directory comes back — a fresh `git worktree add` at the same path.
         # It carries no identity, because the file that held one went with the
         # checkout that was removed.
-        File.mkdir_p!(root)
+        RealDisk.mkdir_p!(root)
 
-        refute File.exists?(Path.join(root, ".cms_harness.json")),
+        refute RealDisk.exists?(Path.join(root, ".cms_harness.json")),
                "the premise is a checkout with nothing to present; a config file " <>
                  "here would make this a different scenario"
 
