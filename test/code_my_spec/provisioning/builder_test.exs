@@ -45,6 +45,35 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     )
   end
 
+  # A `create` stub that fails once (recording that it did, in the process
+  # dictionary — this closure is called from inside the code under test, not
+  # from the test process) and returns `then_result` on every call after.
+  # Shared by the orphan/stale-builder retry tests below, which differ only in
+  # what the first failure and the eventual outcome look like.
+  defp create_once_then(first, then_result) do
+    fn _scope, _name, _create_opts ->
+      once_then(Process.get(:create_calls, 0), first, then_result)
+    end
+  end
+
+  defp once_then(0, first, _then_result) do
+    Process.put(:create_calls, 1)
+    first
+  end
+
+  defp once_then(_after_first, _first, then_result), do: then_result
+
+  # `list_images` stub: nothing found on the first call, the built image found
+  # on every call after. Simulates the image not existing yet, then existing
+  # once `create_image` has finished.
+  defp list_images_response(0), do: {:ok, []}
+  defp list_images_response(_after_first), do: {:ok, [%{"id" => 777}]}
+
+  # Same shape, but the image isn't ready until the third poll — proves the
+  # source server survives two "not yet" answers before the confirmed one.
+  defp not_ready_until_third_poll(n) when n < 3, do: {:ok, []}
+  defp not_ready_until_third_poll(_n), do: {:ok, [%{"id" => 777}]}
+
   describe "build/3" do
     test "returns the image the build produced" do
       build = fn _scope, _server, _ref, arch ->
@@ -241,8 +270,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
       list_images = fn _scope, _opts ->
-        n = Agent.get_and_update(counter, &{&1, &1 + 1})
-        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
       end
 
       create = fn _scope, name, create_opts ->
@@ -291,8 +319,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
       list_images = fn _scope, _opts ->
-        n = Agent.get_and_update(counter, &{&1, &1 + 1})
-        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
       end
 
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
@@ -329,13 +356,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
       list_images = fn _scope, _opts ->
-        n = Agent.get_and_update(counter, &{&1, &1 + 1})
-
-        cond do
-          n == 0 -> {:ok, []}
-          n < 3 -> {:ok, []}
-          true -> {:ok, [%{"id" => 777}]}
-        end
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> not_ready_until_third_poll()
       end
 
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
@@ -398,8 +419,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
       list_images = fn _scope, _opts ->
-        n = Agent.get_and_update(counter, &{&1, &1 + 1})
-        if n == 0, do: {:ok, []}, else: {:ok, [%{"id" => 777}]}
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
       end
 
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
@@ -649,24 +669,18 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       name = "builder-abc123"
       orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
 
-      create = fn _scope, _name, _create_opts ->
-        case Process.get(:create_calls, 0) do
-          0 ->
-            Process.put(:create_calls, 1)
-
-            {:error,
-             {:hetzner_error, 409,
-              %{
-                "error" => %{
-                  "code" => "uniqueness_error",
-                  "message" => "server name #{name} is already used"
-                }
-              }}}
-
-          _ ->
-            {:ok, server()}
-        end
-      end
+      create =
+        create_once_then(
+          {:error,
+           {:hetzner_error, 409,
+            %{
+              "error" => %{
+                "code" => "uniqueness_error",
+                "message" => "server name #{name} is already used"
+              }
+            }}},
+          {:ok, server()}
+        )
 
       find = fn _scope, ^name -> {:ok, orphan} end
       destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
@@ -729,19 +743,13 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
 
     test "retries the create when the orphan is gone by the time it looks" do
-      create = fn _scope, _name, _create_opts ->
-        case Process.get(:create_calls, 0) do
-          0 ->
-            Process.put(:create_calls, 1)
-
-            {:error,
-             {:hetzner_error, 409,
-              %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
-
-          _ ->
-            {:ok, server()}
-        end
-      end
+      create =
+        create_once_then(
+          {:error,
+           {:hetzner_error, 409,
+            %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}},
+          {:ok, server()}
+        )
 
       find = fn _scope, _name -> {:error, :not_found} end
 
@@ -838,16 +846,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         "created" => "2026-08-03T00:00:00Z"
       }
 
-      create = fn _scope, _name, _create_opts ->
-        case Process.get(:create_calls, 0) do
-          0 ->
-            Process.put(:create_calls, 1)
-            resource_limit_error()
-
-          _ ->
-            {:ok, server()}
-        end
-      end
+      create = create_once_then(resource_limit_error(), {:ok, server()})
 
       list = fn _scope -> {:ok, [stale]} end
       destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
@@ -935,16 +934,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         "created" => "2026-08-03T00:00:00Z"
       }
 
-      create = fn _scope, _name, _create_opts ->
-        case Process.get(:create_calls, 0) do
-          0 ->
-            Process.put(:create_calls, 1)
-            resource_limit_error()
-
-          _ ->
-            {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}}
-        end
-      end
+      create =
+        create_once_then(
+          resource_limit_error(),
+          {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}}
+        )
 
       list = fn _scope -> {:ok, [stale]} end
       destroy = fn _scope, _id -> {:ok, %{}} end

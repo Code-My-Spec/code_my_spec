@@ -38,39 +38,43 @@ defmodule CodeMySpec.LiveProvisioningTest do
   @owner "johns10"
 
   setup do
-    token_file = System.get_env("CMS_GH_TOKEN_FILE")
-    hetzner = System.get_env("HETZNER_API_TOKEN")
+    build_live_context(System.get_env("CMS_GH_TOKEN_FILE"), System.get_env("HETZNER_API_TOKEN"))
+  end
 
-    case {token_file && File.exists?(token_file), hetzner} do
-      {true, hz} when is_binary(hz) and hz != "" ->
-        gh = token_file |> File.read!() |> Jason.decode!() |> Map.fetch!("access_token")
-        Application.put_env(:code_my_spec, Hetzner, api_token: hz)
+  defp build_live_context(token_file, hetzner)
+       when is_binary(token_file) and is_binary(hetzner) and hetzner != "" do
+    load_live_context(File.exists?(token_file), token_file, hetzner)
+  end
 
-        # A real working tree with a file in it — the state a freshly
-        # generated project is in when the repository step runs.
-        {:ok, tmp} = Briefly.create(directory: true)
-        File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
+  defp build_live_context(_token_file, _hetzner), do: {:ok, skip: true}
 
-        scope = full_scope_fixture()
-        scope = %{scope | environment: Environment.new(:local, tmp)}
+  defp load_live_context(false, _token_file, _hetzner), do: {:ok, skip: true}
 
-        %Integration{}
-        |> Integration.changeset(%{
-          user_id: scope.user.id,
-          provider: :github,
-          access_token: gh,
-          granted_scopes: ["repo", "user:email"],
-          expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
-        })
-        |> Repo.insert!()
+  defp load_live_context(true, token_file, hetzner) do
+    gh = token_file |> File.read!() |> Jason.decode!() |> Map.fetch!("access_token")
+    Application.put_env(:code_my_spec, Hetzner, api_token: hetzner)
 
-        on_exit(fn -> cleanup(scope, gh) end)
+    # A real working tree with a file in it — the state a freshly
+    # generated project is in when the repository step runs.
+    {:ok, tmp} = Briefly.create(directory: true)
+    File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
 
-        %{scope: scope, gh: gh}
+    scope = full_scope_fixture()
+    scope = %{scope | environment: Environment.new(:local, tmp)}
 
-      _ ->
-        {:ok, skip: true}
-    end
+    %Integration{}
+    |> Integration.changeset(%{
+      user_id: scope.user.id,
+      provider: :github,
+      access_token: gh,
+      granted_scopes: ["repo", "user:email"],
+      expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
+    })
+    |> Repo.insert!()
+
+    on_exit(fn -> cleanup(scope, gh) end)
+
+    %{scope: scope, gh: gh}
   end
 
   # Runs even when a test fails partway. Deletes only the exact names this
@@ -89,56 +93,58 @@ defmodule CodeMySpec.LiveProvisioningTest do
     delete_ssh_key(scope)
     delete_repo(gh)
 
-    leftovers = leftovers(scope, gh)
-
-    case leftovers do
-      [] -> :ok
-      found -> IO.warn("LIVE TEST LEFT RESOURCES BEHIND: #{inspect(found)}")
-    end
+    report_leftovers(leftovers(scope, gh))
   end
+
+  defp report_leftovers([]), do: :ok
+  defp report_leftovers(found), do: IO.warn("LIVE TEST LEFT RESOURCES BEHIND: #{inspect(found)}")
 
   # A key left behind is not just clutter: the next run generates fresh
   # material, and an account holding a stale key under the same name is how
   # the name-matching bug produced an unreachable server.
   defp delete_ssh_key(scope) do
-    case ProjectSecrets.fetch_value(scope, "server_ssh_public_key") do
-      {:ok, public} ->
-        case Hetzner.find_ssh_key_by_fingerprint(scope, Hetzner.fingerprint(public)) do
-          {:ok, %{"id" => id}} -> Hetzner.delete_ssh_key(scope, id)
-          _ -> :ok
-        end
-
-      _ ->
-        :ok
-    end
+    scope
+    |> ProjectSecrets.fetch_value("server_ssh_public_key")
+    |> delete_ssh_key_for_public(scope)
   end
+
+  defp delete_ssh_key_for_public({:ok, public}, scope) do
+    scope
+    |> Hetzner.find_ssh_key_by_fingerprint(Hetzner.fingerprint(public))
+    |> delete_found_ssh_key(scope)
+  end
+
+  defp delete_ssh_key_for_public(_no_public, _scope), do: :ok
+
+  defp delete_found_ssh_key({:ok, %{"id" => id}}, scope), do: Hetzner.delete_ssh_key(scope, id)
+  defp delete_found_ssh_key(_not_found, _scope), do: :ok
 
   defp delete_server(scope) do
-    case Hetzner.find_server(scope, @name) do
-      {:ok, %{"id" => id}} -> Hetzner.delete_server(scope, id)
-      _ -> :ok
-    end
+    scope |> Hetzner.find_server(@name) |> delete_found_server(scope)
   end
+
+  defp delete_found_server({:ok, %{"id" => id}}, scope), do: Hetzner.delete_server(scope, id)
+  defp delete_found_server(_not_found, _scope), do: :ok
 
   # Retries: Hetzner detaches the firewall only once the server is really gone,
   # and that is not immediate.
   defp delete_firewall(_scope, 0), do: :ok
 
   defp delete_firewall(scope, attempts) do
-    case Hetzner.find_firewall(scope, @name) do
-      {:ok, %{"id" => id}} ->
-        case Hetzner.delete_firewall(scope, id) do
-          {:ok, _} ->
-            :ok
+    scope |> Hetzner.find_firewall(@name) |> delete_found_firewall(scope, attempts)
+  end
 
-          {:error, _} ->
-            Process.sleep(2_000)
-            delete_firewall(scope, attempts - 1)
-        end
+  defp delete_found_firewall({:ok, %{"id" => id}}, scope, attempts) do
+    scope |> Hetzner.delete_firewall(id) |> retry_firewall_delete(scope, attempts)
+  end
 
-      _ ->
-        :ok
-    end
+  defp delete_found_firewall(_not_found, _scope, _attempts), do: :ok
+
+  defp retry_firewall_delete({:ok, _}, _scope, _attempts), do: :ok
+
+  defp retry_firewall_delete({:error, _}, scope, attempts) do
+    Process.sleep(2_000)
+    delete_firewall(scope, attempts - 1)
   end
 
   # Deletion needs a DIFFERENT token than the work does. The OAuth grant this
@@ -186,6 +192,38 @@ defmodule CodeMySpec.LiveProvisioningTest do
     ]
   end
 
+  defp await_ssh_reachable(_ip, _key_path, 0), do: false
+
+  defp await_ssh_reachable(ip, key_path, attempts_left) do
+    "ssh"
+    |> System.cmd(
+      [
+        "-i",
+        key_path,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "ConnectTimeout=5",
+        "-o",
+        "BatchMode=yes",
+        "root@#{ip}",
+        "echo cms-reachable"
+      ],
+      stderr_to_stdout: true
+    )
+    |> ssh_reachable_result(ip, key_path, attempts_left)
+  end
+
+  defp ssh_reachable_result({out, 0}, _ip, _key_path, _attempts_left),
+    do: String.contains?(out, "cms-reachable")
+
+  defp ssh_reachable_result(_other, ip, key_path, attempts_left) do
+    Process.sleep(5_000)
+    await_ssh_reachable(ip, key_path, attempts_left - 1)
+  end
+
   test "the sequence provisions real resources and converges on a re-run", %{scope: scope} do
     # Step 1 — repository. Driven through Provisioning, not the provider, so
     # this exercises the wiring that was a stub until today.
@@ -212,7 +250,10 @@ defmodule CodeMySpec.LiveProvisioningTest do
              )
 
     assert server_step.state == :done
-    IO.puts("  server     -> #{server_step.state} #{inspect(Enum.map(server_step.resources, & &1.location))}")
+
+    IO.puts(
+      "  server     -> #{server_step.state} #{inspect(Enum.map(server_step.resources, & &1.location))}"
+    )
 
     # The address is what DNS points at, so it has to be recorded, not just
     # the fact that a server exists.
@@ -240,25 +281,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
     on_exit(fn -> File.rm(key_path) end)
 
     # Boot takes a moment; the assertion is that it answers, not how fast.
-    reachable =
-      Enum.reduce_while(1..24, false, fn _, _ ->
-        case System.cmd(
-               "ssh",
-               [
-                 "-i", key_path,
-                 "-o", "StrictHostKeyChecking=no",
-                 "-o", "UserKnownHostsFile=/dev/null",
-                 "-o", "ConnectTimeout=5",
-                 "-o", "BatchMode=yes",
-                 "root@#{ip}",
-                 "echo cms-reachable"
-               ],
-               stderr_to_stdout: true
-             ) do
-          {out, 0} -> {:halt, String.contains?(out, "cms-reachable")}
-          _ -> Process.sleep(5_000) && {:cont, false}
-        end
-      end)
+    reachable = await_ssh_reachable(ip, key_path, 24)
 
     assert reachable, "could not SSH to #{ip} with the key setup created"
 
@@ -275,7 +298,10 @@ defmodule CodeMySpec.LiveProvisioningTest do
              )
 
     {:ok, servers} = Hetzner.list_servers(scope)
-    IO.puts("  servers named #{@name}: #{Enum.count(servers, &(&1["name"] == @name))} (must be 1)")
+
+    IO.puts(
+      "  servers named #{@name}: #{Enum.count(servers, &(&1["name"] == @name))} (must be 1)"
+    )
 
     assert Enum.count(servers, &(&1["name"] == @name)) == 1,
            "re-running the server step duplicated the server"
@@ -338,14 +364,28 @@ defmodule CodeMySpec.LiveProvisioningTest do
            "the callback secret is sitting in plaintext at #{inspect(plaintext)}"
   end
 
+  defp ensure_storage_credentials!(id, secret) when is_binary(id) and is_binary(secret), do: :ok
+
+  defp ensure_storage_credentials!(_id, _secret),
+    do: raise("set HETZNER_S3_ACCESS_KEY_ID and HETZNER_S3_SECRET_ACCESS_KEY")
+
+  defp delete_dumps(bucket, credentials) do
+    bucket
+    |> Storage.list_dumps(credentials, prefix: "")
+    |> delete_listed_dumps(bucket, credentials)
+  end
+
+  defp delete_listed_dumps({:ok, objects}, bucket, credentials) do
+    for %{key: key} <- objects, do: Storage.delete_object(bucket, key, credentials)
+  end
+
+  defp delete_listed_dumps(_error, _bucket, _credentials), do: :ok
+
   describe "storage and backups against real Hetzner object storage" do
     setup %{scope: scope} do
       id = System.get_env("HETZNER_S3_ACCESS_KEY_ID")
       secret = System.get_env("HETZNER_S3_SECRET_ACCESS_KEY")
-
-      if is_nil(id) or is_nil(secret) do
-        raise "set HETZNER_S3_ACCESS_KEY_ID and HETZNER_S3_SECRET_ACCESS_KEY"
-      end
+      ensure_storage_credentials!(id, secret)
 
       # The project's own keys, held for it — the storage step reads these and
       # nothing else, so a fallback to our environment cannot pass for Sam's.
@@ -358,14 +398,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
 
       on_exit(fn ->
         for bucket <- buckets do
-          case Storage.list_dumps(bucket, credentials, prefix: "") do
-            {:ok, objects} ->
-              for %{key: key} <- objects, do: Storage.delete_object(bucket, key, credentials)
-
-            _ ->
-              :ok
-          end
-
+          delete_dumps(bucket, credentials)
           Storage.delete_bucket(bucket, credentials)
         end
       end)
@@ -377,7 +410,9 @@ defmodule CodeMySpec.LiveProvisioningTest do
       assert {:ok, step} = Provisioning.run_step(ctx.scope, :storage, [])
       assert step.state == :done
 
-      IO.puts("\n  storage    -> #{step.state} #{inspect(Enum.map(step.resources, & &1.location))}")
+      IO.puts(
+        "\n  storage    -> #{step.state} #{inspect(Enum.map(step.resources, & &1.location))}"
+      )
 
       # Criterion 8011: the buckets are his. Every recorded resource says so,
       # and the listing is read back from his account rather than ours.

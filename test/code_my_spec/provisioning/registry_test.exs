@@ -208,13 +208,12 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
   defp running_recorder(owner, status \\ 0) do
     fn [command] ->
       send(owner, {:ran, command})
-
-      case command do
-        "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
-        _ -> {"", status}
-      end
+      running_response(command, status)
     end
   end
+
+  defp running_response("docker ps -q -f name=" <> _, _status), do: {"c0ffeec0ffee", 0}
+  defp running_response(_command, status), do: {"", status}
 
   defp creds, do: [access_key_id: "AKIA", secret_access_key: "s3cret", region: "fsn1"]
 
@@ -237,6 +236,18 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         Keyword.merge([run: recorder(self()), credentials: creds()], opts)
       )
     end
+
+    defp ps_banner_response("docker ps -q -f name=" <> _),
+      do: {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
+
+    defp ps_banner_response(_command), do: {"", 0}
+
+    defp failed_start_response(cmd) do
+      docker_run_started_response(String.contains?(cmd, "docker run -d"))
+    end
+
+    defp docker_run_started_response(true), do: {"", 125}
+    defp docker_run_started_response(false), do: {"", 0}
 
     # The default, and the reason is the provider rather than the design.
     # Backed by a Hetzner bucket, `docker push` failed with `unknown blob`:
@@ -294,14 +305,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "banner noise on the ps check is not mistaken for a running container" do
       run = fn [command] ->
         send(self(), {:ran, command})
-
-        case command do
-          "docker ps -q -f name=" <> _ ->
-            {"Warning: Permanently added '1.2.3.4' (ED25519) to the list of known hosts.\r\n", 0}
-
-          _ ->
-            {"", 0}
-        end
+        ps_banner_response(command)
       end
 
       assert {:ok, _} = ensure_container(run: run)
@@ -390,7 +394,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "a registry that will not start is an error, not a success" do
       run = fn [cmd] ->
         send(self(), {:ran, cmd})
-        if cmd =~ "docker run -d", do: {"", 125}, else: {"", 0}
+        failed_start_response(cmd)
       end
 
       assert {:error, {:registry_start_failed, 125, _}} = ensure_container(run: run)
@@ -416,13 +420,20 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       )
     end
 
+    defp probe_response("docker ps -q -f name=" <> _), do: {"c0ffeec0ffee", 0}
+    defp probe_response("docker port" <> _), do: {"10.1.0.2:5000\n", 0}
+    defp probe_response(_command), do: {"", 0}
+
     # A project's own devops step does not get to stand up shared account
     # infrastructure as a side effect of asking for its own tenant — the
     # same shape `Steps.server_creation_gate/3` uses for the server itself.
     # `ensure_container/2` is the only thing that may create it.
     test "refuses instead of creating the container if it is not already running" do
       assert {:error, :registry_not_provisioned} =
-               Registry.serve(scope(), run: recorder(self()), registry_credentials: registry_cred())
+               Registry.serve(scope(),
+                 run: recorder(self()),
+                 registry_credentials: registry_cred()
+               )
     end
 
     # Docker assumes HTTPS for every registry but `localhost`, and this one
@@ -450,12 +461,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "probes the container's real published address, not the caller's guess" do
       run = fn [command] ->
         send(self(), {:ran, command})
-
-        case command do
-          "docker ps -q -f name=" <> _ -> {"c0ffeec0ffee", 0}
-          "docker port" <> _ -> {"10.1.0.2:5000\n", 0}
-          _ -> {"", 0}
-        end
+        probe_response(command)
       end
 
       assert {:ok, _} = serve(run: run, bind: "10.0.0.4")
@@ -529,6 +535,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
       command = collect_commands() |> find_command("htpasswd")
       assert command =~ "grep -v '^cms:'"
+
       refute command =~ "grep -v '^cms:.*$2b'",
              "must match on the username alone, not on a specific hash that would miss a rotated password"
     end
@@ -543,8 +550,10 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert {:ok, _} = serve()
 
       command = collect_commands() |> find_command("htpasswd")
+
       refute command =~ ~r/\bmv\s+\S*htpasswd\.tmp\s+\S*htpasswd\b/,
              "mv breaks a container's already-established bind mount on this file"
+
       assert command =~ ~r/cat\s+\S*htpasswd\.tmp\s*>\s*\S*htpasswd\b/,
              "the tmp file's content must be written into the existing htpasswd inode"
     end
@@ -631,31 +640,41 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     defp box(owner, listing, failing_tags \\ []) do
       fn [cmd] ->
         send(owner, {:ran, cmd})
-
-        cond do
-          cmd =~ "_manifests/tags" and cmd =~ "sh -c" ->
-            {listing, 0}
-
-          cmd =~ ~r{cat .*/([^/]+)/current/link$} ->
-            [_, tag] = Regex.run(~r{/([^/]+)/current/link$}, cmd)
-            {"sha256:digest-#{tag}", 0}
-
-          cmd =~ "-X DELETE" ->
-            delete_response(cmd, failing_tags)
-
-          cmd =~ "garbage-collect" ->
-            {"", 0}
-        end
+        prune_response(cmd, listing, failing_tags)
       end
     end
+
+    # Command shapes from `tags_by_recency/2`, `delete_tag/5` and
+    # `garbage_collect/1` (see registry.ex): each has a stable, distinct
+    # prefix, so the dispatch below is exact rather than a loose substring
+    # guess.
+    defp prune_response("docker exec cms-registry sh -c" <> _rest, listing, _failing_tags),
+      do: {listing, 0}
+
+    defp prune_response("docker exec cms-registry cat " <> rest, _listing, _failing_tags) do
+      [_, tag] = Regex.run(~r{/([^/]+)/current/link$}, rest)
+      {"sha256:digest-#{tag}", 0}
+    end
+
+    defp prune_response("curl " <> _rest = cmd, _listing, failing_tags),
+      do: delete_response(cmd, failing_tags)
+
+    defp prune_response(
+           "docker exec cms-registry /bin/registry garbage-collect" <> _rest,
+           _listing,
+           _failing_tags
+         ),
+         do: {"", 0}
 
     defp delete_response(cmd, failing_tags) do
-      if Enum.any?(failing_tags, &(cmd =~ "manifests/sha256:digest-#{&1}")) do
-        {"405", 0}
-      else
-        {"202", 0}
-      end
+      cmd |> failing_delete?(failing_tags) |> delete_status()
     end
+
+    defp failing_delete?(cmd, failing_tags),
+      do: Enum.any?(failing_tags, &(cmd =~ "manifests/sha256:digest-#{&1}"))
+
+    defp delete_status(true), do: {"405", 0}
+    defp delete_status(false), do: {"202", 0}
 
     defp prune(listing, opts) do
       Registry.prune(
