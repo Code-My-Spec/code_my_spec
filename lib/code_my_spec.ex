@@ -12,6 +12,7 @@ defmodule CodeMySpec do
     deps: [
       CodeMySpec.BootVersion,
       CodeMySpec.Code,
+      CodeMySpec.Compile,
       CodeMySpec.CodeMode,
       CodeMySpec.Environments,
       CodeMySpec.Events,

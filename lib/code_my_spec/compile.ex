@@ -8,6 +8,11 @@ defmodule CodeMySpec.Compile do
   containing all diagnostics from every compiler in the pipeline.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.TempFile],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Environments
@@ -185,31 +190,6 @@ defmodule CodeMySpec.Compile do
   defp relativize_diagnostic(diagnostic, _cwd), do: diagnostic
 
   @doc """
-  Execute mix compile asynchronously with callback.
-
-  Wraps `execute/1` in a Task and invokes the callback when complete.
-
-  ## Parameters
-
-  - `opts` - Options to pass to `execute/1` (e.g., `cwd: "/path"`)
-  - `interaction_id` - Interaction identifier for status updates
-  - `on_complete` - Callback function invoked with compilation results
-
-  ## Returns
-
-  `:ok` - Compilation started successfully in background task
-  """
-  @spec execute_async(keyword(), String.t(), (map() -> any())) :: :ok
-  def execute_async(opts, _interaction_id, on_complete) do
-    Task.start(fn ->
-      result = execute(opts)
-      on_complete.(result)
-    end)
-
-    :ok
-  end
-
-  @doc """
   Parse JSONL content (one JSON object per line) into a list of maps.
   """
   def parse_jsonl(content) when is_binary(content) do
@@ -296,12 +276,12 @@ defmodule CodeMySpec.Compile do
 
   defp unsatisfied_deps_problem(output) do
     %{
-        "message" =>
-          "This checkout cannot satisfy its own mix.lock, so no analyzer can run here. " <>
-            "Run `mix deps.get` in this working copy. " <>
-            "`mix.lock` is committed and `deps/` is not, so a dependency added in another " <>
-            "checkout arrives with the next pull and has to be fetched once. " <>
-            "Details: " <> first_dependency_complaint(output),
+      "message" =>
+        "This checkout cannot satisfy its own mix.lock, so no analyzer can run here. " <>
+          "Run `mix deps.get` in this working copy. " <>
+          "`mix.lock` is committed and `deps/` is not, so a dependency added in another " <>
+          "checkout arrives with the next pull and has to be fetched once. " <>
+          "Details: " <> first_dependency_complaint(output),
       "severity" => "error"
     }
   end
@@ -312,7 +292,9 @@ defmodule CodeMySpec.Compile do
   defp first_dependency_complaint(output) do
     output
     |> String.split("\n")
-    |> Enum.drop_while(&(not Enum.any?(@unsatisfied_deps_markers, fn m -> String.contains?(&1, m) end)))
+    |> Enum.drop_while(
+      &(not Enum.any?(@unsatisfied_deps_markers, fn m -> String.contains?(&1, m) end))
+    )
     |> Enum.take(6)
     |> Enum.map_join(" ", &String.trim/1)
     |> String.slice(0, 300)

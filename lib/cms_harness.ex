@@ -43,6 +43,7 @@ defmodule CmsHarness do
       CodeMySpec,
       CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
+      CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Paths,
       CodeMySpec.RecordingLock
