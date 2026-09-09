@@ -736,6 +736,28 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Put a working copy's agents into continuous mode, or take them out, resolving
+  the owner from the copy.
+
+  The same call `staff_any_copy/1` makes at the end, on its own, so a copy can
+  be switched off without being re-staffed and back on without being restarted.
+
+  Switching on takes the first turn — `set_copy_continuous/3` rings the bell
+  itself, for the reason R13 records: an agent is a supervised process that is
+  alive and idle and acts when it is messaged, so setting the flag alone marks
+  it willing to work and leaves it exactly as it was.
+  """
+  @spec set_any_copy_continuous(Ecto.UUID.t(), boolean()) ::
+          {:ok, non_neg_integer()} | {:error, :no_such_copy | :no_owner | term()}
+  def set_any_copy_continuous(copy_id, continuous?)
+      when is_binary(copy_id) and is_boolean(continuous?) do
+    with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+         {:ok, scope} <- owner_scope(copy) do
+      set_copy_continuous(scope, copy_id, continuous?)
+    end
+  end
+
   defp owner_scope(%{project_id: project_id, id: copy_id}) do
     case Repo.get(CodeMySpec.Projects.Project, project_id) do
       nil ->

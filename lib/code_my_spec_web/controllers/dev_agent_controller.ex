@@ -115,6 +115,33 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
+  # On and off without restarting anything. Staffing turns it on as a side
+  # effect, which is the wrong grain when the question is "pause this copy" —
+  # that used to mean stopping every agent on it and staffing again.
+  def continuous(conn, %{"working_copy_id" => copy_id} = params) do
+    wanted = truthy(params["continuous"])
+
+    case Agents.set_any_copy_continuous(copy_id, wanted) do
+      {:ok, count} ->
+        json(conn, %{
+          status: "ok",
+          working_copy_id: copy_id,
+          continuous: wanted,
+          agents_updated: count
+        })
+
+      {:error, reason} ->
+        conn |> put_status(404) |> json(%{error: inspect(reason), working_copy_id: copy_id})
+    end
+  end
+
+  # Absent means on. This route starts a loop as often as it stops one, and a
+  # missing flag reading as "off" would make the shorter call the surprising one.
+  defp truthy(nil), do: true
+  defp truthy(value) when is_boolean(value), do: value
+  defp truthy(value) when value in ["false", "0", "no", "off"], do: false
+  defp truthy(_value), do: true
+
   def stop(conn, %{"agent_id" => agent_id}) do
     case Agents.stop_any_agent(agent_id) do
       {:ok, agent} ->

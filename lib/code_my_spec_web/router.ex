@@ -409,6 +409,11 @@ defmodule CodeMySpecWeb.Router do
       # three agents stuck in `starting` with a menu each and nothing running.
       post "/copies/:working_copy_id/staff", DevAgentController, :staff
 
+      # The loop switch on its own. Staffing turns it on as a side effect, which
+      # is the wrong grain for pausing a copy — that meant stopping every agent
+      # and staffing again.
+      post "/copies/:working_copy_id/continuous", DevAgentController, :continuous
+
       # What the database believes against what the runtime is doing, and the
       # disagreements between them. Same compile-time gating and the same
       # reason: it reads across every project.
