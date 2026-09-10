@@ -100,7 +100,21 @@ defmodule CodeMySpec.Agents.StopDecision do
     # the directive the menu says the whole thing — "you have an open task, most
     # recently `bdd_specs_passing` … call `evaluate_task` with task_id" — and a
     # nudge after it is the same instruction twice in one stop.
-    nudge_open_task(scope, agent, elem(decided, 0))
+    #
+    # And only when the agent is not already waiting on a person. `{nil, nil}`
+    # means one of two different things: nothing to report, or
+    # `decide_with_key/3`'s own guard silenced the decision because the agent
+    # asked a question or tapped out. This nudge does not know which — it only
+    # sees the rendered text — so an agent that just tapped out and heard
+    # nothing back from the decision still got told "you stopped with X still
+    # open, close it yourself", in the same breath as being told to stop. The
+    # one message right after tap_out has to be "stopping and waiting", not
+    # "keep working" — checked again here for that reason.
+    if Notifications.awaiting_answer?(agent.id) do
+      :ok
+    else
+      nudge_open_task(scope, agent, elem(decided, 0))
+    end
   rescue
     error ->
       Logger.warning(

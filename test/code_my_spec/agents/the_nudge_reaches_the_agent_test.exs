@@ -29,6 +29,7 @@ defmodule CodeMySpec.Agents.TheNudgeReachesTheAgentTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
+  alias CodeMySpec.Notifications
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -126,6 +127,41 @@ defmodule CodeMySpec.Agents.TheNudgeReachesTheAgentTest do
 
     refute Enum.any?(drain([]), &(&1 =~ "still open")),
            "an agent holding no task was told to close one"
+  end
+
+  # The report this exists for: an agent calls tap_out, stops, and — in the
+  # same breath — is told "you stopped with X still open, close it yourself".
+  # `decide_with_key/3` correctly silences the menu for an agent awaiting an
+  # answer, but `nudge_open_task/3` never checked that guard at all — it only
+  # ever asked whether the (silenced) decision text happened to already name
+  # the task, which for a silenced `nil` decision is never true. So the one
+  # message that must land right after tap_out — "stopping and waiting" —
+  # arrived paired with its opposite: keep going.
+  test "an agent awaiting an answer is not also nudged about its open task", ctx do
+    {agent, task} = with_open_task(ctx.agent)
+
+    {:ok, _request} =
+      Notifications.create_permission_request(ctx.scope.user.id, %{
+        "agent_id" => agent.id,
+        "tool_name" => "tap_out",
+        "tool_input" => %{"agent_id" => agent.id}
+      })
+
+    StopDecision.deliver(ctx.scope, agent, [])
+
+    messages = drain([])
+
+    assert messages == [],
+           """
+           An agent waiting on a tap-out decision was sent something anyway — most
+           likely the open-task nudge, which does not know the decision was silenced
+           on purpose rather than because there was nothing to say.
+
+           #{inspect(messages, limit: :infinity, printable_limit: 2000)}
+           """
+
+    refute Enum.any?(messages, &String.contains?(&1, task.id)),
+           "told to close the task it just asked to stop holding"
   end
 
   defp drain(acc) do
