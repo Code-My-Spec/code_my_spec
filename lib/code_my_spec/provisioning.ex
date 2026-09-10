@@ -38,6 +38,31 @@ defmodule CodeMySpec.Provisioning do
     7967). Coming back is not evidence.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AccountSecrets,
+      CodeMySpec.AppTokens,
+      CodeMySpec.Configurations,
+      CodeMySpec.Content,
+      CodeMySpec.ContentPublishing,
+      CodeMySpec.Conversations,
+      CodeMySpec.Deploys,
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Generators,
+      CodeMySpec.GitHub,
+      CodeMySpec.Integrations,
+      CodeMySpec.ProjectSecrets,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Servers,
+      CodeMySpec.TempFile,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Projects

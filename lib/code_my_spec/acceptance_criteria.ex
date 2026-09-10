@@ -10,6 +10,16 @@ defmodule CodeMySpec.AcceptanceCriteria do
   for test doubles.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Files,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story

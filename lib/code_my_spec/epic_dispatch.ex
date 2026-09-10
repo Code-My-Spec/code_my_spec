@@ -38,6 +38,19 @@ defmodule CodeMySpec.EpicDispatch do
   that line inside one working copy; this is the same line one level up.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Conversations,
+      CodeMySpec.Epics,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   require Logger

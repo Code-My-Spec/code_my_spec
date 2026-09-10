@@ -26,6 +26,30 @@ defmodule CodeMySpec.Validation do
   problems from a prior run still apply.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.AgentTasks,
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
+      CodeMySpec.BddSpecs,
+      CodeMySpec.Configurations,
+      CodeMySpec.Environments,
+      CodeMySpec.FileEdits,
+      CodeMySpec.Files,
+      CodeMySpec.Notifications,
+      CodeMySpec.Problems,
+      CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
+      CodeMySpec.StaticAnalysis,
+      CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria

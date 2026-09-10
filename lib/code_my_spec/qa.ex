@@ -29,6 +29,22 @@ defmodule CodeMySpec.Qa do
   contract; this module is the public boundary.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Environments,
+      CodeMySpec.Issues,
+      CodeMySpec.Paths,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   alias CodeMySpec.Qa.{Invalidations, QaAttempts}
   alias CodeMySpec.Users.Scope
 

@@ -27,6 +27,16 @@ defmodule CodeMySpec.Permissions do
   keeps this addition to what it claims to be.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Auth,
+      CodeMySpec.Repo,
+      CodeMySpec.Sessions,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Permissions.TapOut
 
   @doc """

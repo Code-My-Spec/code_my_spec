@@ -7,6 +7,35 @@ defmodule CodeMySpec.Requirements do
   uniformly; cross-entity gates affect actionability but aren't edges.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.AgentTasks,
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
+      CodeMySpec.BddRules,
+      CodeMySpec.Components,
+      CodeMySpec.Configurations,
+      CodeMySpec.Deploys,
+      CodeMySpec.EpicDispatch,
+      CodeMySpec.Files,
+      CodeMySpec.Issues,
+      CodeMySpec.Paths,
+      CodeMySpec.Personas,
+      CodeMySpec.Problems,
+      CodeMySpec.Projects,
+      CodeMySpec.Qa,
+      CodeMySpec.Questions,
+      CodeMySpec.Repo,
+      CodeMySpec.Sessions,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.Utils,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.GraphWatcher

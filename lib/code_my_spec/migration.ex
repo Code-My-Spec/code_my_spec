@@ -22,6 +22,24 @@ defmodule CodeMySpec.Migration do
   written until both the story and the rule it points at have real ids.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Auth,
+      CodeMySpec.BddRules,
+      CodeMySpec.Components,
+      CodeMySpec.Epics,
+      CodeMySpec.Issues,
+      CodeMySpec.Personas,
+      CodeMySpec.Qa,
+      CodeMySpec.Questions,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   alias CodeMySpec.{
@@ -398,6 +416,7 @@ defmodule CodeMySpec.Migration do
 
   defp put_stories(scope, stories, epics) do
     known = scope |> project_stories() |> index_stories()
+
     stories
     |> Enum.reduce_while({:ok, %{}, %{}}, fn story, {:ok, acc, made} ->
       case put_story(scope, story, known, made, epics) do

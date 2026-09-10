@@ -8,6 +8,15 @@ defmodule CodeMySpec.ProjectCoordinator do
   - Prompt/problem file generation and orchestration for task modules
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Components,
+      CodeMySpec.Environments,
+      CodeMySpec.Paths
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Components

@@ -33,12 +33,20 @@ defmodule CodeMySpec.Hooks do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
       CodeMySpec.Configurations,
+      CodeMySpec.Conversations,
       CodeMySpec.Environments,
       CodeMySpec.FileEdits,
       CodeMySpec.McpServers,
+      CodeMySpec.Notifications,
+      CodeMySpec.Problems,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
+      CodeMySpec.Users,
+      CodeMySpec.Validation
     ],
     exports: :all
 end

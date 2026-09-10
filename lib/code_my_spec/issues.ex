@@ -14,6 +14,20 @@ defmodule CodeMySpec.Issues do
   replicate or sync anybody else's.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Documents,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   alias CodeMySpec.Documents.QaIssue
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository

@@ -16,11 +16,14 @@ defmodule CodeMySpecLocalWeb do
     deps: [
       CodeMySpec,
       CodeMySpec.AgentHarness,
+      CodeMySpec.AgentTasks,
+      CodeMySpec.Analysis,
       # `cms harness` boots the light harness from this same application — see
       # `Application.start_harness/0`. One binary that can be either.
       CmsHarness,
       CodeMySpec.Auth,
       CodeMySpec.ClientUsers.ClientUser,
+      CodeMySpec.Components,
       CodeMySpec.Environments,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
@@ -28,8 +31,16 @@ defmodule CodeMySpecLocalWeb do
       CodeMySpec.Knowledge,
       CodeMySpec.Logging,
       CodeMySpec.McpServers,
+      CodeMySpec.Migration,
+      CodeMySpec.Notifications,
+      CodeMySpec.Permissions,
+      CodeMySpec.Problems,
       CodeMySpec.Projects,
+      CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
+      CodeMySpec.Stories,
       CodeMySpec.Users,
+      CodeMySpec.WorkingCopies,
       # Story LiveViews are shared with the cloud app and live there. The edge
       # only runs this way: CodeMySpecWeb reaches back through the
       # `:story_host` assign, never by naming this boundary.

@@ -36,10 +36,12 @@ defmodule CodeMySpec.AgentHarness do
     deps: [
       CodeMySpec,
       CodeMySpec.Auth,
+      CodeMySpec.Conversations,
       CodeMySpec.McpServers,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Users
     ],
     exports: :all

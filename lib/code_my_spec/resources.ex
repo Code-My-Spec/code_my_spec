@@ -29,6 +29,20 @@ defmodule CodeMySpec.Resources do
   ours; the actual side is the providers', every time.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Configurations,
+      CodeMySpec.Environments,
+      CodeMySpec.Projects,
+      CodeMySpec.Provisioning,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Configurations

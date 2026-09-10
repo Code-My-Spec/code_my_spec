@@ -3,7 +3,15 @@ defmodule CodeMySpec.Utils do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Paths, CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [
+      CodeMySpec,
+      CodeMySpec.Components,
+      CodeMySpec.Paths,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
     exports: :all
 
   alias CodeMySpec.Components.Component

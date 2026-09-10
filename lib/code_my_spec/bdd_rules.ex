@@ -18,6 +18,19 @@ defmodule CodeMySpec.BddRules do
   doubles.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Accounts,
+      CodeMySpec.Personas,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.BddRules.BddRulesRepository
   alias CodeMySpec.Users.Scope
 

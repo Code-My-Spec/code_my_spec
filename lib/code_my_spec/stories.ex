@@ -7,6 +7,22 @@ defmodule CodeMySpec.Stories do
   doubles.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Accounts,
+      CodeMySpec.Components,
+      CodeMySpec.Epics,
+      CodeMySpec.Issues,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Tags,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope

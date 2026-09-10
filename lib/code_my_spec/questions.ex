@@ -13,6 +13,17 @@ defmodule CodeMySpec.Questions do
   doubles.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Questions.QuestionsRepository
   alias CodeMySpec.Users.Scope

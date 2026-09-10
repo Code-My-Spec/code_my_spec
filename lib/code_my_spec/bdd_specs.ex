@@ -8,6 +8,16 @@ defmodule CodeMySpec.BddSpecs do
   specifications.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Environments,
+      CodeMySpec.Stories,
+      CodeMySpec.TempFile,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion

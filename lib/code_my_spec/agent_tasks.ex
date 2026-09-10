@@ -3,6 +3,38 @@ defmodule CodeMySpec.AgentTasks do
   Shared helpers for agent task modules.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Analysis,
+      CodeMySpec.Architecture,
+      CodeMySpec.Auth,
+      CodeMySpec.BddSpecs,
+      CodeMySpec.Components,
+      CodeMySpec.Configurations,
+      CodeMySpec.Deploys,
+      CodeMySpec.Documents,
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Issues,
+      CodeMySpec.Paths,
+      CodeMySpec.Problems,
+      CodeMySpec.ProjectSync,
+      CodeMySpec.Projects,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Qa,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Resources,
+      CodeMySpec.Rules,
+      CodeMySpec.Sessions,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   @doc """
   Renders a task module's `{:error, reason}` for a human or an agent to read.
 

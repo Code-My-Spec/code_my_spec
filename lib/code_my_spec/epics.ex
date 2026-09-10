@@ -11,6 +11,16 @@ defmodule CodeMySpec.Epics do
   live cascade.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Epics.EpicsRepository
   alias CodeMySpec.Stories.Story

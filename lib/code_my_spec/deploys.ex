@@ -13,6 +13,18 @@ defmodule CodeMySpec.Deploys do
   it shipped, and nothing here answers across projects.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Projects,
+      CodeMySpec.Provisioning,
+      CodeMySpec.Qa,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Deploys.Deploy

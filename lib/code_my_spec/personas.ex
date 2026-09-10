@@ -7,6 +7,17 @@ defmodule CodeMySpec.Personas do
   doubles.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Paths,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory

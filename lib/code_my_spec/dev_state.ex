@@ -32,6 +32,19 @@ defmodule CodeMySpec.DevState do
   domain question that happens to have a JSON view today.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Agents.AgentsRepository

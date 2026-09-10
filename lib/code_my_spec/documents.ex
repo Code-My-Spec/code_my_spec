@@ -3,6 +3,15 @@ defmodule CodeMySpec.Documents do
   Context for managing document creation from markdown content.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Environments,
+      CodeMySpec.Issues,
+      CodeMySpec.Paths
+    ],
+    exports: :all
+
   alias CodeMySpec.Documents.MarkdownParser
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

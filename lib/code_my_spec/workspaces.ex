@@ -11,6 +11,22 @@ defmodule CodeMySpec.Workspaces do
   be told, and has to keep everything they had before it.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Analytics,
+      CodeMySpec.Content,
+      CodeMySpec.Devices,
+      CodeMySpec.Environments,
+      CodeMySpec.Events,
+      CodeMySpec.Projects,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   alias CodeMySpec.Devices
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project

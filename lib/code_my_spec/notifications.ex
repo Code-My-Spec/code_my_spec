@@ -3,6 +3,18 @@ defmodule CodeMySpec.Notifications do
   Context for managing push notification subscriptions and sending Web Push notifications.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Auth,
+      CodeMySpec.Conversations,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   require Logger
 
   import Ecto.Query

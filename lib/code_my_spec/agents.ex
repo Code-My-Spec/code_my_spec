@@ -36,6 +36,26 @@ defmodule CodeMySpec.Agents do
   indistinguishable from one that never started.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Analysis,
+      CodeMySpec.Conversations,
+      CodeMySpec.FileEdits,
+      CodeMySpec.Integrations,
+      CodeMySpec.Notifications,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
+      CodeMySpec.Users,
+      CodeMySpec.Utils,
+      CodeMySpec.Validation,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Accounts.MembersRepository

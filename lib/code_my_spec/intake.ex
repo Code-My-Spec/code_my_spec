@@ -12,6 +12,20 @@ defmodule CodeMySpec.Intake do
   de-dupes itself underneath.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Analytics,
+      CodeMySpec.Events,
+      CodeMySpec.Personas,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Accounts

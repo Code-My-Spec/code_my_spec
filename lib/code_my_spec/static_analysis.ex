@@ -11,6 +11,23 @@ defmodule CodeMySpec.StaticAnalysis do
   Called by `Validation` context — never call `Pipeline` directly.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Code,
+      CodeMySpec.Compile,
+      CodeMySpec.Components,
+      CodeMySpec.Configurations,
+      CodeMySpec.Documents,
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Paths,
+      CodeMySpec.Problems,
+      CodeMySpec.TempFile,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.{Pipeline, Runner}
 
@@ -25,6 +42,7 @@ defmodule CodeMySpec.StaticAnalysis do
   defdelegate run_analyzers(scope, analyzers, changed_files), to: Pipeline
   defdelegate run_analyzers(scope, analyzers, changed_files, config), to: Pipeline
   defdelegate run_analyzers(scope, analyzers, changed_files, config, opts), to: Pipeline
+
   @doc """
   Resolve the environment an analyzer should shell out into.
 

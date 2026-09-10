@@ -41,15 +41,23 @@ defmodule CmsHarness do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Analysis,
+      CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
       CodeMySpec.Compile,
       CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Generators,
       CodeMySpec.Paths,
+      CodeMySpec.Permissions,
       CodeMySpec.Projects,
       CodeMySpec.RecordingLock,
+      CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
-      CodeMySpec.Utils
+      CodeMySpec.Utils,
+      CodeMySpec.WorkingCopies,
+      CodeMySpec.Workspaces
     ],
     exports: :all
 end

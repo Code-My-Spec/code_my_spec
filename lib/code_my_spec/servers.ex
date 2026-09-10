@@ -32,6 +32,19 @@ defmodule CodeMySpec.Servers do
   from the catalogue means offering something nobody can buy.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AccountSecrets,
+      CodeMySpec.Accounts,
+      CodeMySpec.Projects,
+      CodeMySpec.Provisioning,
+      CodeMySpec.Repo,
+      CodeMySpec.TempFile,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning

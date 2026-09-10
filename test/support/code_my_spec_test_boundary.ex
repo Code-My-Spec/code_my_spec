@@ -23,9 +23,11 @@ defmodule CodeMySpecTest do
     # has to.
     deps: [
       CodeMySpec,
+      CodeMySpec.Agents,
       CodeMySpec.McpServers,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
+      CodeMySpec.Workspaces,
       CmsHarness,
       CmsHarnessTest
     ],

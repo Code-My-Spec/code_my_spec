@@ -5,6 +5,16 @@ defmodule CodeMySpec.Tags do
   Tags are strings scoped to a project, and stories can have multiple tags.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Tags.StoryTag
   alias CodeMySpec.Tags.Tag

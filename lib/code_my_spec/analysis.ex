@@ -35,6 +35,26 @@ defmodule CodeMySpec.Analysis do
   moment its channel closes, not at the moment somebody notices.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.BddSpecs,
+      CodeMySpec.Compile,
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Notifications,
+      CodeMySpec.Problems,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Sessions,
+      CodeMySpec.StaticAnalysis,
+      CodeMySpec.Tests,
+      CodeMySpec.Users,
+      CodeMySpec.Validation
+    ],
+    exports: :all
+
   # The transport `Environments.Harness` reaches a working copy over. Declared
   # there and wired here, because `Environments` is a leaf that everything
   # depends on and cannot name this module without closing a cycle.

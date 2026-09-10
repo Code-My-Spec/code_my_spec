@@ -7,6 +7,19 @@ defmodule CodeMySpec.Sessions do
   boundary for all session and task operations.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.AgentTasks,
+      CodeMySpec.Components,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
   require Logger
 

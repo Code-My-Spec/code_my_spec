@@ -1,4 +1,14 @@
 defmodule CodeMySpec.TaskOwner do
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Repo,
+      CodeMySpec.Sessions,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @moduledoc """
   The two things that can hold a task, behind one set of calls.

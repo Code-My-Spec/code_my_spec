@@ -23,6 +23,16 @@ defmodule CodeMySpec.Conversations do
   surfaces through the operator-side inbox functions above.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Mail,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   alias CodeMySpec.Agents.Agent

@@ -6,6 +6,19 @@ defmodule CodeMySpec.Architecture do
   namespace trees) written to the repository and synchronized with current project state during full syncs.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Components,
+      CodeMySpec.Documents,
+      CodeMySpec.Environments,
+      CodeMySpec.Paths,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Architecture.{MermaidProjector, NamespaceProjector, OverviewProjector}
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}

@@ -6,6 +6,21 @@ defmodule CodeMySpec.Problems do
   (in-memory during sessions) and persistently (stored for project-level fitness tracking).
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Analysis,
+      CodeMySpec.Components,
+      CodeMySpec.Files,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Tests,
+      CodeMySpec.Users,
+      CodeMySpec.Utils,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   alias CodeMySpec.Problems.{ProblemConverter, ProblemRenderer, ProblemRepository}
 
   # Repository functions

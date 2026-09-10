@@ -22,6 +22,24 @@ defmodule CodeMySpec.WorkingCopies do
   keeps it.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
+      CodeMySpec.Components,
+      CodeMySpec.Devices,
+      CodeMySpec.Encrypted.Binary,
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Problems,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   require Logger

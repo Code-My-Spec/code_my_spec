@@ -3,6 +3,20 @@ defmodule CodeMySpec.Components do
   Manages component definitions, metadata, type classification, and inter-component dependencies for architectural design.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Paths,
+      CodeMySpec.Problems,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Stories,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Components.{
     Component,
     ComponentRepository,

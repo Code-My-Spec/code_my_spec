@@ -65,6 +65,15 @@ defmodule CodeMySpec.Devices do
   decision the working-copies page makes about agents, for the same reason.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
 
   alias CodeMySpec.Devices.Device

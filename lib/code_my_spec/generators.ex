@@ -33,6 +33,16 @@ defmodule CodeMySpec.Generators do
   Both produce a project that looks fine in the editor and cannot deploy.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Environments,
+      CodeMySpec.Files,
+      CodeMySpec.Provisioning,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.Users.Scope

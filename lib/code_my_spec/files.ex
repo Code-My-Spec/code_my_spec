@@ -3,6 +3,28 @@ defmodule CodeMySpec.Files do
   Context for managing tracked project files.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.BddSpecs,
+      CodeMySpec.Components,
+      CodeMySpec.Configurations,
+      CodeMySpec.Documents,
+      CodeMySpec.Embeddings,
+      CodeMySpec.Environments,
+      CodeMySpec.Paths,
+      CodeMySpec.Problems,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.StaticAnalysis,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.WorkingCopies
+    ],
+    exports: :all
+
   import Ecto.Query
 
   require Logger
