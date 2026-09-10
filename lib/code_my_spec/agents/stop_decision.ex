@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -326,6 +327,24 @@ defmodule CodeMySpec.Agents.StopDecision do
     end
   end
 
+  # Why the requirement is still open, from the checker that refused it.
+  #
+  # `Requirements.open_reason/3` rather than a copy here: `Hooks.Stop` records
+  # the same sentence on the external path, and two wordings of "why is this
+  # open" drift the moment one of them is edited.
+  defp obstacle(scope, task) do
+    case Requirements.open_reason(scope, task.requirement_name, entity_ids(task)) do
+      "" -> ""
+      reason -> " It is open because: #{reason}"
+    end
+  end
+
+  defp entity_ids(task) do
+    [task.story_id, task.component_id, task.project_id]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&to_string/1)
+  end
+
   # The same nudge `Hooks.Stop` records, found a different way.
   #
   # The external path reads the task off the stopping session, which is where a
@@ -353,15 +372,18 @@ defmodule CodeMySpec.Agents.StopDecision do
       task ->
         already_said? = is_binary(decision) and String.contains?(decision, task.id)
 
+        because = obstacle(scope, task)
+
         message =
           "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you. " <>
-            ~s(Call `evaluate_task` with task_id: "#{task.id}".)
+            "it is done — nothing will do it for you." <>
+            because <>
+            " " <> ~s(Call `evaluate_task` with task_id: "#{task.id}".)
 
         Conversations.record_orchestrator_action(
           agent,
           "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you.",
+            "it is done — nothing will do it for you." <> because,
           tool: ~s(evaluate_task task_id: "#{task.id}"),
           kind: "nudge"
         )

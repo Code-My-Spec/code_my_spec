@@ -31,6 +31,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
@@ -133,10 +134,16 @@ defmodule CodeMySpec.Hooks.Stop do
         :ok
 
       task ->
+        because =
+          case Requirements.open_reason(scope, task.requirement_name, task_entity_ids(task)) do
+            "" -> ""
+            reason -> " It is open because: #{reason}"
+          end
+
         Conversations.record_orchestrator_action(
           Map.get(task, :agent_id) || Agents.main_agent(scope),
           "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you.",
+            "it is done — nothing will do it for you." <> because,
           tool: ~s(evaluate_task task_id: "#{task.id}"),
           kind: "nudge"
         )
@@ -145,6 +152,12 @@ defmodule CodeMySpec.Hooks.Stop do
     error ->
       Logger.warning("[StopHook] could not record the nudge: " <> Exception.message(error))
       :ok
+  end
+
+  defp task_entity_ids(task) do
+    [Map.get(task, :story_id), Map.get(task, :component_id), Map.get(task, :project_id)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&to_string/1)
   end
 
   defp stop_sentence(%{"decision" => "block", "reason" => reason}),

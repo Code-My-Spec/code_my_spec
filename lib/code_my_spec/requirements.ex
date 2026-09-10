@@ -163,6 +163,55 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
+  Why a named requirement is still open, in the checker's own words.
+
+  For the nudge. Naming the node without the obstacle makes the message
+  unactionable by construction — an agent is told *that* something is open and
+  never *what* is holding it. Watched live on 2026-09-10: a coding agent nudged
+  every 90 seconds about `code_on_running_copy` while the gate was refusing on
+  "uncommitted changes — commit them", a sentence the checker had already
+  written and the nudge threw away.
+
+  `entity_ids` rather than one id because a task names its entity in whichever
+  field fits — story, component or project — and the caller knows which of
+  those it has.
+
+  `""` when there is nothing to add: a node with no recorded reason, or one this
+  scope cannot see, leaves the caller's message exactly as it was rather than
+  appending an empty clause.
+
+  Reads the cached graph, which is 34ms of preload against 4.4 seconds of
+  recompute on a large project. Only call it on a path that has already decided
+  to say something.
+  """
+  @spec open_reason(Scope.t(), String.t() | nil, [String.t()]) :: String.t()
+  def open_reason(scope, requirement_name, entity_ids)
+
+  def open_reason(_scope, nil, _entity_ids), do: ""
+
+  def open_reason(%Scope{} = scope, requirement_name, entity_ids) do
+    wanted = Enum.map(entity_ids, &to_string/1)
+
+    {nodes, _computed_at} = cached_all(scope)
+
+    nodes
+    |> Enum.find(fn node ->
+      to_string(node.name) == to_string(requirement_name) and
+        to_string(node.entity_id) in wanted
+    end)
+    |> reason_of()
+  end
+
+  defp reason_of(%{details: details}) when is_map(details) do
+    case details[:reason] || details["reason"] do
+      reason when is_binary(reason) and reason != "" -> reason
+      _ -> ""
+    end
+  end
+
+  defp reason_of(_node), do: ""
+
+  @doc """
   Nodes, edges and the actionable set, from the read model.
 
   The cached counterpart to `project_graph_with_actionable/1`, for readers that

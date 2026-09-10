@@ -100,6 +100,49 @@ defmodule CodeMySpec.Agents.TheNudgeReachesTheAgentTest do
     """
   end
 
+  # The nudge names the node; it has to name the obstacle too.
+  #
+  # Watched live on 2026-09-10: a coding agent nudged every 90 seconds about
+  # `code_on_running_copy` while the gate was refusing on "uncommitted changes
+  # — commit them". The message said what was open and never what was holding
+  # it, so the agent spent the loop re-reporting an unrelated credo
+  # notification, which was the only concrete thing it had.
+  #
+  # A nudge an agent cannot act on is the same wall as a gate it cannot clear,
+  # and this one had the answer already written by the checker that refused.
+  test "the nudge says why the requirement is still open", ctx do
+    # A node the graph actually holds. In production a task exists *because* the
+    # graph emitted its requirement, so the node is always there — but a story
+    # invented in a test has never been through it, and the lookup correctly
+    # finds nothing.
+    task = %CodeMySpec.Sessions.Task{
+      id: Ecto.UUID.generate(),
+      status: :active,
+      requirement_name: "technical_strategy",
+      project_id: ctx.scope.active_project_id,
+      started_at: DateTime.utc_now()
+    }
+
+    agent = %{ctx.agent | tasks: [task]}
+    problem_fixture(ctx.scope, %{severity: :error, source: "compiler"})
+
+    StopDecision.deliver(ctx.scope, agent, [])
+
+    nudge =
+      drain([])
+      |> Enum.find(&String.contains?(&1, "still open"))
+
+    assert nudge, "no nudge was delivered at all"
+
+    assert String.contains?(nudge, "It is open because:"), """
+    The nudge named the requirement and not the obstacle, which is the shape
+    that livelocked an agent: told that something is open, never told what is
+    holding it, and given no way to find out.
+
+    #{nudge}
+    """
+  end
+
   # The case John was looking at: problems outrank the task, so the menu leads
   # with `list_problems` and the task is a tally line — "Also live: 3 open
   # tasks" — naming neither the requirement nor the id. Then the nudge is the
