@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   alias Anubis.Server.Response
   alias CodeMySpec.CodeMode
   alias CodeMySpec.McpServers.CodeMode, as: Layer
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.Validators
 
   # Only ever used to build entries to *read*, never to call one — the invoker
@@ -90,10 +91,49 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
       Map.has_key?(Layer.catalog(scope), name) ->
         CodeMode.docs(Layer.catalog(scope), name: name)
 
+      direct?(name) ->
+        direct_page(name)
+
       true ->
         "`#{name}` is not a tool on this project or this machine. " <>
           "Call `tool_docs` with `search` to find what is."
     end
+  end
+
+  # A tool that is real but not scriptable.
+  #
+  # `LocalServer` keeps a handful of tools off `run_script` on purpose —
+  # `ask_user` waits on a person, `start_agent` spawns — and `CodeMode.Catalog`
+  # refuses to bind them. They are still tools, in the caller's tool list, one
+  # direct call away.
+  #
+  # This branch exists because the fallback below told an agent that
+  # `start_agent` "is not a tool on this project or this machine" while
+  # `start_agent` was sitting in its own tool list. Reported as
+  # `5473a1f9`: "tool_docs says start_agent and stop_agent are unavailable even
+  # though they are exposed as tools, creating contradictory capability
+  # discovery."
+  #
+  # The false half is what makes it expensive. An agent that hears "no such
+  # tool" stops looking and works around the absence; one that hears "not from a
+  # script" calls it. `LocalServer.moved?/1` already answers the mirror-image
+  # question — a scriptable tool called directly — and this is that answer
+  # pointing the other way.
+  defp direct?(name), do: Enum.any?(LocalServer.__components__(), &(&1.name == name))
+
+  defp direct_page(name) do
+    """
+    `#{name}` is a tool on this server, but not one `run_script` can call.
+
+    Call it directly, the way you call `run_script` itself — its schema is
+    already in your tool list. A few tools are kept out of scripts on purpose:
+    they wait on a person, or they spawn something, and neither belongs inside
+    a sandbox with a deadline.
+
+    `tool_docs` documents the scriptable catalog, which is why there is no page
+    for it here.
+    """
+    |> String.trim()
   end
 
   # Rendered by the same code that renders ours, off the schema the machine
