@@ -108,8 +108,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
-    # clean_otp_env keeps the child `mix`/`erl` off our Burrito ERTS (see
-    # CodeMySpec.Environments.clean_otp_env/0).
+    # The scrub keeps the child `mix`/`erl` off our Burrito ERTS (see
+    # CodeMySpec.Environments.clean_otp_env/0), and `merge_clean_env/1` applies
+    # it without overwriting anything chosen here.
     # `extra_env` is how the harness hands over `MIX_TEST_PARTITION`, and it
     # carries the guarantee that the database exists — `TestDatabase.env/1`
     # creates and migrates before returning the name. Without it a spex run
@@ -118,10 +119,26 @@ defmodule CodeMySpec.BddSpecs.Spex do
     # `invalid_catalog_name` six frames below a sandbox error that names the
     # spec file. "2 tests, 2 failures" with no mention of a database is how an
     # agent ends up editing specs that were never wrong.
+    # `merge_clean_env/1`, never `++ clean_otp_env()`. The scrub sets MIX_ENV to
+    # nil, and appending it last unsets the "test" chosen on the line above —
+    # measured: `System.cmd` applies duplicate `:env` entries in order, so
+    # set-then-clear leaves the child with no MIX_ENV at all.
+    #
+    # `mix spex` happens to survive that, which is what let it stand: this
+    # project's `cli/0` declares `preferred_envs: [spex: :test]`, so Mix picks
+    # test for a task invoked with MIX_ENV unset. That is a net under the
+    # runner, not the runner being right — it holds only while every project
+    # this runs against declares it, and while nothing else in the invocation
+    # reads MIX_ENV.
+    #
+    # `tests.ex` was fixed for this and carries the same note. The ecto tasks it
+    # used to run alongside did not survive the scrub: they took MIX_ENV as
+    # given, ran in dev, and migrated `code_my_spec_dev`, the database every
+    # agent shares.
     cmd_env =
-      [{"MIX_ENV", "test"}] ++
-        Keyword.get(opts, :extra_env, []) ++
-        CodeMySpec.Environments.clean_otp_env()
+      Environments.merge_clean_env(
+        env: [{"MIX_ENV", "test"}] ++ Keyword.get(opts, :extra_env, [])
+      )[:env]
 
     Logger.info("[Spex] Running: #{command}")
 
