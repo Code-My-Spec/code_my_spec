@@ -124,9 +124,22 @@ defmodule CmsHarness.Projects do
 
   @doc "Every working-copy root this harness currently has a subtree for."
   @spec list() :: [String.t()]
+  # `[]` rather than a raise when the registry is not up yet, because callers
+  # reach this during boot.
+  #
+  # `Application.start_harness/0` warns about a missing credential before the
+  # supervision tree exists, and `Credentials.any/0` answers that by asking
+  # which copies are served — so a boot-time call landed in `Registry.select/2`
+  # against a registry that had not started, and the whole harness failed to
+  # come up with `unknown registry: CmsHarness.Registry`.
+  #
+  # Nothing is being served before the registry exists, so an empty list is the
+  # true answer rather than a softened one.
   def list do
-    CmsHarness.Registry
-    |> Registry.select([{{{:project, :"$1"}, :_, :_}, [], [:"$1"]}])
+    case Process.whereis(CmsHarness.Registry) do
+      nil -> []
+      _ -> Registry.select(CmsHarness.Registry, [{{{:project, :"$1"}, :_, :_}, [], [:"$1"]}])
+    end
   end
 
   @doc """
