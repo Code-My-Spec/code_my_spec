@@ -7,7 +7,6 @@ defmodule CmsHarness.Config do
   nothing and look exactly like a harness with nothing to do.
   """
 
-  alias CmsHarness.HarnessConfig
   alias CmsHarness.Credentials
 
   # The server this build points at when nothing else says.
@@ -115,6 +114,7 @@ defmodule CmsHarness.Config do
   the server's OAuth pipeline accepts everywhere, and the other has to be
   exchanged first.
   """
+
   # NOT read from the checkout's own file, and the attempt is worth recording.
   #
   # Which server a checkout talks to *should* be a property of the checkout —
@@ -147,9 +147,7 @@ defmodule CmsHarness.Config do
   """
   @spec deploy_key() :: {:ok, String.t()} | {:error, :no_credential}
   def deploy_key do
-    present(
-      Application.get_env(:code_my_spec, :harness_deploy_key)
-    )
+    present(Application.get_env(:code_my_spec, :harness_deploy_key))
   end
 
   defp present(value) when is_binary(value) and value != "", do: {:ok, value}
@@ -206,12 +204,7 @@ defmodule CmsHarness.Config do
   machine runs several.
   """
   @spec label(String.t()) :: String.t()
-  def label(project_root) do
-    case HarnessConfig.read_file(project_root) do
-      {:ok, %{label: label}} when is_binary(label) and label != "" -> label
-      _ -> "the harness at #{project_root} on #{hostname()}"
-    end
-  end
+  def label(project_root), do: "the harness at #{project_root} on #{hostname()}"
 
   defp hostname do
     case :inet.gethostname() do

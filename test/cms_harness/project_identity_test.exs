@@ -234,7 +234,6 @@ defmodule CmsHarness.ProjectIdentityTest do
   # emitted from `Projects.ensure_started/1`'s serving branch, which is reached
   # once per root per daemon, the rate this fact actually changes at.
 
-
   # A copy that names no working copy of its own does not borrow one.
   #
   # `CMS_HARNESS_ID` used to answer here, which is what the sprite relied on:

@@ -241,7 +241,8 @@ defmodule CmsHarness.Web.McpControllerTest do
       forwarded =
         FakeUpstream.last_request()
         |> Map.fetch!(:headers)
-        |> Enum.find_value(fn {k, v} -> if String.downcase(k) == "x-harness-id", do: v end)
+        |> Map.new(fn {k, v} -> {String.downcase(k), v} end)
+        |> Map.get("x-harness-id")
 
       assert forwarded == mine,
              "the proxy forwarded #{inspect(forwarded)}. A worktree session " <>

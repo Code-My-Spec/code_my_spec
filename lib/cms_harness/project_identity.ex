@@ -177,16 +177,6 @@ defmodule CmsHarness.ProjectIdentity do
   # which is the opposite of what a misconfiguration warning is for.
   defp note_disagreement(project, source), do: {:ok, source, project}
 
-
-  # Which of the copy's two identity files answered, so the reader knows which
-  # one to go and fix.
-  defp file_naming(root) do
-    case from_config(root) do
-      {:ok, _project} -> @config_path
-      _ -> ".cms_harness.json"
-    end
-  end
-
   # `nil` means "not issued yet", which is ordinary — the first join mints it.
   # An unreadable config also reads as `nil` here, but `HarnessConfig.write/2`
   # refuses to overwrite one, so the stranding that would cause is contained to
