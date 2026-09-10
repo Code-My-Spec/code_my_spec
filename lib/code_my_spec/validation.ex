@@ -957,8 +957,6 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
-      story_copy_ids: Stories.list_working_copy_ids_by_story(scope),
-      here: scope.active_working_copy_id,
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
@@ -1368,8 +1366,6 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
-      story_copy_ids: Stories.list_working_copy_ids_by_story(scope),
-      here: scope.active_working_copy_id,
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
@@ -1386,47 +1382,18 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: ready_ids,
       criterion_story_ids: by_path,
       spec_file_story_ids: by_spec_file,
-      story_copy_ids: copy_ids,
-      here: here,
       story_ids_by_number: by_number
     } = ctx
 
     Enum.split_with(problems, fn problem ->
       case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
         nil -> true
-        story_id -> MapSet.member?(ready_ids, story_id) and mine?(story_id, copy_ids, here)
+        story_id -> MapSet.member?(ready_ids, story_id)
       end
     end)
   end
 
   defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
-
-  # A story assigned to another working copy is another copy's work, whatever
-  # its spec files happen to be sitting in this checkout.
-  #
-  # Spec files are on disk and stories are assigned, and the two drift: a copy
-  # that once held an epic keeps its files after the epic moves. The analyzer
-  # sweeps the tree it is given, so those specs are still swept and still
-  # reported here.
-  #
-  # Measured on Broken Oaths 2026-09-09: a coding agent on the war-epic copy was
-  # shown 21 problems, every one of them story 45 of "Diplomacy and Alliances",
-  # an epic assigned to the main checkout. It read them, said "the 20 listed
-  # problems remain the same pre-existing, unrelated stories", and stopped —
-  # which is the correct reading and left it with nothing to do.
-  #
-  # This is `issues_resolved`'s rule applied to problems: a gate whose passing
-  # state depends on work outside the gated unit is a wall.
-  #
-  # An unassigned story stays enforced. Nobody else owns it, and dropping it
-  # would let a finding belong to no one.
-  defp mine?(story_id, copy_ids, here) do
-    case Map.get(copy_ids, story_id) do
-      nil -> true
-      ^here -> true
-      _elsewhere -> false
-    end
-  end
 
   # Criteria first, then the file row, then the directory name.
   #
