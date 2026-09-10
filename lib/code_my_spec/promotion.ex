@@ -72,6 +72,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -237,10 +238,52 @@ defmodule CodeMySpec.Promotion do
   """
   @spec promote(Scope.t()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope) do
-    with {:ok, running} <- running_copy(scope) do
+    with :ok <- can_run_commands(scope),
+         {:ok, running} <- running_copy(scope) do
       promote_into(scope, running)
     end
   end
+
+  # A promotion is `git` and `just`, and the harness environment cannot run
+  # either: `Environments.Harness.cmd/4` answers `{:error,
+  # :not_supported_on_harness}` by design. It carries file operations to the
+  # machine that holds the checkout, not commands.
+  #
+  # Refused here, once and by name, rather than discovered six calls in. The
+  # first real invocation of `promote_sync` crashed with `-32603 Internal
+  # error`: `refuse_uncommitted/2` matched `{:error, :not_supported_on_harness}`
+  # against its `{out, _}` clause and called `String.trim(:error)`. The agent
+  # was told the tool was broken, which is both useless and wrong — the tool is
+  # fine and cannot reach the disk.
+  #
+  # Every spec in story 1046 passes because they build `Environment.new(:local,
+  # root)` on the machine running the suite. Production hands this a harness
+  # environment, so nothing covered the one that matters. Promotion belongs on
+  # the harness, beside the git state and preview health it already measures
+  # there; until it moves, this says so.
+  defp can_run_commands(%Scope{environment: %Environment{type: :harness}}) do
+    {:error,
+     %{
+       reason:
+         "this project's checkout is on a machine reached over its harness, and a " <>
+           "promotion has to run `git` and `just restart` on that machine. The server " <>
+           "cannot do it from here — the harness carries file operations, not commands. " <>
+           "Promote from a session on the machine that holds the checkout, or run " <>
+           "`just restart` there yourself; the merge itself is an ordinary `git merge`.",
+       environment: :harness
+     }}
+  end
+
+  defp can_run_commands(%Scope{environment: nil}) do
+    {:error,
+     %{
+       reason:
+         "there is no environment on this scope, so there is nowhere to run the " <>
+           "promotion's `git` and `just restart`."
+     }}
+  end
+
+  defp can_run_commands(%Scope{}), do: :ok
 
   # Working on the running copy. There is no branch to merge — the work is
   # already where a promotion would put it — so a promotion here is the other
@@ -632,9 +675,11 @@ defmodule CodeMySpec.Promotion do
   # an empty body, telling the agent its promotion failed and not one word about
   # what broke.
   defp run_restart(true, %Scope{} = scope, root) do
-    case Environments.cmd(scope.environment, "just", ["restart"],
-           cd: root,
-           stderr_to_stdout: true
+    case normalize_result(
+           Environments.cmd(scope.environment, "just", ["restart"],
+             cd: root,
+             stderr_to_stdout: true
+           )
          ) do
       {out, 0} -> serving(scope, root, out)
       {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
@@ -650,8 +695,18 @@ defmodule CodeMySpec.Promotion do
 
   # An explicit `:cd` beats the environment's own cwd, which is what lets one
   # environment drive both checkouts.
-  defp git(%Scope{environment: env}, root, args),
-    do: Environments.cmd(env, "git", args, cd: root, stderr_to_stdout: true)
+  # `{:error, reason}` is not `{output, status}`, and every caller here pattern
+  # matches the latter. Normalized to a non-zero result carrying the reason as
+  # its output, so a refusal reads as a refusal rather than crashing the tool.
+  defp git(%Scope{environment: env}, root, args) do
+    env
+    |> Environments.cmd("git", args, cd: root, stderr_to_stdout: true)
+    |> normalize_result()
+  end
+
+  defp normalize_result({:error, reason}), do: {"#{inspect(reason)}", 1}
+  defp normalize_result({output, status}) when is_binary(output), do: {output, status}
+  defp normalize_result(other), do: {"#{inspect(other)}", 1}
 
   defp describe(problems) do
     problems
