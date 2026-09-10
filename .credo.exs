@@ -4,6 +4,46 @@
 # If you find anything wrong or unclear in this file, please report an
 # issue on GitHub: https://github.com/rrrene/credo/issues
 #
+# A `requires:` glob that matches nothing is silent, and that silence reads
+# exactly like a clean run.
+#
+# The checks below live in the `.code_my_spec` submodule, and git does not check
+# out submodule content on a plain `git worktree add` or a fresh clone — it
+# needs `git submodule update --init`. Where that has not happened the globs
+# match zero files, Credo loads 88 checks instead of 92, prints no warning, and
+# reports a clean bill of health.
+#
+# Measured: a worktree in this state reported 2 low-priority findings while the
+# main checkout, on the same commit, reported 244. Every one of the missing 242
+# came from the framework checks. Nothing anywhere said a category of
+# enforcement was not running.
+#
+# So the glob is resolved here, before Credo is handed it, and an empty result
+# stops the run. A lint that cannot lint should fail like a broken build rather
+# than pass like a clean one.
+check_globs = [
+  ".code_my_spec/credo_checks/framework/**/*.ex",
+  ".code_my_spec/credo_checks/local/**/*.ex"
+]
+
+if check_globs |> Enum.flat_map(&Path.wildcard/1) |> Enum.empty?() do
+  raise """
+  .credo.exs found no custom checks to load.
+
+  Looked for:
+  #{Enum.map_join(check_globs, "\n", &"  #{&1}")}
+
+  These live in the `.code_my_spec` submodule, which git leaves empty on a
+  fresh clone or `git worktree add`. Initialize it:
+
+      git submodule update --init
+
+  Refusing to run rather than reporting clean without them: this is where
+  NoControlFlowInTests and the rest of the framework checks come from, and a
+  run without them looks identical to a run that passed.
+  """
+end
+
 %{
   #
   # You can have as many configs as you like in the `configs:` field.
@@ -47,10 +87,7 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [
-        ".code_my_spec/credo_checks/framework/**/*.ex",
-        ".code_my_spec/credo_checks/local/**/*.ex"
-      ],
+      requires: check_globs,
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:

@@ -20,29 +20,54 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
-    {:ok, """
-    # Configure Credo Custom Checks
+    {:ok,
+     """
+     # Configure Credo Custom Checks
 
-    Create local checks directory:
-    ```bash
-    mkdir -p .code_my_spec/credo_checks/local
-    ```
+     Create local checks directory:
+     ```bash
+     mkdir -p .code_my_spec/credo_checks/local
+     ```
 
-    Edit `.credo.exs`:
+     Edit `.credo.exs`. Above the `%{configs: ...}` map, resolve the globs and
+     refuse to run on an empty result:
 
-    ```elixir
-    requires: [
-      ".code_my_spec/credo_checks/framework/**/*.ex",
-      ".code_my_spec/credo_checks/local/**/*.ex"
-    ],
-    checks: %{
-      extra:
-        if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
-          do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
-          else: []
-        )
-    }
-    ```
-    """}
+     ```elixir
+     check_globs = [
+       ".code_my_spec/credo_checks/framework/**/*.ex",
+       ".code_my_spec/credo_checks/local/**/*.ex"
+     ]
+
+     if check_globs |> Enum.flat_map(&Path.wildcard/1) |> Enum.empty?() do
+       raise \"\"\"
+       .credo.exs found no custom checks to load.
+
+       These live in the `.code_my_spec` submodule, which git leaves empty on a
+       fresh clone or `git worktree add`. Initialize it:
+
+           git submodule update --init
+       \"\"\"
+     end
+     ```
+
+     Then inside the config:
+
+     ```elixir
+     requires: check_globs,
+     checks: %{
+       extra:
+         if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+           do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+           else: []
+         )
+     }
+     ```
+
+     The guard is not optional decoration. A `requires:` glob that matches
+     nothing loads nothing, prints no warning, and reports a clean bill of
+     health — a worktree in that state reported 2 findings where the same commit
+     reported 244. A lint that cannot lint has to fail like a broken build
+     rather than pass like a clean one.
+     """}
   end
 end
