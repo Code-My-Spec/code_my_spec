@@ -131,6 +131,15 @@ defmodule CodeMySpec.SpexGivensTest do
   # designation page. `write/3` and `git/3` go through the environment onto the
   # OS temp filesystem, which is what git reads.
   #
+  # Two more of story 1046's own helpers, criterion 3176's this time.
+  # `report_preview/2` is a one-line wrapper around
+  # `Fixtures.record_preview_status/2` — the same "listing the wrapper and not
+  # the wrapped was arbitrary" reasoning as `Artifacts.` above. `a_running_copy/1`
+  # is the one-checkout counterpart to `a_promotable_project/1`: it inits a real
+  # git repo, writes a real justfile through `write/3`, and joins it as a working
+  # copy through `join_working_copy` — all three already establishing on their
+  # own, just not visible from inside a body that only calls the wrapper.
+  #
   # Comments stay out here. `~w()` has no comment syntax, so a `#` line inside the
   # sigil becomes literal tokens — including every ordinary English word in it,
   # which then matches almost any given body and silently disables this check.
@@ -154,6 +163,7 @@ defmodule CodeMySpec.SpexGivensTest do
     Req.Test.stub
     a_promotable_project report_git_state analyzers_are_current
     this_copy_is_the_running_one write( git(
+    report_preview a_running_copy
   )
 
   # The failure message has always offered a second remedy — "if the
