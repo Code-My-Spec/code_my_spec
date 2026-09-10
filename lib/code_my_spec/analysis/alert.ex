@@ -99,7 +99,7 @@ defmodule CodeMySpec.Analysis.Alert do
           nil
         else
           record(who, mark)
-          message(scope, latest)
+          cached_message(working_copy_id, mark, scope, latest)
         end
     end
   end
@@ -129,6 +129,26 @@ defmodule CodeMySpec.Analysis.Alert do
 
   defp record({_copy, _session, _agent} = who, mark) do
     :persistent_term.put({__MODULE__, who}, mark)
+  end
+
+  # One landing, one rendering. `message/2` is otherwise recomputed per
+  # caller, and its `age()` term is seconds since `DateTime.utc_now()` — two
+  # recipients told about the same mark a moment apart can straddle a second
+  # boundary and be handed different text for the same event. The transports
+  # differ; the words must not, so the first caller to render a mark decides
+  # it for every caller after, until the mark itself moves.
+  defp cached_message(working_copy_id, mark, scope, latest) do
+    key = {__MODULE__, :message, working_copy_id, mark}
+
+    case :persistent_term.get(key, :unset) do
+      :unset ->
+        text = message(scope, latest)
+        :persistent_term.put(key, text)
+        text
+
+      text ->
+        text
+    end
   end
 
   # Sources named, counts only, no file paths. The detail is one `list_problems`
