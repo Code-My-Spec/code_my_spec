@@ -36,28 +36,28 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
       story ->
         scope
-        |> Promotion.behind(story.id)
+        |> Promotion.running_copy_check(story)
         |> verdict(story)
     end
   end
 
-  defp verdict([], story) do
-    {:ok, :valid, "Story #{story.number}'s work is on the running dev copy."}
+  defp verdict({true, %{status: status}}, story) do
+    {:ok, :valid, "Story #{story.number}'s work is on the running dev copy (#{status})."}
   end
 
-  defp verdict(paths, story) do
+  defp verdict({false, %{reason: reason}}, story) do
     {:ok, :invalid,
-     "Story #{story.number} is not on the running dev copy yet. Still behind: " <>
-       Enum.join(paths, ", ") <> ". Run `promote` — it gates, merges and restarts."}
+     "Story #{story.number} is not on the running dev copy yet: " <>
+       reason <> " Run `promote` — it gates, merges and restarts."}
   end
 
   defp story_prompt(scope, story) do
     scope
-    |> Promotion.behind(story.id)
+    |> Promotion.running_copy_check(story)
     |> prompt_for(story)
   end
 
-  defp prompt_for([], story) do
+  defp prompt_for({true, _details}, story) do
     """
     Story #{story.number} — "#{story.title}" — is already on the running dev
     copy. Nothing to promote; evaluate this task to record it.
@@ -65,14 +65,13 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     |> String.trim()
   end
 
-  defp prompt_for(paths, story) do
+  defp prompt_for({false, %{reason: reason}}, story) do
     """
     Story #{story.number} — "#{story.title}" — has passing specs, but its work
     is not on the checkout the application runs from. QA tests that checkout,
     so testing now would fail the story for code that was never there.
 
-    Behind on the running copy:
-    #{Enum.map_join(paths, "\n", &"  - #{&1}")}
+    #{reason}
 
     Call `promote`. It refuses if this copy carries problems or uncommitted
     work, and tells you what to fix; otherwise it merges to the running copy,
