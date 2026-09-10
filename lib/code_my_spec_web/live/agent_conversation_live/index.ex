@@ -16,8 +16,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpecWeb.MainAgentConversation
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, assign(socket, :renaming, nil)}
@@ -33,23 +33,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
 
       project ->
         {:noreply, load(socket, project)}
-    end
-  end
-
-  # The project's own agent, and its conversation, or why there is not one.
-  #
-  # The conversation is fetched here rather than in the template because a main
-  # agent with no conversation is a state the page must not render a link for —
-  # it would go to a transcript that does not exist.
-  defp ensure_main(scope) do
-    with {:ok, agent} <- Agents.ensure_main_agent(scope),
-         {:ok, conversation} <-
-           Conversations.find_or_create_agent_conversation(
-             scope.active_account_id,
-             scope.active_project_id,
-             agent.id
-           ) do
-      {:ok, agent, conversation}
     end
   end
 
@@ -111,7 +94,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
     }
 
     socket
-    |> assign(:main, ensure_main(scope))
+    |> assign(:main, MainAgentConversation.ensure(scope))
     |> assign(:current_scope, scope)
     |> assign(:project, project)
     |> assign(:page_title, "#{project.name} · Agents")

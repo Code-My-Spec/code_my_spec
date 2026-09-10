@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
+  alias CodeMySpecWeb.MainAgentConversation
 
   @impl true
   def render(assigns) do
@@ -69,14 +70,17 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
   # where bare `/app` drops you next time. A failed write is not worth blocking
   # the navigation the user actually asked for, so it is not checked.
   def handle_event("project-selected", %{"project-id" => project_id}, socket) do
-    if Enum.any?(socket.assigns.projects, &(&1.id == project_id)) do
-      UserPreferences.update_user_preferences(socket.assigns.current_scope, %{
-        active_project_id: project_id
-      })
+    case Enum.find(socket.assigns.projects, &(&1.id == project_id)) do
+      %{} = project ->
+        UserPreferences.update_user_preferences(socket.assigns.current_scope, %{
+          active_project_id: project_id
+        })
 
-      {:noreply, push_navigate(socket, to: ~p"/app/projects/#{project_id}/stories")}
-    else
-      {:noreply, put_flash(socket, :error, "You don't have access to this project")}
+        path = MainAgentConversation.path(socket.assigns.current_scope, project)
+        {:noreply, push_navigate(socket, to: path)}
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "You don't have access to this project")}
     end
   end
 
