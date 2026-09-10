@@ -70,12 +70,24 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
     end
   end
 
+  # Idempotent, not a fresh ask. An agent that calls this again while its
+  # first request is still pending is not asking twice — it is the same
+  # question, asked because the loop handed it a menu that still offers
+  # `tap_out` on every unrelated wake. A second row would be a second
+  # decision for a human to make about a question already asked, and the
+  # backlog that leaves behind never gets smaller.
   defp request_agent_tap_out(%{user: %{id: user_id}}, agent_id) do
-    Notifications.create_permission_request(user_id, %{
-      "agent_id" => agent_id,
-      "tool_name" => "tap_out",
-      "tool_input" => %{"agent_id" => agent_id}
-    })
+    case Notifications.get_pending_tap_out_request(agent_id) do
+      nil ->
+        Notifications.create_permission_request(user_id, %{
+          "agent_id" => agent_id,
+          "tool_name" => "tap_out",
+          "tool_input" => %{"agent_id" => agent_id}
+        })
+
+      existing ->
+        {:ok, existing}
+    end
   end
 
   defp request_agent_tap_out(_scope, _agent_id), do: {:error, :no_user}

@@ -41,7 +41,6 @@ defmodule CodeMySpec.Hooks do
       CodeMySpec.FileEdits,
       CodeMySpec.McpServers,
       CodeMySpec.Notifications,
-      CodeMySpec.Permissions,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,

@@ -368,6 +368,25 @@ defmodule CodeMySpec.Notifications do
   """
   def get_permission_request(id), do: Repo.get(PermissionRequest, id)
 
+  @doc """
+  The agent's own pending tap-out request, if it already has one.
+
+  `request_agent_tap_out/2`'s caller must not create a second row while the
+  first is undecided — an agent asks once and is told to stop, not to ask
+  again, but `wake_project_roles/2`'s missing guard (fixed alongside this)
+  handed it a menu with `tap_out` still offered on every unrelated project
+  change while one was already pending, and each call created a fresh row.
+  Measured live: 224 pending tap-out requests behind ten agents, one of them
+  holding 129 — the tool creating a duplicate on every retry, not a human
+  answering slowly.
+  """
+  @spec get_pending_tap_out_request(Ecto.UUID.t()) :: PermissionRequest.t() | nil
+  def get_pending_tap_out_request(agent_id) when is_binary(agent_id) do
+    PermissionRequest
+    |> where([p], p.agent_id == ^agent_id and p.tool_name == "tap_out" and p.status == "pending")
+    |> Repo.one()
+  end
+
   # --- Question Requests (remote AskUserQuestion) ---
 
   @doc """
