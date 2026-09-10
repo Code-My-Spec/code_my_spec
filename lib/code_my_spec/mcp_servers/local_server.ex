@@ -74,6 +74,20 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
   component(CodeMySpec.McpServers.Agents.Tools.StopAgent)
 
+  # Both promotion doors, and neither can be a script.
+  #
+  # `promote_sync` merges, sweeps analyzers and restarts an application — minutes
+  # of work, against a code-mode sandbox that brutally kills at 30 seconds.
+  # `promote` avoids that by returning at once and messaging the result back,
+  # which needs the agent identity on the connection; a script has none to give.
+  #
+  # Registered late, and that is the whole lesson of the miss. Fourteen specs
+  # drove `PromoteSync.execute/2` directly and all of them passed while no agent
+  # could reach the tool at all — the same consumer-and-producer-apart shape as
+  # the gate that shipped reading a column nothing wrote.
+  component(CodeMySpec.McpServers.Promotion.Tools.Promote)
+  component(CodeMySpec.McpServers.Promotion.Tools.PromoteSync)
+
   # Code mode itself.
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)
   component(CodeMySpec.McpServers.CodeMode.Tools.RunScript)

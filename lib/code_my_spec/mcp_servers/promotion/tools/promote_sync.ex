@@ -1,24 +1,20 @@
 defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   @moduledoc """
-  Put this working copy's finished work on the checkout the application runs
-  from, and wait for the outcome.
+  Promote this working copy's finished work, and wait for the outcome.
 
-  The external door. `Promote` is the one an Alloy agent uses: it returns at
-  once and messages the result back, because an agent has a conversation to be
-  told in. A caller reaching in over MCP has nowhere to be messaged, so this
-  one blocks and answers.
-
-  It is the same promotion either way — both call `Promotion.promote/1`. Only
-  the delivery differs.
-
-  Gates first: the copy must carry no problems, against a fresh analyzer sweep,
-  and nothing uncommitted. Then merges this copy's branch into the running
-  checkout, checks the merge added no problems there, restarts the application,
-  and reports the revision it is now serving.
-
-  Takes no arguments. The target is the project's designated main working copy,
-  so there is no branch to name and no way to name the wrong one.
+  Same promotion as `promote`; this one blocks and answers instead of messaging
+  back. For callers with no agent behind them. Takes no arguments.
   """
+
+  # Kept short deliberately — see the note in `Promote`. Both descriptions are
+  # sent to every agent at connect, and criterion 2999 caps that payload.
+  #
+  # The external door. `Promote` is the one an Alloy agent uses: it has a
+  # conversation to be told in. A caller reaching in over MCP has nowhere to be
+  # messaged, so this one waits.
+  #
+  # It is the same promotion either way — both call `Promotion.promote/1`, and
+  # only the delivery differs. Minutes, when the gate sweeps analyzers.
 
   use Anubis.Server.Component, type: :tool
 
@@ -33,8 +29,11 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   @impl true
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
-      {:ok, scope} -> {:reply, Responses.respond(Promotion.promote(scope)), frame}
-      {:error, _reason} -> {:reply, Response.tool() |> Response.error(Responses.no_project()), frame}
+      {:ok, scope} ->
+        {:reply, Responses.respond(Promotion.promote(scope)), frame}
+
+      {:error, _reason} ->
+        {:reply, Response.tool() |> Response.error(Responses.no_project()), frame}
     end
   end
 end

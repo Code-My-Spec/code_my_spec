@@ -2,54 +2,64 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
   @moduledoc """
   Send the user a message and get prose back.
 
-  Was `ask_user`, and the name was doing damage. It sat beside no structured
-  counterpart of ours, so it read as *the* way to reach a person and got used
-  for questions that had three obvious answers — which came back as a textarea
-  and a paragraph to interpret. `ask_user_question` is that counterpart now, and
-  this is what is left when the answer genuinely is prose: "what should this copy
-  say?", "how do you want this edge case handled?", or a check-in where
-  enumerating choices would be artificial.
+  For when the answer genuinely is prose — "what should this copy say?", "how do
+  you want this edge case handled?". Use `ask_user_question` when the answer is
+  a choice.
 
-  Its notification has always been titled "Claude has a message", which is what
-  it is.
-
-  Pushes to the user's phone (Web Push → `QuestionLive.Show`, or the agent's own
-  conversation) and renders a free-text box, because a question with no options
-  is free-form by definition.
-
-  ## Why this does not block
-
-  It used to wait inline for the reply, up to ten minutes. That could never
-  work: a tool call is dispatched through a `GenServer.call` whose timeout is
-  measured in seconds, so the transport gave up long before any person could
-  answer and the agent saw `-32603 Internal error`. Each attempt still created
-  the question, so a user watching their queue saw the same thing asked over and
-  over while the agent was told the tool was broken.
-
-  Waiting minutes inside a synchronous call was the mistake, not the timeout
-  value. A person is not a slow function; they are an event that arrives later.
-  So this returns a question id rather than a reply. A Claude Code session
-  fetches it with `check_answer` when it next looks; an agent of ours is sent
-  the answer as a message and is allowed to stop in the meantime, which is why
-  its stop is not refused while a question of its own is outstanding.
-
-  ## Why this no longer goes over HTTP
-
-  It used to hand off to `QuestionClient`, which POSTed to
-  `/api/questions/ask` on the configured server. That made sense when the MCP
-  server ran in the CLI and the rows lived in the cloud. It does not now: this
-  runs *in* the cloud app, in the same process as `Notifications` and against
-  the same database, so the request left the VM and came back to call the
-  function that was already in scope.
-
-  The cost was not only a round trip. It made the agent's own asking surface
-  undrivable from a spex — in-process it answers `{:http, 401}`, because there
-  is no server to authenticate to — so nothing has ever tested it. That is
-  story 896's `given_`, and John's instruction: "stop arbitraging Claude's ask
-  user question and implement our own mcp tool."
-
-  `QuestionClient` stays for the CLI, which genuinely is a different process.
+  Does not block. Returns a question id: a Claude Code session fetches the reply
+  with `check_answer`, an agent of ours is sent it as a message and may stop
+  meanwhile.
   """
+
+  # Kept short deliberately: `Anubis.Server.Component` advertises the moduledoc
+  # as this tool's `description`, so every word is sent to every agent at
+  # connect and `SpineTest` caps that payload at 20 KB. This description was
+  # 2,787 bytes of it — the largest on the spine after `run_browser_script` —
+  # and the cap is what found it. The history below is why the tool is shaped
+  # the way it is, which a reader of this file wants and an agent at connect
+  # does not.
+  #
+  # It was `ask_user`, and the name was doing damage. It sat beside no
+  # structured counterpart of ours, so it read as *the* way to reach a person
+  # and got used for questions that had three obvious answers — which came back
+  # as a textarea and a paragraph to interpret. `ask_user_question` is that
+  # counterpart now.
+  #
+  # Its notification has always been titled "Claude has a message", which is
+  # what it is. Pushes to the user's phone (Web Push → `QuestionLive.Show`, or
+  # the agent's own conversation) and renders a free-text box, because a
+  # question with no options is free-form by definition.
+  #
+  # ## Why this does not block
+  #
+  # It used to wait inline for the reply, up to ten minutes. That could never
+  # work: a tool call is dispatched through a `GenServer.call` whose timeout is
+  # measured in seconds, so the transport gave up long before any person could
+  # answer and the agent saw `-32603 Internal error`. Each attempt still created
+  # the question, so a user watching their queue saw the same thing asked over
+  # and over while the agent was told the tool was broken.
+  #
+  # Waiting minutes inside a synchronous call was the mistake, not the timeout
+  # value. A person is not a slow function; they are an event that arrives
+  # later. That is also why an agent's stop is not refused while a question of
+  # its own is outstanding.
+  #
+  # ## Why this no longer goes over HTTP
+  #
+  # It used to hand off to `QuestionClient`, which POSTed to
+  # `/api/questions/ask` on the configured server. That made sense when the MCP
+  # server ran in the CLI and the rows lived in the cloud. It does not now: this
+  # runs *in* the cloud app, in the same process as `Notifications` and against
+  # the same database, so the request left the VM and came back to call the
+  # function that was already in scope.
+  #
+  # The cost was not only a round trip. It made the agent's own asking surface
+  # undrivable from a spex — in-process it answers `{:http, 401}`, because there
+  # is no server to authenticate to — so nothing had ever tested it. That is
+  # story 896's `given_`, and John's instruction: "stop arbitraging Claude's ask
+  # user question and implement our own mcp tool."
+  #
+  # `QuestionClient` stays for the CLI, which genuinely is a different process.
 
   use Anubis.Server.Component, type: :tool
 
