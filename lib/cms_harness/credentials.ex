@@ -54,6 +54,7 @@ defmodule CmsHarness.Credentials do
 
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Projects
 
   @type source :: :user_token | :working_copy_key | :configured_deploy_key
   @type result :: {:ok, String.t(), source()} | {:error, :no_credential}
@@ -85,9 +86,46 @@ defmodule CmsHarness.Credentials do
   """
   @spec any() :: result()
   def any do
-    with {:error, :no_credential} <- from_user_token() do
+    with {:error, :no_credential} <- from_user_token(),
+         {:error, :no_credential} <- from_any_working_copy() do
       from_configured_deploy_key()
     end
+  end
+
+  # Any served checkout's own recorded key, before falling back to configuration.
+  #
+  # This is where the daemon's credential actually lives now, and leaving it out
+  # took the harness down. `Config.deploy_key/0` used to read `CMS_DEPLOY_KEY`,
+  # which `just harness` exports out of `envs/.env` — so when the environment
+  # came out of `Config`, `any/0` had nothing left to find and every
+  # `ask_server/1` answered `:no_credential`. The channel could not join, and
+  # the stop hook reported "channel down, server answering 200 — check the
+  # credential", which was exactly right.
+  #
+  # `for_working_copy/1` has a root and reads it from that copy's
+  # `.cms_harness.json`; `any/0` is for the calls that have no root — asking the
+  # server where a harness is, which cannot depend on who asks. Every copy this
+  # daemon serves carries a key that reaches this project, so any of them
+  # answers, and the first one does.
+  # `Projects.list/0`, not `WorkingCopies.all/0`.
+  #
+  # The second adds `File.cwd!()` to the served set, which is right for
+  # enumerating copies and wrong here: under the suite the cwd is this
+  # repository, so `any/0` answered with the developer's own live deploy key —
+  # a real credential, read off disk, in a test that had configured none.
+  # Ambient cwd is the same trap `server_url/0` fell into.
+  #
+  # The served set is the honest one. A daemon asking "where is this harness"
+  # is a daemon already serving something, which is the state the failing calls
+  # were in.
+  defp from_any_working_copy do
+    Projects.list()
+    |> Enum.find_value({:error, :no_credential}, fn root ->
+      case from_working_copy(root) do
+        {:ok, _key, _source} = found -> found
+        _ -> nil
+      end
+    end)
   end
 
   # Through `Config`, not `System.get_env/1`. Both of these read the environment

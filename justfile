@@ -597,32 +597,25 @@ harness port="4004" server="http://localhost:4000": _submodules
     # `just claude-dev` talk to each other while the installed `cms` on 4003
     # keeps serving every other session untouched.
     #
-    # The credential is a project deploy key, traded for a short-lived token at
-    # /api/sprite/token. envs/.env is gitignored and already this repo's place
-    # for secrets — but it is NOT enough on its own to reach the harness.
-    # `config/runtime.exs` loads it with Dotenvy, whose default side effect
-    # writes to the *process dictionary* for `env!/2`, not to the OS
-    # environment. `CmsHarness.Config` reads `System.get_env`, so the recipe has
-    # to export the values itself. Assuming otherwise cost a boot that came up
-    # cleanly and refused every hook with "no credential".
-    if [ -f envs/.env ]; then
-      while IFS='=' read -r key value; do
-        # An exported value wins, so a one-off `CMS_DEPLOY_KEY=… just harness`
-        # overrides the file rather than being silently ignored.
-        [ -n "${!key:-}" ] || export "$key=$value"
-      done < <(grep -E '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env)
-    fi
-    if [ -z "${CMS_DEPLOY_KEY:-}" ] && [ -z "${CMS_TOKEN:-}" ]; then
-      echo "No credential. Copy the project's deploy key from"                >&2
-      echo "  {{server}}/app/projects/<project-id>/edit"                      >&2
-      echo "and put CMS_DEPLOY_KEY=... in envs/.env (or export it)."          >&2
-      echo                                                                    >&2
-      echo "Generate only fills the field — Save is what stores the hash, so" >&2
-      echo "a key copied without saving matches nothing."                     >&2
-      exit 1
-    fi
-    # `elixir -S mix`, not `mix`: a bare `mix` in a worktree resolves against
-    # the main checkout and would run the wrong tree's code.
+    # No credential is exported here, and the recipe no longer refuses without
+    # one.
+    #
+    # It used to source `envs/.env` and export CMS_DEPLOY_KEY/CMS_TOKEN, because
+    # `CmsHarness.Config` read `System.get_env` — Dotenvy loads that file into
+    # the process dictionary, not the OS environment, so the recipe had to do it
+    # itself. Assuming otherwise once cost a boot that came up cleanly and
+    # refused every hook with "no credential".
+    #
+    # `Config` no longer reads the environment at all. A checkout's credential
+    # is `deploy_key` in its own `.cms_harness.json`, written by
+    # `mix cms.harness.onboard`, and `Credentials.for_working_copy/1` reads it
+    # from the copy the request names. `Credentials.any/0` asks the copies this
+    # daemon is serving.
+    #
+    # So the guard would now refuse to start a harness holding a perfectly good
+    # credential on disk — the exact inversion of the failure it was written
+    # for. An unonboarded checkout is what has no credential, and `onboard` is
+    # the remedy for that, not an exported variable.
     CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
       MIX_ENV=dev_cli elixir -S mix run --no-halt
 

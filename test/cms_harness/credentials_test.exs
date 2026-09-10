@@ -150,6 +150,26 @@ defmodule CmsHarness.CredentialsTest do
       assert {:ok, "configured-key", :configured_deploy_key} = Credentials.any()
     end
 
+    # The regression this exists to stop, and it took the harness down on
+    # 2026-09-10 for every checkout on the machine.
+    #
+    # `Config.deploy_key/0` used to read `CMS_DEPLOY_KEY`, which `just harness`
+    # exports out of `envs/.env`. When the environment came out of `Config`,
+    # `any/0` had nothing left to find: every `ask_server/1` answered
+    # `:no_credential`, the channel could not join, and every hook was refused
+    # with "channel down, server answering 200 — check the credential".
+    #
+    # A served checkout carries a key that reaches this project. `any/0` has no
+    # root of its own, so it asks them.
+    test "answers from a served checkout, with nothing in configuration", ctx do
+      onboard(ctx.root, deploy_key: "this-copys-key", project_id: @project)
+      :ok = CmsHarnessTest.Projects.serve(ctx.root)
+
+      assert {:ok, "this-copys-key", :working_copy_key} = Credentials.any(),
+             "the daemon holds a credential on disk and could not find it, " <>
+               "which is the shape that took every harness on this machine down"
+    end
+
     test "and says so when there is nothing to answer with" do
       assert {:error, :no_credential} = Credentials.any()
     end
