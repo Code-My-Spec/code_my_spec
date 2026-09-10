@@ -126,6 +126,7 @@ defmodule CodeMySpec.Agents do
 
   defdelegate list_agents(scope), to: AgentsRepository
   defdelegate list_running(scope), to: AgentsRepository
+  defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate providers(), to: Providers, as: :names
 

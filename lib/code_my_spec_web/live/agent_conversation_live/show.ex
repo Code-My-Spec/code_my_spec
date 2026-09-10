@@ -705,8 +705,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     now = DateTime.utc_now()
     pending_sessions = MapSet.new(waiting, & &1.session_external_id)
 
+    # `include_stopped?: true` — this page has its own "Stop" button now, and
+    # a stopped agent's row disappearing here reads as the agent having been
+    # deleted rather than stopped. `WorkingCopyLive.Show`/`Index` do not pass
+    # this: they offer "Staff it" and withhold "open chat" on the absence of a
+    # live agent, and widening their source would break both.
     scope
-    |> Rows.list(project, now)
+    |> Rows.list(project, now, include_stopped?: true)
     |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
   end
 
