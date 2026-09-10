@@ -47,7 +47,6 @@ defmodule CmsHarness.HarnessConfig do
   require Logger
 
   @filename ".cms_harness.json"
-  @env_var "CMS_HARNESS_ID"
 
   @type t :: %{
           working_copy_id: String.t(),
@@ -65,9 +64,8 @@ defmodule CmsHarness.HarnessConfig do
   @doc """
   What this working copy says about itself, or `:none`.
 
-  The file is the answer. `CMS_HARNESS_ID` is consulted only when there is no
-  file at all — a container or sprite that was handed an id and has nowhere to
-  have stored it.
+  The file is the answer, and the only one — no environment fallback, not even
+  when there is no file at all. See `read/1`'s companion comment below for why.
 
   ## The env used to win, and it collapsed every root onto one id
 
@@ -322,7 +320,4 @@ defmodule CmsHarness.HarnessConfig do
        root: map["root"] || root
      }}
   end
-
-  defp present_or_none(""), do: :none
-  defp present_or_none(id), do: {:ok, id}
 end
