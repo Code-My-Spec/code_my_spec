@@ -477,11 +477,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # the working copy page.
     with agent_id when is_binary(agent_id) <- agent_id,
          {:ok, current} <- Agents.fetch_agent(scope, agent_id),
-         {:ok, agent} <- Agents.set_agent_continuous(scope, agent_id, current.continuous != true) do
+         {:ok, agent, outcome} <-
+           Agents.set_agent_continuous(scope, agent_id, current.continuous != true) do
       {:noreply,
        socket
        |> assign(:working?, agent.continuous == true)
-       |> flash_if_wake_withheld(agent)}
+       |> flash_for_continuous_outcome(agent, outcome)}
     else
       _ -> {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
     end
@@ -689,15 +690,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # `set_agent_continuous/3` calls `StopDecision.wake/2`, and `wake/2` goes
-  # silent — by design — for an agent with a pending question or tap-out
-  # request. That guard exists for `wake_project_roles/2`'s automatic,
-  # project-wide fan-out, where nagging an agent mid-decision is the bug it
-  # fixed; here it is a person explicitly pressing play, and the same silence
-  # reads as the button doing nothing. John: "when I hit play now, it doesn't
-  # deliver the message... is that being blocked now?" — it was, with no way
-  # to tell from the page.
-  defp flash_if_wake_withheld(socket, %Agent{continuous: true} = agent) do
+  # What actually happened when the switch was flipped on, since "the flag
+  # changed" and "the agent heard about it" are different claims and a
+  # silent success reads as a broken button either way it fails.
+  #
+  # `:woke` still needs its own check: `StopDecision.wake/2` goes silent —
+  # by design — for an agent with a pending question or tap-out request.
+  # That guard exists for `wake_project_roles/2`'s automatic, project-wide
+  # fan-out, where nagging an agent mid-decision is the bug it fixed; here
+  # it is a person explicitly pressing play, and the same silence reads as
+  # the button doing nothing. John: "when I hit play now, it doesn't
+  # deliver the message... is that being blocked now?" — it was, with no
+  # way to tell from the page.
+  defp flash_for_continuous_outcome(socket, %Agent{} = agent, :woke) do
     if Notifications.awaiting_answer?(agent.id) do
       put_flash(
         socket,
@@ -710,7 +715,30 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  defp flash_if_wake_withheld(socket, %Agent{}), do: socket
+  # The case John hit: `status: :running` on a row nothing was actually
+  # holding — a shared harness restart took the process with it, and
+  # nothing had ever told the row. Naming it here is the whole point;
+  # silently restarting would read exactly like the button doing nothing,
+  # the same complaint one layer up.
+  defp flash_for_continuous_outcome(socket, %Agent{}, :restarted) do
+    put_flash(
+      socket,
+      :info,
+      "This agent's process wasn't actually running anymore — restarted it. " <>
+        "Same conversation, a fresh process."
+    )
+  end
+
+  defp flash_for_continuous_outcome(socket, %Agent{}, :restart_failed) do
+    put_flash(
+      socket,
+      :error,
+      "This agent's process wasn't running, and restarting it failed too. " <>
+        "Check its provider credential and try again."
+    )
+  end
+
+  defp flash_for_continuous_outcome(socket, %Agent{}, :paused), do: socket
 
   # A narrow screen holds one panel. A stored layout with several open has to
   # resolve to one, and to a decided one — whichever happens to render first is

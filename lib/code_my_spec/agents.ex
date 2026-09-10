@@ -69,6 +69,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Repo
@@ -161,6 +162,60 @@ defmodule CodeMySpec.Agents do
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
+  end
+
+  @doc """
+  Restart one agent's process in place — same id, same conversation.
+
+  For a row a shared harness restart (or a crashed machine) pulled the rug
+  out from under: `status` still says `:running`, nothing is actually there,
+  and `wake/2`'s dispatch has nowhere to land. John: "we're persisting the
+  state of a process — just display the state of the process, and when you
+  click play it should start the process again."
+
+  Deliberately not `start_agent/2` again. That inserts a new row, and
+  `find_or_create_agent_conversation/3` keys on `agent_id` — a fresh id is a
+  fresh, empty thread, which is exactly the outcome a restart exists to
+  avoid. This re-runs only the launch half: fetch a credential, hydrate the
+  existing history (same lookup, same id, same transcript), ask the
+  machine to run it. The row that comes back is the same row, running again.
+  """
+  @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
+  def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, credential} <- Credential.fetch(scope, agent.provider),
+         {:ok, starting} <-
+           AgentsRepository.update_agent(scope, agent, %{
+             status: :starting,
+             os_pid: nil,
+             os_boot_id: nil
+           }) do
+      agent = launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential}))
+      broadcast(scope, {:agent_started, agent})
+      {:ok, agent}
+    end
+  end
+
+  @doc """
+  Whether anything is actually connected for this agent's working copy right
+  now — read from the live channel registry, never from `agent.status`.
+
+  `status` is written on a clean stop or a clean start; nothing writes it
+  when a shared harness restart or a crashed machine takes the process with
+  it, so a row can say `:running` indefinitely with nothing behind it. This
+  is the same check `Rows.build/4`'s `served` field already trusts for "is
+  this working copy connected" — reused here rather than a second, agent-
+  shaped copy of the same registry lookup.
+
+  Not a per-role liveness check — a connected working copy could still have
+  lost one specific agent's own process while others on it survive. That
+  needs the harness to report which agents it is actually running, which it
+  does not yet do. This is the strictly weaker, always-available half: if
+  *nothing* is connected, no agent on that copy can possibly be alive.
+  """
+  @spec working_copy_connected?(Agent.t()) :: boolean()
+  def working_copy_connected?(%Agent{working_copy_id: id}) do
+    match?({:ok, _pid, _instance}, Analysis.executor_holder(id))
   end
 
   # The main working copy holds one agent, and it is the project's own.
@@ -874,18 +929,50 @@ defmodule CodeMySpec.Agents do
   Same act as `set_copy_continuous/3` at the grain somebody watches — one agent,
   from its own conversation. Switching on rings its bell for the same reason:
   an agent is a supervised process that acts when messaged, so a flag on its own
-  marks it willing and leaves it exactly where it was.
+  marks it willing and leaves it exactly where it was — *if* it is still
+  there to be rung. `status: :running` is not evidence of that; it is only
+  ever set on a clean start or a clean stop, so a shared harness restart (or
+  a crashed machine) leaves the row claiming life indefinitely with nothing
+  behind it. Checked live, against `working_copy_connected?/1`, not read off
+  the row: a process is either there to be nudged or it needs restarting,
+  and the row cannot tell those apart on its own.
+
+  The third element says which: `:woke` (nudged something that was already
+  there), `:restarted` (nothing was there, so the process was started fresh
+  in place), `:restart_failed` (nothing was there and starting it over
+  failed too — the error is logged, not swallowed), or `:paused` (switched
+  off; nothing is sent either way).
   """
   @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
-          {:ok, Agent.t()} | {:error, term()}
+          {:ok, Agent.t(), :woke | :restarted | :restart_failed | :paused} | {:error, term()}
   def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
-        StopDecision.wake(scope, agent)
+        wake_or_restart(scope, agent)
+      else
+        {:ok, agent, :paused}
       end
+    end
+  end
 
-      {:ok, agent}
+  defp wake_or_restart(scope, agent) do
+    if working_copy_connected?(agent) do
+      StopDecision.wake(scope, agent)
+      {:ok, agent, :woke}
+    else
+      case restart_agent(scope, agent.id) do
+        {:ok, restarted} ->
+          {:ok, restarted, :restarted}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[Agents] could not restart agent #{agent.id} after finding its working " <>
+              "copy disconnected: #{inspect(reason)}"
+          )
+
+          {:ok, agent, :restart_failed}
+      end
     end
   end
 

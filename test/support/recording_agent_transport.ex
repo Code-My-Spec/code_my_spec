@@ -34,9 +34,14 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
   @impl true
   def withdraw_message(_working_copy_id, _agent, _ref, _timeout), do: :ok
 
+  # `record_started/3` matches `%{agent_id: _id}` — "the machine confirms
+  # the id it was asked to run, and that is the whole report" — and nothing
+  # exercised this path through this transport before `restart_agent/2`.
+  # The old `%{os_pid:, os_boot_id:}` shape predates that change and
+  # crashed the moment something actually reached it.
   @impl true
-  def start_agent(_working_copy_id, _agent, _timeout),
-    do: {:ok, %{os_pid: 4242, os_boot_id: "recorded"}}
+  def start_agent(_working_copy_id, agent, _timeout),
+    do: {:ok, %{agent_id: agent.id}}
 
   @impl true
   def stop_agent(_working_copy_id, _agent, _timeout), do: :ok

@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
@@ -439,12 +440,20 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   # a person pressing play deserves to know why nothing arrived rather than
   # watching the button appear to do nothing.
   describe "putting an agent back to work" do
+    # What a channel join does, per `Analysis.register_executor/3`'s own
+    # test — without this, `working_copy_connected?/1` sees no live registry
+    # entry and every one of these takes the restart path instead of the
+    # wake path they are actually testing.
+    defp connect_working_copy(working_copy_id),
+      do: :ok = Analysis.register_executor(working_copy_id)
+
     test "switching it on delivers nothing more than a plain flash", %{
       conn: conn,
       scope: scope,
       project: project
     } do
-      {_agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
+      {agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
+      connect_working_copy(agent.working_copy_id)
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
@@ -452,6 +461,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       refute html =~ "pending question or tap-out",
              "an agent with nothing outstanding was told about a request it does not have"
+
+      refute html =~ "wasn't actually running",
+             "a connected working copy should be woken, not restarted"
     end
 
     test "an agent with a pending tap-out says why nothing was sent", %{
@@ -460,6 +472,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       project: project
     } do
       {agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
+      connect_working_copy(agent.working_copy_id)
 
       {:ok, _request} =
         CodeMySpec.Notifications.create_permission_request(scope.user.id, %{
@@ -477,6 +490,30 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       assert Repo.get(Agent, agent.id).continuous,
              "the flag still has to flip — only the wake message is withheld"
+    end
+
+    # The case this whole feature is for: `status: :running` on a row a
+    # shared harness restart pulled the rug out from under. Nothing is
+    # registered for its working copy, so this must restart it in place
+    # rather than nudging a process that is not there — and land on the
+    # same conversation, not a new one.
+    test "an agent whose working copy is not connected gets restarted, not nudged", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{continuous: false, status: :running})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      html = view |> element("[data-test='toggle-agent-working']") |> render_click()
+
+      assert html =~ "wasn't actually running" or html =~ "restarting it failed",
+             "a disconnected working copy must say it restarted (or that restarting " <>
+               "failed) rather than silently pretending the button worked"
+
+      assert Repo.get(Agent, agent.id).continuous
     end
   end
 end
