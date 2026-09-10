@@ -483,6 +483,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # Immediate, not a request. `Agents.stop_agent/2` already exists and is
+  # idempotent — `:starting` no-ops, an already-stopped agent's transport
+  # call answers `:not_running` and is treated as success — so this needs no
+  # local check of what the agent is doing before it asks. What it interrupts
+  # if the agent is mid-turn is `Agents.stop_agent/2`'s own contract, not
+  # this button's.
+  def handle_event("stop_agent", _params, socket) do
+    scope = socket.assigns.current_scope
+    agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
+
+    with agent_id when is_binary(agent_id) <- agent_id,
+         {:ok, _agent} <- Agents.stop_agent(scope, agent_id) do
+      {:noreply, put_flash(socket, :info, "Agent stopped.")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That agent could not be stopped. Try again.")}
+    end
+  end
+
   def handle_event("send_message", _params, %{assigns: %{talkable?: false}} = socket) do
     # A control that is merely hidden is still reachable, and "no button" is a
     # weaker promise than "no effect". Nothing is recorded, because a
@@ -1293,6 +1311,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           }
         >
           <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
+        </button>
+
+        <button
+          :if={@conversation && @conversation.agent_id}
+          type="button"
+          phx-click="stop_agent"
+          data-test="stop-agent"
+          class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
+          title="Stop this agent now"
+        >
+          <.icon name="hero-stop-circle" class="size-4" />
         </button>
       </header>
 

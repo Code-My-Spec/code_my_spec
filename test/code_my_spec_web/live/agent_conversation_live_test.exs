@@ -9,9 +9,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import CodeMySpec.DevicesFixtures
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Repo
+  alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account]
 
@@ -368,6 +372,62 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
         )
 
       assert {:error, {:live_redirect, %{to: "/app/projects"}}} = live(conn, path(other_project))
+    end
+  end
+
+  defp agent_with_conversation(scope, project) do
+    scope = %{scope | active_project_id: project.id}
+
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        continuous: true,
+        working_copy: "/tmp/stop-btn-#{System.unique_integer([:positive])}",
+        working_copy_id: copy.id
+      })
+
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        project.id,
+        agent.id
+      )
+
+    {agent, conversation}
+  end
+
+  describe "stopping an agent" do
+    test "a click ends the agent and confirms it", %{conn: conn, scope: scope, project: project} do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='stop-agent']")
+
+      view |> element("[data-test='stop-agent']") |> render_click()
+
+      assert Repo.get(Agent, agent.id).status == :stopped
+      assert render(view) =~ "Agent stopped."
+    end
+
+    # A conversation with no agent of its own — story 538's "same page also
+    # renders a Claude Code session's transcript" shape — has nothing this
+    # button could stop.
+    test "a conversation with no agent shows no stop control", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='stop-agent']")
     end
   end
 end
