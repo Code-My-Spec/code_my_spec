@@ -144,7 +144,9 @@ defmodule CmsHarness.Sync do
   defp report_preview_health(env, root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->
-        ChannelClient.deliver_preview_status(root, preview_status(env, url))
+        status = preview_status(env, url)
+        Logger.info("[CmsHarness] #{url} is #{status}")
+        ChannelClient.deliver_preview_status(root, status)
 
       _ ->
         :ok
