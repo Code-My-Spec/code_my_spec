@@ -167,19 +167,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
 
-  # Through `promote_sync` rather than `promote`.
-  #
-  # Both doors run the same `Promotion.promote/1`; they differ only in delivery.
-  # `promote` is the agent's — it returns at once and messages the outcome back,
-  # which is right for minutes of analyzer sweep and wrong for a spec, because
-  # there is no outcome in the reply to assert on. `promote_sync` is the door
-  # for a caller that has nowhere to be messaged, and it answers.
-  defp promote(context) do
-    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
-    response
-  end
-
   # An explicit `:cd` wins over the environment's own cwd
   # (`environments/local.ex:217`), which is what lets one environment drive two
   # checkouts.

@@ -54,6 +54,7 @@ defmodule CmsHarness.Sync do
 
     report_app_name(env, project.root)
     report_head_commit(env, project.root)
+    report_git_state(env, project.root)
 
     case Scanner.observe(env, read_model) do
       {:error, reason} ->
@@ -121,6 +122,50 @@ defmodule CmsHarness.Sync do
 
       nil ->
         :ok
+    end
+  end
+
+  # Whether this checkout's work is on main, main's work is on it, and its tree
+  # is clean — the three facts `code_on_running_copy` gates on.
+  #
+  # Measured here for the same reason `report_head_commit/2` is: this machine
+  # can run `git` in the real checkout, and the server cannot. A requirement
+  # graph is computed inside the channel process for a harness-served project,
+  # so asking the machine at gate time would be the graph waiting on the
+  # connection it is being computed on.
+  #
+  # Both counts come from this checkout alone. A worktree shares an object store
+  # with the checkout it was made from, so `main` resolves here and needs no
+  # remote and no second root.
+  #
+  # `--untracked-files=no` for the reason `just refresh` already documents:
+  # refusing on untracked files means refusing essentially always, which is the
+  # same as not having the check. A build is made of what is committed and what
+  # is modified, not of scratch files beside them.
+  #
+  # Silent when git cannot answer — a checkout that is not a repository is an
+  # ordinary thing for this to meet, and reporting nothing leaves the column
+  # nil, which the gate reads as "not judged" rather than as "in sync".
+  defp report_git_state(env, root) do
+    with {ahead, 0} <- git(env, ["rev-list", "--count", "main..HEAD"]),
+         {behind, 0} <- git(env, ["rev-list", "--count", "HEAD..main"]),
+         {status, 0} <- git(env, ["status", "--porcelain", "--untracked-files=no"]) do
+      ChannelClient.deliver_git_state(root, %{
+        "ahead" => to_count(ahead),
+        "behind" => to_count(behind),
+        "dirty" => String.trim(status) != ""
+      })
+    else
+      _ -> :ok
+    end
+  end
+
+  defp git(env, args), do: Environments.cmd(env, "git", args, stderr_to_stdout: true)
+
+  defp to_count(out) do
+    case Integer.parse(String.trim(out)) do
+      {n, _} -> n
+      :error -> 0
     end
   end
 
