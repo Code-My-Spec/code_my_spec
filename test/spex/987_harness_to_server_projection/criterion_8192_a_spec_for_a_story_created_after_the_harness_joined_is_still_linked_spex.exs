@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,10 +36,10 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
 
       when_ "a story is created and the agent writes a spec for it", context do
         story =
-          Fixtures.story_fixture(context.scope, %{
+          StoryHelpers.create_story(context.scope,
             title: "Capture a task",
-            ready_for_dev: true
-          })
+            description: "A story for spex testing"
+          )
 
         :ok =
           Environments.write_file(

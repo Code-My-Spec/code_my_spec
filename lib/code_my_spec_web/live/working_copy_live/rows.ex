@@ -61,10 +61,30 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
   @doc """
   Every working copy on the project, newest first.
+
+  `opts[:include_stopped?]` (default `false`) widens the agent source from
+  `list_running/1` to `list_for_team_status/1` — a role's slot holds its most
+  recently stopped agent when nothing has replaced it, rather than dropping
+  the row (and its transcript link) the instant it stops. Off by default
+  because two of this module's three consumers have their own, deliberate
+  behaviour built on a stopped agent being absent here: `WorkingCopyLive.Show`
+  offers "Staff it" once a role has nothing *live*, and withholds "open chat"
+  from an agent that was told to stop rather than one merely unconfirmed — a
+  box that would accept a message and drop it. Only
+  `AgentConversationLive.Show`'s own team-status panel opts in, since that is
+  the one place John hit stopping an agent from its own conversation page
+  making the row (and the way back to it) vanish, with nothing about the
+  first two behaviours in play.
   """
-  @spec list(map(), struct(), DateTime.t()) :: [row()]
-  def list(scope, project, now) do
-    agents = Agents.list_running(scope)
+  @spec list(map(), struct(), DateTime.t(), keyword()) :: [row()]
+  def list(scope, project, now, opts \\ []) do
+    agents =
+      if Keyword.get(opts, :include_stopped?, false) do
+        Agents.list_for_team_status(scope)
+      else
+        Agents.list_running(scope)
+      end
+
     transcripts = transcripts(scope, project)
 
     scope
@@ -80,10 +100,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   arrives on a URL, and `WorkingCopies.fetch/1` answers for any harness on any
   project.
   """
-  @spec get(map(), struct(), String.t(), DateTime.t()) :: row() | nil
-  def get(scope, project, working_copy_id, now) do
+  @spec get(map(), struct(), String.t(), DateTime.t(), keyword()) :: row() | nil
+  def get(scope, project, working_copy_id, now, opts \\ []) do
     scope
-    |> list(project, now)
+    |> list(project, now, opts)
     |> Enum.find(&(&1.harness.id == working_copy_id))
   end
 

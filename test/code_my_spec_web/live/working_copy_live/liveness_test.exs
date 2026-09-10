@@ -99,4 +99,45 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
                "claims and the basis is what separates them"
     end
   end
+
+  # John, after clicking the new stop button on his own conversation: "it
+  # completely killed the agent. Like it left the list." `list_for_team_status/1`
+  # started handing this function a `:stopped` agent for the first time — before,
+  # only `list_running/1` fed it, so nothing here had ever exercised `:stopped`.
+  # Reading `engine` alone claimed "Running · present on the harness channel"
+  # for a process that had just been asked to end, the same shape of lie
+  # `:starting` was fixed for above.
+  describe "a stopped agent" do
+    test "does not claim presence on a channel it no longer holds" do
+      summary = Liveness.agent(agent(:stopped, :alloy, 1), @now)
+
+      refute summary.label =~ "Running",
+             "asked to stop is not the same claim as present on the channel"
+
+      assert summary.label == "Stopped"
+      assert summary.since == "1m ago"
+    end
+
+    test "does not roll up into a Running copy" do
+      summary = Liveness.working_copy([agent(:stopped, :alloy, 3)], @now)
+
+      assert summary.label == "Stopped"
+    end
+
+    # Distinct from "Idle" — that is no agent ever having reported here;
+    # this is a slot whose one agent is not running.
+    test "reads differently from a copy with nothing on it" do
+      idle = Liveness.working_copy([], @now)
+      stopped = Liveness.working_copy([agent(:stopped, :alloy, 3)], @now)
+
+      refute idle.label == stopped.label
+    end
+
+    test "does not mask a lane that really is present beside it" do
+      summary =
+        Liveness.working_copy([agent(:stopped, :alloy, 10), agent(:running, :alloy, 0)], @now)
+
+      assert summary.label == "Running"
+    end
+  end
 end

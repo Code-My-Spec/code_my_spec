@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
   accepting attrs, (b) add a sibling shared given `:second_persona_exists`
   that creates "agency_pm", or (c) drive the second persona inline via the
   CreatePersona MCP tool. Option (a) is the most reusable and matches how
-  `story_fixture` takes an attrs map.
+  `StoryHelpers.create_story/2` takes a keyword list of attrs.
   """
 
   use CodeMySpecSpex.Case

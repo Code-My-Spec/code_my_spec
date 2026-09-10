@@ -58,6 +58,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
+  # Checked before engine, same reasoning as `:starting` above: reading
+  # engine alone on a stopped alloy agent claims "Running · present on the
+  # harness channel" for a process that was asked to end. `list_for_team_status/1`
+  # is the first caller that can hand this function a stopped agent at all.
+  def agent(%{status: :stopped} = agent, now) do
+    %{
+      label: "Stopped",
+      basis: "asked to stop; not running",
+      since: since(agent.updated_at, now)
+    }
+  end
+
   def agent(%{engine: :alloy} = agent, now) do
     %{
       label: "Running",
@@ -86,14 +98,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   end
 
   def working_copy(agents, now) do
-    confirmed = Enum.filter(agents, &(&1.status != :starting))
-    summarize(Enum.filter(confirmed, &(&1.engine == :alloy)), confirmed, agents, now)
+    starting = Enum.filter(agents, &(&1.status == :starting))
+    stopped = Enum.filter(agents, &(&1.status == :stopped))
+    confirmed = Enum.filter(agents, &(&1.status not in [:starting, :stopped]))
+
+    summarize(Enum.filter(confirmed, &(&1.engine == :alloy)), confirmed, starting, stopped, now)
   end
 
   # A copy whose only agents are ones we asked for says so. Rolling them up as
   # "Running" is the same lie one row at a time, and this is the summary most
   # people read — it is what the list shows without opening anything.
-  defp summarize([], [], starting, now) do
+  defp summarize([], [], starting, _stopped, now) when starting != [] do
     latest = Enum.max_by(starting, & &1.updated_at, DateTime)
 
     %{
@@ -103,7 +118,22 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
-  defp summarize([], confirmed, _agents, now) do
+  # Nothing starting, nothing confirmed, and `list_for_team_status/1` still
+  # handed this copy an agent: the slot's most recently stopped one, with
+  # nothing having replaced it. Distinct from "Idle" — that is no agent ever
+  # having reported here at all, which `working_copy([], _now)` above already
+  # answers; this is a slot that has one and it is not running.
+  defp summarize([], [], [], stopped, now) do
+    latest = Enum.max_by(stopped, & &1.updated_at, DateTime)
+
+    %{
+      label: "Stopped",
+      basis: label_for_count(length(stopped)) <> ", not running",
+      since: since(latest.updated_at, now)
+    }
+  end
+
+  defp summarize([], confirmed, _starting, _stopped, now) do
     latest = Enum.max_by(confirmed, & &1.updated_at, DateTime)
 
     %{
@@ -113,7 +143,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
-  defp summarize(present, _confirmed, _agents, now) do
+  defp summarize(present, _confirmed, _starting, _stopped, now) do
     latest = Enum.max_by(present, & &1.updated_at, DateTime)
 
     %{

@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   @release_type "release"
 
@@ -40,10 +41,16 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
 
       given_ "two named stories have been deployed to UAT and not released", context do
         first =
-          Fixtures.story_fixture(context.scope, %{title: "Story 842 first shipped thing"})
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 first shipped thing",
+            description: "A story for spex testing"
+          )
 
         second =
-          Fixtures.story_fixture(context.scope, %{title: "Story 842 second shipped thing"})
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 second shipped thing",
+            description: "A story for spex testing"
+          )
 
         # Deploy tracking reads and writes the deploys table now, not a file
         # the agent wrote for itself (a46f3ec5) — "on UAT" is a row with

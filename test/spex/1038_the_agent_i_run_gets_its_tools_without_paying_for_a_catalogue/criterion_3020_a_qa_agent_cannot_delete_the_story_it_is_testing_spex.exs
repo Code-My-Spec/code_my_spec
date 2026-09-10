@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
 
   import CodeMySpecSpex.AgentToolsHelpers
 
-    alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,7 +31,12 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
     scenario "A QA agent cannot delete the story it is testing" do
       given_ "a QA agent", context do
         id = running_agent(context, %{"role" => "qa"})
-        story = Fixtures.authored_story(context.scope, "the story under test")
+
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "the story under test",
+            description: "A story for spex testing"
+          )
 
         {:ok, context |> Map.put(:agent_id, id) |> Map.put(:story, story)}
       end
@@ -57,6 +63,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
         listed = Fixtures.run_script("return list_story_titles({})", agent_context(context))
 
         assert {:ok, body} = listed
+
         assert body =~ context.story.title,
                "the story was deleted and the refusal came afterwards, which is not " <>
                  "a refusal. Got: #{inspect(body)}"

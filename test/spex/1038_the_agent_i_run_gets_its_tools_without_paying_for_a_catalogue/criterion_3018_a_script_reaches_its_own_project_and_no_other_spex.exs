@@ -18,7 +18,8 @@ defmodule CodeMySpecSpex.Story1038.Criterion3018Spex do
 
   import CodeMySpecSpex.AgentToolsHelpers
 
-    alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -31,7 +32,12 @@ defmodule CodeMySpecSpex.Story1038.Criterion3018Spex do
 
       given_ "and a story that belongs to somebody else", context do
         other = Fixtures.other_project_scope(context.scope, "not this agent's project")
-        story = Fixtures.authored_story(other, "the other project's secret plan")
+
+        story =
+          StoryHelpers.create_story(other,
+            title: "the other project's secret plan",
+            description: "A story for spex testing"
+          )
 
         {:ok, context |> Map.put(:other, other) |> Map.put(:their_story, story)}
       end

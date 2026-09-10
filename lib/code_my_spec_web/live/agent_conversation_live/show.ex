@@ -53,6 +53,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Epics
@@ -477,7 +478,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     with agent_id when is_binary(agent_id) <- agent_id,
          {:ok, current} <- Agents.fetch_agent(scope, agent_id),
          {:ok, agent} <- Agents.set_agent_continuous(scope, agent_id, current.continuous != true) do
-      {:noreply, assign(socket, :working?, agent.continuous == true)}
+      {:noreply,
+       socket
+       |> assign(:working?, agent.continuous == true)
+       |> flash_if_wake_withheld(agent)}
     else
       _ -> {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
     end
@@ -685,6 +689,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # `set_agent_continuous/3` calls `StopDecision.wake/2`, and `wake/2` goes
+  # silent — by design — for an agent with a pending question or tap-out
+  # request. That guard exists for `wake_project_roles/2`'s automatic,
+  # project-wide fan-out, where nagging an agent mid-decision is the bug it
+  # fixed; here it is a person explicitly pressing play, and the same silence
+  # reads as the button doing nothing. John: "when I hit play now, it doesn't
+  # deliver the message... is that being blocked now?" — it was, with no way
+  # to tell from the page.
+  defp flash_if_wake_withheld(socket, %Agent{continuous: true} = agent) do
+    if Notifications.awaiting_answer?(agent.id) do
+      put_flash(
+        socket,
+        :info,
+        "Switched on, but this agent has a pending question or tap-out request — " <>
+          "nothing was sent until that is answered."
+      )
+    else
+      socket
+    end
+  end
+
+  defp flash_if_wake_withheld(socket, %Agent{}), do: socket
+
   # A narrow screen holds one panel. A stored layout with several open has to
   # resolve to one, and to a decided one — whichever happens to render first is
   # not an answer anybody can predict or explain.
@@ -705,8 +732,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     now = DateTime.utc_now()
     pending_sessions = MapSet.new(waiting, & &1.session_external_id)
 
+    # `include_stopped?: true` — this page has its own "Stop" button now, and
+    # a stopped agent's row disappearing here reads as the agent having been
+    # deleted rather than stopped. `WorkingCopyLive.Show`/`Index` do not pass
+    # this: they offer "Staff it" and withhold "open chat" on the absence of a
+    # live agent, and widening their source would break both.
     scope
-    |> Rows.list(project, now)
+    |> Rows.list(project, now, include_stopped?: true)
     |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
   end
 

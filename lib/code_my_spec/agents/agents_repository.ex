@@ -151,6 +151,46 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def list_running(%Scope{}), do: []
 
+  @doc """
+  Every agent a team-status display should show a row for.
+
+  Display only — `list_running/1` stays the one answer to "is this actually
+  running" (`main_agent/1`'s occupancy check, an orchestrator asking what it
+  can assign work to). This is a different question: "what belongs in this
+  slot right now", and a slot does not go empty the instant its agent stops.
+
+  Everything running or starting, plus — for a `(working_copy_id, role)` with
+  nothing running — its single most recently stopped agent. Bounded by
+  construction to one row per slot: a slot's stopped agent is superseded the
+  moment a new one starts there, so this never accumulates the way `stopping
+  == deleting` would have to be false to answer John's report that the team
+  panel loses a row — and everything it ever ran — the instant its one agent
+  is stopped from its own conversation page.
+  """
+  @spec list_for_team_status(Scope.t()) :: [Agent.t()]
+  def list_for_team_status(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    running =
+      Agent
+      |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
+      |> Repo.all()
+
+    filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
+
+    latest_stopped_per_empty_slot =
+      from(a in Agent,
+        where: a.project_id == ^project_id and a.status == :stopped,
+        distinct: [a.working_copy_id, a.role],
+        order_by: [asc: a.working_copy_id, asc: a.role, desc: a.updated_at]
+      )
+      |> Repo.all()
+      |> Enum.reject(&MapSet.member?(filled_slots, {&1.working_copy_id, &1.role}))
+
+    (running ++ latest_stopped_per_empty_slot)
+    |> Enum.sort_by(&{&1.working_copy, &1.role})
+  end
+
+  def list_for_team_status(%Scope{}), do: []
+
   @spec fetch_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, :not_found}
   def fetch_agent(%Scope{active_project_id: project_id}, id)
       when is_binary(project_id) and is_binary(id) do

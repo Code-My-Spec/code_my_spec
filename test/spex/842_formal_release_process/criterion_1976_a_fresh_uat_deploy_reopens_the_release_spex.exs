@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   @release_type "release"
 
@@ -74,7 +75,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
         # health_verified_at set, and `story_id` is a real FK, so this needs
         # an actual story rather than the literal id 9005.
         already_shipped =
-          Fixtures.story_fixture(context.scope, %{title: "Story 842 already shipped thing"})
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 already shipped thing",
+            description: "A story for spex testing"
+          )
 
         Fixtures.record_deploy(context.scope, already_shipped.id, "uat")
 
@@ -121,7 +125,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
       given_ "a new story is then deployed to UAT", context do
         new_story =
-          Fixtures.story_fixture(context.scope, %{title: "Story 842 new shipped thing"})
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 new shipped thing",
+            description: "A story for spex testing"
+          )
 
         Fixtures.record_deploy(context.scope, new_story.id, "uat")
 

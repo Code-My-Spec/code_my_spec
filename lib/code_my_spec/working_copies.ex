@@ -447,10 +447,12 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec record_git_state(WorkingCopy.t(), map()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   def record_git_state(%WorkingCopy{} = harness, %{} = state) do
+    state = Map.new(state, fn {k, v} -> {to_string(k), v} end)
+
     save(harness, %{
-      commits_ahead_of_main: state[:ahead] || state["ahead"],
-      commits_behind_main: state[:behind] || state["behind"],
-      tree_dirty: state[:dirty] || state["dirty"],
+      commits_ahead_of_main: state["ahead"],
+      commits_behind_main: state["behind"],
+      tree_dirty: state["dirty"],
       git_state_at: DateTime.utc_now()
     })
   end

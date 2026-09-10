@@ -375,21 +375,22 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
-  defp agent_with_conversation(scope, project) do
+  defp agent_with_conversation(scope, project, attrs \\ %{}) do
     scope = %{scope | active_project_id: project.id}
 
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, label: "a checkout", device: device_fixture(scope))
 
-    {:ok, agent} =
-      AgentsRepository.create_agent(scope, %{
-        provider: "anthropic",
-        engine: :alloy,
-        role: "coding",
-        continuous: true,
-        working_copy: "/tmp/stop-btn-#{System.unique_integer([:positive])}",
-        working_copy_id: copy.id
-      })
+    base = %{
+      provider: "anthropic",
+      engine: :alloy,
+      role: "coding",
+      continuous: true,
+      working_copy: "/tmp/stop-btn-#{System.unique_integer([:positive])}",
+      working_copy_id: copy.id
+    }
+
+    {:ok, agent} = AgentsRepository.create_agent(scope, Map.merge(base, attrs))
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -428,6 +429,54 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       refute has_element?(view, "[data-test='stop-agent']")
+    end
+  end
+
+  # John, clicking play: "it doesn't deliver the message about existing
+  # problems... is that being blocked now?" `set_agent_continuous/3` calls
+  # `StopDecision.wake/2`, which goes silent for an agent with a pending
+  # question or tap-out — correct for the automatic project-wide fan-out, but
+  # a person pressing play deserves to know why nothing arrived rather than
+  # watching the button appear to do nothing.
+  describe "putting an agent back to work" do
+    test "switching it on delivers nothing more than a plain flash", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      html = view |> element("[data-test='toggle-agent-working']") |> render_click()
+
+      refute html =~ "pending question or tap-out",
+             "an agent with nothing outstanding was told about a request it does not have"
+    end
+
+    test "an agent with a pending tap-out says why nothing was sent", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
+
+      {:ok, _request} =
+        CodeMySpec.Notifications.create_permission_request(scope.user.id, %{
+          "agent_id" => agent.id,
+          "tool_name" => "tap_out",
+          "tool_input" => %{"agent_id" => agent.id}
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      html = view |> element("[data-test='toggle-agent-working']") |> render_click()
+
+      assert html =~ "pending question or tap-out",
+             "the button did something invisible and the page said nothing about it"
+
+      assert Repo.get(Agent, agent.id).continuous,
+             "the flag still has to flip — only the wake message is withheld"
     end
   end
 end

@@ -136,15 +136,6 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  The workspace runner spex drive instead of Docker.
-
-  Named here rather than referenced directly from a spex: the runner lives in
-  the test-support namespace, which spex are not allowed to reach into, and
-  Docker is an external system the criteria are not about.
-  """
-  def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
-
-  @doc """
   Set an environment variable for one spex, and put it back afterwards.
 
   `System.put_env/2` and `System.delete_env/1` are denied inside `_spex.exs` by
@@ -2975,18 +2966,18 @@ defmodule CodeMySpecSpex.Case do
     |> Enum.map(&(&1 |> String.replace_prefix("options[", "") |> String.trim_trailing("]")))
   end
 
-  @doc """
-  Paste every credential setup asks Sam to type.
-
-  Setup refuses to start while a required credential is missing (criterion
-  7985), so a `given_` that runs the whole sequence has to supply them first —
-  otherwise the run is refused and the spex reports whatever it was really
-  testing as broken.
-
-  Real values when recording, placeholders otherwise. A placeholder is correct
-  for replay because the HTTP never leaves; recording with one produces a
-  cassette full of 401s that replays perfectly and proves nothing.
-  """
+  # Paste every credential setup asks Sam to type.
+  #
+  # Setup refuses to start while a required credential is missing (criterion
+  # 7985), so a `given_` that runs the whole sequence has to supply them first
+  # — otherwise the run is refused and the spex reports whatever it was
+  # really testing as broken.
+  #
+  # Real values when recording, placeholders otherwise. A placeholder is
+  # correct for replay because the HTTP never leaves; recording with one
+  # produces a cassette full of 401s that replays perfectly and proves
+  # nothing.
+  #
   # The credentials form lives behind its own dialog now (058d20ed) — reached
   # by patching to `/provisioning/credentials`, not rendered on the plain
   # index. The trigger button that opens it is always on the page regardless

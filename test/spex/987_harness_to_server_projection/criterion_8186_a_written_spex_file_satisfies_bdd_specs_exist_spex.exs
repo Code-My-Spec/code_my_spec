@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,10 +34,10 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
         # — `bdd_specs_exist` would not merely be unsatisfied, it would not
         # exist, and the scenario would pass or fail for the wrong reason.
         story =
-          Fixtures.story_fixture(context.scope, %{
+          StoryHelpers.create_story(context.scope,
             title: "Capture a task",
-            ready_for_dev: true
-          })
+            description: "A story for spex testing"
+          )
 
         refute Fixtures.requirement_satisfied?(
                  context.scope,

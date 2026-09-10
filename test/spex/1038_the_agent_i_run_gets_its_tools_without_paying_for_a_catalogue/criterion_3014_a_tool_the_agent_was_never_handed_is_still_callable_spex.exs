@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3014Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   import CodeMySpecSpex.AgentToolsHelpers
 
@@ -63,6 +64,9 @@ defmodule CodeMySpecSpex.Story1038.Criterion3014Spex do
   # nothing at all" — an empty list reads as success against a tool that never
   # ran.
   defp authored(context) do
-    CodeMySpecSpex.Fixtures.authored_story(context.scope, "a story the script can find")
+    StoryHelpers.create_story(context.scope,
+      title: "a story the script can find",
+      description: "A story for spex testing"
+    )
   end
 end
