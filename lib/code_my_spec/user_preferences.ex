@@ -3,6 +3,11 @@ defmodule CodeMySpec.UserPreferences do
   The UserPreferences context.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Accounts, CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   import Ecto.Query, warn: false
   alias CodeMySpec.Repo
 

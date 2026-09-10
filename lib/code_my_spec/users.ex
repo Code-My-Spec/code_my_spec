@@ -13,7 +13,8 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Integrations,
       CodeMySpec.Mailer,
       CodeMySpec.Projects,
-      CodeMySpec.Repo
+      CodeMySpec.Repo,
+      CodeMySpec.UserPreferences
     ],
     exports: :all
 

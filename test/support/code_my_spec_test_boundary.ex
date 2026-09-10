@@ -21,6 +21,13 @@ defmodule CodeMySpecTest do
     # That is exactly why it lives here rather than beside the real transport:
     # `CmsHarness` may not reference the MCP layer, and a test double for a wire
     # has to.
-    deps: [CodeMySpec, CodeMySpec.McpServers, CodeMySpec.Users, CmsHarness, CmsHarnessTest],
+    deps: [
+      CodeMySpec,
+      CodeMySpec.McpServers,
+      CodeMySpec.UserPreferences,
+      CodeMySpec.Users,
+      CmsHarness,
+      CmsHarnessTest
+    ],
     exports: [FakeWorkspaceRunner, WorkspaceWatchers]
 end

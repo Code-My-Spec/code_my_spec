@@ -17,6 +17,11 @@ defmodule CodeMySpec.Billing do
       up returns the account to free.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Accounts, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Accounts

@@ -38,6 +38,17 @@ defmodule CodeMySpec.ProjectSecrets do
   reads credentials without depending on `Provisioning`.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Encrypted.Binary,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.ProjectSecrets.{ProjectSecret, ProjectSecretRepository}
   alias CodeMySpec.Users.Scope
 

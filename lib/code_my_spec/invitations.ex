@@ -6,6 +6,18 @@ defmodule CodeMySpec.Invitations do
   email delivery, expiration handling, and invitation acceptance.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Authorization,
+      CodeMySpec.Mailer,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Accounts.MembersRepository

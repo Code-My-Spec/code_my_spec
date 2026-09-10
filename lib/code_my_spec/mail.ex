@@ -13,6 +13,18 @@ defmodule CodeMySpec.Mail do
   project; a plain member sees the shared mailboxes plus any assigned to them.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Content,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Uploads,
+      CodeMySpec.Users
+    ],
+    exports: :all
+
   import Ecto.Query, warn: false
   require Logger
 
@@ -63,7 +75,8 @@ defmodule CodeMySpec.Mail do
     domain_name = String.trim(domain_name)
 
     with {:ok, body} <- find_or_create_domain(domain_name),
-         {:ok, project} <- Projects.update_project(scope, project, domain_attrs(domain_name, body)) do
+         {:ok, project} <-
+           Projects.update_project(scope, project, domain_attrs(domain_name, body)) do
       {:ok, project, records(body)}
     end
   end
@@ -142,7 +155,9 @@ defmodule CodeMySpec.Mail do
   end
 
   def catch_all_mailbox(project_id) do
-    Repo.one(from m in Mailbox, where: m.project_id == ^project_id and m.catch_all == true, limit: 1)
+    Repo.one(
+      from m in Mailbox, where: m.project_id == ^project_id and m.catch_all == true, limit: 1
+    )
   end
 
   # --- Inbound / outbound ---
@@ -212,7 +227,10 @@ defmodule CodeMySpec.Mail do
           {body["text"], body["html"]}
 
         {:error, reason} ->
-          Logger.warning("Mail.route_inbound: could not fetch body for #{provider_email_id}: #{inspect(reason)}")
+          Logger.warning(
+            "Mail.route_inbound: could not fetch body for #{provider_email_id}: #{inspect(reason)}"
+          )
+
           {nil, nil}
       end
     else
@@ -235,7 +253,11 @@ defmodule CodeMySpec.Mail do
     case ResendClient.list_received_emails(opts) do
       {:ok, received} ->
         tally =
-          Enum.reduce(received, %{synced: 0, new: 0, backfilled: 0}, &tally_received(project, &1, &2))
+          Enum.reduce(
+            received,
+            %{synced: 0, new: 0, backfilled: 0},
+            &tally_received(project, &1, &2)
+          )
 
         {:ok, tally}
 
@@ -286,7 +308,11 @@ defmodule CodeMySpec.Mail do
       {:ok, body} ->
         {:ok, updated} =
           email
-          |> Email.changeset(%{body_text: body["text"], body_html: body["html"], provider_id: meta["id"]})
+          |> Email.changeset(%{
+            body_text: body["text"],
+            body_html: body["html"],
+            provider_id: meta["id"]
+          })
           |> Repo.update()
 
         # Backfill attachments too if this row predates them being copied out.
@@ -358,7 +384,10 @@ defmodule CodeMySpec.Mail do
         email
 
       {:error, reason} ->
-        Logger.warning("Mail.send_outbound delivery failed for mailbox #{mailbox.id}: #{inspect(reason)}")
+        Logger.warning(
+          "Mail.send_outbound delivery failed for mailbox #{mailbox.id}: #{inspect(reason)}"
+        )
+
         email
     end
   end
@@ -447,7 +476,9 @@ defmodule CodeMySpec.Mail do
   defp match_mailbox(project_id, nil), do: catch_all_mailbox(project_id)
 
   defp match_mailbox(project_id, address) do
-    Repo.one(from m in Mailbox, where: m.project_id == ^project_id and m.address == ^address, limit: 1) ||
+    Repo.one(
+      from m in Mailbox, where: m.project_id == ^project_id and m.address == ^address, limit: 1
+    ) ||
       catch_all_mailbox(project_id)
   end
 
@@ -463,7 +494,8 @@ defmodule CodeMySpec.Mail do
     end
   end
 
-  defp owner_or_admin?(%Scope{active_account_id: account_id} = scope) when is_binary(account_id) do
+  defp owner_or_admin?(%Scope{active_account_id: account_id} = scope)
+       when is_binary(account_id) do
     Accounts.own_role(scope, account_id) in [:owner, :admin]
   end
 
