@@ -18,6 +18,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Auth,
       CodeMySpec.BootVersion,
       CodeMySpec.CodeMode,
+      CodeMySpec.Configurations,
       CodeMySpec.Embeddings,
       CodeMySpec.Environments,
       CodeMySpec.Google,

@@ -10,6 +10,7 @@ defmodule CodeMySpec do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
@@ -22,6 +23,7 @@ defmodule CodeMySpec do
       CodeMySpec.Code,
       CodeMySpec.CodeMode,
       CodeMySpec.Compile,
+      CodeMySpec.Configurations,
       CodeMySpec.Content,
       CodeMySpec.ContentPublishing,
       CodeMySpec.Dependencies,

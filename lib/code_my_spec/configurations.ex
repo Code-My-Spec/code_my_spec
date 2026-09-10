@@ -9,7 +9,10 @@ defmodule CodeMySpec.Configurations do
   Local-only: not synced to the server.
   """
 
-  use Boundary, deps: [CodeMySpec, CodeMySpec.Repo], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
 
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo

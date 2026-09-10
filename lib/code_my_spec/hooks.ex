@@ -33,6 +33,7 @@ defmodule CodeMySpec.Hooks do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Configurations,
       CodeMySpec.Environments,
       CodeMySpec.FileEdits,
       CodeMySpec.McpServers,

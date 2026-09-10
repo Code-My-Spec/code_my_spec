@@ -26,6 +26,11 @@ defmodule CodeMySpec.AccountSecrets do
   `CodeMySpec.Encrypted.Binary`, and `list_keys/1` returns names only.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.ProjectSecrets, CodeMySpec.Repo, CodeMySpec.Users],
+    exports: :all
+
   alias CodeMySpec.AccountSecrets.AccountSecretRepository
   alias CodeMySpec.ProjectSecrets.ProjectSecret
   alias CodeMySpec.Users.Scope

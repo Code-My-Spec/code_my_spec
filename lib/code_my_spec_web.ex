@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Billing,
       CodeMySpec.BootVersion,
       CodeMySpec.CmsUsers,
+      CodeMySpec.Configurations,
       CodeMySpec.Content,
       CodeMySpec.ContentPublishing,
       CodeMySpec.Environments,
