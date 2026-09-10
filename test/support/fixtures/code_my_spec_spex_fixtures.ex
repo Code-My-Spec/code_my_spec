@@ -52,6 +52,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.ProjectSync,
       CodeMySpec.Projects,
+      CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
@@ -1381,6 +1382,25 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
     reply
+  end
+
+  @doc """
+  Record what a checkout's git state is, the way its harness would.
+
+  `CmsHarness.Sync` measures this on the machine that holds the disk and
+  delivers it over the channel; a spec has no harness, so it measures its own
+  real checkout and records through the same surface
+  (`WorkingCopies.record_git_state/2`). The numbers are real — taken from git in
+  a real repository — and only the delivery is short-circuited.
+
+  Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
+  spex dependency.
+  """
+  @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
+  def record_git_state(working_copy_id, %{} = state) do
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
+    {:ok, _} = CodeMySpec.WorkingCopies.record_git_state(copy, state)
+    :ok
   end
 
   @doc """

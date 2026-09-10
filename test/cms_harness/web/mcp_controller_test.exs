@@ -210,6 +210,47 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert conn.resp_body =~ "event: message"
     end
 
+    # The bug this exists to stop, measured 2026-09-09.
+    #
+    # `plugin.json` mounts MCP with `headers: {"X-Harness-Id": "${CMS_HARNESS_ID}"}`,
+    # and an `mcpServers` entry interpolates the *ambient* environment. A Claude
+    # Code session spawned for a worktree inherits its parent's environment
+    # wholesale, so a session in `.claude/worktrees/phx-new-generator` sent the
+    # MAIN checkout's id on every call. Files it had written were invisible; a
+    # requirement insisting an implementation file was missing was answering
+    # about a different checkout, and nothing reported the disagreement.
+    #
+    # Two agents spent about four hours on it, because every layer read as
+    # correct in isolation and the DB row was right the whole time — the
+    # question was being asked about another copy.
+    #
+    # `HarnessConfig.read/1` already refuses the environment one layer in, for
+    # this exact reason and naming this exact value. The client had not.
+    test "a directory outranks an inherited harness header", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      mine = working_copy_id_at(dir)
+      inherited = "00000000-0000-4000-8000-00000000dead"
+
+      conn
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("x-harness-id", inherited)
+      |> post("/mcp?dir=#{dir}", %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      forwarded =
+        FakeUpstream.last_request()
+        |> Map.fetch!(:headers)
+        |> Enum.find_value(fn {k, v} -> if String.downcase(k) == "x-harness-id", do: v end)
+
+      assert forwarded == mine,
+             "the proxy forwarded #{inspect(forwarded)}. A worktree session " <>
+               "inherits its parent's CMS_HARNESS_ID, so the header names the " <>
+               "wrong checkout and every call it makes is attributed there."
+
+      refute forwarded == inherited
+    end
+
     test "DELETE ends the session upstream", %{conn: conn} do
       %{root: dir} = project_dir()
       serve(dir)

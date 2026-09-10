@@ -432,6 +432,30 @@ defmodule CodeMySpec.WorkingCopies do
   def record_browser_status(_harness, _status, _error), do: :ok
 
   @doc """
+  Record whether this checkout is in sync with main and whether its tree is
+  clean.
+
+  Reported by the machine that holds the disk, on every sync, because the server
+  has no `git` to run against a harness-served checkout and a requirement graph
+  computed inside the channel process cannot ask the channel. Same shape as
+  `Sync.report_head_commit/2`, which already runs git in the real checkout for
+  the same reason.
+
+  Nothing is derived here. Three numbers arrive and three numbers are stored, so
+  a gate reading them is reading what the checkout actually said rather than an
+  interpretation made on the way in.
+  """
+  @spec record_git_state(WorkingCopy.t(), map()) :: {:ok, WorkingCopy.t()} | {:error, term()}
+  def record_git_state(%WorkingCopy{} = harness, %{} = state) do
+    save(harness, %{
+      commits_ahead_of_main: state[:ahead] || state["ahead"],
+      commits_behind_main: state[:behind] || state["behind"],
+      tree_dirty: state[:dirty] || state["dirty"],
+      git_state_at: DateTime.utc_now()
+    })
+  end
+
+  @doc """
   Record where a harness says its working copy is.
 
   Separate from `issue/3` because it is a different claim: `issue/3` answers

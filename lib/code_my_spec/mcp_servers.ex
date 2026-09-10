@@ -42,6 +42,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Personas,
       CodeMySpec.Problems,
       CodeMySpec.Projects,
+      CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
       CodeMySpec.PublicUrl,
       CodeMySpec.Qa,

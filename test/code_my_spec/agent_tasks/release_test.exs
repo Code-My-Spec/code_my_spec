@@ -58,6 +58,9 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     {:ok, root: tmp_dir, scope: scope}
   end
 
+  defp ensure_nonempty(""), do: "0"
+  defp ensure_nonempty(value), do: value
+
   defp deploy_story!(scope) do
     story = StoriesFixtures.story_fixture(scope)
     {:ok, _} = Deploys.record(scope, story.id, "uat", health_verified_at: DateTime.utc_now())

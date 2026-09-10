@@ -55,7 +55,7 @@ defmodule CmsHarness.Credentials do
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
 
-  @type source :: :user_token | :working_copy_key | :env_deploy_key
+  @type source :: :user_token | :working_copy_key | :configured_deploy_key
   @type result :: {:ok, String.t(), source()} | {:error, :no_credential}
 
   @doc """
@@ -71,7 +71,7 @@ defmodule CmsHarness.Credentials do
   def for_working_copy(root) do
     with {:error, :no_credential} <- from_user_token(),
          {:error, :no_credential} <- from_working_copy(root) do
-      from_env_deploy_key()
+      from_configured_deploy_key()
     end
   end
 
@@ -86,7 +86,7 @@ defmodule CmsHarness.Credentials do
   @spec any() :: result()
   def any do
     with {:error, :no_credential} <- from_user_token() do
-      from_env_deploy_key()
+      from_configured_deploy_key()
     end
   end
 
@@ -119,9 +119,15 @@ defmodule CmsHarness.Credentials do
 
   defp from_working_copy(_root), do: {:error, :no_credential}
 
-  defp from_env_deploy_key do
+  # Named for where it comes from now, which is configuration rather than the
+  # environment. `Config.deploy_key/0` used to read `CMS_DEPLOY_KEY` first; a
+  # sprite reaches the same place by a better route, because its entrypoint
+  # passes the key to `mix harness.onboard`, which writes it into that copy's
+  # own `.cms_harness.json` — where `from_working_copy/1` above finds it,
+  # attributed to the copy it actually belongs to.
+  defp from_configured_deploy_key do
     case Config.deploy_key() do
-      {:ok, key} -> {:ok, key, :env_deploy_key}
+      {:ok, key} -> {:ok, key, :configured_deploy_key}
       {:error, :no_credential} -> {:error, :no_credential}
     end
   end

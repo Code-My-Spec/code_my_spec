@@ -95,26 +95,31 @@ defmodule CmsHarness.CredentialsTest do
       assert {:ok, "code-my-spec-key", :working_copy_key} = Credentials.for_working_copy(other)
     end
 
-    # The sprite, unchanged: one project, a key in the environment, no file.
-    test "a copy with no recorded key falls back to the environment", ctx do
+    # The environment is not a credential source, and the sprite does not need
+    # it to be. `docker/devbox/entrypoint.sh` passes `CMS_DEPLOY_KEY` to
+    # `mix harness.onboard`, which writes it into that copy's own
+    # `.cms_harness.json` — where `from_working_copy/1` finds it, attributed to
+    # the copy it belongs to rather than to whatever launched the daemon.
+    test "a copy with no recorded key does not fall back to the environment", ctx do
       System.put_env("CMS_DEPLOY_KEY", "sprite-key")
       onboard(ctx.root, deploy_key: nil)
 
-      assert {:ok, "sprite-key", :env_deploy_key} = Credentials.for_working_copy(ctx.root)
+      assert {:error, :no_credential} = Credentials.for_working_copy(ctx.root),
+             "a variable belonging to whichever process started the daemon " <>
+               "answered for a copy that never named it"
     end
 
-    test "so does a directory that was never onboarded at all" do
+    test "nor does a directory that was never onboarded at all" do
       System.put_env("CMS_DEPLOY_KEY", "sprite-key")
 
-      assert {:ok, "sprite-key", :env_deploy_key} =
+      assert {:error, :no_credential} =
                Credentials.for_working_copy(CodeMySpec.TempFile.dir("never_onboarded"))
     end
 
     # A user token reaches every project its user can access, so it answers for
     # all of them and there is nothing to record per copy.
     test "a user token wins over both", ctx do
-      System.put_env("CMS_TOKEN", "user-token")
-      System.put_env("CMS_DEPLOY_KEY", "sprite-key")
+      Application.put_env(:code_my_spec, :harness_token, "user-token")
       onboard(ctx.root, deploy_key: "this-copys-key")
 
       assert {:ok, "user-token", :user_token} = Credentials.for_working_copy(ctx.root)
@@ -124,15 +129,14 @@ defmodule CmsHarness.CredentialsTest do
       assert {:error, :no_credential} = Credentials.for_working_copy(ctx.root)
     end
 
-    # `Config.user_token/0` and `deploy_key/0` read the environment *and*
-    # application config; the packaged CLI and the suite both supply the second.
-    # Reading only `System.get_env/1` here dropped that half and left the whole
-    # harness suite with "no credential, so this harness is connected to
-    # nothing" — one definition of where a credential comes from, not two.
-    test "application config is honoured, not just the environment", ctx do
+    # Application config is now the only thing `Config.user_token/0` and
+    # `deploy_key/0` read. It is how the packaged CLI and this suite supply a
+    # credential, and it is configuration rather than whatever was exported in
+    # one shell.
+    test "application config is honoured", ctx do
       Application.put_env(:code_my_spec, :harness_deploy_key, "from-app-config")
 
-      assert {:ok, "from-app-config", :env_deploy_key} = Credentials.for_working_copy(ctx.root)
+      assert {:ok, "from-app-config", :configured_deploy_key} = Credentials.for_working_copy(ctx.root)
     end
   end
 
@@ -141,9 +145,9 @@ defmodule CmsHarness.CredentialsTest do
     # depend on who asks, and demanding a root would make the lookup impossible
     # for the case it exists to resolve — an id this daemon cannot place on disk.
     test "answers without a working copy" do
-      System.put_env("CMS_DEPLOY_KEY", "sprite-key")
+      Application.put_env(:code_my_spec, :harness_deploy_key, "configured-key")
 
-      assert {:ok, "sprite-key", :env_deploy_key} = Credentials.any()
+      assert {:ok, "configured-key", :configured_deploy_key} = Credentials.any()
     end
 
     test "and says so when there is nothing to answer with" do

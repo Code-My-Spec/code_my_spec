@@ -36,8 +36,8 @@ defmodule CmsHarness.Web.TurnRecordRefusalTest do
     port = FakeUpstream.start!()
     FakeUpstream.respond_with(status: 200, body: ~s({"id":"msg_1","content":[]}))
 
-    previous_upstream = System.get_env("ANTHROPIC_UPSTREAM_URL")
-    System.put_env("ANTHROPIC_UPSTREAM_URL", "http://127.0.0.1:#{port}")
+    previous_upstream = Application.get_env(:code_my_spec, :anthropic_upstream_url)
+    Application.put_env(:code_my_spec, :anthropic_upstream_url, "http://127.0.0.1:#{port}")
 
     # And the server side is unreachable. A closed loopback port rather than a
     # second fake: one `FakeUpstream` answers every path from one
@@ -47,15 +47,15 @@ defmodule CmsHarness.Web.TurnRecordRefusalTest do
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:1")
 
     on_exit(fn ->
-      restore_env("ANTHROPIC_UPSTREAM_URL", previous_upstream)
+      restore_app(:anthropic_upstream_url, previous_upstream)
       Application.put_env(:code_my_spec, :harness_server_url, previous_server)
     end)
 
     :ok
   end
 
-  defp restore_env(name, nil), do: System.delete_env(name)
-  defp restore_env(name, value), do: System.put_env(name, value)
+  defp restore_app(key, nil), do: Application.delete_env(:code_my_spec, key)
+  defp restore_app(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   defp post_turn(conn, headers) do
     conn = Enum.reduce(headers, conn, fn {k, v}, acc -> put_req_header(acc, k, v) end)

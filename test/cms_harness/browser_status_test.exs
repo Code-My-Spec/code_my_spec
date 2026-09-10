@@ -25,6 +25,9 @@ defmodule CmsHarness.BrowserStatusTest do
   defp restore(nil), do: Application.delete_env(:code_my_spec, :vibium_executable)
   defp restore(v), do: Application.put_env(:code_my_spec, :vibium_executable, v)
 
+  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_mcp_transport)
+  defp restore_transport(v), do: Application.put_env(:code_my_spec, :harness_mcp_transport, v)
+
   # A transport that starts and then says nothing useful — vibium installed and
   # answering `initialize` with silence is the real shape of this, and it is what
   # every agent on this machine hit for an afternoon.

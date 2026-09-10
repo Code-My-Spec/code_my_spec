@@ -150,20 +150,24 @@ defmodule CmsHarness.ProjectIdentity do
         note_disagreement(%{id: id, root: root}, :harness_file)
 
       _ ->
-        from_env(root)
+        {:error, :no_project_id}
     end
   end
 
-  # A copy that names no project in either file falls through to the variable.
-  # That is the sprite: one VM, one project, no config of its own to read.
-  defp from_env(root) do
-    case System.get_env("CMS_PROJECT_ID") do
-      id when is_binary(id) and id != "" -> {:ok, :env, %{id: id, root: root}}
-      _ -> {:error, :no_project_id}
-    end
-  end
+  # There is no environment fallback, and the sprite does not need one.
+  #
+  # It used to fall through to `CMS_PROJECT_ID` for "one VM, one project, no
+  # config of its own to read". That premise is false: `docker/devbox/entrypoint.sh`
+  # runs `mix harness.onboard --id ... --deploy-key ... --server-url ...` before
+  # the harness starts, which writes `.cms_harness.json`. The environment is
+  # onboarding's *input*; the file is the runtime answer.
+  #
+  # Keeping the fallback meant a variable belonging to whatever launched the
+  # daemon could answer for a copy that never named it — the same shape as the
+  # `CMS_HARNESS_ID` leak that attributed a worktree session's every MCP call to
+  # the main checkout.
 
-  # The file wins; saying so is `log_env_disagreement/1`'s job, not this one's.
+  # The file wins, and there is no longer anything for it to win against.
   #
   # It used to log here, and this runs once per working copy *per resolution* —
   # every hook, every operation. A permanent disagreement therefore said itself
@@ -173,29 +177,6 @@ defmodule CmsHarness.ProjectIdentity do
   # which is the opposite of what a misconfiguration warning is for.
   defp note_disagreement(project, source), do: {:ok, source, project}
 
-  @doc false
-  # Said once, where a working copy is taken up rather than where its identity is
-  # read. `Projects.ensure_started/1` reaches its serving branch once per root
-  # per daemon, which is the rate this fact actually changes at.
-  #
-  # Logged rather than refused, unchanged: a daemon that would not start over a
-  # variable it inherited is far harder to diagnose from the inside than one that
-  # starts and names which of the two it took.
-  @spec log_env_disagreement(t()) :: :ok
-  def log_env_disagreement(%{id: id, root: root}) do
-    case System.get_env("CMS_PROJECT_ID") do
-      other when is_binary(other) and other != "" and other != id ->
-        Logger.warning(
-          "[CmsHarness] #{root} says it is project #{id} (#{file_naming(root)}) and " <>
-            "CMS_PROJECT_ID says #{other}. Serving #{id} — the working copy's own file " <>
-            "wins, because one harness serves several copies and the variable belongs to " <>
-            "whatever started it."
-        )
-
-      _ ->
-        :ok
-    end
-  end
 
   # Which of the copy's two identity files answered, so the reader knows which
   # one to go and fix.

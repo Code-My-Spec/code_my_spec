@@ -709,7 +709,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp credential_note(project) do
     case Credentials.for_working_copy(project.root) do
-      {:ok, _token, :env_deploy_key} ->
+      {:ok, _token, :configured_deploy_key} ->
         "This harness presented CMS_DEPLOY_KEY, which is issued per project and " <>
           "belongs to whatever started the daemon. Give this copy its own:\n\n" <>
           "    cd #{project.root} && mix cms.harness.onboard\n\n" <>

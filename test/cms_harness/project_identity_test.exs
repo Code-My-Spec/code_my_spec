@@ -109,10 +109,16 @@ defmodule CmsHarness.ProjectIdentityTest do
 
   # The half the old test was right about, kept — this is the sprite: one VM,
   # one project, no config file of its own to read.
-  test "a copy that names no project falls through to the environment" do
+  # There is no environment fallthrough, and the sprite this existed for does
+  # not need one: `docker/devbox/entrypoint.sh` runs `mix harness.onboard`
+  # before the harness starts, so the copy names itself in its own file. The
+  # environment is onboarding's input, not the runtime answer.
+  test "a copy that names no project is refused, whatever the shell exports" do
     System.put_env("CMS_PROJECT_ID", "999")
 
-    assert {:ok, %{id: "999"}} = ProjectIdentity.resolve(anonymous_dir())
+    assert {:error, :no_project_id} = ProjectIdentity.resolve(anonymous_dir()),
+           "a variable belonging to whichever process started the daemon " <>
+             "answered for a copy that never named a project"
   end
 
   # The same source answers both questions. A copy whose project came from its
@@ -147,8 +153,20 @@ defmodule CmsHarness.ProjectIdentityTest do
   # with its own correct `.cms_harness.json`, no `config.yml` — every join
   # presented the daemon's own exported CMS_HARNESS_ID instead, because that
   # was checked before the file naming its real one.
+
+  # Two tests here asserted `log_env_disagreement/1`, which warned when a copy's
+  # file and `CMS_PROJECT_ID` named different projects. Both are gone with the
+  # fallback: nothing reads the variable, so there is no second answer to
+  # disagree with and nothing to warn about.
+
   test "a copy with no config but a real harness file uses the file, not the shell" do
-    project = project_dir(project_id: nil)
+    # A project id in the harness file and no `config.yml`. It used to be
+    # `project_id: nil` with `CMS_PROJECT_ID` supplying the project — which now
+    # resolves to nothing, because that fallback is gone. The point of the test
+    # is the *harness id*, so the project comes from the file like everything
+    # else.
+    project = project_dir()
+    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
     System.put_env("CMS_PROJECT_ID", "999")
 
     previous = System.get_env("CMS_HARNESS_ID")
@@ -215,41 +233,7 @@ defmodule CmsHarness.ProjectIdentityTest do
   # forever: 787 identical warnings in two hours on one machine. It is now
   # emitted from `Projects.ensure_started/1`'s serving branch, which is reached
   # once per root per daemon, the rate this fact actually changes at.
-  test "a harness file disagreeing with the shell is logged, naming the file" do
-    project = project_dir()
-    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
-    System.put_env("CMS_PROJECT_ID", "999")
 
-    {:ok, resolved} = ProjectIdentity.resolve(project.root)
-
-    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.log_env_disagreement(resolved) end)
-
-    assert log =~ ".cms_harness.json"
-    assert log =~ "999"
-  end
-
-  # The half that keeps the fix honest: resolving is silent, so the number of
-  # these lines tracks working copies rather than hook traffic.
-  test "resolving does not log the disagreement on every call" do
-    project = project_dir()
-    File.rm!(Path.join(project.root, ".code_my_spec/config.yml"))
-    System.put_env("CMS_PROJECT_ID", "999")
-
-    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.resolve(project.root) end)
-
-    refute log =~ "CMS_PROJECT_ID says"
-  end
-
-  test "and there is nothing to say when the two agree" do
-    project = project_dir(project_id: 712)
-    System.put_env("CMS_PROJECT_ID", "712")
-
-    {:ok, resolved} = ProjectIdentity.resolve(project.root)
-
-    log = ExUnit.CaptureLog.capture_log(fn -> ProjectIdentity.log_env_disagreement(resolved) end)
-
-    refute log =~ "CMS_PROJECT_ID says"
-  end
 
   # A copy that names no working copy of its own does not borrow one.
   #
@@ -264,18 +248,24 @@ defmodule CmsHarness.ProjectIdentityTest do
   # and was not part of that failure. What a copy no longer gets is an identity
   # it never wrote down.
   #
-  # CONSEQUENCE, deliberately asserted rather than discovered: a sprite must now
-  # write a `.cms_harness.json` at provision time. Until it does, it resolves a
-  # project and no working copy.
-  test "a copy with neither config nor harness file gets no working copy" do
+  # CONSEQUENCE, deliberately asserted rather than discovered: a copy must write
+  # a `.cms_harness.json` to be resolvable at all.
+  #
+  # This used to resolve a project from `CMS_PROJECT_ID` and no working copy.
+  # Now it resolves nothing, and the sprite this leniency existed for does not
+  # need it: `docker/devbox/entrypoint.sh` runs `mix harness.onboard --id ...`
+  # before the harness starts, so by the time anything resolves, the file is
+  # there. The environment is onboarding's input, never the runtime answer.
+  test "a copy with neither config nor harness file resolves to nothing" do
     System.put_env("CMS_PROJECT_ID", "999")
 
     previous = System.get_env("CMS_HARNESS_ID")
     System.put_env("CMS_HARNESS_ID", "sprite-issued-id")
     on_exit(fn -> restore("CMS_HARNESS_ID", previous) end)
 
-    assert {:ok, %{id: "999", working_copy_id: nil}} =
-             ProjectIdentity.resolve(anonymous_dir())
+    assert {:error, :no_project_id} = ProjectIdentity.resolve(anonymous_dir()),
+           "a directory that wrote nothing down took its identity from the " <>
+             "shell that happened to start the daemon"
   end
 
   test "a directory that cannot say which project it is gets an error, not a guess" do

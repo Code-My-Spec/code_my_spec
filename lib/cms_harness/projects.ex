@@ -47,7 +47,6 @@ defmodule CmsHarness.Projects do
            ) do
         {:ok, _pid} ->
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
-          ProjectIdentity.log_env_disagreement(project)
           {:ok, project}
 
         # Now that the subtree is keyed on the root, this means *this working

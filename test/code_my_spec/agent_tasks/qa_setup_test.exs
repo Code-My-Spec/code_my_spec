@@ -282,4 +282,14 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       refute error =~ "seed strategy"
     end
   end
+
+  defp refute_not_validated_as_qa_plan(nil), do: :ok
+
+  defp refute_not_validated_as_qa_plan(error) do
+    refute error =~ "tools registry",
+           "the journey plan is being validated against the qa_plan schema, " <>
+             "which tells an agent to fix a file that is already correct"
+
+    refute error =~ "seed strategy"
+  end
 end

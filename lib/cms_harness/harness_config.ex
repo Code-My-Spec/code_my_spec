@@ -138,19 +138,13 @@ defmodule CmsHarness.HarnessConfig do
   @spec read_file(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read_file(root), do: root |> Path.expand() |> from_file()
 
-  @doc """
-  The id the environment names, if it names one.
-
-  Separate from `read/1` so a caller deciding whether to persist can tell an
-  injected id from a stored one.
-  """
-  @spec from_env() :: {:ok, String.t()} | :none
-  def from_env do
-    case System.get_env(@env_var) do
-      nil -> :none
-      value -> value |> String.trim() |> present_or_none()
-    end
-  end
+  # `from_env/0` is gone, and with it the last reader of `CMS_HARNESS_ID` in
+  # this module.
+  #
+  # It survived as "the id the environment names" after `read/1` stopped
+  # consulting it, which left a documented door into exactly the failure the
+  # rest of this module refuses: one variable, belonging to whichever process
+  # started the daemon, answering for every checkout the daemon serves.
 
   @doc """
   Write what a working copy knows about itself.

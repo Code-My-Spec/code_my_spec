@@ -22,7 +22,7 @@
   "mcpServers": {
     "local": {
       "type": "http",
-      "url": "http://localhost:4004/mcp",
+      "url": "http://localhost:4004/mcp?dir=${CLAUDE_PROJECT_DIR}",
       "headers": {
         "X-Harness-Id": "${CMS_HARNESS_ID}"
       }

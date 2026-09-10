@@ -502,3 +502,10 @@ config :code_my_spec, intake_conversation_process: false
 # `intake_shaping_async` above. The tests that are *about* the async path turn
 # this back on for themselves and assert on the assign rather than on the turn.
 config :code_my_spec, chat_turn_async: false
+
+# A promotion's gate dispatches an analyzer sweep and waits for it. Nothing
+# runs those analyzers in a spex — the checkouts are temp directories with no
+# project — so the production default of two minutes is two minutes of nothing
+# happening, per scenario. The bounded-wait behaviour is what the specs are
+# about; the duration is not.
+config :code_my_spec, :promotion_sweep_timeout, 200

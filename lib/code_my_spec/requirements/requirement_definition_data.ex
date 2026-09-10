@@ -828,6 +828,26 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         execution_type: :main_agent
       }),
       new!(%{
+        id: 18,
+        name: "code_on_running_copy",
+        role: :coding,
+        node_scope: :self,
+        # A question about state, not about an act. That is what lets an agent
+        # working directly on the running copy satisfy it by arriving — there is
+        # no branch to merge and nothing it could do to a gate phrased as "have
+        # you promoted". John: "it is eminently possible that someone would be
+        # just doing the work on Maine."
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Promotion, function: :running_copy_check},
+        satisfied_by: AgentTasks.PromoteWork,
+        artifact_type: :code,
+        # Named for the state QA depends on rather than for the merge, because
+        # the merge is one way to reach it and not the only one.
+        description: "Story's code is on the checkout the application runs from",
+        prerequisites: [3],
+        execution_type: :main_agent
+      }),
+      new!(%{
         id: 4,
         name: "qa_complete",
         role: :qa,
@@ -837,7 +857,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA complete: at least one valid DB-backed pass attempt exists",
-        prerequisites: [3],
+        # Was [3] — straight off `bdd_specs_passing`. That is what let nine
+        # stories reach QA on 2026-09-09 whose code had never left the coding
+        # agent's worktree; QA failed all nine for code that was never there.
+        prerequisites: [18],
         execution_type: :sub_agent,
         # Automatic, because "at least one valid DB-backed pass attempt exists"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and

@@ -30,6 +30,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.LiveContextSpec,
     AgentTasks.LiveViewSpec,
     AgentTasks.PersonaResearch,
+    AgentTasks.PromoteWork,
 
     AgentTasks.ProjectSetup,
     AgentTasks.Release,

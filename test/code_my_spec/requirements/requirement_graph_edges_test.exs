@@ -546,7 +546,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "qa_complete prerequisites" do
-    test "qa_complete has bdd_specs_passing as prerequisite edge" do
+    # `code_on_running_copy` now sits between them. QA tests the running
+    # application, so a story whose code has not reached that checkout would be
+    # tested in a build that never contained it — which is what happened to nine
+    # stories on 2026-09-09, all of them failed for code that was never there.
+    test "qa_complete waits on code_on_running_copy, which waits on bdd_specs_passing" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -562,13 +566,21 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      prereq_edge =
-        Enum.find(edges, fn e ->
-          e.from == {"story", story.id, "bdd_specs_passing"} and
-            e.to == {"story", story.id, "qa_complete"}
+      edge? = fn from, to ->
+        Enum.any?(edges, fn e ->
+          e.from == {"story", story.id, from} and e.to == {"story", story.id, to}
         end)
+      end
 
-      assert prereq_edge, "qa_complete should have prerequisite edge from bdd_specs_passing"
+      assert edge?.("bdd_specs_passing", "code_on_running_copy"),
+             "code_on_running_copy should follow bdd_specs_passing"
+
+      assert edge?.("code_on_running_copy", "qa_complete"),
+             "qa_complete should wait on the story's code reaching the running copy"
+
+      refute edge?.("bdd_specs_passing", "qa_complete"),
+             "the direct edge would let QA start on a story whose code has not " <>
+               "left the coding agent's worktree"
     end
 
     test "qa_complete is not actionable when bdd_specs_exist is unsatisfied" do

@@ -123,6 +123,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # copy exists *because* a harness joined for it, so joining is the establishing
   # act rather than a shortcut around one.
   #
+  # Story 1046's own helpers, all of which do the establishing work their given
+  # names. `a_promotable_project/1` builds two real checkouts sharing an object
+  # store and joins both; `report_git_state/3` measures a real repository and
+  # records through `WorkingCopies.record_git_state/2`; `analyzers_are_current/1`
+  # records completed runs; `this_copy_is_the_running_one/1` drives the
+  # designation page. `write/3` and `git/3` go through the environment onto the
+  # OS temp filesystem, which is what git reads.
+  #
   # Comments stay out here. `~w()` has no comment syntax, so a `#` line inside the
   # sigil becomes literal tokens — including every ordinary English word in it,
   # which then matches almost any given body and silently disables this check.
@@ -144,6 +152,8 @@ defmodule CodeMySpec.SpexGivensTest do
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout say_to_main_agent
     Req.Test.stub
+    a_promotable_project report_git_state analyzers_are_current
+    this_copy_is_the_running_one write( git(
   )
 
   # The failure message has always offered a second remedy — "if the

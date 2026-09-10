@@ -61,7 +61,18 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
     story
   end
 
-  test "a story assigned to another copy does not gate this one", %{scope: scope} do
+  # This asserted the opposite until 2026-09-10, and criterion 2406 caught it.
+  #
+  # The reasoning was `issues_resolved`'s: an agent cannot fix a story that
+  # belongs to a checkout it is not standing in, so holding its stop is a wall.
+  # True of an *unfinished* story, and false of this one — `specs_ready` is
+  # earned, set when a story's specs have gone green, so a finding that survives
+  # it is a regression on proven behaviour. 2406: "an exemption this wide would
+  # let a broken build through on every checkout that did not happen to own it."
+  #
+  # What stopped the 21 findings that motivated the exemption is the latch, not
+  # assignment — which the test below this one covers.
+  test "a ready story assigned to another copy still gates this one", %{scope: scope} do
     elsewhere = a_copy(scope, "somebody else's checkout")
     here = %{scope | active_working_copy_id: a_copy(scope, "this checkout")}
     story = ready_story(scope, %{title: "Another Copy's Story", working_copy_id: elsewhere})
@@ -71,8 +82,29 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
     red_spec(here, story)
     problems = CodeMySpec.Problems.list_project_problems(here, severity: :error)
 
+    assert length(Validation.enforceable(here, problems)) == 1,
+           "a story whose specs went green has come back red. That is a " <>
+             "regression on proven behaviour, and it is broken here whoever owns it."
+  end
+
+  # The half that does hold, and the one that actually answered the case the
+  # exemption was written for: a story nobody has finished cannot regress.
+  test "an unready story does not gate, whoever it belongs to", %{scope: scope} do
+    elsewhere = a_copy(scope, "somebody else's checkout")
+    here = %{scope | active_working_copy_id: a_copy(scope, "this checkout")}
+
+    story =
+      story_fixture(scope, %{
+        title: "Nobody Has Finished This",
+        working_copy_id: elsewhere
+      })
+
+    red_spec(here, story)
+    problems = CodeMySpec.Problems.list_project_problems(here, severity: :error)
+
     assert Validation.enforceable(here, problems) == [],
-           "an agent cannot fix a story that belongs to a checkout it is not standing in"
+           "a story whose specs have never gone green is unwritten work, not a " <>
+             "regression, and blocking on it is the wall this check exists to avoid"
   end
 
   test "a story assigned to this copy still gates it", %{scope: scope} do

@@ -226,5 +226,9 @@ defmodule CmsHarness.Web.MessagesController do
   defp query_suffix(nil), do: ""
   defp query_suffix(query), do: "?" <> query
 
-  defp base_url, do: System.get_env("ANTHROPIC_UPSTREAM_URL") || @upstream
+  # Application config rather than the environment, like everything else this
+  # harness reads. A variable belonging to whatever launched the daemon is not
+  # a per-deployment setting; it is whatever was in one shell.
+  defp base_url,
+    do: Application.get_env(:code_my_spec, :anthropic_upstream_url) || @upstream
 end

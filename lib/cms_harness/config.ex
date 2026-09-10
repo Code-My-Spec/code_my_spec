@@ -7,6 +7,7 @@ defmodule CmsHarness.Config do
   nothing and look exactly like a harness with nothing to do.
   """
 
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.Credentials
 
   # The server this build points at when nothing else says.
@@ -96,9 +97,27 @@ defmodule CmsHarness.Config do
   the server's OAuth pipeline accepts everywhere, and the other has to be
   exchanged first.
   """
+  # NOT read from the checkout's own file, and the attempt is worth recording.
+  #
+  # Which server a checkout talks to *should* be a property of the checkout —
+  # the same argument that took `CMS_HARNESS_ID` and `CMS_PROJECT_ID` out of
+  # this module. But `server_url/0` takes no root, so the only file it could
+  # consult is the one at `File.cwd!()` — which is ambient in exactly the way
+  # this module is trying to stop being. Under the suite it resolved to this
+  # repo's own `.cms_harness.json` and overrode what each test had configured,
+  # breaking eight of them.
+  #
+  # Two things have to happen before the variable below can go, and neither is
+  # a rename: `server_url/0` needs a root to be asked about, and every checkout
+  # needs `server_url` in its file (`mix harness.onboard --server-url` records
+  # it; none on this machine has one yet). Until then `dev_cli`'s compiled-in
+  # `base_url` is `https://dev.codemyspec.com`, so cutting the variable would
+  # not fail — it would quietly point every local harness at the shared dev
+  # server.
+
   @spec user_token() :: {:ok, String.t()} | {:error, :no_credential}
   def user_token do
-    present(System.get_env("CMS_TOKEN") || Application.get_env(:code_my_spec, :harness_token))
+    present(Application.get_env(:code_my_spec, :harness_token))
   end
 
   @doc """
@@ -111,7 +130,7 @@ defmodule CmsHarness.Config do
   @spec deploy_key() :: {:ok, String.t()} | {:error, :no_credential}
   def deploy_key do
     present(
-      System.get_env("CMS_DEPLOY_KEY") || Application.get_env(:code_my_spec, :harness_deploy_key)
+      Application.get_env(:code_my_spec, :harness_deploy_key)
     )
   end
 
@@ -170,7 +189,10 @@ defmodule CmsHarness.Config do
   """
   @spec label(String.t()) :: String.t()
   def label(project_root) do
-    System.get_env("CMS_HARNESS_LABEL") || "the harness at #{project_root} on #{hostname()}"
+    case HarnessConfig.read_file(project_root) do
+      {:ok, %{label: label}} when is_binary(label) and label != "" -> label
+      _ -> "the harness at #{project_root} on #{hostname()}"
+    end
   end
 
   defp hostname do

@@ -46,6 +46,7 @@ defmodule CmsHarness.Web.McpController do
 
   require Logger
 
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.Config
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
@@ -210,8 +211,42 @@ defmodule CmsHarness.Web.McpController do
   defp working_copy_id(conn) do
     conn.path_params["working_copy_id"] || conn.path_params["harness_id"] ||
       conn.query_params["harness"] ||
+      id_from_dir(conn.query_params["dir"]) ||
       List.first(get_req_header(conn, "x-harness-id"))
   end
+
+  # A directory the caller is actually sitting in beats a header it inherited.
+  #
+  # `x-harness-id` reaches us from `plugin.json`'s
+  # `headers: {"X-Harness-Id": "${CMS_HARNESS_ID}"}`, and an `mcpServers` entry
+  # interpolates the *ambient* environment. A Claude Code session spawned for a
+  # worktree inherits its parent's environment wholesale — measured on this
+  # machine: a session in `.claude/worktrees/phx-new-generator` carried the main
+  # checkout's `CMS_HARNESS_ID` (and its `MIX_TEST_PARTITION`), so every MCP call
+  # it made was attributed to main. Files it had written were invisible, and a
+  # requirement insisting an implementation file was missing was answering about
+  # a different checkout, with nothing anywhere reporting the disagreement.
+  #
+  # This is the same bug `HarnessConfig.read/1` already refuses one layer in —
+  # its comment names the same value, `6c4a7be3`, for the same reason. The
+  # daemon stopped trusting the environment; the client had not.
+  #
+  # The directory travels client to local harness only, and is resolved here
+  # against that checkout's own `.cms_harness.json`. What goes on to the server
+  # is still an id and nothing else, so "harness id is the only routing key"
+  # holds where it was meant to: on the wire to the server.
+  #
+  # Below the addressed forms, because an explicit id is a caller saying which
+  # copy it means; above the header, which is a caller repeating whatever its
+  # parent's shell happened to hold.
+  defp id_from_dir(dir) when is_binary(dir) and dir != "" do
+    case HarnessConfig.read(dir) do
+      {:ok, %{working_copy_id: id}} when is_binary(id) and id != "" -> id
+      _ -> nil
+    end
+  end
+
+  defp id_from_dir(_), do: nil
 
   defp harness_header(conn) do
     case working_copy_id(conn) do

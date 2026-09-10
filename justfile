@@ -91,68 +91,46 @@ worktree-setup:
     echo 'Ready. `mix test` and `mix spex` should both work from here now.'
 
 # Pull main and restart the dev server, from any worktree.
-refresh port="4000":
+# The half of `refresh` that has nothing to do with moving git. Split out
+# because a promotion merges a *local* branch rather than pulling a remote one,
+# and then needs exactly this: bring the checkout's build up to date, restart
+# the server, and report the revision now being served.
+#
+# `refresh` is this plus a pull, so there is one implementation of the restart
+# and humans keep the command they already have.
+#
+# Two notes for anyone copying this into another project:
+#
+# The `just refresh-harness` at the end is specific to *this* repo, where the
+# harness and the server are the same codebase and moving one without the other
+# is the skew that recipe exists to prevent. A generated project's `restart`
+# has no such call — its harness is a released binary, not built from its tree.
+#
+# That call also pulls, so this recipe is not strictly git-free despite the
+# split. It is what `refresh` already did, so nothing changed; it is only worth
+# knowing before relying on `restart` to touch no remote.
+#
+# Rebuild if needed, restart the app, and report the revision it is serving.
+restart port="4000":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # 
-    # The :4000 server runs the *main* checkout, not the worktree an agent works in,
-    # so a fix that is committed, pushed and green can be absent from every response
-    # an agent sees — and the responses that matter are messages about correctness,
-    # where a stale one reads as "the fix does not work" rather than "the build is
-    # old". Three of those cost a diversion each in one session before
-    # `[Boot] serving <sha>` existed to answer it in one line.
-    # 
-    # Doing it by hand needs a directory an agent in a worktree cannot cd to, so
-    # this exists to be run from anywhere in the repo. `--git-common-dir` resolves
-    # to the main checkout's `.git` from inside any worktree, which is what makes
-    # that possible.
-    # 
-    # It refuses on a dirty checkout rather than pulling over someone's uncommitted
-    # work: several agents share that directory, and a rebase on top of a
-    # half-finished change is the one outcome nobody can undo from here.
-
-
+    # Resolved rather than assumed, for the reason `refresh` documents below:
+    # the :4000 server runs the *main* checkout, and an agent in a worktree
+    # cannot cd there. `--git-common-dir` resolves to the main checkout's `.git`
+    # from inside any worktree.
     main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
     echo "→ main checkout: $main"
 
-    # Tracked, non-submodule changes only. Untracked files are not disturbed by
-    # a fast-forward, and `.code_my_spec` is a submodule whose pointer moves
-    # whenever an agent commits a spec — refusing on either makes this refuse
-    # essentially always, which is the same as not having it. What it is for is
-    # the case that actually turned up: seven modified files under `config/` and
-    # `lib/`, mid-change, belonging to someone else.
-    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
-    if [ -n "$dirty" ]; then
-        echo "✗ refusing: the main checkout has uncommitted work." >&2
-        echo "$dirty" >&2
-        echo "" >&2
-        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
-        echo "  or restart by hand once it is clear." >&2
-        exit 1
-    fi
-
-    before="$(git -C "$main" rev-parse --short HEAD)"
-    git -C "$main" pull --ff-only
-    after="$(git -C "$main" rev-parse --short HEAD)"
-    echo "→ $before → $after"
-
-    # Only when the lock actually moved. `deps.get` plus the compile it triggers
-    # is most of this recipe's wall time — the first real run took over ten
-    # minutes — and the lock is unchanged on the majority of refreshes.
+    # The only deps check here, and deliberately the general one.
     #
-    # Not skippable in general, though: a lock that moved and is not fetched
-    # turns into "Unchecked dependencies" on the next mix invocation, which
-    # several analyzers report as findings rather than as an environment
-    # problem. That is what 6d9523a9 and 3430012e were about.
-    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
-        echo "→ mix.lock moved, fetching deps"
-        ( cd "$main" && mix deps.get )
-    else
-        echo "→ mix.lock unchanged in this pull"
-    fi
-
-    # Asking whether the build is *satisfiable*, not whether this pull moved the
+    # `refresh` used to fetch eagerly when `mix.lock` moved in the pull, with
+    # this as a second check behind it. That first test cannot be asked without
+    # a pull to diff against, and it is redundant anyway: a lock that moved with
+    # deps already fetched needs no fetch, and one that moved without them fails
+    # here and gets one.
+    #
+    # Asking whether the build is *satisfiable*, not whether some pull moved the
     # lock. Those are different questions and only the second was being asked.
     #
     # Measured: main was already at the new commit — somebody else had pulled —
@@ -249,7 +227,7 @@ refresh port="4000":
     # read it while it is still waiting.
     for _ in $(seq 1 10); do
         if curl -sS -o /dev/null --max-time 2 "http://localhost:{{port}}/" 2>/dev/null; then
-            echo "✓ {{port}} is answering on $after"
+            echo "✓ {{port}} is answering on $(git -C "$main" rev-parse --short HEAD)"
             up=1
             break
         fi
@@ -281,6 +259,57 @@ refresh port="4000":
     # exactly the mismatch this exists to prevent.
     echo
     just refresh-harness
+
+
+refresh port="4000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # 
+    # The :4000 server runs the *main* checkout, not the worktree an agent works in,
+    # so a fix that is committed, pushed and green can be absent from every response
+    # an agent sees — and the responses that matter are messages about correctness,
+    # where a stale one reads as "the fix does not work" rather than "the build is
+    # old". Three of those cost a diversion each in one session before
+    # `[Boot] serving <sha>` existed to answer it in one line.
+    # 
+    # Doing it by hand needs a directory an agent in a worktree cannot cd to, so
+    # this exists to be run from anywhere in the repo. `--git-common-dir` resolves
+    # to the main checkout's `.git` from inside any worktree, which is what makes
+    # that possible.
+    # 
+    # It refuses on a dirty checkout rather than pulling over someone's uncommitted
+    # work: several agents share that directory, and a rebase on top of a
+    # half-finished change is the one outcome nobody can undo from here.
+
+
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    echo "→ main checkout: $main"
+
+    # Tracked, non-submodule changes only. Untracked files are not disturbed by
+    # a fast-forward, and `.code_my_spec` is a submodule whose pointer moves
+    # whenever an agent commits a spec — refusing on either makes this refuse
+    # essentially always, which is the same as not having it. What it is for is
+    # the case that actually turned up: seven modified files under `config/` and
+    # `lib/`, mid-change, belonging to someone else.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        echo "" >&2
+        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+        echo "  or restart by hand once it is clear." >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+    echo "→ $before → $after"
+
+    # Everything past here is the same work a promotion needs, so it lives in
+    # `restart` and this calls it.
+    just restart {{port}}
 
 
 # Restart the harness on :4004, from any worktree.

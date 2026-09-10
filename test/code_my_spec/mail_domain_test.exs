@@ -80,6 +80,30 @@ defmodule CodeMySpec.MailDomainTest do
     Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
   end
 
+  defp install_route(conn, "POST", "/domains", _status) do
+    Test.json(conn, %{
+      "id" => "dom_1",
+      "name" => "x",
+      "status" => "not_started",
+      "records" => @records
+    })
+  end
+
+  defp install_route(conn, "POST", "/domains/dom_1/verify", status) do
+    Test.json(conn, %{"id" => "dom_1", "status" => status})
+  end
+
+  defp install_route(conn, "GET", "/domains/dom_1", status) do
+    Test.json(conn, %{"id" => "dom_1", "status" => status, "records" => @records})
+  end
+
+  defp respond_email_sent(%{method: "POST", request_path: "/emails"} = conn),
+    do: Test.json(conn, %{"id" => "email_1"})
+
+  defp respond_fetched_body(%{method: "GET", request_path: "/emails/receiving/" <> _} = conn) do
+    Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
+  end
+
   describe "setup_domain/3" do
     test "registers the domain and persists name + resend id" do
       install_plug("not_started")
@@ -110,6 +134,36 @@ defmodule CodeMySpec.MailDomainTest do
       assert %DateTime{} = project.domain_verified_at
       assert records == @records
     end
+  end
+
+  defp adopt_route(%{method: "POST", request_path: "/domains"} = conn) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.resp(
+      403,
+      Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"})
+    )
+  end
+
+  defp adopt_route(%{method: "GET", request_path: "/domains"} = conn) do
+    Test.json(conn, %{
+      "object" => "list",
+      "data" => [
+        %{
+          "id" => "dom_existing",
+          "name" => "inbound.sam-ships.com",
+          "status" => "verified"
+        }
+      ]
+    })
+  end
+
+  defp adopt_route(%{method: "GET", request_path: "/domains/dom_existing"} = conn) do
+    Test.json(conn, %{
+      "id" => "dom_existing",
+      "status" => "verified",
+      "records" => @records
+    })
   end
 
   describe "verify_domain/2" do

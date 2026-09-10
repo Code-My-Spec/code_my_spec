@@ -75,6 +75,18 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # `nil` is a harness too old to report; `[]` is a machine that reported and
     # has no browser. Both give an agent no browser tools and only the second is
     # actionable.
+    # Whether this checkout's work is on main, main's work is on it, and its
+    # tree is clean — measured by the machine that holds the disk and reported
+    # on every sync, because the server has no `git` to run and a graph computed
+    # inside the channel process cannot ask the channel.
+    #
+    # `nil` means never reported, which is not the same as "in sync" and is
+    # deliberately distinguishable from it.
+    field :commits_ahead_of_main, :integer
+    field :commits_behind_main, :integer
+    field :tree_dirty, :boolean
+    field :git_state_at, :utc_datetime_usec
+
     field :machine_tools, {:array, :string}
 
     # What each of those tools takes, keyed by name: a description and a JSON
@@ -157,7 +169,11 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :main,
       :preview_url,
       :preview_tunnel_id,
-      :preview_tunnel_secret
+      :preview_tunnel_secret,
+      :commits_ahead_of_main,
+      :commits_behind_main,
+      :tree_dirty,
+      :git_state_at
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
