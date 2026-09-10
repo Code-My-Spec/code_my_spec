@@ -83,7 +83,25 @@ defmodule CmsHarness.Config do
   key is recorded. See `CmsHarness.Credentials`.
   """
   @spec credential(String.t() | nil) :: {:ok, String.t()} | {:error, :no_credential}
-  def credential(root \\ nil) do
+  def credential(root \\ nil)
+
+  # A rootless caller asks the copies this daemon serves, not a rooted lookup
+  # with nothing to look in.
+  #
+  # `for_working_copy(nil)` answers `:no_credential` for the root and falls
+  # through to configuration — which used to hold `CMS_DEPLOY_KEY` and no longer
+  # holds anything. `Device.announce/1` is the caller that found this: it has no
+  # working copy by nature, since a machine is not a checkout, so it announced
+  # nothing and every device on the box stayed out of the device list while each
+  # of them held a good credential on disk.
+  def credential(nil) do
+    case Credentials.any() do
+      {:ok, token, _source} -> {:ok, token}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def credential(root) do
     case Credentials.for_working_copy(root) do
       {:ok, token, _source} -> {:ok, token}
       {:error, reason} -> {:error, reason}
