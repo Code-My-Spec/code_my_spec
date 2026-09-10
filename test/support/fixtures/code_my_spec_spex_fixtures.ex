@@ -2884,6 +2884,16 @@ defmodule CodeMySpecSpex.Fixtures do
   test user. The local app's auth rung evaluates "done" against the
   presence of this row (same predicate `OAuthClient.authenticated?/0`
   returns).
+
+  ## Why this is a fixture rather than the real callback
+
+  `BootstrapController`'s callback is the actual production writer of
+  this row, but reaching it means a full PKCE exchange — an
+  `AuthState`, a redirect to a real OAuth provider, a human consent
+  screen, and a callback carrying a code only the provider can mint.
+  Same shape as `connect_provider/3`'s reasoning: there is no surface a
+  spex can drive here, only a fixture or no coverage for anything
+  downstream of "already signed in."
   """
   def client_user_fixture(user, opts \\ []) do
     expires_in = Keyword.get(opts, :expires_in, 3600)
