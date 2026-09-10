@@ -431,8 +431,8 @@ defmodule CodeMySpecCli.Release.PackageExtension do
   # `skills/`) now contain server calls that also need rewriting.
   # NOTE: `match_dot: true` is REQUIRED. `.claude-plugin/` is a dotdir, and
   # `Path.wildcard/1` skips dot entries by default — without it, plugin.json and
-  # the bin/hook,approve scripts (carrying `${CODEMYSPEC_PORT:-4004}`) silently
-  # keep the dev port, shipping a prod plugin whose MCP server points at 4004.
+  # the bin/hook script (carrying `${CODEMYSPEC_PORT:-4004}`) silently keep the
+  # dev port, shipping a prod plugin whose MCP server points at 4004.
   #
   # ## The fallback list is reordered, not rewritten
   #

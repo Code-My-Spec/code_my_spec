@@ -311,6 +311,78 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
+  @doc """
+  Clear a pending permission request without a decision.
+
+  Not what `resolve_permission_request/2` is for — that records a human's
+  actual allow/deny. This is a human's *other* choice: the request no longer
+  matters, and no one is going to look at it. Marks the row `"expired"`
+  rather than `"denied"` so the notifications list can tell "nobody decided"
+  apart from "somebody said no", and still delivers the same "keep going" a
+  decline would to any agent that happens to still be alive — silence would
+  otherwise look identical to a decision nobody has made yet.
+
+  Unlike `QuestionRequest` (deliberately answer-only — story 896: a question
+  disappearing on its own is a choice the user never made vanishing from the
+  one place they would have seen it), this is a human looking at the request
+  and choosing to clear it, one row or many, not a clock sweeping it away.
+  """
+  @spec dismiss_permission_request(Ecto.UUID.t()) ::
+          {:ok, PermissionRequest.t()} | {:error, term()}
+  def dismiss_permission_request(id) do
+    case Repo.get(PermissionRequest, id) do
+      nil ->
+        {:error, :not_found}
+
+      %{status: "pending"} = request ->
+        request
+        |> PermissionRequest.changeset(%{status: "expired"})
+        |> Repo.update()
+        |> case do
+          {:ok, updated} ->
+            Phoenix.PubSub.broadcast(
+              CodeMySpec.PubSub,
+              "permission_request:#{id}",
+              {:permission_decided, %{id: id, decision: :expired}}
+            )
+
+            broadcast_notifications_changed(updated.user_id)
+            deliver_decision_to_agent(updated)
+
+            {:ok, updated}
+
+          error ->
+            error
+        end
+
+      %{status: status} ->
+        {:error, {:already_resolved, status}}
+    end
+  end
+
+  @doc """
+  Dismiss many of a user's own pending permission requests at once.
+
+  Returns the count actually dismissed. An id that does not belong to
+  `user_id`, or is not (or no longer) pending, is silently skipped rather
+  than failing the whole batch — the list this reads from is itself a
+  snapshot, and a request resolved by its own SSE connection a moment
+  earlier is not a bug in the bulk action that missed it.
+  """
+  @spec bulk_dismiss_permission_requests([Ecto.UUID.t()], integer()) :: non_neg_integer()
+  def bulk_dismiss_permission_requests(ids, user_id) when is_list(ids) do
+    PermissionRequest
+    |> where([p], p.id in ^ids and p.user_id == ^user_id and p.status == "pending")
+    |> select([p], p.id)
+    |> Repo.all()
+    |> Enum.reduce(0, fn id, count ->
+      case dismiss_permission_request(id) do
+        {:ok, _} -> count + 1
+        _ -> count
+      end
+    end)
+  end
+
   # Tell the agent what was decided.
   #
   # A Claude Code request is answered on the SSE connection already waiting on
@@ -344,6 +416,14 @@ defmodule CodeMySpec.Notifications do
     """
     Your tap-out was approved. The loop is done — finish what is in front of you
     and stop. Nothing will ask you to continue.
+    """
+  end
+
+  defp decision_message(%{tool_name: "tap_out", status: "expired"}) do
+    """
+    Your tap-out request expired — nobody decided it either way. Keep going.
+
+    Pick the work back up where you left it. Ask again if you are still stuck.
     """
   end
 

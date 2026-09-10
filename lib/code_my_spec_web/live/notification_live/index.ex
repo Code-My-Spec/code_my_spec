@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
 
     {:ok,
      socket
-     |> assign(page_title: "Notifications")
+     |> assign(page_title: "Notifications", selected: MapSet.new())
      |> load_notifications()}
   end
 
@@ -39,6 +39,44 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
   @impl true
   def handle_event("load_more_resolved", _params, socket) do
     {:noreply, load_more_resolved(socket)}
+  end
+
+  # Permission requests only. `QuestionRequest` is deliberately answer-only —
+  # story 896 decided against a way for a question to disappear without the
+  # user having answered it, and a bulk clear is the same disappearance at a
+  # larger scale. A permission request already has "expired" in its own
+  # status list for exactly this: a human looking at the backlog and deciding
+  # a request no longer matters, one row or many.
+  def handle_event("toggle_select", %{"id" => id}, socket) do
+    selected =
+      if MapSet.member?(socket.assigns.selected, id) do
+        MapSet.delete(socket.assigns.selected, id)
+      else
+        MapSet.put(socket.assigns.selected, id)
+      end
+
+    {:noreply, assign(socket, :selected, selected)}
+  end
+
+  def handle_event("select_all_pending_permissions", _params, socket) do
+    ids = for %{type: :permission, id: id} <- socket.assigns.pending, do: id
+    {:noreply, assign(socket, :selected, MapSet.new(ids))}
+  end
+
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply, assign(socket, :selected, MapSet.new())}
+  end
+
+  def handle_event("dismiss_selected", _params, socket) do
+    user_id = socket.assigns.current_scope.user.id
+    ids = MapSet.to_list(socket.assigns.selected)
+    count = Notifications.bulk_dismiss_permission_requests(ids, user_id)
+
+    {:noreply,
+     socket
+     |> assign(:selected, MapSet.new())
+     |> put_flash(:info, "Dismissed #{count} request#{if count == 1, do: "", else: "s"}.")
+     |> load_notifications()}
   end
 
   defp load_notifications(socket) do
@@ -139,9 +177,56 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
         </div>
 
         <section :if={@pending != []} class="mt-6">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mb-2">Pending</h2>
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">Pending</h2>
+            <div :if={any_permissions?(@pending)} class="flex items-center gap-3 text-xs">
+              <button
+                type="button"
+                phx-click="select_all_pending_permissions"
+                class="link opacity-70 hover:opacity-100"
+              >
+                Select all
+              </button>
+              <button
+                :if={MapSet.size(@selected) > 0}
+                type="button"
+                phx-click="clear_selection"
+                class="link opacity-70 hover:opacity-100"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div
+            :if={MapSet.size(@selected) > 0}
+            class="mb-2 flex items-center justify-between rounded-box border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+          >
+            <span>{MapSet.size(@selected)} selected</span>
+            <button
+              type="button"
+              phx-click={show_confirm("confirm-dismiss-selected")}
+              class="btn btn-error btn-xs"
+              data-test="dismiss-selected"
+            >
+              Dismiss
+            </button>
+          </div>
+
+          <.confirm_dialog
+            id="confirm-dismiss-selected"
+            title="Dismiss the selected requests?"
+            confirm_label="Dismiss"
+            on_confirm={JS.push("dismiss_selected")}
+          />
+
           <ul class="space-y-2">
-            <.item :for={item <- @pending} item={item} />
+            <.item
+              :for={item <- @pending}
+              item={item}
+              selectable?={true}
+              selected={MapSet.member?(@selected, item.id)}
+            />
           </ul>
         </section>
 
@@ -169,14 +254,31 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
   end
 
   attr :item, :map, required: true
+  attr :selectable?, :boolean, default: false
+  attr :selected, :boolean, default: false
 
   defp item(assigns) do
     ~H"""
-    <li data-test="notification" data-id={@item.id} data-kind={@item.type} data-status={@item.status}>
+    <li
+      data-test="notification"
+      data-id={@item.id}
+      data-kind={@item.type}
+      data-status={@item.status}
+      class="flex items-start gap-2"
+    >
+      <input
+        :if={@selectable? && @item.type == :permission}
+        type="checkbox"
+        class="checkbox checkbox-sm mt-4 shrink-0"
+        checked={@selected}
+        phx-click="toggle_select"
+        phx-value-id={@item.id}
+        data-test="select-notification"
+      />
       <.link
         navigate={@item.path}
         class={[
-          "card card-compact border bg-base-100 hover:bg-base-200 transition-colors block",
+          "card card-compact border bg-base-100 hover:bg-base-200 transition-colors block min-w-0 flex-1",
           @item.status == "pending" && "border-primary/40",
           @item.status != "pending" && "border-base-300 opacity-75"
         ]}
@@ -205,6 +307,8 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
     </li>
     """
   end
+
+  defp any_permissions?(items), do: Enum.any?(items, &(&1.type == :permission))
 
   defp status_class("pending"), do: "badge-primary"
   defp status_class("answered"), do: "badge-success"

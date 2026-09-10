@@ -957,8 +957,6 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
-      story_copy_ids: Stories.list_working_copy_ids_by_story(scope),
-      here: scope.active_working_copy_id,
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
@@ -1368,8 +1366,6 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope),
       criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
-      story_copy_ids: Stories.list_working_copy_ids_by_story(scope),
-      here: scope.active_working_copy_id,
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 

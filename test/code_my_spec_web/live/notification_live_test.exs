@@ -135,4 +135,82 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     {:ok, _view, html} = live(conn, ~p"/app/notifications")
     assert html =~ "answered"
   end
+
+  # The backlog this exists for: 224 pending tap-out rows behind ten agents,
+  # 259 stale Claude Code tool prompts, and no way to clear either except one
+  # page load per row. Scoped to permission requests only — `QuestionRequest`
+  # stays answer-only per story 896, above.
+  describe "bulk-dismissing permission requests" do
+    test "a question has no checkbox to select", %{conn: conn, user: user} do
+      create_question(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      refute has_element?(view, "[data-test='select-notification']")
+    end
+
+    test "selecting all and confirming clears every pending permission request", %{
+      conn: conn,
+      user: user
+    } do
+      p1 = create_permission(user.id)
+      p2 = create_permission(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      view |> element("button", "Select all") |> render_click()
+      assert has_element?(view, "[data-test='dismiss-selected']")
+
+      # The trigger button only opens the confirm dialog via `show_confirm/2`;
+      # the actual `dismiss_selected` event is pushed from the dialog's own
+      # confirm button, the same as `AccountLive.Manage`'s delete flow.
+      html =
+        view
+        |> element("#confirm-dismiss-selected [data-role='confirm-confirm']")
+        |> render_click()
+
+      assert Notifications.get_permission_request(p1.id).status == "expired"
+      assert Notifications.get_permission_request(p2.id).status == "expired"
+      assert html =~ "Dismissed 2 requests."
+    end
+
+    test "a question pending alongside a permission request is left alone", %{
+      conn: conn,
+      user: user
+    } do
+      question = create_question(user.id, "Still open?")
+      permission = create_permission(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      view |> element("button", "Select all") |> render_click()
+
+      view
+      |> element("#confirm-dismiss-selected [data-role='confirm-confirm']")
+      |> render_click()
+
+      assert Notifications.get_question_request(question.id).status == "pending"
+      assert Notifications.get_permission_request(permission.id).status == "expired"
+    end
+
+    test "another user's request cannot be dismissed by forging its id", %{
+      conn: conn,
+      user: user
+    } do
+      other = user_fixture()
+      other_permission = create_permission(other.id)
+      create_permission(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      view |> element("button", "Select all") |> render_click()
+
+      assert Notifications.bulk_dismiss_permission_requests(
+               [other_permission.id],
+               user.id
+             ) == 0
+
+      assert Notifications.get_permission_request(other_permission.id).status == "pending"
+    end
+  end
 end
