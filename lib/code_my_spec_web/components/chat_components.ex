@@ -113,6 +113,7 @@ defmodule CodeMySpecWeb.ChatComponents do
     <div id={@id} class="space-y-1">
       <.tool_call
         :for={call <- @message.tool_calls}
+        id={"tool-call-#{@message.id}-#{call["id"]}"}
         name={call["name"]}
         args={call["arguments"] || %{}}
         call_id={call["id"]}
@@ -382,13 +383,17 @@ defmodule CodeMySpecWeb.ChatComponents do
         <span class="min-w-0 break-all font-mono font-medium">{@name}</span>
         <span :if={@summary} class="min-w-0 flex-1 truncate opacity-60">{@summary}</span>
         <span :if={@agent_role} class="shrink-0 text-xs uppercase opacity-40">{@agent_role}</span>
-        <%!-- Keyed on `call_id` rather than `@id` — the calls looped over in a
-              multi-call turn share one `@id` (or none at all; that clause
-              never passes one), while `call_id` is the tool_use block's own
-              id and is always unique. --%>
+        <%!-- Keyed on `@id` rather than `call_id` — call ids are sequential
+              per agent run (`call_0`, `call_1`, ...) and repeat across a long
+              conversation, so two different calls sharing one landed as two
+              `<time>` elements with the same id and LiveView refused to
+              patch the page ("Duplicate id found"). `@id` is unique per
+              rendered call: the loop site derives it from the message id
+              plus the call id, and the orphan-result clause already passes
+              its own turn id. --%>
         <.local_time
           :if={@inserted_at}
-          id={"tool-call-#{@call_id}-time"}
+          id={"#{@id}-time"}
           at={@inserted_at}
           class="shrink-0 text-xs opacity-40"
         />
