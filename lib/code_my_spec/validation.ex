@@ -1412,7 +1412,6 @@ defmodule CodeMySpec.Validation do
   # stories are held back by the latch, which is what stopped those 21 findings;
   # ready ones block whoever is stopping, wherever they are assigned.
 
-
   # Criteria first, then the file row, then the directory name.
   #
   # The last of those is a guess and was doing most of the work. Spex

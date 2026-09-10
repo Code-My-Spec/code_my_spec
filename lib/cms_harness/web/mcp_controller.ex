@@ -46,8 +46,8 @@ defmodule CmsHarness.Web.McpController do
 
   require Logger
 
-  alias CmsHarness.HarnessConfig
   alias CmsHarness.Config
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
   alias CmsHarness.Web.UpstreamError
