@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
   import CodeMySpecSpex.MainAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -47,7 +48,12 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
       end
 
       given_ "a story on this project", context do
-        story = Fixtures.story_fixture(context.scope, %{title: "The one the agent picks"})
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "The one the agent picks",
+            description: "A story for spex testing"
+          )
+
         {:ok, Map.put(context, :story, story)}
       end
 

@@ -808,34 +808,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Connect an OAuth provider for the scope's user.
-
-  ## Why this is a fixture rather than a UI action
-
-  Every other piece of spex setup is driven through the app's own surface.
-  This cannot be: connecting a provider means a redirect to Cloudflare or
-  GitHub, a human consent screen, and a callback carrying a code only they can
-  mint. The alternative to a fixture is not "drive it properly" — it is having
-  no spex for anything that touches a provider.
-
-  The token is deliberately a placeholder. Provider HTTP in spex is served
-  from a cassette, so what matters is that the credential *lookup* succeeds;
-  a real token here would be a secret in the repository for no benefit.
-  """
-  @spec connect_provider(Scope.t(), atom(), keyword()) :: {:ok, term()}
-  @doc """
-  An agent already running, with a process group the server has recorded.
-
-  The pair — group id and the boot it belongs to — is what `record_started/3`
-  writes, and they are written together because a group id without its boot
-  cannot be told from a recycled number. A fixture setting only one would
-  produce an agent nothing can judge, which the code refuses rather than a state
-  worth testing from.
-
-  Here rather than in a spex because a spex may not reference `CodeMySpec` — the
-  boundary says so, and the crossing belongs in the bridge.
-  """
-  @doc """
   Read one agent back, for criteria whose claim is about what the row now says.
 
   Here rather than in a spex for the same reason `running_agent/3` is: the
@@ -1007,6 +979,22 @@ defmodule CodeMySpecSpex.Fixtures do
     )
   end
 
+  @doc """
+  Connect an OAuth provider for the scope's user.
+
+  ## Why this is a fixture rather than a UI action
+
+  Every other piece of spex setup is driven through the app's own surface.
+  This cannot be: connecting a provider means a redirect to Cloudflare or
+  GitHub, a human consent screen, and a callback carrying a code only they can
+  mint. The alternative to a fixture is not "drive it properly" — it is having
+  no spex for anything that touches a provider.
+
+  The token is deliberately a placeholder. Provider HTTP in spex is served
+  from a cassette, so what matters is that the credential *lookup* succeeds;
+  a real token here would be a secret in the repository for no benefit.
+  """
+  @spec connect_provider(Scope.t(), atom(), keyword()) :: {:ok, term()}
   def connect_provider(scope, provider, opts \\ []) do
     IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
@@ -1326,25 +1314,6 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  @doc """
-
-  The proxy that produces this lives in `cms_harness` and runs on the sprite,
-  so a spec here cannot dispatch to it — and should not want to. What the
-  server owns is what it does with a turn once it arrives, which is exactly
-  what arrives on this channel. Same reasoning as `deliver_manifest/2`.
-  """
-  @doc """
-  An agent's turn ending, as it arrives on the channel.
-
-  The same `agent_turn_event` push `CmsHarness.Agents.Engine` sends from
-  `settle/2` when a turn is over. A spec cannot run a real turn — that needs a
-  provider and a model — and what the server owns is what it does when one ends,
-  which is exactly what arrives here.
-
-  Same reasoning and same shape as `record_turn/4` above: the proxy that
-  produces the push lives in `cms_harness`, so a spec drives the channel's own
-  entry rather than a second version of it.
-  """
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc "The open task an agent holds, wherever it lives. See `Sessions.open_task_for_agent/2`."
   defdelegate open_task_for_agent(scope, agent_id), to: CodeMySpec.Sessions
@@ -1378,6 +1347,18 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc """
+  An agent's turn ending, as it arrives on the channel.
+
+  The same `agent_turn_event` push `CmsHarness.Agents.Engine` sends from
+  `settle/2` when a turn is over. A spec cannot run a real turn — that needs a
+  provider and a model — and what the server owns is what it does when one ends,
+  which is exactly what arrives here.
+
+  Same reasoning and same shape as `record_turn/4` below: the proxy that
+  produces the push lives in `cms_harness`, so a spec drives the channel's own
+  entry rather than a second version of it.
+  """
   def end_turn(scope, agent_id, opts \\ [])
 
   def end_turn(%Scope{} = scope, agent_id, []) do
@@ -1411,6 +1392,12 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok = CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, opts)
   end
 
+  @doc """
+  The proxy that produces this lives in `cms_harness` and runs on the sprite,
+  so a spec here cannot dispatch to it — and should not want to. What the
+  server owns is what it does with a turn once it arrives, which is exactly
+  what arrives on this channel. Same reasoning as `deliver_manifest/2`.
+  """
   def record_turn(%Scope{} = scope, request, response, opts \\ []) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
@@ -2337,6 +2324,31 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate dumps_prefix(), to: CodeMySpec.Provisioning.Storage
 
   @doc """
+  Seals a story's Three Amigos session, the way the gate does.
+
+  Here rather than called directly because `CodeMySpecSpex` may not name
+  `CodeMySpec.AgentTasks` — this bridge exists to hold exactly that kind of
+  reach-through, and three separate fixtures build three-amigos state and all
+  three need to seal.
+
+  Through `evaluate/2` rather than by writing the field: it seals only on a
+  passing check, so a fixture that set the flag directly could seal a story it
+  had left incomplete, and every downstream test would then be built on a state
+  the product cannot produce.
+  """
+  @spec seal_three_amigos(term(), term()) :: :ok
+  def seal_three_amigos(scope, story) do
+    {:ok, :valid} =
+      AgentTasks.ThreeAmigos.evaluate(scope, %{
+        entity_type: :story,
+        entity_id: to_string(story.id)
+      })
+
+    :ok
+  end
+
+  @spec install_workspace_runner(keyword(), keyword()) :: :ok
+  @doc """
   Swap the workspace runner for the fake one and start it.
 
   A spex cannot name `CodeMySpecTest.FakeWorkspaceRunner` — `CodeMySpecSpex`
@@ -2371,31 +2383,6 @@ defmodule CodeMySpecSpex.Fixtures do
   all three, because the Case registers `stop_owner` earlier and earlier means
   later on the way out.
   """
-  @doc """
-  Seals a story's Three Amigos session, the way the gate does.
-
-  Here rather than called directly because `CodeMySpecSpex` may not name
-  `CodeMySpec.AgentTasks` — this bridge exists to hold exactly that kind of
-  reach-through, and three separate fixtures build three-amigos state and all
-  three need to seal.
-
-  Through `evaluate/2` rather than by writing the field: it seals only on a
-  passing check, so a fixture that set the flag directly could seal a story it
-  had left incomplete, and every downstream test would then be built on a state
-  the product cannot produce.
-  """
-  @spec seal_three_amigos(term(), term()) :: :ok
-  def seal_three_amigos(scope, story) do
-    {:ok, :valid} =
-      AgentTasks.ThreeAmigos.evaluate(scope, %{
-        entity_type: :story,
-        entity_id: to_string(story.id)
-      })
-
-    :ok
-  end
-
-  @spec install_workspace_runner(keyword(), keyword()) :: :ok
   def install_workspace_runner(opts \\ [healthy?: true, serving: :serving], config \\ []) do
     Application.put_env(
       :code_my_spec,
@@ -2713,12 +2700,14 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   # -- Stories (QA spex fixture setup, Stories 726/727) --
-  @doc """
-  Creates a story directly through the Stories context for use in QA
-  spex setup. Returns the created story struct.
-  """
+  #
+  # Private: `qa_story_task_fixture/2`'s only caller. The public
+  # `story_fixture/2` this used to be was a plain wrapper around
+  # `Stories.create_story/2` with no MCP layer to it, so every spex that
+  # called it directly has moved to `CodeMySpecSpex.StoryHelpers.create_story/2`
+  # instead — the surface a story is actually supposed to be created through.
   @spec story_fixture(Scope.t(), map()) :: Story.t()
-  def story_fixture(scope, attrs \\ %{}) do
+  defp story_fixture(scope, attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
         title: "QA Story #{System.unique_integer([:positive])}",
@@ -3446,20 +3435,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Stamp completed analysis runs at the CURRENT input fingerprints.
-
-  `tests_passing` / `spex_passing` require a fresh completed run in the
-  analysis ledger (v1.5.36) — zero persisted problems no longer reads as
-  "passing" on a project whose suites never ran. Satisfaction fixtures call
-  this AFTER the last file write; any later relevant file change makes the
-  stamp stale again (by design).
-
-  Syncs first: fingerprints hash the Files table, and fixture-written files
-  the stop hook hasn't synced yet would otherwise shift the fingerprint at
-  stop time — the stamp would read stale and real analyzers would run
-  against the synthetic project.
-  """
-  @doc """
   Record that `agent_id` wrote `path`.
 
   What `FileEdits.track_agent_edit/2` records in production when an agent calls
@@ -3488,6 +3463,20 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc """
+  Stamp completed analysis runs at the CURRENT input fingerprints.
+
+  `tests_passing` / `spex_passing` require a fresh completed run in the
+  analysis ledger (v1.5.36) — zero persisted problems no longer reads as
+  "passing" on a project whose suites never ran. Satisfaction fixtures call
+  this AFTER the last file write; any later relevant file change makes the
+  stamp stale again (by design).
+
+  Syncs first: fingerprints hash the Files table, and fixture-written files
+  the stop hook hasn't synced yet would otherwise shift the fingerprint at
+  stop time — the stamp would read stale and real analyzers would run
+  against the synthetic project.
+  """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
     {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
     CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)

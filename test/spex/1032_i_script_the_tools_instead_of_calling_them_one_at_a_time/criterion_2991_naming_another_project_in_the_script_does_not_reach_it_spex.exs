@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2991Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -30,13 +31,19 @@ defmodule CodeMySpecSpex.Story1032.Criterion2991Spex do
         # made-up id would prove "no such story", which is a weaker claim than
         # the criterion makes.
         other = Fixtures.other_project_scope(context.scope, "somebody-elses-project")
-        story = Fixtures.story_fixture(other, %{title: "Not yours to read"})
+
+        story =
+          StoryHelpers.create_story(other,
+            title: "Not yours to read",
+            description: "A story for spex testing"
+          )
 
         {:ok, Map.put(context, :other_story, story)}
       end
 
       when_ "the script asks for the other project's story by id", context do
-        script = ~s[local s, err = get_story({ story_id = "#{context.other_story.id}" })\nif s == nil then return "refused" end\nreturn s.title]
+        script =
+          ~s[local s, err = get_story({ story_id = "#{context.other_story.id}" })\nif s == nil then return "refused" end\nreturn s.title]
 
         {:reply, response, _frame} = RunScript.execute(%{script: script}, context.frame)
 

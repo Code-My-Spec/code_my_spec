@@ -49,16 +49,18 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
             name: "Story841 Rides To Uat"
           )
 
+        # Released for development, which is the pace gate: a parked story
+        # produces no requirement nodes at all, so the graph came back 0/0
+        # and the question "what is next after QA" had nowhere to land. A
+        # story that has cleared QA was necessarily released — `ready_for_dev`
+        # defaults to true on `create_story/2`.
         story =
-          CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{
+          CodeMySpecSpex.StoryHelpers.create_and_link(
+            context.scope,
+            component.module_name,
             title: "Story 841 rides to UAT",
-            component_id: component.id,
-            # Released for development, which is the pace gate: a parked story
-            # produces no requirement nodes at all, so the graph came back
-            # 0/0 and the question "what is next after QA" had nowhere to
-            # land. A story that has cleared QA was necessarily released.
-            ready_for_dev: true
-          })
+            description: "A story for spex testing"
+          )
 
         CodeMySpecSpex.Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
