@@ -550,17 +550,45 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
-  Is this agent waiting on an answer?
+  Is this agent waiting on a human before it should be bothered?
 
   Asked on every stop decision, which is why the index is on
   `(agent_id, status)` rather than on `agent_id` alone.
+
+  Two tables, one question. `ask_user_question` writes a `QuestionRequest`;
+  `tap_out`, called by an agent we run, writes a `PermissionRequest` with the
+  same `agent_id` (`McpServers.Tasks.Tools.TapOut.request_agent_tap_out/2`) —
+  `TapOut.request/2`'s session-keyed `session.state["pending_tap_out"]` is a
+  different mechanism entirely, for a Claude Code session rather than an
+  agent, and `Hooks.Stop` checks that one directly.
+
+  This started covering only `QuestionRequest`, and `StopDecision.wake/2` had
+  no check of either at all — `wake_project_roles/2` fans out to every
+  continuous, running agent on any graph change project-wide, with nothing
+  asking whether the agent it is about to wake asked to stop. An agent with a
+  tap-out pending got "Work of your kind is available" every time anything
+  else in the project changed, at whatever cadence that happens on a shared
+  project several worktrees are editing at once — sometimes under a minute
+  apart — and had to spend a turn saying "still waiting" each time. Both
+  decision points call this now, so a widened definition here reaches both
+  without either drifting from the other.
   """
   @spec awaiting_answer?(Ecto.UUID.t() | nil) :: boolean()
   def awaiting_answer?(nil), do: false
 
   def awaiting_answer?(agent_id) when is_binary(agent_id) do
+    pending_question?(agent_id) or pending_permission?(agent_id)
+  end
+
+  defp pending_question?(agent_id) do
     QuestionRequest
     |> where([q], q.agent_id == ^agent_id and q.status == "pending")
+    |> Repo.exists?()
+  end
+
+  defp pending_permission?(agent_id) do
+    PermissionRequest
+    |> where([p], p.agent_id == ^agent_id and p.status == "pending")
     |> Repo.exists?()
   end
 

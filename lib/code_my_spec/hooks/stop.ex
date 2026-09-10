@@ -29,6 +29,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
+  alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
@@ -277,6 +278,17 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp do_decide(scope, session_id, session, active_task, validation_opts, req_id) do
     cond do
+      # An agent that asked to stop is allowed to stop. `session.continuous`
+      # stays true until the request is approved — see `TapOut.pending?/1` —
+      # so without this every other branch below still reads "keep going" and
+      # `maybe_continue_with_next_task/3` blocks the stop with more work on
+      # every single hook while the decision is outstanding. Checked first,
+      # same as `StopDecision.decide_with_key/3`'s equivalent for an agent we
+      # run: a blocked or busy tree is still no reason to hammer a session
+      # that cannot act on anything until it hears back.
+      TapOut.pending?(session) ->
+        allow(req_id, "Tap-out request pending")
+
       has_active_subagent_task?(scope, session) ->
         allow(req_id, "Active subagent task")
 

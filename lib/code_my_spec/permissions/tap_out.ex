@@ -115,7 +115,9 @@ defmodule CodeMySpec.Permissions.TapOut do
 
   defp maybe_start_waiter(scope, session_id, request_id) do
     case TapOutWaiter.start(scope, session_id, request_id) do
-      {:ok, _pid} -> :ok
+      {:ok, _pid} ->
+        :ok
+
       other ->
         Logger.warning("[TapOut] failed to start waiter for #{request_id}: #{inspect(other)}")
         :ok
@@ -175,6 +177,23 @@ defmodule CodeMySpec.Permissions.TapOut do
     updated_pending = Map.put(pending, "status", "rejected")
     new_state = Map.put(session.state || %{}, "pending_tap_out", updated_pending)
     %{state: new_state}
+  end
+
+  @doc """
+  Does this session have a tap-out request still waiting on a human?
+
+  `Hooks.Stop`'s own guard: `session.continuous` stays `true` until an
+  `:approve` clears it (`decision_attrs/3` above), so a session that tapped
+  out and was rejected — or simply has not heard back yet — still reads as
+  "continuous, keep going" to every other check in `do_decide/6`. Without
+  this, the stop hook's own continuous-mode loop repeats
+  `maybe_continue_with_next_task/3`'s block on every stop while a decision
+  is pending, which is the session-keyed shape of the exact bug
+  `Notifications.awaiting_answer?/1` exists to prevent for an agent we run.
+  """
+  @spec pending?(Session.t()) :: boolean()
+  def pending?(%Session{} = session) do
+    match?(%{"status" => "pending"}, get_in(session.state || %{}, ["pending_tap_out"]))
   end
 
   @doc "Returns the PubSub topic clients subscribe to for tap-out events."

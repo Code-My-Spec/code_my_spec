@@ -131,9 +131,35 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   Not a decision about whether to keep going — that is `deliver/2`, at the end
   of a turn. This is the nudge that gets an idle agent to take one.
+
+  ## The same "asked and is allowed to stop" rule `deliver/2` has
+
+  `wake_project_roles/2` calls this for every continuous, running agent on
+  any graph change project-wide — not this agent's own turn ending, somebody
+  else's, anywhere in the project. An agent with a question or a tap-out
+  request open has nothing to do about that until it hears back, the same as
+  `decide_with_key/3`'s reasoning, and had no such check here at all: it was
+  told "work of your kind is available" on every unrelated change while
+  waiting, sometimes under a minute apart on a project several worktrees
+  edit at once, and had to spend a turn saying so each time.
   """
   @spec wake(Scope.t(), Agent.t()) :: :ok
   def wake(%Scope{} = scope, %Agent{} = agent) do
+    if Notifications.awaiting_answer?(agent.id) do
+      :ok
+    else
+      do_wake(scope, agent)
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[StopDecision] could not wake agent #{agent.id}: " <> Exception.message(error)
+      )
+
+      :ok
+  end
+
+  defp do_wake(scope, agent) do
     case Validation.Menu.render(scope, agent.continuous == true, agent.role, agent) do
       "" ->
         :ok
@@ -147,13 +173,6 @@ defmodule CodeMySpec.Agents.StopDecision do
 
         send_to(scope, agent, "Work of your kind is available." <> menu)
     end
-  rescue
-    error ->
-      Logger.warning(
-        "[StopDecision] could not wake agent #{agent.id}: " <> Exception.message(error)
-      )
-
-      :ok
   end
 
   @doc """

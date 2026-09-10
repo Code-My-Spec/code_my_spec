@@ -144,4 +144,27 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
     assert message =~ "bash"
     assert message =~ "declined"
   end
+
+  # `awaiting_answer?/1` started covering only `QuestionRequest`. Tap-out for an
+  # agent we run writes a `PermissionRequest` instead — a separate table with the
+  # same `agent_id` — so a pending tap-out was invisible to it, and every
+  # decision point built on top of that guard (`StopDecision.decide_with_key/3`,
+  # `StopDecision.wake/2`) hammered an agent on exactly the request this file is
+  # about.
+  describe "while the request is outstanding" do
+    test "the agent is reported as waiting", ctx do
+      refute Notifications.awaiting_answer?(ctx.agent.id)
+
+      ask_to_leave(ctx.scope, ctx.agent)
+
+      assert Notifications.awaiting_answer?(ctx.agent.id)
+    end
+
+    test "a decision clears it, approved or not", ctx do
+      request = ask_to_leave(ctx.scope, ctx.agent)
+      {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
+
+      refute Notifications.awaiting_answer?(ctx.agent.id)
+    end
+  end
 end
