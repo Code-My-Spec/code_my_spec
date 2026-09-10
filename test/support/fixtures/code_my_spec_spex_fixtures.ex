@@ -82,7 +82,6 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
-    Harnesses,
     IntegrationsFixtures,
     IssuesFixtures,
     Notifications,
@@ -104,7 +103,6 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
-  alias CmsHarness.Agents.Tools.RunBrowserScript
   alias CmsHarness.Agents.Tools.RunScript
   alias CmsHarness.Agents.Tools.ToolDocs
   alias CmsHarness.Project.ChannelClient
@@ -128,7 +126,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
   alias CodeMySpec.Mail.ResendClient
-  alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
@@ -157,32 +154,11 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
   alias CodeMySpecTest.FakeWorkspaceRunner
-  alias CodeMySpecTest.LocalPreviewRunner
-  alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.WorkspaceWatchers
-  alias Ecto.Changeset
   alias Phoenix.ConnTest
   alias Plug.Conn
 
   import Ecto.Query, only: [from: 2]
-
-  @doc """
-  Register a sending domain and publish everything except its DKIM record.
-
-  Produces the state criterion 8027 is about: a domain that is genuinely stuck
-  with a *specific* fault, rather than one where nothing resolves. Reading a
-  healthy account and asserting the unhappy path proves nothing, and inventing
-  the record set would encode what I think Resend asks for rather than what it
-  does.
-
-  Returns the resources it created so the caller can remove them — the Resend
-  domain and every DNS record published for it.
-  """
-  @spec publish_all_records_except_dkim(Scope.t(), String.t()) ::
-          {:ok, map()} | {:error, term()}
-  def publish_all_records_except_dkim(scope, sending_domain) do
-    publish_records(scope, sending_domain, :except_dkim)
-  end
 
   @doc """
   Register a sending domain at Resend and publish nothing.
@@ -256,24 +232,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
     record_content_bucket(scope, project)
 
-    project
-  end
-
-  # A project credential and nothing else.
-  #
-  # `publishable_project/3` also issues a deploy key, and reaching for it to get
-  # one drags in S3 credentials and a recorded content bucket — setup that can
-  # fail for reasons having nothing to do with the criterion under test, and a
-  # `given_` that claims the project is publishable when what is meant is that it
-  # holds a credential.
-  #
-  # The credential branch this serves is `DeployKeyOrOAuth`, which exists for an
-  # agent with no browser to run an OAuth flow in: the key resolves to the
-  # project's account owner so the agent can reach a person. Anything driving
-  # `/api/questions/*` as an unattended agent needs one.
-  @spec project_with_deploy_key(map(), map(), String.t()) :: map()
-  def project_with_deploy_key(scope, project, key) do
-    {:ok, project} = CodeMySpec.Projects.update_project(scope, project, %{deploy_key: key})
     project
   end
 
@@ -500,7 +458,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the verification window. That is also the real story — somebody tidying DNS
   who does not recognise `resend._domainkey`.
 
-  Returns the same shape as `publish_all_records_except_dkim/2`, with the DKIM
+  Returns the same shape as `publish_all_records/3`, with the DKIM
   still listed: it existed, so teardown should still look for it.
   """
   @spec publish_then_delete_dkim(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
@@ -713,7 +671,7 @@ defmodule CodeMySpecSpex.Fixtures do
     publish_records(scope, sending_domain, :all)
   end
 
-  @doc "Remove what `publish_all_records_except_dkim/2` created."
+  @doc "Remove what `publish_all_records/3` created."
   @spec remove_published_records(Scope.t(), map()) :: :ok
   def remove_published_records(scope, %{
         domain_id: domain_id,
@@ -1179,30 +1137,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  A second working copy on this project, last seen `hours` ago.
-
-  Story 892's only unreachable precondition. "This agent has been quiet for two
-  hours" is a fact about elapsed time, and no surface can produce it — a spec
-  cannot wait, and nothing an agent does makes itself *older*. Everything else in
-  that story is driven through the stop hook and read back through the components
-  view; this is the one arrangement that has to be set rather than caused.
-
-  Deliberately writes `last_seen_at` and nothing else. `updated_at` is
-  `timestamp without time zone` holding UTC, which is the trap the story records:
-  compared against `now()` it renders local, and every live agent reads as hours
-  idle. `last_seen_at` is `utc_datetime_usec`, so comparing it against
-  `DateTime.utc_now/0` is correct without a workaround — keying liveness on it is
-  what makes criterion 2382 hold by construction rather than by care.
-  """
-  @spec quiet_harness_fixture(Scope.t(), number(), keyword()) :: WorkingCopy.t()
-  def quiet_harness_fixture(%Scope{} = scope, hours, opts \\ []) do
-    label = Keyword.get(opts, :label, "a checkout nobody is running")
-    {:ok, harness} = WorkingCopies.issue(scope, nil, label: label)
-
-    go_quiet(harness, hours)
-  end
-
-  @doc """
   Make a story older, so "the oldest wins" is a fact the premise set.
 
   The tie-break spex separated two creations with `Process.sleep(10)` and hoped
@@ -1211,8 +1145,7 @@ defmodule CodeMySpecSpex.Fixtures do
   criterion is about then has nothing to break the tie with. It failed that way
   once in a sweep (48924084).
 
-  Setting the value removes the race rather than widening it — the same idiom
-  `age_files_of/2` already uses just below.
+  Setting the value removes the race rather than widening it.
   """
   @spec age_story(Scope.t(), term(), number()) :: :ok
   def age_story(%Scope{} = _scope, story_id, seconds) do
@@ -1221,78 +1154,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
     from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
     |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
-
-    :ok
-  end
-
-  @doc """
-  Age a working copy's file rows without touching its agent.
-
-  The distinction criterion 2381 turns on. Rows update on scans, and scans happen
-  on hooks rather than on activity — this working copy went unswept from 10:13 to
-  13:44 while being actively worked, because the harness was busy holding others.
-  So old rows are ordinary for a live agent, and a rule keyed on them reclaims
-  someone mid-session.
-
-  Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
-  the two clocks distinguishable in a spec.
-  """
-  @spec age_files_of(Scope.t(), number()) :: :ok
-  def age_files_of(%Scope{active_project_id: project_id} = scope, hours) do
-    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
-    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
-
-    from(f in CodeMySpec.Files.File,
-      where: f.project_id == ^project_id and f.working_copy_id == ^scope.active_working_copy_id
-    )
-    |> Repo.update_all(set: [updated_at: naive, inserted_at: naive])
-
-    :ok
-  end
-
-  @doc """
-  Age an existing harness so it reads as quiet.
-
-  The arrangement most of story 892 actually wants. A component is projected by
-  the files-view sync, from file rows keyed to whoever synced — so the honest way
-  to get "a component whose only files belong to a quiet checkout" is to let one
-  agent do the ordinary thing and *then* have it go quiet, rather than to
-  construct the end state directly.
-
-  Constructing it directly does not work anyway: a channel observation carries no
-  file content, and component extraction reads the spec to find its module name.
-  Arranging through the real path avoids inventing a second one.
-  """
-  @spec go_quiet(WorkingCopy.t() | String.t(), number()) :: WorkingCopy.t()
-  def go_quiet(%WorkingCopy{} = harness, hours) do
-    last_seen = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
-
-    harness
-    |> Changeset.change(last_seen_at: last_seen)
-    |> Repo.update!()
-  end
-
-  def go_quiet(working_copy_id, hours) when is_binary(working_copy_id) do
-    WorkingCopy
-    |> Repo.get!(working_copy_id)
-    |> go_quiet(hours)
-  end
-
-  @doc """
-  Every agent on this project goes quiet.
-
-  What the story actually describes — a project whose working copies have all
-  been abandoned — and the only arrangement that does not depend on knowing which
-  harness a given sync happened to write under. The files-view sync does not
-  always write under `scope.active_working_copy_id`, so ageing that row by name aged a
-  harness that owned nothing and reclaimed nothing.
-  """
-  @spec all_agents_go_quiet(Scope.t(), number()) :: :ok
-  def all_agents_go_quiet(%Scope{active_project_id: project_id}, hours) do
-    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
-
-    from(h in WorkingCopy, where: h.project_id == ^project_id)
-    |> Repo.update_all(set: [last_seen_at: at])
 
     :ok
   end
@@ -1892,23 +1753,6 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
   end
 
-  @doc """
-  The full computed requirement, not just whether it is satisfied.
-
-  Story 988 is about the *shape* of a verdict — whether an agent can tell "not
-  yet known" from "not done" — so a boolean is exactly the thing that cannot be
-  asserted on.
-  """
-  def requirement(%Scope{} = scope, name, entity_type, entity_id) do
-    scope
-    |> CodeMySpec.Requirements.compute_all()
-    |> Enum.find(fn r ->
-      to_string(r.name) == name and
-        to_string(r.entity_type) == to_string(entity_type) and
-        to_string(r.entity_id) == to_string(entity_id)
-    end)
-  end
-
   @doc "Record a problem against a project, as an analyzer's reconciler would."
   def record_problem(%Scope{} = scope, source, attrs \\ %{}) do
     CodeMySpec.Problems.create_problems(scope, [
@@ -2140,14 +1984,6 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Run a script as this agent would, through the tool it carries."
   def run_script(script, context),
     do: RunScript.execute(%{"script" => script}, context)
-
-  @doc "The same against the machine's own sandbox, which has its own deadline."
-  def run_browser_script(script, context, input \\ %{}),
-    do:
-      RunBrowserScript.execute(
-        Map.put(input, "script", script),
-        context
-      )
 
   @doc "Ask what it may call, through the tool it carries."
   def tool_docs(input, context),
@@ -2679,46 +2515,6 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc """
-  An actual HTTP server standing in for the container's app, and a running
-  workspace row for `project_id` pointing at it. Returns the preview hostname.
-
-  The other workspace fixtures fake the *runner* — whether a container is up.
-  This fakes the app instead, because the proxy criteria are not about
-  container lifecycle: they are about whether a request that arrives at
-  `preview-{id}.codemyspec.com` comes back carrying what the app actually
-  sent. Nothing short of a real socket answers that. It has caught real bugs
-  already — a proxy that relays a stale `content-length` produces a response
-  no assertion on the body would notice.
-
-  The app echoes what a proxy is most likely to mangle: it sets a cookie,
-  reads one back, and reports the `host` header it was given.
-  """
-  @spec preview_app(Scope.t(), String.t(), keyword()) :: String.t()
-  def preview_app(%Scope{} = _scope, project_id, opts \\ []) do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: LocalPreviewRunner)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-    end)
-
-    body = Keyword.get(opts, :body, "<h1>Widget Tracker</h1>")
-    {:ok, listener} = Bandit.start_link(plug: {PreviewApp, body}, port: 0, startup_log: false)
-    {:ok, {_addr, port}} = ThousandIsland.listener_info(listener)
-
-    ExUnit.Callbacks.on_exit(fn -> Process.exit(listener, :normal) end)
-
-    {:ok, workspace} =
-      WorkspacesRepository.upsert_booting(
-        WorkspacesRepository.get_by_project(project_id),
-        %{project_id: project_id, container_name: "preview-app-#{port}", port: port}
-      )
-
-    {:ok, _running} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
-
-    PreviewAddress.host(project_id)
-  end
-
   @doc "The address a project's preview is served at, so a spex need not know the rule."
   @spec preview_host(String.t()) :: String.t()
   defdelegate preview_host(project_id), to: PreviewAddress, as: :host
@@ -2894,17 +2690,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Captures log output while the primary Logger level is temporarily
-  lowered to `:info`, restoring it afterward. Lets specs assert on
-  `:info`-level trace lines that the test runtime's `:warning` level would
-  otherwise filter before they reach any handler. (Specs themselves can't
-  juggle the Logger level — that's `try/after` plumbing that belongs in
-  the bridge.)
-  """
-  @spec capture_log_at_info((-> any())) :: String.t()
-  def capture_log_at_info(fun) when is_function(fun, 0), do: capture_log_at(:info, fun)
-
-  @doc """
   Capture logs with the Logger level lowered to `level` for the duration.
 
   `Logger.configure/1` as well as the capture, because Logger drops anything
@@ -2972,19 +2757,6 @@ defmodule CodeMySpecSpex.Fixtures do
   full agent run.
   """
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
-
-  @doc """
-  Touch a session through the real API, so subscribers hear about it.
-
-  `session_fixture/2` back-dates `inserted_at` with a raw update *after*
-  `create_session` has already broadcast, and a view that hides sessions with
-  no activity yet (`inserted_at == updated_at`) recomputes against the
-  pre-backdate row and drops it. Nothing broadcasts again, so the session never
-  appears. This is the second event a working agent would produce anyway.
-  """
-  @spec touch_session(Scope.t(), Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def touch_session(%Scope{} = scope, session),
-    do: CodeMySpec.Sessions.update_session(scope, session, %{status: session.status})
 
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """
@@ -3148,17 +2920,6 @@ defmodule CodeMySpecSpex.Fixtures do
   def satisfy_init(%{active_project: project}) when not is_nil(project) do
     {:ok, _event} =
       CodeMySpec.Events.record("local_init_complete", %{project_id: project.id})
-
-    :ok
-  end
-
-  @doc """
-  Records a `local_project_setup_complete` event for the active project
-  so the per-project ladder's setup rung evaluates as "done."
-  """
-  def satisfy_project_setup(%{active_project: project}) when not is_nil(project) do
-    {:ok, _event} =
-      CodeMySpec.Events.record("local_project_setup_complete", %{project_id: project.id})
 
     :ok
   end
