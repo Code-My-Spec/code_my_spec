@@ -67,14 +67,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # partial unique index rather than by whoever remembers to clear the others.
     field :main, :boolean, default: false
 
-    # What this copy's machine can do beyond the server's own tools — a browser,
-    # today. Reported on join, and read when an agent is started here so its
-    # tool list is computed from what its machine actually has rather than from
-    # what a role says it should.
-    #
-    # `nil` is a harness too old to report; `[]` is a machine that reported and
-    # has no browser. Both give an agent no browser tools and only the second is
-    # actionable.
     # Whether this checkout's work is on main, main's work is on it, and its
     # tree is clean — measured by the machine that holds the disk and reported
     # on every sync, because the server has no `git` to run and a graph computed
@@ -87,16 +79,27 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :tree_dirty, :boolean
     field :git_state_at, :utc_datetime_usec
 
+    # Whether the application this checkout runs is answering, measured against
+    # `preview_url` — the address QA browses, not a local port only this machine
+    # knows.
+    #
+    # `serving` | `erroring` | `down`, and three rather than two because a 500 is
+    # an application that came up and is failing, which is a QA finding, while a
+    # refused connection is one that is not there, which is not. `nil` is never
+    # checked, which is a third thing again.
+    field :preview_status, :string
+    field :preview_checked_at, :utc_datetime_usec
+
+    # What this copy's machine can do beyond the server's own tools — a browser,
+    # today. Reported on join, and read when an agent is started here so its
+    # tool list is computed from what its machine actually has rather than from
+    # what a role says it should.
+    #
+    # `nil` is a harness too old to report; `[]` is a machine that reported and
+    # has no browser. Both give an agent no browser tools and only the second is
+    # actionable.
     field :machine_tools, {:array, :string}
 
-    # What each of those tools takes, keyed by name: a description and a JSON
-    # Schema, straight from the machine's own `tools/list`.
-    #
-    # Separate from the list beside it because the names are the *scoping* list
-    # — which tools an agent may call is read off them — and scoping must not
-    # depend on documentation being present. `nil` is a harness too old to send
-    # them; `tool_docs` then falls back to naming the tool and saying where it
-    # is called from, as it did for every machine before this column.
     field :machine_tool_docs, :map
 
     # Why the list beside this is empty, because `[]` covered two machines: one
@@ -173,7 +176,9 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :commits_ahead_of_main,
       :commits_behind_main,
       :tree_dirty,
-      :git_state_at
+      :git_state_at,
+      :preview_status,
+      :preview_checked_at
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)

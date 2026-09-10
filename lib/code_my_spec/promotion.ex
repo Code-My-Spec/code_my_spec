@@ -123,17 +123,56 @@ defmodule CodeMySpec.Promotion do
   # Working directly on the running copy. There is no branch to merge and
   # nothing an agent could do to a gate that asked for one — John: "it is
   # eminently possible that someone would be just doing the work on Maine."
-  defp verdict(%WorkingCopy{id: id}, %Scope{active_working_copy_id: id}),
-    do: {true, %{status: "Working on the running copy"}}
+  #
+  # Still has to be serving. The code is here by definition; whether anything
+  # is answering is a separate question and QA needs both.
+  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}),
+    do: serving(running, %{status: "Working on the running copy"})
 
   defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}),
     do: {true, %{status: "No checkout on this scope"}}
 
-  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: here}) do
+  defp verdict(%WorkingCopy{} = running, %Scope{active_working_copy_id: here}) do
     case WorkingCopies.fetch(here) do
-      {:ok, copy} -> in_sync(copy)
+      {:ok, copy} -> copy |> in_sync() |> and_serving(running)
       _ -> {true, %{status: "This checkout is not on file"}}
     end
+  end
+
+  # Both halves, and the order matters: a checkout that is behind is told to
+  # promote, and promoting restarts — so naming the sync problem first gives an
+  # agent one action that fixes both.
+  defp and_serving({false, _details} = behind, _running), do: behind
+  defp and_serving({true, details}, running), do: serving(running, details)
+
+  # Whether the application QA browses is answering.
+  #
+  # `code_on_running_copy` proved the code was on the running copy and stopped
+  # there, and the two came apart within a day: Broken Oaths' preview was down,
+  # this gate was satisfied, and a QA agent stood in front of a connection
+  # refused with the graph reporting the story ready to test. It then asked to
+  # restart the app itself — which would have started it on code that did not
+  # contain the work it was there to verify.
+  #
+  # Never checked passes. A copy with no preview address has nothing to be up,
+  # and a harness that has not reported yet is not evidence of anything; holding
+  # every story on either would be a gate no agent can clear.
+  defp serving(%WorkingCopy{preview_status: nil}, details), do: {true, details}
+  defp serving(%WorkingCopy{preview_status: "serving"}, details), do: {true, details}
+
+  # A 500 is the application answering. That is a QA finding rather than a
+  # reason to keep QA away from it — the whole point of testing is to meet it.
+  defp serving(%WorkingCopy{preview_status: "erroring"}, details), do: {true, details}
+
+  defp serving(%WorkingCopy{preview_status: "down"} = running, _details) do
+    {false,
+     %{
+       reason:
+         "the application is not answering at #{running.preview_url || "its preview address"}, " <>
+           "so there is nothing for QA to test. `promote` restarts it — and if this " <>
+           "checkout is also behind, brings the work across in the same act.",
+       preview_status: "down"
+     }}
   end
 
   # Never reported is not the same as in sync, and saying so is the difference
@@ -198,8 +237,33 @@ defmodule CodeMySpec.Promotion do
   """
   @spec promote(Scope.t()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope) do
-    with {:ok, running} <- running_copy(scope),
-         {:ok, from} <- promoting_copy(scope, running),
+    with {:ok, running} <- running_copy(scope) do
+      promote_into(scope, running)
+    end
+  end
+
+  # Working on the running copy. There is no branch to merge — the work is
+  # already where a promotion would put it — so a promotion here is the other
+  # half on its own: start what serves it.
+  #
+  # This used to refuse, and the refusal became unreachable-by-design the moment
+  # the gate started requiring the application to answer: an agent on the
+  # running copy with a dead app was told to promote, and promote told it there
+  # was nothing to merge. Neither statement was wrong and there was no way out
+  # of the pair.
+  #
+  # No gate and no sweep, because a restart carries no code. `gate/1` exists to
+  # stop a merge putting failing work in front of QA; nothing crosses here, so
+  # there is nothing to certify and no reason to spend minutes of analyzer sweep
+  # before a dead application comes back.
+  defp promote_into(%Scope{active_working_copy_id: id} = scope, %WorkingCopy{id: id} = running) do
+    with {:ok, serving} <- restart(scope, running) do
+      {:ok, %{restarted: running.root, serving: serving}}
+    end
+  end
+
+  defp promote_into(%Scope{} = scope, running) do
+    with {:ok, from} <- promoting_copy(scope, running),
          :ok <- refuse_uncommitted(scope, from),
          {:ok, swept} <- gate(scope),
          {:ok, branch} <- current_branch(scope, from),
@@ -293,15 +357,6 @@ defmodule CodeMySpec.Promotion do
                "target. Designate one on the working copies page."
          }}
     end
-  end
-
-  defp promoting_copy(%Scope{active_working_copy_id: id}, %WorkingCopy{id: id}) do
-    {:error,
-     %{
-       reason:
-         "this is the running copy — its work is already where a promotion " <>
-           "would put it, and there is nothing to merge."
-     }}
   end
 
   defp promoting_copy(%Scope{active_working_copy_id: id}, _running) when is_binary(id) do
@@ -530,11 +585,33 @@ defmodule CodeMySpec.Promotion do
   # rules, and when it is wrong the application serves a build nobody can
   # identify while every signal says the promotion completed. Restarting an app
   # that did not need it costs seconds.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root}) do
+  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running) do
     scope.environment
     |> Environments.exec_file_exists?(Path.join(root, "justfile"))
     |> run_restart(scope, root)
+    |> record_serving(running)
   end
+
+  # The restart is a measurement too, and not writing it down is a livelock.
+  #
+  # The gate reads `preview_status`, and the only writer is the harness on its
+  # next sync. So an agent refused because its application was down promoted,
+  # the application came back, and the gate — reading the `down` it had refused
+  # on a moment earlier — told it to promote again. The restart would succeed
+  # every time and the story would never move.
+  #
+  # A claim rather than an observation, and deliberately: `just restart` waits
+  # for the app on the machine, which is not the tunnel QA browses. The harness
+  # replaces this with a real measurement within a sync either way, and the two
+  # errors are not equal — over-claiming costs one QA attempt that meets a real
+  # failure and reports it, under-claiming costs an agent that cannot get out of
+  # the gate at all.
+  defp record_serving({:ok, _} = restarted, %WorkingCopy{} = running) do
+    {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
+    restarted
+  end
+
+  defp record_serving(error, _running), do: error
 
   defp run_restart(false, _scope, root) do
     {:error,

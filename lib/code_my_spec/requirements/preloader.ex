@@ -360,6 +360,36 @@ defmodule CodeMySpec.Requirements.Preloader do
     @delegated_tables
     |> Map.new(fn table -> {table, stamps(table, project_id)} end)
     |> Map.put("qa_attempts", qa_attempt_stamps(project_id))
+    |> Map.put("working_copies", working_copy_gate_inputs(project_id))
+  end
+
+  # The columns `Promotion.running_copy_check` reads, rather than the rows.
+  #
+  # `stamps/2` would be wrong here in both directions. Too coarse, because
+  # `last_seen_at` is written on every heartbeat from every checkout, so the
+  # project's graph cache would be invalid within seconds of being built and a
+  # 4.4-second recompute would run on a loop. And too silent to be caught: this
+  # table was not covered at all, so a harness could report that the work is now
+  # on main and the cached graph would keep refusing the story with the reason
+  # it computed before the merge. The gate answers about state that changes
+  # without a file changing, which is exactly the case a files digest cannot see.
+  #
+  # `git_state_at` is hashed as nil-or-not and `preview_checked_at` not at all,
+  # because both are stamped with the current time on every sync whether or not
+  # anything they describe moved. Hashing either value would invalidate the
+  # project's graph on every heartbeat — the coarseness this exists to avoid,
+  # arriving through the back door. The checker reads them the same way: it asks
+  # whether a report has ever arrived, never when.
+  defp working_copy_gate_inputs(project_id) do
+    Repo.all(
+      from(c in "working_copies",
+        where: c.project_id == type(^project_id, :binary_id),
+        select:
+          {c.id, c.main, c.commits_ahead_of_main, c.commits_behind_main, c.tree_dirty,
+           is_nil(c.git_state_at), c.preview_status},
+        order_by: c.id
+      )
+    )
   end
 
   # `qa_attempts` hangs off stories, not the project, so it cannot use `stamps/2`.

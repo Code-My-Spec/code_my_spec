@@ -439,6 +439,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # directory to run `git` in for a harness-only project.
   # `Project.changeset/3`'s `validate_format` keeps a malformed SHA from ever
   # landing.
+  # Whether the application is answering, from the machine that can reach it.
+  def handle_in("preview_status", %{"status" => status}, socket)
+      when status in ~w(serving erroring down) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} ->
+        WorkingCopies.record_preview_status(copy, status)
+        {:reply, :ok, socket}
+
+      _ ->
+        {:reply, :ok, socket}
+    end
+  end
+
   # The three facts `code_on_running_copy` gates on, from the machine that can
   # measure them. Recorded on the working copy rather than the project: a
   # project has many checkouts and each is in sync or not on its own.

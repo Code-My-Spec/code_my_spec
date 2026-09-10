@@ -432,6 +432,24 @@ defmodule CodeMySpec.WorkingCopies do
   def record_browser_status(_harness, _status, _error), do: :ok
 
   @doc """
+  Record whether the application this checkout runs is answering.
+
+  Reported by the machine that holds the disk, on every sync, beside the git
+  state — and for the same reason: the server has no way to reach a checkout's
+  own preview and a graph computed inside the channel process cannot ask.
+
+  Three states rather than a boolean. A 500 is an application that came up and
+  is failing, which is a QA finding; a refused connection is one that is not
+  there, which is not. Told apart here so the gate can say which.
+  """
+  @spec record_preview_status(WorkingCopy.t(), String.t()) ::
+          {:ok, WorkingCopy.t()} | {:error, term()}
+  def record_preview_status(%WorkingCopy{} = harness, status)
+      when status in ~w(serving erroring down) do
+    save(harness, %{preview_status: status, preview_checked_at: DateTime.utc_now()})
+  end
+
+  @doc """
   Record whether this checkout is in sync with main and whether its tree is
   clean.
 

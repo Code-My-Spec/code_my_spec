@@ -37,6 +37,24 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
       "Use promote_sync, which waits and answers."
   end
 
+  # A promotion from the running copy itself, which is a restart and nothing
+  # else. Worded as what happened rather than as a promotion with an empty
+  # merge, because an agent reading "Promoted  to the running dev copy" would
+  # reasonably conclude something had crossed.
+  defp promoted(%{restarted: root, serving: serving}) do
+    """
+    Restarted the application on the running dev copy.
+
+    Running from: #{root}
+    #{serving_line(serving)}
+
+    You are working on the running copy, so nothing had to be merged — the work
+    was already where a promotion would put it. What was missing was a running
+    application, and it is answering now.
+    """
+    |> String.trim()
+  end
+
   defp promoted(%{merged: branch, into: root, serving: serving} = report) do
     """
     Promoted #{branch} to the running dev copy.

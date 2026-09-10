@@ -13,6 +13,7 @@ defmodule CmsHarness.Sync do
 
   require Logger
 
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
@@ -55,6 +56,7 @@ defmodule CmsHarness.Sync do
     report_app_name(env, project.root)
     report_head_commit(env, project.root)
     report_git_state(env, project.root)
+    report_preview_health(env, project.root)
 
     case Scanner.observe(env, read_model) do
       {:error, reason} ->
@@ -122,6 +124,55 @@ defmodule CmsHarness.Sync do
 
       nil ->
         :ok
+    end
+  end
+
+  # Whether the application this checkout runs is answering.
+  #
+  # Against `preview_url`, which is the address QA opens. A check against a
+  # local port would pass while the thing anyone actually browses is dead, and
+  # the port is known only to the machine running the app anyway — the URL is
+  # in this checkout's own `.cms_harness.json`.
+  #
+  # `/health` when the project has one. `health_route_status` records whether it
+  # does; where it does not, the root answers the same question less precisely,
+  # and asking for a path that is not there would read every app as erroring.
+  #
+  # Silent when no preview is recorded. A checkout with no preview address has
+  # nothing to be up, and reporting `down` for it would put every un-previewed
+  # copy behind a gate it cannot clear.
+  defp report_preview_health(env, root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->
+        ChannelClient.deliver_preview_status(root, preview_status(env, url))
+
+      _ ->
+        :ok
+    end
+  end
+
+  # `curl` through the environment rather than `Req` here: this module already
+  # reaches the outside world that way, and the harness must not care whether
+  # the address is a tunnel, a proxy or a port.
+  defp preview_status(env, url) do
+    case Environments.cmd(
+           env,
+           "curl",
+           ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url],
+           stderr_to_stdout: true
+         ) do
+      {code, 0} -> classify(String.trim(code))
+      _ -> "down"
+    end
+  end
+
+  defp classify("000"), do: "down"
+
+  defp classify(code) do
+    case Integer.parse(code) do
+      {status, _} when status >= 500 -> "erroring"
+      {status, _} when status > 0 -> "serving"
+      _ -> "down"
     end
   end
 

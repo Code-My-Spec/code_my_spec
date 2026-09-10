@@ -1234,6 +1234,21 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Record whether a checkout's application is answering, the way its harness
+  would.
+
+  `CmsHarness.Sync` measures this against the checkout's `preview_url` on the
+  machine that can reach it; a spec has no harness, so it records through the
+  same surface the channel handler calls.
+  """
+  @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
+  def record_preview_status(working_copy_id, status) do
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
+    {:ok, _} = CodeMySpec.WorkingCopies.record_preview_status(copy, status)
+    :ok
+  end
+
+  @doc """
   Record what a checkout's git state is, the way its harness would.
 
   `CmsHarness.Sync` measures this on the machine that holds the disk and

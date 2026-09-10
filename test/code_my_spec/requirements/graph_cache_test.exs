@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Requirements.GraphCacheTest do
   use ExUnit.Case, async: true
 
+  import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.BddRules
@@ -17,6 +18,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -286,6 +288,46 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
                "ready ones serves a graph saying the project has none"
     end
 
+    # `code_on_running_copy` asks `Promotion.running_copy_check/2`, which reads
+    # the project's working copies: whether this checkout's work is on main, and
+    # whether the running one is answering. No other input touches that table,
+    # and nothing in the tree changes when it moves — the harness measures it on
+    # the machine and reports it after a merge or a restart.
+    #
+    # The same shape as the deploy gap above, on a node shipped long after this
+    # block was written, and it failed in the direction that keeps an agent
+    # stuck rather than the one that lets work through: the gate refused a story
+    # for being behind, the merge landed, the harness said so, and the cached
+    # graph went on serving the refusal the agent had already cleared.
+    test "a checkout reporting its work is now on main moves it", %{scope: scope} do
+      copy = a_checkout(scope)
+
+      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 3, behind: 0, dirty: false})
+      behind = current_fingerprint(scope)
+
+      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 0, behind: 0, dirty: false})
+
+      refute current_fingerprint(scope) == behind,
+             "the merge landed and the checkout said so; a fingerprint blind to " <>
+               "that keeps serving the refusal the agent has already cleared"
+    end
+
+    # The other half of the same node. That the code is on the running copy says
+    # nothing about whether anything is serving it, and QA needs both — the two
+    # came apart within a day of the gate shipping.
+    test "the running application going down moves it", %{scope: scope} do
+      copy = a_checkout(scope)
+
+      {:ok, _} = WorkingCopies.record_preview_status(copy, "serving")
+      up = current_fingerprint(scope)
+
+      {:ok, _} = WorkingCopies.record_preview_status(copy, "down")
+
+      refute current_fingerprint(scope) == up,
+             "the application stopped answering; a fingerprint blind to that " <>
+               "sends QA to test a connection refused"
+    end
+
     # `architecture_designed` asks `ArchitectureChecker`, whose `orphans/1` reads
     # `Components.list_components_with_dependencies/1` — a component is not an
     # orphan if something depends on it, and no table carries that: it is the
@@ -378,6 +420,16 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       })
 
     story
+  end
+
+  defp a_checkout(scope) do
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil,
+        label: "a checkout",
+        device: device_fixture(scope)
+      )
+
+    copy
   end
 
   defp setup_project do

@@ -375,6 +375,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  @doc "Whether this checkout's application is answering, measured on every scan."
+  @spec deliver_preview_status(String.t(), String.t()) :: :ok
+  def deliver_preview_status(root, status) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:preview_status, status})
+      [] -> :ok
+    end
+  end
+
   @doc "This checkout's sync state with main, measured on every scan."
   @spec deliver_git_state(String.t(), map()) :: :ok
   def deliver_git_state(root, state) do
@@ -2076,6 +2085,25 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:git_state, _state}, socket), do: {:noreply, socket}
+
+  def handle_cast({:preview_status, status}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "preview_status",
+           %{"status" => status},
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send preview_status: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:preview_status, _status}, socket), do: {:noreply, socket}
 
   # --- Private ---
 
