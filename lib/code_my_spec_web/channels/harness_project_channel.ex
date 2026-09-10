@@ -50,7 +50,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.Files.Scanner
-  alias CodeMySpec.Hooks.AskUserQuestion
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
   alias CodeMySpec.Hooks.PreToolUse
@@ -1558,9 +1557,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp decide_hook("notification", scope, payload, _port),
     do: NotificationHook.handle(scope, payload)
-
-  defp decide_hook("ask-user-question", scope, payload, _port),
-    do: AskUserQuestion.handle(scope, payload)
 
   defp decide_hook(hook, _scope, _payload, _port), do: {:error, "unknown_hook: #{hook}"}
 

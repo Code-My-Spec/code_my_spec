@@ -86,7 +86,6 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.McpServers.Bootstrap.Tools.InitProject => :unreached,
     CodeMySpec.McpServers.Bootstrap.Tools.ListProjects => :unreached,
     CodeMySpec.Notifications.NotificationClient => :unreached,
-    CodeMySpec.Notifications.QuestionClient => :unreached,
     CodeMySpec.Permissions.TapOut => :unreached,
     CodeMySpec.Transcripts.Player => :unreached,
     CodeMySpec.Transcripts.Replayer => :unreached

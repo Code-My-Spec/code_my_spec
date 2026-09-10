@@ -42,27 +42,6 @@
             ]
           }
         ]
-      },
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/ask-user-question",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
-          }
-        ]
       }
     ],
     "PostToolUse": [

@@ -255,10 +255,6 @@ defmodule CodeMySpecWeb.Router do
     # everywhere else. Keeps the deploy key narrow — see SpriteTokenController.
     post "/sprite/token", SpriteTokenController, :create
 
-    post "/questions/ask", QuestionController, :ask
-    post "/questions/:id/answer", QuestionController, :answer
-    get "/questions/:id/status", QuestionController, :status
-
     # Where a harness is. The harness has an id and needs a directory; this is
     # the side that knows, and keeping it here is what lets the harness hold no
     # local record of working copies at all.
