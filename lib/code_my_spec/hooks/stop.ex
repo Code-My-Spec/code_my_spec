@@ -30,8 +30,8 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation

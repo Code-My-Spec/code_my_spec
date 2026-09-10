@@ -203,7 +203,7 @@ defmodule CodeMySpec.Requirements do
   end
 
   defp reason_of(%{details: details}) when is_map(details) do
-    case details[:reason] || details["reason"] do
+    case Map.get(Requirement.normalize_details(details), "reason") do
       reason when is_binary(reason) and reason != "" -> reason
       _ -> ""
     end
