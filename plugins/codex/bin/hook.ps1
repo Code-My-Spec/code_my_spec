@@ -34,7 +34,6 @@ $endpoint = switch ($event) {
   'Stop'          { '/api/hooks/stop' }
   'SubagentStart' { '/api/hooks/subagent-start' }
   'SubagentStop'  { '/api/hooks/subagent-stop' }
-  'PermissionRequest' { '/api/permissions/request' }
   default         { exit 0 }
 }
 

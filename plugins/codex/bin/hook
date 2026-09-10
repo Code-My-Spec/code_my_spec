@@ -27,7 +27,6 @@ case "$EVENT" in
   Stop)              ENDPOINT="/api/hooks/stop" ;;
   SubagentStart)     ENDPOINT="/api/hooks/subagent-start" ;;
   SubagentStop)      ENDPOINT="/api/hooks/subagent-stop" ;;
-  PermissionRequest) ENDPOINT="/api/permissions/request" ;;
   *)                 exit 0 ;;
 esac
 
