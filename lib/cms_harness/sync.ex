@@ -168,10 +168,37 @@ defmodule CmsHarness.Sync do
     end
   end
 
-  defp classify("000"), do: "down"
+  # Codes the edge answers with when the request never reached an application.
+  #
+  # Every preview address is a Cloudflare tunnel, so "nothing is running" does
+  # not arrive as a refused connection — it arrives as a 530 carrying Argo error
+  # 1033, "no origin connected". Measured on three live previews the day this
+  # was written: two checkouts with no app running returned 530, and the gate
+  # read them as `erroring` and let QA through to a Cloudflare error page.
+  #
+  # Which is the failure this whole path exists to prevent, surviving one layer
+  # down. `erroring` has to mean the application answered and failed, because
+  # that is the one QA should be sent to meet; an origin that is not there is
+  # `down` however the edge phrases it.
+  #
+  # 502 is here for the same reason and is worth stating: Phoenix answers its
+  # own failures with 500, so a 502 on this path is a proxy that could not reach
+  # anything, not an application.
+  @no_origin [502, 520, 521, 522, 523, 524, 525, 526, 527, 530]
 
-  defp classify(code) do
+  @doc """
+  What an HTTP status from a preview address says about the application.
+
+  Public because it is the whole of the judgement — the rest of this path just
+  carries the answer — and because it got the judgement wrong in a way nothing
+  else could have caught.
+  """
+  @spec classify(String.t()) :: String.t()
+  def classify("000"), do: "down"
+
+  def classify(code) do
     case Integer.parse(code) do
+      {status, _} when status in @no_origin -> "down"
       {status, _} when status >= 500 -> "erroring"
       {status, _} when status > 0 -> "serving"
       _ -> "down"
