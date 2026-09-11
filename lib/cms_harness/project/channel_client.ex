@@ -1676,7 +1676,28 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
+  # A refusal with structure keeps it.
+  #
+  # Filesystem ops fail with an atom — `:enoent`, `:eacces` — and `to_string/1`
+  # is right for those. A promotion fails with a sentence and the evidence for
+  # it: which files are uncommitted, which paths conflicted. Flattening that map
+  # through `to_string/1` does not merely lose the evidence, it raises
+  # `Protocol.UndefinedError` and takes this channel process down — which the
+  # server sees as `{:shutdown, :peer_closed}`, a transport failure, for a
+  # correctly-computed refusal.
+  #
+  # Measured on the first live promotion: `git status` on the real disk found
+  # ".code_my_spec/qa/994/brief.md" modified, `Steps.precheck/2` refused exactly
+  # as designed, and encoding that refusal killed the channel.
+  defp encode_fs_result({:error, %{} = reason}), do: %{"error" => stringify_keys(reason)}
   defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
+
+  defp stringify_keys(map) do
+    Map.new(map, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      {k, v} -> {k, v}
+    end)
+  end
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do

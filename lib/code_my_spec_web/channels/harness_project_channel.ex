@@ -1098,6 +1098,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 
+  # A refusal that arrived with structure keeps it. `Promotion.Steps` answers
+  # with a sentence and its evidence — the uncommitted files, the conflicted
+  # paths — and the agent needs both. Passed through as a map for
+  # `Promotion.Runner` to key, rather than flattened into a reason atom that
+  # would have to be parsed back apart.
+  defp decode_fs_result(%{"error" => %{} = reason}), do: {:error, reason}
+
   defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
   defp decode_fs_result(%{"ok" => true}), do: :ok
   defp decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
