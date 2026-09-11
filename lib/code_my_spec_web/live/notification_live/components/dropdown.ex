@@ -138,8 +138,16 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
       </label>
       <div
         tabindex="0"
-        class="dropdown-content menu bg-base-100 border border-base-300 rounded-box z-[1] w-96 max-h-[70dvh] overflow-y-auto shadow-lg mt-2 p-3 space-y-3"
+        class="dropdown-content menu flex-nowrap bg-base-100 border border-base-300 rounded-box z-[1] w-96 max-h-[70dvh] overflow-y-auto shadow-lg mt-2 p-3 space-y-3"
       >
+        <%!-- daisyUI's `.menu` sets `flex-wrap: wrap`, meant for a menu's own
+        items to wrap within one row. Here, with height capped by
+        `max-h-[70dvh]`, that wrap kicked in on the OTHER axis: once the
+        stacked cards outgrew the panel's height, the flex column laid out a
+        second column to their right instead of leaving them to
+        `overflow-y-auto` — items marched rightward instead of scrolling.
+        `flex-nowrap` forces the single column `overflow-y-auto` assumes. --%>
+
         <p :if={@pending == []} class="text-center text-sm opacity-60 py-6">
           Nothing waiting on you.
         </p>
