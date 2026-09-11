@@ -21,6 +21,7 @@ defmodule CodeMySpec.Projects do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
 
   @doc """
@@ -258,9 +259,7 @@ defmodule CodeMySpec.Projects do
   """
   @spec get_project_by_id(String.t()) :: Project.t() | nil
   def get_project_by_id(id) when is_binary(id) do
-    Repo.get(Project, id)
-  rescue
-    Ecto.Query.CastError -> nil
+    Utils.safe_get(fn -> Repo.get(Project, id) end)
   end
 
   @doc """
