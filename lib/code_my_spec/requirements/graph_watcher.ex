@@ -171,7 +171,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   deploy looks exactly like a graph that has not moved, and neither is visible
   from a table.
   """
-  @spec status(Ecto.UUID.t()) :: %{pending: boolean(), last_recompute: DateTime.t() | nil} | nil
+  @spec status(Ecto.UUID.t()) ::
+          %{
+            pending: boolean(),
+            last_recompute: DateTime.t() | nil,
+            last_error: %{at: DateTime.t(), message: String.t()} | nil
+          }
+          | nil
   def status(project_id) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
       [{pid, _}] -> GenServer.call(pid, :status, 5_000)
@@ -217,12 +223,27 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   @impl true
   def init({project_id, scope}) do
     GraphInputs.subscribe(project_id)
-    {:ok, %{project_id: project_id, scope: scope, timer: nil, last_recompute: nil}}
+
+    {:ok,
+     %{
+       project_id: project_id,
+       scope: scope,
+       timer: nil,
+       last_recompute: nil,
+       last_error: nil
+     }}
   end
 
   @impl true
-  def handle_call(:status, _from, state),
-    do: {:reply, %{pending: state.timer != nil, last_recompute: state.last_recompute}, state}
+  def handle_call(:status, _from, state) do
+    report = %{
+      pending: state.timer != nil,
+      last_recompute: state.last_recompute,
+      last_error: state.last_error
+    }
+
+    {:reply, report, state}
+  end
 
   def handle_call(:settle, _from, %{timer: nil} = state), do: {:reply, :ok, state}
 
@@ -282,16 +303,31 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end)
     end
 
-    %{state | last_recompute: DateTime.utc_now()}
+    %{state | last_recompute: DateTime.utc_now(), last_error: nil}
   rescue
     error ->
-      # A watcher is a background convenience and must not take a project's
-      # supervision tree with it. The next event schedules another pass, and a
-      # reader still computes on demand exactly as before.
-      Logger.warning(
+      # Loud, and still alive.
+      #
+      # Loud because a recompute that fails and says nothing is the worst
+      # shape this whole story guards against: every reader goes on being
+      # served the last good answer, which is correct-looking and frozen, and
+      # the only symptom is agents slowly working from a graph that stopped
+      # moving. `:error` rather than `:warning` because that is the level
+      # somebody looks at, and on `status/1` because a log is not somewhere
+      # anybody looks *at a particular project*.
+      #
+      # Alive because the failure is usually about this project rather than
+      # about this process — the reachable one is the project being deleted
+      # under a watcher still running for it, which raises on
+      # `project_configurations_project_id_fkey`. Crashing would restart
+      # straight into the same failure, and a DynamicSupervisor that exhausts
+      # its restarts takes the tree above it down. The next event schedules
+      # another pass and a reader still computes on demand, so nothing is
+      # retried quietly and nothing is lost.
+      Logger.error(
         "[GraphWatcher] recompute failed for #{state.project_id}: " <> Exception.message(error)
       )
 
-      state
+      %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
   end
 end

@@ -28,8 +28,10 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
     * `computed_at` — when the served graph was computed. Unchanged across two
       requests means the cache was served; advancing means it was recomputed.
-    * `watcher` — whether a watcher is running, whether a pass is pending, and
-      when it last recomputed.
+    * `watcher` — whether a watcher is running, whether a pass is pending, when
+      it last recomputed, and what its last recompute failed with. The last of
+      those is the only way to tell a graph that has not changed from one that
+      has stopped being able to.
     * `nodes` — name, entity, and satisfaction, which is what a caller
       comparing two answers actually diffs.
 
@@ -88,9 +90,16 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     %{
       watching: true,
       pending: Map.get(status, :pending),
-      last_recompute: Map.get(status, :last_recompute)
+      last_recompute: Map.get(status, :last_recompute),
+      last_error: error_report(Map.get(status, :last_error))
     }
   end
+
+  # A failed recompute leaves every reader served the last good answer, which
+  # looks correct and is frozen. Without this, the only way to notice is to
+  # compare `last_recompute` against a change you already knew about.
+  defp error_report(nil), do: nil
+  defp error_report(%{at: at, message: message}), do: %{at: at, message: message}
 
   defp node_report(node) do
     %{
@@ -120,9 +129,10 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     scope = conn.assigns.current_scope
     nodes = RequirementGraph.compute_all(scope)
 
-    node = Enum.find(nodes, fn n ->
-      n.entity_type == "project" and n.name == name
-    end)
+    node =
+      Enum.find(nodes, fn n ->
+        n.entity_type == "project" and n.name == name
+      end)
 
     if node do
       markdown = RequirementsMarkdown.show(%{node: node})
@@ -136,9 +146,10 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     scope = conn.assigns.current_scope
     nodes = RequirementGraph.compute_all(scope)
 
-    node = Enum.find(nodes, fn n ->
-      n.entity_type == "project" and n.name == name
-    end)
+    node =
+      Enum.find(nodes, fn n ->
+        n.entity_type == "project" and n.name == name
+      end)
 
     cond do
       is_nil(node) ->
