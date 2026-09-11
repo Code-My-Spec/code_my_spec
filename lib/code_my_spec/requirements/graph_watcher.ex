@@ -56,7 +56,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   require Logger
 
+  import Ecto.Query, only: [from: 2]
+
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
@@ -249,7 +252,11 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   def handle_call(:settle, _from, %{timer: timer} = state) do
     Process.cancel_timer(timer)
-    {:reply, :ok, recompute(%{state | timer: nil})}
+
+    case recompute(%{state | timer: nil}) do
+      {:ok, state} -> {:reply, :ok, state}
+      {:gone, state} -> {:stop, :normal, :ok, state}
+    end
   end
 
   @impl true
@@ -258,7 +265,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   end
 
   def handle_info(:recompute, state) do
-    {:noreply, recompute(%{state | timer: nil})}
+    case recompute(%{state | timer: nil}) do
+      {:ok, state} -> {:noreply, state}
+      {:gone, state} -> {:stop, :normal, state}
+    end
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -303,31 +313,65 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end)
     end
 
-    %{state | last_recompute: DateTime.utc_now(), last_error: nil}
+    {:ok, %{state | last_recompute: DateTime.utc_now(), last_error: nil}}
   rescue
     error ->
+      recompute_failure(state, error)
+  end
+
+  # A watcher whose project is gone has finished, not failed.
+  #
+  # Both halves of this matter, and only one of them is about production.
+  #
+  # A deleted project leaves a watcher running for it, and every event it hears
+  # raises on `project_configurations_project_id_fkey` when
+  # `Configurations.get_or_create/1` tries to insert. Logging that forever says
+  # something is wrong when the truth is there is nothing left to do.
+  #
+  # The half that bites harder is under test. A watcher outlives the spex that
+  # started it, and the sandbox transaction rolls back at the end of the test —
+  # so the project vanishes underneath a process that is still running and the
+  # next pass raises exactly the same way. `SexySpex.ErrorCapture` installs a
+  # handler on `:logger` globally, so an `:error` from that straggler fails
+  # whichever spex happens to be running when it lands. Escalating this line
+  # from `:warning` to `:error` turned a silent race into an intermittent
+  # failure in unrelated specs, and the promote gate caught it on criterion
+  # 5887 of story 559, which touches none of this.
+  #
+  # Stopping is right for both: there is no project, so there is nothing to
+  # recompute, and a `:transient` child that stops `:normal` is not restarted.
+  defp recompute_failure(state, error) do
+    if project_exists?(state.project_id) do
       # Loud, and still alive.
       #
-      # Loud because a recompute that fails and says nothing is the worst
-      # shape this whole story guards against: every reader goes on being
-      # served the last good answer, which is correct-looking and frozen, and
-      # the only symptom is agents slowly working from a graph that stopped
-      # moving. `:error` rather than `:warning` because that is the level
-      # somebody looks at, and on `status/1` because a log is not somewhere
-      # anybody looks *at a particular project*.
+      # Loud because a recompute that fails and says nothing is the worst shape
+      # this whole story guards against: every reader goes on being served the
+      # last good answer, which is correct-looking and frozen, and the only
+      # symptom is agents working from a graph that stopped moving. `:error`
+      # because that is the level somebody looks at, and on `status/1` because a
+      # log is not somewhere anybody looks *at a particular project*.
       #
-      # Alive because the failure is usually about this project rather than
-      # about this process — the reachable one is the project being deleted
-      # under a watcher still running for it, which raises on
-      # `project_configurations_project_id_fkey`. Crashing would restart
-      # straight into the same failure, and a DynamicSupervisor that exhausts
-      # its restarts takes the tree above it down. The next event schedules
-      # another pass and a reader still computes on demand, so nothing is
-      # retried quietly and nothing is lost.
+      # Alive because the project is still there to serve. The next event
+      # schedules another pass and a reader still computes on demand, so nothing
+      # is retried quietly and nothing is lost.
       Logger.error(
         "[GraphWatcher] recompute failed for #{state.project_id}: " <> Exception.message(error)
       )
 
-      %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
+      {:ok, %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}}
+    else
+      Logger.info("[GraphWatcher] stopping: project #{state.project_id} no longer exists")
+
+      {:gone, state}
+    end
+  end
+
+  # Answers false when the question cannot be asked either — a connection that
+  # has gone with the project is the same answer for this purpose, and raising
+  # here would replace the error being classified with a less useful one.
+  defp project_exists?(project_id) do
+    Repo.exists?(from(p in "projects", where: p.id == type(^project_id, :binary_id)))
+  rescue
+    _ -> false
   end
 end
