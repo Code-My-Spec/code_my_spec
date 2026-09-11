@@ -273,7 +273,7 @@ defmodule CodeMySpec.Promotion do
   # be handed to the harness.
   defp promote_into(%Scope{} = scope, running) do
     with {:ok, from} <- promoting_copy(scope, running),
-         {:ok, %{branch: branch}} <- Runner.precheck(scope, from.root, from.id),
+         {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
          carried_before <- blocking_problems(scope, running),
          {:ok, _} <- Runner.merge(scope, running.root, branch, from.id),
@@ -284,7 +284,8 @@ defmodule CodeMySpec.Promotion do
          merged: branch,
          into: running.root,
          serving: serving,
-         swept: swept
+         swept: swept,
+         untracked: Map.get(pre, :untracked, [])
        }}
     end
   end

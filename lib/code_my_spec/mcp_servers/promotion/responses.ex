@@ -60,7 +60,7 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     Promoted #{branch} to the running dev copy.
 
     Merged into: #{root}
-    #{serving_line(serving)}#{swept_line(report)}
+    #{serving_line(serving)}#{swept_line(report)}#{untracked_line(report)}
 
     The application is running this work now, so QA on these stories will test
     what you wrote.
@@ -74,6 +74,20 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   # Named because a promotion that swept is slower for a reason, and an agent
   # watching it sit should know the gate was waiting on a fresh answer rather
   # than hung.
+  # Named, not refused. An untracked file may be a source file nobody added, and
+  # a promotion that omitted it would put QA in front of an application missing
+  # the work it came to verify. Blocking on it would contradict the gate, which
+  # measures dirt with `--untracked-files=no` and sent the agent here.
+  defp untracked_line(%{untracked: []}), do: ""
+
+  defp untracked_line(%{untracked: files}) do
+    "\n\nNot promoted, because git is not tracking them — if any of these is " <>
+      "work you meant to ship, add and commit it, then promote again:\n" <>
+      Enum.map_join(files, "\n", &("  " <> &1))
+  end
+
+  defp untracked_line(_), do: ""
+
   defp swept_line(%{swept: []}), do: ""
   defp swept_line(%{swept: swept}), do: "\nSwept before gating: " <> Enum.join(swept, ", ")
   defp swept_line(_), do: ""

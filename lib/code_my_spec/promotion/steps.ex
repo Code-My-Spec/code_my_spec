@@ -72,10 +72,32 @@ defmodule CodeMySpec.Promotion.Steps do
   defp branch(env, root) do
     case git(env, root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
       {branch, 0} ->
-        {:ok, %{branch: String.trim(branch)}}
+        {:ok, %{branch: String.trim(branch), untracked: untracked(env, root)}}
 
       {out, _} ->
         {:error, %{reason: "could not read this checkout's branch: #{String.trim(out)}"}}
+    end
+  end
+
+  # Reported, not refused, and the distinction is the whole point.
+  #
+  # An untracked file can be a source file somebody forgot to `git add`, and
+  # promoting without it puts QA in front of an application missing the work it
+  # was sent to verify — the failure this story exists to prevent. So it must
+  # not be silent.
+  #
+  # It must not block either. `tree_dirty` is measured with
+  # `--untracked-files=no`, so a checkout whose only dirt is untracked passes
+  # the gate, and the gate's remedy is `promote`. A `promote` that refused what
+  # the gate had just waved through would be one system handing an agent two
+  # contradictory instructions — and the thing blocking it here was a symlink
+  # pointing outside the repository, which is nobody's to commit.
+  #
+  # Naming them in the result gets the warning without the contradiction.
+  defp untracked(env, root) do
+    case git(env, root, ["ls-files", "--others", "--exclude-standard"]) do
+      {out, 0} -> out |> String.split("\n", trim: true) |> Enum.take(20)
+      _ -> []
     end
   end
 
