@@ -21,10 +21,16 @@ defmodule CodeMySpecTest do
     # That is exactly why it lives here rather than beside the real transport:
     # `CmsHarness` may not reference the MCP layer, and a test double for a wire
     # has to.
+    # `CodeMySpec.Requirements` because `GraphHelpers` has to start a watcher
+    # and settle it. Observing that the graph moved is test support's job by
+    # construction: the alternative is every test re-deriving the recipe from
+    # `GraphWatcher`, `GraphInputs` and the recording transport separately,
+    # which is where it lived before and why nobody used it.
     deps: [
       CodeMySpec,
       CodeMySpec.Agents,
       CodeMySpec.McpServers,
+      CodeMySpec.Requirements,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
       CodeMySpec.Workspaces,

@@ -141,6 +141,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1260,6 +1262,37 @@ defmodule CodeMySpecSpex.Fixtures do
   Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
   spex dependency.
   """
+  @doc """
+  Start watching this project's graph, and subscribe to its announcements.
+
+  Here rather than in a criterion for the same reason as `record_git_state/2`:
+  `CodeMySpec.Requirements` is not a spex dependency, so a criterion naming
+  `GraphWatcher` or `GraphInputs` is a boundary violation. Reaching the domain
+  is the bridge's job.
+
+  Both halves matter and both are easy to forget separately. Without the
+  watcher nothing recomputes on a write; without the subscription nothing
+  arrives. And `settle_graph/1` answers `:ok` when nothing is watching, so a
+  forgotten watcher looks exactly like a graph that did not move.
+  """
+  @spec watch_graph(Scope.t()) :: :ok
+  def watch_graph(%Scope{active_project_id: project_id} = scope) do
+    {:ok, _pid} = GraphWatcher.ensure_watching(scope)
+    :ok = GraphInputs.subscribe(project_id)
+    :ok
+  end
+
+  @doc """
+  Do the watcher's pending pass now instead of when the debounce expires.
+
+  A spec that slept would be asserting the timer rather than the mechanism, and
+  would be flaky on a loaded box — which is where the analyzer runs. Answers
+  `:ok` when no watcher is running, so it is safe to call unconditionally.
+  """
+  @spec settle_graph(Scope.t()) :: :ok
+  def settle_graph(%Scope{} = scope),
+    do: GraphWatcher.settle(scope)
+
   @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
   def record_git_state(working_copy_id, %{} = state) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)

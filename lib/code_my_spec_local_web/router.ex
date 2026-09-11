@@ -276,6 +276,12 @@ defmodule CodeMySpecLocalWeb.Router do
     pipe_through :project
 
     get "/requirements", RequirementsController, :index
+
+    # The cached graph plus the diagnostics needed to tell whether it moved.
+    # Ahead of `/requirements/:name` because `graph` would otherwise be read as
+    # a requirement called "graph".
+    get "/requirements/graph", RequirementsController, :graph
+
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
     get "/requirements/:name/:child_id", RequirementsController, :child

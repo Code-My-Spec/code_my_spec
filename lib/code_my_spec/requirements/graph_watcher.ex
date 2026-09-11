@@ -23,11 +23,11 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   A single sync writes hundreds of files and a three-amigos session writes a
   rule, its scenarios and its criteria in one breath. Recomputing per event
   would be a ~170ms graph per row. So an event schedules a pass and further
-  events fold into it — one recompute for a burst, `@debounce_ms` after it
+  events fold into it — one recompute for a burst, the debounce window after it
   stops.
 
   Coalescing, not throttling: the timer is not extended by later events, so a
-  steady stream still recomputes every `@debounce_ms` rather than never.
+  steady stream still recomputes every window rather than never.
 
   ## The fingerprint decides, not the event
 
@@ -73,7 +73,19 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # long is an agent sitting idle for exactly that long with work waiting — the
   # thing this whole mechanism exists to end. So it is short, and the error is
   # on the cheap side.
-  @debounce_ms 2_000
+  @default_debounce_ms 2_000
+
+  # Configurable so tests can collapse it. `settle/1` already makes the pass
+  # deterministic for a test that calls it, but a test asserting what happens
+  # *without* settling — that a burst coalesces, that a steady stream still
+  # gets a pass — otherwise waits two real seconds per assertion.
+  #
+  # Read at schedule time rather than captured at boot: a test that changes it
+  # in `setup` would otherwise be ignored by a watcher already running, and
+  # watchers outlive individual tests.
+  defp debounce_ms do
+    Application.get_env(:code_my_spec, :graph_debounce_ms, @default_debounce_ms)
+  end
 
   # -- Client --
 
@@ -232,10 +244,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   # Already scheduled means already covered. Not restarting the timer is what
   # makes this coalescing rather than throttling: a steady stream of writes
-  # still gets a pass every `@debounce_ms`, where extending on each event would
+  # still gets a pass every window, where extending on each event would
   # mean a busy project never recomputes at all.
   defp schedule(%{timer: nil} = state),
-    do: %{state | timer: Process.send_after(self(), :recompute, @debounce_ms)}
+    do: %{state | timer: Process.send_after(self(), :recompute, debounce_ms())}
 
   defp schedule(state), do: state
 
