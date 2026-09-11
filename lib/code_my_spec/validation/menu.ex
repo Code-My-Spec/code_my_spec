@@ -98,7 +98,7 @@ defmodule CodeMySpec.Validation.Menu do
         ""
 
       [top | rest] ->
-        directive(top, owner) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
+        directive(scope, top, owner) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
     end
   end
 
@@ -287,11 +287,12 @@ defmodule CodeMySpec.Validation.Menu do
   # The open task names itself, because "1 open task" is not actionable and the
   # id is not something the agent can look up from here. `evaluate_task` takes
   # the id, so the directive carries the id.
-  defp directive({:task, count}, owner) do
+  defp directive(scope, {:task, count}, owner) do
     task = newest_active_task(owner)
 
-    "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}. " <>
-      "Nothing closes a task for you — when the work is done, call " <>
+    "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}." <>
+      obstacle(scope, task) <>
+      " Nothing closes a task for you — when the work is done, call " <>
       "`evaluate_task` with task_id \"#{task.id}\". If it is not done, finish it " <>
       "before taking anything else." <> backlog_note(count)
   end
@@ -306,8 +307,29 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # An agent that holds the tool calls it; one that does not looks it up with
   # `tool_docs` and calls it in a script. Naming it is true for both.
-  defp directive({class, count}, _owner) do
+  defp directive(_scope, {class, count}, _owner) do
     "\n\nNext: #{label(class, count)} — `#{@tools[class]}`."
+  end
+
+  # Why the requirement is still open, from the checker that refused it.
+  #
+  # Was two copies of this sentence — one here, one in each caller's own nudge —
+  # and only the transcript-only copies ever carried it: the text an agent was
+  # actually sent named the open task and never what was holding it. Watched
+  # live on 2026-09-10: a coding agent nudged every 90 seconds about
+  # `code_on_running_copy` while the gate refused on "uncommitted changes —
+  # commit them", and the message never said so.
+  defp obstacle(scope, task) do
+    case Requirements.open_reason(scope, task.requirement_name, entity_ids(task)) do
+      "" -> ""
+      reason -> " It is open because: #{reason}"
+    end
+  end
+
+  defp entity_ids(task) do
+    [task.story_id, task.component_id, task.project_id]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&to_string/1)
   end
 
   defp open_tasks(1), do: "an open task"
@@ -336,7 +358,20 @@ defmodule CodeMySpec.Validation.Menu do
   defp tally([]), do: ""
 
   defp tally(rest) do
-    "\n\nAlso live: " <> Enum.map_join(rest, ", ", fn {c, n} -> label(c, n) end) <> "."
+    "\n\nAlso live: " <>
+      Enum.map_join(rest, ", ", fn {c, n} -> label(c, n) end) <> "." <> task_tally_note(rest)
+  end
+
+  # A task tallied rather than leading still has to name a way to its id — the
+  # directive carries it inline, but the tally names only a count, and
+  # `evaluate_task` needs the id. Without this an agent whose menu leads with
+  # problems learns it is holding a task and never how to act on it.
+  defp task_tally_note(rest) do
+    if List.keymember?(rest, :task, 0) do
+      " `list_tasks` shows them, and each one needs its own `evaluate_task`."
+    else
+      ""
+    end
   end
 
   # Counts without their tool names, deliberately. The tally says what is

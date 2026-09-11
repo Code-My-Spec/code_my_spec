@@ -12,8 +12,8 @@
     },
     "vibium": {
       "type": "stdio",
-      "command": "vibium",
-      "args": ["mcp"]
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR}/plugins/claude/.claude-plugin/bin/vibium-mcp.js", "mcp"]
     }
   }
 }
