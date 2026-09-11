@@ -59,11 +59,11 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
-  alias CodeMySpec.Promotion.Steps
   alias CmsHarness.Web.Endpoint
   alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
 
   # Long enough for a transatlantic round trip against a busy server, short
