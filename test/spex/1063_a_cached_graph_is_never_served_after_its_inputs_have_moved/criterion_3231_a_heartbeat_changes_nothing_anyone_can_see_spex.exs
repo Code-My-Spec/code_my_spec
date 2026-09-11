@@ -22,6 +22,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
   serves the *cached* graph with its `computed_at`. The markdown `/requirements`
   endpoint cannot answer this: it calls `compute_all/1` and so recomputes on
   every request by construction.
+
+  Read as the checkout that reported, with `?working_copy=`. A read that names
+  no copy gets the UI's blended vantage, where the fingerprint reads nothing
+  about any particular checkout — so the graph would hold still here whatever
+  the heartbeat carried, and the assertion would cost nothing. Naming the copy
+  is what makes this a claim about the heartbeat rather than about the read.
   """
 
   use CodeMySpecSpex.Case
@@ -55,12 +61,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
         # answers `computed_at: nil` while doing it — so measuring from that
         # one compares "no cached graph yet" against "a cached graph", which
         # is a difference this criterion is not about.
-        _cold = read_graph(context)
+        _cold = read_graph(context, reply.working_copy_id)
 
         {:ok,
          context
          |> Map.put(:working_copy_id, reply.working_copy_id)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, read_graph(context, reply.working_copy_id))}
       end
 
       when_ "the checkout reports in again with nothing about it changed", context do
@@ -69,7 +75,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
       end
 
       then_ "the graph still answers from the same computation", context do
-        after_report = read_graph(context)
+        after_report = read_graph(context, context.working_copy_id)
 
         assert after_report["computed_at"] == context.before["computed_at"],
                """

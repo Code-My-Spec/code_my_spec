@@ -1525,6 +1525,31 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The path of one named agent's transcript.
+
+  `agent_conversation_path/1` answers "the one that moved last", which is what
+  a scenario with a single agent means. A scenario with two of them needs to say
+  which, and "last" is exactly the wrong answer there — two agents on one
+  project would both be read from whichever page happened to be newest, so an
+  assertion about one and a refutation about the other would both be looking at
+  the same transcript and could not disagree.
+
+  `find_or_create_agent_conversation/3` is the same call `running_agent/2` makes,
+  so it finds that agent's thread rather than opening a second one.
+  """
+  @spec agent_conversation_path(Scope.t(), %{id: Ecto.UUID.t()}) :: String.t()
+  def agent_conversation_path(%Scope{} = scope, %{id: agent_id}) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    "/app/projects/#{scope.active_project_id}/agent-conversation/#{conversation.id}"
+  end
+
+  @doc """
   Ask a question the way `ask_user` does, and get its id back.
 
   A spex about the notifications inbox has to put a question there, and the
