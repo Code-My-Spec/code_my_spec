@@ -38,10 +38,23 @@ defmodule CodeMySpec.Promotion.Steps do
   Refused before the merge rather than cleaned up after: an aborted half-merge
   leaves the running checkout in a state nobody asked for, and the agent then
   has two problems instead of one.
+
+  `--untracked-files=no`, matching what the gate measures and for the reason
+  the gate already documents: refusing on untracked files means refusing
+  essentially always, which is the same as not having the check. A build is
+  made of what is committed and what is modified, not of scratch files beside
+  them.
+
+  Without it the two disagreed, and the disagreement was a trap rather than an
+  inconsistency. `code_on_running_copy` passed a checkout whose only dirt was
+  untracked, told the agent its remedy was `promote`, and `promote` then refused
+  that same checkout — measured on Broken Oaths, where an untracked
+  `code_my_spec_test_repos` directory belonging to nobody on the team would have
+  blocked every promotion from that copy forever.
   """
   @spec precheck(Environments.Environment.t(), String.t()) :: result()
   def precheck(env, root) do
-    case git(env, root, ["status", "--porcelain"]) do
+    case git(env, root, ["status", "--porcelain", "--untracked-files=no"]) do
       {"", 0} -> branch(env, root)
       {dirty, 0} -> uncommitted(dirty)
       {out, _} -> {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
