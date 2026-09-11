@@ -59,6 +59,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
+  alias CodeMySpec.Promotion.Steps
   alias CmsHarness.Web.Endpoint
   alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
@@ -1129,6 +1130,38 @@ defmodule CmsHarness.Project.ChannelClient do
   # with the same `Environments` API everything else uses, send the outcome
   # back. Nothing about it is harness-specific — the server is simply borrowing
   # this machine's disk.
+  # Promotion's disk work. The same borrowed disk as `fs_request`, and it cannot
+  # share that handler for two reasons.
+  #
+  # It is slow. `just restart` compiles, migrates and waits for the app to
+  # answer — minutes on a cold tree — and `fs_request` applies its op inline, in
+  # this process. This process also carries hook decisions and analyzer replies,
+  # so a promotion answered inline would stall every hook on the machine for the
+  # length of a build. Answered from a task instead; `ref` pairs the reply up.
+  #
+  # And it names a root that is deliberately not this channel's own.
+  # `fs_request` is scoped to `socket.assigns.project.root` because a server
+  # asking to read an arbitrary path would be a hole. A promotion is the one
+  # operation whose whole point is a *second* checkout — the one the application
+  # runs from — so the root arrives in the payload and is checked against the
+  # roots this harness actually serves rather than assumed.
+  def handle_message(
+        _topic,
+        "fs_request",
+        %{"ref" => ref, "op" => "promotion_" <> _ = op} = msg,
+        socket
+      ) do
+    payload = msg["payload"] || %{}
+    topic = socket.assigns.topic
+    client = self()
+
+    Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
+      GenServer.cast(client, {:promotion_result, topic, ref, apply_promotion(op, payload)})
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
     payload = msg["payload"] || %{}
     env = Environment.new(:local, socket.assigns.project.root)
@@ -1305,6 +1338,39 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp to_string_reason(reason) when is_binary(reason), do: reason
   defp to_string_reason(reason), do: inspect(reason)
+
+  # One clause per named operation, and no general `cmd`. That route was refused
+  # deliberately — `analysis/run` already owns command execution here along with
+  # the run ledger, single-flight and `_build` — so promotion gets three named
+  # things it may do rather than the ability to run anything.
+  defp apply_promotion("promotion_precheck", %{"root" => root}),
+    do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1))
+
+  defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
+    do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
+
+  defp apply_promotion("promotion_restart", %{"root" => root}),
+    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
+
+  defp apply_promotion(op, _payload),
+    do: {:error, %{reason: "this harness does not implement #{op}"}}
+
+  # A root this harness does not serve is refused rather than operated on. The
+  # server names the running copy's path and is trusted to know it, but "trusted
+  # to know it" and "may name any path on this machine" are different powers and
+  # only the first one is wanted.
+  defp with_served_root(root, fun) do
+    if root in CmsHarness.Projects.list() do
+      fun.(root)
+    else
+      {:error,
+       %{
+         reason:
+           "this machine does not serve a working copy at #{root}, so it will not " <>
+             "run a promotion there."
+       }}
+    end
+  end
 
   defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
 
@@ -2140,6 +2206,15 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:preview_status, _status}, socket), do: {:noreply, socket}
+
+  def handle_cast({:promotion_result, topic, ref, result}, %{assigns: %{joined: true}} = socket) do
+    push(socket, topic, "fs_result", Map.put(encode_fs_result(result), "ref", ref))
+    {:noreply, socket}
+  end
+
+  # Disconnected before the work finished. Nothing to push to, and the server's
+  # own call times out and says so — better than a reply into a closed socket.
+  def handle_cast({:promotion_result, _topic, _ref, _result}, socket), do: {:noreply, socket}
 
   # --- Private ---
 

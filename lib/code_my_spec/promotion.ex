@@ -71,8 +71,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -238,52 +237,10 @@ defmodule CodeMySpec.Promotion do
   """
   @spec promote(Scope.t()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope) do
-    with :ok <- can_run_commands(scope),
-         {:ok, running} <- running_copy(scope) do
+    with {:ok, running} <- running_copy(scope) do
       promote_into(scope, running)
     end
   end
-
-  # A promotion is `git` and `just`, and the harness environment cannot run
-  # either: `Environments.Harness.cmd/4` answers `{:error,
-  # :not_supported_on_harness}` by design. It carries file operations to the
-  # machine that holds the checkout, not commands.
-  #
-  # Refused here, once and by name, rather than discovered six calls in. The
-  # first real invocation of `promote_sync` crashed with `-32603 Internal
-  # error`: `refuse_uncommitted/2` matched `{:error, :not_supported_on_harness}`
-  # against its `{out, _}` clause and called `String.trim(:error)`. The agent
-  # was told the tool was broken, which is both useless and wrong — the tool is
-  # fine and cannot reach the disk.
-  #
-  # Every spec in story 1046 passes because they build `Environment.new(:local,
-  # root)` on the machine running the suite. Production hands this a harness
-  # environment, so nothing covered the one that matters. Promotion belongs on
-  # the harness, beside the git state and preview health it already measures
-  # there; until it moves, this says so.
-  defp can_run_commands(%Scope{environment: %Environment{type: :harness}}) do
-    {:error,
-     %{
-       reason:
-         "this project's checkout is on a machine reached over its harness, and a " <>
-           "promotion has to run `git` and `just restart` on that machine. The server " <>
-           "cannot do it from here — the harness carries file operations, not commands. " <>
-           "Promote from a session on the machine that holds the checkout, or run " <>
-           "`just restart` there yourself; the merge itself is an ordinary `git merge`.",
-       environment: :harness
-     }}
-  end
-
-  defp can_run_commands(%Scope{environment: nil}) do
-    {:error,
-     %{
-       reason:
-         "there is no environment on this scope, so there is nowhere to run the " <>
-           "promotion's `git` and `just restart`."
-     }}
-  end
-
-  defp can_run_commands(%Scope{}), do: :ok
 
   # Working on the running copy. There is no branch to merge — the work is
   # already where a promotion would put it — so a promotion here is the other
@@ -305,13 +262,21 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
+  # The order is the design, and the database sits in the middle of it.
+  #
+  # `gate/1` before the merge asks whether this copy's work is fit to cross.
+  # `gate_target/3` after it asks whether the merge carried problems into the
+  # copy QA tests, which is a different question and can only be asked once the
+  # merge has happened. Both read the database, and the disk operations between
+  # and after them run wherever the checkout is — which is why this is three
+  # `Runner` calls rather than one, and why the whole promotion could not simply
+  # be handed to the harness.
   defp promote_into(%Scope{} = scope, running) do
     with {:ok, from} <- promoting_copy(scope, running),
-         :ok <- refuse_uncommitted(scope, from),
+         {:ok, %{branch: branch}} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
-         {:ok, branch} <- current_branch(scope, from),
          carried_before <- blocking_problems(scope, running),
-         :ok <- merge(scope, running, branch),
+         {:ok, _} <- Runner.merge(scope, running.root, branch, from.id),
          :ok <- gate_target(scope, running, carried_before),
          {:ok, serving} <- restart(scope, running) do
       {:ok,
@@ -411,26 +376,6 @@ defmodule CodeMySpec.Promotion do
 
   defp promoting_copy(%Scope{}, _running),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
-
-  # Refused before the merge rather than cleaned up after: an aborted
-  # half-merge leaves the running checkout in a state nobody asked for, and the
-  # agent then has two problems instead of one.
-  defp refuse_uncommitted(%Scope{} = scope, %WorkingCopy{root: root}) do
-    case git(scope, root, ["status", "--porcelain"]) do
-      {"", 0} ->
-        :ok
-
-      {dirty, 0} ->
-        {:error,
-         %{
-           reason: "this copy has uncommitted work. Commit it, then promote.",
-           dirty: String.trim_trailing(dirty)
-         }}
-
-      {out, _} ->
-        {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
-    end
-  end
 
   # A stale analyzer is swept, not refused.
   #
@@ -578,49 +523,6 @@ defmodule CodeMySpec.Promotion do
   defp as_copy(%Scope{} = scope, nil), do: scope
   defp as_copy(%Scope{} = scope, %WorkingCopy{id: id}), do: %{scope | active_working_copy_id: id}
 
-  defp current_branch(%Scope{} = scope, %WorkingCopy{root: root}) do
-    case git(scope, root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
-      {branch, 0} -> {:ok, String.trim(branch)}
-      {out, _} -> {:error, %{reason: "could not read this checkout's branch: #{out}"}}
-    end
-  end
-
-  # A conflict is a question about intent, and the agent that wrote one side is
-  # the only party holding the answer. So this does not guess, and does not
-  # `--abort` either: the conflict stays in the running checkout where it can be
-  # resolved. Aborting would be the tidier-looking failure and the worse one —
-  # the agent is told "promotion failed", finds a clean tree, and has nothing to
-  # work on.
-  defp merge(%Scope{} = scope, %WorkingCopy{root: root}, branch) do
-    case git(scope, root, ["merge", "--no-edit", branch]) do
-      {_out, 0} -> :ok
-      {out, _} -> conflict(scope, root, branch, out)
-    end
-  end
-
-  defp conflict(%Scope{} = scope, root, branch, out) do
-    {status, _} = git(scope, root, ["status", "--porcelain"])
-
-    conflicted =
-      status
-      |> String.split("\n", trim: true)
-      |> Enum.filter(&String.match?(&1, ~r/^(UU|AA|DD|AU|UA|DU|UD)/))
-      |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
-
-    {:error,
-     %{
-       reason:
-         "merging #{branch} into the running copy conflicts" <>
-           conflict_files(conflicted) <>
-           ". The conflict is left in #{root} for you to resolve.",
-       conflicts: conflicted,
-       output: String.trim(out)
-     }}
-  end
-
-  defp conflict_files([]), do: ""
-  defp conflict_files(files), do: " in " <> Enum.join(files, ", ")
-
   # Always, never conditionally.
   #
   # Whatever would decide "this merge did not need a restart" — no `.ex` files
@@ -629,9 +531,8 @@ defmodule CodeMySpec.Promotion do
   # identify while every signal says the promotion completed. Restarting an app
   # that did not need it costs seconds.
   defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running) do
-    scope.environment
-    |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(scope, root)
+    scope
+    |> Runner.restart(root, running.id)
     |> record_serving(running)
   end
 
@@ -655,58 +556,6 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp record_serving(error, _running), do: error
-
-  defp run_restart(false, _scope, root) do
-    {:error,
-     %{
-       reason:
-         "#{root} has no justfile, so there is no `just restart` to bring the " <>
-           "application back up on the merged code. The merge is done; the app " <>
-           "is still serving what it was."
-     }}
-  end
-
-  # `stderr_to_stdout: true`, and it is the difference between a refusal an
-  # agent can act on and one it cannot.
-  #
-  # Compilers, migrations and the shell all write their failures to stderr.
-  # Without this the promotion caught a broken build correctly — non-zero exit,
-  # nothing merged onward — and then reported "`just restart` failed (1):" with
-  # an empty body, telling the agent its promotion failed and not one word about
-  # what broke.
-  defp run_restart(true, %Scope{} = scope, root) do
-    case normalize_result(
-           Environments.cmd(scope.environment, "just", ["restart"],
-             cd: root,
-             stderr_to_stdout: true
-           )
-         ) do
-      {out, 0} -> serving(scope, root, out)
-      {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
-    end
-  end
-
-  defp serving(%Scope{} = scope, root, out) do
-    case git(scope, root, ["rev-parse", "--short", "HEAD"]) do
-      {sha, 0} -> {:ok, %{revision: String.trim(sha), output: String.trim(out)}}
-      {_, _} -> {:ok, %{revision: nil, output: String.trim(out)}}
-    end
-  end
-
-  # An explicit `:cd` beats the environment's own cwd, which is what lets one
-  # environment drive both checkouts.
-  # `{:error, reason}` is not `{output, status}`, and every caller here pattern
-  # matches the latter. Normalized to a non-zero result carrying the reason as
-  # its output, so a refusal reads as a refusal rather than crashing the tool.
-  defp git(%Scope{environment: env}, root, args) do
-    env
-    |> Environments.cmd("git", args, cd: root, stderr_to_stdout: true)
-    |> normalize_result()
-  end
-
-  defp normalize_result({:error, reason}), do: {"#{inspect(reason)}", 1}
-  defp normalize_result({output, status}) when is_binary(output), do: {output, status}
-  defp normalize_result(other), do: {"#{inspect(other)}", 1}
 
   defp describe(problems) do
     problems
