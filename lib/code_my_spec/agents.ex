@@ -956,6 +956,37 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # A row that says `:stopped` is the one thing here that is never a lie.
+  #
+  # `:running` can be stale — a shared harness restart leaves it claiming life
+  # with nothing behind it, which is why the clause below checks liveness rather
+  # than trusting the row. But `:stopped` is only ever written by a clean stop,
+  # so there is certainly no process, and asking whether its *working copy* is
+  # connected answers a different question entirely.
+  #
+  # That mismatch is what made the play button do nothing. A deliberately
+  # stopped agent sitting on a perfectly healthy harness took the wake branch,
+  # `StopDecision.wake/2` dispatched to a process that no longer existed, and the
+  # page reported `:woke` — success, with nothing started. John: "I thought I
+  # could now start it with the play button but it's stopped and I can't get it
+  # going again," and, on the same screen, "This agent is not running, so there
+  # is nothing to send a message to" where the chat bar should be. One cause:
+  # the only control that clears `:stopped` could not reach `restart_agent/2`.
+  defp wake_or_restart(scope, %Agent{status: status} = agent)
+       when status in [:stopped, :failed] do
+    case restart_agent(scope, agent.id) do
+      {:ok, restarted} ->
+        {:ok, restarted, :restarted}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Agents] could not restart #{status} agent #{agent.id}: #{inspect(reason)}"
+        )
+
+        {:ok, agent, :restart_failed}
+    end
+  end
+
   defp wake_or_restart(scope, agent) do
     if working_copy_connected?(agent) do
       StopDecision.wake(scope, agent)

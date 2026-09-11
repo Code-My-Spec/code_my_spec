@@ -74,6 +74,47 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
     end
   end
 
+  # The half `working_copy_connected?/1` cannot answer.
+  #
+  # It asks whether the *harness* is connected, which is a different question
+  # from whether *this agent's process* is alive, and the two come apart in the
+  # ordinary case: an agent deliberately stopped on a machine whose harness is
+  # perfectly healthy. That took the wake branch, dispatched to a process that
+  # no longer existed, and reported success — so the play button did nothing and
+  # the only control that clears `:stopped` could never reach `restart_agent/2`.
+  describe "set_agent_continuous/3 on a stopped agent" do
+    setup %{scope: scope, agent: agent} do
+      # Registered, so the copy reads as connected — this is the case the old
+      # check got wrong, not a disconnected machine.
+      :ok = Analysis.register_executor(agent.working_copy_id)
+      {:ok, stopped} = AgentsRepository.update_agent(scope, agent, %{status: :stopped})
+      %{agent: stopped}
+    end
+
+    test "restarts it rather than nudging nothing", %{scope: scope, agent: agent} do
+      assert Agents.working_copy_connected?(agent),
+             "the premise failed: this test is about a stopped agent on a *connected* " <>
+               "copy, which is the combination the old check read as alive"
+
+      assert {:ok, restarted, :restarted} =
+               Agents.set_agent_continuous(scope, agent.id, true)
+
+      assert restarted.id == agent.id,
+             "a restart that changes the id is a new, empty conversation — the exact " <>
+               "outcome restart_agent/2 exists to avoid"
+
+      refute restarted.status == :stopped,
+             "the button reported success and left the agent stopped, which is what " <>
+               "made it read as doing nothing"
+    end
+
+    test "a failed agent is restarted too", %{scope: scope, agent: agent} do
+      {:ok, failed} = AgentsRepository.update_agent(scope, agent, %{status: :failed})
+
+      assert {:ok, _, :restarted} = Agents.set_agent_continuous(scope, failed.id, true)
+    end
+  end
+
   describe "restart_agent/2" do
     test "keeps the same id", %{scope: scope, agent: agent} do
       {:ok, restarted} = Agents.restart_agent(scope, agent.id)
