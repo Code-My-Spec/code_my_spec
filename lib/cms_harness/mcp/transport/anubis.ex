@@ -8,6 +8,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   what a tool's answer looks like by the time an `Alloy.Tool` returns it.
   """
 
+  require Logger
+
   @behaviour CmsHarness.Mcp.Transport
 
   alias CmsHarness.Token
@@ -70,6 +72,54 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   end
 
   defp start_client(name, opts, headers) do
+    case client_link(name, opts, headers) do
+      {:error, {:already_started, pid}} -> replace_leaked(pid, name, opts, headers)
+      result -> result
+    end
+  end
+
+  # A client left behind by a session that is gone.
+  #
+  # `connect/2` unlinks the supervisor on purpose, so it outlives the process
+  # that asked for it — an agent whose browser died should not die with it. The
+  # cost of that, unhandled, is that nothing ever takes the client down: stopping
+  # an agent leaves its client registered under the same name, and the next
+  # launch fails with
+  #
+  #     {:shutdown, {:failed_to_start_child, Anubis.Client, {:already_started, …}}}
+  #
+  # which fails the whole supervision tree. The agent then cannot start again —
+  # not by restarting it, not by stopping and starting it — until the harness
+  # itself is restarted and the leak goes with the VM.
+  #
+  # Watched end to end: a coding agent stopped at 02:24, came back with no tools
+  # at all, and reported "every tool I attempted returned No such tool
+  # available" for four consecutive turns while three restarts each answered
+  # "running" and changed nothing.
+  #
+  # Replaced rather than reused. The leaked client holds the previous session's
+  # transport and headers, and an agent restarted because something was wrong
+  # with it is the last caller that should inherit them.
+  defp replace_leaked(pid, name, opts, headers) do
+    Logger.info("[CmsHarness] replacing a leaked MCP client for #{inspect(name)}")
+
+    stop_client(pid)
+    client_link(name, opts, headers)
+  end
+
+  # `:normal` first, because a supervisor that exits normally takes its children
+  # with it in order. Brutal kill only if it will not, and never a bare
+  # `Process.exit/2` first — that leaves the transport's own process alive and
+  # the name free, which is the same leak one layer down.
+  defp stop_client(pid) do
+    Supervisor.stop(pid, :normal, 5_000)
+  catch
+    :exit, _ ->
+      Process.exit(pid, :kill)
+      :ok
+  end
+
+  defp client_link(name, opts, headers) do
     Anubis.Client.start_link(
       name: name,
       transport_name: transport_name(name),
