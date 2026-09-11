@@ -40,7 +40,15 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
     # going quiet — the push replaces both of these rather than supplementing
     # them.
     "check_answer" => "answers are pushed to this agent, so there is nothing to poll for",
-    "list_user_questions" => "same: its own questions come back to it without being listed"
+    "list_user_questions" => "same: its own questions come back to it without being listed",
+
+    # The external door. An agent here has an identity on its connection and a
+    # conversation to be told in, so `promote` — which it does carry — answers
+    # at once and messages the outcome back. `promote_sync` exists for callers
+    # with neither, and holding one of this agent's tool calls open for the
+    # length of a merge, an analyzer sweep and an application restart is exactly
+    # what the asynchronous door was built to avoid.
+    "promote_sync" => "it carries `promote`, which answers immediately and reports back"
   }
 
   defp carried do

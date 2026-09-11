@@ -72,18 +72,19 @@ defmodule CodeMySpec.Agents.ToolSets do
   # looking at it, and the `code-writer` agent type has carried browser tools
   # since before roles existed. Product does not — it writes specs, and a spec
   # is not verified by driving a page.
-  # `promote` is here because `code_on_running_copy` is a coding requirement and
-  # the orchestrator hands it to this role: "Gave you the next requirement:
-  # code_on_running_copy." Without it the agent was told to promote, looked the
-  # tool up, found it documented, and could not call it — then reported the one
-  # explanation available from inside, a stale client tool list, which was wrong.
-  # The tool was never granted to the role at all.
+  # `promote` is deliberately NOT in this list, and the mistake is worth
+  # recording because it looked right.
   #
-  # `promote_sync` is deliberately not here. An agent we run has an identity on
-  # its connection and somewhere to be messaged, so `promote` answers at once and
-  # reports back; the synchronous door exists for callers that have neither, and
-  # handing it to an agent would buy a tool call blocked for the length of a
-  # build.
+  # These lists are the allowlist for *scriptable* tools — `tool_sets_test.exs`
+  # checks every name here against `ScriptableTools`, and a name that matches
+  # nothing "is not a smaller grant, it is a list that reads as bigger than it
+  # is". `promote` is direct-only on `LocalServer`, so adding it here granted
+  # exactly nothing while reading as though it had.
+  #
+  # What an agent in our own BEAM actually carries is the module list in
+  # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
+  # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
+  # between the grant that did nothing and the one that worked.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -96,7 +97,6 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_tasks clear_problems list_problems
     web_search web_fetch
     browser
-    promote
   )
 
   # Shaping what gets built, and never building it. The product half of the

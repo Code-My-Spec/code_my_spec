@@ -23,6 +23,22 @@ defmodule CodeMySpec.Agents.RoleBrief do
   So when a role's tools change, this changes with them, and the pair stays one
   decision.
 
+  ## Three things, not one
+
+  The brief below says what a role is for. `OperatingRules` says how the
+  machinery behaves — which tools answer before their work is done, what
+  actually blocks a story, what an agent must not do by hand — and is the same
+  for every role, so it lives beside these rather than being repeated four
+  times and drifting. Both travel together as the framework's half of the
+  prompt.
+
+  Every rule in that module was delivered by hand to a running agent after it
+  had already gone the wrong way. An agent told what it is for and left to infer
+  the rest from whatever codebase it is standing in will infer wrong, and the
+  most expensive hour of 2026-09-10 was a coding agent building a
+  `config/dev_cli.exs` for a game because it had seen that env in CodeMySpec's
+  own justfile.
+
   ## What is deliberately not here
 
   Project context. `compose/2` on the harness appends the project's own
@@ -31,6 +47,8 @@ defmodule CodeMySpec.Agents.RoleBrief do
   two halves are maintained in different places by different people: the role is
   the framework's, the workflow is the project's.
   """
+
+  alias CodeMySpec.Agents.OperatingRules
 
   @briefs %{
     main: """
@@ -92,7 +110,12 @@ defmodule CodeMySpec.Agents.RoleBrief do
     __MODULE__.for(safe_atom(role))
   end
 
-  def for(role) when is_atom(role) and not is_nil(role), do: Map.get(@briefs, role)
+  def for(role) when is_atom(role) and not is_nil(role) do
+    case Map.get(@briefs, role) do
+      nil -> nil
+      brief -> String.trim(brief) <> "\n\n" <> OperatingRules.text()
+    end
+  end
 
   def for(_role), do: nil
 
