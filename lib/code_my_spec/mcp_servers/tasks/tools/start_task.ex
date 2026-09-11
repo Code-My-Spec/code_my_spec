@@ -98,7 +98,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp resolve_from_graph(scope, name, entity_type, entity_id) do
     # Find the matching node in the computed graph
-    all_nodes = RequirementGraph.compute_all(scope)
+    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     case Enum.find(all_nodes, fn n ->
            n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
