@@ -443,6 +443,49 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     copy
   end
 
+  # A cache hit and a cache miss must describe the same graph.
+  #
+  # Found by QA on story 1062, reproduced three times on the graph page: 2009
+  # nodes on a fresh compute, 1844 from the cache, stable, under one
+  # `computed_at`, back to 2009 on the next recompute (7a6b92e3). Criterion 3358
+  # is the story's record of it.
+  #
+  # A miss answers with what it computed. A hit answers with `Projection.load/2`
+  # — the projection tables read back — so the two agree only if the round trip
+  # is lossless. It is not obliged to be: `load/2` rehydrates each row against
+  # the preloaded context and drops whatever it cannot rebuild.
+  describe "a cache hit and the computation it came from" do
+    setup do
+      %{scope: setup_project()}
+    end
+
+    test "describe the same graph", %{scope: scope} do
+      viewing = %{scope | active_working_copy_id: nil}
+
+      {{computed_nodes, _edges, _actionable}, computed} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      {{cached_nodes, _edges, _actionable}, cached} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert computed.served_from == "computed"
+      assert cached.served_from == "cache"
+
+      assert length(cached_nodes) == length(computed_nodes),
+             """
+             The cached read and the computed read describe different graphs.
+
+             computed: #{length(computed_nodes)} nodes
+             cached:   #{length(cached_nodes)} nodes
+
+             Both readings are internally coherent, which is why this survived
+             until a page showed them next to each other under one timestamp.
+             Whatever a computation stored has to be what the read serving it
+             back returns, or `computed_at` is a label on two different answers.
+             """
+    end
+  end
+
   defp setup_project do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
