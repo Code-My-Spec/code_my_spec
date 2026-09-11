@@ -24,6 +24,18 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   Nothing downstream is harmed by an over-broad record. Attribution only ever
   *narrows* the stop hook's blocking scope, and a path with no file has no
   problems to match, so a phantom entry scopes nothing in.
+
+  ## Bash commands that rewrite the tree without a Write/Edit
+
+  Also watches for a `Bash` command able to move `HEAD` or rewrite tracked
+  files outside Write/Edit — rebase, pull, merge, checkout, reset,
+  cherry-pick, stash pop/apply — and stamps `Session.git_rewrite_at`.
+  `Validation.narrow_to_attributed/4` reads it: a small mtime-dirty set with
+  no recorded edits used to be trusted as "written through something other
+  than Write/Edit" (a spex, a direct evaluator). A routine `git fetch && git
+  rebase` that pulls in a couple of already-committed files has the identical
+  shape and got the same pass, crediting one session with another session's
+  already-pushed work (f8af8bf2).
   """
 
   require Logger
@@ -46,6 +58,7 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   def handle(scope, params) do
     track_edit(params)
     mark_active(scope, params)
+    track_git_rewrite(scope, params)
 
     # The delivery point. Analyzer results used to reach an agent only at its
     # next stop, which is one turn late and free if the agent never stops —
@@ -136,4 +149,55 @@ defmodule CodeMySpec.Hooks.PostToolUse do
 
   defp extract_file_path(%{"notebook_path" => path}) when is_binary(path), do: {:ok, path}
   defp extract_file_path(_input), do: :error
+
+  # Fire-and-forget, same as the rest of this hook's bookkeeping — recording
+  # this must never be the reason a tool call fails.
+  @rewrite_subcommands ~w(rebase pull merge checkout reset cherry-pick restore)
+
+  defp track_git_rewrite(scope, %{
+         "tool_name" => "Bash",
+         "session_id" => session_id,
+         "tool_input" => input
+       })
+       when is_binary(session_id) do
+    command = Map.get(input, "command")
+
+    if is_binary(command) and git_rewrite_command?(command) do
+      with %Scope{} = scope <- scope,
+           session when not is_nil(session) <- Sessions.get_by_external_id(scope, session_id) do
+        Sessions.record_git_rewrite(scope, session)
+      end
+    end
+
+    :ok
+  end
+
+  defp track_git_rewrite(_scope, _params), do: :ok
+
+  # A cheap word-boundary check, not a shell parser. Missing an obscure
+  # invocation (`git -C dir rebase`) just falls back to today's size-based
+  # leniency in `Validation.narrow_to_attributed/4` — the same behavior this
+  # is meant to narrow, not a new failure mode. A false positive costs the
+  # same: the ambiguous small-and-unattributed case is treated as possibly
+  # inherited history rather than possibly a spex's own write.
+  defp git_rewrite_command?(command) do
+    command
+    |> String.split(~r/&&|;|\|/)
+    |> Enum.any?(&segment_runs_git_rewrite?/1)
+  end
+
+  defp segment_runs_git_rewrite?(segment) do
+    segment |> String.split() |> git_rewrite_tokens?()
+  end
+
+  defp git_rewrite_tokens?(["git" | rest]) do
+    case Enum.drop_while(rest, &String.starts_with?(&1, "-")) do
+      ["stash", next | _] -> next in ["pop", "apply"]
+      [sub | _] -> sub in @rewrite_subcommands
+      [] -> false
+    end
+  end
+
+  defp git_rewrite_tokens?([_ | rest]), do: git_rewrite_tokens?(rest)
+  defp git_rewrite_tokens?([]), do: false
 end
