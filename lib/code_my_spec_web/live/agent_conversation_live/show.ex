@@ -62,6 +62,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.ProjectTimeline
@@ -336,18 +337,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # A panel that cannot list epics should say so and leave the rest of the
   # screen alone, same reasoning as `safe_stories/1` below.
   defp safe_epics(scope) do
-    Epics.list_epics(scope)
-  rescue
-    _ -> []
+    Utils.rescued("AgentConversationLive.safe_epics", [], fn -> Epics.list_epics(scope) end)
   end
 
   # A panel that cannot list stories should say so and leave the rest of the
   # screen alone. This one rides the conversation, and a raise here takes the
   # transcript and the composer with it.
   defp safe_stories(scope) do
-    Stories.list_stories(scope)
-  rescue
-    _ -> []
+    Utils.rescued("AgentConversationLive.safe_stories", [], fn -> Stories.list_stories(scope) end)
   end
 
   # Why this transcript is empty, when it is.

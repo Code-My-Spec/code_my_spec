@@ -14,10 +14,90 @@ defmodule CodeMySpec.Utils do
     ],
     exports: :all
 
+  require Logger
+
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Paths
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Utils.Paths, as: UtilPaths
+
+  @doc """
+  Runs `fun`, logging and returning `fallback` if it raises instead of
+  taking the caller down with it.
+
+  For a page section whose own failure must not fail the whole page — a
+  gauge, a side panel's listing — where crashing the mount is worse than
+  showing nothing. `label` names what crashed, so a real bug shows up in the
+  log instead of reading identical to "nothing to show." Four copies of this
+  shape existed with no logging at all before they were collapsed here; a
+  bug behind any of them was indistinguishable from an empty result.
+  """
+  @spec rescued(String.t(), term(), (-> term())) :: term()
+  def rescued(label, fallback, fun) when is_function(fun, 0) do
+    fun.()
+  rescue
+    error ->
+      Logger.warning("[#{label}] " <> Exception.message(error))
+      fallback
+  end
+
+  @doc """
+  `String.to_existing_atom/1`, returning `fallback` instead of raising when
+  the value has no matching atom in the table.
+
+  Converting an arbitrary string to an atom unconditionally risks unbounded
+  atom-table growth if the input is ever caller- or agent-controlled —
+  `to_existing_atom` already refuses that by raising for anything the VM does
+  not already know. This just gives the refusal a value instead of a crash,
+  for the many places that need "not a known atom" to be data.
+  """
+  @spec safe_to_existing_atom(String.t() | atom() | nil, term()) :: atom() | term()
+  def safe_to_existing_atom(val, fallback \\ nil)
+  def safe_to_existing_atom(nil, _fallback), do: nil
+  def safe_to_existing_atom(val, _fallback) when is_atom(val), do: val
+
+  def safe_to_existing_atom(val, fallback) when is_binary(val) do
+    String.to_existing_atom(val)
+  rescue
+    ArgumentError -> fallback
+  end
+
+  @doc """
+  Runs `fun`, returning `nil` instead of raising when it's given a malformed
+  id — `Ecto.Query.CastError`, for a string that isn't a valid id shape (a
+  non-UUID against a `:binary_id` column, non-numeric against an integer id).
+
+  For a lookup-by-id whose caller already treats "not found" and "impossible
+  id" the same way — an id arriving from outside this node (a wire param, a
+  request header) is a string of unknown shape, and the schema's own type
+  already answers "is this even a candidate" before the query would.
+  """
+  @spec safe_get((-> term())) :: term() | nil
+  def safe_get(fun) when is_function(fun, 0) do
+    fun.()
+  rescue
+    Ecto.Query.CastError -> nil
+  end
+
+  @doc """
+  Atom-keys a map whose keys may already be atoms or may be strings.
+
+  Attrs arrive atom-keyed from a caller building one inline and string-keyed
+  from anywhere that round-tripped through JSON or a database row.
+  `String.to_existing_atom/1` raising on a key the schema never declared
+  would mean a stray param crashes the write instead of `cast/3` giving it a
+  real validation error — so a single unknown key leaves the whole map
+  unconverted rather than raising, and the caller's own cast rejects it.
+  """
+  @spec normalize_keys(map()) :: map()
+  def normalize_keys(attrs) when is_map(attrs) do
+    Map.new(attrs, fn
+      {k, v} when is_atom(k) -> {k, v}
+      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+    end)
+  rescue
+    ArgumentError -> attrs
+  end
 
   def component_files(
         %Component{module_name: module_name, type: type},
