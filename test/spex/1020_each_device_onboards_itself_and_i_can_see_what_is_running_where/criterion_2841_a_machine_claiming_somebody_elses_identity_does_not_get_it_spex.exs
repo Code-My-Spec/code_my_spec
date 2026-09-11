@@ -21,8 +21,6 @@ defmodule CodeMySpecSpex.Story1020.Criterion2841Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import CodeMySpecSpex.DeviceHelpers
 
   alias Ecto.Adapters.SQL.Sandbox

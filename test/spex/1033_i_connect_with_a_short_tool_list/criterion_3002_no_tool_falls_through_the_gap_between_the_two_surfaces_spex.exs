@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.McpServers.CodeMode, as: CodeModeLayer
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
@@ -41,7 +40,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
                  MapSet.size(context.advertised) + MapSet.size(context.scriptable),
                "a tool is on both lists: " <>
                  inspect(
-                   MapSet.intersection(context.advertised, context.scriptable) |> MapSet.to_list()
+                   MapSet.intersection(context.advertised, context.scriptable)
+                   |> MapSet.to_list()
                  )
 
         assert MapSet.size(context.everything) > 100

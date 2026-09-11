@@ -18,8 +18,6 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures

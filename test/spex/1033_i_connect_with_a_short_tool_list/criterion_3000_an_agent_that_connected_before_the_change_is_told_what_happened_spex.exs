@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
   setup :register_log_in_setup_account

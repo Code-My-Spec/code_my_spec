@@ -35,16 +35,6 @@ defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
     :ok
   end
 
-  defp report(socket, agents) do
-    ref = Phoenix.ChannelTest.push(socket, "agents_running", %{"agents" => agents})
-
-    receive do
-      %Phoenix.Socket.Reply{ref: ^ref, payload: payload} -> payload
-    after
-      2_000 -> flunk("the harness channel never acknowledged agents_running")
-    end
-  end
-
   spex "The channel is not the evidence" do
     scenario "A lane leaving is not a process exiting" do
       given_ "an agent whose lane has left the harness channel while its process is still alive",

@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story964.Criterion2934Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
-  import CodeMySpecSpex.SharedGivens
 
   alias Ecto.Adapters.SQL.Sandbox
 

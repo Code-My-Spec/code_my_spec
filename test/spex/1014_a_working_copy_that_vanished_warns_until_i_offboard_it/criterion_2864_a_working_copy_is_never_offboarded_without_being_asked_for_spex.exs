@@ -29,7 +29,6 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
 
   import CodeMySpecSpex.DeviceHelpers
   import CodeMySpecSpex.PathReportHelpers
-  import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpecSpex.Fixtures

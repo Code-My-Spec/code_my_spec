@@ -32,4 +32,7 @@ defmodule CodeMySpecTest.UnreachableMachine do
   def call_machine_tool(_working_copy_id, _tool, _arguments, _timeout),
     do: {:error, :harness_unreachable}
 
+  @impl true
+  def create_working_copy(_candidate_working_copy_ids, _request, _timeout),
+    do: {:error, :harness_not_connected}
 end
