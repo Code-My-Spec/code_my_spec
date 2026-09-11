@@ -129,7 +129,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # records through `WorkingCopies.record_git_state/2`; `analyzers_are_current/1`
   # records completed runs; `this_copy_is_the_running_one/1` drives the
   # designation page. `write/3` and `git/3` go through the environment onto the
-  # OS temp filesystem, which is what git reads.
+  # OS temp filesystem, which is what git reads. `report_preview/2` records
+  # through the same `Fixtures.record_preview_status/2` the channel handler
+  # calls — a wrapper naming the status in English rather than a shortcut
+  # around the real write. `a_running_copy/1` is `join_working_copy/3` plus the
+  # git init/commit that gives it something real to be a checkout of; a block
+  # calling it has joined a real working copy the same as any other.
   #
   # Comments stay out here. `~w()` has no comment syntax, so a `#` line inside the
   # sigil becomes literal tokens — including every ordinary English word in it,
@@ -154,6 +159,7 @@ defmodule CodeMySpec.SpexGivensTest do
     Req.Test.stub
     a_promotable_project report_git_state analyzers_are_current
     this_copy_is_the_running_one write( git(
+    report_preview a_running_copy
   )
 
   # The failure message has always offered a second remedy — "if the

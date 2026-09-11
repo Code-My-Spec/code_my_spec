@@ -84,6 +84,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_tasks clear_problems list_problems
     web_search web_fetch
     browser
+    promote
   )
 
   # Shaping what gets built, and never building it. The product half of the

@@ -19,12 +19,25 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
 
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.McpServers.CodeMode
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
 
   @roles [:qa, :coding, :product]
 
   setup_all do
-    %{real: ScriptableTools.__components__() |> Enum.map(& &1.name()) |> MapSet.new()}
+    # `ScriptableTools` is the catalogue reachable from inside `run_script`'s
+    # Lua sandbox. `LocalServer` is the full top-level tool set, including
+    # ones deliberately kept out of the sandbox — `promote` among them,
+    # something that waits on a running copy rather than data an agent can
+    # compute with. A role can be granted either kind, so "exists" has to mean
+    # "either server exposes it," not just the narrower one.
+    names = fn server -> server.__components__() |> Enum.map(& &1.name()) end
+
+    real =
+      (names.(ScriptableTools) ++ names.(LocalServer))
+      |> MapSet.new()
+
+    %{real: real}
   end
 
   for role <- @roles do
