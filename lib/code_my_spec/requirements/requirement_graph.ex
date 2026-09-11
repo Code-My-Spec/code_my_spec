@@ -320,12 +320,37 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       graph_ms: div(us_graph, 1000),
       node_count: length(nodes),
       edge_count: length(edges),
-      computed_at: computed_at || DateTime.utc_now(),
+      computed_at: computed_at || published_at(scope, ctx),
       served_from: if(computed_at, do: "cache", else: "computed")
     }
 
     {{nodes, edges, actionable}, metrics}
   end
+
+  # The timestamp the compute actually stored, not the moment we got round to
+  # displaying it.
+  #
+  # `cached_graph_with_actionable/2` answers `nil` on a miss — its contract is
+  # "this read computed the answer", and `cached_all/1` depends on that nil
+  # meaning exactly that, so it stays. But a page needs something to show, and
+  # stamping `DateTime.utc_now()` here showed a time the answer was not computed
+  # at: QA measured the gap at 49ms and 185ms on two runs, because the publish
+  # happens before `actionable_from/3` and the round-trip check finish.
+  #
+  # Small, and wrong in the way that matters for this surface. The whole point
+  # of the strip is to let someone compare `computed_at` across reads, and a
+  # fresh compute that reports a different instant from the cached read of the
+  # same computation makes that comparison lie about which is newer.
+  #
+  # One indexed read, immediately after a compute that cost seconds.
+  defp published_at(scope, ctx) do
+    case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config_for(scope))) do
+      {:ok, _nodes, at} -> at
+      :miss -> DateTime.utc_now()
+    end
+  end
+
+  defp config_for(scope), do: CodeMySpec.Configurations.get_or_create(scope)
 
   defp cached_graph_with_actionable(scope, ctx) do
     config = CodeMySpec.Configurations.get_or_create(scope)
