@@ -266,7 +266,6 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
-      pending_notifications={@pending_notifications}
     >
       <div class="mx-auto max-w-5xl">
         <h1 class="text-2xl font-semibold mb-1">Servers</h1>

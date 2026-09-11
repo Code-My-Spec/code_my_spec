@@ -19,7 +19,8 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
 
   @doc """
   Launch request for an agent on a real directory, defaulting to the coding
-  type. Pass `%{"role" => "qa"}` for the criteria about what a type may reach.
+  type. Pass `%{"role" => "qa"}` for the criteria about what a type may reach,
+  or `%{"continuous" => true}` for the criteria that depend on the loop.
   """
   @spec launch_request(map(), map()) :: map()
   def launch_request(context, overrides \\ %{}) do
@@ -28,7 +29,11 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
     # id to the machine — and it is what makes the scoping criteria real: which
     # tools an agent may call is read off that row, so an invented id would be
     # asserting against no row at all.
-    agent = Fixtures.running_agent(context.scope, role: Map.get(overrides, "role", "coding"))
+    agent =
+      Fixtures.running_agent(context.scope,
+        role: Map.get(overrides, "role", "coding"),
+        continuous: Map.get(overrides, "continuous", false)
+      )
 
     Map.merge(
       %{
@@ -63,7 +68,8 @@ defmodule CodeMySpecSpex.AgentToolsHelpers do
   @spec fake_browser(map()) :: [String.t()]
   def fake_browser(context) do
     offered =
-      for n <- 1..85, do: "browser_#{Enum.at(~w(click fill type screenshot find), rem(n, 5))}_#{n}"
+      for n <- 1..85,
+          do: "browser_#{Enum.at(~w(click fill type screenshot find), rem(n, 5))}_#{n}"
 
     prior = Application.get_env(:code_my_spec, :harness_browser_tools)
     Application.put_env(:code_my_spec, :harness_browser_tools, offered)

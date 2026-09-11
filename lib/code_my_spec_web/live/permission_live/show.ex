@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Notifications
+  alias CodeMySpecWeb.PermissionComponents
 
   def mount(%{"id" => id}, _session, socket) do
     case Notifications.get_permission_request(id) do
@@ -27,11 +28,11 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
     end
   end
 
-  def handle_event("approve", _params, socket) do
+  def handle_event("approve", %{"id" => _id}, socket) do
     resolve(socket, "allow")
   end
 
-  def handle_event("deny", _params, socket) do
+  def handle_event("deny", %{"id" => _id}, socket) do
     resolve(socket, "deny")
   end
 
@@ -61,73 +62,20 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
       <div class="max-w-lg mx-auto">
         <%= if @request do %>
-          <div class="card bg-base-200 shadow-xl">
-            <div class="card-body">
-              <h2 class="card-title text-2xl">
-                Claude Code Permission Request
-              </h2>
-
-              <div class="mt-4 space-y-3">
-                <div>
-                  <span class="text-sm font-semibold opacity-70">Tool</span>
-                  <p class="text-lg font-mono">{@request.tool_name}</p>
-                </div>
-
-                <div>
-                  <span class="text-sm font-semibold opacity-70">Details</span>
-                  <pre class="bg-base-300 rounded-lg p-3 text-sm overflow-x-auto mt-1"><code>{format_input(@request.tool_name, @request.tool_input)}</code></pre>
-                </div>
-
-                <div>
-                  <span class="text-sm font-semibold opacity-70">Status</span>
-                  <span class={[
-                    "badge ml-2",
-                    status_badge_class(@request.status)
-                  ]}>
-                    {@request.status}
-                  </span>
-                </div>
-
-                <div class="text-xs opacity-50">
-                  Requested {Calendar.strftime(@request.inserted_at, "%H:%M:%S")}
-                </div>
-              </div>
-
-              <%= if @request.status == "pending" do %>
-                <div class="card-actions justify-end mt-6 gap-3">
-                  <button
-                    type="button"
-                    phx-click={show_confirm("confirm-deny-request")}
-                    class="btn btn-error btn-lg"
-                  >
-                    Deny
-                  </button>
-                  <button
-                    phx-click="approve"
-                    class="btn btn-success btn-lg"
-                  >
-                    Approve
-                  </button>
-                  <.confirm_dialog
-                    id="confirm-deny-request"
-                    title="Deny this request?"
-                    confirm_label="Deny"
-                    on_confirm={JS.push("deny")}
-                  />
-                </div>
-              <% else %>
-                <div class="mt-6 text-center opacity-70">
-                  This request has been resolved.
-                </div>
-              <% end %>
-            </div>
-          </div>
+          <PermissionComponents.permission_request
+            id={"permission-#{@request.id}"}
+            request={@request}
+            on_approve="approve"
+            on_deny="deny"
+          />
         <% else %>
           <div class="text-center py-12 opacity-70">
             Permission request not found or not authorized.
@@ -137,15 +85,4 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
     </Layouts.app>
     """
   end
-
-  defp format_input("Bash", %{"command" => cmd}), do: cmd
-  defp format_input("Read", %{"file_path" => path}), do: path
-  defp format_input("Write", %{"file_path" => path}), do: path
-  defp format_input("Edit", %{"file_path" => path}), do: path
-  defp format_input(_tool, input), do: Jason.encode!(input, pretty: true)
-
-  defp status_badge_class("pending"), do: "badge-warning"
-  defp status_badge_class("approved"), do: "badge-success"
-  defp status_badge_class("denied"), do: "badge-error"
-  defp status_badge_class(_), do: "badge-ghost"
 end

@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1004.Criterion1980Spex do
 
       then_ "submitting their answer resolves the item in the inbox", context do
         context.answer_view
-        |> form("form", %{"q_0" => "S3"})
+        |> form("main form", %{"q_0" => "S3"})
         |> render_submit()
 
         {:ok, list_view, _html} = live(context.conn, "/app/notifications")

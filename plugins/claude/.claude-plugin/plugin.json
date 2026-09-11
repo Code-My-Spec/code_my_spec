@@ -29,8 +29,9 @@
     },
     "vibium": {
       "type": "stdio",
-      "command": "vibium",
+      "command": "node",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/vibium-mcp.js",
         "mcp"
       ]
     }

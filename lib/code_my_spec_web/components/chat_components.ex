@@ -534,11 +534,16 @@ defmodule CodeMySpecWeb.ChatComponents do
   not a modal that closes.
 
   `on_submit` names the event because the two hosts handle it differently — a
-  page that has one question, and a transcript that may have several.
+  page that has one question, and a transcript that may have several. `target`
+  is `phx-target` verbatim — nil for a page or LiveView (the default; HEEx
+  drops the attribute entirely), `@myself` for a host embedding this inside a
+  stateful `LiveComponent` so the submit reaches the component and not the
+  enclosing LiveView.
   """
   attr :id, :string, default: nil
   attr :request, :any, required: true, doc: "a %Notifications.QuestionRequest{}"
   attr :on_submit, :string, default: "submit"
+  attr :target, :any, default: nil
 
   def question(assigns) do
     ~H"""
@@ -564,9 +569,16 @@ defmodule CodeMySpecWeb.ChatComponents do
         <form
           :if={@request.status == "pending"}
           phx-submit={@on_submit}
+          phx-target={@target}
           data-test="question-form"
           class="mt-2 space-y-6"
         >
+          <%!-- Read, not required: a host with only ever one pending question
+          (the standalone page, an agent's own conversation) answers `Enum.find`
+          on its own single list and never looks at this. A host aggregating
+          across several agents (the notification dropdown) cannot tell two
+          forms apart without it. --%>
+          <input type="hidden" name="request_id" value={@request.id} />
           <fieldset :for={{question, i} <- Enum.with_index(@request.questions)} class="space-y-2">
             <div>
               <span :if={question["header"]} class="badge badge-primary badge-sm">
