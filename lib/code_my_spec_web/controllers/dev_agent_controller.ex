@@ -105,8 +105,14 @@ defmodule CodeMySpecWeb.DevAgentController do
           status: "staffed",
           working_copy_id: copy_id,
           started:
-            Enum.map(result.started, &%{id: &1.id, role: &1.role, provider: &1.provider, model: &1.model}),
-          failed: Enum.map(result.failed, fn {role, reason} -> %{role: role, reason: inspect(reason)} end),
+            Enum.map(
+              result.started,
+              &%{id: &1.id, role: &1.role, provider: &1.provider, model: &1.model}
+            ),
+          failed:
+            Enum.map(result.failed, fn {role, reason} ->
+              %{role: role, reason: inspect(reason)}
+            end),
           continuous: result.continuous
         })
 
@@ -141,6 +147,35 @@ defmodule CodeMySpecWeb.DevAgentController do
   defp truthy(value) when is_boolean(value), do: value
   defp truthy(value) when value in ["false", "0", "no", "off"], do: false
   defp truthy(_value), do: true
+
+  # The other direction, which these tools did not have.
+  #
+  # `/dev/agents` could list an agent and stop it, and nothing here could start
+  # one again — so a stopped agent's only way back was the play control on its
+  # conversation page, and while that control was broken there was no way back
+  # at all. John, looking at exactly that: "I thought I could now start it with
+  # the play button but it's stopped and I can't get it going again."
+  #
+  # Restart, not start: same row, same id, same transcript. Starting would key a
+  # new conversation and lose the thread, which is the outcome a restart exists
+  # to avoid.
+  def restart(conn, %{"agent_id" => agent_id}) do
+    case Agents.restart_any_agent(agent_id) do
+      {:ok, agent} ->
+        json(conn, %{
+          status: to_string(agent.status),
+          agent_id: agent.id,
+          role: agent.role,
+          project_id: agent.project_id
+        })
+
+      {:error, :no_such_agent} ->
+        conn |> put_status(404) |> json(%{error: "no agent with id #{agent_id}"})
+
+      {:error, reason} ->
+        conn |> put_status(502) |> json(%{error: inspect(reason), agent_id: agent_id})
+    end
+  end
 
   def stop(conn, %{"agent_id" => agent_id}) do
     case Agents.stop_any_agent(agent_id) do

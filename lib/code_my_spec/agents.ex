@@ -507,6 +507,39 @@ defmodule CodeMySpec.Agents do
   cannot stop an agent while a wrong project id claims the write — the
   repository's `:cross_project` guard is doing its job, not being worked around.
   """
+  @doc """
+  Restart any agent by id, for the dev tools.
+
+  The counterpart to `stop_any_agent/1`, and the gap that made these tools
+  one-way: `/dev/agents` could observe an agent and stop it, and nothing there
+  could start one again. A stopped agent had exactly one route back — the play
+  control on its own conversation page — and when that control was itself broken
+  there was no way in at all.
+
+  Not `start_any_agent`. `start_agent/2` inserts a new row and
+  `find_or_create_agent_conversation/3` keys on `agent_id`, so starting is a
+  fresh empty thread; this is `restart_agent/2`, which re-runs the launch half
+  against the same row and the same transcript.
+
+  Account and project both come off the agent's row. The account is what the
+  credential lookup needs, and taking it from the caller would be the same hole
+  the `:cross_project` guard exists to close.
+  """
+  @spec restart_any_agent(Ecto.UUID.t()) ::
+          {:ok, Agent.t()} | {:error, :no_such_agent | term()}
+  def restart_any_agent(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        restart_agent(
+          %Scope{active_project_id: agent.project_id, active_account_id: agent.account_id},
+          agent.id
+        )
+    end
+  end
+
   @spec stop_any_agent(Ecto.UUID.t()) ::
           {:ok, Agent.t()} | {:error, :no_such_agent | term()}
   def stop_any_agent(agent_id) when is_binary(agent_id) do
