@@ -299,8 +299,14 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # stuck rather than the one that lets work through: the gate refused a story
     # for being behind, the merge landed, the harness said so, and the cached
     # graph went on serving the refusal the agent had already cleared.
+    #
+    # The scope's own checkout, because that is the one the gate asks about —
+    # `running_copy_check/2` reads `main/1` and the asking copy, and nothing
+    # else. Written against a third, unrelated checkout this passed for a
+    # reason unconnected to the gate: the fingerprint read the whole table, so
+    # any row moving moved it.
     test "a checkout reporting its work is now on main moves it", %{scope: scope} do
-      copy = a_checkout(scope)
+      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
 
       {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 3, behind: 0, dirty: false})
       behind = current_fingerprint(scope)
@@ -315,8 +321,13 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # The other half of the same node. That the code is on the running copy says
     # nothing about whether anything is serving it, and QA needs both — the two
     # came apart within a day of the gate shipping.
+    #
+    # On the main copy, because "the running application" is by definition the
+    # one `WorkingCopies.main/1` answers with — a checkout nobody designated is
+    # not serving anything and the gate never looks at it.
     test "the running application going down moves it", %{scope: scope} do
       copy = a_checkout(scope)
+      {:ok, copy} = WorkingCopies.designate_main(scope, copy.id)
 
       {:ok, _} = WorkingCopies.record_preview_status(copy, "serving")
       up = current_fingerprint(scope)

@@ -18,6 +18,7 @@ scenario is wrong.
 | File layout, DSL, setup template | [writing_a_spex.md](writing_a_spex.md) |
 | What you can and can't call from a spec | [boundaries.md](boundaries.md) |
 | In-memory filesystem, cassettes, hooks | [environment.md](environment.md) |
+| Building a project to make a claim about | [project_fixtures.md](project_fixtures.md) |
 | Recording cassettes + JSON output fixtures | [recording_cassettes.md](recording_cassettes.md) |
 | When to extract a shared given | [shared_givens.md](shared_givens.md) |
 
@@ -41,8 +42,10 @@ as one of them taking an action:
   `Phoenix.LiveViewTest.{live, form, render_submit, render_click}`.
 - **Coding agent** — interacts by writing files into the working
   directory and by firing harness hooks (stop hook, etc.). Drive this
-  with `Environments.write_file/3` and `Phoenix.ConnTest.post/3` to
-  `/api/hooks/*`.
+  with `Environments.write_file/3` and `post_hook/3`, which sets
+  `x-harness-id` and dispatches to the local endpoint. Writing a file
+  changes nothing on its own — something has to notice it; see
+  [project_fixtures.md](project_fixtures.md).
 
 If a step needs to reach past those two surfaces to make the scenario
 work, stop and re-read [boundaries.md](boundaries.md) before proceeding.

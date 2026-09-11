@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils.MapAccess
@@ -32,6 +33,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
        page_title: "Requirements",
        page: nil,
        graph_data: nil,
+       graph_provenance: nil,
        watching?: false,
        graph_timer: nil,
        error: nil,
@@ -392,7 +394,28 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
     socket
     |> assign(graph_data: graph_data)
+    |> assign(graph_provenance: provenance(metrics, socket.assigns[:scope]))
     |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
+  end
+
+  # Where this answer came from, for the strip above the graph.
+  #
+  # The page recomputed the whole graph on every visit until 2026-09-11, so it
+  # had nothing to say here — no cached answer to be fresh or stale. That made
+  # the one property stories 1062 and 1063 are about invisible on the one page
+  # people open to look at the graph, and QA on 1063 was blocked looking for it.
+  #
+  # The watcher's state belongs beside it because the two failures look
+  # identical from outside: a graph that has not changed and a graph that has
+  # stopped being able to change both show an unmoving `computed_at`.
+  # `last_error` is the only thing that tells them apart.
+  defp provenance(metrics, scope) do
+    %{
+      computed_at: metrics[:computed_at],
+      served_from: metrics[:served_from],
+      node_count: metrics[:node_count],
+      watcher: scope && GraphWatcher.status(scope.active_project_id)
+    }
   end
 
   # --- Render ---
@@ -412,6 +435,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       :if={@graph_data}
       project={@project}
       graph_data={@graph_data}
+      provenance={@graph_provenance}
       slug={@slug}
       socket={@socket}
     />
@@ -455,6 +479,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # would raise KeyError the first time a graph renders.
   attr :slug, :string, required: true
   attr :socket, :map, required: true
+  attr :provenance, :any, default: nil
 
   defp graph_view(assigns) do
     ~H"""
@@ -465,6 +490,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
         </.link>
       </div>
       <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
+      <.graph_provenance :if={@provenance} provenance={@provenance} />
       <div class="flex flex-wrap gap-4 text-sm mb-4">
         <span class="flex items-center gap-2">
           <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
@@ -485,6 +511,49 @@ defmodule CodeMySpecWeb.RequirementsLive do
         style="width: 100%; height: 80vh;"
       >
       </div>
+    </div>
+    """
+  end
+
+  attr :provenance, :map, required: true
+
+  # Where this answer came from, and whether the thing that keeps it current is
+  # still working.
+  #
+  # Two failures look identical without this. A graph that has not changed and a
+  # graph that has stopped being able to change both show an unmoving
+  # `computed_at`; only the watcher's `last_error` separates them, and the second
+  # is the worse one — every reader keeps being served the last good answer,
+  # which looks right and never moves again.
+  defp graph_provenance(assigns) do
+    ~H"""
+    <div
+      data-test="graph-provenance"
+      data-served-from={@provenance.served_from}
+      class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/60 mb-4"
+    >
+      <span>
+        {@provenance.node_count} requirements,
+        <span data-test="graph-served-from">
+          {if @provenance.served_from == "cache", do: "from cache", else: "computed just now"}
+        </span>
+      </span>
+      <span data-test="graph-computed-at" title={@provenance.computed_at}>
+        computed {@provenance.computed_at}
+      </span>
+      <span :if={@provenance.watcher} data-test="graph-watcher">
+        watcher {if @provenance.watcher.pending, do: "has a pass pending", else: "idle"}
+      </span>
+      <span :if={is_nil(@provenance.watcher)} data-test="graph-watcher" class="text-warning">
+        no watcher — this graph only moves when somebody reads it
+      </span>
+      <span
+        :if={@provenance.watcher && @provenance.watcher.last_error}
+        data-test="graph-watcher-error"
+        class="text-error font-medium"
+      >
+        last recompute failed: {@provenance.watcher.last_error.message}
+      </span>
     </div>
     """
   end
@@ -922,6 +991,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
     assign_page(socket, project, scope, page)
   end
 
+  # The component and components graphs, which are projections of their own and
+  # carry no cache provenance. Cleared rather than left alone: navigating from
+  # the project graph to a component's would otherwise keep the project graph's
+  # strip above a graph it does not describe.
   defp assign_graph(socket, project, scope, graph_data) do
     {:noreply,
      assign(socket,
@@ -929,6 +1002,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
        scope: scope,
        page: nil,
        graph_data: graph_data,
+       graph_provenance: nil,
        error: nil,
        setup_error: nil
      )}

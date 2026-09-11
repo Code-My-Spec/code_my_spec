@@ -209,7 +209,7 @@ defmodule CodeMySpec.Requirements.Preloader do
        personas_by_story: personas_by_story(story_ids),
        qa_latest_by_story: qa_latest_by_story(story_ids),
        uat_deploy_by_story: uat_deploy_by_story(project_id),
-       delegated_inputs: delegated_inputs(project_id)
+       delegated_inputs: delegated_inputs(project_id, working_copy_id)
      }}
   end
 
@@ -356,14 +356,41 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Map.new(&{&1.story_id, &1})
   end
 
-  defp delegated_inputs(project_id) do
+  defp delegated_inputs(project_id, working_copy_id) do
     @delegated_tables
     |> Map.new(fn table -> {table, stamps(table, project_id)} end)
     |> Map.put("qa_attempts", qa_attempt_stamps(project_id))
-    |> Map.put("working_copies", working_copy_gate_inputs(project_id))
+    |> Map.put("persona_stories", persona_story_links(project_id))
+    |> Map.put("working_copies", working_copy_gate_inputs(project_id, working_copy_id))
   end
 
-  # The columns `Promotion.running_copy_check` reads, rather than the rows.
+  # The LINK, not the persona. `personas_by_story/1` reads `persona_stories`,
+  # and `personas` being covered says nothing about it: creating a persona
+  # invalidated the graph while linking one to a story did not, so a story
+  # became eligible for its Three Amigos and the cached graph went on saying it
+  # was not — with nothing to ever change its mind, because no covered input
+  # moves when a link is written.
+  #
+  # Permanent rather than transient, which is what makes a join table the worst
+  # thing to leave out. `personas_complete` and `three_amigos_complete` both
+  # gate on this link.
+  #
+  # Ids rather than stamps: the row carries no `updated_at` worth reading, and
+  # the question is only ever which stories have a persona.
+  defp persona_story_links(project_id) do
+    Repo.all(
+      from(ps in "persona_stories",
+        join: s in "stories",
+        on: s.id == ps.story_id,
+        where: s.project_id == type(^project_id, :binary_id),
+        select: {ps.story_id, ps.persona_id},
+        order_by: [ps.story_id, ps.persona_id]
+      )
+    )
+  end
+
+  # The columns `Promotion.running_copy_check` reads, rather than the rows —
+  # and from the two copies it reads them from, rather than the table.
   #
   # `stamps/2` would be wrong here in both directions. Too coarse, because
   # `last_seen_at` is written on every heartbeat from every checkout, so the
@@ -374,20 +401,63 @@ defmodule CodeMySpec.Requirements.Preloader do
   # it computed before the merge. The gate answers about state that changes
   # without a file changing, which is exactly the case a files digest cannot see.
   #
+  # Reading the whole table was the same mistake one level up. `GraphCache`
+  # keeps one row per project AND working copy — "one checkout's cache row, not
+  # the project's" — but every checkout computed its fingerprint from every
+  # checkout's git state, so one worktree reporting a commit invalidated all of
+  # their rows at once and each recomputed a graph whose own inputs had not
+  # moved. Spex criterion 3240 measures it.
+  #
+  # So: exactly the two copies `running_copy_check/2` names, and from each only
+  # what it reads. It asks `WorkingCopies.main/1` for the running copy and
+  # passes it to `serving/2`, which reads `preview_status` and, in the refusal
+  # it writes, `preview_url`. It fetches the asking checkout and passes it to
+  # `in_sync/1`, which reads `git_state_at`, the two commit counts and
+  # `tree_dirty`. The running copy's commit counts are read by nobody; neither
+  # is any column of any third checkout.
+  #
   # `git_state_at` is hashed as nil-or-not and `preview_checked_at` not at all,
   # because both are stamped with the current time on every sync whether or not
   # anything they describe moved. Hashing either value would invalidate the
-  # project's graph on every heartbeat — the coarseness this exists to avoid,
-  # arriving through the back door. The checker reads them the same way: it asks
-  # whether a report has ever arrived, never when.
-  defp working_copy_gate_inputs(project_id) do
+  # graph on every heartbeat — the coarseness this exists to avoid, arriving
+  # through the back door. `in_sync/1` and `serving/2` read them the same way:
+  # they ask whether a report has ever arrived, never when.
+  #
+  # With no checkout on the scope, `running_copy_check/2` answers "No checkout
+  # on this scope" without reading past whether a copy is designated, so that is
+  # all that is read. This is the UI's vantage, which `load/1` warns is a blend.
+  defp working_copy_gate_inputs(project_id, nil), do: designated_copy(project_id)
+
+  defp working_copy_gate_inputs(project_id, working_copy_id),
+    do: running_copy_inputs(project_id) ++ asking_copy_inputs(project_id, working_copy_id)
+
+  defp designated_copy(project_id) do
     Repo.all(
       from(c in "working_copies",
-        where: c.project_id == type(^project_id, :binary_id),
+        where: c.project_id == type(^project_id, :binary_id) and c.main,
+        select: {"designated", c.id}
+      )
+    )
+  end
+
+  defp running_copy_inputs(project_id) do
+    Repo.all(
+      from(c in "working_copies",
+        where: c.project_id == type(^project_id, :binary_id) and c.main,
+        select: {"running", c.id, c.preview_status, c.preview_url}
+      )
+    )
+  end
+
+  defp asking_copy_inputs(project_id, working_copy_id) do
+    Repo.all(
+      from(c in "working_copies",
+        where:
+          c.project_id == type(^project_id, :binary_id) and
+            c.id == type(^working_copy_id, :binary_id),
         select:
-          {c.id, c.main, c.commits_ahead_of_main, c.commits_behind_main, c.tree_dirty,
-           is_nil(c.git_state_at), c.preview_status},
-        order_by: c.id
+          {"here", c.id, is_nil(c.git_state_at), c.commits_ahead_of_main, c.commits_behind_main,
+           c.tree_dirty}
       )
     )
   end
@@ -406,9 +476,6 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # Schemaless on purpose: this wants the fact that a row changed, not the row.
-  # Going through each context would mean five different shapes and five more
-  # things to keep in step with checkers that may start reading something else.
   defp stamps(table, project_id) do
     Repo.all(
       from(r in table,

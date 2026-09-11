@@ -41,18 +41,17 @@ defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 # ... inside when_ ...
 response =
   use_cmd_cassette "pipeline_exunit_failure", record: :none do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> post(~p"/api/hooks/stop", %{
+    post_hook(context, "/api/hooks/stop", %{
       "test_output_files" => %{
         "exunit" => fixture_path("exunit.json"),
         "compile" => fixture_path("compile.jsonl")
       }
     })
-    |> Phoenix.ConnTest.json_response(200)
   end
 ```
+
+`post_hook/3` sets `x-harness-id`, dispatches to the local endpoint, and
+returns the decoded body — do not pipe it into `json_response/2` again.
 
 The `test_output_files` key is an optional POST body field that
 `StopController` extracts (see the equivalent of

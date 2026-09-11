@@ -37,24 +37,27 @@ env = Fixtures.memory_environment_fixture(working_dir: "/memfs/env-42")
 is attached to the scope and registered so LiveViews that rebuild scope
 via `Scope.for_local_project/1` get *this* env, not a default `:local` one.
 
-## The stub directory
+## Reaching a hook endpoint
 
-The `WorkingDir` plug checks `File.dir?(project.local_path)` directly.
-Since the memfs doesn't satisfy that, `setup_active_project` creates a
-real tmp dir with a single `mix.exs` file in it. This dir is only a
-marker for the plug — every real file read/write in the spec goes
-through the memfs.
+**No directory travels on the wire.** A request names the *working copy*,
+never a path. Resolving a checkout from an announced path succeeded
+against the wrong disk rather than failing when it was wrong, so
+`x-working-dir`, `?dir=`, `Plugs.WorkingDir` and `WorkingDirScope` were
+all removed. A request naming no harness is refused with a 400 saying
+where the id lives.
+
+Use the case's own helper rather than building the conn yourself:
 
 ```elixir
-# From <app>_spex_case.ex
-stub_dir = Path.join(System.tmp_dir!(), "spex-#{...}")
-File.mkdir_p!(stub_dir)
-File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
-ExUnit.Callbacks.on_exit(fn -> File.rm_rf(stub_dir) end)
+post_hook(context, "/api/hooks/session-start", %{"session_id" => session_id})
 ```
 
-`context.scope.cwd` is this stub dir. When you post to a hook endpoint,
-use `context.scope.cwd` for the `x-working-dir` header.
+It sets `x-harness-id` from the context and dispatches to the **local**
+endpoint. That last part matters: hooks are a harness-app surface, and
+dispatching via `@endpoint` sends them to whichever endpoint the spex
+file happens to declare — which in at least one file is the cloud app.
+`post_hook/3` takes a context, a scope, or the bare id, because callers
+have all three.
 
 ## The three ways state changes in a spec
 
@@ -62,7 +65,7 @@ use `context.scope.cwd` for the `x-working-dir` header.
 |---|---|---|
 | Engineer clicks a button | `render_click/1`, `render_submit/1` on a LiveView | Re-render, `has_element?/2`, subsequent LiveView navigation |
 | Agent writes a file | `Environments.write_file/3` + run the real sync flow through the UI (e.g. the `/sync` page's button) | The synced row via `Fixtures.get_component_by_module_name/2` or a rendered graph page |
-| Agent signals a hook | `post(conn, ~p"/api/hooks/stop", payload)` with `x-working-dir` header | JSON response body |
+| Agent signals a hook | `post_hook(context, "/api/hooks/stop", payload)` | JSON response body |
 
 ## Cassettes for CLI-driven steps
 
@@ -80,11 +83,7 @@ use ExCliVcr
 when_ "the stop hook fires", context do
   response =
     use_cmd_cassette "credo_violation", record: :none do
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> post(~p"/api/hooks/stop", %{})
-      |> Phoenix.ConnTest.json_response(200)
+      post_hook(context, "/api/hooks/stop", %{})
     end
 
   {:ok, Map.put(context, :response, response)}
