@@ -38,17 +38,35 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   for the reason above: it is the only component whose refresh cannot come
   from its own parent's next render.
 
-  ## Why a resolved item is never removed
+  ## Summary first, full form on click
+
+  The panel lists compact rows — icon, title, one line of body — the same
+  shape `NotificationLive.Index` already uses for "Pending". Clicking a row
+  is the only way to reach the full form; `@expanded` names at most one
+  request at a time, and submitting always collapses back to the list. This
+  matches the standalone inbox's own two-step shape (list, then a page to
+  answer on) without the navigation — expanding swaps content inside the one
+  card already on screen rather than opening a second surface.
+
+  ## Why a resolved item is never removed mid-panel
 
   The panel opens via a plain daisyUI `dropdown`/`dropdown-content` pair —
-  `:focus-within`, no JS, no server round trip to open it. If resolving an
-  item removed its node from the list, the button the user just clicked would
-  vanish from the DOM, focus would revert to nothing, `:focus-within` would go
-  false, and the *entire panel* would snap shut — including hiding every
-  other request still pending. `ChatComponents.question/1` already avoids
-  this (the card stays mounted; only its internal branch changes); the same
-  has to hold here, so an item is only ever dropped from `@pending` by a full
-  reload (`send_update`, or the next mount), never by the event that resolved it.
+  `:focus-within`, no JS, no server round trip to open it. Submitting an item
+  legitimately drops it from `@pending` (it is no longer pending) and that is
+  fine here specifically because the row that had focus — the submit button,
+  inside the expanded form — goes with it deliberately, the same as a modal
+  closing after its own action completes. What must never happen is an
+  *unrelated* pending item disappearing as a side effect of one submit;
+  `load/1` only ever removes items the server now says are resolved.
+
+  ## Why a flash, not an inline "sent" banner
+
+  `ChatComponents.question/1`'s "Answer sent" banner makes sense on its own
+  page, where the page is the whole context. Inside a dropdown that is about
+  to collapse (the item leaves `@pending` the moment it resolves), a banner
+  nobody stays to read is wasted; the flash relayed through `NotificationsHook`
+  (see below) says the same thing where the user's eyes already are once the
+  panel closes.
   """
   use CodeMySpecWeb, :live_component
 
@@ -69,41 +87,68 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   # than a plain `update/2` fallthrough so a normal parent re-render (which
   # passes `current_scope` again on every single page navigation) does not
   # also requery the database — only an actual broadcast does.
+  #
+  # `@expanded` is left untouched by a broadcast-driven refresh: another tab
+  # resolving a different request should not collapse the one this user has
+  # open.
   def update(%{refresh: _}, socket) do
     {:ok, load(socket)}
   end
 
   def update(assigns, socket) do
     socket = assign(socket, assigns)
-    socket = if Map.has_key?(socket.assigns, :pending), do: socket, else: load(socket)
+
+    socket =
+      if Map.has_key?(socket.assigns, :pending) do
+        socket
+      else
+        socket |> assign(:expanded, nil) |> load()
+      end
+
     {:ok, socket}
   end
+
+  def handle_event("expand", %{"id" => id}, socket), do: {:noreply, assign(socket, :expanded, id)}
+  def handle_event("collapse", _params, socket), do: {:noreply, assign(socket, :expanded, nil)}
 
   def handle_event("submit", %{"request_id" => id} = params, socket) do
     case find(socket, id) do
       %QuestionRequest{} = request ->
         answers = Notifications.collect_answers(request.questions, params)
         _ = Notifications.answer_question_request(request.id, answers)
-        {:noreply, load(socket)}
+        {:noreply, socket |> flash(:info, "Answer sent.") |> collapse() |> load()}
 
       _ ->
         {:noreply, socket}
     end
   end
 
-  def handle_event("approve", %{"id" => id}, socket), do: resolve(socket, id, "allow")
-  def handle_event("deny", %{"id" => id}, socket), do: resolve(socket, id, "deny")
+  def handle_event("approve", %{"id" => id}, socket),
+    do: resolve(socket, id, "allow", "Approved.")
 
-  defp resolve(socket, id, decision) do
+  def handle_event("deny", %{"id" => id}, socket), do: resolve(socket, id, "deny", "Denied.")
+
+  defp resolve(socket, id, decision, message) do
     case find(socket, id) do
       %PermissionRequest{} ->
         _ = Notifications.resolve_permission_request(id, decision)
-        {:noreply, load(socket)}
+        {:noreply, socket |> flash(:info, message) |> collapse() |> load()}
 
       _ ->
         {:noreply, socket}
     end
   end
+
+  # Not `put_flash/3` directly — see `NotificationsHook`'s moduledoc. A
+  # `LiveComponent`'s own flash assign is discarded unless that same
+  # component also redirects, so the actual `put_flash/3` call has to happen
+  # one level up, on the LiveView process this component always runs inside.
+  defp flash(socket, kind, message) do
+    send(self(), {:notification_flash, kind, message})
+    socket
+  end
+
+  defp collapse(socket), do: assign(socket, :expanded, nil)
 
   defp find(socket, id), do: Enum.find(socket.assigns.pending, &(&1.id == id))
 
@@ -120,7 +165,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
 
   def render(assigns) do
     ~H"""
-    <div class="dropdown dropdown-end">
+    <div id={@id} class="dropdown dropdown-end">
       <label
         tabindex="0"
         role="button"
@@ -151,7 +196,12 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
         <p :if={@pending == []} class="text-center text-sm opacity-60 py-6">
           Nothing waiting on you.
         </p>
-        <.notification_item :for={item <- @pending} item={item} target={@myself} />
+        <.notification_item
+          :for={item <- @pending}
+          item={item}
+          target={@myself}
+          expanded={@expanded}
+        />
         <.link
           navigate={~p"/app/notifications"}
           class="link link-primary block border-t border-base-300 pt-2 text-center text-xs"
@@ -165,8 +215,53 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
 
   attr :item, :any, required: true
   attr :target, :any, required: true
+  attr :expanded, :any, required: true
 
-  defp notification_item(%{item: %QuestionRequest{}} = assigns) do
+  defp notification_item(assigns) do
+    ~H"""
+    <.summary_row :if={@expanded != @item.id} item={@item} target={@target} />
+    <div :if={@expanded == @item.id}>
+      <button
+        type="button"
+        phx-click="collapse"
+        phx-target={@target}
+        class="btn btn-ghost btn-xs -ml-1 mb-1"
+      >
+        <.icon name="hero-chevron-left" class="size-4" /> Back
+      </button>
+      <.expanded_form item={@item} target={@target} />
+    </div>
+    """
+  end
+
+  attr :item, :any, required: true
+  attr :target, :any, required: true
+
+  defp summary_row(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="expand"
+      phx-value-id={@item.id}
+      phx-target={@target}
+      data-test="notification-summary"
+      data-id={@item.id}
+      class="card card-compact bg-base-100 hover:bg-base-200 transition-colors w-full text-left border border-primary/40"
+    >
+      <div class="card-body flex-row items-start gap-3">
+        <.icon name={summary_icon(@item)} class="size-5 mt-0.5 shrink-0 text-primary" />
+        <div class="min-w-0 flex-1">
+          <p class="font-medium truncate">{summary_title(@item)}</p>
+          <p :if={summary_body(@item)} class="text-sm opacity-60 truncate">
+            {summary_body(@item)}
+          </p>
+        </div>
+      </div>
+    </button>
+    """
+  end
+
+  defp expanded_form(%{item: %QuestionRequest{}} = assigns) do
     ~H"""
     <ChatComponents.question
       id={"notif-dropdown-question-#{@item.id}"}
@@ -177,7 +272,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     """
   end
 
-  defp notification_item(%{item: %PermissionRequest{}} = assigns) do
+  defp expanded_form(%{item: %PermissionRequest{}} = assigns) do
     ~H"""
     <PermissionComponents.permission_request
       id={"notif-dropdown-permission-#{@item.id}"}
@@ -188,4 +283,22 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     />
     """
   end
+
+  defp summary_icon(%QuestionRequest{}), do: "hero-chat-bubble-left-right"
+  defp summary_icon(%PermissionRequest{}), do: "hero-shield-check"
+
+  defp summary_title(%QuestionRequest{title: title, questions: questions}),
+    do: title || first_question(questions)
+
+  defp summary_title(%PermissionRequest{tool_name: tool_name}), do: "Claude Code: #{tool_name}"
+
+  defp summary_body(%QuestionRequest{questions: questions}), do: first_question(questions)
+  defp summary_body(%PermissionRequest{} = request), do: tool_summary(request)
+
+  defp first_question([%{"question" => q} | _]) when is_binary(q), do: q
+  defp first_question(_), do: "Claude Code has a question"
+
+  defp tool_summary(%{tool_input: %{"command" => cmd}}), do: cmd
+  defp tool_summary(%{tool_input: %{"file_path" => path}}), do: path
+  defp tool_summary(_), do: nil
 end
