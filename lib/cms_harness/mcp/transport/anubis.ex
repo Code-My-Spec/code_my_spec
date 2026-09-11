@@ -73,8 +73,18 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   defp start_client(name, opts, headers) do
     case client_link(name, opts, headers) do
-      {:error, {:already_started, pid}} -> replace_leaked(pid, name, opts, headers)
-      result -> result
+      {:error, {:already_started, pid}} ->
+        replace_leaked(pid, name, opts, headers)
+
+      # The shape it actually arrives in. `Anubis.Client.start_link/1` starts a
+      # supervisor, and the name collision happens on its *child*, so the
+      # already-started tuple comes back wrapped twice. Matching only the bare
+      # form looked right and caught nothing.
+      {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, pid}}}} ->
+        replace_leaked(pid, name, opts, headers)
+
+      result ->
+        result
     end
   end
 
