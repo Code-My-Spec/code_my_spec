@@ -43,16 +43,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
     if is_nil(cwd) or cwd == "" do
       {:error, "No working directory available"}
     else
-      with {:ok, temp_file} <- create_temp_file(),
-           {:ok, json_output} <- execute_sobelow(cwd, temp_file, opts, scope),
-           {:ok, findings} <- parse_json_output(json_output),
-           problems <- convert_to_problems(findings, scope) do
-        cleanup_temp_file(temp_file)
-        {:ok, problems}
-      else
-        {:error, _reason} = error ->
-          error
-      end
+      temp_file = CodeMySpec.TempFile.path("sobelow_output", ".json")
+      result = execute_and_parse(cwd, temp_file, scope, opts)
+      CodeMySpec.TempFile.cleanup(temp_file)
+      result
     end
   rescue
     exception ->
@@ -62,11 +56,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
   # Private functions
 
-  defp create_temp_file do
-    {:ok, CodeMySpec.TempFile.path("sobelow_output", ".json")}
-  rescue
-    exception ->
-      {:error, "Failed to create temporary file: #{Exception.message(exception)}"}
+  defp execute_and_parse(cwd, temp_file, scope, opts) do
+    with {:ok, json_output} <- execute_sobelow(cwd, temp_file, opts, scope),
+         {:ok, findings} <- parse_json_output(json_output),
+         problems <- convert_to_problems(findings, scope) do
+      {:ok, problems}
+    else
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   defp execute_sobelow(code_repo, temp_file, opts, scope) do
@@ -104,12 +102,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
         end
 
       {output, _exit_code} ->
-        cleanup_temp_file(temp_file)
         {:error, "Sobelow command failed: #{output}"}
     end
   rescue
     exception ->
-      cleanup_temp_file(temp_file)
       {:error, "Failed to execute Sobelow: #{Exception.message(exception)}"}
   end
 
@@ -260,12 +256,4 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   defp map_sobelow_severity("medium"), do: :warning
   defp map_sobelow_severity("low"), do: :info
   defp map_sobelow_severity(_), do: :warning
-
-  defp cleanup_temp_file(temp_file) do
-    if File.exists?(temp_file) do
-      File.rm(temp_file)
-    end
-  rescue
-    _ -> :ok
-  end
 end
