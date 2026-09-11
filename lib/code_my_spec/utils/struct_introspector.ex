@@ -86,11 +86,13 @@ defmodule CodeMySpec.Utils.StructIntrospector do
     end
   end
 
-  # Get Ecto field type
+  # Get Ecto field type. `__schema__(:type, field)` raises `ArgumentError` for
+  # a virtual or embedded field, which isn't tracked as a column type — `:any`
+  # is a real answer for those, not a fallback for an unexpected failure.
   defp get_ecto_type(schema_module, field) do
     schema_module.__schema__(:type, field)
   rescue
-    _ -> :any
+    ArgumentError -> :any
   end
 
   # Build comprehensive field specifications
