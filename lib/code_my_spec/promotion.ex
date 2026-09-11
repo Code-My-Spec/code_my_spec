@@ -61,6 +61,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Problems,
       CodeMySpec.Requirements,
       CodeMySpec.Users,
+      CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies
     ],
