@@ -43,8 +43,6 @@ defmodule CodeMySpec.Agents.StopDecision do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Requirements
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -77,44 +75,19 @@ defmodule CodeMySpec.Agents.StopDecision do
       {nil, _key} ->
         :ok
 
-      # A continuation is not a repeat. R8 counts identical *blocks* — the same
-      # findings refusing the same agent turn after turn — and a loop handing
-      # back the menu after a turn that passed is the opposite of that: work got
-      # done. Feeding it through `stuck?/2` would count five successful turns as
-      # five identical failures and end the loop silently at the fifth, which is
-      # the one failure mode a loop must not have. The escape is `tap_out`,
-      # offered in the menu itself.
+      # A menu that repeats byte-for-byte is a repeat regardless of the key it
+      # arrived under — genuine progress changes the menu (a count drops, a
+      # task id changes), so this only ever fires when nothing actually moved.
+      # Keyed on the rendered text itself, in its own `stuck?` slot, so a
+      # continuing agent that is genuinely stuck stops hearing the same
+      # "your turn is done" every turn instead of forever, same as any other
+      # class of repeat. The escape while it is silenced is `tap_out`, offered
+      # in the menu itself.
       {message, :continuing} ->
-        send_to(scope, agent, message)
+        if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
 
       {message, key} ->
         if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
-    end
-
-    # Beside the decision, not instead of it. An agent that stops with a failing
-    # compile *and* work open has two different things to act on, and collapsing
-    # them loses one — the menu ranks problems above the task, so the directive
-    # is `list_problems` and the task appears only as "Also live: 3 open tasks",
-    # which names neither the requirement nor the id `evaluate_task` needs.
-    #
-    # Only when the decision did not already carry it. When the task *does* win
-    # the directive the menu says the whole thing — "you have an open task, most
-    # recently `bdd_specs_passing` … call `evaluate_task` with task_id" — and a
-    # nudge after it is the same instruction twice in one stop.
-    #
-    # And only when the agent is not already waiting on a person. `{nil, nil}`
-    # means one of two different things: nothing to report, or
-    # `decide_with_key/3`'s own guard silenced the decision because the agent
-    # asked a question or tapped out. This nudge does not know which — it only
-    # sees the rendered text — so an agent that just tapped out and heard
-    # nothing back from the decision still got told "you stopped with X still
-    # open, close it yourself", in the same breath as being told to stop. The
-    # one message right after tap_out has to be "stopping and waiting", not
-    # "keep working" — checked again here for that reason.
-    if Notifications.awaiting_answer?(agent.id) do
-      :ok
-    else
-      nudge_open_task(scope, agent, elem(decided, 0))
     end
   rescue
     error ->
@@ -180,13 +153,24 @@ defmodule CodeMySpec.Agents.StopDecision do
         :ok
 
       menu ->
-        Conversations.find_or_create_agent_conversation(
-          scope.active_account_id,
-          scope.active_project_id,
-          agent.id
-        )
+        message = "Work of your kind is available." <> menu
 
-        send_to(scope, agent, "Work of your kind is available." <> menu)
+        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
+        # every graph change project-wide, and a change unrelated to this
+        # agent's own menu renders the identical text again. Keyed on the
+        # message rather than the event, so a real change to what this agent
+        # can see still gets through.
+        if stuck?(agent, message, :wake) do
+          :ok
+        else
+          Conversations.find_or_create_agent_conversation(
+            scope.active_account_id,
+            scope.active_project_id,
+            agent.id
+          )
+
+          send_to(scope, agent, message)
+        end
     end
   end
 
@@ -298,9 +282,9 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
 
-  # `tag` separates the counters. One slot per agent meant the decision and the
-  # nudge would overwrite each other's count, and the nudge would never reach a
-  # threshold because every decision reset it.
+  # `tag` separates the counters — `:decision`, `:continuing`, `:wake` — so one
+  # slot per agent doesn't let them overwrite each other's count and reset a
+  # threshold none of them reached on their own.
   defp stuck?(agent, key, tag \\ :decision)
 
   defp stuck?(%Agent{} = agent, key, tag) do
@@ -324,103 +308,6 @@ defmodule CodeMySpec.Agents.StopDecision do
       true
     else
       false
-    end
-  end
-
-  # Why the requirement is still open, from the checker that refused it.
-  #
-  # `Requirements.open_reason/3` rather than a copy here: `Hooks.Stop` records
-  # the same sentence on the external path, and two wordings of "why is this
-  # open" drift the moment one of them is edited.
-  defp obstacle(scope, task) do
-    case Requirements.open_reason(scope, task.requirement_name, entity_ids(task)) do
-      "" -> ""
-      reason -> " It is open because: #{reason}"
-    end
-  end
-
-  defp entity_ids(task) do
-    [task.story_id, task.component_id, task.project_id]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.map(&to_string/1)
-  end
-
-  # The same nudge `Hooks.Stop` records, found a different way.
-  #
-  # The external path reads the task off the stopping session, which is where a
-  # task is embedded and where a hook's payload points. An agent under Alloy has
-  # no session — and can still hold a task, because an orchestrator assigns one
-  # naming its `agent_id` and the task lives on the orchestrator's session. So
-  # the lookup is by agent, and the wording is the hook's verbatim.
-  #
-  # John, on why the orchestrator must not simply close it: "the agent should be
-  # nudged to complete its own task ... it should always be at the agent's
-  # discretion." The whole call travels with it, task id included, because being
-  # told to make a call and being told to go read about one are different
-  # instructions — QA of story 985 found the second reads as somewhere to go
-  # looking.
-  defp nudge_open_task(scope, agent, decision) do
-    # The agent's own list first. It owns its tasks now, so an agent we run has
-    # its open work here and never in a session — `Sessions.open_task_for_agent/2`
-    # scans active sessions for one assigned to a sub-agent, which is the
-    # external shape and answers nil for ours. That is why an agent could be
-    # nudged about nothing while holding an open task.
-    case Agent.active_task(agent) || Sessions.open_task_for_agent(scope, agent.id) do
-      nil ->
-        :ok
-
-      task ->
-        already_said? = is_binary(decision) and String.contains?(decision, task.id)
-
-        because = obstacle(scope, task)
-
-        message =
-          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you." <>
-            because <>
-            " " <> ~s(Call `evaluate_task` with task_id: "#{task.id}".)
-
-        Conversations.record_orchestrator_action(
-          agent,
-          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you." <> because,
-          tool: ~s(evaluate_task task_id: "#{task.id}"),
-          kind: "nudge"
-        )
-
-        # Recorded *and* sent, unless the decision already said it. It was only
-        # ever recorded, which made it a message to the transcript rather than
-        # to the agent: it rendered in the conversation, read as an instruction
-        # that had been given, and reached nobody. John, watching a stop: "I
-        # think it's a total red herring and it's not even being delivered to
-        # the agent."
-        #
-        # He was right about the case he was looking at. That agent's menu was
-        # led by 48 problems, so the task was a tally line with no id in it, and
-        # the only message carrying the id went nowhere.
-        #
-        # The external path does not have this bug: there the nudge is part of
-        # the stop hook's own response, which is delivered by definition. Only
-        # an agent we run needed the dispatch.
-        # Repeat-suppressed, like the decision beside it. It was not, and that
-        # asymmetry is the whole reason this message became noise: the menu goes
-        # quiet under `stuck?/2` when it repeats, and the nudge kept going out
-        # alone. An agent holding a task it cannot close — `issues_resolved`
-        # against issues in somebody else's repository — is then nudged on every
-        # single stop, forever, with nothing else being said.
-        #
-        # Measured 2026-09-08 over eight hours on one coding agent: 251 nudges
-        # against 85 menus. John: "I keep seeing this ... or some variation
-        # hitting the agent. Why?"
-        #
-        # Keyed on the task id, so closing one task and opening another says it
-        # again — what is suppressed is repeating *the same* instruction to an
-        # agent that has already heard it five times and not acted.
-        cond do
-          already_said? -> :ok
-          stuck?(agent, task.id, :nudge) -> :ok
-          true -> deliver_message(scope, agent, message)
-        end
     end
   end
 

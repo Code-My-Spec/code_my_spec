@@ -260,7 +260,7 @@ defmodule CodeMySpec.Notifications do
           type: "permission_request",
           title: "Claude Code: #{request.tool_name}",
           body: format_tool_summary(request.tool_name, request.tool_input),
-          url: "/app/permissions/#{request.id}"
+          url: permission_url(request)
         })
 
         broadcast_notifications_changed(user_id)
@@ -449,6 +449,24 @@ defmodule CodeMySpec.Notifications do
   def get_permission_request(id), do: Repo.get(PermissionRequest, id)
 
   @doc """
+  The permission/tap-out requests one agent raised, oldest first.
+
+  The permission-request spelling of `list_question_requests_for_agent/1`, for
+  the same reason a conversation needs it: an agent's own transcript shows the
+  agent's own requests, and the lookup is by agent id because an agent we run
+  has no session for a request to live on.
+  """
+  @spec list_permission_requests_for_agent(Ecto.UUID.t() | nil) :: [PermissionRequest.t()]
+  def list_permission_requests_for_agent(nil), do: []
+
+  def list_permission_requests_for_agent(agent_id) when is_binary(agent_id) do
+    PermissionRequest
+    |> where([p], p.agent_id == ^agent_id)
+    |> order_by([p], asc: p.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc """
   The agent's own pending tap-out request, if it already has one.
 
   `request_agent_tap_out/2`'s caller must not create a second row while the
@@ -601,6 +619,23 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp question_url(%{id: id}), do: "/app/questions/#{id}"
+
+  # Same rule as `question_url/1`, for the request an agent raised rather than
+  # asked. No `conversation_message_id` exists on a permission request — there
+  # is no schema for "what turn this happened at" — so the anchor is the
+  # request itself rather than a specific point in the transcript; it renders
+  # unconditionally near the bottom of it either way.
+  defp permission_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
+    case conversation_for_agent(agent_id) do
+      %{id: conversation_id, project_id: project_id} ->
+        "/app/projects/#{project_id}/agent-conversation/#{conversation_id}#permission-#{id}"
+
+      _ ->
+        "/app/permissions/#{id}"
+    end
+  end
+
+  defp permission_url(%{id: id}), do: "/app/permissions/#{id}"
 
   defp conversation_for_agent(agent_id) do
     from(c in CodeMySpec.Conversations.Conversation,

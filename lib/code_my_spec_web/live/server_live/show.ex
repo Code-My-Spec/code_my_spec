@@ -314,7 +314,6 @@ defmodule CodeMySpecWeb.ServerLive.Show do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
-      pending_notifications={@pending_notifications}
     >
       <div class="mx-auto max-w-5xl">
         <.link navigate={~p"/app/servers"} class="text-sm opacity-70">← Servers</.link>

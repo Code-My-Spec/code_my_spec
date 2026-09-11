@@ -104,8 +104,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
 
         {:ok, view, _html} = live(context.conn, "/app/questions/#{answered_id}")
 
+        # Scoped to the page's own content, not the nav: with two questions
+        # pending, the notification dropdown (present on every authenticated
+        # page) renders its own copy of both, and an unscoped selector would
+        # find three forms instead of the one this page is about.
         view
-        |> form("[data-test='question-form']", %{"q_0" => "The second one."})
+        |> form("main [data-test='question-form']", %{"q_0" => "The second one."})
         |> render_submit()
 
         {:ok, context}

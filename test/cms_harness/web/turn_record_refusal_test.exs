@@ -25,6 +25,7 @@ defmodule CmsHarness.Web.TurnRecordRefusalTest do
   use CmsHarnessTest.ConnCase, async: false
 
   import ExUnit.CaptureLog
+  import CmsHarnessTest.Projects, only: [project_dir: 0, serve: 1, stop_project: 1]
 
   alias CmsHarnessTest.FakeUpstream
 
@@ -80,6 +81,21 @@ defmodule CmsHarness.Web.TurnRecordRefusalTest do
   end
 
   test "a request that truly names nothing still says so", %{conn: conn} do
+    # `working_copy/1`'s fallback for "nothing named" is `served_root/0`: nil
+    # unless this harness happens to be serving exactly one project, in which
+    # case it silently attributes the turn to it instead. `CmsHarness.Registry`
+    # is one registry for the whole node, and other suites register and
+    # deregister projects in it while this one runs — so whether the ambient
+    # count was exactly one at this millisecond used to decide whether this
+    # test passed. Two of our own, left served for the test's duration, push
+    # the count to at least two regardless of what else is running, which is
+    # the one value `served_root/0` never treats as "exactly one."
+    for _ <- 1..2 do
+      root = project_dir().root
+      serve(root)
+      on_exit(fn -> stop_project(root) end)
+    end
+
     log = capture_log(fn -> post_turn(conn, []) end)
 
     assert log =~ @unnamed,

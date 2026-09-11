@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1004.Criterion1982Spex do
         {:ok, view, _html} = live(context.conn, "/app/questions/#{context.question_id}")
 
         view
-        |> form("[data-test='question-form']", %{"q_0" => "S3"})
+        |> form("main [data-test='question-form']", %{"q_0" => "S3"})
         |> render_submit()
 
         {:ok, context}

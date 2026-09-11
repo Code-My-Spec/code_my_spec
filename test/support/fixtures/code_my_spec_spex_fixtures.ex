@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
@@ -147,6 +148,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpec.Utils.MapAccess
@@ -846,6 +848,7 @@ defmodule CodeMySpecSpex.Fixtures do
         provider: Keyword.get(opts, :provider, "zai"),
         working_copy: Keyword.get(opts, :working_copy, scope.cwd || "/tmp/a-copy"),
         role: Keyword.get(opts, :role, "coding"),
+        continuous: Keyword.get(opts, :continuous, false),
         # What this agent may call, as a list rather than a rule read off the
         # role — so a criterion about scoping asserts on the same column the
         # server enforces from.
@@ -2876,6 +2879,37 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     {story, task_id, session}
+  end
+
+  @doc """
+  An active task on the agent's own row — `TaskOwner`'s shape, not a session's.
+
+  `start_task` is what a real Alloy agent calls to claim work, and it goes
+  through `TaskOwner.add_task/3` directly on the agent — there is no session in
+  the middle. `qa_story_task_fixture/2` models the older shape, a task on
+  somebody else's session naming this agent by id, which is what an *external*
+  Claude Code session's sub-agent looks like, not one we run ourselves.
+
+  Returns `{agent, task}`, both the updated agent and the task now active on
+  it — spex files reach `CodeMySpec` only through this bridge, so the caller
+  should not need a second call through `TaskOwner` just to read back what was
+  just staged.
+  """
+  @spec agent_task_fixture(Scope.t(), CodeMySpec.Agents.Agent.t(), keyword()) ::
+          {CodeMySpec.Agents.Agent.t(), CodeMySpec.Sessions.Task.t()}
+  def agent_task_fixture(%Scope{} = scope, %CodeMySpec.Agents.Agent{} = agent, opts \\ []) do
+    task_id = Keyword.get(opts, :id, Ecto.UUID.generate())
+
+    {:ok, agent} =
+      TaskOwner.add_task(scope, agent, %{
+        id: task_id,
+        status: :active,
+        requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
+        story_id: Keyword.get(opts, :story_id),
+        started_at: DateTime.utc_now()
+      })
+
+    {agent, TaskOwner.active_task(agent)}
   end
 
   # -- Components --

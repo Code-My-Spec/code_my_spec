@@ -3,21 +3,20 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
   Story 1043 — The stop decision reaches the agent running inside our own BEAM.
   Criterion 3055 — A clean tree does not excuse an abandoned task.
 
-  Rule: An agent that ends a turn with a task still open is told so, whether or
-  not anything else blocked.
+  Rule: A continuous agent that ends a turn with a task still open is told so,
+  whether or not anything else blocked.
 
-  The nudge, and it is not the else-branch of the decision. On the external path
-  `nudge_open_task/2` fires via `tap/2` on **every** stop that has an open task,
-  independently of whether anything blocked, and it is recorded against the
-  task's own agent rather than the project's. An agent that stops with a failing
-  compile *and* an open task gets both, because they are different things to act
-  on.
-
-  John, on why the orchestrator must not simply close it: "the agent should be
-  nudged to complete its own task ... it should always be at the agent's
-  discretion." So the nudge carries the whole call, task id included — being
-  told to make a call and being told to go read about one are different
-  instructions, and QA of 985 found the second reads as somewhere to go looking.
+  There used to be a second, separate message for this — `nudge_open_task/2`,
+  fired on every stop with an open task independently of the decision beside
+  it. John: "non-continuous agents shouldn't get the menu or a nudge at all ...
+  this is the purpose of the stop hook menu, and the open task nudge is
+  duplicative." The two were folded into one: the menu's own `:task` directive
+  now carries the whole thing — the requirement, the id, and why it is still
+  open — and a non-continuous agent's clean stop is correctly silent (criterion
+  3057), the same as one holding nothing at all. What this criterion asserts is
+  narrower than it used to be: a *continuous* agent still hears about its open
+  task from the menu on an otherwise-clean stop, because closing it is still
+  its job and nothing else will.
   """
 
   use CodeMySpecSpex.Case
@@ -52,26 +51,24 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
         # was right to.
         Fixtures.deliver_manifest(context.scope)
 
-        agent_id = running_agent(context)
+        agent_id = running_agent(context, %{"continuous" => true})
 
-        # The task names this agent and lives on somebody else's session, which
-        # is the only shape available: a task is embedded in a session, an agent
-        # under Alloy has none, and an orchestrator assigning work to one
-        # produces exactly this.
-        {_story, task_id, _session} =
-          Fixtures.qa_story_task_fixture(context.scope, agent_id: agent_id)
+        # `start_task` is what a real agent calls to claim work, and it goes
+        # through `TaskOwner.add_task/3` directly on the agent's own row — no
+        # session in the middle. `agent_task_fixture/3` stages the same shape.
+        {:ok, agent} = Fixtures.fetch_agent(context.scope, agent_id)
+        {_agent, task} = Fixtures.agent_task_fixture(context.scope, agent)
 
         # The premise, asserted — story 988's criterion 8201 does the same and
         # for the same reason. If the agent is not actually holding a task, the
         # scenario proves nothing about being nudged, and a red here would read
         # as the nudge being unbuilt when the setup never held.
-        assert Fixtures.open_task_for_agent(context.scope, agent_id),
-               "the agent holds no open task, so this scenario has nothing to nudge about"
+        assert task, "the agent holds no open task, so this scenario has nothing to nudge about"
 
         {:ok,
          context
          |> Map.put(:agent_id, agent_id)
-         |> Map.put(:task_id, task_id)}
+         |> Map.put(:task_id, task.id)}
       end
 
       when_ "its turn ends", context do

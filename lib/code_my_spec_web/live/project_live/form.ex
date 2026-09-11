@@ -22,7 +22,6 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >

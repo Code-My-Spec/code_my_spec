@@ -94,7 +94,83 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     assert html =~ ~s(class="indicator-item badge badge-primary badge-xs")
 
     create_permission(user.id)
-    assert view |> element(".indicator-item") |> render() =~ "2"
+
+    # The badge lives in a stateful `LiveComponent` (`NotificationLive.Components.Dropdown`)
+    # refreshed via `send_update/2` from `NotificationsHook` — a second message
+    # the LiveView's own mailbox has to process after the broadcast, not a
+    # synchronous assign the way a plain `handle_info` clause would be. `render/1`
+    # can win the race and return before that second message lands, so this polls
+    # rather than asserting once.
+    eventually(fn ->
+      assert view |> element(".indicator-item") |> render() =~ "2"
+    end)
+  end
+
+  defp eventually(fun, deadline \\ System.monotonic_time(:millisecond) + 1_000) do
+    fun.()
+  rescue
+    error in [ExUnit.AssertionError] ->
+      retry(System.monotonic_time(:millisecond) < deadline, error, __STACKTRACE__, fun, deadline)
+  end
+
+  defp retry(true, _error, _stacktrace, fun, deadline) do
+    Process.sleep(10)
+    eventually(fun, deadline)
+  end
+
+  defp retry(false, error, stacktrace, _fun, _deadline), do: reraise(error, stacktrace)
+
+  describe "answering from the dropdown, without navigating" do
+    test "a summary expands on click, submitting answers it and flashes", %{
+      conn: conn,
+      user: user
+    } do
+      create_question(user.id, "Ship today?")
+
+      {:ok, view, html} = live(conn, ~p"/app/notifications")
+
+      # Compact by default — the full form is not on screen until clicked.
+      refute html =~ ~s(data-test="question-form")
+      assert view |> element("[data-test='notification-summary']") |> render() =~ "Ship today?"
+
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      assert view
+             |> element("#notification-dropdown [data-test='question-form']")
+             |> has_element?()
+
+      view
+      |> form("#notification-dropdown [data-test='question-form']", %{"q_0" => "Yes"})
+      |> render_submit()
+
+      # The flash travels through `NotificationsHook`'s own `handle_info` — a
+      # second message this LiveView's mailbox processes after the submit,
+      # not part of the synchronous reply — so this polls rather than
+      # asserting once.
+      eventually(fn -> assert render(view) =~ "Answer sent." end)
+
+      refute view
+             |> element("#notification-dropdown [data-test='question-form']")
+             |> has_element?()
+    end
+
+    test "a permission summary expands, and approving it flashes", %{conn: conn, user: user} do
+      create_permission(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      assert view
+             |> element("#notification-dropdown [data-test='permission-request']")
+             |> has_element?()
+
+      view
+      |> element("#notification-dropdown [data-test='permission-request'] button", "Approve")
+      |> render_click()
+
+      eventually(fn -> assert render(view) =~ "Approved." end)
+    end
   end
 
   test "scrolling to the bottom of Recent loads another page", %{conn: conn, user: user} do
