@@ -162,6 +162,33 @@ defmodule CmsHarness.Sync do
     :local |> Environment.new(root) |> report_preview_health(root)
   end
 
+  @doc """
+  Re-measure what `code_on_running_copy` reads, independent of a scan.
+
+  Both facts the gate reads change without any file changing, and only one of
+  them was on a clock. Preview health got its own timer because an application
+  crashes and recovers while nobody is editing. Git state was left on the scan
+  clock, and that was half a fix: **a promotion is exactly the event that moves
+  a checkout's relationship to main without touching a file in it.**
+
+  Measured. A promotion merged this copy's work into the running checkout at
+  05:25; at 06:01 git said `ahead=0 behind=0` and the row still said `ahead=3`,
+  last reported 04:51 — seventy minutes stale, because nothing had edited a file
+  since. The gate read that and went on offering `PromoteWork` for a story whose
+  code was already promoted, serving, and green. The agent reported it as "the
+  graph lags a sync cycle"; it is not a lag, it is an event the clock never sees.
+
+  Cheap enough to sit beside the preview check: three `git` invocations against
+  a local checkout, once a minute.
+  """
+  @spec measure_checkout(String.t()) :: :ok
+  def measure_checkout(root) do
+    env = Environment.new(:local, root)
+
+    report_git_state(env, root)
+    report_preview_health(env, root)
+  end
+
   defp report_preview_health(env, root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->

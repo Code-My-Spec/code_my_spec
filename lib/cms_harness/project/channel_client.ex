@@ -1827,7 +1827,7 @@ defmodule CmsHarness.Project.ChannelClient do
     root = socket.assigns.project.root
 
     Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
-      Sync.measure_preview(root)
+      Sync.measure_checkout(root)
     end)
 
     {:noreply, socket}
