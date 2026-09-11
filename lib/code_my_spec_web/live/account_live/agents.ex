@@ -45,7 +45,6 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >

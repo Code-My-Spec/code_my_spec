@@ -180,7 +180,6 @@ defmodule CodeMySpecWeb.InboxLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -297,7 +296,6 @@ defmodule CodeMySpecWeb.InboxLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >

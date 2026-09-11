@@ -55,7 +55,6 @@ defmodule CodeMySpecLocalWeb.PortableHost do
         current_scope: nil,
         current_path: "/",
         full_width: false,
-        pending_notifications: 0,
         # see CodeMySpecWeb.PortableHost — no account scope here yet
         serves_attachments?: false
       )
@@ -106,5 +105,4 @@ defmodule CodeMySpecLocalWeb.PortableHost do
 
   defp fail(socket, message),
     do: assign(socket, scope: nil, current_scope: nil, project: nil, scope_error: message)
-
 end

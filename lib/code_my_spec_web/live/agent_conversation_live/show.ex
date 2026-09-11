@@ -64,6 +64,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
+  alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
@@ -186,6 +187,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
+    |> assign(:permissions, permissions_for(conversation))
     |> assign(:analysis_running, running_analysis(scope, conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
@@ -563,6 +565,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # A permission/tap-out request the agent raised, resolved beside the work
+  # that raised it — the same reasoning as `answer_question`, for the request
+  # shape rather than the question shape. Unlike a question, more than one of
+  # these can be pending on one agent at once (a tap-out and a tool approval,
+  # say), so the button that fired this names which one by id rather than
+  # assuming "the one pending request."
+  def handle_event("approve_permission", %{"id" => id}, socket) do
+    resolve_permission(socket, id, "allow")
+  end
+
+  def handle_event("deny_permission", %{"id" => id}, socket) do
+    resolve_permission(socket, id, "deny")
+  end
+
   # The client reports its own width, because the server cannot see one and the
   # difference here is behavioural rather than cosmetic. "A phone shows one
   # panel" is state, not a media query — closing a panel is something the server
@@ -687,6 +703,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
          socket
          |> assign_more_above(older, @page)
          |> assign_turns(older ++ socket.assigns.messages)}
+    end
+  end
+
+  defp resolve_permission(socket, id, decision) do
+    case Enum.find(socket.assigns.permissions, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      _request ->
+        _ = Notifications.resolve_permission_request(id, decision)
+
+        {:noreply, assign(socket, :permissions, permissions_for(socket.assigns.conversation))}
     end
   end
 
@@ -875,6 +903,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> Enum.reject(&MapSet.member?(shown, &1.conversation_message_id))
   end
 
+  # Every pending permission request, unconditionally. Unlike a question, a
+  # permission request carries no `conversation_message_id` — there is no
+  # column for "which turn this happened at" — so there is no per-turn anchor
+  # to place it beside, only the one bucket a question falls into when its own
+  # anchor is not on the page.
+  defp unanchored_permissions(permissions), do: pending(permissions)
+
   defp analysis_label([one]), do: "Running #{one}…"
 
   defp analysis_label(sources),
@@ -935,6 +970,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp questions_for(conversation),
     do: Notifications.list_question_requests_for_session(conversation.session_external_id)
+
+  defp permissions_for(nil), do: []
+
+  # No session-shaped counterpart to fall back to, unlike `questions_for/1`:
+  # `tap_out`/tool-approval requests are an agent-we-run concept from the
+  # start — an external Claude Code session's tap-out lives on its own
+  # `session.state`, not a `PermissionRequest` row, so a conversation with no
+  # agent has nothing here to show either way.
+  defp permissions_for(%{agent_id: agent_id}) when is_binary(agent_id),
+    do: Notifications.list_permission_requests_for_agent(agent_id)
+
+  defp permissions_for(_conversation), do: []
 
   # A plain assign, not a stream.
   #
@@ -1156,7 +1203,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -1216,6 +1262,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           conversation={@conversation}
           emptiness={@emptiness}
           questions={@questions}
+          permissions={@permissions}
           items={@items}
           results={@results}
           more_above?={@more_above?}
@@ -1255,6 +1302,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               conversation={@conversation}
               emptiness={@emptiness}
               questions={@questions}
+              permissions={@permissions}
               items={@items}
               results={@results}
               more_above?={@more_above?}
@@ -1310,6 +1358,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :conversation, :any, required: true
   attr :emptiness, :atom, required: true
   attr :questions, :list, required: true
+  attr :permissions, :list, required: true
   attr :items, :list, required: true
   attr :results, :any, required: true
   attr :more_above?, :boolean, required: true
@@ -1473,6 +1522,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             id={"question-#{request.id}"}
             request={request}
             on_submit="answer_question"
+          />
+
+          <%!-- No anchor field exists on a permission request, so every one of
+          these lands here rather than beside a specific turn — same bucket an
+          unanchored question falls into, for the same reason: the bottom of
+          the chat is right for a pending one and the best available guess for
+          a resolved one. --%>
+          <PermissionComponents.permission_request
+            :for={request <- unanchored_permissions(@permissions)}
+            id={"permission-#{request.id}"}
+            request={request}
+            on_approve="approve_permission"
+            on_deny="deny_permission"
           />
         </div>
       </div>

@@ -51,7 +51,7 @@ defmodule CodeMySpecWeb.QuestionLiveTest do
     {:ok, view, _html} = live(conn, ~p"/app/questions/#{req.id}")
 
     view
-    |> element("form")
+    |> element("main form")
     |> render_submit(%{"q_0" => "Postgres", "q_1" => ["Auth", "Billing"]})
 
     updated = Notifications.get_question_request(req.id)
@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.QuestionLiveTest do
     {:ok, view, _html} = live(conn, ~p"/app/questions/#{req.id}")
 
     view
-    |> element("form")
+    |> element("main form")
     |> render_submit(%{"q_0" => "__other__", "q_0_other" => "CockroachDB", "q_1" => []})
 
     assert Notifications.get_question_request(req.id).answers["Which database?"] == "CockroachDB"
@@ -82,7 +82,7 @@ defmodule CodeMySpecWeb.QuestionLiveTest do
     assert html =~ "<textarea"
 
     view
-    |> element("form")
+    |> element("main form")
     |> render_submit(%{"q_0" => "Something went wrong — please try again."})
 
     updated = Notifications.get_question_request(req.id)

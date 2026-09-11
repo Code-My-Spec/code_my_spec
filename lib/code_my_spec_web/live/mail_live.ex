@@ -291,7 +291,7 @@ defmodule CodeMySpecWeb.MailLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+    <Layouts.app flash={@flash} current_scope={@current_scope}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >

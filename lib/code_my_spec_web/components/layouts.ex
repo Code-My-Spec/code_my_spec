@@ -29,7 +29,6 @@ defmodule CodeMySpecWeb.Layouts do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
-      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -59,10 +58,6 @@ defmodule CodeMySpecWeb.Layouts do
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
   attr :current_path, :string, default: "/"
-
-  attr :pending_notifications, :integer,
-    default: 0,
-    doc: "pending questions/approvals count for the navbar badge (NotificationsHook)"
 
   # The sidebar's two halves. `project` is the one named in the path, put there
   # by PortableHost — nil on any page that names none, which is what makes the
@@ -145,23 +140,12 @@ defmodule CodeMySpecWeb.Layouts do
             </div>
           </div>
           <div class="flex-none shrink-0">
-            <.link
-              navigate={~p"/app/notifications"}
-              class="btn btn-ghost btn-sm tooltip tooltip-left"
-              data-tip="Notifications"
-              data-test="notification-badge"
-              data-count={@pending_notifications}
-            >
-              <span class="indicator">
-                <span
-                  :if={@pending_notifications > 0}
-                  class="indicator-item badge badge-primary badge-xs"
-                >
-                  {@pending_notifications}
-                </span>
-                <.icon name="hero-inbox" class="size-5" />
-              </span>
-            </.link>
+            <.live_component
+              :if={@current_scope}
+              module={CodeMySpecWeb.NotificationLive.Components.Dropdown}
+              id="notification-dropdown"
+              current_scope={@current_scope}
+            />
             <button
               id="enable-notifications-btn"
               phx-click={JS.dispatch("phx:toggle-push-notifications")}

@@ -94,7 +94,28 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     assert html =~ ~s(class="indicator-item badge badge-primary badge-xs")
 
     create_permission(user.id)
-    assert view |> element(".indicator-item") |> render() =~ "2"
+
+    # The badge lives in a stateful `LiveComponent` (`NotificationLive.Components.Dropdown`)
+    # refreshed via `send_update/2` from `NotificationsHook` — a second message
+    # the LiveView's own mailbox has to process after the broadcast, not a
+    # synchronous assign the way a plain `handle_info` clause would be. `render/1`
+    # can win the race and return before that second message lands, so this polls
+    # rather than asserting once.
+    eventually(fn ->
+      assert view |> element(".indicator-item") |> render() =~ "2"
+    end)
+  end
+
+  defp eventually(fun, deadline \\ System.monotonic_time(:millisecond) + 1_000) do
+    fun.()
+  rescue
+    error in [ExUnit.AssertionError] ->
+      if System.monotonic_time(:millisecond) < deadline do
+        Process.sleep(10)
+        eventually(fun, deadline)
+      else
+        reraise(error, __STACKTRACE__)
+      end
   end
 
   test "scrolling to the bottom of Recent loads another page", %{conn: conn, user: user} do

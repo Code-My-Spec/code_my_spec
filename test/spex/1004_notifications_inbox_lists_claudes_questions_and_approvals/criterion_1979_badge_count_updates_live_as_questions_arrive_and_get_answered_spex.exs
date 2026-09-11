@@ -39,9 +39,16 @@ defmodule CodeMySpecSpex.Story1004.Criterion1979Spex do
       end
 
       then_ "the badge counts it without a reload", context do
-        assert has_element?(context.view, "[data-test='notification-badge'][data-count='1']"),
-               "a badge only correct at page load answers 'is anything waiting?' with " <>
-                 "whenever the tab was opened"
+        # The badge lives in a stateful `LiveComponent`, refreshed via
+        # `send_update/2` from the badge's PubSub subscription rather than a
+        # synchronous assign — a second message the view's mailbox processes
+        # after the broadcast, so a single `has_element?/2` can win the race
+        # and see the count from before it landed.
+        eventually(fn ->
+          assert has_element?(context.view, "[data-test='notification-badge'][data-count='1']"),
+                 "a badge only correct at page load answers 'is anything waiting?' with " <>
+                   "whenever the tab was opened"
+        end)
 
         {:ok, context}
       end
@@ -49,8 +56,10 @@ defmodule CodeMySpecSpex.Story1004.Criterion1979Spex do
       then_ "answering it counts back down", context do
         :ok = Fixtures.answer_question(context.question_id, %{"Which approach?" => "A"})
 
-        assert has_element?(context.view, "[data-test='notification-badge'][data-count='0']"),
-               "a badge that only counts up keeps claiming work that is already done"
+        eventually(fn ->
+          assert has_element?(context.view, "[data-test='notification-badge'][data-count='0']"),
+                 "a badge that only counts up keeps claiming work that is already done"
+        end)
 
         {:ok, context}
       end

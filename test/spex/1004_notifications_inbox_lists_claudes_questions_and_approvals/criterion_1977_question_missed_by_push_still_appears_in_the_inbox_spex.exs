@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1004.Criterion1977Spex do
           live(context.conn, "/app/questions/#{context.question_id}")
 
         answer_view
-        |> form("form", %{"q_0" => "S3"})
+        |> form("main form", %{"q_0" => "S3"})
         |> render_submit()
 
         {:ok, list_view, _html} = live(context.conn, "/app/notifications")
