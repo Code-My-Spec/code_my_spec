@@ -33,8 +33,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
     Environments.exec_file_exists?(env, "mix.exs") and
       Environments.exec_file_exists?(env, "deps/credo")
-  rescue
-    _ -> false
   end
 
   def available?(_scope), do: false
@@ -123,10 +121,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         handle_credo_output(output, exit_code, temp_file)
 
       {output, exit_code} ->
+        cleanup_temp_file(temp_file)
         {:error, "Credo failed with exit code #{exit_code}: #{output}"}
     end
   rescue
     exception ->
+      cleanup_temp_file(temp_file)
       {:error, "Failed to execute Credo: #{Exception.message(exception)}"}
   end
 
