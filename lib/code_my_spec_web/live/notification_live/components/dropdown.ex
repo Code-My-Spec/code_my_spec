@@ -75,6 +75,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.PermissionComponents
+  alias Phoenix.LiveView.JS
 
   # Rendered on every authenticated page's initial load, not just the inbox —
   # this table has had runaway rows before (224 pending tap-out requests
@@ -167,6 +168,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     ~H"""
     <div id={@id} class="dropdown dropdown-end">
       <label
+        id={trigger_id(@id)}
         tabindex="0"
         role="button"
         class="btn btn-ghost btn-sm tooltip tooltip-left"
@@ -201,6 +203,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
           item={item}
           target={@myself}
           expanded={@expanded}
+          dropdown_id={@id}
         />
         <.link
           navigate={~p"/app/notifications"}
@@ -216,15 +219,22 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   attr :item, :any, required: true
   attr :target, :any, required: true
   attr :expanded, :any, required: true
+  attr :dropdown_id, :string, required: true
 
   defp notification_item(assigns) do
     ~H"""
-    <.summary_row :if={@expanded != @item.id} item={@item} target={@target} />
+    <.summary_row
+      :if={@expanded != @item.id}
+      item={@item}
+      target={@target}
+      dropdown_id={@dropdown_id}
+    />
     <div :if={@expanded == @item.id}>
       <button
         type="button"
-        phx-click="collapse"
-        phx-target={@target}
+        phx-click={
+          JS.push("collapse", target: @target) |> JS.focus(to: "##{trigger_id(@dropdown_id)}")
+        }
         class="btn btn-ghost btn-xs -ml-1 mb-1"
       >
         <.icon name="hero-chevron-left" class="size-4" /> Back
@@ -236,14 +246,16 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
 
   attr :item, :any, required: true
   attr :target, :any, required: true
+  attr :dropdown_id, :string, required: true
 
   defp summary_row(assigns) do
     ~H"""
     <button
       type="button"
-      phx-click="expand"
-      phx-value-id={@item.id}
-      phx-target={@target}
+      phx-click={
+        JS.push("expand", value: %{"id" => @item.id}, target: @target)
+        |> JS.focus(to: "##{trigger_id(@dropdown_id)}")
+      }
       data-test="notification-summary"
       data-id={@item.id}
       class="card card-compact bg-base-100 hover:bg-base-200 transition-colors w-full text-left border border-primary/40"
@@ -260,6 +272,16 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     </button>
     """
   end
+
+  # A plain `phx-click="expand"` swaps the clicked summary row for the
+  # expanded form on the very next render — the whole point of this
+  # interaction. Since the panel only stays open via CSS `:focus-within`, a
+  # click that removes the element holding focus drops focus to nothing and
+  # the *entire panel* snaps shut, hiding every other pending item along with
+  # it. `JS.focus/2` runs client-side as part of the same click, ahead of the
+  # server round trip that will remove the button, moving focus to the one
+  # element in this component that is never removed: the bell that opens it.
+  defp trigger_id(dropdown_id), do: "#{dropdown_id}-trigger"
 
   defp expanded_form(%{item: %QuestionRequest{}} = assigns) do
     ~H"""
