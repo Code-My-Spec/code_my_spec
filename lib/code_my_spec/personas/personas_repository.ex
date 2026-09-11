@@ -11,6 +11,7 @@ defmodule CodeMySpec.Personas.PersonasRepository do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @type attrs :: map()
 
@@ -18,7 +19,7 @@ defmodule CodeMySpec.Personas.PersonasRepository do
           {:ok, Persona.t()} | {:error, :missing_active_project | Ecto.Changeset.t()}
   def create_persona(%Scope{active_project_id: project_id}, attrs)
       when not is_nil(project_id) do
-    attrs = Map.put(normalize(attrs), :project_id, project_id)
+    attrs = Map.put(Utils.normalize_keys(attrs), :project_id, project_id)
 
     %Persona{}
     |> Persona.changeset(attrs)
@@ -28,12 +29,13 @@ defmodule CodeMySpec.Personas.PersonasRepository do
   def create_persona(%Scope{}, _attrs), do: {:error, :missing_active_project}
 
   @spec update_persona(Scope.t(), Persona.t(), attrs()) ::
-          {:ok, Persona.t()} | {:error, :missing_active_project | :cross_project | Ecto.Changeset.t()}
+          {:ok, Persona.t()}
+          | {:error, :missing_active_project | :cross_project | Ecto.Changeset.t()}
   def update_persona(%Scope{active_project_id: project_id}, %Persona{} = persona, attrs)
       when not is_nil(project_id) do
     if persona.project_id == project_id do
       persona
-      |> Persona.changeset(Map.delete(normalize(attrs), :project_id))
+      |> Persona.changeset(Map.delete(Utils.normalize_keys(attrs), :project_id))
       |> Repo.update()
     else
       {:error, :cross_project}
@@ -43,7 +45,8 @@ defmodule CodeMySpec.Personas.PersonasRepository do
   def update_persona(%Scope{}, _persona, _attrs), do: {:error, :missing_active_project}
 
   @spec delete_persona(Scope.t(), Persona.t()) ::
-          {:ok, Persona.t()} | {:error, :missing_active_project | :cross_project | Ecto.Changeset.t()}
+          {:ok, Persona.t()}
+          | {:error, :missing_active_project | :cross_project | Ecto.Changeset.t()}
   def delete_persona(%Scope{active_project_id: project_id}, %Persona{} = persona)
       when not is_nil(project_id) do
     if persona.project_id == project_id do
@@ -111,7 +114,11 @@ defmodule CodeMySpec.Personas.PersonasRepository do
 
   @spec unlink_persona_from_story(Scope.t(), Ecto.UUID.t(), integer()) ::
           {:ok, :unlinked} | {:error, :missing_active_project | :not_found | :cross_project}
-  def unlink_persona_from_story(%Scope{active_project_id: project_id} = scope, persona_id, story_id)
+  def unlink_persona_from_story(
+        %Scope{active_project_id: project_id} = scope,
+        persona_id,
+        story_id
+      )
       when not is_nil(project_id) do
     case get_persona(scope, persona_id) do
       nil ->
@@ -197,13 +204,4 @@ defmodule CodeMySpec.Personas.PersonasRepository do
   end
 
   def list_project_persona_story_links(%Scope{}, _project_id), do: []
-
-  defp normalize(attrs) when is_map(attrs) do
-    Map.new(attrs, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
-    end)
-  rescue
-    ArgumentError -> attrs
-  end
 end
