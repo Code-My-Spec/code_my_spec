@@ -331,13 +331,28 @@ defmodule CodeMySpec.Promotion do
   #
   # The log line costs nothing and answers "what did it decide" independently of
   # whether anyone received it.
+  #
+  # `dispatch_message/3`, not `message_agent/4`. The latter runs the agent's
+  # whole turn inside a `GenServer.call` and waits for it, so a promotion that
+  # finished parked itself behind however long the agent felt like working —
+  # and an agent that had just been told to go and fix 28 credo problems is
+  # exactly the one that will not come back soon. Watched: the refusal was
+  # computed and logged at 02:45:55 and had still not reached the conversation
+  # eleven minutes later, with no error anywhere, because the task was sitting
+  # in that call.
+  #
+  # `dispatch_message/3` answers `:started` or `:queued` as soon as the machine
+  # has taken it, and records the message on the conversation either way, which
+  # is the whole of what reporting an outcome needs. The dev tools' own message
+  # route defaults to the same non-waiting shape for the same reason.
   defp report_to(result, %Scope{} = scope, agent_id) do
     Logger.info(
       "[Promotion] #{outcome_label(result)} for agent #{agent_id}: #{outcome_text(result)}"
     )
 
-    case Agents.message_agent(scope, agent_id, outcome_text(result)) do
-      {:ok, _reply} ->
+    case Agents.dispatch_message(scope, agent_id, outcome_text(result)) do
+      {:ok, disposition, _message} ->
+        Logger.info("[Promotion] outcome #{disposition} to agent #{agent_id}")
         :ok
 
       # The promotion already happened; only the telling failed. Logged rather
