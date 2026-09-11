@@ -73,6 +73,10 @@ defmodule CodeMySpecWeb do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.ProjectSync,
       CodeMySpec.ProjectUsers,
+      # The harness channel runs promotions. The gate reads the database and
+      # the harness has none, so `promotion_run` arrives here and the disk half
+      # goes back out as `fs_request` — see `Promotion.Runner`.
+      CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Questions,

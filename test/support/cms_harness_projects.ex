@@ -123,11 +123,63 @@ defmodule CmsHarnessTest.Projects do
     path
   end
 
-  @doc "Stop whatever subtree a test started, so the next one starts clean."
+  @doc """
+  Stop whatever subtree a test started, so the next one starts clean.
+
+  Waits for the registry to forget it, which `terminate_child/2` does not.
+  `Registry` drops an entry on the `:DOWN` for its pid, and that arrives after
+  the call returns — so for a moment a stopped copy is still in
+  `CmsHarness.Projects.list/0`, and the next module sees a harness serving one
+  more working copy than any test started.
+
+  That is not a cosmetic window. `MessagesController.served_root/0` records a
+  turn against the only copy being served and says "this request did not name a
+  working copy" when the count is anything else, so a single stale entry flips
+  which of those `TurnRecordRefusalTest` observes — a failure that reproduces
+  only in the full directory, never in isolation, and reads as a defect in a
+  refusal message nobody touched. The window is measurable: an earlier version
+  of the wait below polled without yielding and caught the entry still present
+  on every run.
+  """
   def stop_project(root) do
     case Registry.lookup(CmsHarness.Registry, {:project, root}) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
-      [] -> :ok
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+        await_unregistered(root)
+
+      [] ->
+        :ok
+    end
+  end
+
+  # Polled with a yield, not spun. `Registry` drops the entry when its partition
+  # process handles the `:DOWN`, and that process needs to be scheduled — a
+  # tight `Registry.lookup/2` loop reads ETS a few hundred times inside one
+  # reduction slice and exhausts its budget before the partition has run once,
+  # which is how the first version of this raised on a copy that unregistered
+  # a millisecond later.
+  #
+  # Five seconds is orders of magnitude more than one message round trip, even
+  # with three worktrees' suites and the analyzers sharing this box, so
+  # exhausting it means something is genuinely still holding the registration —
+  # worth failing the test that leaked it rather than leaving the next module to
+  # find out.
+  @unregister_attempts 5_000
+
+  defp await_unregistered(root, attempts \\ @unregister_attempts)
+
+  defp await_unregistered(root, 0) do
+    raise "#{root} is still registered as a served project after being terminated"
+  end
+
+  defp await_unregistered(root, attempts) do
+    case Registry.lookup(CmsHarness.Registry, {:project, root}) do
+      [] ->
+        :ok
+
+      _ ->
+        Process.sleep(1)
+        await_unregistered(root, attempts - 1)
     end
   end
 

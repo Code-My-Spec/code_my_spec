@@ -2,16 +2,34 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   @moduledoc """
   How a promotion's outcome reads.
 
-  Shared by both doors — `Promote` (async, for an Alloy agent) and
-  `PromoteSync` (blocking, for an external MCP caller) — so the two cannot
-  drift into describing the same result differently.
+  Shared by all three doors — `Promote` (async, for an Alloy agent),
+  `PromoteSync` (blocking, for an external MCP caller) and
+  `CmsHarness.Web.PromotionController` (the HTTP wait URL, for a caller whose
+  transport must not cap the wait) — so they cannot drift into describing the
+  same result differently.
   """
 
   alias Anubis.Server.Response
 
   @spec respond({:ok, map()} | {:error, map()}) :: Response.t()
-  def respond({:ok, report}), do: Response.tool() |> Response.text(promoted(report))
-  def respond({:error, refusal}), do: Response.tool() |> Response.error(refused(refusal))
+  def respond({:ok, _report} = result), do: Response.tool() |> Response.text(text(result))
+  def respond({:error, _refusal} = result), do: Response.tool() |> Response.error(text(result))
+
+  @doc """
+  The same words `respond/1` puts in an MCP reply, as plain text.
+
+  The HTTP door needs them without the Anubis envelope: it answers a `curl`,
+  and the body it writes is this string plus a status footer. Exposed here
+  rather than rendered again over there because a third wording of "what
+  happened to your promotion" is a third thing to keep in step — and the whole
+  reason this module exists is that two already were.
+
+  Refusal or success, because the door does not get to pick: the footer says
+  which, the same way `AnalysisController` reports a failing suite.
+  """
+  @spec text({:ok, map()} | {:error, map()}) :: String.t()
+  def text({:ok, report}), do: promoted(report)
+  def text({:error, refusal}), do: refused(refusal)
 
   @spec started() :: String.t()
   def started do
