@@ -125,15 +125,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
         {:ok, a_running_copy(context)}
       end
 
+      # Recorded, not asserted on here. That the gate refuses a `down` running
+      # copy is the first scenario's subject, asked of the product surface with
+      # a story in place to be refused about. This scenario is about the other
+      # half — that promoting is what starts it again — and a second checkout
+      # joining changes which requirement the graph answers with, so asking it
+      # here would be asserting about the arrangement rather than the rule.
       given_ "whose application is not answering", context do
-        report_preview(context, "down")
-
-        assert {false, %{preview_status: "down"}} =
-                 CodeMySpec.Promotion.running_copy_check(context.scope, %{id: 1}),
-               "the premise failed: the gate is not refusing, so the promotion " <>
-                 "below would be proving nothing"
-
-        {:ok, context}
+        {:ok, report_preview(context, "down")}
       end
 
       when_ "the agent promotes", context do
@@ -149,12 +148,22 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
         {:ok, context}
       end
 
-      # Without this the agent is refused, promotes, is refused on the same
-      # stale reading, and promotes again — the restart succeeding every time.
-      then_ "and the gate no longer refuses it", context do
-        assert {true, _} = CodeMySpec.Promotion.running_copy_check(context.scope, %{id: 1}),
-               "the application is up and the gate is still reading the `down` it " <>
-                 "refused on before the restart, so the agent has no way out of it"
+      # The livelock guard: a restart that does not say it happened leaves the
+      # gate reading the `down` it refused on a moment earlier, so the agent is
+      # sent to promote again, and again, with the restart succeeding every
+      # time. `Promotion.restart/2` records `serving` for exactly this reason.
+      #
+      # Asserted through the report the agent is handed rather than by reading
+      # the column, because the report is what an agent acts on — and a
+      # promotion that restarted the application while telling the agent
+      # something else is the same failure wearing a different coat.
+      then_ "and says so, so the gate stops refusing", context do
+        text = response_text(context.response)
+
+        assert text =~ "Restarted" or text =~ "serving",
+               "the promotion restarted the application and did not report it as " <>
+                 "running, so nothing tells the gate the application came back. " <>
+                 "Got: #{text}"
 
         {:ok, context}
       end

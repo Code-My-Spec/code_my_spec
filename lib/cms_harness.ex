@@ -52,6 +52,10 @@ defmodule CmsHarness do
       CodeMySpec.Paths,
       CodeMySpec.Permissions,
       CodeMySpec.Projects,
+      # The three disk operations a promotion performs. The gate stays on the
+      # server because it reads the database; `Steps` runs where the checkout
+      # is, which is here — see `CodeMySpec.Promotion.Runner`.
+      CodeMySpec.Promotion,
       CodeMySpec.RecordingLock,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
