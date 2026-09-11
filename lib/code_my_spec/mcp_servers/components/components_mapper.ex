@@ -54,38 +54,12 @@ defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
     |> Response.error("Resource not found")
   end
 
-  def components_batch_response(components) do
-    Response.tool()
-    |> Response.json(%{
-      success: true,
-      count: length(components),
-      components: Enum.map(components, &component_summary/1)
-    })
-  end
-
   def dependencies_batch_response(dependencies) do
     Response.tool()
     |> Response.json(%{
       success: true,
       count: length(dependencies),
       dependencies: Enum.map(dependencies, &dependency_summary/1)
-    })
-  end
-
-  def batch_errors_response(successes, failures) do
-    Response.tool()
-    |> Response.json(%{
-      success: false,
-      created_count: length(successes),
-      failed_count: length(failures),
-      created_components: Enum.map(successes, &component_summary/1),
-      errors:
-        Enum.map(failures, fn {index, changeset} ->
-          %{
-            index: index,
-            errors: Formatters.format_changeset_errors(changeset)
-          }
-        end)
     })
   end
 
