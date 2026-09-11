@@ -173,6 +173,13 @@ defmodule CodeMySpec.Agents do
   state of a process — just display the state of the process, and when you
   click play it should start the process again."
 
+  The tool list is recomputed rather than carried over, and that is the half
+  that makes a restart worth anything after a deploy. `tools` is written once at
+  creation, so an agent started before a tool existed could never reach it — no
+  matter how many times it was restarted — and the only symptom available from
+  inside the agent is "it is not in my list", which reads as a client caching
+  problem and is not one. A coding agent sat through exactly that with `promote`.
+
   Deliberately not `start_agent/2` again. That inserts a new row, and
   `find_or_create_agent_conversation/3` keys on `agent_id` — a fresh id is a
   fresh, empty thread, which is exactly the outcome a restart exists to
@@ -188,7 +195,8 @@ defmodule CodeMySpec.Agents do
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,
              os_pid: nil,
-             os_boot_id: nil
+             os_boot_id: nil,
+             tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
            }) do
       agent = launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential}))
       broadcast(scope, {:agent_started, agent})

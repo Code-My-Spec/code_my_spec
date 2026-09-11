@@ -72,6 +72,18 @@ defmodule CodeMySpec.Agents.ToolSets do
   # looking at it, and the `code-writer` agent type has carried browser tools
   # since before roles existed. Product does not — it writes specs, and a spec
   # is not verified by driving a page.
+  # `promote` is here because `code_on_running_copy` is a coding requirement and
+  # the orchestrator hands it to this role: "Gave you the next requirement:
+  # code_on_running_copy." Without it the agent was told to promote, looked the
+  # tool up, found it documented, and could not call it — then reported the one
+  # explanation available from inside, a stale client tool list, which was wrong.
+  # The tool was never granted to the role at all.
+  #
+  # `promote_sync` is deliberately not here. An agent we run has an identity on
+  # its connection and somewhere to be messaged, so `promote` answers at once and
+  # reports back; the synchronous door exists for callers that have neither, and
+  # handing it to an agent would buy a tool call blocked for the length of a
+  # build.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -84,6 +96,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_tasks clear_problems list_problems
     web_search web_fetch
     browser
+    promote
   )
 
   # Shaping what gets built, and never building it. The product half of the
