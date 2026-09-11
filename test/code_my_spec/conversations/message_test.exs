@@ -17,6 +17,8 @@ defmodule CodeMySpec.Conversations.MessageTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Repo
 
   setup do
     scope = full_scope_fixture()
@@ -56,14 +58,14 @@ defmodule CodeMySpec.Conversations.MessageTest do
   test "a turn with neither content nor tool calls still warns", %{conversation: conversation} do
     log =
       capture_log(fn ->
-        %CodeMySpec.Conversations.Message{}
-        |> CodeMySpec.Conversations.Message.agent_changeset(%{
+        %Message{}
+        |> Message.agent_changeset(%{
           role: :assistant,
           conversation_id: conversation.id,
           sender_id: "agent:product",
           content: []
         })
-        |> CodeMySpec.Repo.insert()
+        |> Repo.insert()
       end)
 
     assert log =~ "an empty message reached the changeset"
