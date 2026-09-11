@@ -210,11 +210,16 @@ defmodule CodeMySpec.Servers do
 
   defp module_app_name(_project), do: []
 
+  # What setup builds today, offered so the common answer is one click rather
+  # than something to spell. Suggestions, not options: they seed the list, they
+  # do not bound it, and nothing downstream branches on either value.
+  @suggested_environments ["prod", "uat"]
+
   defp environment_names(%Scope{} = scope, project) do
     %Scope{scope | active_project: project, active_project_id: project.id}
     |> Provisioning.environment_names()
   rescue
-    _ -> ["uat", "prod"]
+    _ -> @suggested_environments
   end
 
   defp place(container, by_service) do
@@ -292,11 +297,6 @@ defmodule CodeMySpec.Servers do
   def update_server(%Server{} = server, attrs) do
     Server.update(server, attrs)
   end
-
-  # What setup builds today, offered so the common answer is one click rather
-  # than something to spell. Suggestions, not options: they seed the list, they
-  # do not bound it, and nothing downstream branches on either value.
-  @suggested_environments ["prod", "uat"]
 
   @doc """
   Labels to offer for a server, seeded with what setup currently supports and
