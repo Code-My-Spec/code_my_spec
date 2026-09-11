@@ -110,13 +110,15 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     fun.()
   rescue
     error in [ExUnit.AssertionError] ->
-      if System.monotonic_time(:millisecond) < deadline do
-        Process.sleep(10)
-        eventually(fun, deadline)
-      else
-        reraise(error, __STACKTRACE__)
-      end
+      retry(System.monotonic_time(:millisecond) < deadline, error, __STACKTRACE__, fun, deadline)
   end
+
+  defp retry(true, _error, _stacktrace, fun, deadline) do
+    Process.sleep(10)
+    eventually(fun, deadline)
+  end
+
+  defp retry(false, error, stacktrace, _fun, _deadline), do: reraise(error, stacktrace)
 
   describe "answering from the dropdown, without navigating" do
     test "a summary expands on click, submitting answers it and flashes", %{
