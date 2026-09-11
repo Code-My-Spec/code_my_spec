@@ -316,7 +316,26 @@ defmodule CodeMySpec.Promotion do
     :ok
   end
 
+  # Written down before it is delivered, and that ordering is the point.
+  #
+  # A promotion runs in a supervised task and reports through one channel: a
+  # message to the agent. So every way that channel can fail — the agent busy,
+  # the call timing out, the task dying between the work and the telling — ends
+  # with nobody knowing anything. There is no second place to look, because
+  # until now there was no first one.
+  #
+  # Measured: a promotion refused on 192 credo problems, correctly, and twelve
+  # minutes later the agent had not been told, the conversation held no outcome,
+  # and `web.log` held nothing between the gate reconciling and silence. The
+  # refusal was right and completely invisible.
+  #
+  # The log line costs nothing and answers "what did it decide" independently of
+  # whether anyone received it.
   defp report_to(result, %Scope{} = scope, agent_id) do
+    Logger.info(
+      "[Promotion] #{outcome_label(result)} for agent #{agent_id}: #{outcome_text(result)}"
+    )
+
     case Agents.message_agent(scope, agent_id, outcome_text(result)) do
       {:ok, _reply} ->
         :ok
@@ -331,10 +350,23 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
+  defp outcome_label({:ok, _}), do: "promoted"
+  defp outcome_label({:error, _}), do: "refused"
+  defp outcome_label(_other), do: "returned something unexpected"
+
   defp outcome_text({:ok, %{merged: branch, serving: %{revision: revision}}}) do
     "Your promotion finished. #{branch} is on the running dev copy and the " <>
       "application is serving #{revision || "the merged code"}. QA on these " <>
       "stories will now test what you wrote."
+  end
+
+  # Promoting from the running copy is a restart and nothing else, so it has no
+  # branch to name. Without this clause it fell through to "returned something
+  # unexpected" — a successful promotion reported as a shrug.
+  defp outcome_text({:ok, %{restarted: root, serving: %{revision: revision}}}) do
+    "Your promotion finished. There was nothing to merge — you are working on " <>
+      "the running copy — so the application at #{root} was restarted and is " <>
+      "serving #{revision || "the code that was already there"}."
   end
 
   defp outcome_text({:error, %{reason: reason}}),
