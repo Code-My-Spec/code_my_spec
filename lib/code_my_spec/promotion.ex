@@ -293,8 +293,12 @@ defmodule CodeMySpec.Promotion do
   @doc """
   Start a promotion and report the outcome back to the agent that asked.
 
-  For callers that have somewhere to be told: an Alloy agent has a conversation,
-  so the tool call returns at once and the result arrives as a message.
+  `agent_id` is who to tell, and `nil` is nobody. An Alloy agent has a
+  conversation, so the result arrives there as a message; every other caller —
+  a Claude Code session, a script, a person with curl — gets the outcome in the
+  log and confirms by asking what the application is serving. The work is the
+  same either way, which is why having nowhere to be messaged is not a reason
+  to make the caller wait.
 
   A promotion sweeps analyzers before it will call a copy clean, and a sweep is
   minutes. Holding a tool call open for that is the wrong shape twice over — the
@@ -304,8 +308,8 @@ defmodule CodeMySpec.Promotion do
   The task is supervised, and its result reaches the agent through
   `Agents.message_agent/4` — which wakes it, which is the point.
   """
-  @spec promote_async(Scope.t(), Ecto.UUID.t()) :: :ok
-  def promote_async(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+  @spec promote_async(Scope.t(), Ecto.UUID.t() | nil) :: :ok
+  def promote_async(%Scope{} = scope, agent_id) when is_binary(agent_id) or is_nil(agent_id) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         scope
@@ -345,6 +349,24 @@ defmodule CodeMySpec.Promotion do
   # has taken it, and records the message on the conversation either way, which
   # is the whole of what reporting an outcome needs. The dev tools' own message
   # route defaults to the same non-waiting shape for the same reason.
+  # No agent to tell, which is every caller that is not one of our own agents —
+  # a Claude Code session, a script, a person with curl. The work is identical
+  # and only the telling is missing, so the log line above is the whole report.
+  #
+  # This clause is what lets `promote` be a sink for everybody. It used to
+  # refuse a connection with no agent and point at `promote_sync`, which waits
+  # for a gate, a merge, an analyzer sweep and a restart — minutes — over a
+  # transport that gives up in thirty seconds. So the one caller told to use the
+  # blocking tool was the one that could never survive it, and a promotion that
+  # succeeded came back as a timeout.
+  defp report_to(result, %Scope{} = _scope, nil) do
+    Logger.info(
+      "[Promotion] #{outcome_label(result)} (no agent to tell): #{outcome_text(result)}"
+    )
+
+    :ok
+  end
+
   defp report_to(result, %Scope{} = scope, agent_id) do
     Logger.info(
       "[Promotion] #{outcome_label(result)} for agent #{agent_id}: #{outcome_text(result)}"
