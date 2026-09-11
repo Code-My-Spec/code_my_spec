@@ -289,6 +289,44 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
+  @doc """
+  The same, with what a reader needs to say where the answer came from.
+
+  For the requirements graph page, which used
+  `compute_graph_with_actionable_metrics/1` — the full recompute, 4.4 seconds on
+  a 3200-component project, on every visit. So the most-looked-at reader of the
+  graph was the one reader that never used the cache, while two stories were
+  written to make the cached answer trustworthy.
+
+  It also had nothing to show about freshness, because it had no cached answer
+  to be fresh or stale. QA on story 1063 went looking for `computed_at` on that
+  page and found it discarded; there was nothing to discard.
+
+  `served_from` is `"cache"` when a published graph satisfied the fingerprint
+  and `"computed"` when this call produced it. On a miss `computed_at` is
+  stamped now rather than left nil — the answer *was* computed at that moment,
+  and nil reads as "no answer" while meaning the opposite.
+  """
+  @spec cached_graph_with_actionable_metrics(Scope.t()) ::
+          {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
+  def cached_graph_with_actionable_metrics(%Scope{} = scope) do
+    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
+
+    {us_graph, {{nodes, edges}, actionable, computed_at}} =
+      :timer.tc(fn -> cached_graph_with_actionable(scope, ctx) end)
+
+    metrics = %{
+      preload_ms: div(us_preload, 1000),
+      graph_ms: div(us_graph, 1000),
+      node_count: length(nodes),
+      edge_count: length(edges),
+      computed_at: computed_at || DateTime.utc_now(),
+      served_from: if(computed_at, do: "cache", else: "computed")
+    }
+
+    {{nodes, edges, actionable}, metrics}
+  end
+
   defp cached_graph_with_actionable(scope, ctx) do
     config = CodeMySpec.Configurations.get_or_create(scope)
 
