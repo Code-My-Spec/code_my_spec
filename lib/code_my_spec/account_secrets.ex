@@ -16,10 +16,12 @@ defmodule CodeMySpec.AccountSecrets do
 
   ## Resolution order
 
-  Callers that can accept either grain should read the account first and fall
-  back to the project — see `CodeMySpec.Provisioning.Hetzner.token/1`. That
-  keeps installs working where the token was stored per-project before the
+  Callers that can accept either grain should use `fetch_account_then_project/3`,
+  which reads the account first and falls back to the project. That keeps
+  installs working where a credential was stored per-project before the
   account grain existed, without the reader having to know which era it is in.
+  `CodeMySpec.Provisioning.Hetzner.token/1` and `Steps.access_public_key/2` are
+  both this: one Hetzner API token, one server SSH key, same precedence.
 
   Everything `ProjectSecrets` says about not letting plaintext reach an agent
   applies unchanged: `value` is encrypted at rest via
@@ -32,6 +34,7 @@ defmodule CodeMySpec.AccountSecrets do
     exports: :all
 
   alias CodeMySpec.AccountSecrets.AccountSecretRepository
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.ProjectSecrets.ProjectSecret
   alias CodeMySpec.Users.Scope
 
@@ -52,6 +55,50 @@ defmodule CodeMySpec.AccountSecrets do
            AccountSecretRepository.fetch(scope, key, environment(opts)) do
       {:ok, value}
     end
+  end
+
+  @doc """
+  `key`'s value, tried against the account first and the project second.
+
+  The precedence every credential that can live at either grain uses: the
+  account holds the current answer, the project is where it lived before the
+  account grain existed. Was reimplemented identically in
+  `CodeMySpec.Provisioning.Hetzner` and `CodeMySpec.Provisioning.Steps` — same
+  eight-line rescue-wrapped lambda twice, for the same reason both needed it:
+  `AccountSecretRepository.fetch/3` and `ProjectSecretRepository.fetch/3` both
+  fail their function head on a scope with no id bound (deliberately, so an
+  unscoped query can never happen by accident — see
+  `AccountSecretRepository`'s moduledoc). A scope can reach either module
+  before its account or project resolves — a Hetzner call driving cassette
+  recording with no project scope at all, a server access key requested while
+  scope resolution is still in flight — and that has to read as "no secret
+  yet", not crash the caller.
+
+  Never raises. `{:error, :not_found}`, not `:error`, because every other
+  fetch in this module answers that on a miss and a caller `case`-ing on this
+  alongside a plain `fetch_value/3` should not have to know which one it's
+  looking at.
+  """
+  @spec fetch_account_then_project(Scope.t(), String.t(), keyword()) ::
+          {:ok, binary()} | {:error, :not_found}
+  def fetch_account_then_project(%Scope{} = scope, key, opts \\ []) do
+    with {:error, :not_found} <- safe_fetch(fn -> fetch_value(scope, key, opts) end) do
+      safe_fetch(fn -> ProjectSecrets.fetch_value(scope, key, opts) end)
+    end
+  end
+
+  # A scope with no active account or project fails the repositories' function
+  # heads rather than falling through to an unscoped query — deliberately, per
+  # `AccountSecretRepository`'s moduledoc. That is the one exception this
+  # rescues into `{:error, :not_found}` rather than letting propagate: not a
+  # blanket "never crash," a specific, understood boundary.
+  defp safe_fetch(read) do
+    case read.() do
+      {:ok, value} when is_binary(value) and value != "" -> {:ok, value}
+      _ -> {:error, :not_found}
+    end
+  rescue
+    _ -> {:error, :not_found}
   end
 
   @doc """
