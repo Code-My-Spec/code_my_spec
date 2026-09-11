@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Agents.{OperatingRules, RoleBrief}
+  alias CodeMySpec.Agents.{OperatingRules, RoleBrief, ToolSets}
 
   describe "every role carries them" do
     test "all four roles get the rules, not just the one that needed them" do
@@ -86,6 +86,36 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
       assert rules =~ "wrong environment",
              "the symptom is a missing config file, and an agent that reads that as " <>
                "'create the file' spends an hour doing it"
+    end
+  end
+
+  # A brief that describes a tool boundary has to describe the real one.
+  #
+  # The coding brief said "you cannot triage or resolve issues". Coding carries
+  # `resolve_issue` and the FixIssues workflow runs on it; what it lacks is
+  # `accept_issue` and `dismiss_issue`. A coding agent hit the contradiction
+  # head-on and stopped to ask: "My system role says I can't triage or resolve
+  # issues, but the FixIssues task's workflow requires calling resolve_issue
+  # after each fix. How should I handle that step?" It was right, and there was
+  # no answer that did not involve changing something.
+  describe "a brief agrees with the tools the role carries" do
+    test "coding is not told it cannot resolve issues, because it can" do
+      brief = RoleBrief.for(:coding)
+
+      assert "resolve_issue" in ToolSets.for_role(:coding),
+             "the premise failed: if coding no longer carries resolve_issue, the " <>
+               "brief below should say so and this test should be inverted"
+
+      refute brief =~ "cannot triage or resolve",
+             "the brief denies a tool the role is granted, and an agent that " <>
+               "believes it stops at the step that needs it"
+    end
+
+    test "coding is told which half it does not have" do
+      brief = RoleBrief.for(:coding)
+
+      assert brief =~ "accept_issue"
+      assert brief =~ "dismiss_issue"
     end
   end
 

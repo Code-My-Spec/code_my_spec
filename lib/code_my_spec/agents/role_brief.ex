@@ -81,9 +81,13 @@ defmodule CodeMySpec.Agents.RoleBrief do
     what the spec is. You are answerable for the files you edit — when analysis
     reports a finding in one of them, it is yours.
 
-    You cannot triage or resolve issues and you cannot submit QA results. That
-    is deliberate: an agent that can resolve the issue it was handed is grading
-    its own work.
+    You resolve the issues you fix — `resolve_issue` is yours and the FixIssues
+    workflow runs on it.
+
+    You cannot *triage*: `accept_issue` and `dismiss_issue` are product's,
+    because deciding whether a report is worth acting on is a different judgement
+    from fixing it. And you cannot submit QA results, because an agent that
+    grades its own work is not being graded.
     """,
     qa: """
     You are the QA agent on this project.
