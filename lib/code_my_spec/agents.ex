@@ -515,6 +515,16 @@ defmodule CodeMySpec.Agents do
   cannot stop an agent while a wrong project id claims the write — the
   repository's `:cross_project` guard is doing its job, not being worked around.
   """
+
+  @spec stop_any_agent(Ecto.UUID.t()) ::
+          {:ok, Agent.t()} | {:error, :no_such_agent | term()}
+  def stop_any_agent(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil -> {:error, :no_such_agent}
+      agent -> stop_agent(%Scope{active_project_id: agent.project_id}, agent.id)
+    end
+  end
+
   @doc """
   Restart any agent by id, for the dev tools.
 
@@ -545,15 +555,6 @@ defmodule CodeMySpec.Agents do
           %Scope{active_project_id: agent.project_id, active_account_id: agent.account_id},
           agent.id
         )
-    end
-  end
-
-  @spec stop_any_agent(Ecto.UUID.t()) ::
-          {:ok, Agent.t()} | {:error, :no_such_agent | term()}
-  def stop_any_agent(agent_id) when is_binary(agent_id) do
-    case Repo.get(Agent, agent_id) do
-      nil -> {:error, :no_such_agent}
-      agent -> stop_agent(%Scope{active_project_id: agent.project_id}, agent.id)
     end
   end
 
