@@ -118,6 +118,59 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
       end
   end
 
+  describe "answering from the dropdown, without navigating" do
+    test "a summary expands on click, submitting answers it and flashes", %{
+      conn: conn,
+      user: user
+    } do
+      create_question(user.id, "Ship today?")
+
+      {:ok, view, html} = live(conn, ~p"/app/notifications")
+
+      # Compact by default — the full form is not on screen until clicked.
+      refute html =~ ~s(data-test="question-form")
+      assert view |> element("[data-test='notification-summary']") |> render() =~ "Ship today?"
+
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      assert view
+             |> element("#notification-dropdown [data-test='question-form']")
+             |> has_element?()
+
+      view
+      |> form("#notification-dropdown [data-test='question-form']", %{"q_0" => "Yes"})
+      |> render_submit()
+
+      # The flash travels through `NotificationsHook`'s own `handle_info` — a
+      # second message this LiveView's mailbox processes after the submit,
+      # not part of the synchronous reply — so this polls rather than
+      # asserting once.
+      eventually(fn -> assert render(view) =~ "Answer sent." end)
+
+      refute view
+             |> element("#notification-dropdown [data-test='question-form']")
+             |> has_element?()
+    end
+
+    test "a permission summary expands, and approving it flashes", %{conn: conn, user: user} do
+      create_permission(user.id)
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      assert view
+             |> element("#notification-dropdown [data-test='permission-request']")
+             |> has_element?()
+
+      view
+      |> element("#notification-dropdown [data-test='permission-request'] button", "Approve")
+      |> render_click()
+
+      eventually(fn -> assert render(view) =~ "Approved." end)
+    end
+  end
+
   test "scrolling to the bottom of Recent loads another page", %{conn: conn, user: user} do
     ids =
       for _ <- 1..25 do
