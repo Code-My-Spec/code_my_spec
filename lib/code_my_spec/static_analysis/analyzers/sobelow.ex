@@ -31,8 +31,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
     Environments.exec_file_exists?(env, "mix.exs") and
       Environments.exec_file_exists?(env, "deps/sobelow")
-  rescue
-    _ -> false
   end
 
   def available?(_scope), do: false

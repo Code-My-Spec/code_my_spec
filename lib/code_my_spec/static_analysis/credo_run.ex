@@ -68,8 +68,6 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   def available?(environment) do
     Environments.exec_file_exists?(environment, "mix.exs") and
       Environments.exec_file_exists?(environment, "deps/credo")
-  rescue
-    _ -> false
   end
 
   defp execute(environment, opts) do
