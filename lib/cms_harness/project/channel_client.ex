@@ -590,6 +590,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:silences, 0)
 
     schedule_read_model_refresh()
+    schedule_preview_check()
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -672,6 +673,21 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_read_model_refresh,
     do: Process.send_after(self(), :refresh_read_model, @read_model_refresh_ms)
+
+  # Preview health gets its own clock, because a scan is the wrong one.
+  #
+  # Everything else the sync reports changes only when the disk changes. An
+  # application does not: it crashes while nobody is editing and recovers while
+  # nobody is editing, and `code_on_running_copy` refuses on the result. Tied to
+  # the scan, a recovered app stayed `down` until someone touched a file, and a
+  # crashed one read `serving` for exactly as long.
+  @preview_check_ms 60_000
+
+  @doc "Public so a test can assert against the real interval rather than a copy."
+  def preview_check_ms, do: @preview_check_ms
+
+  defp schedule_preview_check,
+    do: Process.send_after(self(), :measure_preview, @preview_check_ms)
 
   # A join the server refused. The only one we know how to explain is a project
   # another harness holds; anything else is reported as it arrived.
@@ -1673,6 +1689,26 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_info(:refresh_read_model, socket) do
     schedule_read_model_refresh()
+    {:noreply, socket}
+  end
+
+  # In a task, never inline: the measurement is a `curl` with a five-second
+  # timeout against an address that may be a dead tunnel, and the channel
+  # process is what carries hook decisions and analyzer replies. Blocking it for
+  # five seconds a minute would make a dead preview look like a slow harness.
+  def handle_info(:measure_preview, %{assigns: %{joined: true}} = socket) do
+    schedule_preview_check()
+    root = socket.assigns.project.root
+
+    Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
+      Sync.measure_preview(root)
+    end)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:measure_preview, socket) do
+    schedule_preview_check()
     {:noreply, socket}
   end
 

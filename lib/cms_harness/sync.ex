@@ -141,6 +141,27 @@ defmodule CmsHarness.Sync do
   # Silent when no preview is recorded. A checkout with no preview address has
   # nothing to be up, and reporting `down` for it would put every un-previewed
   # copy behind a gate it cannot clear.
+  @doc """
+  Measure this checkout's preview and report it, independent of a scan.
+
+  Public because a scan is the wrong clock for it. Everything else `run/2`
+  reports — the app name, the head commit, the git state — changes only when
+  the disk changes, so measuring it when the disk changes is exactly right. An
+  application does not. It crashes while nobody is editing, and it recovers
+  while nobody is editing.
+
+  Measured: Broken Oaths' preview answered 200 on both the port and the tunnel
+  while `preview_status` still said `down`, because the row was last written by
+  a sync and no file had changed since. `code_on_running_copy` refuses on that
+  column, so the story stayed shut on a fact that had stopped being true — and
+  the inverse is worse, an app that died after the last sync reads as serving
+  and QA is sent to it.
+  """
+  @spec measure_preview(String.t()) :: :ok
+  def measure_preview(root) do
+    :local |> Environment.new(root) |> report_preview_health(root)
+  end
+
   defp report_preview_health(env, root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->
