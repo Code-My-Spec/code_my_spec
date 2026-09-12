@@ -1,16 +1,26 @@
 defmodule CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork do
   @moduledoc """
-  Take a task off an agent, when it is work that agent cannot do.
+  Ask to take a task off an agent. **This always refuses.**
 
-  Refused when the agent is capable of it — including when it is being slow.
-  Your wider scope is for what a role cannot do, not for what you would rather
-  not wait for.
+  It exists to say no, and the no is the feature. Your wider scope is for what a
+  role cannot do, not for what you would rather not wait for — including when an
+  agent is being slow. Each individual takeover is defensible; the end state is
+  one agent doing everything with three idle, decided by nobody.
+
+  Where you legitimately act past a role's reach, act directly rather than
+  confiscating its task — `ready_stories_without_epic` is the worked example, and
+  that already works.
+
+  Said plainly here because the refusal reads like an assessment of the task and
+  is not one: `task_id` is accepted and never consulted, so the answer is the
+  same whatever you pass. Nothing specifies when a takeover should succeed, so
+  nothing does.
   """
 
-  # It exists in order to refuse. Criterion 3328: the main agent may do
-  # anything, so watching an agent work slowly on something it could finish is a
-  # standing temptation, and each individual takeover is defensible while the
-  # end state is one agent doing everything with three idle.
+  # Criterion 3328. QA (3b7023ae) noted the tool cannot succeed for any input and
+  # that the well-worded refusal therefore reads as discriminating when it is
+  # unconditional — hence saying so in the description an agent actually reads,
+  # rather than only in a comment it does not.
 
   use Anubis.Server.Component, type: :tool
 
