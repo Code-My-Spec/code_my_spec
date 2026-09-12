@@ -417,11 +417,34 @@ defmodule CodeMySpec.DevState do
 
     in_the_loop = Enum.any?(agents, &(&1.continuous and &1.status in [:starting, :running]))
 
+    # The remedy, and only a remedy that works.
+    #
+    # This used to end "until something reads the graph", which is false and was
+    # followed. A QA agent read the graph page twice, checked here after each,
+    # got `watching: false` both times, then grepped `ensure_watching/1` to be
+    # sure rather than shrugging — which is the only reason it became a report
+    # (07f42ebf). A cycle went to it, and the same claim had been copied into a
+    # seed's documentation from this sentence.
+    #
+    # Nothing on the read path starts one. `RequirementsLive.provenance/2` calls
+    # `status/1`, which is read-only, and `Requirements.cached_all/1` does not
+    # ensure one either. The only callers are `watch_active_projects/0` at boot
+    # and the two continuous toggles in `agents.ex`.
+    #
+    # Not fixed by having the read start one, though that was the other option
+    # and the reporter leaned toward it. This module is the place that says what
+    # the runtime is doing; a diagnostic that changes what it is diagnosing
+    # cannot be trusted to describe it. And the supervisor's own reasoning runs
+    # the other way — watchers are started on demand "rather than one per project
+    # at boot: a project nobody is working on needs no watcher", and somebody
+    # reading a page is not the project being worked.
     unwatched =
       if is_nil(watcher) and in_the_loop do
         [
-          "project #{project.name} has agents in the loop and no GraphWatcher — work appearing " <>
-            "will not wake anybody until something reads the graph"
+          "project #{project.name} has agents in the loop and no GraphWatcher — work " <>
+            "appearing will not wake anybody. Reading the graph does not start one and " <>
+            "neither does this page: toggle an agent's loop off and on, or restart the " <>
+            "server, which seeds a watcher for every project with agents in it."
         ]
       else
         []

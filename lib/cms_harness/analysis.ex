@@ -28,7 +28,8 @@ defmodule CmsHarness.Analysis do
         "exit_status" => integer() | nil,
         "diagnostics" => [map()],       # raw, source-specific
         "output" => String.t() | nil,   # raw stdout; exunit only
-        "stats" => map() | nil          # exunit only
+        "stats" => map() | nil,         # exunit only
+        "partition" => String.t()       # exunit and spex: which database answered
       }
 
   and `{:error, reason}` when the tool did not run. Those two are kept apart on
@@ -66,7 +67,7 @@ defmodule CmsHarness.Analysis do
     env = Environment.new(:local, project.root)
     started = System.monotonic_time(:millisecond)
 
-    result = execute(source, env, args)
+    result = source |> execute(env, args) |> stamp_partition(env, source)
 
     Logger.info(
       "[CmsHarness] #{source} #{inspect(args)} in #{project.root} took " <>
@@ -75,6 +76,34 @@ defmodule CmsHarness.Analysis do
 
     result
   end
+
+  # Which database the suite answered about, carried with the answer.
+  #
+  # A working copy has three test databases and a run uses exactly one, and
+  # nothing said which. Measured twice: 479 spex failures naming a column the
+  # tree had, against a partition five days behind the base (`d86b09cd`); and a
+  # criterion passing in isolation while failing every sweep, because
+  # `working_copies_device_id_fkey` was `CASCADE` on one database and `RESTRICT`
+  # on the other. Both read as broken code and neither was. The second cost
+  # three promotion refusals before anyone thought to ask which database had
+  # answered (`9d4ae2de`).
+  #
+  # Only the two sources that open a connection. The compiler and credo read
+  # files, so naming a partition on their findings would be a true fact about an
+  # irrelevant thing — and a reader who takes it as relevant is worse off than
+  # one who was told nothing.
+  #
+  # Safe to resolve here: every `execute/3` clause has already called
+  # `extra_env/2` for this same environment by the time a result exists, so a
+  # copy whose partition cannot be resolved has raised long before this runs.
+  defp stamp_partition({:ok, result}, env, source) when source in ~w(exunit spex) do
+    case List.keyfind(AnalyzerEnv.extra_env(env, source), "MIX_TEST_PARTITION", 0) do
+      {_key, partition} -> {:ok, Map.put(result, "partition", partition)}
+      nil -> {:ok, result}
+    end
+  end
+
+  defp stamp_partition(result, _env, _source), do: result
 
   defp execute("compiler", env, _args) do
     result = Compile.execute(environment: env, extra_env: AnalyzerEnv.extra_env(env, "compiler"))

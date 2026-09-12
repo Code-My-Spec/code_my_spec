@@ -64,4 +64,58 @@ defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
     assert length(first.started) == 3
     assert second.started == [], "a second epic started more agents: #{inspect(second)}"
   end
+
+  describe "a caller that names the roster" do
+    # QA could not test any criterion about delivery *to* a main agent, because
+    # the only sanctioned route to disposable agents always staffed exactly
+    # these three. The alternatives were reaching into the real project or
+    # writing an agent row behind the tool surface, and both defeat the point of
+    # a sandbox — so story 1011's criterion 3265 came back `partial` with
+    # nothing observed to be wrong (fcbcc3ed).
+    test "gets exactly what it asked for", %{scope: scope, copy: copy} do
+      arg = %{id: copy.id, root: copy.root || "/tmp/roster"}
+
+      result = Agents.ensure_copy_agents(scope, arg, [:main])
+
+      assert result.failed == [], "main could not be started: #{inspect(result.failed)}"
+      assert Enum.map(result.started, & &1.role) == [:main]
+    end
+
+    test "the default is still the three that build something", %{scope: scope, copy: copy} do
+      assert Agents.copy_roles() == [:product, :coding, :qa]
+
+      arg = %{id: copy.id, root: copy.root || "/tmp/roster"}
+      result = Agents.ensure_copy_agents(scope, arg)
+
+      assert Enum.map(result.started, & &1.role) |> Enum.sort() == [:coding, :product, :qa],
+             "a copy nobody staffed deliberately should not gain a main agent — the main " <>
+               "agent is the project's, and one per worktree gives a project as many " <>
+               "orchestrators as it has checkouts"
+    end
+
+    test "is still idempotent by role", %{scope: scope, copy: copy} do
+      arg = %{id: copy.id, root: copy.root || "/tmp/roster"}
+
+      assert [:main] =
+               Agents.ensure_copy_agents(scope, arg, [:main]).started |> Enum.map(& &1.role)
+
+      assert [] = Agents.ensure_copy_agents(scope, arg, [:main]).started
+    end
+
+    # Asking for one role must not quietly start the other three as well, which
+    # is what a roster that ignored its argument would do.
+    test "naming one role does not staff the rest", %{scope: scope, copy: copy} do
+      arg = %{id: copy.id, root: copy.root || "/tmp/roster"}
+
+      Agents.ensure_copy_agents(scope, arg, [:main])
+
+      roles =
+        scope
+        |> Agents.list_agents()
+        |> Enum.filter(&(&1.working_copy_id == copy.id and &1.status != :stopped))
+        |> Enum.map(& &1.role)
+
+      assert roles == [:main]
+    end
+  end
 end

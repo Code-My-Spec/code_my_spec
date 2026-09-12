@@ -106,9 +106,36 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
         raise Lua.RuntimeException,
-              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool."
+              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool.\n\n" <>
+                stale_list_note(name)
       end)
     end)
+  end
+
+  # The one case where "call it directly" is false, and the caller has no way to
+  # tell.
+  #
+  # An MCP connection negotiates its tool list once, when it opens, and never
+  # revisits it. So a session that outlives a server change keeps working
+  # against the old surface with nothing reporting the skew — the same shape the
+  # stop hook already detects and names for the harness/server channel, except
+  # nothing detects it here.
+  #
+  # Measured 2026-09-12 (`9b08283d`): `promote` had just been registered, an
+  # agent was told by `start_task` to call it, and got
+  # "attempt to call a nil value" from a script and `Unknown tool` directly —
+  # while `tools/list` over the proxy showed 19 tools including `promote` and
+  # the session's own list carried 17. A `/mcp` reconnect surfaced it at once.
+  #
+  # Without this the refusal asserts the remedy confidently and the remedy does
+  # not work, which is worse than the bare absence it replaced: an agent that
+  # believes it has the tool reaches for spellings rather than for the
+  # connection.
+  defp stale_list_note(name) do
+    "If calling `#{name}` directly answers `Unknown tool`, you do not have it — " <>
+      "your MCP connection negotiated its tool list when it opened and has not " <>
+      "revisited it, so a tool registered since then is missing from your side " <>
+      "only. Reconnect (`/mcp`) and call it again."
   end
 
   # Named, and named as a scope decision rather than as an absence. The agent

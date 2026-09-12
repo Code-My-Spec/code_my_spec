@@ -62,6 +62,67 @@ defmodule CodeMySpec.Qa.Evidence do
   def committed?(nil, _story_id), do: {:unknown, :no_working_copy}
 
   def committed?(env, story_id) do
+    case initialized?(env) do
+      :ok -> status(env, story_id)
+      {:unknown, reason} -> {:unknown, reason}
+    end
+  rescue
+    # `Environments.cmd` raises on an environment with no working directory
+    # rather than returning a tuple. That is a legitimate state here — a server
+    # holding no checkout — and it is `:unknown`, not a crash in the QA tool.
+    # On `committed?/2` rather than on either helper, so it covers the
+    # `rev-parse` as well as the `status`.
+    error in ArgumentError -> {:unknown, Exception.message(error)}
+  end
+
+  # An empty `git status` is only evidence when the directory is its own
+  # repository.
+  #
+  # `.code_my_spec` is a submodule, and a submodule is initialized in the main
+  # checkout and **not** in a worktree, where the path is an ordinary directory
+  # holding whatever was written into it. The superproject records it as a
+  # gitlink, so git ignores its contents entirely — `status -- qa/<story>` run
+  # in there resolves to the *outer* repository and prints nothing whether the
+  # brief is committed, uncommitted, or absent.
+  #
+  # Nothing distinguishes that from clean. `ab52cdfa`: briefs and screenshots
+  # sat untracked in a worktree and were never preserved, reported as committed
+  # every time, on top of the four this module already exists for (`0a1435c7`).
+  #
+  # `rev-parse --show-toplevel` is the one-command tell. In an initialized
+  # submodule it answers the submodule's own path; in a worktree stub it answers
+  # the worktree root, which is the outer repo saying "these files are not
+  # mine".
+  defp initialized?(env) do
+    path = submodule_path(env)
+
+    case Environments.cmd(env, "git", ["rev-parse", "--show-toplevel"],
+           cd: path,
+           stderr_to_stdout: true
+         ) do
+      {output, 0} -> same_repo(String.trim(output), path)
+      {:error, reason} -> {:unknown, reason}
+      {_output, status} when is_integer(status) -> {:unknown, :submodule_not_a_repository}
+    end
+  end
+
+  # Compared by basename rather than by full path, because the two are spelled
+  # differently for reasons that have nothing to do with this. git resolves
+  # symlinks and the caller does not, so on macOS a checkout under `/var/…`
+  # comes back as `/private/var/…` and an initialized submodule reads as an
+  # uninitialized one. `Path.expand/1` does not close that — it normalises `..`
+  # and `~`, not symlinks.
+  #
+  # The basename is the whole signal anyway: an initialized submodule's toplevel
+  # is the submodule directory, and an uninitialized one's is the superproject
+  # root, which is some checkout's name and not `.code_my_spec`.
+  defp same_repo(toplevel, path) do
+    if Path.basename(toplevel) == Path.basename(path),
+      do: :ok,
+      else: {:unknown, :submodule_not_initialized}
+  end
+
+  defp status(env, story_id) do
     # `--porcelain` because the human-readable output is localised and
     # reformatted between git versions; this is parsed, so it takes the format
     # that promises not to change.
@@ -90,11 +151,6 @@ defmodule CodeMySpec.Qa.Evidence do
       {:error, reason} -> {:unknown, reason}
       {output, status} when is_integer(status) -> {:unknown, String.trim(output)}
     end
-  rescue
-    # `Environments.cmd` raises on an environment with no working directory
-    # rather than returning a tuple. That is a legitimate state here — a server
-    # holding no checkout — and it is `:unknown`, not a crash in the QA tool.
-    error in ArgumentError -> {:unknown, Exception.message(error)}
   end
 
   @doc """
@@ -159,8 +215,33 @@ defmodule CodeMySpec.Qa.Evidence do
     "\nQA evidence not independently verified — this pass ran on a harness, and " <>
       "the server has no filesystem access there to check. That's expected, not " <>
       "an error: the attempt above is recorded regardless. Before you finish, " <>
-      "confirm it yourself: `git -C .code_my_spec status --porcelain -uall -- " <>
-      "qa/<story_id>` should print nothing."
+      "confirm it yourself:\n\n" <>
+      "  git -C .code_my_spec rev-parse --show-toplevel   # must end in /.code_my_spec\n" <>
+      "  git -C .code_my_spec status --porcelain -uall -- qa/<story_id>   # must print nothing\n\n" <>
+      "Both, in that order. In a git worktree `.code_my_spec` is usually not " <>
+      "checked out as a submodule, and then the second command reports the " <>
+      "*outer* repository — which ignores those files, so it prints nothing " <>
+      "whether your evidence is committed, uncommitted or absent. The first " <>
+      "command is what tells the two apart."
+  end
+
+  # Named, because this one has a remedy and the generic wording sends the
+  # reader to the wrong place — it says the server has no working copy when the
+  # working copy is right there with a hollow `.code_my_spec` in it.
+  def unknown_note(:submodule_not_initialized) do
+    "\nQA evidence could not be verified: `#{@submodule}` is not checked out as " <>
+      "a submodule here, so git reports the outer repository and would call any " <>
+      "state clean.\n\n" <>
+      "This is the ordinary state of a git worktree, and it means two things " <>
+      "beyond this check. Anything you read under `#{@submodule}/` is whatever " <>
+      "happened to be written there rather than what is tracked — a QA plan that " <>
+      "looks missing is not missing, it is in the main checkout — and anything " <>
+      "you write there is preserved by nothing.\n\n" <>
+      "Initialize it before trusting either direction:\n\n" <>
+      "  git submodule update --init #{@submodule}\n\n" <>
+      "If that refuses with \"destination path already exists and is not an " <>
+      "empty directory\", the stub already holds loose files; move them aside " <>
+      "first rather than deleting, in case a brief is among them."
   end
 
   def unknown_note(reason) do

@@ -35,10 +35,15 @@ defmodule CodeMySpec.Analysis.Runners do
       compiler  %{"exit_status" => int, "diagnostics" => [%{"file", "line", "severity", "message"}]}
       credo     %{"exit_status" => int, "diagnostics" => [credo issue json]}
       exunit    %{"exit_status" => int, "execution_status" => "success"|"failure"|"error",
-                  "output" => raw stdout, "stats" => map,
+                  "output" => raw stdout, "stats" => map, "partition" => string,
                   "diagnostics" => [%{"file", "line", "message"}]}
-      spex      %{"exit_status" => int,
+      spex      %{"exit_status" => int, "partition" => string,
                   "diagnostics" => [%{"spex", "scenario", "file", "line", "message"}]}
+
+  `partition` is which test database the suite opened, and only the two sources
+  that open one send it. It lands in the run's `stats` rather than on each
+  problem: one fact per run, where four hundred identical copies would otherwise
+  go. An older harness omits it and the run simply records none.
   """
 
   alias CodeMySpec.BddSpecs.Spex
@@ -295,7 +300,7 @@ defmodule CodeMySpec.Analysis.Runners do
 
       {failures, code} ->
         case lost_build_failures(raw) do
-          [] -> {:ok, spex_result(failures, code)}
+          [] -> {:ok, with_partition(spex_result(failures, code), raw)}
           lost -> {:error, {:build_changed_mid_run, length(lost), hd(lost)}}
         end
     end
@@ -342,13 +347,38 @@ defmodule CodeMySpec.Analysis.Runners do
       end)
 
     {:ok,
-     %{
-       problems: problems,
-       output: cap(raw["output"] || ""),
-       exit_status: raw["exit_status"],
-       stats: raw["stats"] || %{}
-     }}
+     with_partition(
+       %{
+         problems: problems,
+         output: cap(raw["output"] || ""),
+         exit_status: raw["exit_status"],
+         stats: raw["stats"] || %{}
+       },
+       raw
+     )}
   end
+
+  # Which database this run answered about, kept on the run rather than on each
+  # problem — it is one fact per run, and a per-problem copy would be four
+  # hundred identical strings.
+  #
+  # A working copy has three test databases and a run uses exactly one. Measured
+  # twice, and both times every available signal pointed at the code: 479 spex
+  # failures naming a column the tree had, against a partition five days behind
+  # the base (`d86b09cd`); and a criterion passing in isolation while failing
+  # every sweep, because `working_copies_device_id_fkey` was `CASCADE` on one
+  # database and `RESTRICT` on the other (`9d4ae2de`). The second cost three
+  # promotion refusals before anybody asked which database had answered.
+  #
+  # Absent for the compiler and credo, which read files rather than opening a
+  # connection — and absent from an older harness, which sends no such key. Both
+  # simply carry no partition, which is the truthful answer for each.
+  defp with_partition(summary, %{"partition" => partition})
+       when is_binary(partition) and partition != "" do
+    %{summary | stats: Map.put(summary.stats, "partition", partition)}
+  end
+
+  defp with_partition(summary, _raw), do: summary
 
   # A module that vanished, or a dependency's function that did.
   #
