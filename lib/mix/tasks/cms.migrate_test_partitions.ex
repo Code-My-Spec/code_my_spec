@@ -28,6 +28,31 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   was two databases with different schemas both answering, and nothing naming
   which one had.
 
+  ## "Up to date" is about versions, not about DDL
+
+  This reports a database current when `schema_migrations` holds every version
+  on disk. That is Ecto's model and there is no other one available — but it can
+  be true of a database whose tables are wrong, and this repo has produced
+  exactly that.
+
+  Two migrations were stamped `20260912010000`. Only one row can record that
+  version, so on some databases the loser was marked applied without ever
+  running. Renumbering fixed the file and could not un-record the version, so
+  those databases carry a complete `schema_migrations` and an incomplete schema,
+  and nothing that reads versions can tell.
+
+  Measured 2026-09-12: after this task reported all three partitions up to date,
+  `working_copies_device_id_fkey` was `ON DELETE CASCADE` on the base and
+  `ON DELETE RESTRICT` on the spex partition. Criterion 2848 asserts a device
+  deletion takes its checkouts with it; it passed on one database and raised
+  `Ecto.ConstraintError` on the other, from the same commit.
+
+  **The repair for that is `DROP DATABASE`, not another migrate.** These hold
+  nothing but test data and are rebuilt on demand, so dropping the `a` and `s`
+  partitions and letting them be created and migrated from an empty history is
+  cheap and is the only thing that guarantees the schema matches the migrations.
+  Reach for it when a suite fails on one partition and passes on another.
+
   ## Existing partitions only — nothing is created here
 
   A partition nothing has used yet has no database, and that is not a problem to
