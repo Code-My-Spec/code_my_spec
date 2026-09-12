@@ -62,7 +62,9 @@ defmodule CodeMySpecWeb.StoryLive.Index do
             <div class="flex items-start justify-between mb-4">
               <h2
                 class="card-title text-2xl cursor-pointer hover:text-primary flex-1"
-                phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}"))}
+                phx-click={
+                  JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}"))
+                }
               >
                 {story.title}
               </h2>
@@ -200,18 +202,23 @@ defmodule CodeMySpecWeb.StoryLive.Index do
             <div class="flex items-center justify-between">
               <div class="card-actions">
                 <.link
-                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/three-amigos")}
+                  navigate={
+                    path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/three-amigos")
+                  }
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-squares-2x2" class="size-4" /> Three Amigos
                 </.link>
                 <.link
-                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/gherkin")}
+                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/gherkin")}
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-document-text" class="size-4" /> Gherkin
                 </.link>
-                <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/edit")} class="btn btn-sm btn-outline">
+                <.link
+                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/edit")}
+                  class="btn btn-sm btn-outline"
+                >
                   Edit
                 </.link>
                 <button

@@ -180,7 +180,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     # this is a string assembled into a prompt, not a `~p` the router verifies
     # and not a link in a view.
     session_url =
-      "#{base_url}/app/projects/#{project_id(scope)}/stories/#{story.id}/three-amigos"
+      "#{base_url}/app/projects/#{project_id(scope)}/stories/#{story.number}/three-amigos"
 
     quoted_description = String.replace(story.description || "(no description)", "\n", "\n> ")
 

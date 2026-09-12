@@ -71,7 +71,10 @@ defmodule CodeMySpecSpex.Story1014.Criterion2867Spex do
 
       then_ "and the story's link to it is unchanged", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/stories/#{context.story.id}")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/stories/#{context.story.number}"
+          )
 
         assert render(view) =~ "ExampleContext",
                "the component survived but the story no longer points at it, so " <>

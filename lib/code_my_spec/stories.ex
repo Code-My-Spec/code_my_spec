@@ -140,6 +140,14 @@ defmodule CodeMySpec.Stories do
   def get_story(scope, id), do: impl().get_story(scope, id)
 
   @doc """
+  A story by its durable number rather than its id (1ab62ffd) — what the URL
+  and the UI show a human, since the id and the number coincide on a young
+  project and diverge later.
+  """
+  def get_story_by_number(scope, number), do: impl().get_story_by_number(scope, number)
+  def get_story_by_number!(scope, number), do: impl().get_story_by_number!(scope, number)
+
+  @doc """
   Creates a story.
 
   ## Examples

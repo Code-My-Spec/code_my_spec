@@ -58,10 +58,10 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
       live "/app/projects/:project_id/stories/new", StoryLive.Form, :new
       live "/app/projects/:project_id/stories/import", StoryLive.Import, :import
-      live "/app/projects/:project_id/stories/:id", StoryLive.Show, :show
-      live "/app/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
-      live "/app/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
-      live "/app/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+      live "/app/projects/:project_id/stories/:number", StoryLive.Show, :show
+      live "/app/projects/:project_id/stories/:number/edit", StoryLive.Form, :edit
+      live "/app/projects/:project_id/stories/:number/three-amigos", StoryLive.ThreeAmigos
+      live "/app/projects/:project_id/stories/:number/gherkin", StoryLive.Gherkin
 
       # Epics — static segments first so they win over `:slug`
       live "/app/projects/:project_id/epics", EpicsLive.Index, :index
@@ -129,7 +129,7 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :component_req_prompt
 
-      live "/app/projects/:project_id/stories/:story_id/requirements/:name",
+      live "/app/projects/:project_id/stories/:story_number/requirements/:name",
            RequirementsLive,
            :story_req_show
     end

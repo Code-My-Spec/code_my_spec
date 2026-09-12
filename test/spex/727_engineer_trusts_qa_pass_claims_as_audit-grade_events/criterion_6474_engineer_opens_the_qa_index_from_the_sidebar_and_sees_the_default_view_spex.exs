@@ -155,7 +155,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
                    "timestamp, got:\n#{context.html}"
         end
 
-        story_b_path = "/app/projects/#{context.project.id}/stories/#{context.story_b.id}"
+        story_b_path = "/app/projects/#{context.project.id}/stories/#{context.story_b.number}"
 
         assert context.html =~ story_b_path,
                "expected the row to link to the story's page"

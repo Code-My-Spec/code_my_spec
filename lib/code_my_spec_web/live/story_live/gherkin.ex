@@ -35,18 +35,18 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
-    with {:ok, story_id} <- parse_id(id),
-         %Stories.Story{} = story <- Stories.get_story(scope, story_id) do
-      socket =
-        socket
-        |> maybe_subscribe(scope)
-        |> assign_view(scope, story)
+  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    case Stories.get_story_by_number(scope, number) do
+      %Stories.Story{} = story ->
+        socket =
+          socket
+          |> maybe_subscribe(scope)
+          |> assign_view(scope, story)
 
-      {:noreply, socket}
-    else
-      :error -> {:noreply, assign(socket, error: "Invalid story id.", story: nil, gherkin: "")}
-      nil -> {:noreply, assign(socket, error: "Story not found.", story: nil, gherkin: "")}
+        {:noreply, socket}
+
+      nil ->
+        {:noreply, assign(socket, error: "Story not found.", story: nil, gherkin: "")}
     end
   end
 
@@ -94,13 +94,6 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
     )
   end
 
-  defp parse_id(s) when is_binary(s) do
-    case Integer.parse(s) do
-      {id, ""} -> {:ok, id}
-      _ -> :error
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -109,7 +102,7 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
         <:subtitle :if={@story && @project}>
           Rendered from
           <.link
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
             class="link link-primary"
           >
             Three Amigos
@@ -120,13 +113,13 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
         <:actions>
           <.button
             :if={@story && @project}
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}")}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}")}
           >
             <.icon name="hero-arrow-left" /> Back to story
           </.button>
           <.button
             :if={@story && @project}
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
           >
             <.icon name="hero-squares-2x2" /> Three Amigos wall
           </.button>
