@@ -50,7 +50,18 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         implementation detail leaking through the page.
       --%>
       <.conversation transcript={@transcript} thinking={@thinking} trouble={@trouble}>
-        <.plan_card :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
+        <%!--
+          Always, rather than once the agent has concluded. The card used to
+          appear on `:planned`, which put the paperwork downstream of the
+          talking: somebody who would rather type than discuss had no way in,
+          and an unreachable model took the form down with it — they were told
+          what had gone wrong and left with nothing to do about it.
+
+          Beside the composer, not instead of it. Both are live the whole time,
+          so filling a field in and saying something are two ways of answering
+          the same question rather than two modes to be in.
+        --%>
+        <.plan_card plan={@plan} form={@names_form} />
       </.conversation>
 
       <.composer
@@ -84,16 +95,30 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   attr :form, :any, required: true
 
   defp plan_card(assigns) do
+    assigns = assign(assigns, :concluded, assigns.plan.status in [:planned, :converted])
+
     ~H"""
     <div data-test="intake-plan" class="chat chat-start">
       <div class="chat-bubble chat-bubble-neutral max-w-full">
-        <p>Here's what I think you're building.</p>
-        <p class="mt-2 opacity-80">{@plan.summary}</p>
-        <p class="mt-1 opacity-70">{@plan.first_build}</p>
+        <%!--
+          What the card says depends on whether the agent has got anywhere yet,
+          because before it has there are no guesses to offer and saying "here's
+          what I think you're building" over five empty fields is the agent
+          claiming work it has not done.
+        --%>
+        <p :if={@concluded}>Here's what I think you're building.</p>
+        <p :if={not @concluded}>You can fill this in yourself if you'd rather.</p>
 
-        <p class="mt-4 text-sm opacity-70">
+        <p :if={@plan.summary} class="mt-2 opacity-80">{@plan.summary}</p>
+        <p :if={@plan.first_build} class="mt-1 opacity-70">{@plan.first_build}</p>
+
+        <p :if={@concluded} class="mt-4 text-sm opacity-70">
           These are my guesses — change anything that's wrong. What you confirm
           here is what gets built.
+        </p>
+        <p :if={not @concluded} class="mt-4 text-sm opacity-70">
+          I'll fill it in as we talk. What you confirm here is what gets built,
+          whenever you're ready.
         </p>
 
         <.form

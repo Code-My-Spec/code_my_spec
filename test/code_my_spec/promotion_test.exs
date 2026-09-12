@@ -271,4 +271,81 @@ defmodule CodeMySpec.PromotionTest do
       assert output =~ "Merge made"
     end
   end
+
+  describe "a submodule dirtied by an in-progress QA session" do
+    # A QA agent writes into `.code_my_spec` continuously for the one-to-two
+    # hours it works — a brief drafted, `prompt.md` regenerated on every task
+    # it opens — none of which is code this checkout's own merge would carry.
+    # `precheck/2` used to refuse the whole promotion for the length of a QA
+    # session over exactly that (c97bb142).
+    #
+    # A modified TRACKED file inside the submodule, not a fresh untracked one
+    # — confirmed empirically that only the former makes `git status` report
+    # the submodule as dirty in the superproject at all, and "regenerated on
+    # every task" is a rewrite of a file the submodule already tracks.
+    test "does not refuse a checkout whose only dirt is inside the submodule" do
+      {:ok, submodule_root} = Briefly.create(directory: true)
+      sub_git = fn args -> System.cmd("git", args, cd: submodule_root, stderr_to_stdout: true) end
+
+      {_, 0} = sub_git.(["init", "-q", "--initial-branch=main"])
+      {_, 0} = sub_git.(["config", "user.email", "t@example.com"])
+      {_, 0} = sub_git.(["config", "user.name", "T"])
+      File.write!(Path.join(submodule_root, "qa_brief.md"), "draft\n")
+      {_, 0} = sub_git.(["add", "-A"])
+      {_, 0} = sub_git.(["commit", "-q", "-m", "initial brief"])
+
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "-q", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+      File.write!(Path.join(root, "app.ex"), "defmodule App do\nend\n")
+      {_, 0} = git.(["add", "-A"])
+      {_, 0} = git.(["commit", "-q", "-m", "initial commit"])
+
+      {_, 0} =
+        git.([
+          "-c",
+          "protocol.file.allow=always",
+          "submodule",
+          "add",
+          "-q",
+          submodule_root,
+          ".code_my_spec"
+        ])
+
+      {_, 0} = git.(["commit", "-q", "-m", "add submodule"])
+
+      # The QA agent's own act: rewriting a file the submodule already tracks.
+      File.write!(Path.join(root, ".code_my_spec/qa_brief.md"), "in progress\n")
+
+      env = Environment.new(:local, root)
+
+      assert {:ok, %{branch: "main"}} = Steps.precheck(env, root),
+             "a submodule with a modified tracked file made this checkout read " <>
+               "as dirty, refusing every promotion for the length of a QA session"
+    end
+
+    test "still refuses when the checkout itself has uncommitted work" do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "-q", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+      File.write!(Path.join(root, "app.ex"), "defmodule App do\nend\n")
+      {_, 0} = git.(["add", "-A"])
+      {_, 0} = git.(["commit", "-q", "-m", "initial commit"])
+
+      File.write!(Path.join(root, "app.ex"), "defmodule App do\n  def changed, do: true\nend\n")
+
+      env = Environment.new(:local, root)
+
+      assert {:error, %{reason: reason}} = Steps.precheck(env, root)
+      assert reason =~ "uncommitted work",
+             "ignoring submodule dirt must not also hide a real, uncommitted " <>
+               "change to the checkout's own tracked files"
+    end
+  end
 end

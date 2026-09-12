@@ -281,8 +281,34 @@ restart port="4000":
     # into every `lsof`/log-path/curl call below, which is what a syntactically
     # valid, semantically wrong argument looks like: no error until runtime,
     # and a stack of unrelated-looking failures once it hits.
-    echo
-    just refresh-harness 4004 false
+    #
+    # `CMS_SKIP_HARNESS_REFRESH=true` is the one way to skip this, and it
+    # exists for exactly one caller: `CodeMySpec.Promotion`, once it has
+    # checked the merge it just landed and found the range provably silent on
+    # `lib/cms_harness` and the channel modules (376e3356). Every other
+    # caller — a bare `just restart`, `refresh`'s own call above, a human at a
+    # terminal — leaves it unset and refreshes the harness exactly as this
+    # recipe always has; skipping is deliberately not the default anywhere
+    # else, because a refresh this checkout did not need costs seconds and a
+    # skipped one it did need is d00a3272 again for every agent on the
+    # machine.
+    #
+    # An environment variable rather than a recipe parameter (like
+    # `refresh_harness="false"`) on purpose: this recipe runs unconditionally
+    # for `Steps.restart/3`'s promotion of *any* project, not just this one,
+    # and a caller cannot know every promoted project's own `restart` recipe
+    # accepts an extra positional argument — some, including this project's
+    # own spex fixtures, declare none at all, and `just` reads an
+    # unaccounted-for positional argument as the name of a second recipe to
+    # also run rather than rejecting it, failing with "justfile does not
+    # contain recipe <value>" the moment one is passed. An env var this
+    # recipe was not written to check is simply invisible to it.
+    if [ "${CMS_SKIP_HARNESS_REFRESH:-}" = "true" ]; then
+        echo "→ skipping harness refresh — the merge this restart follows did not touch the channel contract"
+    else
+        echo
+        just refresh-harness 4004 false
+    fi
 
 
 # Pull main into the running checkout and let the code reloader do the rest.
