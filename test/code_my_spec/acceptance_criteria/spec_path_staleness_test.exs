@@ -73,7 +73,9 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
 
     {:ok, repaired} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => new_path})
 
-    assert repaired == 1, "a renamed spex must still be re-pointed — that is what the repair is for"
+    assert repaired == 1,
+           "a renamed spex must still be re-pointed — that is what the repair is for"
+
     assert Repo.get!(Criterion, criterion.id).spec_path == new_path
 
     # And it settles: the second manifest reports the same file and changes
@@ -84,6 +86,52 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
     The repair fired twice for one move. It has to converge, or every sync
     rewrites the same rows forever and `bdd_specs_exist` never settles.
     """
+  end
+
+  # QA's repro, 2026-09-11 (3cec218f). A probe spex written into story A's
+  # directory stamped its path onto a criterion belonging to story B, because
+  # `criterion_<id>` is a project-wide id and nothing checked it against the
+  # story the directory names. Story B's `bdd_specs_exist` then flipped
+  # satisfied on a file written for story A, whose own stayed open — both halves
+  # wrong, and silent in both directions.
+  test "a file in another story's directory does not claim this criterion" do
+    scope = full_scope_fixture()
+
+    {:ok, mine} =
+      Stories.create_story(scope, %{
+        title: "the story that owns the criterion",
+        description: "its criterion must not be claimed by another story's directory"
+      })
+
+    {:ok, theirs} =
+      Stories.create_story(scope, %{
+        title: "the story whose directory the file sits in",
+        description: "a file here must not reach across"
+      })
+
+    {:ok, criterion} =
+      %Criterion{}
+      |> Criterion.changeset(%{
+        story_id: mine.id,
+        project_id: scope.active_project_id,
+        description: "a criterion belonging to the first story"
+      })
+      |> Repo.insert()
+
+    intruder = "test/spex/#{theirs.number}_their_story/criterion_#{criterion.id}_probe_spex.exs"
+
+    {:ok, claimed} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => intruder})
+
+    assert claimed == 0, """
+    A spex in another story's directory claimed this criterion.
+
+    `criterion_<id>` is a project-wide id and the directory names a story. When
+    they disagree and both exist, the file is about the directory's story — so
+    taking it here credits the wrong story's `bdd_specs_exist` and leaves the
+    right one's open, with nothing said either way.
+    """
+
+    assert is_nil(Repo.get!(Criterion, criterion.id).spec_path)
   end
 
   test "a criterion with no recorded path is claimed" do

@@ -50,6 +50,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3358Spex do
   spex "The cache and the computation agree about the graph" do
     scenario "a reader is served from cache after computing" do
       given_ "a project whose graph has not been computed yet", context do
+        # given: already true — `setup :setup_active_project` creates the
+        # project, and nothing has read its graph, so no cache row exists for it
+        # yet. Establishing it here would mean computing the graph, which is
+        # precisely what the `when_` is here to do for the first time.
         {:ok, context}
       end
 

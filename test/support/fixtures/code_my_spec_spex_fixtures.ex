@@ -1848,6 +1848,34 @@ defmodule CodeMySpecSpex.Fixtures do
     config
   end
 
+  @doc """
+  Whether this project asks for spec files, and a component to ask it about.
+
+  `require_specs` is what `graph_for_type/1` filters a template by, so turning it
+  off is how a project stops needing a whole class of requirement — the surface
+  behind criterion 3359.
+  """
+  def require_specs(%Scope{} = scope, required?) do
+    CodeMySpec.Configurations.get_or_create(scope)
+    {:ok, _config} = CodeMySpec.Configurations.update(scope, %{require_specs: required?})
+    :ok
+  end
+
+  @doc """
+  A schema component, whose whole template is spec requirements.
+
+  `schema_graph/0` is `spec_file` and `spec_valid` and nothing else, which makes
+  it the type that computes *zero* requirements once specs are off — the case
+  that kept stale rows forever.
+  """
+  def a_schema_component(%Scope{} = scope) do
+    CodeMySpec.Components.create_component(scope, %{
+      name: "Calculator",
+      module_name: "#{scope.active_project.module_name}.Calculator",
+      type: "schema"
+    })
+  end
+
   @doc "The stop hook's blocking decision, as the hook itself asks for it."
   # Drops the block key. `validate_stop/3` returns `{:error, reason, key}` — the
   # key is R8's repeat identity for the finding set, not something a spec has an

@@ -255,7 +255,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp persist_projection(:published, scope, ctx, nodes, edges) do
     {:ok, _} =
       Repo.transaction(fn ->
-        ids_by_key = NodeRepository.upsert_all(scope, nodes)
+        ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
         NodeRepository.replace_edges(scope, edges, ids_by_key)
       end)
 
@@ -265,6 +265,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     verify_round_trip(scope, ctx, nodes, edges)
 
     :ok
+  end
+
+  # What this computation looked at, which is the preloaded context rather than
+  # the nodes it produced. A component whose template is empty under this
+  # project's configuration produces nothing and was still visited; its old rows
+  # are departed and must be reaped. See `NodeRepository.delete_departed/4`.
+  defp visited(ctx) do
+    %{
+      components: Enum.map(ctx.components, & &1.id),
+      stories: Enum.map(ctx.stories, & &1.id)
+    }
   end
 
   defp verify_round_trip(scope, ctx, nodes, edges) do

@@ -16,7 +16,8 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement, RequirementGraph}
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Projection, Requirement, RequirementGraph}
 
   setup do
     %{scope: full_scope_fixture()}
@@ -31,6 +32,112 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       satisfied: satisfied,
       details: %{}
     }
+  end
+
+  describe "a component that was visited and produced nothing" do
+    # The distinction this exists for: "nobody loaded this component" and "this
+    # component was loaded and yielded no requirements" both leave it out of the
+    # produced node set, and only the first should keep its rows.
+    #
+    # The second is ordinary. `graph_for_type/1` filters a template by the
+    # project's configuration, and `schema_graph/0` is `spec_file` and
+    # `spec_valid` — so on a project with `require_specs: false` every schema
+    # component computes zero nodes. Measured on Code My Spec: 84 schema
+    # components each holding an `implementation_file` row their current type no
+    # longer defines, which `Projection.rehydrate/2` then dropped on every read,
+    # so the graph read back 1844 nodes against a published 2009 — permanently,
+    # because nothing would ever reap them (cc4745dc).
+    test "has its departed rows reaped", %{scope: scope} do
+      component = component_fixture(scope)
+
+      NodeRepository.upsert_all(scope, [node("component", component.id, "implementation_file")])
+
+      assert Repo.aggregate(Node, :count) == 1
+
+      # The next pass visits it and produces nothing for it — the empty-template
+      # case — so its row is departed.
+      NodeRepository.upsert_all(scope, [], %{components: [component.id], stories: []})
+
+      assert Repo.aggregate(Node, :count) == 0,
+             """
+             A component that was visited and produced no requirements kept its
+             rows.
+
+             Every later read finds them and drops them — `rehydrate/2` has no
+             definition for a name the component's type no longer defines — so
+             the projection reads back short of what the publish counted, for
+             good. That is the 1844-against-2009 this was diagnosed from.
+             """
+    end
+
+    test "a component nobody visited keeps its rows", %{scope: scope} do
+      component = component_fixture(scope)
+
+      NodeRepository.upsert_all(scope, [node("component", component.id, "implementation_file")])
+
+      # Not in the visited set at all — filtered out, or belonging to work this
+      # pass did not load. Its rows are not this computation's to remove.
+      NodeRepository.upsert_all(scope, [], %{components: [], stories: []})
+
+      assert Repo.aggregate(Node, :count) == 1,
+             "a component outside this computation must not be treated as departed"
+    end
+  end
+
+  describe "a caller with no checkout to name" do
+    # `Projection.vantage/1` resolves `active_working_copy_id: nil` — the UI
+    # path — to the project's *default* working copy whenever one is set, so a
+    # person's browser reads that checkout's honest state rather than a blend
+    # of every checkout's files. `upsert_all/3` used to persist under the raw
+    # field instead, which is always literal `nil` for that same caller.
+    #
+    # The two never agreed once a project had a default working copy: every UI
+    # publish landed under `nil` and no UI read would ever look there again.
+    # Measured on Code My Spec, cc4745dc: `verify_round_trip/4` logged "the
+    # projection does not round-trip" on every single publish, and
+    # `RequirementGraph.served_graph/3`'s short-read guard refused every cache
+    # hit as a result — the page recomputed on every visit, forever. Not the
+    # `definition_for/2`/config-filtering mismatch this was first suspected to
+    # be: a direct read of the rows this test writes shows zero dropped by
+    # `Projection.rehydrate/2` either way. The row the publish wrote was
+    # simply never where the read went looking.
+    test "a nil-scope publish lands where a nil-scope read will look for it", %{scope: scope} do
+      {:ok, _project} =
+        Projects.update_project(scope, scope.active_project, %{
+          default_working_copy_id: scope.active_working_copy_id
+        })
+
+      component = component_fixture(scope)
+      ui_scope = %{scope | active_working_copy_id: nil}
+
+      NodeRepository.upsert_all(ui_scope, [
+        node("component", component.id, "implementation_file")
+      ])
+
+      row = Repo.one!(Node)
+
+      assert row.working_copy_id == scope.active_working_copy_id, """
+      A publish with no checkout named must land where `Projection.vantage/1`
+      will look for it on the next read with no checkout named — the
+      project's default working copy, once it has one — not under the raw
+      `nil`, which no read of this project will ever resolve back to.
+      """
+
+      ctx = %{
+        components: [component],
+        components_by_id: %{component.id => component},
+        stories: []
+      }
+
+      {nodes, _edges} = Projection.load(ui_scope, ctx)
+
+      assert length(nodes) == 1, """
+      This is the actual symptom behind cc4745dc: a graph published from the
+      UI read back short on the very next UI read, because the write and the
+      read resolved the same nil-scope caller to two different working
+      copies.
+      """
+    end
   end
 
   describe "upsert_all/2" do
