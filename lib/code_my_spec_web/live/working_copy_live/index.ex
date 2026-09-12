@@ -309,6 +309,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                     Its machine reports nothing at this path. Nothing has been removed —
                     offboard it when you are sure it is not coming back.
                   </p>
+
+                  <p
+                    :if={row.other_copies_at_root && row.other_copies_at_root > 0}
+                    data-test="other-copies-at-root"
+                    class="text-xs opacity-60"
+                  >
+                    +{row.other_copies_at_root} other {if row.other_copies_at_root == 1,
+                      do: "checkout",
+                      else: "checkouts"} at this same path
+                  </p>
                 </div>
 
                 <div data-test="liveness" class="shrink-0 text-right">

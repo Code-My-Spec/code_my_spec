@@ -56,7 +56,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
           last_message_at: DateTime.t() | nil,
           liveness: Liveness.summary(),
           missing: %{since: String.t() | nil} | nil,
-          last_message: String.t() | nil
+          last_message: String.t() | nil,
+          other_copies_at_root: non_neg_integer() | nil
         }
 
   @doc """
@@ -91,6 +92,47 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> WorkingCopies.list_harnesses()
     |> Enum.map(&build(&1, agents, transcripts, now))
     |> Enum.sort_by(&(not &1.harness.main))
+    |> group_by_root()
+  end
+
+  # A restarted harness mints a fresh id for a root it already has a row for
+  # rather than reusing one, so the list's own recency order scatters what are,
+  # to a reader, the same checkout — a dozen identical-looking rows spread
+  # through the page instead of sitting together (8c9bc2b1). Nothing is hidden;
+  # every row keeps its own id, still individually offboardable and renameable,
+  # because a list that infers which duplicate to drop is exactly the mistake
+  # story 892 made about a *quieter* signal than this one.
+  #
+  # Keyed on root and device *name*, not root alone: two different machines can
+  # share a root string (the same default clone path on two laptops), and that
+  # is not the duplication this groups — criteria 2843/2847 exist to keep those
+  # apart.
+  #
+  # Not device *id* either. `(project, device, root)` is unique at the database
+  # level, so two rows sharing all three cannot exist — the case this issue
+  # measured is a device re-announcing under a new id on the same hostname
+  # across a harness restart, which the unique constraint does not see as a
+  # repeat at all. The name is the part a reader actually compares ("Johns-Mac-mini"
+  # printed twelve times), so it is the part this groups on.
+  #
+  # First-occurrence order, not sorted-by-root: the list is already newest
+  # group first via `last_seen_at`, and re-sorting by root would undo that.
+  defp group_by_root(rows) do
+    order = rows |> Enum.map(&group_key/1) |> Enum.uniq()
+    groups = Enum.group_by(rows, &group_key/1)
+
+    Enum.flat_map(order, fn key -> tag_group(Map.fetch!(groups, key)) end)
+  end
+
+  defp group_key(row), do: {row.harness.root, row.device_name}
+
+  defp tag_group([only]), do: [Map.put(only, :other_copies_at_root, nil)]
+
+  defp tag_group([first | rest]) do
+    [
+      Map.put(first, :other_copies_at_root, length(rest))
+      | Enum.map(rest, &Map.put(&1, :other_copies_at_root, nil))
+    ]
   end
 
   @doc """
