@@ -51,12 +51,12 @@ defmodule CodeMySpecWeb.RequirementsLive do
   end
 
   def handle_params(
-        %{"story_id" => story_id, "name" => req_name},
+        %{"story_number" => story_number, "name" => req_name},
         _uri,
         %{assigns: %{live_action: :story_req_show}} = socket
       ) do
     with_project(socket, fn project, scope ->
-      story = Stories.get_story!(scope, story_id)
+      story = Stories.get_story_by_number!(scope, story_number)
       slug = socket.assigns.slug
       node = find_entity_node(scope, "story", story.id, req_name)
 
@@ -66,7 +66,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
           node: node,
           back: %{
             label: "← Back to #{story.title}",
-            to: "/app/projects/#{slug}/stories/#{story_id}"
+            to: "/app/projects/#{slug}/stories/#{story.number}"
           },
           prereqs: [],
           dependents: [],
@@ -184,7 +184,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       stories =
         scope
         |> Stories.list_component_stories(component.id)
-        |> Enum.map(fn s -> %{label: s.title, to: "/app/projects/#{slug}/stories/#{s.id}"} end)
+        |> Enum.map(fn s -> %{label: s.title, to: "/app/projects/#{slug}/stories/#{s.number}"} end)
 
       req_items =
         entity_req_items(nodes, "component", component.id, fn n ->
@@ -207,19 +207,19 @@ defmodule CodeMySpecWeb.RequirementsLive do
   end
 
   def handle_params(
-        %{"story_id" => story_id},
+        %{"story_number" => story_number},
         _uri,
         %{assigns: %{live_action: :story_show}} = socket
       ) do
     with_project(socket, fn project, scope ->
-      story = Stories.get_story!(scope, story_id)
+      story = Stories.get_story_by_number!(scope, story_number)
       {nodes, _computed_at} = Requirements.cached_all(scope)
       slug = socket.assigns.slug
       {satisfied, total} = entity_counts(nodes, "story", story.id)
 
       req_items =
         entity_req_items(nodes, "story", story.id, fn n ->
-          "/app/projects/#{slug}/stories/#{story.id}/requirements/#{n.name}"
+          "/app/projects/#{slug}/stories/#{story.number}/requirements/#{n.name}"
         end)
 
       page = %{
@@ -249,7 +249,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
           %{
             label: story.title,
-            to: "/app/projects/#{slug}/stories/#{story.id}",
+            to: "/app/projects/#{slug}/stories/#{story.number}",
             satisfied: satisfied,
             total: total
           }

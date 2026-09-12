@@ -31,15 +31,17 @@ defmodule CodeMySpecWeb.StoryLive.Show do
             <.icon name="hero-arrow-left" />
           </.button>
           <.button navigate={
-            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")
+            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")
           }>
             <.icon name="hero-squares-2x2" /> Three Amigos
           </.button>
-          <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/gherkin")}>
+          <.button navigate={
+            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/gherkin")
+          }>
             <.icon name="hero-document-text" /> View Gherkin
           </.button>
           <.button navigate={
-            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/edit?return_to=show")
+            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/edit?return_to=show")
           }>
             <.icon name="hero-pencil-square" /> Edit story
           </.button>
@@ -156,8 +158,8 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
-    case Stories.get_story(scope, id) do
+  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    case Stories.get_story_by_number(scope, number) do
       %Stories.Story{} = story ->
         tags = Tags.list_story_tags(scope, story)
         qa_attempts = Qa.list_qa_attempts(scope, story.id)

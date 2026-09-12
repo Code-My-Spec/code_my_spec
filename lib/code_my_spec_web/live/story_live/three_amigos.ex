@@ -40,21 +40,17 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   @impl true
-  def handle_params(%{"id" => story_id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
-    with {:ok, story_id_int} <- parse_story_id(story_id),
-         {:story, %Stories.Story{} = story} <-
-           {:story, Stories.get_story(scope, story_id_int)} do
-      socket =
-        socket
-        |> maybe_subscribe(scope)
-        |> assign_session_state(scope, story)
+  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    case Stories.get_story_by_number(scope, number) do
+      %Stories.Story{} = story ->
+        socket =
+          socket
+          |> maybe_subscribe(scope)
+          |> assign_session_state(scope, story)
 
-      {:noreply, socket}
-    else
-      {:error, msg} ->
-        {:noreply, assign(socket, error: msg)}
+        {:noreply, socket}
 
-      {:story, nil} ->
+      nil ->
         {:noreply, assign(socket, error: "Story not found in this project.")}
     end
   end
@@ -304,13 +300,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     )
   end
 
-  defp parse_story_id(s) when is_binary(s) do
-    case Integer.parse(s) do
-      {id, ""} -> {:ok, id}
-      _ -> {:error, "Story id must be an integer"}
-    end
-  end
-
   defp scenarios_for_rule(scenarios, rule_id) do
     Enum.filter(scenarios, &(&1.rule_id == rule_id))
   end
@@ -430,7 +419,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     ~H"""
     <div class="wv4-header">
       <div>
-        <div class="wv4-feature-id">STORY-{@story.id}</div>
+        <div class="wv4-feature-id">STORY-{@story.number}</div>
         <div class="wv4-feature-title">{@story.title}</div>
         <div class="wv4-feature-sub">
           {String.slice(@story.description || "", 0, 140)}
