@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3265Spex do
             CodeMySpecSpex.Fixtures.agent_conversation_path(context.scope, context.main)
           )
 
-        assert html =~ ~s(data-action-kind="question"),
+        assert html =~ "An agent is waiting on an answer",
                """
                Nothing was delivered to the main agent's thread.
 
@@ -133,9 +133,17 @@ defmodule CodeMySpecSpex.Story1053.Criterion3265Spex do
                window waits the whole window for someone who was idle
                throughout.
 
-               Asserted on the transcript entry rather than the question's text
-               because the page also renders every question pending for the
-               *user*, which put the text on this page with delivery removed.
+               Anchored on the sentence the main agent is sent rather than on
+               the question's own text, because the page also renders every
+               question pending for the *user* — which put that text on this
+               page with delivery removed, and is why this does not assert it.
+
+               It used to anchor on `data-action-kind="question"`, a marker of
+               the orchestrator role. That role is gone: nothing wearing it was
+               ever passed to a model, so this question was rendered for the
+               person watching and never delivered to the agent the criterion is
+               about. It is sent now, through the one path everything else that
+               reaches an agent uses.
                """
 
         assert html =~ "Do we drop the column or keep it nullable?",

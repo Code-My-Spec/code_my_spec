@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         # can act on, and was rung to be told so. The count comes from
         # `next_actionable/1` now — the same list `get_next_requirement` hands
         # out — so it is empty, and the bell correctly does not ring.
-        rung = Enum.filter(context.staffed, &(Fixtures.orchestrator_actions(context.scope, &1) != []))
+        rung = Enum.filter(context.staffed, &(Fixtures.messages_to_agent(context.scope, &1) != []))
 
         assert rung != [],
                "the switch reported success and rang nobody. It marks agents " <>

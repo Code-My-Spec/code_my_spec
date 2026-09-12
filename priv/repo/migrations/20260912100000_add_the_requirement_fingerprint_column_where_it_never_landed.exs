@@ -1,33 +1,29 @@
 defmodule CodeMySpec.Repo.Migrations.AddTheRequirementFingerprintColumnWhereItNeverLanded do
   @moduledoc """
-  Repairs a database that records `20260912070000` as applied and does not have
-  the column it adds.
+  Adds `requirements.inputs_fingerprint`, which its own migration never got to
+  add anywhere.
 
-  Found on `code_my_spec_dev`: `schema_migrations` carries version
-  20260912070000, stamped 2026-09-12 15:21, and
-  `information_schema.columns` has no `requirements.inputs_fingerprint`. The
-  version row committed and the DDL did not — the shape
-  `reference_mix_ecto_migrate_loses_ddl_under_sandbox` describes, and the reason
-  `mix ecto.rollback` cannot help: its down would drop an index that was never
-  created and fail.
+  Story 1020's migration was written as `20260912070000`. A migration on `main`
+  had already taken that version — `drop_the_orphaned_tools_seen_at` — and the
+  two met in a merge. A version is recorded once, so whichever of the pair ran
+  is the only one that ever runs: the ledger says `20260912070000` is applied
+  and the other file's DDL is unreachable, permanently and silently.
 
-  A migrator will never revisit a version it has recorded, so nothing in the
-  ordinary path fixes this. The next `just refresh` would apply the migration
-  after it, restart the app, and every requirement read would raise
-  `undefined_column` — on a graph that is read on every render and every stop
-  hook.
+  `drop_the_orphaned_tools_seen_at` is the one that won, measured on both
+  `code_my_spec_dev` and the test partition: `working_copies.tools_seen_at` is
+  gone from both and `requirements.inputs_fingerprint` was on neither. So the
+  column this adds had never been created, while every graph read was about to
+  ask for it.
 
-  ## Why a repair migration rather than editing the ledger
+  `mix ecto.rollback` is no help — its down would drop an index that was never
+  created — and renumbering the losing file does not help either, because the
+  version it collided with stays recorded. So the losing file is deleted and
+  its work moves here, under a version of its own.
 
-  Deleting the row by hand fixes one database, in one place, if whoever is at
-  the keyboard knows to. This fixes every database in that state, through the
-  path that already runs on deploy, and says in the tree why it exists.
-
-  `IF NOT EXISTS` on both statements, so a database where 20260912070000 landed
-  properly — every test partition, and every environment that has not seen it
-  yet — gets two no-op statements. Raw SQL because `alter table/add` has no
-  conditional form; the column type and index name are copied from a database
-  where the original applied correctly, so the result is identical either way.
+  `IF NOT EXISTS` on both statements, so this is two no-ops against a database
+  where the column somehow exists. The type and index name are taken from a
+  database where the original DDL had been applied, so both routes end at the
+  same schema.
   """
 
   use Ecto.Migration

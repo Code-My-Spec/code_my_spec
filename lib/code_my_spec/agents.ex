@@ -625,7 +625,7 @@ defmodule CodeMySpec.Agents do
   @doc """
   Take an agent out of the loop, because a human approved its tap-out.
 
-  Scopeless for the same reason `deliver_answer/3` is: the id comes off
+  Scopeless for the same reason `send_to_agent/3` is: the id comes off
   `permission_requests.agent_id`, which this application wrote from the asking
   connection, so there is no tenant decision left to make.
 
@@ -688,16 +688,16 @@ defmodule CodeMySpec.Agents do
   form with it — the answer is recorded either way, and an agent that missed it
   can still find it with `check_answer`.
   """
-  @spec deliver_answer(Ecto.UUID.t(), String.t(), timeout()) ::
+  @spec send_to_agent(Ecto.UUID.t(), String.t(), timeout()) ::
           {:ok, :started | :queued} | {:error, term()}
-  def deliver_answer(agent_id, text, timeout \\ @message_timeout_ms)
+  def send_to_agent(agent_id, text, timeout \\ @message_timeout_ms)
       when is_binary(agent_id) and is_binary(text) do
     case Repo.get(Agent, agent_id) do
       nil ->
         {:error, :no_such_agent}
 
       agent ->
-        Conversations.record_orchestrator_action(agent, text, kind: "answer")
+        Conversations.record_sent_to_agent(agent, text)
 
         Transport.impl().dispatch_message(
           agent.working_copy_id,
@@ -1541,14 +1541,16 @@ defmodule CodeMySpec.Agents do
   # A turn cut off at the step limit, recorded as something done *to* the agent.
   #
   # Not as the agent's own words — it did not say this — and not as a step,
-  # because a step is work and this is the absence of it. `record_orchestrator_action/3`
-  # is the channel already carrying "the harness did this to you", which is what
-  # a cut-off is, and it renders distinctly for the same reason the stop
-  # decision does.
+  # because a step is work and this is the absence of it. It goes to the agent
+  # as a message, which is the one channel an agent actually reads.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_cut_off"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} ->
-        Conversations.record_orchestrator_action(agent, event["text"] || "", kind: "cut_off")
+        # Sent, because the agent is the one that has to do something
+        # differently next turn. Recorded as an orchestrator action it reached
+        # the person watching and never the agent, which for "you ran out of
+        # steps" means the same over-long turn again.
+        send_to_agent(agent.id, event["text"] || "")
         :ok
 
       _ ->

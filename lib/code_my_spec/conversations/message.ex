@@ -37,16 +37,13 @@ defmodule CodeMySpec.Conversations.Message do
   schema "conversation_messages" do
     # Typed parts, in order. See @part_types for what a part may be.
     field :content, {:array, :map}, default: []
-    # `:orchestrator` is what was done *to* this agent rather than by it — a
-    # stop decision, a requirement handed over, a task finished on its behalf.
-    # A fourth value here rather than a table of its own, which is John's call
-    # in 985's Three Amigos: the transcript is one stream ordered by
-    # `inserted_at`, and interleaving is the whole point. A second table means
-    # every reader merges two ordered streams and has to get ties right.
-    #
-    # No migration: the column is a varchar with the enum in the schema, which
-    # is what issue 42b32a6e argues for and is why this costs one line.
-    field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool, :orchestrator]
+    # `:orchestrator` was a fifth value here, for what was done *to* an agent
+    # rather than by it. It is gone: `Chat.Runner.to_provider_message/1` never
+    # passed it to the model, so everything wearing it was visible to the person
+    # watching and to nobody else — and the reader story 985 built it for, an
+    # agent reading its own transcript, was never built. What genuinely reaches
+    # an agent is sent to it, and a sent message is `:operator`.
+    field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool]
     field :sender_id, :string
     # The speaking lane for agent transcripts: manager / product / spec_writer
     # / coding / qa. nil for human (user/operator) messages.

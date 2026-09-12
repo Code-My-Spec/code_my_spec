@@ -305,7 +305,11 @@ defmodule CodeMySpec.MainAgent do
   defp attempt(scope, agent, reason, _tried) do
     with {:ok, restarted} <- Agents.restart_agent(scope, agent.id),
          {:ok, _restart} <- RestartRepository.record(agent, reason) do
-      Conversations.record_orchestrator_action(agent, "Restarted: #{reason}", kind: "restart")
+      # Told to the agent, not written past it. A restarted agent has lost the
+      # turn it was in the middle of; why that happened is the one thing it
+      # cannot work out for itself, and an orchestrator row saying so was
+      # dropped from its context before it ever got there.
+      Agents.send_to_agent(restarted.id, "Restarted: #{reason}")
 
       {:ok, restarted}
     end
@@ -456,12 +460,20 @@ defmodule CodeMySpec.MainAgent do
     tell_main_agent(scope, CheckInReport.render(digest))
   end
 
+  # The report reaches the main agent as a message, the way everything else
+  # that has something to say to an agent does. It used to be written into the
+  # conversation as an orchestrator row, which `Chat.Runner.to_provider_message/1`
+  # drops on the floor — so the check-in the main agent was meant to act on was
+  # visible to the person watching and to nobody else.
   defp tell_main_agent(scope, text) do
-    scope
-    |> main_agent_other_than(nil)
-    |> Conversations.record_orchestrator_action(text, kind: "check-in", tool: "list_agent_work")
+    case main_agent_other_than(scope, nil) do
+      nil ->
+        :ok
 
-    :ok
+      agent ->
+        Agents.send_to_agent(agent.id, text)
+        :ok
+    end
   end
 
   @doc """
@@ -869,14 +881,14 @@ defmodule CodeMySpec.MainAgent do
   @spec question_raised(Scope.t(), map()) :: :ok
   def question_raised(%Scope{} = scope, %{agent_id: agent_id} = request)
       when is_binary(agent_id) do
-    scope
-    |> main_agent_other_than(agent_id)
-    |> Conversations.record_orchestrator_action(raised(request),
-      kind: "question",
-      tool: "list_open_questions"
-    )
+    case main_agent_other_than(scope, agent_id) do
+      nil ->
+        :ok
 
-    :ok
+      agent ->
+        Agents.send_to_agent(agent.id, raised(request))
+        :ok
+    end
   end
 
   def question_raised(%Scope{}, _request), do: :ok
@@ -909,11 +921,10 @@ defmodule CodeMySpec.MainAgent do
   # asker's own side; this is the push, that is the pull, and an agent that
   # stopped after asking has only the push.
   defp tell_the_asker_it_went_up({:ok, escalated}, %OpenQuestion{agent_id: agent_id}) do
-    Conversations.record_orchestrator_action(
+    Agents.send_to_agent(
       agent_id,
       "Your question went up to the user: #{escalated.escalation_reason}. " <>
-        "It is still open and now waiting on them.",
-      kind: "escalation"
+        "It is still open and now waiting on them."
     )
 
     {:ok, escalated}

@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3052Spex do
       end
 
       then_ "the agent is sent the decision", context do
-        told = Fixtures.orchestrator_actions(context.scope, context.agent_id)
+        told = Fixtures.messages_to_agent(context.scope, context.agent_id)
 
         assert told != [], """
         The turn ended with problems outstanding and the agent was told

@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
       end
 
       when_ "the run lands with that same finding again", context do
-        before = length(Fixtures.orchestrator_actions(context.scope, context.agent_id))
+        before = length(Fixtures.messages_to_agent(context.scope, context.agent_id))
 
         :ok =
           use_cmd_cassette "clean", record: :none do
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3059Spex do
          |> Map.put(:before, before)
          |> Map.put(
            :after,
-           length(Fixtures.orchestrator_actions(context.scope, context.agent_id))
+           length(Fixtures.messages_to_agent(context.scope, context.agent_id))
          )}
       end
 

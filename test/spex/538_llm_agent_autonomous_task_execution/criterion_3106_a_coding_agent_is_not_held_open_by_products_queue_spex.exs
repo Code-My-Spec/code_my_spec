@@ -182,7 +182,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
   # and this scenario ends two.
   defp offered(scope, agent_id) do
     scope
-    |> Fixtures.orchestrator_actions(agent_id)
+    |> Fixtures.messages_to_agent(agent_id)
     |> Enum.map(&inspect/1)
     |> Enum.reverse()
     |> Enum.find_value(0, &requirement_count/1)

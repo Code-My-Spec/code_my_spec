@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3054Spex do
          Map.put(
            context,
            :internal,
-           Fixtures.orchestrator_actions(context.scope, context.agent_id)
+           Fixtures.messages_to_agent(context.scope, context.agent_id)
          )}
       end
 

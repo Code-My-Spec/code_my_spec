@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         {:ok,
          context
          |> Map.put(:agent_id, agent_id)
-         |> Map.put(:quiet_at, length(Fixtures.orchestrator_actions(context.scope, agent_id)))}
+         |> Map.put(:quiet_at, length(Fixtures.messages_to_agent(context.scope, agent_id)))}
       end
 
       when_ "a run lands with a finding it has not been told about", context do
@@ -123,7 +123,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
          Map.put(
            context,
            :told,
-           Fixtures.orchestrator_actions(context.scope, context.agent_id)
+           Fixtures.messages_to_agent(context.scope, context.agent_id)
          )}
       end
 
