@@ -1232,6 +1232,55 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       refute log =~ "channel DIED"
     end
+
+    # `:peer_closed` and a stale channel registration present identically from
+    # the addressee's side — both drop channels and fail tool calls with a
+    # transport error — and neither project's own log named which one happened.
+    # Two sessions independently guessed wrong, in opposite directions, on the
+    # same incident (225860ce). The instance id is the signature: every other
+    # project on the same harness process died at the same moment too.
+    test "names the harness instance behind the channel, so the collateral is greppable", %{
+      scope: scope,
+      topic: topic
+    } do
+      {:ok, _reply, channel} =
+        scope
+        |> harness_socket([])
+        |> subscribe_and_join(HarnessProjectChannel, topic, %{
+          "label" => @label,
+          "harness_id" => scope.active_working_copy_id,
+          "device" => %{"id" => device_fixture(scope).id},
+          "instance" => "test-instance-42"
+        })
+
+      socket = :sys.get_state(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          HarnessProjectChannel.terminate(:peer_closed, socket)
+        end)
+
+      assert log =~ "instance=test-instance-42",
+             "the instance id is what lets a reader tell 'my registration is stale' " <>
+               "from 'the harness died' — grepping it across server.log shows every " <>
+               "other project the same process was serving"
+
+      assert log =~ "every other project on it dropped at the same moment"
+    end
+
+    test "says nothing about an instance it was never told", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      socket = :sys.get_state(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          HarnessProjectChannel.terminate(:peer_closed, socket)
+        end)
+
+      refute log =~ "instance=",
+             "a harness that never announced an instance has none to name — " <>
+               "inventing one would be worse than the silence it replaces"
+    end
   end
 
   defp poll(true), do: {:halt, true}
