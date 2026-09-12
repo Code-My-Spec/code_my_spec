@@ -184,7 +184,19 @@ defmodule CodeMySpec.PromotionTest do
     end
   end
 
-  describe "a fresh conflict" do
+  describe "a branch that has diverged from main, conflicting or not" do
+    # 54aa534c, phase two: the precondition and the merge collapsed into one
+    # command. `branch` must already contain everything `root`'s HEAD has, or
+    # `git merge --ff-only` refuses before touching the tree at all — so a
+    # *content* conflict is no longer reachable here: divergence refuses
+    # first, whether or not the divergent commits would have conflicted.
+    #
+    # Both shapes are covered on purpose. `bed1d974` measured the cost of a
+    # real conflict left in place (a worktree six commits behind main wedged
+    # the shared dev checkout for ten hours); 3168 established that mere
+    # divergence with no conflicting lines used to be allowed through. Both
+    # premises are superseded by the same change — divergence itself, not
+    # just a conflict, is what gets refused now.
     setup do
       {:ok, root} = Briefly.create(directory: true)
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
@@ -197,6 +209,11 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = git.(["add", "."])
       {_, 0} = git.(["commit", "-m", "base"])
 
+      %{root: root, git: git, env: Environment.new(:local, root)}
+    end
+
+    test "a content conflict is refused before it is ever attempted, and nothing moves",
+         %{root: root, git: git, env: env} do
       {_, 0} = git.(["checkout", "-b", "side"])
       File.write!(Path.join(root, "f.txt"), "side\n")
       {_, 0} = git.(["commit", "-am", "side"])
@@ -205,57 +222,35 @@ defmodule CodeMySpec.PromotionTest do
       File.write!(Path.join(root, "f.txt"), "main\n")
       {_, 0} = git.(["commit", "-am", "main"])
 
-      %{root: root, git: git, env: Environment.new(:local, root)}
-    end
+      assert {:error, %{reason: reason}} = Steps.merge(env, root, "side")
 
-    # bed1d974: a conflict used to stay in the running checkout for the agent
-    # to resolve there. Measured cost: a worktree six commits behind main
-    # wedged the shared dev checkout from 00:28 to 10:40 merging unattended —
-    # the identical conflict, merged main-first in the worktree instead,
-    # resolved in two minutes with a test suite behind it. Aborting and
-    # naming the file sends the agent back to do that, rather than leaving
-    # the shared checkout mid-merge for however long that takes.
-    test "is aborted, names the file, and leaves the checkout exactly as it was",
-         %{root: root, git: git, env: env} do
-      assert {:error, %{reason: reason, conflicts: ["f.txt"]}} = Steps.merge(env, root, "side")
+      assert reason =~ "behind main",
+             "the refusal has to name what is actually true — the branch is " <>
+               "missing commits, not that a merge was attempted and failed. Got: #{reason}"
 
-      assert reason =~ "f.txt",
-             "the agent has to know what conflicted to resolve it locally. Got: #{reason}"
+      assert reason =~ "not a mistake",
+             "divergence from another promotion landing mid-work is routine on a " <>
+               "shared checkout, and the wording has to say so rather than read " <>
+               "like an error the agent caused. Got: #{reason}"
 
-      assert reason =~ "Merge main",
+      assert reason =~ "git merge --ff-only main",
              "the remedy is the agent's to run, in its own copy. Got: #{reason}"
 
       {status, 0} = git.(["status", "--porcelain"])
 
       assert status == "",
-             "a conflict that is aborted should leave nothing behind. Got: #{inspect(status)}"
+             "nothing should be attempted, let alone left behind. Got: #{inspect(status)}"
 
       {head, 0} = git.(["rev-parse", "HEAD"])
       {main_head, 0} = git.(["rev-parse", "main"])
-      assert String.trim(head) == String.trim(main_head), "HEAD moved despite the abort"
+      assert String.trim(head) == String.trim(main_head), "HEAD moved despite the refusal"
     end
-  end
 
-  describe "divergence git can reconcile without a conflict" do
-    # 3168's own premise: two branches that diverged (main and the story
-    # branch each have a commit the other lacks) but whose changes do not
-    # touch the same lines merge without a git-level conflict at all, even
-    # though the result may not build (a *semantic* break, caught afterward
-    # by the gate that recompiles the target — not this function's job).
-    # Aborting is for an actual conflict; divergence on its own must still
-    # merge.
-    test "still merges, rather than being refused for the divergence alone" do
-      {:ok, root} = Briefly.create(directory: true)
-      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
-
-      {_, 0} = git.(["init", "--initial-branch=main"])
-      {_, 0} = git.(["config", "user.email", "t@example.com"])
-      {_, 0} = git.(["config", "user.name", "T"])
-
-      File.write!(Path.join(root, "f.txt"), "base\n")
-      {_, 0} = git.(["add", "."])
-      {_, 0} = git.(["commit", "-m", "base"])
-
+    test "divergence with no conflicting lines is refused the same way, not merged", %{
+      root: root,
+      git: git,
+      env: env
+    } do
       {_, 0} = git.(["checkout", "-b", "side"])
       File.write!(Path.join(root, "g.txt"), "the story's work\n")
       {_, 0} = git.(["add", "g.txt"])
@@ -265,10 +260,26 @@ defmodule CodeMySpec.PromotionTest do
       File.write!(Path.join(root, "f.txt"), "main moved on\n")
       {_, 0} = git.(["commit", "-am", "main moved on, a different file"])
 
-      env = Environment.new(:local, root)
+      assert {:error, %{reason: reason}} = Steps.merge(env, root, "side"),
+             "a three-way merge here used to succeed because the changes did not " <>
+               "touch the same lines — the branch is still missing a commit main " <>
+               "has, and that alone is refused now, conflict or not"
+
+      assert reason =~ "behind main"
+    end
+
+    test "a branch that already has everything main has still merges", %{
+      root: root,
+      git: git,
+      env: env
+    } do
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
 
       assert {:ok, %{output: output}} = Steps.merge(env, root, "side")
-      assert output =~ "Merge made"
+      assert output =~ "Fast-forward" or output =~ "up to date"
     end
   end
 
@@ -343,6 +354,7 @@ defmodule CodeMySpec.PromotionTest do
       env = Environment.new(:local, root)
 
       assert {:error, %{reason: reason}} = Steps.precheck(env, root)
+
       assert reason =~ "uncommitted work",
              "ignoring submodule dirt must not also hide a real, uncommitted " <>
                "change to the checkout's own tracked files"

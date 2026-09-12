@@ -6,7 +6,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   Rule: a merge conflict is aborted immediately, and the agent is sent to
   resolve it in the copy it is promoting from.
 
-  Superseded (bed1d974): a conflict used to stay in the running checkout,
+  Superseded twice over now.
+
+  First (bed1d974): a conflict used to stay in the running checkout,
   reasoning that the agent who wrote one side is the only party holding the
   answer and a clean tree after a refusal has nothing to act on. Measured
   cost of that: a worktree six commits behind main spent 2.5 hours
@@ -16,11 +18,18 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   identical branch, merged main-first in the worktree instead, conflicted
   immediately and was resolved in two minutes: the same conflict, but with
   context and a test suite, because it happened somewhere a person could
-  see it.
+  see it. That gave the running checkout an abort-on-conflict merge that
+  named the conflicting file.
 
-  So the conflict is aborted the instant it is detected, and the promotion
-  fails naming the file — the agent still needs to know what conflicted,
-  it just resolves it somewhere the failure costs nobody else anything.
+  Second (54aa534c, phase two): `Runner.merge/4` is `--ff-only` now, and
+  ff-only never inspects file content — it only checks ancestry, before
+  touching a single byte. Any divergence, conflicting or not, refuses at
+  that check, instantly, with nothing to abort because nothing was ever
+  attempted. So this scenario — a real content conflict — is caught the
+  same way a same-file-different-lines divergence is, or a completely
+  unrelated-files divergence is: refused for being behind main, not
+  merged-then-aborted-and-named. The file name is gone from the message on
+  purpose; there is no merge attempt left to have inspected it.
   """
 
   use CodeMySpecSpex.Case
@@ -43,7 +52,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
     :ok
   end
 
-  spex "A conflict is aborted and the agent is sent to resolve it locally" do
+  spex "A conflict is refused before it is attempted, and the agent is sent to resolve it locally" do
     scenario "main and the story branch changed the same line" do
       given_ "a story branch that changed a line", context do
         context = a_promotable_project(context)
@@ -78,15 +87,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
         {:ok, context}
       end
 
-      then_ "the agent is told which file conflicts", context do
-        assert response_text(context.response) =~ "war.ex",
-               "the agent was told its promotion failed without being told where"
+      then_ "the agent is told it is behind main, not which file conflicts", context do
+        text = response_text(context.response)
+
+        assert text =~ "behind main",
+               "ff-only refuses on ancestry alone and never inspected the tree, " <>
+                 "so the refusal has to name what is actually true rather than " <>
+                 "imply a conflict was found. Got: #{text}"
 
         {:ok, context}
       end
 
       then_ "the agent is told to resolve it in its own copy, not the running one", context do
-        assert response_text(context.response) =~ "Merge main",
+        assert response_text(context.response) =~ "git merge --ff-only main",
                "the agent was refused without being told the remedy is its own to run"
 
         {:ok, context}
