@@ -24,7 +24,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   built to be tested. They were verified to reach the same database, so nothing
   was broken; it was a round trip and a blind spot rather than a split brain.
 
-  `QuestionClient` stays for the CLI, which genuinely is a different process.
+  `QuestionClient` is gone entirely — 3b038c842 removed it with the rest of the
+  arbitrage path. This paragraph said it "stays for the CLI", which was true when
+  written and outlived the module by two days.
   """
 
   use Anubis.Server.Component, type: :tool

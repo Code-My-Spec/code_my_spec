@@ -144,9 +144,14 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # Both halves, and the order matters: a checkout that is behind is told to
-  # promote, and promoting restarts — so naming the sync problem first gives an
-  # agent one action that fixes both.
+  # Both halves, and the order matters: naming the sync problem first gives an
+  # agent something it can act on before it is told the application is down.
+  #
+  # This used to say promoting fixes both, which is true for *ahead* and false
+  # for *behind*: promotion merges this branch into the running copy and leaves
+  # this worktree where it was, so promoting while behind restarts the shared
+  # dev server and leaves the agent exactly as far behind. The counts now travel
+  # with the verdict so the remedy can tell those cases apart.
   defp and_serving({false, _details} = behind, _running), do: behind
   defp and_serving({true, details}, running), do: serving(running, details)
 
@@ -195,7 +200,7 @@ defmodule CodeMySpec.Promotion do
   defp in_sync(%WorkingCopy{} = copy) do
     copy
     |> out_of_sync_reasons()
-    |> sync_verdict()
+    |> sync_verdict(copy)
   end
 
   defp out_of_sync_reasons(%WorkingCopy{} = copy) do
@@ -218,15 +223,25 @@ defmodule CodeMySpec.Promotion do
   defp dirty_reason(reasons, true), do: ["uncommitted changes — commit them" | reasons]
   defp dirty_reason(reasons, _), do: reasons
 
-  defp sync_verdict([]), do: {true, %{status: "In sync with main, tree clean"}}
+  defp sync_verdict([], _copy), do: {true, %{status: "In sync with main, tree clean"}}
 
-  defp sync_verdict(reasons) do
+  # The counts travel with the sentence, because "behind only" is a materially
+  # different situation from the others and the reader cannot tell from the
+  # prose. Promotion merges this branch *into* the running copy and leaves this
+  # worktree where it was, so the state immediately after a successful promotion
+  # is behind-only — and the remedy there is to merge main in here, not to
+  # promote again. Told to promote, an agent restarts the shared dev server for
+  # nothing and is no less behind afterwards.
+  defp sync_verdict(reasons, %WorkingCopy{} = copy) do
     {false,
      %{
        reason:
          "this checkout and main have diverged, so QA would not test what you " <>
            "wrote: " <> Enum.join(Enum.reverse(reasons), "; ") <> ".",
-       out_of_sync: reasons
+       out_of_sync: reasons,
+       behind: copy.commits_behind_main || 0,
+       ahead: copy.commits_ahead_of_main || 0,
+       dirty: copy.tree_dirty == true
      }}
   end
 
@@ -261,7 +276,8 @@ defmodule CodeMySpec.Promotion do
     {:error,
      %{
        reason:
-         "a promotion for this project is already in flight" <> since(started_at) <>
+         "a promotion for this project is already in flight" <>
+           since(started_at) <>
            ". Two at once decide the surviving build by timing rather than by either of you " <>
            "— promote again once it finishes.",
        already_promoting: true
@@ -427,7 +443,8 @@ defmodule CodeMySpec.Promotion do
   def restart_acknowledgement_lost?(%{reason: reason}) when is_binary(reason) do
     String.contains?(reason, "promotion_restart") or
       String.contains?(reason, "not_connected") or
-      String.contains?(reason, "draining")
+      String.contains?(reason, "draining") or
+      String.contains?(reason, "self-restart")
   end
 
   def restart_acknowledgement_lost?(_), do: false
@@ -549,7 +566,12 @@ defmodule CodeMySpec.Promotion do
   end
 
   # Merged, and the restart's acknowledgement never came back — because the
-  # restart is what dropped the channel it was coming back on. Said as its own
+  # restart is what removed whatever would have carried it. Two different
+  # mechanisms produce this same shape: a remote harness's channel goes down
+  # when its own process restarts, and a *self*-hosted promotion's restart
+  # kills the very BEAM running this promotion, before it can report anything
+  # at all (54aa534c) — dispatched detached for exactly that reason, so this
+  # process gets to answer instead of dying mid-sentence. Said as its own
   # outcome rather than as success or failure, because it is neither and both
   # of the other readings are expensive: reported as failure an agent promotes
   # again and restarts the shared dev server, reported as success nobody
@@ -557,7 +579,9 @@ defmodule CodeMySpec.Promotion do
   defp outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
     "Your promotion merged #{branch} onto the running dev copy. The restart was " <>
       "issued and its acknowledgement did not come back — expected, because " <>
-      "restarting the running copy drops the channel that reply travels on.\n\n" <>
+      "restarting the running copy removes whatever would have carried that " <>
+      "reply, whether that is a remote harness's channel or the very process " <>
+      "answering this request.\n\n" <>
       "Do not promote again to find out; that restarts the shared dev server " <>
       "for every working copy on this machine. Ask what it is serving instead:\n\n" <>
       "    git merge-base --is-ancestor HEAD $(curl -s localhost:4004/health " <>
@@ -606,115 +630,97 @@ defmodule CodeMySpec.Promotion do
   defp promoting_copy(%Scope{}, _running),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A stale analyzer is swept, not refused.
+  # A read of the ledger, not a job the gate starts and waits for (54aa534c).
   #
-  # "No problems recorded" and "no problems" are different claims, and the gap
-  # between them is the whole value of the gate: a copy whose analyzers last ran
-  # before the agent's final commits has an empty problem list that means
-  # nothing. Refusing would hand the agent a state it cannot clear — it cannot
-  # make an analyzer fresh by waiting — so the gate waits for a fresh answer
-  # instead.
+  # It used to be the second thing: `ensure_stale_runs/3` enqueued whatever was
+  # stale, then `Analysis.await_all/2` polled until this copy had no run in
+  # flight. On a copy an agent is still working in, that predicate is
+  # re-falsified by every edit — a run enqueued at commit A answers a tree
+  # that has moved to commit B by the time it completes, `await_all/2` sees a
+  # run in flight again, and the wait never ends. Measured live 2026-09-12:
+  # 97.6% of every analysis run this project has ever recorded was superseded
+  # before it finished, and one promotion held the project's lock for sixteen
+  # minutes because its own session kept editing the very file the promotion
+  # was about, re-staling the sweep the gate was waiting on each time.
+  #
+  # The question the gate actually needs answered — is this commit clean —
+  # has usually already been answered by the time an agent promotes; a stop
+  # hook runs analysis on every turn. So this reads whether the CURRENT
+  # commit already has a completed run for every source
+  # (`Analysis.fresh_sources/2` — the same input/completed-fingerprint
+  # comparison the stop hook's own staleness reporting already uses) and
+  # refuses immediately, by name, if it does not. Nothing is enqueued, nothing
+  # is awaited, and `Lock.with_lock/2` is now held for a ledger read, a merge
+  # and a restart — seconds — rather than a wait with no guaranteed end.
   defp gate(%Scope{} = scope) do
-    %{enqueued: enqueued} = sweep_stale(scope)
-
     scope
     |> blocking_problems(nil)
-    |> gate_known(scope, enqueued)
+    |> gate_known(scope)
   end
 
-  # Problems already recorded answer immediately; only a *clean* result has to
-  # wait for the sweep.
-  #
-  # The order matters. A sweep cannot make a recorded problem go away except by
-  # re-running and not finding it, and meanwhile the agent has a list it can act
-  # on right now. Waiting first would hold that list behind minutes of analysis
-  # to tell the agent something it could have been told at once.
-  #
-  # It is the empty list that is untrustworthy: "no problems recorded" and "no
-  # problems" are different claims, and the gap between them is the whole value
-  # of the gate.
-  defp gate_known([], scope, enqueued), do: certify_clean(scope, enqueued)
-  defp gate_known(problems, _scope, enqueued), do: gate_result(problems, enqueued)
+  # A problem already recorded answers immediately, staleness or not — a real
+  # finding does not stop being real because the run that found it is not the
+  # newest one. Only an *empty* list needs the staleness check, because an
+  # empty list from a stale run is not evidence of anything: "no problems
+  # recorded" and "no problems" are different claims, and closing that gap
+  # used to mean waiting for a fresh run — it now means reading whether one
+  # already exists.
+  defp gate_known([], scope), do: gate_freshness(stale_sources(scope))
+  defp gate_known(problems, _scope), do: gate_result(problems)
 
-  defp certify_clean(%Scope{} = scope, enqueued) do
-    case Analysis.await_all(scope, timeout: sweep_timeout()) do
-      :ok -> scope |> blocking_problems(nil) |> gate_result(enqueued)
-      :timeout -> still_sweeping(scope, enqueued)
-    end
+  defp gate_freshness([]), do: {:ok, []}
+  defp gate_freshness(stale), do: {:error, not_certified(stale)}
+
+  defp stale_sources(%Scope{} = scope) do
+    fresh = Analysis.fresh_sources(scope, Run.sources())
+    Enum.reject(Run.sources(), &(&1 in fresh))
   end
 
-  # No deadline of its own, by default (John: "why are we imposing a time
-  # limit on promotion? If it's running all the analysis we shouldn't have a
-  # time limit on it. It needs to be async").
+  # Named and specific on purpose (376e3356 already argued this once, for the
+  # wait this replaces): the ambiguity between "working" and "stuck" is what
+  # cost sixteen minutes to diagnose last time, and a refusal that does not
+  # say which source or what to do about it recreates the same ambiguity one
+  # level up.
   #
-  # It already is: `promote` returns at once and messages the outcome back,
-  # so nothing is blocked on this reply the way a tool call's own caller would
-  # be. A deadline here has exactly one effect — turning "still running" into
-  # "your promotion did not go through" — and on a machine with several
-  # agents' sweeps in flight at once that effect fired on *every* promotion in
-  # one measured session, none of them for a tree that was actually wrong.
-  # Worse, the refusal read as "promote again shortly", which starts another
-  # sweep the next gate then has to wait out too — the advice fed the
-  # condition it was describing (376e3356).
-  #
-  # Safe to leave open-ended because the harness enforces the real bound:
-  # `CmsHarness.Project.AnalysisServer` hard-kills anything past 30 minutes
-  # and answers either way, so a dispatched source is never actually
-  # unbounded — only this wait's *impatience* was. `:promotion_sweep_timeout`
-  # stays as an escape hatch for a caller that genuinely wants one; nothing
-  # sets it by default any more.
-  # `only_failed: true`, which does not mean what its name suggests here.
-  #
-  # The default re-enqueues *everything* by design — "a stop with changed files
-  # re-runs everything", because a skipped source leaves last run's problems in
-  # place with no run to explain them (`analysis.ex:151`). Right for a stop;
-  # wrong for a gate, which would then force a full sweep on every promotion
-  # and wait for it even when every analyzer is already current.
-  #
-  # The flag selects `stale?/3` instead, so only stale or never-run sources are
-  # enqueued — and "a source that has never run is stale, not current", so a
-  # fresh copy still gets swept. That is criterion 3166 exactly.
+  # This reads as a new restriction before it reads as the fix it is —
+  # editing after your last clean run now refuses immediately where it used
+  # to just wait, sometimes forever. Said outright, because the alternative is
+  # an agent discovering the difference by hitting it.
+  defp not_certified(stale) do
+    named = Enum.join(stale, ", ")
+
+    %{
+      reason:
+        "this copy has not been swept clean at its current commit: #{named} " <>
+          "need a fresh run before this can promote. Nothing was started for " <>
+          "you — run analysis on #{named} (a stop hook does this on its own; " <>
+          "`start_analysis` runs one directly) and promote again once it " <>
+          "lands.\n\n" <>
+          "This refuses where the gate used to wait, sometimes indefinitely: " <>
+          "promoting while still editing used to hold this project's lock, " <>
+          "refusing every other promotion, for as long as each edit re-staled " <>
+          "the sweep the gate was waiting on. A stale source is reported at " <>
+          "once instead.",
+      stale: stale
+    }
+  end
+
+  # Still used by `gate_target/3`, which has no ledger to read yet — the merge
+  # it follows produces a commit that has never been analyzed by definition,
+  # so there is no fingerprint match to check and a fresh run is the only way
+  # to answer "did the merge add problems". That wait does not livelock the
+  # way `gate/1`'s did: the running copy is edited only by promotions, which
+  # `Lock.with_lock/2` already serializes, so nothing else is re-staling it
+  # while this one waits.
   defp sweep_stale(%Scope{} = scope),
     do: Analysis.ensure_stale_runs(scope, Run.sources(), only_failed: true)
-
-  # Reachable only when `:promotion_sweep_timeout` is explicitly configured —
-  # nothing sets one by default any more. Says what it is actually waiting on
-  # and for how long, rather than "promote again shortly": that phrase reads as
-  # an instruction to go produce a fresh sweep, and every sweep an agent starts
-  # is one more run the *next* gate has to wait out too (376e3356).
-  defp still_sweeping(scope, enqueued) do
-    {:error,
-     %{
-       reason:
-         "the gate is still waiting on the analyzer sweep it started — " <>
-           sweep_description(scope, enqueued) <>
-           ". Nothing was merged. This is a configured wait limit, not a sign " <>
-           "anything is wrong — wait for it rather than promoting again, which " <>
-           "only queues more work behind the same limit.",
-       sweeping: enqueued
-     }}
-  end
-
-  defp sweep_description(scope, enqueued) do
-    case Analysis.in_flight_since(scope) do
-      since when map_size(since) > 0 ->
-        since
-        |> Enum.map_join(", ", fn {source, at} -> "#{source} since #{DateTime.to_iso8601(at)}" end)
-
-      _ ->
-        "a fresh sweep" <> sweep_names(enqueued)
-    end
-  end
-
-  defp sweep_names([]), do: ""
-  defp sweep_names(sources), do: " (" <> Enum.join(sources, ", ") <> ")"
 
   defp sweep_timeout,
     do: Application.get_env(:code_my_spec, :promotion_sweep_timeout, :infinity)
 
-  defp gate_result([], enqueued), do: {:ok, enqueued}
+  defp gate_result([]), do: {:ok, []}
 
-  defp gate_result(problems, _enqueued) do
+  defp gate_result(problems) do
     {:error,
      %{
        reason:
@@ -791,10 +797,66 @@ defmodule CodeMySpec.Promotion do
   # rules, and when it is wrong the application serves a build nobody can
   # identify while every signal says the promotion completed. Restarting an app
   # that did not need it costs seconds.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?) do
+  defp restart(%Scope{} = scope, %WorkingCopy{} = running, refresh_harness?) do
     scope
-    |> Runner.restart(root, running.id, refresh_harness?)
+    |> restart_result(running, refresh_harness?)
     |> record_serving(running)
+  end
+
+  # A self-hosted restart kills the process running this call, before it can
+  # answer (54aa534c). Not a channel drop — `just restart` for this
+  # project's own checkout `kill`s whatever is listening on :4000, and when
+  # that is this very BEAM, the halt takes the promotion's own Task with it.
+  # No exception to catch: `Promotion.Lock`'s own moduledoc already records
+  # that a server restart comes back with an empty lock table, because
+  # nothing — not even a `try/after` — survives to run once the VM is gone.
+  #
+  # So this dispatches the real restart detached and answers immediately with
+  # the same "unconfirmed" shape a remote harness's dropped channel already
+  # produces, reusing `merged/5`'s existing handling rather than a parallel
+  # path: the two are the same claim to a caller either way — merged, restart
+  # unconfirmed, do not promote again to find out.
+  #
+  # Detected by root, not by environment type: a `:harness` scope addresses a
+  # genuinely different machine, where the server issuing this call survives
+  # its own RPC regardless of what happens on the far side — `e721ccf0d`
+  # already covers that shape. This is specifically the case where `root` is
+  # the checkout `BootVersion.capture/1` recorded at this process's own boot.
+  defp restart_result(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?) do
+    if self_restart?(scope, root) do
+      dispatch_self_restart(scope, root, running.id, refresh_harness?)
+      {:error, %{reason: self_restart_reason()}}
+    else
+      Runner.restart(scope, root, running.id, refresh_harness?)
+    end
+  end
+
+  defp self_restart?(%Scope{environment: %Environment{type: :harness}}, _root), do: false
+
+  defp self_restart?(%Scope{}, root) do
+    case BootVersion.booted_root() do
+      nil -> false
+      booted_root -> Path.expand(booted_root) == Path.expand(root)
+    end
+  end
+
+  # Detached rather than linked or awaited: this process may not exist by the
+  # time `just restart` returns, and it must not need to for the restart to
+  # have happened. `CodeMySpec.TaskSupervisor` is the same one `promote_async/2`
+  # already reports through for the same reason — fire, do not wait.
+  defp dispatch_self_restart(scope, root, working_copy_id, refresh_harness?) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Runner.restart(scope, root, working_copy_id, refresh_harness?)
+      end)
+
+    :ok
+  end
+
+  defp self_restart_reason do
+    "the restart is a self-restart: this process is the one serving the " <>
+      "running copy, so running it here would end this call before it could " <>
+      "answer. Dispatched separately instead."
   end
 
   # The restart is a measurement too, and not writing it down is a livelock.

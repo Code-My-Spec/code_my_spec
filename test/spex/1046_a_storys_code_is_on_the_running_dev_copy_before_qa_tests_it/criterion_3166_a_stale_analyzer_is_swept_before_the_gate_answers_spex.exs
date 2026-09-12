@@ -3,18 +3,25 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
   Story 1046 — A story's code is on the running dev copy before QA tests it.
   Criterion 3166 — A stale analyzer is swept before the gate answers.
 
-  Rule: The gate is only trusted against a fresh analyzer sweep; a stale source
-  is swept before the gate answers.
+  Rule, as originally written: the gate is only trusted against a fresh
+  analyzer sweep; a stale source is swept before the gate answers, not
+  refused.
 
-  "No problems recorded" and "no problems" are different claims, and the gap
-  between them is the whole value of the gate. A copy whose analyzers last ran
-  before the agent's final commits has an empty problem list that means
-  nothing, and promoting on it ships exactly the breakage the gate exists to
-  catch.
+  **Superseded by 54aa534c, decided with the project owner.** "Staleness is
+  a sweep, not a refusal" is what made the gate start analysis and wait for
+  it — `ensure_stale_runs/3` then `Analysis.await_all/2` — and on a copy an
+  agent keeps editing, that wait can never end: every edit re-stales the run
+  the gate is waiting on, which measured live at 97.6% of every analysis run
+  this project has ever recorded being superseded before it finished, and
+  one promotion holding the project's lock — refusing every other promotion
+  — for sixteen minutes over exactly this.
 
-  So staleness is not a refusal — it is a sweep. Refusing would hand the agent
-  a state it cannot clear (it cannot make an analyzer fresh by waiting), which
-  is the shape of every wall this graph has grown.
+  The gap between "no problems recorded" and "no problems" is still real and
+  still the whole value of the gate. What changed is how it closes: reading
+  whether a fresh run already exists (`Analysis.fresh_sources/2`), not
+  starting one and waiting. So this scenario's premise — no analyzer has ever
+  run — is now the refusal case, named and specific, rather than the sweep
+  case. See `CodeMySpec.Promotion.not_certified/1`.
   """
 
   use CodeMySpecSpex.Case
@@ -37,7 +44,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
     :ok
   end
 
-  spex "The gate answers against a fresh sweep, never a stale one" do
+  spex "The gate refuses immediately when a source has never been analyzed, naming which one" do
     scenario "files have changed since any analyzer ran" do
       given_ "a story branch with committed work", context do
         context = a_promotable_project(context)
@@ -49,10 +56,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
       end
 
       given_ "no analyzer has ever run against it", context do
-        # given: already true — nothing records a run here. `fresh_analysis_runs/2`
-        # is what gives a copy completed runs, and this scenario deliberately
-        # omits it; that omission is the premise. "A source that has never run
-        # is stale, not current" (`analysis.ex`), which is what the gate meets.
+        # given: already true — nothing records a run here. "A source that has
+        # never run is stale, not current" (`analysis.ex`), which is exactly
+        # the case `Analysis.fresh_sources/2` reports as not fresh.
         {:ok, context}
       end
 
@@ -60,11 +66,21 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
         {:ok, Map.put(context, :response, promote(context))}
       end
 
-      then_ "a sweep runs before the gate is answered", context do
-        assert response_text(context.response) =~ ~r/(swept|sweep|analy[sz])/i,
-               "the gate answered from a stale problem list, which is a claim " <>
-                 "about the last sweep rather than about the code being " <>
-                 "promoted. Got: #{response_text(context.response)}"
+      then_ "promotion refuses immediately, naming what needs a fresh run", context do
+        text = response_text(context.response)
+
+        assert text =~ ~r/(compiler|credo|exunit|spex)/,
+               "the refusal has to name which source has never been " <>
+                 "analyzed, not just that something is missing. Got: #{text}"
+
+        assert text =~ "fresh run",
+               "the refusal has to say what would clear it, since an agent " <>
+                 "cannot make an analyzer fresh by waiting. Got: #{text}"
+
+        refute exists?(context.running_root, ".restarted"),
+               "nothing should have been merged or restarted — the gate " <>
+                 "refuses before either happens, in the same turn, rather " <>
+                 "than starting a sweep and waiting on it"
 
         {:ok, context}
       end
