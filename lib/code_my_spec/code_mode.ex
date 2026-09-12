@@ -131,14 +131,14 @@ defmodule CodeMySpec.CodeMode do
         Keyword.get(opts, :agent_kind)
       )
 
-    {values, lua} = Lua.eval!(lua, script)
-    Result.ok(values |> Enum.map(&LuaValue.from_lua/1) |> value(), Bindings.printed(lua))
+    {values, _lua} = Lua.eval!(lua, script)
+    Result.ok(values |> Enum.map(&LuaValue.from_lua/1) |> value(), Bindings.printed())
   rescue
     error in Lua.CompilerException ->
-      Result.error(:compile, Exception.message(error))
+      Result.error(:compile, Exception.message(error), Bindings.printed())
 
     error in Lua.RuntimeException ->
-      Result.error(kind(error), explain(Exception.message(error), catalog))
+      Result.error(kind(error), explain(Exception.message(error), catalog), Bindings.printed())
   end
 
   # "attempt to call a nil value (global 'x')" is the one runtime error that

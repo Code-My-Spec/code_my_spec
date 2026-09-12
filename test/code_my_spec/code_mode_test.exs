@@ -49,6 +49,27 @@ defmodule CodeMySpec.CodeModeTest do
     ])
   end
 
+  defp rejecting_catalog do
+    catalog([
+      %{
+        name: "get_story",
+        description: "Reads one story by id.",
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{"story_id" => %{"type" => "integer"}},
+          "required" => ["story_id"]
+        },
+        invoke: fn
+          %{"story_id" => story_id} when is_integer(story_id) ->
+            {:ok, %{"id" => story_id}}
+
+          args ->
+            {:invalid_call, "story_id must be an integer, got #{inspect(args)}"}
+        end
+      }
+    ])
+  end
+
   describe "calling tools from a script" do
     test "a tool is a function, and its result is a table" do
       result = CodeMode.eval(stories_catalog(), ~S[return get_story({ story_id = 970 }).title])
@@ -229,6 +250,36 @@ defmodule CodeMySpec.CodeModeTest do
       assert result.printed == ["checking 970", "found\t13"],
              "print must be captured — on a server the default writes to the log, where " <>
                "the agent that wrote the script never sees it"
+    end
+
+    # b9f4e5d4: a rejected call (or a compile error) raises, and `CodeMode.run/3`
+    # rebinds `lua` from `Lua.eval!`'s return — so the `lua` still in scope in
+    # the `rescue` clause is the *pre-eval* state, and reading `printed` off it
+    # always answered `[]`. A script that fails on its fifth call lost every
+    # progress line telling its author how far it got, which is exactly the
+    # case `Result`'s own moduledoc says `printed` exists for.
+    test "printed lines survive a rejected call, not just a clean finish" do
+      script = ~S"""
+      print("step 1: about to check rules")
+      print("step 2: calling get_story with a bad id")
+      local _r = get_story({ story_id = "not a number" })
+      return "unreachable"
+      """
+
+      result = CodeMode.eval(rejecting_catalog(), script)
+
+      assert Result.failed?(result)
+
+      assert result.printed == ["step 1: about to check rules", "step 2: calling get_story with a bad id"],
+             "the script's progress lines must not die with the exception that stopped it"
+    end
+
+    test "printed lines survive a script that never compiles" do
+      result = CodeMode.eval(stories_catalog(), "print(\"never runs\")\nthis is not lua\n")
+
+      assert Result.failed?(result)
+      assert result.error.kind == :compile
+      assert result.printed == []
     end
 
     test "a returned table is a record, not the VM's pair list" do

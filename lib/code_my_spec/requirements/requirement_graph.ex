@@ -42,6 +42,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]} | {:error, :no_working_copy}
   def compute_graph(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
     {preload_us, loaded} = :timer.tc(fn -> Preloader.load(scope) end)
 
     with {:ok, ctx} <- loaded do
@@ -49,6 +50,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       compute_and_publish(scope, ctx, config, preload_us)
     end
   end
+
+  # The whole read-and-write path for one computation — `Preloader`, `GraphCache`
+  # and `NodeRepository`/`Projection` — has to agree on one `working_copy_id`, or
+  # a UI publish computes from one identity and stores under another (276c2afe):
+  # `Preloader.load/1` and `GraphCache` both decide "whose view is this" from the
+  # raw `active_working_copy_id` field, while `NodeRepository.upsert_all/2` and
+  # `Projection.load/2` decide it from `Projection.vantage/1`, which resolves a
+  # caller with no checkout to name to the project's default working copy once
+  # one is set. The two coincide until a project gets a default, then a UI
+  # publish blends every checkout's files (`Preloader`, raw nil), caches under
+  # its own row (`GraphCache`, raw nil), and persists under the default
+  # checkout's identity (`NodeRepository`, resolved) — overwriting that
+  # checkout's own accurately-scoped rows with the blended, over-satisfying
+  # verdict.
+  #
+  # Resolving `vantage/1` once, here, before `Preloader.load/1` ever sees the
+  # scope, is what the docs on both `vantage/1` and `Preloader.load/1` already
+  # argued for ("a web view should read the default branch ... At that point
+  # the question 'which harness is the UI showing' stops existing"). Every
+  # downstream call still reads the same raw field it always did; only the
+  # value it finds there is now the resolved one, so nothing else changes.
+  defp normalize_vantage(%Scope{} = scope),
+    do: %{scope | active_working_copy_id: Projection.vantage(scope)}
 
   # Publish the computed graph so readers that cannot compute one still have
   # something to show. Deliberately not a memoization for agents: computation
@@ -325,6 +349,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec cached_graph_with_actionable(Scope.t()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
   def cached_graph_with_actionable(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
+
     with {:ok, ctx} <- Preloader.load(scope) do
       cached_graph_with_actionable(scope, ctx)
     end
@@ -351,6 +377,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec cached_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
   def cached_graph_with_actionable_metrics(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
 
     {us_graph, {{nodes, edges}, actionable, computed_at}} =
@@ -454,6 +481,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, %{atom() => integer()}}
   def compute_graph_with_actionable_metrics(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
     {us_config, config} = :timer.tc(fn -> CodeMySpec.Configurations.get_or_create(scope) end)
     {us_nodes, {nodes, ctx}} = :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
@@ -502,6 +530,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec compute_all(Scope.t()) :: [Requirement.t()] | {:error, :no_working_copy}
   def compute_all(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
+
     with {:ok, ctx} <- Preloader.load(scope) do
       config = CodeMySpec.Configurations.get_or_create(scope)
       {nodes, _edges} = compute_and_publish(scope, ctx, config)
