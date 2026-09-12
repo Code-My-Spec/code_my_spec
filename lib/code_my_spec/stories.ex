@@ -170,6 +170,22 @@ defmodule CodeMySpec.Stories do
       {:error, %Ecto.Changeset{}}
 
   """
+  @doc """
+  Ready stories that belong to no epic.
+
+  The reading story 1058 came from: a product agent asked to group ready stories
+  into an epic worked out that one sat outside every one of them, could not name
+  it, and stopped. Nothing exposed this — `list_epics` lists epics and
+  `assign_story_to_epic` writes one, and neither answers a question about
+  absence.
+
+  Ready rather than all, because that is the question people ask. A story
+  nobody has released is not yet anybody's problem, and including them buries
+  the one that is.
+  """
+  @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
+  defdelegate ready_stories_without_epic(scope), to: StoriesRepository
+
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
     true = story.account_id == scope.active_account_id
 

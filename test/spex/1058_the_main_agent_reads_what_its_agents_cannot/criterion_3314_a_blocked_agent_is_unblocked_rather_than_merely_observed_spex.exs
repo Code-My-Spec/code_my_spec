@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
         reply = join_working_copy(context, "/tmp/spex-3314", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
-        epic = Fixtures.epic_fixture(scope, %{title: "Billing"})
+        epic = Fixtures.epic_fixture(scope, %{name: "Billing", slug: "billing"})
         in_epic = Fixtures.authored_story(scope, "Invoices export")
         :ok = Fixtures.put_story_in_epic(scope, in_epic, epic)
         :ok = Fixtures.mark_story_ready(scope, in_epic)

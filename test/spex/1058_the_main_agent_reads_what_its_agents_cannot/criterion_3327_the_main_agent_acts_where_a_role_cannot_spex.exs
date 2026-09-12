@@ -27,11 +27,15 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
   round it was the wrong move. Here nothing says a coding agent must not have
   epics; it simply does not, and the work still has to happen.
 
-  ## Asserted as the change, not the reply
+  ## Asserted as the change, through a different surface than made it
 
   A tool that answers "done" without the story moving would pass an assertion on
-  its own words. The epic membership is read back through the surface a person
-  would use to check.
+  its own words, so the membership is read back — and not through `get_story`,
+  which does not render it. That is not an oversight in the assertion: it is the
+  same gap the whole story is about, met from the other side.
+
+  `ready_stories_without_epic` is the reading that does answer it, so the story
+  is marked ready and the check is that it has left that list.
   """
 
   use CodeMySpecSpex.Case
@@ -40,12 +44,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
+  alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
+  alias CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @script """
-  return assign_story_to_epic({ story_id = ARGS.story, epic_id = ARGS.epic })
+  return assign_story_to_epic({ story_id = ARGS.story, epic_name = ARGS.epic })
   """
 
   setup :register_log_in_setup_account
@@ -62,8 +67,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
         reply = join_working_copy(context, "/tmp/spex-3327", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
-        epic = Fixtures.epic_fixture(scope, %{title: "Billing"})
+        epic = Fixtures.epic_fixture(scope, %{name: "Billing", slug: "billing"})
         story = Fixtures.authored_story(scope, "Dunning emails go out")
+        :ok = Fixtures.mark_story_ready(scope, story)
 
         coding = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3327")
         main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-3327")
@@ -82,14 +88,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
 
         script =
           @script
-          |> String.replace("ARGS.story", "#{context.story.id}")
-          |> String.replace("ARGS.epic", ~s("#{context.epic.id}"))
+          |> String.replace("ARGS.story", ~s("#{context.story.id}"))
+          |> String.replace("ARGS.epic", ~s("#{context.epic.name}"))
 
         {:reply, as_coding, _frame} =
-          Fixtures.run_script(%{script: script, agent_id: context.coding.id}, frame)
+          RunScript.execute(%{script: script, agent_id: context.coding.id}, frame)
 
         {:reply, as_main, _frame} =
-          Fixtures.run_script(%{script: script, agent_id: context.main.id}, frame)
+          RunScript.execute(%{script: script, agent_id: context.main.id}, frame)
 
         {:ok,
          context
@@ -100,10 +106,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
       then_ "the work is actually done", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story, _frame} =
-          GetStory.execute(%{story_id: to_string(context.story.id)}, frame)
+        {:reply, orphans, _frame} = ReadyStoriesWithoutEpic.execute(%{}, frame)
 
-        assert response_text(story) =~ "Billing",
+        refute response_text(orphans) =~ "Dunning emails go out",
                """
                The main agent could not finish work no role in front of it can.
 
@@ -116,15 +121,15 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
                as main:
                #{context.as_main}
 
-               story:
-               #{response_text(story)}
+               still without an epic:
+               #{response_text(orphans)}
                """
 
         {:ok, context}
       end
 
       then_ "and the role that could not do it still cannot", context do
-        assert context.as_coding =~ ~r/not in scope|unknown|nil value/i,
+        assert context.as_coding =~ ~r/not a tool .* carries|not in scope|unknown|nil value/i,
                """
                The coding role can assign epics after all, so this scenario
                shows nothing about the main agent acting where a role cannot.

@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
       CodeMySpec.Environments,
+      CodeMySpec.Epics,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Files,
@@ -3002,7 +3003,8 @@ defmodule CodeMySpecSpex.Fixtures do
   def epic_fixture(%Scope{} = scope, attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
-        title: "an epic #{System.unique_integer([:positive])}",
+        name: "an epic #{System.unique_integer([:positive])}",
+        slug: "an-epic-#{System.unique_integer([:positive])}",
         description: "what this epic is for"
       })
 

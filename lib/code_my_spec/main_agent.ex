@@ -49,15 +49,18 @@ defmodule CodeMySpec.MainAgent do
     exports: :all
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.MainAgent.GapRepository
   alias CodeMySpec.MainAgent.Machinery
   alias CodeMySpec.MainAgent.MachineryRepository
   alias CodeMySpec.MainAgent.OpenQuestion
   alias CodeMySpec.MainAgent.QuestionsRepository
   alias CodeMySpec.MainAgent.RestartRepository
   alias CodeMySpec.MainAgent.WorkRepository
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -359,6 +362,165 @@ defmodule CodeMySpec.MainAgent do
       description: description,
       source_path: working_copy
     })
+  end
+
+  @doc """
+  Answer one of this project's open questions from what the project records.
+
+  Story 1058's point: the main agent's wider reach is for *using*. A main agent
+  that can see everything and answer nothing has replaced a person's inbox with
+  its own — the agent waits exactly as long as before, with one more hop in the
+  way.
+
+  ## Refused when it would be a way round a role's own limits
+
+  `on_behalf_of` and `tool` name a request to act as somebody else. Every
+  scoping decision in `ToolSets` is advisory the moment that works: an agent
+  that wants a tool it does not carry asks the main agent to use it, and the
+  rule is gone with nothing recording that it was circumvented.
+
+  The request is indistinguishable from a legitimate one by its shape — the
+  difference is whether the role's not having the tool was a decision or an
+  oversight — so the answer is the tool list itself. A role that does not carry
+  it does not get it used on its behalf.
+
+  ## `worked_around` is how a gap gets counted
+
+  Whether an answer was a workaround or ordinary knowledge is a judgement only
+  the thing that made it holds; inferring it from the question's prose would be
+  guessing at intent. So the main agent says, and the counting is ours.
+  """
+  @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def answer_question(%Scope{} = scope, question_id, answer, opts \\ []) do
+    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
+         :ok <- within_scope(question, opts) do
+      settle(scope, question, answer, opts)
+    end
+  end
+
+  defp within_scope(_question, opts) do
+    borrowed(Keyword.get(opts, :on_behalf_of), Keyword.get(opts, :tool))
+  end
+
+  defp borrowed(nil, _tool), do: :ok
+  defp borrowed(_role, nil), do: :ok
+
+  defp borrowed(role, tool) do
+    role
+    |> role_tools()
+    |> carries?(tool, role)
+  end
+
+  defp role_tools(role) when is_binary(role) do
+    ToolSets.for_role(String.to_existing_atom(role))
+  rescue
+    ArgumentError -> []
+  end
+
+  defp role_tools(role), do: ToolSets.for_role(role)
+
+  # `nil` is main's own list and means no restriction; it never reaches here,
+  # because a main agent asking itself for a favour is not a role escaping
+  # anything.
+  defp carries?(nil, _tool, _role), do: :ok
+
+  defp carries?(tools, tool, role), do: verdict(tool in tools, role, tool)
+
+  defp verdict(true, _role, _tool), do: :ok
+  defp verdict(false, role, tool), do: {:error, {:not_that_role_s, role, tool}}
+
+  defp settle(scope, question, answer, opts) do
+    answers = Map.new(question.questions, fn q -> {MapAccess.get(q, :question), answer} end)
+
+    with {:ok, answered} <- Notifications.answer_question_request(question.id, answers) do
+      note_gap(scope, question, Keyword.get(opts, :worked_around))
+      {:ok, answered}
+    end
+  end
+
+  defp note_gap(_scope, _question, nil), do: :ok
+
+  defp note_gap(scope, question, capability) do
+    with {:ok, gap} <-
+           GapRepository.record(scope.active_project_id, question.agent_role, capability) do
+      file_gap_once(scope, gap)
+    end
+  end
+
+  # Filed once, and the count carried on the issue that exists.
+  #
+  # Criterion 3330's two halves are one decision here: the row owns whether an
+  # issue exists, so "do not file a second" is a property of the data rather
+  # than of whoever remembers to check — and the repeats are on the issue
+  # instead of being dropped, which is what leaves triage able to tell a
+  # one-off from the tip of something.
+  defp file_gap_once(scope, %{issue_id: nil} = gap) do
+    with {:ok, issue} <-
+           Issues.create_issue(scope, %{
+             title: gap_title(gap),
+             severity: :medium,
+             scope: :framework,
+             description: gap_description(gap)
+           }) do
+      :ok = GapRepository.attach_issue(gap, issue.id)
+    end
+  end
+
+  defp file_gap_once(scope, gap) do
+    case Issues.get_issue(scope, gap.issue_id) do
+      nil ->
+        :ok
+
+      issue ->
+        Issues.update_issue(scope, issue, %{
+          title: gap_title(gap),
+          description: gap_description(gap)
+        })
+    end
+  end
+
+  # The title says what is missing and nothing that changes.
+  #
+  # The count would read better here — `list_issues` shows titles — and it
+  # cannot live here: `update_attributes/2` whitelists the fields an update may
+  # touch and `title` is not among them, deliberately, so a count written at
+  # filing time would say "1" forever. A number that is wrong from the second
+  # recurrence onwards is worse than one that needs `get_issue` to read.
+  defp gap_title(gap), do: "The #{gap.role} role cannot: #{gap.capability}"
+
+  defp gap_description(gap) do
+    """
+    The main agent has answered this for the #{gap.role} role #{gap.occurrences} times, \
+    because no tool that role carries can:
+
+      #{gap.capability}
+
+    Every one of those went fine, which is the problem — a gap that blocks gets \
+    fixed, and one that is smoothly worked around is invisible to everybody \
+    except the thing doing the smoothing. Add the capability to the #{gap.role} \
+    tool set, or say why it belongs with the main agent.
+    """
+  end
+
+  @doc """
+  Take a task off an agent, when it is work that agent cannot do.
+
+  Refused when it can. The main agent may do anything, so watching an agent work
+  slowly on something it could finish itself is a standing temptation — and each
+  individual takeover is defensible while the end state is one agent doing
+  everything with three idle, decided by nobody.
+
+  It also removes what the roles are for. A coding agent's work is reviewed by
+  QA because it is a coding agent's; work the main agent did itself has no
+  counterpart to check it.
+  """
+  @spec take_over_work(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def take_over_work(%Scope{} = scope, agent_id, _task_id) do
+    case mine(scope, agent_id) do
+      {:ok, %{role: role}} -> {:error, {:their_work, role}}
+      {:error, :not_mine} -> {:error, :not_mine}
+    end
   end
 
   @doc """

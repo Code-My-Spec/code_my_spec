@@ -22,6 +22,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
   claim here is about a *pattern*, so the scenario asks three times and asserts
   nothing was filed until the pattern existed.
 
+  ## Who notices
+
+  The main agent says what it had to work around; the counting is the system's.
+  That split is the criterion's own — "when the main agent notices the pattern"
+  — and it is the only one that works: whether an answer was a workaround or
+  ordinary knowledge is a judgement only the thing that made it holds, and
+  inferring it from the question's text would be guessing at intent from prose.
+
   ## The gap is reported against the role, not the question
 
   "A gap in that role's tools" is the criterion's own phrasing, and it is what
@@ -134,7 +142,11 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
 
     {:reply, _answered, _frame} =
       AnswerQuestion.execute(
-        %{question_id: question_id, answer: "the one about dunning emails"},
+        %{
+          question_id: question_id,
+          answer: "the one about dunning emails",
+          worked_around: "no tool exposes story-to-epic membership"
+        },
         frame
       )
 

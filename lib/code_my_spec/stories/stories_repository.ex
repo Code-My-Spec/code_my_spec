@@ -166,6 +166,28 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   defp filter_by_readiness(query, _), do: query
 
   @doc """
+  Ready stories that belong to no epic.
+
+  The reading story 1058 came from: a product agent asked to group ready
+  stories into an epic worked out that one sat outside every one of them, could
+  not name it, and stopped. Nothing exposed this — `list_epics` lists epics and
+  `assign_story_to_epic` writes one, and neither answers a question about
+  absence.
+
+  Ready rather than all, because that is the question people ask. A story
+  nobody has released is not yet anybody's problem, and including them buries
+  the one that is.
+  """
+  @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
+  def ready_stories_without_epic(%Scope{active_project_id: project_id}) do
+    from(s in Story,
+      where: s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id),
+      order_by: [asc: s.inserted_at]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Lists just story IDs and titles (lightweight, no criteria).
   Useful for quick lookups and selection.
   """

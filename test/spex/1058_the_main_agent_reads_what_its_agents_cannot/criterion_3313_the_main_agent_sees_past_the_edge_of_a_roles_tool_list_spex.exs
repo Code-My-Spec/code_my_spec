@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3313Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -64,7 +65,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3313Spex do
         reply = join_working_copy(context, "/tmp/spex-3313", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
-        epic = Fixtures.epic_fixture(scope, %{title: "Billing"})
+        epic = Fixtures.epic_fixture(scope, %{name: "Billing", slug: "billing"})
 
         for title <- ["Invoices export", "Refunds reconcile"] do
           story = Fixtures.authored_story(scope, title)
@@ -90,10 +91,10 @@ defmodule CodeMySpecSpex.Story1058.Criterion3313Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, as_product, _frame} =
-          Fixtures.run_script(%{script: @script, agent_id: context.product.id}, frame)
+          RunScript.execute(%{script: @script, agent_id: context.product.id}, frame)
 
         {:reply, as_main, _frame} =
-          Fixtures.run_script(%{script: @script, agent_id: context.main.id}, frame)
+          RunScript.execute(%{script: @script, agent_id: context.main.id}, frame)
 
         {:ok,
          context

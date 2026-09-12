@@ -16,6 +16,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   will say it as often as the trigger fires, and the trigger here fires every
   time an agent hits a gap nobody has got round to closing.
 
+  ## Where each half is read
+
+  The listing answers "how many issues" and the issue itself answers "how many
+  times". They are different questions and the surfaces differ accordingly —
+  `list_issues` shows titles, and the count cannot be in a title: the update
+  path whitelists what it may touch and `title` is not on it, so a number
+  written when the issue was filed would say "1" forever.
+
   ## Recurrence is recorded, not discarded
 
   The criterion's second half, and the more useful one. "Do not file again"
@@ -34,6 +42,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
@@ -97,7 +106,10 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
       end
 
       then_ "and the existing issue says it has happened again", context do
-        assert context.issues =~ ~r/3 times|three times|\b3\b/,
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, issue, _frame} = GetIssue.execute(%{issue_id: issue_id(context.issues)}, frame)
+
+        assert response_text(issue) =~ ~r/3 times/,
                """
                The repeats were dropped rather than recorded.
 
@@ -108,13 +120,19 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
                leaves triage with one data point and no idea it is the tip of
                anything.
 
-               framework issues:
-               #{context.issues}
+               the issue:
+               #{response_text(issue)}
                """
 
         {:ok, context}
       end
     end
+  end
+
+  # The id `list_issues` printed, so the issue is fetched rather than guessed at.
+  defp issue_id(listing) do
+    [_, id] = Regex.run(~r/ID: ([0-9a-f-]{36})/, listing)
+    id
   end
 
   defp work_around(scope, agent) do
