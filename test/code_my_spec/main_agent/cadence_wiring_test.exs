@@ -85,4 +85,40 @@ defmodule CodeMySpec.MainAgent.CadenceWiringTest do
   test "a scope with no project is refused rather than crashing" do
     assert {:error, :no_project} = MainAgent.ensure_cadence(%CodeMySpec.Users.Scope{})
   end
+
+  describe "the interval is a project setting, not node state" do
+    test "setting it writes the project's configuration row", %{scope: scope} do
+      assert MainAgent.cadence_interval(scope) == 1200,
+             "the default should come from the schema, so a reader of the struct sees it"
+
+      assert :ok = MainAgent.set_cadence_interval(scope, 300)
+
+      assert MainAgent.cadence_interval(scope) == 300
+
+      assert CodeMySpec.Configurations.get(scope).main_agent_cadence_seconds == 300,
+             """
+             The interval did not reach the project's configuration row.
+
+             It used to live in `Application.put_env`, which QA found: shared
+             mutable state for the whole node, lost at the next boot. A setting
+             that silently reverts is worse than one never offered, because the
+             operator believes it is in force. Reading it back through
+             `Configurations` is what makes "survives a restart" true.
+             """
+    end
+
+    # The guard, not a changeset error. An interval of zero has no sensible
+    # reading — `tap_out` is how you stop being woken — so it is refused at the
+    # boundary rather than carried inward as data. The `cadence` MCP tool turns
+    # it into a message before it reaches here, which is where a caller who
+    # typed it gets told.
+    test "a non-positive interval never reaches the setting", %{scope: scope} do
+      assert_raise FunctionClauseError, fn ->
+        MainAgent.set_cadence_interval(scope, 0)
+      end
+
+      assert MainAgent.cadence_interval(scope) == 1200,
+             "a refused write must leave the previous value alone"
+    end
+  end
 end

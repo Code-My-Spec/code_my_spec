@@ -31,12 +31,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   require Logger
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.MainAgent.CadenceRegistry
-  @default_interval_seconds 20 * 60
 
   # -- the interval -----------------------------------------------------------
 
@@ -53,25 +53,24 @@ defmodule CodeMySpec.MainAgent.Cadence do
   guess. In code it would be a deploy to change, which in practice means never.
   """
   @spec interval(Scope.t()) :: pos_integer()
-  def interval(%Scope{active_project_id: project_id}) do
-    :code_my_spec
-    |> Application.get_env(:main_agent_cadence, %{})
-    |> Map.get(project_id, @default_interval_seconds)
-  end
+  def interval(%Scope{} = scope), do: Configurations.main_agent_cadence_seconds(scope)
 
-  @doc "Set how often this project's main agent is woken."
-  @spec set_interval(Scope.t(), pos_integer()) :: :ok
-  def set_interval(%Scope{active_project_id: project_id}, seconds)
-      when is_integer(seconds) and seconds > 0 do
-    intervals = Application.get_env(:code_my_spec, :main_agent_cadence, %{})
+  @doc """
+  Set how often this project's main agent is woken.
 
-    Application.put_env(
-      :code_my_spec,
-      :main_agent_cadence,
-      Map.put(intervals, project_id, seconds)
-    )
-
-    :ok
+  A row on the project's configuration, beside every other per-project setting.
+  It used to be `Application.put_env/3` — shared mutable state for the whole
+  node, lost on every restart, and reachable without a scope. QA found it: a
+  deliberately set interval silently reverted to the default at the next boot,
+  which is worse than never having offered the setting, because the operator
+  believes it is in force.
+  """
+  @spec set_interval(Scope.t(), pos_integer()) :: :ok | {:error, Ecto.Changeset.t()}
+  def set_interval(%Scope{} = scope, seconds) when is_integer(seconds) and seconds > 0 do
+    case Configurations.update(scope, %{main_agent_cadence_seconds: seconds}) do
+      {:ok, _configuration} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   # -- running ----------------------------------------------------------------

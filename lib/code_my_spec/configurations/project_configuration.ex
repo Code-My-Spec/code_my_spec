@@ -93,6 +93,13 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # filters out registrations whose last_heartbeat_at exceeds this).
     field :subagent_ttl_minutes, :integer, default: 10
 
+    # How often this project's main agent is woken to look in on its agents.
+    # Twenty minutes is a starting guess rather than a considered number — it is
+    # the one value trading the feature's two costs against each other, and the
+    # right one is not knowable in advance. Default here rather than in the
+    # migration, so a reader of the struct sees it.
+    field :main_agent_cadence_seconds, :integer, default: 1200
+
     # Story 858 — one ordered level, not independent flags (prod requires
     # UAT requires deploy-enabled):
     #   :off  — don't touch my infra; the graph never demands DevOps work
@@ -127,10 +134,12 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :qa_validation,
       :fix_issues_min_severity,
       :subagent_ttl_minutes,
+      :main_agent_cadence_seconds,
       :devops
     ])
     |> validate_required([:project_id])
     |> validate_number(:subagent_ttl_minutes, greater_than: 0)
+    |> validate_number(:main_agent_cadence_seconds, greater_than: 0)
     |> unique_constraint(:project_id)
   end
 end
