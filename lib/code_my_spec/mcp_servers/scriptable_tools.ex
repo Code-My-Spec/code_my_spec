@@ -146,6 +146,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions)
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
+  component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
 
   # Here rather than on the spine, unlike its neighbours `start_agent` and
   # `stop_agent`. Agents are given work by role rather than spawned on request,

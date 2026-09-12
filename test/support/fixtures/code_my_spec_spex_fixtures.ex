@@ -969,19 +969,26 @@ defmodule CodeMySpecSpex.Fixtures do
   The desired state, which is what a harness is told on join — not what anything
   last observed. A stopped agent is absent from it rather than filtered out of
   it, which is the property the resume criteria are about.
+
+  ## Through the channel, not rebuilt here
+
+  This used to assemble its own four-key map. It was a second implementation of
+  the answer, and it drifted the way a second implementation does: the channel
+  hands back `LaunchRequest.for/1` — credential, transcript, role brief, app url
+  — and this handed back an id, a provider, a root and a role. Every criterion
+  about what an agent comes back *with* was therefore asserting against a map
+  written here, and would have passed with the real answer carrying nothing.
+
+  The channel's own handler is two lines of passthrough over that call, so
+  driving it costs nothing and removes the only place the two could disagree.
   """
   def agents_to_restore(%Scope{} = scope) do
-    scope
-    |> CodeMySpec.Agents.list_running()
-    |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
-    |> Enum.map(
-      &%{
-        "agent_id" => &1.id,
-        "provider" => &1.provider,
-        "working_copy" => &1.working_copy,
-        "role" => &1.role
-      }
-    )
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:reply, {:ok, %{"agents" => agents}}, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in("agents_to_restore", %{}, socket)
+
+    agents
   end
 
   @doc """

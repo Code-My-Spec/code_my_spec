@@ -86,6 +86,14 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # so a worktree cannot have one of its own — the app runs on the main copy
       # under the harness, and that is the address there is.
       "app_url" => app_url(agent),
+      # Whether this agent is willing to be given new work.
+      #
+      # Story 1056's criterion 3305: pausing is a decision somebody made, and a
+      # restore that brings every running agent back *working* quietly undoes it
+      # — no error, no warning, and the only symptom is spend on an agent they
+      # had deliberately stopped watching. Paused is not stopped: the row is
+      # alive, so it belongs in the answer, carrying the state it was in.
+      "continuous" => agent.continuous == true,
       "messages" => agent.history || []
     }
     |> Map.merge(credential_fields(agent.credential))

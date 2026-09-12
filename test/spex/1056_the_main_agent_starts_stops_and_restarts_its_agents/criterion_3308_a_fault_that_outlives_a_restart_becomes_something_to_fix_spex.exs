@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -59,6 +60,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
         reply = join_working_copy(context, "/tmp/spex-3308", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
+        # The provider these agents run on — `running_agent/2` defaults to zai.
+        # `Agents.restart_agent/2`
+        # resolves one before it attempts anything — deliberately, so a restart
+        # fails here rather than minutes later on the agent's first model call.
+        {:ok, _integration} = CodeMySpecSpex.Fixtures.connect_provider(scope, :zai)
+
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3308")
 
         Fixtures.record_machine_tools(scope, [])
@@ -78,7 +85,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
         # where it was.
         Fixtures.record_machine_tools(context.scope, [])
 
+        # Seeing is `list_agent_work` — the criterion says "when the main agent
+        # sees", not "when it tries again", and the difference is the whole
+        # point. Waiting for the next attempt is what turns a fault into a state
+        # to be managed: nothing else is looking, so the only thing that would
+        # report it is the thing the report exists to prevent.
         frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, _view, _frame} = ListAgentWork.execute(%{}, frame)
+
         {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
 
         {:ok, Map.put(context, :issues, response_text(issues))}

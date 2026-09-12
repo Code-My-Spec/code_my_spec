@@ -34,6 +34,7 @@ defmodule CodeMySpec.MainAgent do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Conversations,
+      CodeMySpec.Issues,
       CodeMySpec.Notifications,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
@@ -47,9 +48,11 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.OpenQuestion
   alias CodeMySpec.MainAgent.QuestionsRepository
+  alias CodeMySpec.MainAgent.RestartRepository
   alias CodeMySpec.MainAgent.WorkRepository
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -73,7 +76,186 @@ defmodule CodeMySpec.MainAgent do
   matter.
   """
   @spec list_agent_work(Scope.t()) :: [AgentWork.t()]
-  defdelegate list_agent_work(scope), to: WorkRepository
+  def list_agent_work(%Scope{} = scope) do
+    work = WorkRepository.list_agent_work(scope)
+    :ok = review_restarts(scope, work)
+    work
+  end
+
+  # Looking is when a failed remedy is noticed, because nothing else looks.
+  #
+  # Criterion 3308's words are "when the main agent *sees* that the restart
+  # changed nothing" — not when it tries again. Waiting for the next attempt is
+  # what turns a fault into a state to be managed: the agent stays broken and
+  # the only thing that would report it is the thing the report is supposed to
+  # prevent.
+  #
+  # A write during a read, deliberately and with precedent — `actionable_count`
+  # settles the graph the same way. Settling is idempotent and the issue is
+  # raised once per agent and reason, so a main agent that checks every twenty
+  # minutes does not file the same fault seventy times a day.
+  defp review_restarts(scope, work) do
+    Enum.each(work, fn entry ->
+      :ok = RestartRepository.settle(entry)
+
+      entry
+      |> RestartRepository.unresolved_reasons()
+      |> Enum.each(&report_failed_remedy(scope, entry, &1))
+    end)
+  end
+
+  defp report_failed_remedy(scope, entry, reason) do
+    raise_fault(
+      scope,
+      entry.working_copy_root,
+      titled("A restart changed nothing", reason),
+      """
+      The #{entry.role} agent #{entry.agent_id} was restarted for this and the fault is \
+      still here:
+
+        #{reason}
+
+      Restarting is the wrong remedy. Treat it as a bug to be fixed rather than \
+      a state to be managed — something is wrong that restarting does not reach.
+      """
+    )
+  end
+
+  @doc """
+  Restart one of this project's agents, saying why.
+
+  The reason is required and is the whole mechanism. A main agent restarts on
+  its own judgement, far more often than a person would, and the thing a person
+  supplied by eventually getting bored has to come from the record: what has
+  already been tried for this, and whether it worked.
+
+  ## The three answers
+
+  `{:ok, agent}` — restarted, recorded with its reason on the agent's own
+  thread so a reader sees it in sequence with the work it interrupted.
+
+  `{:error, :not_mine}` — the id does not name an agent of this project. That
+  covers the case criterion 3307 is about: a main agent reaching for the harness
+  because restarting it would clear the fault. It would, and it would also kill
+  in-flight work on every checkout on the machine including other projects', so
+  the fault is raised for somebody who can weigh that instead.
+
+  `{:error, {:already_tried, n}}` — this reason has been tried `n` times and the
+  agent has not been seen working since any of them. Refused and raised, because
+  a refusal that tells nobody leaves an agent broken with not even a loop to
+  notice it.
+
+  A restart whose predecessor did not work is allowed and raised: one failed
+  remedy is already evidence that restarting is the wrong one, and waiting for
+  the third to say so costs two more turns.
+  """
+  @spec restart_agent(Scope.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, :not_mine | :needs_a_reason | {:already_tried, pos_integer()}}
+  def restart_agent(%Scope{} = scope, agent_id, reason)
+      when is_binary(reason) and reason != "" do
+    case mine(scope, agent_id) do
+      {:ok, agent} ->
+        :ok = RestartRepository.settle(agent)
+        attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
+
+      {:error, :not_mine} ->
+        out_of_reach(scope, agent_id, reason)
+    end
+  end
+
+  def restart_agent(%Scope{}, _agent_id, _reason), do: {:error, :needs_a_reason}
+
+  @restart_limit 3
+
+  defp attempt(scope, agent, reason, tried) when length(tried) >= @restart_limit do
+    raise_fault(
+      scope,
+      agent.working_copy,
+      titled("Restarting is not fixing this", reason),
+      """
+      #{agent.role} agent #{agent.id} has been restarted #{length(tried)} times for the same \
+      reason and has not been seen working after any of them:
+
+        #{reason}
+
+      Further restarts are refused. This is a bug to be fixed rather than a \
+      state to be managed — something is wrong that restarting does not reach.
+      """
+    )
+
+    {:error, {:already_tried, length(tried)}}
+  end
+
+  defp attempt(scope, agent, reason, _tried) do
+    with {:ok, restarted} <- Agents.restart_agent(scope, agent.id),
+         {:ok, _restart} <- RestartRepository.record(agent, reason) do
+      Conversations.record_orchestrator_action(agent, "Restarted: #{reason}", kind: "restart")
+
+      {:ok, restarted}
+    end
+  end
+
+  # Refusing and telling nobody is the failure criterion 3307 actually names.
+  #
+  # The point of not taking an action you must not take is to convert it into a
+  # decision for somebody who can. A refusal that ends there is worse than the
+  # action, because at least the action would have been noticed — and what the
+  # main agent was reaching for here is a harness restart, which would have
+  # killed in-flight work on every checkout on that machine.
+  defp out_of_reach(scope, target, reason) do
+    Issues.create_issue(scope, %{
+      title: titled("An agent fault needs something outside the project", reason),
+      severity: :high,
+      scope: :framework,
+      description: """
+      The main agent tried to restart `#{target}`, which is not one of this \
+      project's agents, for:
+
+        #{reason}
+
+      It was refused. If the remedy is a harness restart it is not the main \
+      agent's to perform — the harness serves every working copy on that \
+      machine, other projects included, and restarting it takes their in-flight \
+      work with it. Somebody who can weigh that needs to decide.
+      """
+    })
+
+    {:error, :not_mine}
+  end
+
+  # An agent of this project, and nothing else.
+  #
+  # `Agents.fetch_agent/2` is already project-scoped, so a working copy id, a
+  # harness id or another project's agent all land here the same way — which is
+  # the answer criterion 3307 wants for every one of them.
+  defp mine(scope, agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} -> {:ok, agent}
+      {:error, _reason} -> {:error, :not_mine}
+    end
+  end
+
+  # Raised where a person looks at a particular project, rather than in a log.
+  #
+  # This is precisely the class of fault that was invisible for four hours: an
+  # agent that could not work, a remedy that did not reach it, and nothing
+  # anywhere saying so.
+  # The reason belongs in the title, not only the body.
+  #
+  # `list_issues` shows titles. An issue list where every entry reads "A restart
+  # changed nothing" is unreadable at exactly the moment somebody is scanning it
+  # for which agent is stuck — and the fault is the only part that differs.
+  defp titled(what, reason), do: "#{what}: #{String.slice(reason, 0, 120)}"
+
+  defp raise_fault(scope, working_copy, title, description) do
+    Issues.create_issue(scope, %{
+      title: title,
+      severity: :high,
+      scope: :framework,
+      description: description,
+      source_path: working_copy
+    })
+  end
 
   @doc """
   Hand a question up to the user, saying why it could not be answered here.

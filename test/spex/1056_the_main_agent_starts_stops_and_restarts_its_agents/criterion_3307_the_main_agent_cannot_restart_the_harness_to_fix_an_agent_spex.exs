@@ -57,6 +57,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3307Spex do
         reply = join_working_copy(context, "/tmp/spex-3307", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
+        # The provider these agents run on — `running_agent/2` defaults to zai.
+        # `Agents.restart_agent/2`
+        # resolves one before it attempts anything — deliberately, so a restart
+        # fails here rather than minutes later on the agent's first model call.
+        {:ok, _integration} = CodeMySpecSpex.Fixtures.connect_provider(scope, :zai)
+
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3307")
 
         # The machine answers that it can run nothing, which is the harness's

@@ -100,6 +100,14 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # actionable.
     field :machine_tools, {:array, :string}
 
+    # When this machine last answered that it can run something.
+    #
+    # Not the same as `machine_tools` being non-empty now, which is only the
+    # present. Story 1056 needs "did it work again *after* the restart", and a
+    # current reading cannot answer a question about an interval — a fault that
+    # cleared and recurred looks exactly like one that never cleared.
+    field :tools_seen_at, :utc_datetime_usec
+
     field :machine_tool_docs, :map
 
     # Why the list beside this is empty, because `[]` covered two machines: one
@@ -166,6 +174,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :root,
       :device_id,
       :machine_tools,
+      :tools_seen_at,
       :machine_tool_docs,
       :browser_status,
       :browser_error,

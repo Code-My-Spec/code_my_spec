@@ -53,6 +53,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3306Spex do
         reply = join_working_copy(context, "/tmp/spex-3306", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
+        # The provider these agents run on — `running_agent/2` defaults to zai.
+        # `Agents.restart_agent/2`
+        # resolves one before it attempts anything — deliberately, so a restart
+        # fails here rather than minutes later on the agent's first model call.
+        {:ok, _integration} = CodeMySpecSpex.Fixtures.connect_provider(scope, :zai)
+
         target = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3306")
         neighbour = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-3306")
 
