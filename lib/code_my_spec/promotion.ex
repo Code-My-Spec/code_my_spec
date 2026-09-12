@@ -594,18 +594,30 @@ defmodule CodeMySpec.Promotion do
   defp certify_clean(%Scope{} = scope, enqueued) do
     case Analysis.await_all(scope, timeout: sweep_timeout()) do
       :ok -> scope |> blocking_problems(nil) |> gate_result(enqueued)
-      :timeout -> still_sweeping(enqueued)
+      :timeout -> still_sweeping(scope, enqueued)
     end
   end
 
-  # Bounded, and a refusal rather than a longer wait.
+  # No deadline of its own, by default (John: "why are we imposing a time
+  # limit on promotion? If it's running all the analysis we shouldn't have a
+  # time limit on it. It needs to be async").
   #
-  # `Analysis.await_all/2` defaults to ten minutes, which is right for a
-  # background reconcile and wrong here: this runs inside a tool call, and an
-  # agent blocked for ten minutes with no output cannot tell a slow sweep from
-  # a hung one. Refusing keeps the sweep running — it was dispatched before we
-  # waited — so retrying shortly after finds it fresh, and the agent has
-  # something to do in the meantime.
+  # It already is: `promote` returns at once and messages the outcome back,
+  # so nothing is blocked on this reply the way a tool call's own caller would
+  # be. A deadline here has exactly one effect — turning "still running" into
+  # "your promotion did not go through" — and on a machine with several
+  # agents' sweeps in flight at once that effect fired on *every* promotion in
+  # one measured session, none of them for a tree that was actually wrong.
+  # Worse, the refusal read as "promote again shortly", which starts another
+  # sweep the next gate then has to wait out too — the advice fed the
+  # condition it was describing (376e3356).
+  #
+  # Safe to leave open-ended because the harness enforces the real bound:
+  # `CmsHarness.Project.AnalysisServer` hard-kills anything past 30 minutes
+  # and answers either way, so a dispatched source is never actually
+  # unbounded — only this wait's *impatience* was. `:promotion_sweep_timeout`
+  # stays as an escape hatch for a caller that genuinely wants one; nothing
+  # sets it by default any more.
   # `only_failed: true`, which does not mean what its name suggests here.
   #
   # The default re-enqueues *everything* by design — "a stop with changed files
@@ -620,23 +632,40 @@ defmodule CodeMySpec.Promotion do
   defp sweep_stale(%Scope{} = scope),
     do: Analysis.ensure_stale_runs(scope, Run.sources(), only_failed: true)
 
-  defp still_sweeping(enqueued) do
+  # Reachable only when `:promotion_sweep_timeout` is explicitly configured —
+  # nothing sets one by default any more. Says what it is actually waiting on
+  # and for how long, rather than "promote again shortly": that phrase reads as
+  # an instruction to go produce a fresh sweep, and every sweep an agent starts
+  # is one more run the *next* gate has to wait out too (376e3356).
+  defp still_sweeping(scope, enqueued) do
     {:error,
      %{
        reason:
-         "the gate is waiting on a fresh analyzer sweep" <>
-           sweep_names(enqueued) <>
-           ". Nothing was merged. The sweep is still running — promote again " <>
-           "shortly and it will answer against fresh results.",
+         "the gate is still waiting on the analyzer sweep it started — " <>
+           sweep_description(scope, enqueued) <>
+           ". Nothing was merged. This is a configured wait limit, not a sign " <>
+           "anything is wrong — wait for it rather than promoting again, which " <>
+           "only queues more work behind the same limit.",
        sweeping: enqueued
      }}
+  end
+
+  defp sweep_description(scope, enqueued) do
+    case Analysis.in_flight_since(scope) do
+      since when map_size(since) > 0 ->
+        since
+        |> Enum.map_join(", ", fn {source, at} -> "#{source} since #{DateTime.to_iso8601(at)}" end)
+
+      _ ->
+        "a fresh sweep" <> sweep_names(enqueued)
+    end
   end
 
   defp sweep_names([]), do: ""
   defp sweep_names(sources), do: " (" <> Enum.join(sources, ", ") <> ")"
 
   defp sweep_timeout,
-    do: Application.get_env(:code_my_spec, :promotion_sweep_timeout, :timer.minutes(2))
+    do: Application.get_env(:code_my_spec, :promotion_sweep_timeout, :infinity)
 
   defp gate_result([], enqueued), do: {:ok, enqueued}
 
@@ -670,13 +699,16 @@ defmodule CodeMySpec.Promotion do
 
       # The merge has already landed, so this is not "nothing happened" — say
       # so plainly rather than reporting a clean promotion we cannot vouch for.
+      # Reachable only when `:promotion_sweep_timeout` is explicitly
+      # configured — nothing sets one by default any more.
       :timeout ->
         {:error,
          %{
            reason:
-             "the merge landed, but the sweep verifying it did not finish in " <>
-               "time. The running copy has the work; whether the merge added " <>
-               "problems is not yet known. Promote again to re-check."
+             "the merge landed, but verifying it hit this promotion's configured " <>
+               "wait limit before the sweep finished. The running copy has the " <>
+               "work; whether the merge added problems is not yet known. Wait for " <>
+               "it, or promote again once you know it has finished, to re-check."
          }}
     end
   end
