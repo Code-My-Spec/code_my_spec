@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
           live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
         {:ok, _live, dispatched_thread} =
-          live(context.conn, EpicHelpers.dispatched_thread_path(context))
+          live(context.conn, CodeMySpecSpex.Fixtures.dispatched_thread_path(context))
 
         {:ok,
          context

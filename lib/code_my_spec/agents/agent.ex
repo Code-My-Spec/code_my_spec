@@ -84,6 +84,7 @@ defmodule CodeMySpec.Agents.Agent do
           continuous: boolean() | nil,
           tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
+          turn_started_at: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -141,6 +142,18 @@ defmodule CodeMySpec.Agents.Agent do
 
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
+
+    # When the turn currently running started, and nil when none is.
+    #
+    # The one fact that separates an agent thinking from an agent that has
+    # stopped. A long reasoning turn produces nothing observable until it lands
+    # — no message, no tool call, no edit — so from every other angle the two
+    # are identical, and the remedy for the second destroys the first.
+    #
+    # A timestamp rather than a boolean because how long the turn has been
+    # running is the interesting part: five seconds is normal and fifty minutes
+    # is not, and a flag cannot tell them apart.
+    field :turn_started_at, :utc_datetime_usec
 
     # The work this agent has claimed.
     #
@@ -236,6 +249,7 @@ defmodule CodeMySpec.Agents.Agent do
       :os_boot_id,
       :status,
       :continuous,
+      :turn_started_at,
       :working_copy_id,
       :project_id,
       :account_id

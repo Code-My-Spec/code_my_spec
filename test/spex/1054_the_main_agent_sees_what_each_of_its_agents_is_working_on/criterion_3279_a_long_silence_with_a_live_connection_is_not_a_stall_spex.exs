@@ -86,12 +86,20 @@ defmodule CodeMySpecSpex.Story1054.Criterion3279Spex do
 
       then_ "the work in flight is visible and the silence is not a stall",
             context do
-        assert context.view =~ ~r/in flight/i,
-               """
-               The turn still in progress is not visible.
+        line = in_flight_line(context.view)
 
-               view:
-               #{context.view}
+        assert line, "the view has no notion of work in flight at all:\n#{context.view}"
+
+        refute line =~ ~r/nothing|none|no turn/i,
+               """
+               The turn still in progress is reported as nothing in flight.
+
+               Asserting that the phrase "in flight" appears somewhere is not
+               enough: every agent carries that label whether or not a turn is
+               open, so the check passes with the fact missing. What matters is
+               what the line says.
+
+               in flight: #{line}
                """
 
         refute context.view =~ ~r/\b(stalled|stuck|dead|not responding|stopped)\b/i,
@@ -117,4 +125,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3279Spex do
       end
     end
   end
+
+  # The `in flight` line on its own.
+  #
+  # Asserting on the whole view for the words "in flight" matches the *label*,
+  # which every agent carries whether or not a turn is open — so it passed with
+  # the fact blinded out. What this criterion is about is the line's answer.
+  defp in_flight_line(view), do: first_line(Regex.run(~r/in flight:[^\n]*/i, view))
+
+  defp first_line(nil), do: nil
+  defp first_line([line | _]), do: String.trim(line)
 end

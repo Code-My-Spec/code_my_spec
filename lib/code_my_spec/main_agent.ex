@@ -35,7 +35,10 @@ defmodule CodeMySpec.MainAgent do
       CodeMySpec.Agents,
       CodeMySpec.Conversations,
       CodeMySpec.Notifications,
+      CodeMySpec.Problems,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
+      CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
@@ -44,8 +47,10 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.OpenQuestion
   alias CodeMySpec.MainAgent.QuestionsRepository
+  alias CodeMySpec.MainAgent.WorkRepository
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -58,6 +63,17 @@ defmodule CodeMySpec.MainAgent do
   """
   @spec list_open_questions(Scope.t()) :: [OpenQuestion.t()]
   defdelegate list_open_questions(scope), to: QuestionsRepository
+
+  @doc """
+  What every running agent on this project is doing, across all its checkouts.
+
+  Parts rather than a verdict, which is criterion 3275 and the constraint the
+  whole view is built around: the caller decides what a silence means, because
+  the rules that would decide it here are wrong in exactly the cases that
+  matter.
+  """
+  @spec list_agent_work(Scope.t()) :: [AgentWork.t()]
+  defdelegate list_agent_work(scope), to: WorkRepository
 
   @doc """
   Hand a question up to the user, saying why it could not be answered here.

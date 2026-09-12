@@ -20,6 +20,13 @@ defmodule CodeMySpecSpex.Story1054.Criterion3297Spex do
   Asserted positively rather than as the absence of a stall, for the same
   reason: this criterion is about the view having the fact, not about what it
   does with it.
+
+  ## Not the words "in flight"
+
+  The first draft asserted that phrase appeared anywhere in the view, and it
+  passed with the fact deliberately blinded out — because every agent carries an
+  `in flight:` label whether or not a turn is open, and a label is not an
+  answer. The assertion is on that line's *content*.
   """
 
   use CodeMySpecSpex.Case
@@ -73,9 +80,20 @@ defmodule CodeMySpecSpex.Story1054.Criterion3297Spex do
       end
 
       then_ "it is shown as having work in flight", context do
-        assert context.view =~ ~r/in flight/i,
+        line = in_flight_line(context.view)
+
+        assert line,
                """
-               The view has no notion of work in flight.
+               The view has no notion of work in flight at all.
+
+               view:
+               #{context.view}
+               """
+
+        refute line =~ ~r/nothing|none|no turn/i,
+               """
+               The agent is reported as having nothing in flight while its turn
+               is still open.
 
                The server was told the turn started and told nothing since, so
                the fact is in hand — this is reporting it, not inferring
@@ -83,12 +101,21 @@ defmodule CodeMySpecSpex.Story1054.Criterion3297Spex do
                a quiet one, and every criterion that depends on that distinction
                (3279 most of all) has nothing to stand on.
 
-               view:
-               #{context.view}
+               in flight: #{line}
                """
 
         {:ok, context}
       end
     end
   end
+
+  # The `in flight` line on its own.
+  #
+  # Asserting on the whole view for the words "in flight" matches the *label*,
+  # which every agent carries whether or not a turn is open — so it passed with
+  # the fact blinded out. What this criterion is about is the line's answer.
+  defp in_flight_line(view), do: first_line(Regex.run(~r/in flight:[^\n]*/i, view))
+
+  defp first_line(nil), do: nil
+  defp first_line([line | _]), do: String.trim(line)
 end
