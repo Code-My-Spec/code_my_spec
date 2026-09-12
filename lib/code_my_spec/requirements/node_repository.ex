@@ -168,9 +168,19 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     # checkout could see — and writing it without saying so is what let any
     # checkout overwrite the project's whole graph.
     #
-    # `nil` is the UI path, which blends every checkout deliberately. That is a
-    # vantage point too, and gets its own row.
-    working_copy_id = scope.active_working_copy_id
+    # `Projection.vantage/1`, not the raw field: a caller with no checkout to
+    # name (`active_working_copy_id: nil` — the UI path) reads back through
+    # `vantage/1`, which resolves that to the project's default working copy
+    # whenever one is set. Writing under the raw `nil` instead persisted every
+    # UI-triggered publish somewhere `Projection.load/2` would never look again
+    # once a project had a default working copy — a permanent, silent miss
+    # (`verify_round_trip` logging "the projection does not round-trip" on
+    # every single publish, forever; `RequirementGraph.served_graph/3`'s guard
+    # refusing every cache hit as a result — cc4745dc). `vantage/1` only ever
+    # answers something other than the raw field for that one caller shape, so
+    # a scope that already names a checkout persists exactly where it always
+    # did.
+    working_copy_id = Projection.vantage(scope)
 
     nodes
     |> Enum.group_by(& &1.entity_type)
