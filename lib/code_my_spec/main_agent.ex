@@ -51,7 +51,6 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolSets
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Cadence
