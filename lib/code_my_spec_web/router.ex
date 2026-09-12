@@ -652,6 +652,12 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/agent-conversation/:conversation_id",
            AgentConversationLive.Show,
            :legacy_conversation_path
+
+      # The list. Plural, because the singular is the cockpit above and a
+      # session is a selection within it rather than a page of its own — and
+      # because the singular plus a segment is now the legacy redirect, which
+      # is the other half of the same decision.
+      live "/projects/:project_id/agent-conversations", AgentConversationLive.Index, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

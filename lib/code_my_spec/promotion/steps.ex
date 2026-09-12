@@ -110,12 +110,99 @@ defmodule CodeMySpec.Promotion.Steps do
   resolved. Aborting would be the tidier-looking failure and the worse one — the
   agent is told "promotion failed", finds a clean tree, and has nothing to work
   on.
+
+  Leaving it there has a cost this did not pay, though: `git merge` will not run
+  at all while `MERGE_HEAD` exists, so the *next* promotion failed on the old
+  merge and described it as a new one. Concluding a resolved merge before
+  starting this one is what closes that, and it is a step rather than a
+  judgement — the resolution is already on disk, only the commit is missing. A
+  path that still carries markers is refused, and the refusal says a merge is in
+  progress rather than naming a file.
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
+    env
+    |> unmerged(root)
+    |> resume(env, root, branch)
+  end
+
+  # A merge already in progress, finished before this one starts.
+  #
+  # `git merge` refuses outright while `MERGE_HEAD` exists — "you have not
+  # concluded your merge" — and that refusal used to fall into `conflict/4`,
+  # which reads `git status` and reports whatever is unmerged as though this
+  # merge had just produced it. So a half-merge left by one promotion made every
+  # later promotion report the same file, and the message named the file rather
+  # than the state. Eight hours went into resolving a conflict that was four
+  # hours old and already resolved.
+  #
+  # Concluding somebody's resolution is not the same as guessing at it. If no
+  # unmerged path still carries conflict markers then the decision has been
+  # made and only the commit is missing, which is a step and not a judgement. A
+  # marker anywhere means the question is still open, and that is refused —
+  # saying what the state actually is, which is the sentence that was missing.
+  defp resume({:ok, []}, env, root, branch), do: do_merge(env, root, branch)
+
+  defp resume({:ok, paths}, env, root, branch) do
+    case Enum.filter(paths, &marked?(env, root, &1)) do
+      [] -> conclude(env, root, branch, paths)
+      unresolved -> still_open(root, unresolved)
+    end
+  end
+
+  defp resume({:error, _} = error, _env, _root, _branch), do: error
+
+  defp conclude(env, root, branch, paths) do
+    with {_, 0} <- git(env, root, ["add", "--"] ++ paths),
+         {_, 0} <- git(env, root, ["commit", "--no-edit"]) do
+      do_merge(env, root, branch)
+    else
+      {out, _} ->
+        {:error,
+         %{
+           reason:
+             "a merge was already in progress in #{root} and its conflicts were " <>
+               "resolved, but concluding it failed: #{String.trim(out)}",
+           conflicts: paths
+         }}
+    end
+  end
+
+  defp still_open(root, paths) do
+    {:error,
+     %{
+       reason:
+         "#{root} is still in a merge from an earlier promotion, and " <>
+           Enum.join(paths, ", ") <>
+           " still carries conflict markers. Nothing new was merged. Resolve " <>
+           "those, then promote again — this is the earlier merge, not a new one.",
+       conflicts: paths
+     }}
+  end
+
+  defp do_merge(env, root, branch) do
     case git(env, root, ["merge", "--no-edit", branch]) do
       {out, 0} -> {:ok, %{output: String.trim(out)}}
       {out, _} -> conflict(env, root, branch, out)
+    end
+  end
+
+  # Paths git considers unmerged. Empty when no merge is in progress, which is
+  # the ordinary case and the one that costs a single command.
+  defp unmerged(env, root) do
+    case git(env, root, ["diff", "--name-only", "--diff-filter=U"]) do
+      {out, 0} -> {:ok, String.split(out, "\n", trim: true)}
+      {out, _} -> {:error, %{reason: "could not read #{root}'s merge state: #{String.trim(out)}"}}
+    end
+  end
+
+  # Whether the file on disk still has a conflict in it. Read through the
+  # environment rather than `File.read/1`, because the checkout is on whichever
+  # machine the harness is.
+  defp marked?(env, root, path) do
+    case Environments.read_file(env, Path.join(root, path)) do
+      {:ok, content} -> String.contains?(content, "<<<<<<<")
+      _ -> true
     end
   end
 

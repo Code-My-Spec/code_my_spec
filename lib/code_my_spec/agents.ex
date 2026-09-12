@@ -1477,7 +1477,35 @@ defmodule CodeMySpec.Agents do
   # spex driving this path directly can supply them.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}, opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
-      {:ok, agent} -> StopDecision.deliver(scope, agent, opts)
+      {:ok, agent} ->
+        # The turn is over, so nothing is in flight. Cleared before the decision
+        # rather than after: `deliver/3` runs the whole stop menu — analysis,
+        # graph, problems — and an agent read during it would show a turn that
+        # ended as still running.
+        {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+        StopDecision.deliver(scope, agent, opts)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # A turn beginning, which nothing used to record.
+  #
+  # Written to the row rather than only the transcript, because the question it
+  # answers is about *now* — is this agent mid-response — and a transcript
+  # answers it only by the absence of something later, which is not a thing you
+  # can query. Story 1054, criterion 3297.
+  #
+  # Still written to the transcript as well: the step is part of what the agent
+  # did, and the row is the current state of it. Two different questions.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_started"} = event, _opts) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, agent} <-
+           AgentsRepository.update_agent(scope, agent, %{turn_started_at: DateTime.utc_now()}),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      write_turn_event(conversation, agent, event)
+    else
       _ -> :ok
     end
   end

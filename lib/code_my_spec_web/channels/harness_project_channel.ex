@@ -454,6 +454,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # What the box is carrying, from the box.
+  #
+  # Story 1057, criterion 3324. A harness already reports facts it observes
+  # about itself — its preview, its tools, its head commit — and never what it
+  # runs on, so a saturated machine presented as several individually slow
+  # agents. That reading's remedy is restarts, which add to what the machine is
+  # carrying: the one fault here whose wrong diagnosis deepens it.
+  #
+  # Recorded against the device, not the working copy. The box is what is
+  # saturated, two checkouts on one machine share its processors, and a figure
+  # per copy would report the same saturation twice and let the two disagree.
+  def handle_in("machine_load", load, socket) when is_map(load) do
+    Devices.record_load(socket.assigns.scope.active_working_copy_id, load)
+    {:reply, :ok, socket}
+  end
+
   # The three facts `code_on_running_copy` gates on, from the machine that can
   # measure them. Recorded on the working copy rather than the project: a
   # project has many checkouts and each is in sync or not on its own.

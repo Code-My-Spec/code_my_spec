@@ -1025,6 +1025,31 @@ defmodule CodeMySpec.Conversations do
     |> Repo.one()
   end
 
+  @doc """
+  Give an agent conversation a name a person chose.
+
+  `session_external_id` stays the identity — it is what the recorder keys on and
+  what appears in the logs. This is the handle the index shows, because a UUID
+  tells you nothing when five agents are running.
+
+  Read through `get_agent_conversation_by_id/2` first, so the scope check is the
+  same one the show page makes: one account cannot rename another's thread, and
+  a support conversation cannot be renamed through the agent surface at all.
+  """
+  @spec rename_agent_conversation(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, Conversation.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def rename_agent_conversation(%Scope{} = scope, conversation_id, name) do
+    case get_agent_conversation_by_id(scope, conversation_id) do
+      nil ->
+        {:error, :not_found}
+
+      conversation ->
+        conversation
+        |> Conversation.rename_changeset(name)
+        |> Repo.update()
+    end
+  end
+
   # A name so a new conversation is never nameless — an index of five UUIDs is
   # the problem this exists to avoid, and it appears before anyone has had the
   # chance to name anything.

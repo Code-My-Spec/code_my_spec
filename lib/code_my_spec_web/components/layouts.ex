@@ -241,6 +241,12 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
               <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
               <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
+              <%!-- "Agent chat" opens whichever session the cockpit defaults to.
+                    This is the list of all of them — the way to reach the four a
+                    project with five agents would otherwise hide. --%>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+              </li>
               <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
 
               <li class="menu-title">Project</li>

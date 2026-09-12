@@ -38,6 +38,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
       when is_binary(agent_id) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, request} <- request_agent_tap_out(scope, agent_id) do
+      # A main agent that has finished asks not to be woken again, so the
+      # cadence stops with it — story 1059's criterion 3334. The timer only:
+      # criterion 3335 is the other half, and a question raised afterwards still
+      # reaches it, because the alternative has no symptom on either side.
+      stand_down_if_main(scope, agent_id)
+
       {:reply,
        Response.tool()
        |> Response.text("""
@@ -67,6 +73,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
     else
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+    end
+  end
+
+  # Only the main agent's tap-out stops the cadence. A coding agent leaving its
+  # own loop says nothing about whether the project still needs looking in on —
+  # and that agent going quiet is precisely what the cadence exists to notice.
+  defp stand_down_if_main(scope, agent_id) do
+    case CodeMySpec.Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{role: :main}} -> CodeMySpec.MainAgent.stand_down(scope)
+      _ -> :ok
     end
   end
 

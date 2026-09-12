@@ -37,11 +37,13 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
       CodeMySpec.Environments,
+      CodeMySpec.Epics,
       CodeMySpec.Events,
       CodeMySpec.FileEdits,
       CodeMySpec.Files,
       CodeMySpec.Generators,
       CodeMySpec.Integrations,
+      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.Migration,
       CodeMySpec.Notifications,
@@ -969,19 +971,26 @@ defmodule CodeMySpecSpex.Fixtures do
   The desired state, which is what a harness is told on join — not what anything
   last observed. A stopped agent is absent from it rather than filtered out of
   it, which is the property the resume criteria are about.
+
+  ## Through the channel, not rebuilt here
+
+  This used to assemble its own four-key map. It was a second implementation of
+  the answer, and it drifted the way a second implementation does: the channel
+  hands back `LaunchRequest.for/1` — credential, transcript, role brief, app url
+  — and this handed back an id, a provider, a root and a role. Every criterion
+  about what an agent comes back *with* was therefore asserting against a map
+  written here, and would have passed with the real answer carrying nothing.
+
+  The channel's own handler is two lines of passthrough over that call, so
+  driving it costs nothing and removes the only place the two could disagree.
   """
   def agents_to_restore(%Scope{} = scope) do
-    scope
-    |> CodeMySpec.Agents.list_running()
-    |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
-    |> Enum.map(
-      &%{
-        "agent_id" => &1.id,
-        "provider" => &1.provider,
-        "working_copy" => &1.working_copy,
-        "role" => &1.role
-      }
-    )
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:reply, {:ok, %{"agents" => agents}}, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in("agents_to_restore", %{}, socket)
+
+    agents
   end
 
   @doc """
@@ -2978,10 +2987,235 @@ defmodule CodeMySpecSpex.Fixtures do
         status: :active,
         requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
         story_id: Keyword.get(opts, :story_id),
-        started_at: DateTime.utc_now()
+        # Settable, because a criterion about how long a task has been open
+        # cannot produce elapsed time any other way and must not sleep for it.
+        started_at: Keyword.get(opts, :started_at, DateTime.utc_now())
       })
 
     {agent, TaskOwner.active_task(agent)}
+  end
+
+  @doc """
+  The main agent giving up on a question it could not answer.
+
+  Criterion 3259. Trying and failing has to end with the user, and the act of
+  giving up is the thing that has to exist for it to: without one, a question
+  the main agent took and could not settle simply stays with it, and an absorbed
+  question has no symptom on any surface.
+  """
+  @spec give_up_on_question(Scope.t(), String.t()) :: :ok
+  def give_up_on_question(%Scope{} = scope, question_id) do
+    {:ok, _question} = CodeMySpec.MainAgent.give_up_on_question(scope, question_id)
+    :ok
+  end
+
+  @doc """
+  The check-in, run now.
+
+  The cadence's own tick rather than a wait. A spex that waited for the timer
+  would be slow and — worse — would pass by accident on a machine loaded enough
+  for the timer to fire twice. What every criterion on story 1059 claims is
+  about the wake-up's *content and consequences*, and the tick is that wake-up.
+  """
+  @spec cadence_tick(Scope.t()) :: :ok
+  def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+
+  @doc "How often this project's main agent is woken, in seconds."
+  @spec cadence_interval(Scope.t()) :: pos_integer()
+  def cadence_interval(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_interval(scope)
+
+  @doc """
+  Set how often this project's main agent is woken.
+
+  Through the configuration the product writes, not a module attribute — the
+  whole of criterion 3331 is that the number is somewhere it can be changed
+  without a deploy.
+  """
+  @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
+  def set_cadence_interval(%Scope{} = scope, seconds),
+    do: CodeMySpec.MainAgent.set_cadence_interval(scope, seconds)
+
+  @doc "Whether this project's cadence is still waking its main agent."
+  @spec cadence_running?(Scope.t()) :: boolean()
+  def cadence_running?(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_running?(scope)
+
+  @doc """
+  Make one of the things the digest reads unanswerable.
+
+  Criterion 3333 is about a digest that *cannot be built*, which is a different
+  state from one that finds nothing — and the difference is invisible unless a
+  scenario can produce the first. The analyzer ledger is the source broken here
+  because it is the one the digest reads that has a failure mode of its own.
+  """
+  @spec break_digest_source(Scope.t()) :: :ok
+  def break_digest_source(%Scope{} = scope) do
+    Application.put_env(:code_my_spec, :main_agent_digest_source, :unavailable)
+    on_exit_reset()
+    _ = scope
+    :ok
+  end
+
+  defp on_exit_reset do
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, :main_agent_digest_source)
+    end)
+  end
+
+  @doc """
+  An epic on this project.
+
+  Through `Epics.create_epic/2`, the same call the product agent's `create_epic`
+  tool makes, so an epic in a scenario is the shape one really takes.
+  """
+  def epic_fixture(%Scope{} = scope, attrs \\ %{}) do
+    attrs =
+      Enum.into(attrs, %{
+        name: "an epic #{System.unique_integer([:positive])}",
+        slug: "an-epic-#{System.unique_integer([:positive])}",
+        description: "what this epic is for"
+      })
+
+    {:ok, epic} = CodeMySpec.Epics.create_epic(scope, attrs)
+    epic
+  end
+
+  @doc """
+  Put a story in an epic.
+
+  Through `Stories.update_story/3`, which is what every surface that moves a
+  story calls. `epic_id` is a column on the story — one story belongs to at most
+  one epic — so there is no join table to write.
+  """
+  @spec put_story_in_epic(Scope.t(), map(), map()) :: :ok
+  def put_story_in_epic(%Scope{} = scope, story, epic) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{epic_id: epic.id})
+    :ok
+  end
+
+  @doc "Mark a story ready for development, the way the epics page does."
+  @spec mark_story_ready(Scope.t(), map()) :: :ok
+  def mark_story_ready(%Scope{} = scope, story) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: true})
+    :ok
+  end
+
+  @doc """
+  What the machine this checkout runs on is currently carrying.
+
+  The same shape of fact a harness already reports about its preview, its tools
+  and its head commit — a thing it observes about itself and pushes on the
+  channel — for the box underneath. Driven through the channel rather than
+  written to a row, so a scenario cannot produce a state no harness could send.
+  """
+  @spec report_machine_load(Scope.t(), map()) :: :ok
+  def report_machine_load(%Scope{} = scope, load) when is_map(load) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in("machine_load", load, socket) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
+  @doc """
+  Switch an agent off without stopping it.
+
+  `set_agent_continuous(scope, id, false)` is what the pause control calls, and
+  pausing is deliberately not stopping: the row stays alive and the process
+  stays alive, and what goes off is being woken for new work. A scenario that
+  wrote the field would be modelling a state the product reaches a different
+  way — and the way it reaches it is the part criterion 3305 is about.
+  """
+  @spec pause_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, map(), atom()} | {:error, term()}
+  def pause_agent(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.set_agent_continuous(scope, agent_id, false)
+  end
+
+  @doc """
+  A turn this agent has started and not finished.
+
+  The same `agent_turn_event` push `end_turn/3` sends, with the event a
+  scenario names instead of `:turn_ended` — so an agent mid-response is
+  produced by the harness's own entry point rather than by writing a flag
+  nothing in production sets.
+
+  Nothing ends it. That is the state criteria 3279 and 3297 are about: a
+  connection open to a model with a response coming back, which from every
+  other angle is indistinguishable from an agent that has stopped.
+  """
+  @spec start_turn(Scope.t(), String.t(), keyword()) :: :ok
+  def start_turn(%Scope{} = scope, agent_id, opts \\ []) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    event =
+      ChannelClient.encode_turn_event(%{
+        event: Keyword.get(opts, :event, :turn_started),
+        turn: Keyword.get(opts, :turn, 1)
+      })
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{"agent_id" => agent_id, "event" => event},
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
+  @doc """
+  One agent saying something on its own thread.
+
+  `Conversations.add_agent_message/4` is what `AgentHarness.relay_up/2` calls
+  when a turn arrives from the machine, so "the agent spoke" means here what it
+  means in production. `send_agent_message/2` is the other direction — it
+  dispatches to a real harness over the transport — and a scenario about how
+  long ago an agent last said something must not need one running.
+  """
+  @spec agent_said(Scope.t(), map(), String.t()) :: :ok
+  def agent_said(%Scope{} = scope, %{id: agent_id, role: role}, text) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _message} =
+      Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
+
+    :ok
+  end
+
+  @doc """
+  Put this agent's transcript in the past.
+
+  Backdates every message on the agent's own conversation, so a scenario can
+  ask what an agent that has said nothing for forty-five minutes looks like
+  without waiting forty-five minutes.
+
+  The messages rather than the agent row: "when did it last say something" is a
+  question about what it said, and `agents.updated_at` moves for reasons that
+  have nothing to do with speaking — a status change, a task claimed, a reap
+  pass. A view reading the row would call an agent chatty because something
+  else touched it.
+  """
+  @spec age_agent_messages(Scope.t(), map(), number()) :: :ok
+  def age_agent_messages(%Scope{} = _scope, %{id: agent_id}, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    conversation_ids =
+      from(c in CodeMySpec.Conversations.Conversation,
+        where: c.agent_id == type(^agent_id, :binary_id),
+        select: c.id
+      )
+      |> Repo.all()
+
+    from(m in CodeMySpec.Conversations.Message, where: m.conversation_id in ^conversation_ids)
+    |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
+
+    :ok
   end
 
   # -- Components --

@@ -75,4 +75,71 @@ defmodule CodeMySpec.PromotionTest do
                "on the tool's first real use"
     end
   end
+
+  describe "a merge already in progress" do
+    setup do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "f.txt"), "side\n")
+      {_, 0} = git.(["commit", "-am", "side"])
+
+      {_, 0} = git.(["checkout", "main"])
+      File.write!(Path.join(root, "f.txt"), "main\n")
+      {_, 0} = git.(["commit", "-am", "main"])
+
+      # The half-merge. Conflicts, and is left exactly as a failed promotion
+      # leaves it.
+      {_, code} = git.(["merge", "--no-edit", "side"])
+      assert code != 0
+
+      %{root: root, git: git, env: Environment.new(:local, root)}
+    end
+
+    test "one whose conflicts are resolved is concluded, and the new merge runs",
+         %{root: root, env: env} do
+      # Somebody resolved it and never staged it — which is the state the
+      # running copy was actually found in.
+      File.write!(Path.join(root, "f.txt"), "resolved\n")
+
+      assert {:ok, _} = Steps.merge(env, root, "side")
+
+      {status, 0} = System.cmd("git", ["status", "--porcelain"], cd: root)
+
+      assert status == "",
+             """
+             The earlier merge was left in progress. While MERGE_HEAD exists no
+             promotion can merge anything, so this is not a tidiness point — it
+             is the difference between a pipeline that moves and one that
+             reports the same stale file forever.
+
+             status:
+             #{status}
+             """
+    end
+
+    test "one still carrying markers is refused, and says a merge is in progress",
+         %{root: root, env: env} do
+      assert {:error, %{reason: reason}} = Steps.merge(env, root, "side")
+
+      assert reason =~ "still in a merge from an earlier promotion",
+             """
+             The refusal describes a fresh conflict in a file. It is neither: no
+             merge was attempted, and the file has been sitting there since the
+             promotion that did conflict.
+
+             Naming the file sends the reader to the file, which is where eight
+             hours went. Got: #{reason}
+             """
+    end
+  end
 end

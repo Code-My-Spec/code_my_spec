@@ -145,6 +145,13 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # a coding agent has no use for its colleagues' open questions.
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions)
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
+  component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
+  component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
+  component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)
+  component(CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion)
+  component(CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic)
 
   # Here rather than on the spine, unlike its neighbours `start_agent` and
   # `stop_agent`. Agents are given work by role rather than spawned on request,
