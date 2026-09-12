@@ -144,9 +144,14 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # Both halves, and the order matters: a checkout that is behind is told to
-  # promote, and promoting restarts — so naming the sync problem first gives an
-  # agent one action that fixes both.
+  # Both halves, and the order matters: naming the sync problem first gives an
+  # agent something it can act on before it is told the application is down.
+  #
+  # This used to say promoting fixes both, which is true for *ahead* and false
+  # for *behind*: promotion merges this branch into the running copy and leaves
+  # this worktree where it was, so promoting while behind restarts the shared
+  # dev server and leaves the agent exactly as far behind. The counts now travel
+  # with the verdict so the remedy can tell those cases apart.
   defp and_serving({false, _details} = behind, _running), do: behind
   defp and_serving({true, details}, running), do: serving(running, details)
 
@@ -195,7 +200,7 @@ defmodule CodeMySpec.Promotion do
   defp in_sync(%WorkingCopy{} = copy) do
     copy
     |> out_of_sync_reasons()
-    |> sync_verdict()
+    |> sync_verdict(copy)
   end
 
   defp out_of_sync_reasons(%WorkingCopy{} = copy) do
@@ -218,15 +223,25 @@ defmodule CodeMySpec.Promotion do
   defp dirty_reason(reasons, true), do: ["uncommitted changes — commit them" | reasons]
   defp dirty_reason(reasons, _), do: reasons
 
-  defp sync_verdict([]), do: {true, %{status: "In sync with main, tree clean"}}
+  defp sync_verdict([], _copy), do: {true, %{status: "In sync with main, tree clean"}}
 
-  defp sync_verdict(reasons) do
+  # The counts travel with the sentence, because "behind only" is a materially
+  # different situation from the others and the reader cannot tell from the
+  # prose. Promotion merges this branch *into* the running copy and leaves this
+  # worktree where it was, so the state immediately after a successful promotion
+  # is behind-only — and the remedy there is to merge main in here, not to
+  # promote again. Told to promote, an agent restarts the shared dev server for
+  # nothing and is no less behind afterwards.
+  defp sync_verdict(reasons, %WorkingCopy{} = copy) do
     {false,
      %{
        reason:
          "this checkout and main have diverged, so QA would not test what you " <>
            "wrote: " <> Enum.join(Enum.reverse(reasons), "; ") <> ".",
-       out_of_sync: reasons
+       out_of_sync: reasons,
+       behind: copy.commits_behind_main || 0,
+       ahead: copy.commits_ahead_of_main || 0,
+       dirty: copy.tree_dirty == true
      }}
   end
 
@@ -261,7 +276,8 @@ defmodule CodeMySpec.Promotion do
     {:error,
      %{
        reason:
-         "a promotion for this project is already in flight" <> since(started_at) <>
+         "a promotion for this project is already in flight" <>
+           since(started_at) <>
            ". Two at once decide the surviving build by timing rather than by either of you " <>
            "— promote again once it finishes.",
        already_promoting: true
