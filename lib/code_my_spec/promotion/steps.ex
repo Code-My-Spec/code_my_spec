@@ -51,10 +51,19 @@ defmodule CodeMySpec.Promotion.Steps do
   that same checkout — measured on Broken Oaths, where an untracked
   `code_my_spec_test_repos` directory belonging to nobody on the team would have
   blocked every promotion from that copy forever.
+
+  `--ignore-submodules=all`, for the same reason and matching the same gate:
+  `.code_my_spec` is a submodule a QA agent writes into continuously for the
+  one-to-two hours it works — a brief drafted, a screenshot captured,
+  `prompt.md` regenerated on every task — none of which touches anything this
+  checkout's own merge would carry. Without the flag here too, the two checks
+  would disagree again the moment one of them dropped it: `code_on_running_copy`
+  waving a copy through while `promote` refused the same submodule dirt it had
+  just ignored (c97bb142).
   """
   @spec precheck(Environments.Environment.t(), String.t()) :: result()
   def precheck(env, root) do
-    case git(env, root, ["status", "--porcelain", "--untracked-files=no"]) do
+    case git(env, root, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"]) do
       {"", 0} -> branch(env, root)
       {dirty, 0} -> uncommitted(dirty)
       {out, _} -> {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
