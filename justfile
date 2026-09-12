@@ -273,8 +273,16 @@ restart port="4000":
     # harness on the old contract with no restart attempted (d00a3272). The
     # checkout just got here by merging or being pulled — it needs no further
     # pulling to be current, only a rebuild and a relaunch.
+    #
+    # Positional, not `pull=false`: `just` recipe calls take arguments by
+    # position only, from the CLI or from inside another recipe's shell body
+    # alike — there is no keyword form. `pull=false` here was silently consumed
+    # as `port`, and `{{port}}` interpolated as the literal string "pull=false"
+    # into every `lsof`/log-path/curl call below, which is what a syntactically
+    # valid, semantically wrong argument looks like: no error until runtime,
+    # and a stack of unrelated-looking failures once it hits.
     echo
-    just refresh-harness pull=false
+    just refresh-harness 4004 false
 
 
 # Pull main into the running checkout and let the code reloader do the rest.
