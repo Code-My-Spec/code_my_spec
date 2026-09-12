@@ -120,8 +120,16 @@ defmodule CodeMySpec.Requirements.GraphCache do
   return value, so answering `:published` for a row that was never written told
   it a fingerprint check had been recorded that had not been.
   """
-  @spec publish(Scope.t(), String.t(), {list(), list()}) :: :published | :unchanged
-  def publish(%Scope{active_project_id: project_id} = scope, fingerprint, {nodes, edges})
+  @spec publish(Scope.t(), String.t(), {list(), list()}, String.t() | nil) ::
+          :published | :unchanged
+  def publish(scope, fingerprint, graph, topology_fingerprint \\ nil)
+
+  def publish(
+        %Scope{active_project_id: project_id} = scope,
+        fingerprint,
+        {nodes, edges},
+        topology_fingerprint
+      )
       when is_binary(project_id) and is_binary(fingerprint) do
     if current?(scope, fingerprint) do
       # Nothing moved since the last publish. Readers call compute_graph/1 too —
@@ -130,7 +138,14 @@ defmodule CodeMySpec.Requirements.GraphCache do
       # move `computed_at` to now on a graph that was computed much earlier.
       :unchanged
     else
-      do_publish(project_id, scope.active_working_copy_id, fingerprint, {nodes, edges})
+      do_publish(
+        project_id,
+        scope.active_working_copy_id,
+        fingerprint,
+        {nodes, edges},
+        topology_fingerprint
+      )
+
       :published
     end
   end
@@ -139,7 +154,26 @@ defmodule CodeMySpec.Requirements.GraphCache do
   # writes off the same fingerprint check. A second `current?/2` would be a
   # second indexed SELECT on a path the UI hits every render, and two checks
   # could disagree.
-  def publish(_scope, _fingerprint, _graph), do: :unchanged
+  def publish(_scope, _fingerprint, _graph, _topology_fingerprint), do: :unchanged
+
+  @doc """
+  The shape the stored edges describe, or `nil` if the row does not say.
+
+  Read before a partial recompute decides whether it may keep the edges it
+  already has. `nil` — a graph published before this was recorded — reads as
+  "no basis to reuse", which costs one edge computation and records the answer.
+  """
+  @spec topology_fingerprint(Scope.t()) :: String.t() | nil
+  def topology_fingerprint(%Scope{active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    CachedGraph
+    |> where([g], g.project_id == ^project_id)
+    |> for_copy(scope)
+    |> select([g], g.topology_fingerprint)
+    |> Repo.one()
+  end
+
+  def topology_fingerprint(_scope), do: nil
 
   # One checkout's cache row, not the project's.
   #
@@ -176,7 +210,7 @@ defmodule CodeMySpec.Requirements.GraphCache do
     end
   end
 
-  defp do_publish(project_id, working_copy_id, fingerprint, {nodes, edges}) do
+  defp do_publish(project_id, working_copy_id, fingerprint, {nodes, edges}, topology_fingerprint) do
     now = DateTime.utc_now()
 
     attrs = %{
@@ -184,6 +218,7 @@ defmodule CodeMySpec.Requirements.GraphCache do
       project_id: project_id,
       working_copy_id: working_copy_id,
       fingerprint: fingerprint,
+      topology_fingerprint: topology_fingerprint,
       node_count: length(nodes),
       edge_count: length(edges),
       computed_by: computed_by(),
@@ -197,6 +232,7 @@ defmodule CodeMySpec.Requirements.GraphCache do
         {:replace,
          [
            :fingerprint,
+           :topology_fingerprint,
            :node_count,
            :edge_count,
            :computed_by,

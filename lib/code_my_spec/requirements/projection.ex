@@ -76,16 +76,29 @@ defmodule CodeMySpec.Requirements.Projection do
   def vantage(%Scope{active_working_copy_id: working_copy_id}) when is_binary(working_copy_id),
     do: working_copy_id
 
-  def vantage(%Scope{active_project: %{default_working_copy_id: id}}) when is_binary(id), do: id
-
-  def vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    Repo.one(
-      from p in CodeMySpec.Projects.Project,
-        where: p.id == ^project_id,
-        select: p.default_working_copy_id
-    )
-  end
-
+  # A reader that names no checkout gets the **unscoped** row-space, not the
+  # default checkout's.
+  #
+  # This used to resolve to `project.default_working_copy_id` so that a UI
+  # publish could be found again (`cc4745dc`). Reads go through this same
+  # function, so nil-writes and nil-reads find each other equally well — and
+  # resolving here put a graph that is *not* that checkout's answer into that
+  # checkout's rows.
+  #
+  # `GraphCache.publish/3` keys its row on `scope.active_working_copy_id`, the
+  # raw field, so the two layers disagreed about identity: separate cache rows,
+  # shared projection rows. An unscoped publish counted its own nodes, an agent
+  # then rewrote the rows under it with its narrower view, and the next unscoped
+  # read found fewer rows than its cache row claimed. `served_graph/3` refused
+  # the shortfall — correctly — and recomputed. Every time.
+  #
+  # Measured on this project before the change: 348 full computes in one log,
+  # median 2.6s, p90 5.9s, max 14.8s, 116 of them from stop hooks.
+  #
+  # Which checkout's *files* an unscoped reader is shown is a separate question,
+  # answered by `Preloader.files_vantage/1`. That one resolves; this one does
+  # not, and they are different questions: whose files am I describing, versus
+  # whose answer is this.
   def vantage(%Scope{}), do: nil
 
   @doc """
@@ -179,7 +192,9 @@ defmodule CodeMySpec.Requirements.Projection do
         orchestrated_by: definition.orchestrated_by,
         render_command_always?: definition.render_command_always? || false,
         role: definition.role,
-        details: row.details || %{}
+        details: row.details || %{},
+        checked_at: row.checked_at,
+        inputs_fingerprint: row.inputs_fingerprint
       }
     else
       _ -> nil

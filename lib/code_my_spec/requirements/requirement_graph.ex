@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
+  alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
@@ -113,6 +114,214 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # what the delegate checkers read" — one test per input, which is the property
   # the spex was asserting end to end. Run that. Rebuilding the spex would be
   # better still.
+  # A miss does not mean everything moved.
+  #
+  # The project fingerprint is one hash over every input, so a scenario added to
+  # one story busts it exactly as hard as a component being deleted, and the
+  # only response available was to rebuild all of it. Measured here: 348 full
+  # computes in one log, median 2.6s, p90 5.9s, max 14.8s, 116 of them from stop
+  # hooks, with edges 6489ms of a 10203ms compute.
+  #
+  # `FileSync` now clears `inputs_fingerprint` on the requirements a changed
+  # path bears on, so the rows say which of them need an answer. This keeps the
+  # rest and computes only those. Criterion 3424.
+  #
+  # ## Project nodes are always recomputed, and that is not an oversight
+  #
+  # They read counts — whether any story exists, how many components are
+  # designed — so they depend on the whole context rather than on one entity's
+  # slice. Computing them from a reduced context would answer "how many stories
+  # are there" with the number of stale ones. There are fourteen of them and
+  # they are cheap; the expense is the other two thousand.
+  #
+  # ## The edges are the saving, and the thing most easily got wrong
+  #
+  # Edges are kept wholesale, which is where the time actually goes — 6489ms of
+  # a 10203ms compute, against 3714ms for every node in the project. Keeping
+  # them is only sound while the shape they describe has not moved, and the
+  # entity set does not answer that: `cross_context_dependency_edges/2` reads
+  # `component.dependencies`, so a spec file declaring a new dependency moves
+  # the graph's shape without adding or removing a single entity. That
+  # component would be recomputed correctly and its new edge dropped silently.
+  #
+  # `Freshness.topology/2` is the question asked instead — dependencies, the
+  # component tree, story attachment and the config filters, and nothing else.
+  # It is compared against what the stored edges were published from, so reuse
+  # rests on the shape being unchanged rather than on membership being
+  # unchanged.
+  #
+  # ## Conservative wherever reuse would rest on something unproven
+  #
+  # Falls back to the whole computation when there are no stored rows to keep,
+  # when the entity set has moved, or when the topology has — each of them a
+  # different question from whether an answer is current. A graph that is
+  # slower than it needs to be costs time; a graph that is wrong is an agent
+  # doing work that does not exist.
+  defp recompute_stale(scope, ctx, config) do
+    {stored_nodes, stored_edges} = Projection.load(scope, ctx)
+
+    topology = Freshness.topology(ctx, config)
+
+    with true <- stored_nodes != [],
+         true <- same_entity_set?(stored_nodes, ctx),
+         true <- topology == GraphCache.topology_fingerprint(scope),
+         stale when stale != :all <- stale_entities(stored_nodes, ctx) do
+      reduced = reduce_to(ctx, stale)
+
+      {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
+      {story_nodes, _} = compute_story_nodes(scope, reduced, config)
+      {project_nodes, _} = compute_project_nodes(scope, ctx, config)
+
+      fresh = project_nodes ++ story_nodes ++ component_nodes
+      kept = Enum.reject(stored_nodes, &(entity_key(&1) in stale or &1.entity_type == "project"))
+      nodes = kept ++ fresh
+
+      Logger.info(
+        "[Requirements] recomputed #{length(fresh)} of #{length(nodes)} requirements — " <>
+          "#{MapSet.size(stale)} entity(ies) stale"
+      )
+
+      # `reduced`, not `ctx`, and this is the whole reason the first attempt
+      # reused nothing. `persist_projection/5` hands `visited/1` to
+      # `delete_departed/4`, which reaps every row belonging to a visited entity
+      # that this write did not produce — so visiting the full context while
+      # writing only the stale rows deletes precisely the rows being kept. The
+      # next read then finds a shortfall and recomputes everything, which is the
+      # behaviour this function exists to remove, arriving as a reap.
+      scope
+      |> GraphCache.publish(
+        GraphFingerprint.compute(ctx, config),
+        {nodes, stored_edges},
+        topology
+      )
+      |> persist_projection(scope, reduced, fresh, stored_edges)
+
+      {nodes, stored_edges}
+    else
+      _ -> compute_and_publish(scope, ctx, config)
+    end
+  end
+
+  # Which entities' answers no longer match what their inputs say now.
+  #
+  # ## Asked of the inputs, not of a flag
+  #
+  # The first version read staleness only as `inputs_fingerprint IS NULL` —
+  # cleared by a writer that knew it had changed something. That covers exactly
+  # the writers that remembered to say so, which was `FileSync` and nothing
+  # else: a scenario added to a story is a row in `criteria`, not a file, so
+  # nothing cleared anything and the story's requirements were kept as fresh
+  # while the observation that moved them had already landed. Criterion 3424
+  # caught it — both readings carried the same stamp because *neither* story
+  # was recomputed.
+  #
+  # A stale answer is worse than a slow one: it is an agent handed work the
+  # observation has already done, or told a thing is done that is not. So the
+  # question is asked of the sources directly. The context is loaded by then —
+  # every input is in hand — and hashing it per entity is cheap beside
+  # computing the requirements it would otherwise skip.
+  #
+  # Clearing the column stays meaningful and stays wired: `nil` matches no
+  # fingerprint, so a writer that knows it invalidated something still forces
+  # the recompute, across every checkout, without having to work out what the
+  # new value would be.
+  #
+  # `:all` when every entity is stale — reusing nothing is the whole
+  # computation, and the simpler path is the honest way to spend it.
+  defp stale_entities(stored_nodes, ctx) do
+    current = current_fingerprints(ctx)
+
+    recorded =
+      stored_nodes
+      |> Enum.reject(&(&1.entity_type == "project"))
+      |> Enum.group_by(&entity_key/1, & &1.inputs_fingerprint)
+
+    stale =
+      recorded
+      |> Enum.reject(fn {key, fingerprints} ->
+        # Every requirement of an entity is stamped with the same value, so
+        # agreement is `[fingerprint]` and anything else — a `nil`, a mix left
+        # by a half-written earlier pass — is a reason to recompute.
+        Enum.uniq(fingerprints) == [Map.get(current, key)]
+      end)
+      |> MapSet.new(fn {key, _} -> key end)
+      |> expand_component_families(ctx)
+
+    entities = MapSet.new(Map.keys(recorded))
+
+    if MapSet.size(stale) == MapSet.size(entities) and MapSet.size(entities) > 0,
+      do: :all,
+      else: stale
+  end
+
+  # What each entity's inputs say right now.
+  #
+  # Computed from the same by-id maps the requirements themselves read, and
+  # `reduce_to/2` narrows only the two lists, so an entity hashes identically
+  # whether the pass that stamped it was partial or whole. That has to hold:
+  # a stamp written during a partial recompute is compared against one computed
+  # from a full context on the next read, and if the two disagreed every row
+  # would look stale forever and this would be the old behaviour with extra
+  # hashing.
+  defp current_fingerprints(ctx) do
+    stories = Map.new(ctx.stories, &{{"story", &1.id}, Freshness.story(ctx, &1)})
+    components = Map.new(ctx.components, &{{"component", &1.id}, Freshness.component(ctx, &1)})
+
+    Map.merge(stories, components)
+  end
+
+  # A component and its parent recompute together, or not at all.
+  #
+  # `instantiate_component_graphs/3` runs one template per *family*: a
+  # container's pass instantiates its children's nodes too, and a component
+  # whose parent is absent from the list is treated as top-level and runs a
+  # different template. So narrowing the context to a stale child alone would
+  # not recompute that child — it would compute a different component.
+  #
+  # One level, matching the grouping that function actually does. Grouping a
+  # child under a parent that turns out not to be a container recomputes both
+  # where one would have done, which costs a little and cannot be wrong.
+  defp expand_component_families(stale, ctx) do
+    ctx.components
+    |> Enum.group_by(&(&1.parent_component_id || &1.id), & &1.id)
+    |> Enum.reduce(stale, fn {_family, ids}, acc ->
+      if Enum.any?(ids, &MapSet.member?(acc, {"component", &1})),
+        do: Enum.reduce(ids, acc, &MapSet.put(&2, {"component", &1})),
+        else: acc
+    end)
+  end
+
+  # The rows were written against a set of entities. If that set has moved,
+  # nodes and edges exist that no stored row describes, and reusing the old
+  # edges would describe a graph that is no longer there.
+  defp same_entity_set?(stored_nodes, ctx) do
+    stored =
+      stored_nodes
+      |> Enum.reject(&(&1.entity_type == "project"))
+      |> MapSet.new(&entity_key/1)
+
+    current =
+      MapSet.union(
+        MapSet.new(ctx.components, &{"component", &1.id}),
+        MapSet.new(ctx.stories, &{"story", &1.id})
+      )
+
+    MapSet.equal?(stored, current)
+  end
+
+  defp entity_key(node), do: {node.entity_type, node.entity_id}
+
+  # Only the lists are narrowed. The by-id maps stay whole because the
+  # computation reads them by the entity it is working on, and rebuilding them
+  # would cost more than the lookup saves.
+  defp reduce_to(ctx, stale) do
+    %{
+      ctx
+      | components: Enum.filter(ctx.components, &MapSet.member?(stale, {"component", &1.id})),
+        stories: Enum.filter(ctx.stories, &MapSet.member?(stale, {"story", &1.id}))
+    }
+  end
+
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
@@ -121,8 +330,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges)
 
+    # The topology goes down with the edges it describes. Recorded here and
+    # nowhere else: this is the only path that computes edges, so it is the only
+    # path entitled to say what shape they came from.
     scope
-    |> GraphCache.publish(GraphFingerprint.compute(ctx, config), {nodes, edges})
+    |> GraphCache.publish(
+      GraphFingerprint.compute(ctx, config),
+      {nodes, edges},
+      Freshness.topology(ctx, config)
+    )
     |> persist_projection(scope, enriched_ctx, nodes, edges)
 
     {nodes, edges}
@@ -432,7 +648,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           end
 
         :miss ->
-          {compute_and_publish(scope, ctx, config), nil}
+          {recompute_stale(scope, ctx, config), nil}
       end
 
     {nodes, edges} = graph
@@ -1249,6 +1465,26 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {nodes, all_edges ++ edges}
     end)
+    |> stamp_component_freshness(ctx)
+  end
+
+  # Stamped after the fact rather than inside the template, because a
+  # container's pass emits its children's nodes as well as its own and each of
+  # them is stale on its own inputs. Keyed off `entity_id`, so a child node
+  # carries the child's fingerprint wherever it was produced.
+  defp stamp_component_freshness({nodes, edges}, ctx) do
+    fingerprints = Map.new(ctx.components, &{&1.id, Freshness.component(ctx, &1)})
+
+    nodes =
+      Enum.map(nodes, fn
+        %{entity_type: "component", entity_id: id} = node ->
+          %{node | inputs_fingerprint: Map.get(fingerprints, id)}
+
+        node ->
+          node
+      end)
+
+    {nodes, edges}
   end
 
   @slow_component_threshold_us 50_000
@@ -1473,6 +1709,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         files = Map.get(ctx.files_by_story, story.id, [])
         id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
+        # Stamped once per story rather than once per requirement: every
+        # requirement of a story reads the same slice of the context, so they
+        # go stale together and hashing it seven times would answer the same
+        # question seven ways.
+        fingerprint = Freshness.story(ctx, story)
+
         nodes =
           Enum.map(template, fn definition ->
             result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
@@ -1494,7 +1736,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
               parent_entity_id: project && project.id,
               parent_entity_name: project && project.name,
               prerequisites: [],
-              details: Requirement.normalize_details(result.details)
+              details: Requirement.normalize_details(result.details),
+              inputs_fingerprint: fingerprint
             }
           end)
 

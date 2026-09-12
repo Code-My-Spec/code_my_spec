@@ -25,11 +25,25 @@ defmodule CodeMySpec.Requirements.Requirement do
           parent_entity_name: String.t() | nil,
           render_command_always?: boolean(),
           role: atom() | nil,
-          details: map()
+          details: map(),
+          checked_at: NaiveDateTime.t() | nil,
+          inputs_fingerprint: String.t() | nil
         }
 
+  # When this requirement's answer was last worked out.
+  #
+  # Per requirement rather than per graph, because "what did this observation
+  # cost" is a question about one requirement and the graph carries a single
+  # `computed_at` that cannot answer it. A node computed just now and a node
+  # read back from a row written an hour ago are different facts, and nothing
+  # could tell them apart.
+  #
+  # `nil` on a node that was just computed and not yet stored: it has no last
+  # time, it has only now.
   @enforce_keys [:entity_type, :entity_id, :name, :satisfied]
   defstruct [
+    :checked_at,
+    :inputs_fingerprint,
     :entity_type,
     :entity_id,
     :entity_name,
