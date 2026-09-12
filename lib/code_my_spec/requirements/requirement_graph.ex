@@ -163,7 +163,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     topology = Freshness.topology(ctx, config)
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
-         {_, true} <- {:entity_set_moved, same_entity_set?(stored_nodes, ctx)},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
          {_, stale} when stale != :all <-
            {:everything_stale, stale_entities(stored_nodes, ctx)} do
@@ -174,7 +173,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       {project_nodes, _} = compute_project_nodes(scope, ctx, config)
 
       fresh = project_nodes ++ story_nodes ++ component_nodes
-      kept = Enum.reject(stored_nodes, &(entity_key(&1) in stale or &1.entity_type == "project"))
+
+      # Departed as well as stale: a row for an entity the context no longer has
+      # is not refreshed by this pass and must not be carried into the served
+      # graph on the strength of having been true once.
+      gone = departed(stored_nodes, ctx)
+
+      kept =
+        Enum.reject(
+          stored_nodes,
+          &(entity_key(&1) in stale or entity_key(&1) in gone or &1.entity_type == "project")
+        )
+
       nodes = kept ++ fresh
 
       Logger.info(
@@ -255,9 +265,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> MapSet.new(fn {key, _} -> key end)
       |> expand_component_families(ctx)
 
+    # An entity the context has and the rows do not is stale by definition:
+    # nothing has ever computed it. Most of them will produce no nodes — a
+    # child component whose parent template has no `:child` definitions never
+    # does — and computing them costs nothing and settles it either way.
+    appeared =
+      MapSet.union(
+        MapSet.new(ctx.components, &{"component", &1.id}),
+        MapSet.new(ctx.stories, &{"story", &1.id})
+      )
+      |> MapSet.reject(&Map.has_key?(recorded, &1))
+
+    stale = MapSet.union(stale, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    if MapSet.size(stale) == MapSet.size(entities) and MapSet.size(entities) > 0,
+    if MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0,
       do: :all,
       else: stale
   end
@@ -299,22 +321,32 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  # The rows were written against a set of entities. If that set has moved,
-  # nodes and edges exist that no stored row describes, and reusing the old
-  # edges would describe a graph that is no longer there.
-  defp same_entity_set?(stored_nodes, ctx) do
-    stored =
-      stored_nodes
-      |> Enum.reject(&(&1.entity_type == "project"))
-      |> MapSet.new(&entity_key/1)
-
+  # Rows whose entity is no longer in the context at all.
+  #
+  # Replaces an equality check between the stored entity set and the context's,
+  # which could not hold on any project with a nested component. `stored` is
+  # drawn from stored *nodes*, and a child component emits nodes only when its
+  # parent's template has `:child`-scope definitions for it — so 52 of this
+  # project's 1121 components produce none, are absent from `stored` by
+  # construction, and made the sets unequal on every read forever. Measured: ten
+  # consecutive reads, every one of them `entity_set_moved`, never a partial
+  # recompute.
+  #
+  # What that check was really protecting is whether the stored edges still
+  # describe this graph, and `Freshness.topology/2` answers that directly. This
+  # answers the other half: a row for an entity the context no longer has must
+  # not survive into the served graph.
+  defp departed(stored_nodes, ctx) do
     current =
       MapSet.union(
         MapSet.new(ctx.components, &{"component", &1.id}),
         MapSet.new(ctx.stories, &{"story", &1.id})
       )
 
-    MapSet.equal?(stored, current)
+    stored_nodes
+    |> Enum.reject(&(&1.entity_type == "project"))
+    |> MapSet.new(&entity_key/1)
+    |> MapSet.reject(&MapSet.member?(current, &1))
   end
 
   defp entity_key(node), do: {node.entity_type, node.entity_id}
