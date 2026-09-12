@@ -585,6 +585,23 @@ defmodule CodeMySpecWeb.ChatComponents do
                 {question["header"]}
               </span>
               <p class="mt-1 font-medium">{question["question"]}</p>
+              <%!-- What the agent actually asked, when the main agent put the
+              question in the user's terms to escalate it (story 1060,
+              criterion 3253).
+
+              Kept, and not required to decide. A person who wants to know why
+              is entitled to, and an escalation that discards the original
+              leaves the answer unmoored from the thing it decides — but the
+              decision has to be makeable without reading it, which is why this
+              is a detail rather than the question. --%>
+              <details :if={question["asked_as"]} class="mt-1">
+                <summary class="cursor-pointer text-xs opacity-60">
+                  What the agent asked
+                </summary>
+                <p data-test="question-asked-as" class="mt-1 text-xs opacity-70">
+                  {question["asked_as"]}
+                </p>
+              </details>
             </div>
 
             <textarea

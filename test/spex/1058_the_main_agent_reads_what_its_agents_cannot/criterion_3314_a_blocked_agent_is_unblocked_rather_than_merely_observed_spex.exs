@@ -25,6 +25,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
   same delivery a person's answer takes, because the agent has no way to tell
   the two apart and should not need one. The criterion's "rather than waiting
   for a person" is asserted as the question no longer being held by the user.
+
+  ## The answer carries a basis
+
+  Story 1060 made `answer_question` refuse an answer with nothing behind it —
+  the main agent under instruction to spare the user is rewarded for answering,
+  so the check is the system's rather than a guideline. These scenarios answer
+  from what the project records, so they say so and the record is there to be
+  checked.
   """
 
   use CodeMySpecSpex.Case
@@ -99,7 +107,8 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
           AnswerQuestion.execute(
             %{
               question_id: context.question_id,
-              answer: "Dunning emails go out — it is ready and belongs to no epic"
+              answer: "Dunning emails go out — it is ready and belongs to no epic",
+              basis: "record"
             },
             frame
           )

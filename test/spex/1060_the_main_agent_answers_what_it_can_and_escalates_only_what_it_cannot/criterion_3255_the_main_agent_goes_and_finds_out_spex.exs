@@ -26,17 +26,24 @@ defmodule CodeMySpecSpex.Story1060.Criterion3255Spex do
   ## Driven through the digest, not a pre-loaded context
 
   The scenario hands the main agent nothing. If it answers, it went and asked.
+
+  ## "The user was not asked" is the holder, not the inbox
+
+  The inbox keeps answered questions as history and never renders the answering
+  form — that lives on the question's own page — so neither the text being
+  present nor a form being absent says anything here. What the criterion is
+  about is that nothing is waiting on the person, and `list_open_questions` is
+  where that is said.
   """
 
   use CodeMySpecSpex.Case
-
-  @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
@@ -141,14 +148,15 @@ defmodule CodeMySpecSpex.Story1060.Criterion3255Spex do
       end
 
       then_ "without involving the user", context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
 
-        refute html =~ "Which ready story has no epic?",
+        refute response_text(listing) =~ ~r/waiting on the user/i,
                """
                The user was asked something the project could answer.
 
-               notifications:
-               #{html}
+               listing:
+               #{response_text(listing)}
                """
 
         {:ok, context}

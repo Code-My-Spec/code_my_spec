@@ -32,13 +32,20 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion do
     field :reason, :string,
       required: true,
       doc: "Why this is the user's call and not yours. They read it."
+
+    field :as, :string,
+      doc:
+        "The same question as a choice about their product. Put it in their words when " <>
+          "the agent's were module names — the original travels with it."
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, question} <-
-           MainAgent.escalate_question(scope, question_id(params), reason(params)) do
+           MainAgent.escalate_question(scope, question_id(params), reason(params),
+             as: MapAccess.get(params, :as)
+           ) do
       {:reply, MainAgentMapper.escalated(question), frame}
     else
       {:error, reason} -> {:reply, MainAgentMapper.error(reason), frame}

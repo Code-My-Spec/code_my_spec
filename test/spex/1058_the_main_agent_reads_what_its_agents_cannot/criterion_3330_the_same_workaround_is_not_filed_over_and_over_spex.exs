@@ -34,6 +34,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   That is also what distinguishes this from simple deduplication: a system that
   silently dropped the second report would satisfy the first half and leave
   triage with one data point and no idea it was the tip of anything.
+
+  ## The answer carries a basis
+
+  Story 1060 made `answer_question` refuse an answer with nothing behind it —
+  the main agent under instruction to spare the user is rewarded for answering,
+  so the check is the system's rather than a guideline. These scenarios answer
+  from what the project records, so they say so and the record is there to be
+  checked.
   """
 
   use CodeMySpecSpex.Case
@@ -64,6 +72,11 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
       given_ "an issue already filed for the gap", context do
         reply = join_working_copy(context, "/tmp/spex-3330", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        # Something for the answer to rest on. The gap is that no *role* can
+        # see it, not that the project does not record it.
+        orphan = Fixtures.authored_story(scope, "Dunning emails go out")
+        :ok = Fixtures.mark_story_ready(scope, orphan)
 
         agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3330")
 
@@ -158,7 +171,8 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
       AnswerQuestion.execute(
         %{
           question_id: Fixtures.question_id_from(response_text(asked)),
-          answer: "the one about dunning emails",
+          answer: "Dunning emails go out",
+          basis: "record",
           worked_around: @gap
         },
         frame

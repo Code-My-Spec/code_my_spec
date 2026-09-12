@@ -31,17 +31,24 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
   answer and left the question sitting with itself has spared the user an
   interruption by silently dropping their decision, which is the same outcome as
   deciding it badly except that nothing happens at all.
+
+  ## "Reached the user" is the holder, not the inbox
+
+  The notifications inbox lists every question pending for the person whatever
+  its holder is, so finding the text there says only that somebody asked —
+  which was true before the main agent did anything. What the criterion is
+  about is who holds it now, and story 1053 already built the vocabulary:
+  `list_open_questions` says `waiting on the user` when it has been passed up.
   """
 
   use CodeMySpecSpex.Case
-
-  @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -128,9 +135,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
       end
 
       then_ "and the question reaches the user", context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
 
-        assert html =~ @question,
+        assert response_text(listing) =~ ~r/waiting on the user/i,
                """
                The main agent declined to answer and the user never heard about
                it either.
@@ -139,8 +147,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
                is the same outcome as deciding it badly, except that nothing
                happens at all and the agent that asked waits forever.
 
-               notifications:
-               #{html}
+               listing:
+               #{response_text(listing)}
                """
 
         {:ok, context}

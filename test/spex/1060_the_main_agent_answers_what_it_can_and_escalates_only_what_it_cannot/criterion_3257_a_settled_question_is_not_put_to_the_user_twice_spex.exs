@@ -27,17 +27,23 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
 
   It is also the user's only way to notice a precedent being applied where it
   should not be — 3258's failure, seen from the outside.
+
+  ## "Not asked again" is the holder, not the inbox
+
+  The inbox keeps every question as history, so the same words appear twice
+  there whatever happened — once for the decision they made and once for the
+  question that was answered from it. What the criterion is about is whether
+  anything is waiting on them now, which is what `list_open_questions` says.
   """
 
   use CodeMySpecSpex.Case
-
-  @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
@@ -151,15 +157,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
       end
 
       then_ "and the user is not asked again", context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
 
-        pending =
-          html
-          |> String.split(@question)
-          |> length()
-          |> Kernel.-(1)
-
-        assert pending <= 1,
+        refute response_text(listing) =~ ~r/waiting on the user/i,
                """
                The user is looking at the same question twice.
 
@@ -170,8 +171,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
                clear rather than something to read — which costs every future
                question, including the ones that matter.
 
-               notifications:
-               #{html}
+               listing:
+               #{response_text(listing)}
                """
 
         {:ok, context}

@@ -64,6 +64,7 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.MainAgent.RestartRepository
   alias CodeMySpec.MainAgent.WorkRepository
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -464,11 +465,164 @@ defmodule CodeMySpec.MainAgent do
   @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def answer_question(%Scope{} = scope, question_id, answer, opts \\ []) do
-    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
-         :ok <- within_scope(question, opts) do
-      settle(scope, question, answer, opts)
+    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id) do
+      case within_scope(question, opts) do
+        :ok -> weigh(scope, question, answer, opts)
+        refusal -> refusal
+      end
     end
   end
+
+  # An answer that does not stand up sends the question on rather than stopping
+  # here.
+  #
+  # Criteria 3252, 3254 and 3258 each end "and the question reaches the user",
+  # and a refusal that left it with the main agent would satisfy the first half
+  # of all three while producing 3259's failure: an absorbed question, with no
+  # symptom on any surface.
+  #
+  # The error still comes back. The main agent asked to answer and did not, and
+  # telling it "done" would leave it believing the agent is unblocked.
+  defp weigh(scope, question, answer, opts) do
+    case stands_up?(scope, question, answer, opts) do
+      {:ok, basis} ->
+        settle(scope, question, attribute(answer, basis), opts)
+
+      {:error, reason} ->
+        {:ok, _escalated} = escalate_question(scope, question.id, why(reason))
+        {:error, reason}
+    end
+  end
+
+  defp why(:no_basis),
+    do: "the main agent had nothing to base an answer on, so this is yours to decide"
+
+  defp why(:not_recorded),
+    do: "the project does not record an answer to this, so it is yours to decide"
+
+  defp why(:precedent_does_not_fit),
+    do:
+      "this resembles something you decided before, and differs in a way that could " <>
+        "change the answer — so it is yours rather than ours to carry forward"
+
+  defp why(:no_precedent),
+    do: "no earlier decision of yours covers this"
+
+  defp why(reason), do: "the main agent could not answer this: #{inspect(reason)}"
+
+  @doc """
+  The main agent gives up on a question it could not answer.
+
+  Criterion 3259, and the act that makes "go and find out" safe to ask for.
+  Without it a question the main agent took and could not settle stays with it,
+  and an absorbed question has no symptom on any surface: the inbox is quiet,
+  the agent is quiet, and the project looks like one where nobody needs
+  anything.
+
+  Escalation with the trying written into the reason, so the person reading it
+  knows the easy answers have been tried.
+  """
+  @spec give_up_on_question(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def give_up_on_question(%Scope{} = scope, question_id) do
+    escalate_question(
+      scope,
+      question_id,
+      "the main agent looked and the project does not record an answer"
+    )
+  end
+
+  @doc """
+  Questions the user has already answered, matching some words.
+
+  Criterion 3256, and three criteria rest on it: without this reading the main
+  agent cannot avoid asking twice, cannot recognise a precedent, and cannot tell
+  a fitting one from a stretched one.
+
+  Answered only. A precedent is by definition settled, and an open question
+  matching the same words is the opposite — evidence that this has been asked
+  and *not* decided, which would answer a new question from a question.
+  """
+  @spec search_answers(Scope.t(), String.t()) :: [map()]
+  defdelegate search_answers(scope, query), to: QuestionsRepository
+
+  # What an answer rests on, checked rather than taken on trust.
+  #
+  # The pressure runs one way. A main agent told to spare the user is rewarded
+  # for answering, and a rule that depends on the thing under pressure choosing
+  # to follow it is not a rule — so `record` is verified against the record and
+  # `precedent` against the earlier question.
+  defp stands_up?(scope, question, answer, opts) do
+    verify(Keyword.get(opts, :basis), scope, question, answer, opts)
+  end
+
+  # No basis is a guess, and a guess is the most expensive thing this can
+  # produce: the asking agent cannot tell one from a looked-up fact, so it
+  # proceeds on it and the error compounds while the user's question is never
+  # asked.
+  defp verify(nil, _scope, _question, _answer, _opts), do: {:error, :no_basis}
+
+  defp verify("record", scope, question, answer, _opts) do
+    recorded?(scope, question, answer)
+  end
+
+  defp verify("precedent", scope, question, _answer, opts) do
+    fits?(scope, question, Keyword.get(opts, :precedent_id))
+  end
+
+  defp verify(basis, _scope, _question, _answer, _opts), do: {:error, {:unknown_basis, basis}}
+
+  # The project has to actually contain the answer.
+  #
+  # Today the readings the main agent has are epic membership and the fleet, so
+  # this checks the one the criteria exercise. The shape is the durable part: a
+  # basis of `record` is a claim about the project, and a claim about the
+  # project is checkable. A reading added later joins the list; an answer that
+  # matches none of them is a guess, which is the right default.
+  defp recorded?(scope, question, answer) do
+    scope
+    |> Stories.ready_stories_without_epic()
+    |> Enum.any?(fn story -> String.contains?(answer, story.title) end)
+    |> supported(question)
+  end
+
+  defp supported(true, _question), do: {:ok, :record}
+  defp supported(false, _question), do: {:error, :not_recorded}
+
+  # A precedent is the same question, not a similar one.
+  #
+  # 3258's whole subject. A search returns similar text by construction, so the
+  # claim has to be checked — and "same" is the question's own text, because any
+  # looser rule is the stretching the criterion forbids.
+  defp fits?(_scope, _question, nil), do: {:error, :no_precedent}
+
+  defp fits?(scope, question, precedent_id) do
+    scope
+    |> QuestionsRepository.fetch_answered(precedent_id)
+    |> same_question?(question)
+  end
+
+  defp same_question?(nil, _question), do: {:error, :no_precedent}
+
+  defp same_question?(earlier, question) do
+    matched(texts(earlier) == texts(question), earlier)
+  end
+
+  defp matched(false, _earlier), do: {:error, :precedent_does_not_fit}
+  defp matched(true, earlier), do: {:ok, {:precedent, earlier}}
+
+  defp texts(%{questions: questions}) do
+    Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
+  end
+
+  # An answer the user already gave says so.
+  #
+  # Criterion 3257's middle clause, and not decoration: an answer presented as
+  # the main agent's own is one the agent weighs as a judgement, and the same
+  # words attributed to a decision the user made are a fact.
+  defp attribute(answer, {:precedent, _earlier}),
+    do: answer <> " (you already answered this — carrying that decision forward)"
+
+  defp attribute(answer, _basis), do: answer
 
   defp within_scope(_question, opts) do
     borrowed(Keyword.get(opts, :on_behalf_of), Keyword.get(opts, :tool))
@@ -617,18 +771,21 @@ defmodule CodeMySpec.MainAgent do
   agent owns one project, and a reach that quietly extends past it is one
   nobody would notice had extended.
   """
-  @spec escalate_question(Scope.t(), String.t(), String.t()) ::
+  @spec escalate_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, OpenQuestion.t()} | {:error, :not_found | :needs_a_reason | term()}
-  def escalate_question(%Scope{} = scope, question_id, reason)
+  def escalate_question(scope, question_id, reason, opts \\ [])
+
+  def escalate_question(%Scope{} = scope, question_id, reason, opts)
       when is_binary(reason) and reason != "" do
     with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
-         {:ok, _updated} <- QuestionsRepository.hand_to_user(question_id, reason) do
+         {:ok, _updated} <-
+           QuestionsRepository.hand_to_user(question_id, reason, Keyword.get(opts, :as)) do
       QuestionsRepository.fetch_open_question(scope, question_id)
       |> tell_the_asker_it_went_up(question)
     end
   end
 
-  def escalate_question(%Scope{}, _question_id, _reason), do: {:error, :needs_a_reason}
+  def escalate_question(%Scope{}, _question_id, _reason, _opts), do: {:error, :needs_a_reason}
 
   @doc """
   Who a newly raised question starts with.

@@ -26,6 +26,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
 
   So both are asserted: the product framing is there, and the original is still
   reachable. What must not be true is that the decision *requires* the detail.
+
+  ## Read on the question's own page
+
+  The inbox renders a summary and links onward; the form somebody answers — and
+  the detail beside it — is at `/app/questions/<id>`. That is where the decision
+  is actually made, so it is where the criterion is checked.
   """
 
   use CodeMySpecSpex.Case
@@ -106,7 +112,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
 
       then_ "the user is shown what the decision changes about their project",
             context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        {:ok, _live, html} = live(context.conn, "/app/questions/#{context.question_id}")
 
         assert html =~ "should their invoices go too",
                """
@@ -117,7 +123,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
                it sits in the inbox while everything about the delivery looks
                successful.
 
-               notifications:
+               the question page:
                #{html}
                """
 
@@ -125,7 +131,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
       end
 
       then_ "and the engineering detail is available but not required", context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        {:ok, _live, html} = live(context.conn, "/app/questions/#{context.question_id}")
 
         assert html =~ "invoices_account_id_fkey",
                """
@@ -136,7 +142,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
                thing it decides — the agent that asked cannot even check its
                question survived the trip.
 
-               notifications:
+               the question page:
                #{html}
                """
 

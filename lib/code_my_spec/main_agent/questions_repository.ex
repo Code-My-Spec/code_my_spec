@@ -31,6 +31,7 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
@@ -73,16 +74,76 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   end
 
   @doc """
+  Questions this project's user has already answered, matching some words.
+
+  Answered only, which is criterion 3256's own distinction: a precedent is by
+  definition settled, and an open question matching the same words is evidence
+  that this has been asked and *not* decided.
+
+  Scoped to the user rather than to the project's agents, unlike
+  `list_open_questions/1`. A decision is the person's and outlives the agent
+  that prompted it — and a decision made while answering one project's question
+  is still that person's decision.
+  """
+  @spec search_answers(Scope.t(), String.t()) :: [map()]
+  def search_answers(%Scope{user: %{id: user_id}}, query) when is_binary(query) do
+    pattern = "%#{query}%"
+
+    from(q in QuestionRequest,
+      where: q.user_id == ^user_id and q.status == "answered",
+      where: fragment("?::text ILIKE ?", q.questions, ^pattern),
+      order_by: [desc: q.updated_at],
+      limit: 20
+    )
+    |> Repo.all()
+  end
+
+  def search_answers(%Scope{}, _query), do: []
+
+  @doc "One answered question by id, or nil."
+  @spec fetch_answered(Scope.t(), String.t()) :: QuestionRequest.t() | nil
+  def fetch_answered(%Scope{user: %{id: user_id}}, id) do
+    Repo.get_by(QuestionRequest, id: id, user_id: user_id, status: "answered")
+  end
+
+  def fetch_answered(%Scope{}, _id), do: nil
+
+  @doc """
   Hand a question to the user, with the reason it could not be answered here.
 
   An update rather than a delete or an answer, which is the whole of criterion
   3264: the question stays exactly where it was and changes who is holding it.
   """
-  @spec hand_to_user(String.t(), String.t()) :: {:ok, QuestionRequest.t()} | {:error, term()}
-  def hand_to_user(question_id, reason) do
-    QuestionRequest
-    |> Repo.get(question_id)
-    |> QuestionRequest.changeset(%{"holder" => "user", "escalation_reason" => reason})
+  @spec hand_to_user(String.t(), String.t(), String.t() | nil) ::
+          {:ok, QuestionRequest.t()} | {:error, term()}
+  def hand_to_user(question_id, reason, as \\ nil) do
+    request = Repo.get(QuestionRequest, question_id)
+
+    request
+    |> QuestionRequest.changeset(%{
+      "holder" => "user",
+      "escalation_reason" => reason,
+      "questions" => framed(request.questions, as)
+    })
     |> Repo.update()
   end
+
+  # The decision in the user's terms, with the agent's original kept.
+  #
+  # Criterion 3253. A question arriving as module names and a stack trace is
+  # technically delivered and practically useless — the person it reached cannot
+  # answer without asking somebody what it means, so it sits in the inbox while
+  # every part of the delivery looks successful.
+  #
+  # Kept rather than replaced, because a user who wants to know why is entitled
+  # to, and an escalation that discards the original leaves the answer unmoored
+  # from the thing it decides.
+  defp framed(questions, nil), do: questions
+
+  defp framed([first | rest], as),
+    do: [
+      Map.merge(first, %{"question" => as, "asked_as" => MapAccess.get(first, :question)}) | rest
+    ]
+
+  defp framed(questions, _as), do: questions
 end

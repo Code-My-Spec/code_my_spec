@@ -23,18 +23,24 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
 
   This criterion is the easy case and the reason the feature exists: the user
   should never be interrupted by something the system already knows.
+
+  ## "The user was not asked" is the holder, not the inbox
+
+  The inbox keeps answered questions as history and never renders the answering
+  form — that lives on the question's own page — so neither the text being
+  present nor a form being absent says anything here. What the criterion is
+  about is that nothing is waiting on the person, and `list_open_questions` is
+  where that is said.
   """
 
   use CodeMySpecSpex.Case
-
-  # The notifications inbox is a cloud-app surface.
-  @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
@@ -131,9 +137,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
       end
 
       then_ "and the user was not asked", context do
-        {:ok, _live, html} = live(context.conn, "/app/notifications")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
 
-        refute html =~ "Which ready story is not in an epic?",
+        refute response_text(listing) =~ ~r/waiting on the user/i,
                """
                The user was interrupted by a question the system already knew
                the answer to.
@@ -143,8 +150,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
                project's records is the clearest possible case of an
                interruption that should never have reached them.
 
-               notifications:
-               #{html}
+               listing:
+               #{response_text(listing)}
                """
 
         {:ok, context}

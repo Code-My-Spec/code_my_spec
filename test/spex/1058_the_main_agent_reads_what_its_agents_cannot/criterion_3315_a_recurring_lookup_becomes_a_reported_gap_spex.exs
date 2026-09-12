@@ -35,6 +35,14 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
   "A gap in that role's tools" is the criterion's own phrasing, and it is what
   makes the issue actionable: somebody reading it needs to know which tool list
   to add to, not merely that a question was asked three times.
+
+  ## The answer carries a basis
+
+  Story 1060 made `answer_question` refuse an answer with nothing behind it —
+  the main agent under instruction to spare the user is rewarded for answering,
+  so the check is the system's rather than a guideline. These scenarios answer
+  from what the project records, so they say so and the record is there to be
+  checked.
   """
 
   use CodeMySpecSpex.Case
@@ -64,6 +72,11 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
       given_ "a product agent that has needed it twice already", context do
         reply = join_working_copy(context, "/tmp/spex-3315", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        # Something for the answer to rest on. The gap is that no *role* can
+        # see it, not that the project does not record it.
+        orphan = Fixtures.authored_story(scope, "Dunning emails go out")
+        :ok = Fixtures.mark_story_ready(scope, orphan)
 
         agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3315")
 
@@ -144,7 +157,8 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
       AnswerQuestion.execute(
         %{
           question_id: question_id,
-          answer: "the one about dunning emails",
+          answer: "Dunning emails go out",
+          basis: "record",
           worked_around: "no tool exposes story-to-epic membership"
         },
         frame
