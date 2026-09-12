@@ -12,7 +12,6 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Environments,
       CodeMySpec.Integrations,
       CodeMySpec.Mailer,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.UserPreferences
     ],

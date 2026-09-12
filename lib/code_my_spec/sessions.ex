@@ -425,6 +425,31 @@ defmodule CodeMySpec.Sessions do
   end
 
   @doc """
+  Record that this session ran a Bash command able to move `HEAD` or rewrite
+  the worktree without going through Write/Edit — a rebase, pull, merge,
+  checkout, reset, cherry-pick, or stash pop/apply.
+
+  `Validation.narrow_to_attributed/4` reads this: a small set of mtime-dirty
+  files with no PostToolUse attribution used to be trusted as "written
+  through something other than Write/Edit" (a spex, a direct evaluator). A
+  rebase that pulls in a handful of already-committed files has the identical
+  shape and got the same pass, crediting one session with another session's
+  already-pushed work (f8af8bf2). `git_rewrite_at` after the task's
+  `started_at` is the difference: the dirty set might be inherited history
+  rather than this turn's writes.
+
+  Fire-and-forget, same as the rest of PostToolUse's bookkeeping — a tool
+  call must proceed even when recording this fails.
+  """
+  @spec record_git_rewrite(Scope.t(), Session.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def record_git_rewrite(%Scope{} = _scope, %Session{} = session) do
+    session
+    |> Session.changeset(%{git_rewrite_at: DateTime.utc_now()})
+    |> Repo.update()
+  end
+
+  @doc """
   Atomically reassign a sub-agent: clear `agent_id` from any task that
   currently carries it (other than `target_task_id`) and set
   `agent_id` on the target task — in a single `Repo.update`.

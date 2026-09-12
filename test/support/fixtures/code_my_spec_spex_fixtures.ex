@@ -1539,6 +1539,12 @@ defmodule CodeMySpecSpex.Fixtures do
 
   `find_or_create_agent_conversation/3` is the same call `running_agent/2` makes,
   so it finds that agent's thread rather than opening a second one.
+
+  The conversation goes in the query string, matching `agent_conversation_path/1`
+  and the one route the router actually has. This was written as a path segment
+  and every caller 404ed — `live/2` then fails inside `LiveViewTest` with a
+  `FunctionClauseError` about static tokens rather than saying "no route", which
+  reads as a broken page and is a broken URL.
   """
   @spec agent_conversation_path(Scope.t(), %{id: Ecto.UUID.t()}) :: String.t()
   def agent_conversation_path(%Scope{} = scope, %{id: agent_id}) do
@@ -1549,7 +1555,7 @@ defmodule CodeMySpecSpex.Fixtures do
         agent_id
       )
 
-    "/app/projects/#{scope.active_project_id}/agent-conversation/#{conversation.id}"
+    "/app/projects/#{scope.active_project_id}/agent-conversation?conversation=#{conversation.id}"
   end
 
   @doc """
@@ -1846,6 +1852,44 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Configurations.get_or_create(scope)
     {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
     config
+  end
+
+  @doc """
+  The question id out of what `AskUserQuestion` answered.
+
+  The tool reports it in prose — "Question id: <uuid>" — because its reader is
+  an agent rather than a parser. A spex that needs to answer the question it
+  just asked has to get the id from somewhere, and reading it back out of the
+  tool's own reply keeps the scenario on the surface instead of reaching into
+  the table the tool wrote.
+  """
+  @spec question_id_from(String.t()) :: String.t()
+  def question_id_from(response_text) do
+    [_, id] = Regex.run(~r/Question id: ([0-9a-f-]{36})/, response_text)
+    id
+  end
+
+  @doc """
+  Answer a question the way the person answering it does.
+
+  `Notifications.answer_question_request/2` is what the inbox form calls, and it
+  is the only thing that marks a request answered and releases whoever was
+  waiting on it. A spex that set the status itself would pass against a listing
+  filtering on a field nothing in the product ever writes.
+
+  `answers` is keyed by the question's own text, which is the shape the form
+  submits and the shape the waiting side reads.
+  """
+  @spec answer_question(Scope.t(), String.t(), String.t()) :: :ok
+  def answer_question(%Scope{} = _scope, question_id, label) do
+    request = CodeMySpec.Repo.get!(CodeMySpec.Notifications.QuestionRequest, question_id)
+
+    answers =
+      Map.new(request.questions, fn question -> {Map.fetch!(question, "question"), label} end)
+
+    {:ok, _answered} = CodeMySpec.Notifications.answer_question_request(question_id, answers)
+
+    :ok
   end
 
   @doc """

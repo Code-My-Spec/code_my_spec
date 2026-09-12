@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
   end
 
   defp respond_with_matches(scope, name, params, frame) do
-    nodes = RequirementGraph.compute_all(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     matches =
       nodes

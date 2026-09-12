@@ -33,8 +33,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
     Environments.exec_file_exists?(env, "mix.exs") and
       Environments.exec_file_exists?(env, "deps/credo")
-  rescue
-    _ -> false
   end
 
   def available?(_scope), do: false
@@ -58,11 +56,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         read_from_output_file(opts[:output_file], scope)
 
       true ->
-        with {:ok, temp_file} <- create_temp_file() do
-          result = execute_and_parse(cwd, temp_file, scope, opts)
-          cleanup_temp_file(temp_file)
-          result
-        end
+        temp_file = CodeMySpec.TempFile.path("credo_output", ".json")
+        result = execute_and_parse(cwd, temp_file, scope, opts)
+        CodeMySpec.TempFile.cleanup(temp_file)
+        result
     end
   rescue
     exception ->
@@ -87,13 +84,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   # Private functions
-
-  defp create_temp_file do
-    {:ok, CodeMySpec.TempFile.path("credo_output", ".json")}
-  rescue
-    exception ->
-      {:error, "Failed to create temporary file: #{Exception.message(exception)}"}
-  end
 
   defp execute_and_parse(code_repo, temp_file, scope, opts) do
     with {:ok, json_output} <- execute_credo(code_repo, temp_file, opts, scope),
@@ -230,16 +220,5 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
       |> Problems.from_credo()
       |> Map.put(:project_id, project_id)
     end)
-  end
-
-  # sobelow_skip ["Traversal.FileModule"]
-  defp cleanup_temp_file(temp_file) do
-    tmp_dir = System.tmp_dir!()
-
-    if String.starts_with?(Path.expand(temp_file), tmp_dir) and File.exists?(temp_file) do
-      File.rm(temp_file)
-    end
-  rescue
-    _ -> :ok
   end
 end

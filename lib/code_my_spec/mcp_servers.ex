@@ -36,6 +36,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Google,
       CodeMySpec.Issues,
       CodeMySpec.Knowledge,
+      CodeMySpec.MainAgent,
       CodeMySpec.Notifications,
       CodeMySpec.Paths,
       CodeMySpec.Permissions,

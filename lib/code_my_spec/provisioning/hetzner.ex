@@ -994,22 +994,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   # and a caller should not have to know which era it is in. The data
   # migration copies existing tokens up, so the fallback is for stragglers.
   defp token(%Scope{} = scope) do
-    with :error <- secret(fn -> AccountSecrets.fetch_value(scope, @token_key) end),
-         :error <- secret(fn -> ProjectSecrets.fetch_value(scope, @token_key) end) do
-      configured_token()
+    case AccountSecrets.fetch_account_then_project(scope, @token_key) do
+      {:ok, _value} = ok -> ok
+      {:error, :not_found} -> configured_token()
     end
-  end
-
-  # A scope with no active project or account cannot carry secrets. Falling
-  # through rather than crashing is what lets credential checks run before
-  # either is bound.
-  defp secret(read) do
-    case read.() do
-      {:ok, value} when is_binary(value) and value != "" -> {:ok, value}
-      _ -> :error
-    end
-  rescue
-    _ -> :error
   end
 
   defp configured_token do

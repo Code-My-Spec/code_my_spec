@@ -34,8 +34,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     # shell's filesystem.
     env = StaticAnalysis.resolve_environment([], scope, cwd)
     Environments.file_exists?(env, Paths.spec_dir())
-  rescue
-    _ -> false
   end
 
   def available?(_scope), do: false

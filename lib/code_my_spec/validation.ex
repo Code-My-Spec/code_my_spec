@@ -64,6 +64,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
+  alias CodeMySpec.Sessions
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
@@ -184,7 +185,7 @@ defmodule CodeMySpec.Validation do
         edited -> edited
       end
 
-    changed_files = filter_by_session_attribution(all_changed, cwd, opts)
+    changed_files = filter_by_session_attribution(all_changed, scope, cwd, task, opts)
 
     config = Configurations.get_or_create(scope)
 
@@ -324,10 +325,10 @@ defmodule CodeMySpec.Validation do
   moves, git state does not, and the blocking set follows what the session
   recorded rather than the clock. Same reasoning as `blocking_key/1`.
   """
-  def changed_files_for_task(scope, %{started_at: started_at}, opts) do
+  def changed_files_for_task(scope, %{started_at: started_at} = task, opts) do
     scope
     |> Files.changed_since(started_at)
-    |> filter_by_session_attribution(nil, opts)
+    |> filter_by_session_attribution(scope, nil, task, opts)
   end
 
   # When a session is in play, narrow the changed-file set to files this
@@ -336,7 +337,7 @@ defmodule CodeMySpec.Validation do
   # this filter a parallel session's writes leak into the current stop's
   # block decision. No session → no filter (preserves behaviour for direct
   # callers that don't run inside the hook lifecycle).
-  defp filter_by_session_attribution(files, cwd, opts) do
+  defp filter_by_session_attribution(files, scope, cwd, task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         # PostToolUse stores whatever Claude passed — typically absolute
@@ -350,12 +351,15 @@ defmodule CodeMySpec.Validation do
           |> Enum.map(&relativize(&1, cwd))
           |> MapSet.new()
 
-        narrow_to_attributed(files, attributed, session_id)
+        narrow_to_attributed(scope, files, attributed, session_id, task_started_at(task))
 
       _ ->
         files
     end
   end
+
+  defp task_started_at(%{started_at: %DateTime{} = started_at}), do: started_at
+  defp task_started_at(_task), do: nil
 
   # How many mtime-dirty files stop looking like a turn and start looking like
   # a rebase.
@@ -369,9 +373,10 @@ defmodule CodeMySpec.Validation do
   #
   # Deliberately generous. Over this line the set is discarded, and discarding
   # a real turn's work is the expensive mistake — an agent's own violations
-  # would go unblocked. Under it the mtime set is kept, which is what the
-  # behaviour was before and is wrong only in the narrow case of a small rebase
-  # with no attribution.
+  # would go unblocked. Under it, whether the mtime set is kept now also
+  # depends on `git_rewrite_at` — see below. Before that field existed, size
+  # was the only signal, and this was wrong for a small rebase with no
+  # attribution: f8af8bf2.
   @rebase_sized 25
 
   # A session that recorded no edits wrote nothing, and the honest changed-file
@@ -396,7 +401,17 @@ defmodule CodeMySpec.Validation do
   # while a repo-wide block teaches everyone to route around the gate. Loudly,
   # because "the agent wrote nothing" and "attribution is broken" are different
   # and only the log can tell them apart.
-  defp narrow_to_attributed(files, attributed, session_id) do
+  #
+  # Size alone cannot tell a small rebase from a turn written outside
+  # Write/Edit — both are a handful of dirty files with zero attribution
+  # (f8af8bf2: one commit, already pushed by a different session sharing this
+  # working copy, landed by a routine fetch+rebase and got credited to
+  # whoever stopped next). `git_rewrite_at` is the signal size never could
+  # be: `PostToolUse` stamps it on this session the moment it runs a Bash
+  # command able to move `HEAD` without Write/Edit. A rewrite recorded at or
+  # after the task started means these dirty files may be inherited history,
+  # so the under-threshold set is trusted only when no such command ran.
+  defp narrow_to_attributed(scope, files, attributed, session_id, started_at) do
     case {MapSet.size(attributed), length(files)} do
       {0, dirty} when dirty > @rebase_sized ->
         Logger.warning(
@@ -410,10 +425,30 @@ defmodule CodeMySpec.Validation do
         []
 
       {0, _dirty} ->
-        files
+        if git_rewrote_tree?(scope, session_id, started_at) do
+          Logger.warning(
+            "[Validation] session #{session_id} recorded no edits, and ran a git " <>
+              "command that can move HEAD since this task started — treating the " <>
+              "dirty file(s) as inherited history rather than this turn's work."
+          )
+
+          []
+        else
+          files
+        end
 
       _ ->
         Enum.filter(files, &MapSet.member?(attributed, &1.path))
+    end
+  end
+
+  defp git_rewrote_tree?(scope, session_id, started_at) do
+    case Sessions.get_by_external_id(scope, session_id) do
+      %{git_rewrite_at: %DateTime{} = rewrote_at} ->
+        is_nil(started_at) or DateTime.compare(rewrote_at, started_at) != :lt
+
+      _ ->
+        false
     end
   end
 

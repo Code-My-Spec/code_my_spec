@@ -14,7 +14,8 @@ defmodule CodeMySpec.Personas do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Utils
     ],
     exports: :all
 

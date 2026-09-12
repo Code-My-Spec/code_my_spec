@@ -10,6 +10,7 @@ defmodule CodeMySpec.Questions.QuestionsRepository do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @type attrs :: map()
 
@@ -33,7 +34,7 @@ defmodule CodeMySpec.Questions.QuestionsRepository do
            {:account, story} do
       attrs =
         attrs
-        |> normalize()
+        |> Utils.normalize_keys()
         |> Map.put(:account_id, account_id)
         |> Map.put(:project_id, project_id)
         |> Map.put(:story_id, story.id)
@@ -72,12 +73,13 @@ defmodule CodeMySpec.Questions.QuestionsRepository do
   def get_question(%Scope{}, _id), do: nil
 
   @spec update_question(Scope.t(), Question.t(), attrs()) ::
-          {:ok, Question.t()} | {:error, :missing_active_account | :cross_account | Ecto.Changeset.t()}
+          {:ok, Question.t()}
+          | {:error, :missing_active_account | :cross_account | Ecto.Changeset.t()}
   def update_question(%Scope{active_account_id: account_id}, %Question{} = question, attrs)
       when not is_nil(account_id) do
     if question.account_id == account_id do
       question
-      |> Question.changeset(Map.delete(normalize(attrs), :account_id))
+      |> Question.changeset(Map.delete(Utils.normalize_keys(attrs), :account_id))
       |> Repo.update()
     else
       {:error, :cross_account}
@@ -101,13 +103,4 @@ defmodule CodeMySpec.Questions.QuestionsRepository do
 
   defp coerce_story_id(id) when is_integer(id), do: id
   defp coerce_story_id(id) when is_binary(id), do: String.to_integer(id)
-
-  defp normalize(attrs) when is_map(attrs) do
-    Map.new(attrs, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
-    end)
-  rescue
-    ArgumentError -> attrs
-  end
 end

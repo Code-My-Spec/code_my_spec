@@ -28,6 +28,7 @@ defmodule CodeMySpec.Sessions.Session do
           continuous: boolean() | nil,
           last_eval_feedback_hash: String.t() | nil,
           eval_feedback_count: integer() | nil,
+          git_rewrite_at: DateTime.t() | nil,
           tasks: [Task.t()],
           subagents: [Subagent.t()],
           project_id: Ecto.UUID.t() | nil,
@@ -52,6 +53,12 @@ defmodule CodeMySpec.Sessions.Session do
     field :continuous, :boolean, default: false
     field :last_eval_feedback_hash, :string
     field :eval_feedback_count, :integer, default: 0
+
+    # When this session last ran a Bash command that can move `HEAD` or
+    # rewrite the worktree without going through Write/Edit (rebase, pull,
+    # merge, checkout, reset, cherry-pick, stash pop/apply). Read by
+    # `Validation.narrow_to_attributed/4` — see f8af8bf2.
+    field :git_rewrite_at, :utc_datetime_usec
 
     embeds_many :tasks, Task, on_replace: :delete
     embeds_many :subagents, Subagent, on_replace: :delete
@@ -86,6 +93,7 @@ defmodule CodeMySpec.Sessions.Session do
       :continuous,
       :last_eval_feedback_hash,
       :eval_feedback_count,
+      :git_rewrite_at,
       :project_id,
       :account_id,
       :user_id,

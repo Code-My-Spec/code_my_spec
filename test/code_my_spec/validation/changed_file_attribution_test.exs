@@ -21,9 +21,11 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import CodeMySpec.SessionsFixtures
 
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Validation
 
   setup do
@@ -113,6 +115,39 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
 
       refute log =~ "recorded no edits"
     end
+
+    # f8af8bf2: a small rebase looks identical to the spex case above — a
+    # handful of dirty files, zero attribution — and used to get the same
+    # pass, crediting this session with a commit a different session had
+    # already pushed. `git_rewrite_at` is what tells them apart now.
+    test "discards a small rebase-sized set once this session has run a git rewrite", %{
+      scope: scope
+    } do
+      session = git_session_fixture(scope)
+      rebase_touched(scope, 3)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert changed_files(scope, session.external_conversation_id) == [],
+                 "a rewrite recorded during this task means the dirty files may be " <>
+                   "inherited history, not this turn's writes"
+        end)
+
+      assert log =~ "ran a git command that can move HEAD"
+    end
+
+    # The window matters, not just the fact that this session has rebased at
+    # some point in its life — a rewrite from a previous, already-finished
+    # task says nothing about the files dirty in this one.
+    test "keeps a turn-sized set when the recorded rewrite predates this task", %{scope: scope} do
+      session =
+        git_session_fixture(scope, DateTime.add(DateTime.utc_now(), -7200, :second))
+
+      file!(scope, "test/spex/983_x/criterion_1_spex.exs", DateTime.utc_now())
+
+      assert [%{path: "test/spex/983_x/criterion_1_spex.exs"}] =
+               changed_files(scope, session.external_conversation_id)
+    end
   end
 
   describe "a session that recorded edits" do
@@ -161,4 +196,17 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
 
   defp session_opts(nil), do: []
   defp session_opts(session_id), do: [session_id: session_id]
+
+  # A real session row, since `git_rewrote_tree?/3` reads `git_rewrite_at`
+  # off the `Sessions` table rather than off `opts` — unlike the plain
+  # `session_id: "attr-N"` string the other tests use, which has no backing
+  # row and so answers "never rewrote" by construction.
+  #
+  # Defaults to 30 minutes ago: after `changed_files/2`'s task `started_at`
+  # (1 hour ago) and before "now", i.e. squarely inside the task's window.
+  defp git_session_fixture(scope, rewrote_at \\ DateTime.add(DateTime.utc_now(), -1800, :second)) do
+    session = session_fixture(scope, %{external_conversation_id: Ecto.UUID.generate()})
+    {:ok, session} = Sessions.update_session(scope, session, %{git_rewrite_at: rewrote_at})
+    session
+  end
 end

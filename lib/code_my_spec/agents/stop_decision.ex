@@ -49,9 +49,9 @@ defmodule CodeMySpec.Agents.StopDecision do
   @doc """
   Decide, and tell the agent if there is anything to tell it.
 
-  `:ok` either way. A decision nobody could deliver is not a failure of the
-  turn that triggered it, and raising here would take down the channel process
-  carrying an agent's transcript.
+  `:ok` either way, on the paths that resolve. A decision that raises crashes
+  the channel process carrying this turn — supervised, so it restarts — rather
+  than being logged and dropped where nobody would see it.
   """
   @spec deliver(Scope.t(), Agent.t(), keyword()) :: :ok
   def deliver(scope, agent, opts \\ [])
@@ -89,13 +89,6 @@ defmodule CodeMySpec.Agents.StopDecision do
       {message, key} ->
         if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
     end
-  rescue
-    error ->
-      Logger.warning(
-        "[StopDecision] could not decide for agent #{agent.id}: " <> Exception.message(error)
-      )
-
-      :ok
   end
 
   @doc """
@@ -138,13 +131,6 @@ defmodule CodeMySpec.Agents.StopDecision do
     else
       do_wake(scope, agent)
     end
-  rescue
-    error ->
-      Logger.warning(
-        "[StopDecision] could not wake agent #{agent.id}: " <> Exception.message(error)
-      )
-
-      :ok
   end
 
   defp do_wake(scope, agent) do

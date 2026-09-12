@@ -40,6 +40,7 @@ defmodule CodeMySpecLocalWeb do
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.Users,
+      CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       # Story LiveViews are shared with the cloud app and live there. The edge
       # only runs this way: CodeMySpecWeb reaches back through the

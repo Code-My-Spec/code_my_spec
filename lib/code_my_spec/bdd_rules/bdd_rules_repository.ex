@@ -18,6 +18,7 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @type attrs :: map()
 
@@ -44,7 +45,7 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
            {:linked, Personas.list_personas_for_story(scope, story.id)} do
       attrs =
         attrs
-        |> normalize()
+        |> Utils.normalize_keys()
         |> Map.put(:account_id, account_id)
         |> Map.put(:project_id, project_id)
         |> Map.put(:story_id, story.id)
@@ -95,12 +96,13 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   def get_rule(%Scope{}, _id), do: nil
 
   @spec update_rule(Scope.t(), Rule.t(), map()) ::
-          {:ok, Rule.t()} | {:error, :missing_active_account | :cross_account | Ecto.Changeset.t()}
+          {:ok, Rule.t()}
+          | {:error, :missing_active_account | :cross_account | Ecto.Changeset.t()}
   def update_rule(%Scope{active_account_id: account_id}, %Rule{} = rule, attrs)
       when not is_nil(account_id) do
     if rule.account_id == account_id do
       rule
-      |> Rule.changeset(Map.delete(normalize(attrs), :account_id))
+      |> Rule.changeset(Map.delete(Utils.normalize_keys(attrs), :account_id))
       |> Repo.update()
     else
       {:error, :cross_account}
@@ -141,13 +143,4 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   defp coerce_story_id(id) when is_integer(id), do: id
   defp coerce_story_id(id) when is_binary(id), do: String.to_integer(id)
-
-  defp normalize(attrs) when is_map(attrs) do
-    Map.new(attrs, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
-    end)
-  rescue
-    ArgumentError -> attrs
-  end
 end

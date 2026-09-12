@@ -41,7 +41,8 @@ defmodule CodeMySpec.Servers do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Utils
     ],
     exports: :all
 
@@ -52,6 +53,7 @@ defmodule CodeMySpec.Servers do
   alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @access_key_public "server_ssh_public_key"
   @access_key_private "server_ssh_private_key"
@@ -81,23 +83,21 @@ defmodule CodeMySpec.Servers do
   end
 
   defp unverified_linked(scope) do
-    scope
-    |> Server.linked_environments()
-    |> Enum.sort()
-    |> Enum.map(fn {name, environment} ->
-      # Not `missing` — that is a claim the provider told us it is gone, and
-      # here the provider told us nothing at all. The label survives either
-      # way: it is ours, not the provider's, so it is the one thing we can
-      # still say for certain.
-      name
-      |> Server.placeholder(environment)
-      |> Map.put(:missing, false)
-      |> Map.put(:unverified, true)
+    Utils.rescued("Servers.unverified_linked", [], fn ->
+      scope
+      |> Server.linked_environments()
+      |> Enum.sort()
+      |> Enum.map(fn {name, environment} ->
+        # Not `missing` — that is a claim the provider told us it is gone, and
+        # here the provider told us nothing at all. The label survives either
+        # way: it is ours, not the provider's, so it is the one thing we can
+        # still say for certain.
+        name
+        |> Server.placeholder(environment)
+        |> Map.put(:missing, false)
+        |> Map.put(:unverified, true)
+      end)
     end)
-  rescue
-    # No account on the scope means no link records to salvage. The caller
-    # still gets its error; it just has nothing to show alongside it.
-    _ -> []
   end
 
   @doc """
@@ -210,11 +210,16 @@ defmodule CodeMySpec.Servers do
 
   defp module_app_name(_project), do: []
 
+  # What setup builds today, offered so the common answer is one click rather
+  # than something to spell. Suggestions, not options: they seed the list, they
+  # do not bound it, and nothing downstream branches on either value.
+  @suggested_environments ["prod", "uat"]
+
   defp environment_names(%Scope{} = scope, project) do
-    %Scope{scope | active_project: project, active_project_id: project.id}
-    |> Provisioning.environment_names()
-  rescue
-    _ -> ["uat", "prod"]
+    Utils.rescued("Servers.environment_names", @suggested_environments, fn ->
+      %Scope{scope | active_project: project, active_project_id: project.id}
+      |> Provisioning.environment_names()
+    end)
   end
 
   defp place(container, by_service) do
@@ -293,11 +298,6 @@ defmodule CodeMySpec.Servers do
     Server.update(server, attrs)
   end
 
-  # What setup builds today, offered so the common answer is one click rather
-  # than something to spell. Suggestions, not options: they seed the list, they
-  # do not bound it, and nothing downstream branches on either value.
-  @suggested_environments ["prod", "uat"]
-
   @doc """
   Labels to offer for a server, seeded with what setup currently supports and
   extended by whatever this account already uses.
@@ -308,15 +308,15 @@ defmodule CodeMySpec.Servers do
   """
   @spec known_environments(Scope.t()) :: [String.t()]
   def known_environments(%Scope{} = scope) do
-    in_use =
-      scope
-      |> Server.linked_environments()
-      |> Map.values()
-      |> Enum.reject(&is_nil/1)
+    Utils.rescued("Servers.known_environments", @suggested_environments, fn ->
+      in_use =
+        scope
+        |> Server.linked_environments()
+        |> Map.values()
+        |> Enum.reject(&is_nil/1)
 
-    (@suggested_environments ++ Enum.sort(in_use)) |> Enum.uniq()
-  rescue
-    _ -> @suggested_environments
+      (@suggested_environments ++ Enum.sort(in_use)) |> Enum.uniq()
+    end)
   end
 
   @doc """

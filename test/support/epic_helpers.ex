@@ -144,6 +144,29 @@ defmodule CodeMySpecSpex.EpicHelpers do
     :ok
   end
 
+  @doc """
+  Where a dispatched agent's own thread is read.
+
+  The same `epic:<id>` key `EpicDispatch.record_question/3` writes under, so the
+  path names the thread the product actually put the question on rather than one
+  a scenario hoped for.
+
+  Here rather than in a spex because a criterion asserting on a page should not
+  also be the thing that resolves the page's address — and `Show` is reached by
+  `?conversation=`, which is the one route the router has.
+  """
+  @spec dispatched_thread_path(map()) :: String.t()
+  def dispatched_thread_path(context) do
+    {:ok, conversation} =
+      CodeMySpec.Conversations.find_or_create_session_conversation(
+        context.scope.active_account_id,
+        context.scope.active_project_id,
+        "epic:#{context.epic}"
+      )
+
+    "/app/projects/#{context.project.id}/agent-conversation?conversation=#{conversation.id}"
+  end
+
   @doc "A dispatched agent stopping without finishing."
   @spec agent_fails(map(), String.t()) :: :ok
   def agent_fails(context, reason) do

@@ -14,7 +14,6 @@ defmodule CodeMySpec.Components.Component do
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Components.ComponentStatus
   alias CodeMySpec.Components.Dependency
-  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Stories.Story
 
@@ -65,7 +64,6 @@ defmodule CodeMySpec.Components.Component do
     has_many :dependencies, through: [:outgoing_dependencies, :target_component]
     has_many :dependents, through: [:incoming_dependencies, :source_component]
 
-    has_many :problems, Problem
     has_many :stories, Story
 
     embeds_one :component_status, ComponentStatus

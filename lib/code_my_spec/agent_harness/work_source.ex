@@ -100,10 +100,6 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
     else
       _ -> :none
     end
-  rescue
-    e ->
-      Logger.warning("[WorkSource] next_for_role failed for #{role}: #{Exception.message(e)}")
-      :none
   end
 
   # Same working-dir resolution as the socket handshake: external_id = "pi:<cwd>".
