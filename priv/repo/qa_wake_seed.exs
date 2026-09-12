@@ -215,33 +215,77 @@ end
 # that and stopped rather than killing infrastructure eleven other projects use
 # (issue 1c5540ae). So "onboard it properly" is not available here at all.
 #
-# And it turns out not to be needed for what these criteria test.
+# What this fixture does and does not reach, measured rather than assumed.
+#
 # `AgentsRepository.continuous_project_scopes/0` starts a watcher from an
-# **agent row**, not from a connected harness, and a wake is delivered to a
-# conversation, which is server-side. The harness is what scans files. None of
-# 3242, 3243, 3244, 3249, 3250, 3303 or 3351 is about files.
+# **agent row**, not from a connected harness — so seeding agents here is enough
+# to make a watcher exist, and the recompute criteria become observable through
+# the requirements graph page:
 #
-# What makes the work actionable here is the stories themselves: three stories
-# with no component linked leave `component_linked` unsatisfied, which is real
-# work of the product role with nothing on disk required.
+#   3244  many writes at once cost one update
+#   3351  a steady stream still gets a pass
+#   3303  a recompute that succeeds passes without noise
 #
-# The honest cost, stated so nobody discovers it as a surprise: this copy has no
-# harness, so it will never report git state or preview status, and anything
-# asking those questions of it gets the never-reported answer. That is correct
-# for a fixture nothing is serving, and it is why this belongs to a project of
-# its own rather than to anything real.
+# The wake criteria are a different matter, and an earlier version of this
+# comment claimed otherwise. They are not reachable here:
+#
+#   3242  work becomes available while nobody is looking
+#   3243  an idle agent does not sit through available work
+#   3249  an agent's own process decides whether the change was for it
+#   3250  a change for somebody else costs a query and nothing more
+#
+# All four are observed through an agent's conversation, and
+# `Agents.dispatch_message/3` is a `with` chain that calls
+# `Transport.impl().dispatch_message/5` **before** `open_conversation/2` and
+# `record_sent/4`. In dev `Transport.impl/0` is `Transport.Harness`, so with no
+# harness holding the copy the transport fails, the chain short-circuits, and
+# nothing is ever written to the conversation. There is nothing to observe —
+# not a missing wake, an undeliverable one.
+#
+# The spex pass because `config/test.exs` sets
+# `:agent_transport` to `CodeMySpecTest.InProcessAgentTransport`. That is the
+# only reason they can see a wake at all, and it is worth knowing before reading
+# a green spex as evidence that the delivery path works.
+#
+# So those four need a harness actually holding this copy, and `cms
+# harness.onboard` cannot run on this box: it boots a full
+# `CodeMySpecLocalWeb.Endpoint` into ports :4003 and :4004 that are already held
+# (issue 1c5540ae). They stay spex-covered until that is fixed.
+#
+# The copy is minted anyway, because the watcher half is real and worth having,
+# and because a fixture that gets three of seven is better than none. `root`
+# comes back nil on purpose — `issue/3` does not persist it, the harness sets it
+# when it reports in, and nothing is reporting.
 device_attrs = %{hostname: "qa-wake-fixture", kind: :local}
 
 {:ok, device} = CodeMySpec.Devices.announce(scope, nil, device_attrs)
 
-{:ok, copy} =
-  CodeMySpec.WorkingCopies.issue(scope, nil,
-    label: "wake fixture (no harness behind it)",
-    root: local_path,
-    device: device
-  )
+# Re-used rather than re-issued. `issue/3` recognises an existing copy by
+# {device, root}, and `root` is nil on a seeded one because nothing reports it —
+# so every run looked like a new checkout and minted another. Three runs, three
+# copies, each with its own cache row and its own graph.
+copy =
+  case Repo.one(
+         from w in CodeMySpec.WorkingCopies.WorkingCopy,
+           where: w.project_id == type(^project.id, :binary_id),
+           order_by: [asc: w.inserted_at],
+           limit: 1
+       ) do
+    nil ->
+      {:ok, c} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "wake fixture (no harness behind it)",
+          root: local_path,
+          device: device
+        )
 
-IO.puts("  working copy: #{copy.id}")
+      IO.puts("  working copy: created #{c.id}")
+      c
+
+    c ->
+      IO.puts("  working copy: exists #{c.id}")
+      c
+  end
 
 scope = %{scope | active_working_copy_id: copy.id}
 
@@ -288,19 +332,22 @@ end
 
 IO.puts("""
 
-Seeded, and a watcher will exist for this project.
+Seeded.
 
-  `GraphWatcher.watch_active_projects/0` runs at boot and picks up any project
-  with a continuous agent, so the watcher appears on the next server start. To
-  get one now without waiting, read this project's requirements graph once —
-  `ensure_watching/1` starts one on demand.
+  A watcher will exist for this project: `watch_active_projects/0` runs at boot
+  and picks up any project with a continuous agent. To get one without waiting
+  for a restart, read this project's requirements graph once — `ensure_watching/1`
+  starts one on demand. `/dev/state?project_id=#{project.id}` shows whether it
+  is running.
 
-  Then drive it: file an issue on this project and watch the product agent's own
-  conversation page for "Work of your kind is available." The coding agent
-  should not be told, which is the other half (3249 and 3250).
+  Reachable here (through the requirements graph page): 3244, 3351, 3303.
 
-  The agents are rows, not processes. Nothing is running or spending tokens;
-  they exist so the wake has somewhere to land and somebody to be about.
+  NOT reachable here: 3242, 3243, 3249, 3250. They watch an agent's
+  conversation, and `dispatch_message/3` calls the transport before it records
+  anything — so with no harness holding this copy the message is undeliverable
+  and never reaches the conversation. Blocked on 1c5540ae, not on this seed.
+
+  The agents are rows, not processes. Nothing is running or spending tokens.
 
 Project:      #{project.id}
 Working copy: #{copy.id}
