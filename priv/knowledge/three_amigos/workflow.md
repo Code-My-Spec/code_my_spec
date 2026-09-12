@@ -10,6 +10,11 @@ The deliverable is a populated set of Rule + Criterion (scenario) +
 Question records on the story, persisted via dedicated MCP tools. No
 flat files. No Gherkin written to disk.
 
+This document covers the session and nothing around it. Where the
+story came from, what sealing buys you, and why a sealed story can
+still be offered to nobody are in `process/product.md`. Read that
+first if you have not run this task before.
+
 ## Protocol ordering
 
 **Persona linkage → Rules → Scenarios → Questions.** Do not skip
@@ -93,6 +98,14 @@ Sealing is one-way, and the gate is the only thing that does it —
 so the conditions above cannot be bypassed. Once sealed, a question
 raised later does not un-seal the story. That is the next
 conversation, not evidence this one never happened.
+
+**Sealing is not permission to start building.** It satisfies this
+one requirement. Before any task is offered on the story it also has
+to be marked ready for development and assigned to a working copy,
+and neither of those is part of this session or done by it. Both are
+in `process/product.md`, under "Released for work" — along with why
+a story missing either reports `0/0` and nothing to do rather than
+an error.
 
 ## Stopping mid-session
 
