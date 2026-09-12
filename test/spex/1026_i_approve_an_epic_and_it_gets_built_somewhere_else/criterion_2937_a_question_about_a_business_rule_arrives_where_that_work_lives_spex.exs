@@ -19,6 +19,23 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
   Story 962 already made a conversation belong to an agent rather than a
   checkout, which is what makes this possible: the dispatched agent has a thread
   of its own by construction.
+
+  ## Read through two pages, not a thread index
+
+  This was written against `/agent-conversation/<id>` and an index that listed
+  threads. Neither exists: the router has one agent-conversation route reached
+  by `?conversation=`, and the panel that replaced the index lists *agents* —
+  a dispatched agent's thread is keyed to the epic and has no agent row, so it
+  is not in that list and cannot be found by scraping the page for links.
+
+  Scraping produced an empty list of threads and the criterion failed saying the
+  question reached no conversation at all, which was a statement about the
+  selector rather than about the product.
+
+  So both pages are named rather than discovered: the dispatched thread through
+  the same `epic:<id>` key the product writes under, and the project
+  conversation through the bare URL, which is the one the user and the main
+  agent talk in. That is the pair the criterion is actually about.
   """
 
   use CodeMySpecSpex.Case
@@ -52,34 +69,23 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
       when_ "it asks me about a business rule", context do
         EpicHelpers.agent_asks(context, "Which rate applies to overseas orders?")
 
-        # The index lists threads rather than what is in them, so finding the
-        # question means opening one — which is also what a person does.
-        {:ok, _live, index} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+        # Both threads, read as a person reads them. The bare URL is the
+        # conversation the user and the main agent are having; the other is the
+        # dispatched agent's own.
+        {:ok, _live, project_thread} =
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
-        threads =
-          ~r"/agent-conversation/([0-9a-f-]{36})"
-          |> Regex.scan(index)
-          |> Enum.map(fn [_, id] -> id end)
-          |> Enum.uniq()
-
-        holding =
-          Enum.filter(threads, fn id ->
-            {:ok, _live, html} =
-              live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation/#{id}")
-
-            html =~ "Which rate applies to overseas orders?"
-          end)
+        {:ok, _live, dispatched_thread} =
+          live(context.conn, EpicHelpers.dispatched_thread_path(context))
 
         {:ok,
          context
-         |> Map.put(:index, index)
-         |> Map.put(:threads, threads)
-         |> Map.put(:holding, holding)}
+         |> Map.put(:project_thread, project_thread)
+         |> Map.put(:dispatched_thread, dispatched_thread)}
       end
 
       then_ "the question is on a conversation of its own", context do
-        assert context.holding != [],
+        assert context.dispatched_thread =~ "Which rate applies to overseas orders?",
                "the dispatched agent's question reached no conversation at all, so it is " <>
                  "waiting on an answer nobody can see it needs"
 
@@ -87,12 +93,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
       end
 
       then_ "and it is not in the conversation I have with the main agent", context do
-        main =
-          ~r/data-test="main-agent"[^>]*href="[^"]*\/agent-conversation\/([0-9a-f-]{36})"/s
-          |> Regex.run(context.index)
-          |> main_agent_id_match()
-
-        refute main && main in context.holding,
+        refute context.project_thread =~ "Which rate applies to overseas orders?",
                "a dispatched agent's question landed in the project conversation. That " <>
                  "thread is where the user and the main agent talk about the project, and " <>
                  "six agents dropping rule questions into it makes it unreadable."
@@ -101,7 +102,4 @@ defmodule CodeMySpecSpex.Story964.Criterion2937Spex do
       end
     end
   end
-
-  defp main_agent_id_match([_, id]), do: id
-  defp main_agent_id_match(nil), do: nil
 end
