@@ -108,6 +108,21 @@ defmodule CodeMySpec.Requirements.Freshness do
   requirements depend on *which* children it has — a child appearing adds nodes
   — and not on whether a child's own spec changed, which moves that child's
   requirements and not its parent's.
+
+  ## Where the remaining cost is
+
+  `analysis_fresh` is project-wide: four booleans, one per analyzer source,
+  each saying whether the last full run still matches the current files. They
+  are correct inputs — `tests_passing` means nothing if the run predates the
+  code — but they are the same four for every component, so any file change
+  anywhere flips them and every component in the project goes stale, then goes
+  stale again when the analyzer catches up.
+
+  Conservative rather than wrong, and the expensive half is untouched: edges
+  are kept across all of it, and stories — the larger population — are keyed on
+  their own inputs and stay put. Narrowing it means analysis freshness per
+  component, which is a change to `Preloader.analysis_freshness/2` and its
+  fingerprint, not to this function.
   """
   @spec component(Preloader.context(), map()) :: String.t()
   def component(ctx, component) do
