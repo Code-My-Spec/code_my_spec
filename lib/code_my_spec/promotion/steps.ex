@@ -13,11 +13,13 @@ defmodule CodeMySpec.Promotion.Steps do
   here, `Runner.Harness` sends the same three operations down the channel to be
   answered by this module on the far side.
 
-  Three named operations rather than one `promote`, because the server has to
-  look at the database *between* the merge and the restart — `gate_target/3`
-  asks whether the merge carried problems into the copy QA tests, and a merge
-  that broke the target must not be served. One atomic op would have to either
-  skip that check or move it after the restart, and after is too late.
+  Three named operations rather than one `promote`, because `precheck` reads
+  the *promoting* copy's root while `merge` and `restart` act on the
+  *running* one — two different disks a single op cannot address — and
+  because `restart` is dispatched separately from the other two on purpose
+  (54aa534c, phase two): `promote/1` answers as soon as `merge` lands, and
+  the restart it starts afterward is never awaited, so it cannot be a step
+  inside the same call that reports the merge.
 
   Three named operations rather than a general `cmd`, because that route was
   refused deliberately: `analysis/run` already owns command execution on the
@@ -63,7 +65,12 @@ defmodule CodeMySpec.Promotion.Steps do
   """
   @spec precheck(Environments.Environment.t(), String.t()) :: result()
   def precheck(env, root) do
-    case git(env, root, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"]) do
+    case git(env, root, [
+           "status",
+           "--porcelain",
+           "--untracked-files=no",
+           "--ignore-submodules=all"
+         ]) do
       {"", 0} -> branch(env, root)
       {dirty, 0} -> uncommitted(dirty)
       {out, _} -> {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
@@ -113,37 +120,30 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Merge `branch` into the checkout at `root`.
 
-  A conflict is aborted, not left. `git merge --abort` runs the instant one is
-  detected, so the running checkout comes back exactly as it was before this
-  call — a promotion either lands cleanly or does not touch the tree at all
-  (John: "force the agent to deal with anything on their end so the git ops
-  in the main checkout are clean").
+  Fast-forward only. A promotion no longer attempts a three-way merge at
+  all: `branch` must already contain everything `root`'s current HEAD has,
+  and `git merge --ff-only` is both the precondition check and the merge in
+  one command — it either advances the ref instantly with nothing that could
+  conflict, or refuses instantly having touched nothing, with no third
+  outcome (John: "we should guarantee with our preconditions that the merge
+  will be clean").
 
-  That reverses this function's original design, on purpose (bed1d974). A
-  conflict used to stay in place, reasoning that the agent who wrote one side
-  is the only party holding the answer and a clean tree after a refusal has
-  nothing to act on. What it cost: a worktree six commits behind main spent
-  2.5 hours converging a spec main had already retired, then wedged the
-  shared dev checkout — the one machine QA runs from, with no test suite and
-  no way to resolve in place — from 00:28 to 10:40 merging it in unattended.
-  The same branch, merged main-first *in the worktree* instead, conflicted
-  immediately and was resolved in two minutes: the identical conflict, but
-  with context and a test suite, because it happened somewhere a person could
-  see it. Aborting and sending the agent back to resolve it there costs one
-  merge it can run locally; leaving it costs the machine QA runs from.
+  This replaced a three-way merge that aborted on conflict (`git merge
+  --abort`, `bed1d974`) rather than leaving one in place. That was already
+  right about *never leaving the shared checkout wedged* — a promotion lands
+  cleanly or does not touch the tree at all — but a real conflict was still
+  reachable, and reaching it meant a promotion had already spent the time to
+  find out. Requiring the ancestor relationship up front removes the
+  question rather than answering it faster: a branch missing commits from
+  main cannot conflict here any more than it can succeed here, because
+  neither is attempted.
 
-  Still names the file, same as before — the abort answers "is this checkout
-  safe", not "what conflicted", and an agent told only the first has to go
-  find the second by running the same merge again.
-
-  Leaving nothing behind has a second effect worth stating: `git merge` will
-  not run at all while `MERGE_HEAD` exists, and that used to be the *next*
-  promotion's problem — failing on the old merge and describing it as a new
-  one. Concluding a resolved merge before starting this one, below, is what
-  closed that; it stays as a defensive path rather than the everyday one now
-  that a fresh conflict no longer leaves `MERGE_HEAD` behind — a crashed
-  process or a human merging by hand outside a promotion are the two ways one
-  still could.
+  `git merge` also refuses outright while `MERGE_HEAD` exists from an
+  earlier, unconcluded merge — the shape a three-way merge could leave and a
+  fast-forward cannot create going forward. Concluding a resolved one before
+  starting this one, below, stays as a defensive path for a checkout that
+  still carries one from before this change, or from a human merging by hand
+  outside a promotion.
 
   A successful merge's result also carries `before`/`after` — the checkout's
   HEAD on either side of it. `Promotion` needs that range to ask
@@ -164,12 +164,14 @@ defmodule CodeMySpec.Promotion.Steps do
   # A merge already in progress, finished before this one starts.
   #
   # `git merge` refuses outright while `MERGE_HEAD` exists — "you have not
-  # concluded your merge" — and that refusal used to fall into `conflict/4`,
-  # which reads `git status` and reports whatever is unmerged as though this
-  # merge had just produced it. So a half-merge left by one promotion made every
-  # later promotion report the same file, and the message named the file rather
-  # than the state. Eight hours went into resolving a conflict that was four
-  # hours old and already resolved.
+  # concluded your merge" — which is a state only a three-way merge could ever
+  # leave. `--ff-only` cannot: it either advances the ref or refuses having
+  # touched nothing, so nothing here is reachable from a promotion that ran
+  # under this version. Kept for a checkout still carrying one from before
+  # this change, or from a human merging by hand outside a promotion —
+  # measured cost of a stale one going unhandled: eight hours resolving a
+  # conflict that was four hours old and already resolved, because the old
+  # code read `git status` fresh and reported it as new.
   #
   # Concluding somebody's resolution is not the same as guessing at it. If no
   # unmerged path still carries conflict markers then the decision has been
@@ -216,10 +218,35 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   defp do_merge(env, root, branch, before) do
-    case git(env, root, ["merge", "--no-edit", branch]) do
+    case git(env, root, ["merge", "--ff-only", branch]) do
       {out, 0} -> {:ok, %{output: String.trim(out), before: before, after: head(env, root)}}
-      {out, _} -> conflict(env, root, branch, out)
+      {out, _} -> not_fast_forward(root, branch, out)
     end
+  end
+
+  # `--ff-only` refuses before touching the tree — no three-way merge is
+  # attempted, so there is nothing to abort and no conflicted file to name.
+  # The one thing it can mean is the one thing it says: `branch` does not
+  # already contain everything `root`'s current HEAD has.
+  #
+  # Said as routine, not as fault. This is the most-read string in the
+  # system — someone else's promotion landing on main while this one was
+  # being worked is ordinary on a shared box, not a mistake, and it will fire
+  # often (phx-new-generator-0f: three times in two hours on this machine).
+  # The wording says so directly rather than reading like an error the agent
+  # caused.
+  defp not_fast_forward(root, branch, out) do
+    {:error,
+     %{
+       reason:
+         "#{branch} is behind main, most likely because another promotion " <>
+           "landed while this one was in progress — normal on a shared " <>
+           "checkout, not a mistake. Nothing was merged — #{root} is " <>
+           "unchanged. In the copy you are promoting from: " <>
+           "`git merge --ff-only main` (or a real merge if that refuses), " <>
+           "then promote again.",
+       output: String.trim(out)
+     }}
   end
 
   # `nil` rather than raising when HEAD cannot be read — `before` is read
@@ -251,36 +278,6 @@ defmodule CodeMySpec.Promotion.Steps do
       _ -> true
     end
   end
-
-  defp conflict(env, root, branch, out) do
-    {status, _} = git(env, root, ["status", "--porcelain"])
-
-    conflicted =
-      status
-      |> String.split("\n", trim: true)
-      |> Enum.filter(&String.match?(&1, ~r/^(UU|AA|DD|AU|UA|DU|UD)/))
-      |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
-
-    # Read before the abort — `git merge --abort` restores the tree and the
-    # unmerged paths above go with it, so this is the only moment the files
-    # are still there to name.
-    {_, _} = git(env, root, ["merge", "--abort"])
-
-    {:error,
-     %{
-       reason:
-         "merging #{branch} would conflict" <>
-           conflict_files(conflicted) <>
-           ". Nothing was merged — #{root} is unchanged. Merge main into #{branch} in the " <>
-           "copy you are promoting from, resolve it there against your own test suite, " <>
-           "and promote again.",
-       conflicts: conflicted,
-       output: String.trim(out)
-     }}
-  end
-
-  defp conflict_files([]), do: ""
-  defp conflict_files(files), do: " in " <> Enum.join(files, ", ")
 
   @doc """
   Bring the application at `root` back up on whatever is now checked out.

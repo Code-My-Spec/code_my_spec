@@ -1,35 +1,27 @@
-defmodule CodeMySpec.Promotion.SelfRestartTest do
+defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   @moduledoc """
-  A self-hosted promotion answers before its own restart can end the call
-  that would have reported it (54aa534c, second defect).
+  Promote answers as soon as the merge lands; the restart is dispatched, not
+  awaited (54aa534c, phase two — John: "the deployment should follow async").
 
-  `just restart`, for a checkout that is this process's own booted root,
-  kills the very BEAM running the promotion — not a channel drop
-  (`e721ccf0d`'s own fix covers that shape, for a genuinely remote harness),
-  a full VM halt with no exception to catch and no `after` block guaranteed
-  to run. So the restart is dispatched detached, and `promote/1` answers
-  with the same "unconfirmed" shape a dropped channel already produces,
-  before the detached task's own restart has a chance to run at all.
-
-  `:persistent_term` is node-global, so the boot root one test writes is the
-  one every other test reads — `CodeMySpec.BootVersionTest` carries the same
-  note for the same reason. Async: false, and cleaned up in `on_exit`.
+  Universal now, not a special case for a self-hosted checkout. It was
+  first built narrowly: `just restart`, for this project's own checkout,
+  kills the very BEAM running the promotion, before it could report anything
+  — no exception to catch, no `after` block guaranteed to run
+  (`Promotion.Lock`'s own moduledoc already records that a server restart
+  comes back with an empty lock table). Dispatching detached fixed that one
+  case. This test drives the *ordinary* path instead — a checkout this
+  process did not boot from — to prove the dispatch is unconditional, not
+  gated on detecting self-hosting.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.BootVersion
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
-
-  setup do
-    on_exit(fn -> :persistent_term.erase({BootVersion, :boot}) end)
-    :ok
-  end
 
   defp git!(root, args) do
     {out, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)
@@ -45,11 +37,16 @@ defmodule CodeMySpec.Promotion.SelfRestartTest do
 
   # Two real checkouts sharing history, matching the shape story 1046's own
   # spex use — a promotion merging into the tree it is promoting from is not
-  # a promotion. The restart recipe writes a marker rather than doing
-  # anything that resembles a real restart: this project's own dev server
-  # must never be touched by a test.
+  # a promotion. `agent_root` is a worktree of `running_root`'s own `main`,
+  # so `story/x` already contains everything `running_root`'s HEAD has —
+  # the fast-forward precondition holds by construction, since nothing
+  # commits to `running_root`'s `main` afterward.
+  #
+  # The restart recipe writes a marker rather than doing anything that
+  # resembles a real restart: this project's own dev server must never be
+  # touched by a test.
   defp a_promotable_project do
-    running_root = CodeMySpec.TempFile.dir("self-restart-running")
+    running_root = CodeMySpec.TempFile.dir("async-deployment-running")
     init_repo(running_root)
     File.write!(Path.join(running_root, "app.ex"), "defmodule App do\nend\n")
 
@@ -61,7 +58,7 @@ defmodule CodeMySpec.Promotion.SelfRestartTest do
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
 
-    agent_root = CodeMySpec.TempFile.dir("self-restart-agent")
+    agent_root = CodeMySpec.TempFile.dir("async-deployment-agent")
     File.rm_rf!(agent_root)
     git!(running_root, ["worktree", "add", "-b", "story/x", agent_root, "main"])
 
@@ -79,7 +76,7 @@ defmodule CodeMySpec.Promotion.SelfRestartTest do
     :ok
   end
 
-  test "reports merged-and-unconfirmed instead of trying to answer after its own restart" do
+  test "reports merged-and-dispatched instead of waiting for the restart to answer" do
     scope = full_scope_fixture()
     {running_root, agent_root} = a_promotable_project()
 
@@ -89,9 +86,6 @@ defmodule CodeMySpec.Promotion.SelfRestartTest do
         device: device_fixture(scope)
       )
 
-    # `issue/3` mints before any root is known; `report_root/2` is the
-    # separate claim that also designates the project's first checkout as
-    # main, matching a real harness's own join.
     {:ok, running} = WorkingCopies.report_root(running, running_root)
 
     {:ok, agent} =
@@ -102,37 +96,37 @@ defmodule CodeMySpec.Promotion.SelfRestartTest do
 
     {:ok, agent} = WorkingCopies.report_root(agent, agent_root)
 
-    File.write!(Path.join(agent_root, "app.ex"), "defmodule App do\n  def changed, do: true\nend\n")
+    File.write!(
+      Path.join(agent_root, "app.ex"),
+      "defmodule App do\n  def changed, do: true\nend\n"
+    )
+
     git!(agent_root, ["commit", "-qam", "the story's work"])
 
     scope = %{scope | active_working_copy_id: agent.id}
     :ok = analyzers_are_current(scope, running)
 
-    # The premise: this process booted from the same checkout the promotion
-    # is about to restart, matching this project's own self-hosted setup.
-    BootVersion.capture(running_root)
-
     result = Promotion.promote(scope)
 
-    assert {:ok, %{merged: "story/x", serving: %{revision: nil, unconfirmed: reason}}} = result,
-           "a self-hosted promotion has to report merged-and-unconfirmed, not try " <>
-             "to run the restart inline and hope the process survives to answer. " <>
-             "Got: #{inspect(result)}"
+    assert {:ok, %{merged: "story/x", serving: %{unconfirmed: reason}}} = result,
+           "an ordinary promotion has to answer merged-and-dispatched, not wait " <>
+             "for the restart to confirm itself. Got: #{inspect(result)}"
 
     assert Promotion.restart_acknowledgement_lost?(reason),
-           "the reason a self-restart reports has to be recognised by the same " <>
-             "predicate a dropped remote channel is, since both mean the same " <>
-             "thing to a caller: merged, restart unconfirmed, do not promote " <>
-             "again to find out. Got: #{inspect(reason)}"
+           "the dispatched-restart reason has to be recognised by the same " <>
+             "predicate a dropped remote channel or a self-restart is, since all " <>
+             "three mean the same thing to a caller: merged, restart unconfirmed, " <>
+             "do not promote again to find out. Got: #{inspect(reason)}"
 
     # The restart still has to actually happen — dispatched, not skipped.
     # Polled rather than asserted immediately: it runs in a detached task
-    # precisely so this process's own answer does not wait on it.
+    # precisely so this call's own answer does not wait on it.
     assert eventually(fn -> File.exists?(Path.join(running_root, ".restarted")) end),
-           "the detached restart never ran — self-hosting detection must not " <>
-             "also skip doing the restart, only skip waiting for it"
+           "the detached restart never ran — answering early must not also skip " <>
+             "doing the restart, only skip waiting for it"
 
     merged_content = File.read!(Path.join(running_root, "app.ex"))
+
     assert merged_content =~ "changed",
            "the merge itself has to have landed on the running copy regardless " <>
              "of what its restart does afterward"

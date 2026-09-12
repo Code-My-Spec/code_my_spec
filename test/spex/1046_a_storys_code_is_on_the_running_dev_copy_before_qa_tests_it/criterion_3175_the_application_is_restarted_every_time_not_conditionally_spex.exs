@@ -77,11 +77,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
       end
 
       then_ "the application is restarted regardless", context do
-        assert exists?(context.running_root, ".restarted"),
-               "the promotion skipped the restart because nothing looked like " <>
-                 "it had changed, which is a second implementation of the " <>
-                 "code-reloading rules and wrong the moment it disagrees. " <>
-                 "Got: #{response_text(context.response)}"
+        # Polled, not asserted immediately: the restart is dispatched and never
+        # awaited (54aa534c, phase two), so `promote` answering is not evidence
+        # the recipe has run yet — only that it has been handed off.
+        eventually(fn ->
+          assert exists?(context.running_root, ".restarted"),
+                 "the promotion skipped the restart because nothing looked like " <>
+                   "it had changed, which is a second implementation of the " <>
+                   "code-reloading rules and wrong the moment it disagrees. " <>
+                   "Got: #{response_text(context.response)}"
+        end)
 
         {:ok, context}
       end
