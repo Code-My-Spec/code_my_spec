@@ -203,30 +203,107 @@ for {title, description} <- stories do
   end
 end
 
+# ---------------------------------------------------------------- the checkout
+#
+# Minted here rather than onboarded, which reverses what this seed said an hour
+# ago. The reasoning then: a working copy no harness stands behind is a checkout
+# that reads as connected and never reports, and onboarding is the real path.
+#
+# The reasoning was right about production and wrong about this. `cms
+# harness.onboard` boots a full `CodeMySpecLocalWeb.Endpoint`, and on a shared
+# box where :4003 and :4004 are already held it dies `eaddrinuse` — QA proved
+# that and stopped rather than killing infrastructure eleven other projects use
+# (issue 1c5540ae). So "onboard it properly" is not available here at all.
+#
+# And it turns out not to be needed for what these criteria test.
+# `AgentsRepository.continuous_project_scopes/0` starts a watcher from an
+# **agent row**, not from a connected harness, and a wake is delivered to a
+# conversation, which is server-side. The harness is what scans files. None of
+# 3242, 3243, 3244, 3249, 3250, 3303 or 3351 is about files.
+#
+# What makes the work actionable here is the stories themselves: three stories
+# with no component linked leave `component_linked` unsatisfied, which is real
+# work of the product role with nothing on disk required.
+#
+# The honest cost, stated so nobody discovers it as a surprise: this copy has no
+# harness, so it will never report git state or preview status, and anything
+# asking those questions of it gets the never-reported answer. That is correct
+# for a fixture nothing is serving, and it is why this belongs to a project of
+# its own rather than to anything real.
+device_attrs = %{hostname: "qa-wake-fixture", kind: :local}
+
+{:ok, device} = CodeMySpec.Devices.announce(scope, nil, device_attrs)
+
+{:ok, copy} =
+  CodeMySpec.WorkingCopies.issue(scope, nil,
+    label: "wake fixture (no harness behind it)",
+    root: local_path,
+    device: device
+  )
+
+IO.puts("  working copy: #{copy.id}")
+
+scope = %{scope | active_working_copy_id: copy.id}
+
+# ---------------------------------------------------------------- the agents
+#
+# `continuous: true` is the whole point — it is what
+# `watch_active_projects/0` looks for, and its absence on every agent of every
+# real project is why these criteria had nothing to observe.
+#
+# Two roles, because 3249 and 3250 are a pair: one agent's kind of work appears
+# and the other's does not, and a single agent cannot show that the deciding is
+# per-listener.
+for {role, tools} <- [{"product", ["create_issue"]}, {"coding", ["create_issue"]}] do
+  existing =
+    Repo.one(
+      from a in CodeMySpec.Agents.Agent,
+        where:
+          a.project_id == type(^project.id, :binary_id) and a.role == ^role and
+            a.continuous == true
+    )
+
+  case existing do
+    nil ->
+      {:ok, agent} =
+        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "claude-code",
+          role: role,
+          working_copy: local_path,
+          working_copy_id: copy.id,
+          project_id: project.id,
+          account_id: account.id,
+          tools: tools,
+          continuous: true,
+          status: :running
+        })
+
+      IO.puts("  agent: created #{role} (#{agent.id})")
+
+    agent ->
+      IO.puts("  agent: exists #{role} (#{agent.id})")
+  end
+end
+
 IO.puts("""
 
-Seeded. What is NOT done here, on purpose:
+Seeded, and a watcher will exist for this project.
 
-  The working copy and its agents. A working copy is a claim that a machine is
-  serving this tree, and minting one from a seed produces a checkout no harness
-  is behind — which reads as a connected copy that never reports, the exact
-  phantom that makes a harness look broken.
+  `GraphWatcher.watch_active_projects/0` runs at boot and picks up any project
+  with a continuous agent, so the watcher appears on the next server start. To
+  get one now without waiting, read this project's requirements graph once —
+  `ensure_watching/1` starts one on demand.
 
-  Onboard it instead, which is the real path and takes one command:
+  Then drive it: file an issue on this project and watch the product agent's own
+  conversation page for "Work of your kind is available." The coding agent
+  should not be told, which is the other half (3249 and 3250).
 
-      cd #{local_path}
-      cms harness.onboard
+  The agents are rows, not processes. Nothing is running or spending tokens;
+  they exist so the wake has somewhere to land and somebody to be about.
 
-  Then start the agents you want woken, on that copy:
-
-      product and coding roles, engine alloy, provider claude-code,
-      continuous: true
-
-  `GraphWatcher.watch_active_projects/0` picks the project up from the first
-  continuous agent, so the watcher exists from that moment and the wake criteria
-  (3242, 3243, 3244, 3249, 3250, 3303, 3351) become observable.
-
-Project: #{project.id}
-Path:    #{local_path}
-Login:   #{email} (magic link via /dev/mailbox)
+Project:      #{project.id}
+Working copy: #{copy.id}
+Path:         #{local_path}
+Login:        #{email} (magic link via /dev/mailbox)
 """)
