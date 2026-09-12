@@ -1849,6 +1849,44 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The question id out of what `AskUserQuestion` answered.
+
+  The tool reports it in prose — "Question id: <uuid>" — because its reader is
+  an agent rather than a parser. A spex that needs to answer the question it
+  just asked has to get the id from somewhere, and reading it back out of the
+  tool's own reply keeps the scenario on the surface instead of reaching into
+  the table the tool wrote.
+  """
+  @spec question_id_from(String.t()) :: String.t()
+  def question_id_from(response_text) do
+    [_, id] = Regex.run(~r/Question id: ([0-9a-f-]{36})/, response_text)
+    id
+  end
+
+  @doc """
+  Answer a question the way the person answering it does.
+
+  `Notifications.answer_question_request/2` is what the inbox form calls, and it
+  is the only thing that marks a request answered and releases whoever was
+  waiting on it. A spex that set the status itself would pass against a listing
+  filtering on a field nothing in the product ever writes.
+
+  `answers` is keyed by the question's own text, which is the shape the form
+  submits and the shape the waiting side reads.
+  """
+  @spec answer_question(Scope.t(), String.t(), String.t()) :: :ok
+  def answer_question(%Scope{} = _scope, question_id, label) do
+    request = CodeMySpec.Repo.get!(CodeMySpec.Notifications.QuestionRequest, question_id)
+
+    answers =
+      Map.new(request.questions, fn question -> {Map.fetch!(question, "question"), label} end)
+
+    {:ok, _answered} = CodeMySpec.Notifications.answer_question_request(question_id, answers)
+
+    :ok
+  end
+
+  @doc """
   Whether this project asks for spec files, and a component to ask it about.
 
   `require_specs` is what `graph_for_type/1` filters a template by, so turning it
