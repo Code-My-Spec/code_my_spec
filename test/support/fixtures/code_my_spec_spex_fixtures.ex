@@ -43,6 +43,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Files,
       CodeMySpec.Generators,
       CodeMySpec.Integrations,
+      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.Migration,
       CodeMySpec.Notifications,

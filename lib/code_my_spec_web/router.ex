@@ -644,6 +644,12 @@ defmodule CodeMySpecWeb.Router do
       # shape as `MailLive`, where the mailbox is the page and `?thread=` is the
       # selection.
       live "/projects/:project_id/agent-conversation", AgentConversationLive.Show, :show
+      # Plural, because the singular is the cockpit above and a session is a
+      # selection within it rather than a page of its own. The spec's route
+      # table still shows `/agent-conversation` for the list and
+      # `/agent-conversation/:conversation_id` for one session — written before
+      # the cockpit decision, and corrected in the spec alongside this line.
+      live "/projects/:project_id/agent-conversations", AgentConversationLive.Index, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

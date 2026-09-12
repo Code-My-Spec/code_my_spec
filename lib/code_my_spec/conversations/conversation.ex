@@ -86,6 +86,29 @@ defmodule CodeMySpec.Conversations.Conversation do
     )
   end
 
+  @doc """
+  Renaming, which is the only thing about an agent thread a person changes.
+
+  Separate from `agent_changeset/2` because that one asserts the keys — an
+  account, a project, and something to find the row by again. A rename touches
+  none of them, and routing it through a changeset that re-validates identity
+  makes "you left the name blank" and "this row lost its agent" the same error.
+  """
+  def rename_changeset(conversation, name) do
+    conversation
+    |> cast(%{name: name}, [:name])
+    |> update_change(:name, &trim/1)
+    |> validate_required([:name])
+    |> validate_length(:name, max: 80)
+  end
+
+  # `cast/3` has already turned a name that is only whitespace into `nil` — its
+  # default empty values treat a blank-trimmed string as absent — so the change
+  # this trims is not guaranteed to be a string. It stores the trimmed name; it
+  # does not decide whether one was given, which `validate_required/2` does next.
+  defp trim(name) when is_binary(name), do: String.trim(name)
+  defp trim(name), do: name
+
   # An agent thread is found by its agent, or — for the threads that have no
   # agent, like a Claude Code lane before adoption or a story interview — by its
   # external id. With neither it is a row nothing can find again, so that fails
