@@ -606,115 +606,97 @@ defmodule CodeMySpec.Promotion do
   defp promoting_copy(%Scope{}, _running),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A stale analyzer is swept, not refused.
+  # A read of the ledger, not a job the gate starts and waits for (54aa534c).
   #
-  # "No problems recorded" and "no problems" are different claims, and the gap
-  # between them is the whole value of the gate: a copy whose analyzers last ran
-  # before the agent's final commits has an empty problem list that means
-  # nothing. Refusing would hand the agent a state it cannot clear — it cannot
-  # make an analyzer fresh by waiting — so the gate waits for a fresh answer
-  # instead.
+  # It used to be the second thing: `ensure_stale_runs/3` enqueued whatever was
+  # stale, then `Analysis.await_all/2` polled until this copy had no run in
+  # flight. On a copy an agent is still working in, that predicate is
+  # re-falsified by every edit — a run enqueued at commit A answers a tree
+  # that has moved to commit B by the time it completes, `await_all/2` sees a
+  # run in flight again, and the wait never ends. Measured live 2026-09-12:
+  # 97.6% of every analysis run this project has ever recorded was superseded
+  # before it finished, and one promotion held the project's lock for sixteen
+  # minutes because its own session kept editing the very file the promotion
+  # was about, re-staling the sweep the gate was waiting on each time.
+  #
+  # The question the gate actually needs answered — is this commit clean —
+  # has usually already been answered by the time an agent promotes; a stop
+  # hook runs analysis on every turn. So this reads whether the CURRENT
+  # commit already has a completed run for every source
+  # (`Analysis.fresh_sources/2` — the same input/completed-fingerprint
+  # comparison the stop hook's own staleness reporting already uses) and
+  # refuses immediately, by name, if it does not. Nothing is enqueued, nothing
+  # is awaited, and `Lock.with_lock/2` is now held for a ledger read, a merge
+  # and a restart — seconds — rather than a wait with no guaranteed end.
   defp gate(%Scope{} = scope) do
-    %{enqueued: enqueued} = sweep_stale(scope)
-
     scope
     |> blocking_problems(nil)
-    |> gate_known(scope, enqueued)
+    |> gate_known(scope)
   end
 
-  # Problems already recorded answer immediately; only a *clean* result has to
-  # wait for the sweep.
-  #
-  # The order matters. A sweep cannot make a recorded problem go away except by
-  # re-running and not finding it, and meanwhile the agent has a list it can act
-  # on right now. Waiting first would hold that list behind minutes of analysis
-  # to tell the agent something it could have been told at once.
-  #
-  # It is the empty list that is untrustworthy: "no problems recorded" and "no
-  # problems" are different claims, and the gap between them is the whole value
-  # of the gate.
-  defp gate_known([], scope, enqueued), do: certify_clean(scope, enqueued)
-  defp gate_known(problems, _scope, enqueued), do: gate_result(problems, enqueued)
+  # A problem already recorded answers immediately, staleness or not — a real
+  # finding does not stop being real because the run that found it is not the
+  # newest one. Only an *empty* list needs the staleness check, because an
+  # empty list from a stale run is not evidence of anything: "no problems
+  # recorded" and "no problems" are different claims, and closing that gap
+  # used to mean waiting for a fresh run — it now means reading whether one
+  # already exists.
+  defp gate_known([], scope), do: gate_freshness(stale_sources(scope))
+  defp gate_known(problems, _scope), do: gate_result(problems)
 
-  defp certify_clean(%Scope{} = scope, enqueued) do
-    case Analysis.await_all(scope, timeout: sweep_timeout()) do
-      :ok -> scope |> blocking_problems(nil) |> gate_result(enqueued)
-      :timeout -> still_sweeping(scope, enqueued)
-    end
+  defp gate_freshness([]), do: {:ok, []}
+  defp gate_freshness(stale), do: {:error, not_certified(stale)}
+
+  defp stale_sources(%Scope{} = scope) do
+    fresh = Analysis.fresh_sources(scope, Run.sources())
+    Enum.reject(Run.sources(), &(&1 in fresh))
   end
 
-  # No deadline of its own, by default (John: "why are we imposing a time
-  # limit on promotion? If it's running all the analysis we shouldn't have a
-  # time limit on it. It needs to be async").
+  # Named and specific on purpose (376e3356 already argued this once, for the
+  # wait this replaces): the ambiguity between "working" and "stuck" is what
+  # cost sixteen minutes to diagnose last time, and a refusal that does not
+  # say which source or what to do about it recreates the same ambiguity one
+  # level up.
   #
-  # It already is: `promote` returns at once and messages the outcome back,
-  # so nothing is blocked on this reply the way a tool call's own caller would
-  # be. A deadline here has exactly one effect — turning "still running" into
-  # "your promotion did not go through" — and on a machine with several
-  # agents' sweeps in flight at once that effect fired on *every* promotion in
-  # one measured session, none of them for a tree that was actually wrong.
-  # Worse, the refusal read as "promote again shortly", which starts another
-  # sweep the next gate then has to wait out too — the advice fed the
-  # condition it was describing (376e3356).
-  #
-  # Safe to leave open-ended because the harness enforces the real bound:
-  # `CmsHarness.Project.AnalysisServer` hard-kills anything past 30 minutes
-  # and answers either way, so a dispatched source is never actually
-  # unbounded — only this wait's *impatience* was. `:promotion_sweep_timeout`
-  # stays as an escape hatch for a caller that genuinely wants one; nothing
-  # sets it by default any more.
-  # `only_failed: true`, which does not mean what its name suggests here.
-  #
-  # The default re-enqueues *everything* by design — "a stop with changed files
-  # re-runs everything", because a skipped source leaves last run's problems in
-  # place with no run to explain them (`analysis.ex:151`). Right for a stop;
-  # wrong for a gate, which would then force a full sweep on every promotion
-  # and wait for it even when every analyzer is already current.
-  #
-  # The flag selects `stale?/3` instead, so only stale or never-run sources are
-  # enqueued — and "a source that has never run is stale, not current", so a
-  # fresh copy still gets swept. That is criterion 3166 exactly.
+  # This reads as a new restriction before it reads as the fix it is —
+  # editing after your last clean run now refuses immediately where it used
+  # to just wait, sometimes forever. Said outright, because the alternative is
+  # an agent discovering the difference by hitting it.
+  defp not_certified(stale) do
+    named = Enum.join(stale, ", ")
+
+    %{
+      reason:
+        "this copy has not been swept clean at its current commit: #{named} " <>
+          "need a fresh run before this can promote. Nothing was started for " <>
+          "you — run analysis on #{named} (a stop hook does this on its own; " <>
+          "`start_analysis` runs one directly) and promote again once it " <>
+          "lands.\n\n" <>
+          "This refuses where the gate used to wait, sometimes indefinitely: " <>
+          "promoting while still editing used to hold this project's lock, " <>
+          "refusing every other promotion, for as long as each edit re-staled " <>
+          "the sweep the gate was waiting on. A stale source is reported at " <>
+          "once instead.",
+      stale: stale
+    }
+  end
+
+  # Still used by `gate_target/3`, which has no ledger to read yet — the merge
+  # it follows produces a commit that has never been analyzed by definition,
+  # so there is no fingerprint match to check and a fresh run is the only way
+  # to answer "did the merge add problems". That wait does not livelock the
+  # way `gate/1`'s did: the running copy is edited only by promotions, which
+  # `Lock.with_lock/2` already serializes, so nothing else is re-staling it
+  # while this one waits.
   defp sweep_stale(%Scope{} = scope),
     do: Analysis.ensure_stale_runs(scope, Run.sources(), only_failed: true)
-
-  # Reachable only when `:promotion_sweep_timeout` is explicitly configured —
-  # nothing sets one by default any more. Says what it is actually waiting on
-  # and for how long, rather than "promote again shortly": that phrase reads as
-  # an instruction to go produce a fresh sweep, and every sweep an agent starts
-  # is one more run the *next* gate has to wait out too (376e3356).
-  defp still_sweeping(scope, enqueued) do
-    {:error,
-     %{
-       reason:
-         "the gate is still waiting on the analyzer sweep it started — " <>
-           sweep_description(scope, enqueued) <>
-           ". Nothing was merged. This is a configured wait limit, not a sign " <>
-           "anything is wrong — wait for it rather than promoting again, which " <>
-           "only queues more work behind the same limit.",
-       sweeping: enqueued
-     }}
-  end
-
-  defp sweep_description(scope, enqueued) do
-    case Analysis.in_flight_since(scope) do
-      since when map_size(since) > 0 ->
-        since
-        |> Enum.map_join(", ", fn {source, at} -> "#{source} since #{DateTime.to_iso8601(at)}" end)
-
-      _ ->
-        "a fresh sweep" <> sweep_names(enqueued)
-    end
-  end
-
-  defp sweep_names([]), do: ""
-  defp sweep_names(sources), do: " (" <> Enum.join(sources, ", ") <> ")"
 
   defp sweep_timeout,
     do: Application.get_env(:code_my_spec, :promotion_sweep_timeout, :infinity)
 
-  defp gate_result([], enqueued), do: {:ok, enqueued}
+  defp gate_result([]), do: {:ok, []}
 
-  defp gate_result(problems, _enqueued) do
+  defp gate_result(problems) do
     {:error,
      %{
        reason:
