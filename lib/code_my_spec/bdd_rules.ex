@@ -26,6 +26,7 @@ defmodule CodeMySpec.BddRules do
       CodeMySpec.Personas,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -33,6 +34,7 @@ defmodule CodeMySpec.BddRules do
     exports: :all
 
   alias CodeMySpec.BddRules.BddRulesRepository
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -57,6 +59,11 @@ defmodule CodeMySpec.BddRules do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:bdd_rules", message)
+
+    # And to the graph's own topic. A new rule can make `three_amigos_complete`
+    # actionable, which an idle continuous agent would not otherwise learn about
+    # until something else woke it (d8c5d193). See `Requirements.GraphInputs`.
+    GraphInputs.changed(scope)
   end
 
   @doc """

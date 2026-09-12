@@ -23,12 +23,18 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.BddRules
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues
+  alias CodeMySpec.Personas
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Stories
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -78,6 +84,20 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     end
   end
 
+  defp persona_linked!(scope, story) do
+    n = System.unique_integer([:positive])
+
+    {:ok, persona} =
+      Personas.create_persona(scope, %{
+        name: "Sam #{n}",
+        slug: "sam-#{n}",
+        description: "operator"
+      })
+
+    {:ok, _} = Personas.link_persona_to_story(scope, persona.id, story.id)
+    persona
+  end
+
   test "filing an issue reaches a product agent that had stopped", ctx do
     product = product_agent(ctx.scope, ctx.copy)
     {:ok, _pid} = GraphWatcher.ensure_watching(ctx.scope)
@@ -117,6 +137,86 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
 
     assert_receive {:graph_inputs_changed, project_id}, 1_000
     assert project_id == ctx.scope.active_project_id
+  end
+
+  # Story release, a rule or scenario landing, a persona link, and a deploy
+  # record never announced (d8c5d193) — only `Issues` and `Qa` did, so an idle
+  # continuous agent was woken by a triaged issue but not by the four inputs
+  # `three_amigos_complete`, `bdd_specs_exist`, `personas_complete` and
+  # `deploy` are actually computed from.
+  describe "the four inputs that never announced" do
+    test "releasing a story announces", ctx do
+      story = story_fixture(ctx.scope)
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _story} = Stories.update_story(ctx.scope, story, %{ready_for_dev: true})
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
+
+    test "adding a rule announces", ctx do
+      story = story_fixture(ctx.scope)
+      persona_linked!(ctx.scope, story)
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _rule} = BddRules.create_rule(ctx.scope, story.id, %{statement: "a rule"})
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
+
+    test "adding a scenario announces", ctx do
+      story = story_fixture(ctx.scope)
+      persona_linked!(ctx.scope, story)
+      {:ok, rule} = BddRules.create_rule(ctx.scope, story.id, %{statement: "a rule"})
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _criterion} =
+        AcceptanceCriteria.create_criterion(ctx.scope, story, %{
+          name: "the happy path",
+          description: "the visitor gets what they came for",
+          kind: :happy_path,
+          rule_id: rule.id
+        })
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
+
+    test "linking a persona to a story announces", ctx do
+      story = story_fixture(ctx.scope)
+      n = System.unique_integer([:positive])
+
+      {:ok, persona} =
+        Personas.create_persona(ctx.scope, %{
+          name: "Sam #{n}",
+          slug: "sam-#{n}",
+          description: "operator"
+        })
+
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _link} = Personas.link_persona_to_story(ctx.scope, persona.id, story.id)
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
+
+    test "recording a deploy announces", ctx do
+      story = story_fixture(ctx.scope)
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _deploy} = Deploys.record(ctx.scope, story.id, "uat")
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
+
+    test "verifying a deploy announces", ctx do
+      story = story_fixture(ctx.scope)
+      {:ok, _deploy} = Deploys.record(ctx.scope, story.id, "uat")
+      GraphInputs.subscribe(ctx.scope.active_project_id)
+
+      {:ok, _deploy} = Deploys.verify(ctx.scope, story.id, "uat")
+
+      assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    end
   end
 
   # The harness's own path, and the one that carries most real change. A scan

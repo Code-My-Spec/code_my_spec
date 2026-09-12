@@ -17,12 +17,14 @@ defmodule CodeMySpec.Stories do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Tags,
       CodeMySpec.Users,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -55,6 +57,13 @@ defmodule CodeMySpec.Stories do
       "user:#{scope.active_account_id}:stories",
       message
     )
+
+    # And to the graph's own topic, additionally. A release, a rename, a
+    # component link — any of them can make `bdd_specs_exist`, `qa_journey_plan`
+    # or another gated node actionable, which is work appearing that an idle
+    # continuous agent would otherwise sit through until something else woke it
+    # (d8c5d193). See `Requirements.GraphInputs`.
+    GraphInputs.changed(scope)
   end
 
   @doc """

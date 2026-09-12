@@ -13,6 +13,7 @@ defmodule CodeMySpec.Personas do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -22,6 +23,7 @@ defmodule CodeMySpec.Personas do
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -48,6 +50,12 @@ defmodule CodeMySpec.Personas do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_project_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
+
+    # And to the graph's own topic. Linking a persona can make
+    # `personas_complete` actionable, which an idle continuous agent would not
+    # otherwise learn about until something else woke it (d8c5d193). See
+    # `Requirements.GraphInputs`.
+    GraphInputs.changed(scope)
   end
 
   def create_persona(scope, attrs) do
