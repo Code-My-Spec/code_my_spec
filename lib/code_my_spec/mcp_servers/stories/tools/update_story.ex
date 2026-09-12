@@ -36,8 +36,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
         "User-story sentence in 'As a [role], I want [goal] so that [value]' format. " <>
           "Keep it to the sentence — mechanism and caveats belong in `notes` (optional)"
 
-    field :notes, :string,
-      doc: "Working notes — mechanism, dependencies, caveats (optional)"
+    field :notes, :string, doc: "Working notes — mechanism, dependencies, caveats (optional)"
 
     field :ready_for_dev, :boolean,
       doc:
@@ -51,6 +50,19 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
 
     field :priority, :integer,
       doc: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
+
+    # Declared because it was already reaching the changeset — `transform_params/2`
+    # passes everything but `story_id` and `acceptance_criteria` straight
+    # through, and `Story.changeset/2` casts `:epic_id`. What was missing was
+    # this line, and Anubis drops an undeclared parameter in silence, so a
+    # caller passing `epic_id` got a success and no change.
+    #
+    # `assign_story_to_epic` remains the usual route — it takes a name and reads
+    # better at a call site. This is for a caller that already holds the id.
+    field :epic_id, :string,
+      doc:
+        "Move the story into this epic, or pass null to take it out. " <>
+          "Prefer `assign_story_to_epic`, which takes the epic's name (optional)"
   end
 
   @impl true
