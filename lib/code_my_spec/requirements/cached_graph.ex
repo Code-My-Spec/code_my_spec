@@ -12,6 +12,13 @@ defmodule CodeMySpec.Requirements.CachedGraph do
 
   schema "requirement_graphs" do
     field :fingerprint, :string
+
+    # What the *edges* were computed from, which is not what the nodes were
+    # computed from. A partial recompute keeps the stored edges, and this is
+    # what makes that safe to do: it moves when a dependency, a parent or the
+    # config moves, and those are the only things that change an edge.
+    field :topology_fingerprint, :string
+
     field :node_count, :integer
     field :edge_count, :integer
     field :computed_by, :string

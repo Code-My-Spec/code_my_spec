@@ -32,11 +32,24 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
       doc:
         "Pass true to see only stories not yet assigned to any epic — " <>
           "useful when grouping stories into epics (optional)"
+
+    # The other half of `without_epic`, which shipped alone. You could ask which
+    # stories belong to *no* epic and not which belong to *this* one, so
+    # "what is in this epic" had no answer short of `get_story` per story —
+    # `list_epics` gives a count and not the members. The main agent answered it
+    # for the product role three times, each time smoothly, which is how a gap
+    # this ordinary stayed invisible (cf035b50).
+    field :epic, :string,
+      doc:
+        "Filter to one epic, by slug or id as printed by list_epics — the " <>
+          "stories that epic contains (optional)"
   end
 
   @impl true
   def execute(params, frame) do
-    Logger.debug("[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}")
+    Logger.debug(
+      "[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}"
+    )
 
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
@@ -44,7 +57,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
         offset = max(params[:offset] || 0, 0)
         opts = build_opts(params, limit, offset)
 
-        Logger.debug("[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}")
+        Logger.debug(
+          "[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}"
+        )
+
         {stories, total} = Stories.list_project_stories_paginated(scope, opts)
         Logger.debug("[ListStories] got #{total} stories, page size: #{length(stories)}")
         {:reply, StoriesMapper.stories_list_response(stories, total, limit, offset), frame}
@@ -65,8 +81,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
         do: Keyword.put(opts, :ready_for_dev, params[:ready_for_dev]),
         else: opts
 
-    if is_boolean(params[:without_epic]),
-      do: Keyword.put(opts, :without_epic, params[:without_epic]),
-      else: opts
+    opts =
+      if is_boolean(params[:without_epic]),
+        do: Keyword.put(opts, :without_epic, params[:without_epic]),
+        else: opts
+
+    if params[:epic], do: Keyword.put(opts, :epic_id, params[:epic]), else: opts
   end
 end

@@ -393,6 +393,23 @@ defmodule CodeMySpecWeb.Router do
       get "/agents", DevAgentController, :index
       post "/agents/:agent_id/message", DevAgentController, :message
 
+      # A real session for QA, without the shared mailbox.
+      #
+      # QA drives the browser and so needs a real session; getting one meant
+      # working the magic-link flow by hand every run, against a `/dev/mailbox`
+      # every agent on the box shares — so "the right message" is whichever
+      # login arrived last, and a second agent testing concurrently takes yours.
+      #
+      # These mint the same `"login"` token `deliver_login_instructions/2` puts
+      # in the email, redeemed at the same route by the same controller. QA
+      # exercises the product's real session auth; what it skips is the mailbox,
+      # not the authentication.
+      #
+      # Inside `:dev_routes` for a sharper reason than its neighbours: that one
+      # can message an agent, this one can become a user.
+      post "/sign-in", DevSignInController, :create
+      post "/sign-up", DevSignInController, :register
+
       # Thinning a working copy that has collected more agents than it can feed.
       # Three coding agents on one checkout is three stories in flight and seven
       # concurrent analyzer runs against one Postgres — observable through

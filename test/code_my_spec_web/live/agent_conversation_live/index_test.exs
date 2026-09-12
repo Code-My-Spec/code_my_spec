@@ -41,6 +41,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.IndexTest do
     )
   end
 
+  # The rows in render order, by id.
+  #
+  # This used to compare `:binary.match/2` positions of the two display names in
+  # the raw HTML, which answers "where does this string first appear anywhere on
+  # the page" — inside an attribute, a script payload, a flash, a title. That is
+  # not the list's order, and it agrees with the list's order only by luck.
+  #
+  # The luck is worth naming: this assertion failed once, inside a promotion's
+  # analyzer sweep, and could not be reproduced afterwards — twenty-five
+  # consecutive isolated runs, a run on the analyzer's own partition, and the
+  # full 724-test web suite on that partition, all green. Whether that failure
+  # was this weakness or something real is now a question that cannot be asked
+  # of this test again, which is the point: it can only fail for the reason it
+  # names.
+  defp listed_ids(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='agent-conversation']")
+    |> Enum.flat_map(&Floki.attribute(&1, "data-conversation-id"))
+  end
+
   defp session(scope, project, external_id) do
     {:ok, conversation} =
       Conversations.find_or_create_session_conversation(
@@ -98,10 +119,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.IndexTest do
 
       {:ok, _view, html} = live(conn, path(project))
 
-      active_at = :binary.match(html, Conversations.display_name(active))
-      quiet_at_pos = :binary.match(html, Conversations.display_name(quiet))
-
-      assert active_at < quiet_at_pos,
+      assert listed_ids(html) == [active.id, quiet.id],
              """
              The session that moved most recently is not first. Ordered by
              creation, the list puts a session nobody has touched in an hour

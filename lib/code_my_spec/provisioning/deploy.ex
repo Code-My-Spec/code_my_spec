@@ -96,18 +96,45 @@ defmodule CodeMySpec.Provisioning.Deploy do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     script = deploy_script(env, opts)
 
+    started = System.monotonic_time(:millisecond)
+
     Logger.info("[Deploy] migrating #{environment}")
 
     # One line per phase, same reason `Builder.Remote.build/4` just grew
     # them: nothing here logged anything between "started" and "done or
     # failed", so a slow migrate/health-check/swap and a stuck one looked
     # identical from the outside.
+    #
+    # With how long each one took, because that is the question nobody can
+    # answer. `Remote.ssh_runner/2` bounds every remote command at 600s per
+    # phase, and that default was calibrated against a run finishing in under
+    # seven minutes; a later run took 20+ (`6f982579`). Whether any single phase
+    # is near the ceiling, or the growth is spread across build, health and
+    # cleanup, has been unanswerable twice — both times the honest conclusion
+    # was "needs profiling data I cannot safely generate", and nothing was
+    # emitting the data.
+    #
+    # It costs two monotonic reads per deploy and makes the next real one the
+    # profiling run, so the timeout can be set from evidence rather than raised
+    # by guess against live deploy infrastructure.
     with {:ok, migrate_out, result} <- migrate_with_bootstrap(env, environment, script, now, opts),
-         _ = Logger.info("[Deploy] #{environment} migrated, checking health"),
+         migrated = System.monotonic_time(:millisecond),
+         _ =
+           Logger.info(
+             "[Deploy] #{environment} migrated in #{took(started, migrated)}, checking health"
+           ),
          {:ok, result} <- health(result, opts, now, skip_health?(migrate_out, result, opts)),
-         _ = Logger.info("[Deploy] #{environment} healthy, swapping"),
+         healthy = System.monotonic_time(:millisecond),
+         _ =
+           Logger.info("[Deploy] #{environment} healthy in #{took(migrated, healthy)}, swapping"),
          {:ok, result} <- swap(env, environment, script, result, now, opts) do
-      Logger.info("[Deploy] #{environment} swapped")
+      swapped = System.monotonic_time(:millisecond)
+
+      Logger.info(
+        "[Deploy] #{environment} swapped in #{took(healthy, swapped)} " <>
+          "(total #{took(started, swapped)})"
+      )
+
       %{result | output: migrate_out, live_version: :new}
     else
       {:error, %Result{} = refused} ->
@@ -124,13 +151,22 @@ defmodule CodeMySpec.Provisioning.Deploy do
         # row each logged nothing but trailing "sending keepalive"/
         # "queueing packet" lines before this.
         Logger.warning(
-          "[Deploy] #{environment} refused at #{refused.failed_phase}: #{refused.reason} " <>
+          "[Deploy] #{environment} refused at #{refused.failed_phase} after " <>
+            "#{took(started, System.monotonic_time(:millisecond))}: #{refused.reason} " <>
             "output=#{inspect(error_excerpt(refused.output))}"
         )
 
         refused
     end
   end
+
+  # How long, to a tenth of a second.
+  #
+  # On the refusal line as well as the success ones, and that is the one that
+  # pays for itself: a phase refusing at almost exactly 600s is a timeout
+  # wearing a command failure's clothes, and `timeout` exits 124 without saying
+  # why. The duration is what tells the two apart at a glance.
+  defp took(from, to), do: "#{Float.round((to - from) / 1000, 1)}s"
 
   @error_markers ["ERROR (", "Error response from daemon", "error response from daemon"]
 

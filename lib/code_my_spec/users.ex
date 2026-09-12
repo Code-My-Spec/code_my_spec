@@ -389,9 +389,27 @@ defmodule CodeMySpec.Users do
   """
   def deliver_login_instructions(%User{} = user, magic_link_url_fun)
       when is_function(magic_link_url_fun, 1) do
+    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(mint_login_token(user)))
+  end
+
+  @doc """
+  Mint a magic-link login token without sending anything.
+
+  The same `"login"` token `deliver_login_instructions/2` puts in the email,
+  redeemed at the same route by the same controller — extracted so a caller that
+  already knows how to reach the person does not have to send mail to get one.
+
+  Its one caller today is the dev-only QA sign-in route, which hands the link
+  straight to a browser. That route previously built and inserted the token
+  itself, which put a `Repo` call in `CodeMySpecWeb` — a boundary violation, and
+  the wrong shape regardless: minting credentials is the Users context's job,
+  and a second implementation of it is how the two drift.
+  """
+  @spec mint_login_token(User.t()) :: String.t()
+  def mint_login_token(%User{} = user) do
     {encoded_token, user_token} = UserToken.build_email_token(user, "login")
     Repo.insert!(user_token)
-    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token))
+    encoded_token
   end
 
   @doc """

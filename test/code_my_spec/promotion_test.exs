@@ -24,6 +24,7 @@ defmodule CodeMySpec.PromotionTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
 
   describe "a runner with nowhere to run" do
@@ -143,6 +144,46 @@ defmodule CodeMySpec.PromotionTest do
     end
   end
 
+  describe "a restart whose acknowledgement never comes back" do
+    # Promotion restarts the application on the running copy; the running copy
+    # is :4000; every harness channel is served by :4000. So the happy path ends
+    # with the server dropping the connection the reply was coming back on, and
+    # the caller is told it could not reach the machine — for a promotion whose
+    # merge already landed two steps earlier.
+    #
+    # What the wrong reading costs: an agent told its promotion failed promotes
+    # again, and each retry restarts the shared dev server every other working
+    # copy on the box is using. Measured at three in one session.
+
+    test "the timeout shape a successful restart produces is recognised" do
+      assert Promotion.restart_acknowledgement_lost?(%{
+               reason:
+                 "could not reach the machine holding this checkout: " <>
+                   "{:harness_timeout, %{op: \"promotion_restart\", elapsed_ms: 2377}}"
+             })
+    end
+
+    test "so is the HTTP door's version, which wears a different error" do
+      assert Promotion.restart_acknowledgement_lost?(%{
+               reason: "could not promote: :not_connected"
+             })
+
+      assert Promotion.restart_acknowledgement_lost?(%{reason: "{:shutdown, :draining}"})
+    end
+
+    test "a genuine refusal is not mistaken for one" do
+      refute Promotion.restart_acknowledgement_lost?(%{
+               reason: "this copy has uncommitted work. Commit it, then promote."
+             })
+
+      refute Promotion.restart_acknowledgement_lost?(%{
+               reason: "merging light-harness into the running copy conflicts in foo.exs"
+             })
+
+      refute Promotion.restart_acknowledgement_lost?(:whatever)
+    end
+  end
+
   describe "a fresh conflict" do
     setup do
       {:ok, root} = Briefly.create(directory: true)
@@ -193,7 +234,6 @@ defmodule CodeMySpec.PromotionTest do
       {main_head, 0} = git.(["rev-parse", "main"])
       assert String.trim(head) == String.trim(main_head), "HEAD moved despite the abort"
     end
-
   end
 
   describe "divergence git can reconcile without a conflict" do

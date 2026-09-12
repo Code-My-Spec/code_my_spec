@@ -25,6 +25,9 @@ defmodule CodeMySpec.Requirements.CheckerResult do
     do: {:ok, :valid, advisory}
 
   def to_evaluation({true, _detail}), do: {:ok, :valid}
-  def to_evaluation({false, %{reason: reason}}) when is_binary(reason), do: {:ok, :invalid, reason}
+
+  def to_evaluation({false, %{reason: reason}}) when is_binary(reason),
+    do: {:ok, :invalid, reason}
+
   def to_evaluation({false, detail}), do: {:ok, :invalid, inspect(detail)}
 end

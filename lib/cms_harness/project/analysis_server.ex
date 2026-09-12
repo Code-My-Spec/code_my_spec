@@ -26,6 +26,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   require Logger
 
   alias CmsHarness.Analysis
+  alias CmsHarness.AnalysisSlots
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Sync
 
@@ -301,7 +302,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
     task =
       Task.Supervisor.async_nolink(Sync.task_supervisor(project.root), fn ->
-        Analysis.run(project, entry.source, entry.args)
+        run_with_slot(project, entry)
       end)
 
     timer = Process.send_after(self(), {:timeout, entry.run_id}, timeout())
@@ -310,6 +311,32 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   defp maybe_start_next(state), do: state
+
+  # Inside the task, so the slot is held by the process doing the work and comes
+  # back when it exits — including when the thirty-minute timer kills it.
+  #
+  # Refused rather than queued. The kill timer is armed at dispatch, above, so a
+  # run that waited its turn would spend that budget waiting and then be killed
+  # for being slow — reported as a hung tool, which is the misattribution the
+  # limit exists to prevent. `:busy` is answered at once and the next stop
+  # re-enqueues whatever is stale, so nothing is lost but a few minutes.
+  #
+  # An error tuple rather than a silent skip, because this module's own rule is
+  # that every request is answered: a run the server started is a `:running` row
+  # in its ledger, and one nobody finishes makes the stop hook report analysis
+  # pending forever.
+  defp run_with_slot(project, entry) do
+    case AnalysisSlots.acquire() do
+      :ok ->
+        Analysis.run(project, entry.source, entry.args)
+
+      :busy ->
+        {:error,
+         "this machine is already running #{AnalysisSlots.limit()} analyzer suites, which is " <>
+           "its limit — more at once makes every one of them report failures that are the " <>
+           "load rather than the code. Nothing ran. The next stop re-enqueues this."}
+    end
+  end
 
   defp clear_running(state) do
     if state.timer, do: Process.cancel_timer(state.timer)

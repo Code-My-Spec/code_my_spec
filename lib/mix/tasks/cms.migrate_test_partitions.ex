@@ -1,108 +1,151 @@
 defmodule Mix.Tasks.Cms.MigrateTestPartitions do
-  @shortdoc "Migrate every test-database partition this working copy has, not just the one this VM booted with"
+  @shortdoc "Migrate every test database this working copy uses"
 
   @moduledoc """
   Migrate every partition of this working copy's test database.
 
       MIX_ENV=test mix cms.migrate_test_partitions
 
-  A worktree's test database is not one database. `CmsHarness.TestDatabase`
-  gives it three: the interactive session's own (what `mix test` and a plain
-  `MIX_ENV=test mix ecto.migrate` reach), the analyzer's spex partition
-  (`<partition>s`), and the analyzer's exunit partition (`<partition>a`). A
-  running VM is connected to exactly one of these — whichever
-  `MIX_TEST_PARTITION` it booted with — so `ecto.migrate` migrates that one
-  and nothing tells you the other two exist, let alone that they are now
-  behind.
+  A working copy has three, not one:
 
-  Measured (d86b09cd): a migration landed on the interactive partition,
-  `ecto.migrate` reported "already up" against it, and the analyzer's spex
-  sweep reported 479 `undefined_column` failures against the sibling
-  partition nobody had touched — a correct migration, a correct-looking
-  `ecto.migrate`, and a database nothing in that command's own output
-  mentioned. This closes the gap at the source: run this once after a
-  migration lands in a worktree and every partition that exists is current,
-  rather than relying on the next spex or exunit run to discover the drift
-  by failing in bulk.
+      code_my_spec_test<partition>     the interactive session's `mix test`
+      code_my_spec_test<partition>a    the analyzer's exunit run
+      code_my_spec_test<partition>s    the analyzer's spex run
 
-  Only partitions that already exist are migrated. A partition nothing has
-  used yet is not created here — `Mix.Tasks.Cms.CheckTestMigrations` already
-  creates one lazily the moment something actually needs it, and this task
-  deciding to create one too would be a second place with that judgement call.
+  A running VM is connected to exactly one — whichever the environment resolved
+  — so `MIX_ENV=test mix ecto.migrate` migrates that one and says nothing about
+  the other two. After a schema change a targeted `mix test` passes against the
+  base while the analyzer reports hundreds of failures against a partition on
+  last week's schema, and `ecto.migrate` answers "Migrations already up",
+  truthfully, about a different database.
+
+  Measured (`d86b09cd`): 479 spex problems, every one
+  `ERROR 42703 (undefined_column) column q0.resolution does not exist`, against
+  a tree whose migration was written, committed and applied. An hour across two
+  people, and four confident wrong diagnoses on the way — that the migration had
+  not been written, that it had not been committed, that the analyzer was
+  serving stale records, that the fingerprint had deadlocked. The actual answer
+  was two databases with different schemas both answering, and nothing naming
+  which one had.
+
+  ## "Up to date" is about versions, not about DDL
+
+  This reports a database current when `schema_migrations` holds every version
+  on disk. That is Ecto's model and there is no other one available — but it can
+  be true of a database whose tables are wrong, and this repo has produced
+  exactly that.
+
+  Two migrations were stamped `20260912010000`. Only one row can record that
+  version, so on some databases the loser was marked applied without ever
+  running. Renumbering fixed the file and could not un-record the version, so
+  those databases carry a complete `schema_migrations` and an incomplete schema,
+  and nothing that reads versions can tell.
+
+  Measured 2026-09-12: after this task reported all three partitions up to date,
+  `working_copies_device_id_fkey` was `ON DELETE CASCADE` on the base and
+  `ON DELETE RESTRICT` on the spex partition. Criterion 2848 asserts a device
+  deletion takes its checkouts with it; it passed on one database and raised
+  `Ecto.ConstraintError` on the other, from the same commit.
+
+  **The repair for that is `DROP DATABASE`, not another migrate.** These hold
+  nothing but test data and are rebuilt on demand, so dropping the `a` and `s`
+  partitions and letting them be created and migrated from an empty history is
+  cheap and is the only thing that guarantees the schema matches the migrations.
+  Reach for it when a suite fails on one partition and passes on another.
+
+  ## Existing partitions only — nothing is created here
+
+  A partition nothing has used yet has no database, and that is not a problem to
+  solve here: `Mix.Tasks.Cms.CheckTestMigrations` creates one lazily at the
+  moment something actually needs it. Creating them here as well would be a
+  second place holding that judgement, and it would pay a full migration
+  (~37.6s) for a database that may never be used — on a box whose Postgres
+  connection arithmetic already reaches its limit exactly (`51fb4adb`).
+
+  ## Why a task and not an alias on `ecto.migrate`
+
+  `cms.check_test_migrations` refuses a run whose database is behind and prints
+  the exact command for *that* partition, because migrating on every invocation
+  costs ~14s and a suite should not pay it. That refusal is the signal; this is
+  the remedy it points at. Three databases means three of those refusals, one
+  run at a time — this settles all three in one pass.
 
   ## Why this runs entirely in this VM
 
-  Each sibling is migrated through its own dynamically-configured connection
-  to `Repo` (`Ecto.Repo.put_dynamic_repo/1`) — never by exporting
-  `MIX_TEST_PARTITION` and shelling out to `mix` for each one. That is the same
-  reason `CmsHarness.TestDatabase`'s own moduledoc gives for not doing that:
-  `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a child's environment,
-  so a shelled-out "migrate this partition" ran against **dev** three times on
-  2026-08-13. A dynamic repo connection is named by this function call, in
-  this process, from a database string built here — there is no child and no
+  Each sibling is migrated through its own dynamically-configured connection to
+  `Repo`, never by exporting `MIX_TEST_PARTITION` and shelling out to `mix` per
+  partition. That is the reason `CmsHarness.TestDatabase`'s own moduledoc gives
+  for not doing it: `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a
+  child's environment, so a shelled-out "migrate this partition" ran against
+  **dev** and a sibling truncate emptied the shared development database three
+  times on 2026-08-13. A dynamic repo connection is named by this function call,
+  in this process, from a database string built here — there is no child and no
   environment variable for anything to misdirect.
   """
 
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  alias CmsHarness.TestDatabase
+  alias ClientUtils.Harness.Onboarding
   alias CodeMySpec.Repo
 
   @requirements ["app.start"]
 
-  # `nil` first: the interactive partition is what a plain `ecto.migrate`
-  # already reaches, and leading with it makes the output read as "the one you
-  # know about, then the two you don't" rather than an arbitrary order.
-  @sources [nil, "spex", "exunit"]
+  @suffixes ["", "a", "s"]
 
   @impl Mix.Task
   def run(_args) do
-    cwd = File.cwd!()
+    base = "code_my_spec_test" <> Onboarding.resolve_partition!(File.cwd!())
 
-    Enum.each(@sources, fn source ->
-      database = database_name(cwd, source)
-      report(migrate_if_exists(database), label(source), database)
-    end)
-
-    :ok
+    case partitions(base) do
+      {:ok, databases} -> Enum.each(databases, &report(&1, migrate_if_exists(&1)))
+      {:error, reason} -> Mix.raise(reason)
+    end
   end
 
-  defp label(nil), do: "interactive"
-  defp label(source), do: source
+  @doc """
+  The three databases belonging to `base`.
 
-  defp report(:migrated, label, database),
-    do: Mix.shell().info("[migrate_test_partitions] #{label}: migrated #{database}")
+  The base comes from `Onboarding.resolve_partition!/1` — what onboarding
+  recorded for this working copy — and not from the resolved repo config or from
+  `MIX_TEST_PARTITION`.
 
-  defp report(:absent, label, database),
-    do:
-      Mix.shell().info(
-        "[migrate_test_partitions] #{label}: #{database} does not exist yet, skipping"
-      )
+  Both of those are wrong here for the same reason. A session inherits
+  `MIX_TEST_PARTITION` from whatever launched it, and on this machine that is
+  routinely another checkout's value (measured: a session in this worktree
+  carrying `h0a2edd36`, the main checkout's, while its own recording says
+  `h789652af`). And the resolved database may already carry an analyzer suffix,
+  which cannot be taken back off reliably — a partition is a path digest and can
+  itself end in `a` or `s`, so stripping produces a base nothing uses and a run
+  that migrates three databases which do not exist.
 
-  defp report({:error, reason}, label, database),
-    do:
-      Mix.shell().error(
-        "[migrate_test_partitions] #{label}: could not check #{database} (#{inspect(reason)})"
-      )
+  Reading the recording has neither problem: it is one value, it names this
+  working copy, and it is the same one `config/test.exs` prefers. A copy with no
+  recording raises, naming the command that fixes it.
+  """
+  @spec partitions(String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def partitions(base) do
+    cond do
+      Mix.env() != :test ->
+        {:error, "refusing to migrate test databases from MIX_ENV=#{Mix.env()}; use MIX_ENV=test"}
 
-  defp database_name(cwd, source) do
-    partition = TestDatabase.partition_for(cwd, source)
-    booted_partition = TestDatabase.partition_for(cwd)
-    prefix = String.replace_suffix(to_string(Repo.config()[:database]), booted_partition, "")
-    prefix <> partition
+      not String.starts_with?(base, "code_my_spec_test") ->
+        {:error, "refusing to migrate #{base}, which is not one of this repo's test databases"}
+
+      true ->
+        {:ok, Enum.map(@suffixes, &(base <> &1))}
+    end
   end
 
   @doc """
   Migrate `database` if it exists, doing nothing (and creating nothing) if it
   does not. `:migrated`, `:absent`, or `{:error, reason}` when the existence
-  check itself could not answer — never a raise, so one sibling this cannot
-  read does not stop the others from being checked.
+  check itself could not answer — never a raise, so one sibling this cannot read
+  does not stop the others from being checked.
 
   Public, and taking a bare database name rather than a partition or a cwd, so
-  the actual migration mechanism — connect, migrate, disconnect, touching
-  nothing else `Repo` is already doing — is reachable without needing a real
-  working copy's onboarding file to resolve one.
+  the migration mechanism is reachable without a real working copy's onboarding
+  file to resolve one.
   """
   @spec migrate_if_exists(String.t()) :: :migrated | :absent | {:error, term()}
   def migrate_if_exists(database) do
@@ -117,8 +160,8 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
 
   # A plain, unpooled connection for the duration of one migration — never the
   # sandbox pool `config/test.exs` configures for everyday test runs, which
-  # expects a test process to check a connection out before using it and
-  # nothing here is one.
+  # expects a test process to check a connection out before using it and nothing
+  # here is one.
   defp migrate(config) do
     config =
       config
@@ -138,4 +181,15 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
       GenServer.stop(pid)
     end
   end
+
+  # Said per database, including the ones nothing happened to. "Which database
+  # answered" is the fact this whole family of failures turns on, and a task
+  # that printed only what it changed would leave the reader to infer the rest.
+  defp report(database, :migrated), do: Mix.shell().info("  migrated  #{database}")
+
+  defp report(database, :absent),
+    do: Mix.shell().info("  absent    #{database} (created on first use)")
+
+  defp report(database, {:error, reason}),
+    do: Mix.shell().error("  failed    #{database}: #{inspect(reason)}")
 end

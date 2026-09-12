@@ -43,6 +43,26 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
+  `%{story_id => number}` for every story in the project.
+
+  What a page needs to label a story the way the story's own page labels it. A
+  story carries both, and the number is the one that names its spex directory —
+  id 1031 is number 1065, whose specs live in `test/spex/1065_…/`. They coincide
+  on a young project and diverge later (1ab62ffd).
+
+  Narrow for the same reason as `list_specs_ready_story_ids/1`: the caller wants
+  two integers per row, and `list_project_stories/1` would preload `:criteria`
+  and `:tags` for the whole project to produce them.
+  """
+  def story_numbers(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id)
+    |> select([s], {s.id, s.number})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   `%{story_id => working_copy_id}` for the project's assigned stories.
 
   Only the assigned ones. A story missing from this map is in the shared
@@ -115,6 +135,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     tag = Keyword.get(opts, :tag)
     ready_for_dev = Keyword.get(opts, :ready_for_dev)
     without_epic = Keyword.get(opts, :without_epic)
+    epic_id = Keyword.get(opts, :epic_id)
 
     query =
       from(s in Story,
@@ -125,6 +146,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       |> filter_by_tag(tag, scope.active_project.id)
       |> filter_by_readiness(ready_for_dev)
       |> filter_by_epic_membership(without_epic)
+      |> filter_by_epic(epic_id)
 
     total = Repo.aggregate(query, :count, :id)
 
@@ -174,6 +196,33 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   defp filter_by_epic_membership(query, true), do: from(s in query, where: is_nil(s.epic_id))
   defp filter_by_epic_membership(query, false), do: from(s in query, where: not is_nil(s.epic_id))
   defp filter_by_epic_membership(query, _), do: query
+
+  # One named epic's stories — the half `without_epic` shipped without.
+  #
+  # "Which stories are in no epic" was answerable and "which stories are in this
+  # epic" was not, so the only route to an epic's contents was `get_story` per
+  # story: `list_epics` reports a count, not the members. The main agent
+  # supplied the answer for the product role three times (cf035b50).
+  #
+  # Slug or id, because `list_epics` prints both and a caller should be able to
+  # paste back either. The cast decides which — a slug is not a UUID, and
+  # comparing a non-UUID against `s.epic_id` is a cast error rather than an
+  # empty result.
+  defp filter_by_epic(query, epic) when epic in [nil, ""], do: query
+
+  defp filter_by_epic(query, epic) do
+    case Ecto.UUID.cast(epic) do
+      {:ok, id} ->
+        from(s in query, where: s.epic_id == ^id)
+
+      :error ->
+        from(s in query,
+          join: e in CodeMySpec.Epics.Epic,
+          on: e.id == s.epic_id,
+          where: e.slug == ^epic
+        )
+    end
+  end
 
   @doc """
   Ready stories that belong to no epic.

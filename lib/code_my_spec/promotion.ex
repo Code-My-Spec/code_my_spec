@@ -311,17 +311,11 @@ defmodule CodeMySpec.Promotion do
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
          carried_before <- blocking_problems(scope, running),
-         {:ok, merged} <- Runner.merge(scope, running.root, branch, from.id),
-         :ok <- gate_target(scope, running, carried_before),
-         {:ok, serving} <- restart(scope, running, refresh_harness?(scope, merged)) do
-      {:ok,
-       %{
-         merged: branch,
-         into: running.root,
-         serving: serving,
-         swept: swept,
-         untracked: Map.get(pre, :untracked, [])
-       }}
+         {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id),
+         :ok <- gate_target(scope, running, carried_before) do
+      scope
+      |> restart(running, refresh_harness?(scope, merge_result))
+      |> merged(branch, running, swept, Map.get(pre, :untracked, []))
     end
   end
 
@@ -350,7 +344,8 @@ defmodule CodeMySpec.Promotion do
   # `:harness`-environment promotion, whose checkout lives on a different
   # machine than the server answering this question. Rather than guess, a
   # harness-environment promotion always refreshes, unchanged from before.
-  defp refresh_harness?(%Scope{environment: %Environment{type: :harness}}, _merged), do: true
+  defp refresh_harness?(%Scope{environment: %Environment{type: :harness}}, _merge_result),
+    do: true
 
   defp refresh_harness?(%Scope{}, %{before: before, after: after_})
        when is_binary(before) and is_binary(after_) do
@@ -360,7 +355,82 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  defp refresh_harness?(%Scope{}, _merged), do: true
+  defp refresh_harness?(%Scope{}, _merge_result), do: true
+
+  defp merged({:ok, serving}, branch, running, swept, untracked) do
+    {:ok,
+     %{
+       merged: branch,
+       into: running.root,
+       serving: serving,
+       swept: swept,
+       untracked: untracked
+     }}
+  end
+
+  # The restart is the one step whose success destroys the channel its own
+  # acknowledgement was coming back on.
+  #
+  # Promotion restarts the application on the running copy; the running copy is
+  # :4000; every harness channel is served by :4000. So the happy path ends with
+  # the server dropping the connection that was about to carry "done", and the
+  # caller is told it could not reach the machine. The merge has already
+  # happened by this point — it is two steps above — so reporting a flat failure
+  # is not merely confusing, it is false about the part that matters.
+  #
+  # What that costs is why this is worth a clause rather than a better sentence:
+  # an agent told its promotion failed promotes again, and each retry restarts
+  # the shared dev server every other working copy on the box is using. Measured
+  # at three restarts in one session before anybody checked the ancestry.
+  #
+  # So a lost acknowledgement during the restart is reported as what it is —
+  # merged, restart unconfirmed — with the one-line check that settles it.
+  defp merged({:error, reason}, branch, running, swept, untracked) do
+    reason
+    |> restart_acknowledgement_lost?()
+    |> unconfirmed(reason, branch, running, swept, untracked)
+  end
+
+  defp unconfirmed(true, reason, branch, running, swept, untracked) do
+    {:ok,
+     %{
+       merged: branch,
+       into: running.root,
+       serving: %{revision: nil, unconfirmed: reason},
+       swept: swept,
+       untracked: untracked
+     }}
+  end
+
+  defp unconfirmed(false, reason, _branch, _running, _swept, _untracked), do: {:error, reason}
+
+  # `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as
+  # "the server went away — someone restarted :4000". For every other operation
+  # that reading is right. For this one the restart *is* the operation
+  # succeeding, which is why the shape has to be read against the op that
+  # produced it rather than on its own.
+  @doc """
+  Whether a restart failure is the expected shape of a restart that worked.
+
+  Public because it is the rule, not an implementation detail: "this error means
+  the opposite of what it says" is exactly the kind of claim that should be
+  written down once and checked, rather than reimplemented by each caller who
+  gets bitten.
+
+  `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as "the
+  server went away — someone restarted :4000", and for every other operation
+  that reading is right. For this one the restart *is* the operation succeeding,
+  so the shape has to be read against the op that produced it rather than on its
+  own.
+  """
+  @spec restart_acknowledgement_lost?(term()) :: boolean()
+  def restart_acknowledgement_lost?(%{reason: reason}) when is_binary(reason) do
+    String.contains?(reason, "promotion_restart") or
+      String.contains?(reason, "not_connected") or
+      String.contains?(reason, "draining")
+  end
+
+  def restart_acknowledgement_lost?(_), do: false
 
   @doc """
   Start a promotion and report the outcome back to the agent that asked.
@@ -476,6 +546,23 @@ defmodule CodeMySpec.Promotion do
     "Your promotion finished. There was nothing to merge — you are working on " <>
       "the running copy — so the application at #{root} was restarted and is " <>
       "serving #{revision || "the code that was already there"}."
+  end
+
+  # Merged, and the restart's acknowledgement never came back — because the
+  # restart is what dropped the channel it was coming back on. Said as its own
+  # outcome rather than as success or failure, because it is neither and both
+  # of the other readings are expensive: reported as failure an agent promotes
+  # again and restarts the shared dev server, reported as success nobody
+  # notices a restart that genuinely did not happen.
+  defp outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
+    "Your promotion merged #{branch} onto the running dev copy. The restart was " <>
+      "issued and its acknowledgement did not come back — expected, because " <>
+      "restarting the running copy drops the channel that reply travels on.\n\n" <>
+      "Do not promote again to find out; that restarts the shared dev server " <>
+      "for every working copy on this machine. Ask what it is serving instead:\n\n" <>
+      "    git merge-base --is-ancestor HEAD $(curl -s localhost:4004/health " <>
+      "| python3 -c 'import json,sys; print(json.load(sys.stdin)[\"build\"])')\n\n" <>
+      "Exit 0 means your work is on it."
   end
 
   defp outcome_text({:error, %{reason: reason}}),

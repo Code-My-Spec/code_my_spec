@@ -141,9 +141,10 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   # Turns a backtick-quoted, root-relative `.md` path into a markdown link,
   # when — and only when — it names a real file in this library. The docs
   # hand off to each other this way deliberately (`process/product.md` ->
-  # `process/code.md`), but the same shape shows up for a path that no longer
-  # exists (`bdd/spex.md`, renamed since) — silently linking that would trade
-  # an honest piece of plain text for a 404, which is worse.
+  # `process/code.md`), but the same shape shows up for a path that is not a
+  # doc in this library at all (`CLAUDE.md`, which lives at the repo root and
+  # is named as somewhere to write) — silently linking that would trade an
+  # honest piece of plain text for a 404, which is worse.
   #
   # Root-relative, matching how the docs are actually written: a doc in
   # `process/` refers to a sibling as `process/code.md`, not `code.md`, so

@@ -1263,6 +1263,44 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Name the checkout a reader gets when it names none.
+
+  `Projection.vantage/1` resolves a scope with no checkout to the project's
+  **default** working copy, so "what does the UI see" is unanswerable until a
+  project has one. Every question about a reader that names no checkout —
+  whether it is served the cache, whose rows it writes — needs this first, and
+  before it existed such a spec could only be written for a project where the
+  answer was the unscoped fallback, which is the one case that does not occur
+  in practice.
+
+  Added for the criterion about a UI read costing a checkout its cached answer,
+  which cannot be set up without it.
+
+  Sets **both** fields that mean "main", because the application has two and
+  keeps them apart. `WorkingCopies.designate_main/2` writes `working_copy.main`
+  — that is the product operation, and what `WorkingCopies.main/1` reads.
+  `Projection.vantage/1` reads `project.default_working_copy_id`, which nothing
+  in `lib/` writes at all. Measured 2026-09-12: 8 projects have designated a
+  main copy and 1 has `default_working_copy_id` set.
+
+  A fixture that set only the product one produced a project whose unscoped
+  reads resolve to `nil`, which is the state of 54 of 55 projects and the one
+  where this criterion's bug cannot occur. Setting both reproduces the project
+  where it does.
+  """
+  @spec designate_main(Scope.t(), Ecto.UUID.t()) :: :ok
+  def designate_main(%Scope{} = scope, working_copy_id) do
+    {:ok, _} = CodeMySpec.WorkingCopies.designate_main(scope, working_copy_id)
+
+    {:ok, _} =
+      CodeMySpec.Projects.update_project(scope, scope.active_project, %{
+        default_working_copy_id: working_copy_id
+      })
+
+    :ok
+  end
+
+  @doc """
   Record what a checkout's git state is, the way its harness would.
 
   `CmsHarness.Sync` measures this on the machine that holds the disk and
@@ -1718,6 +1756,83 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     story
+  end
+
+  @doc """
+  A story that is actually in the graph, optionally belonging to one checkout.
+
+  `authored_story/3` makes a story; it does not make one the graph projects.
+  `Preloader.load/1` takes only `ready_for_dev` stories, and narrows those to
+  the ones assigned to this checkout or to none — so a spec about what a
+  particular vantage sees cannot be written from `authored_story/3` alone, and
+  three of them worked around it by asserting on components instead.
+
+  `working_copy: id` is what makes two vantages disagree: a story assigned to
+  one checkout is invisible to another and visible to a reader that names no
+  checkout at all, which is the asymmetry the projection has to survive.
+
+  Added with criterion 3359, which needs a story that one checkout can see and
+  another cannot.
+  """
+  @spec released_story(Scope.t(), String.t(), keyword()) :: Story.t()
+  def released_story(%Scope{} = scope, title, opts \\ []) do
+    story = authored_story(scope, title, opts)
+
+    attrs =
+      %{ready_for_dev: true}
+      |> then(fn a ->
+        case Keyword.get(opts, :working_copy) do
+          nil -> a
+          id -> Map.put(a, :working_copy_id, id)
+        end
+      end)
+
+    {:ok, released} = CodeMySpec.Stories.update_story(scope, story, attrs)
+    released
+  end
+
+  @doc """
+  Push every stored requirement's freshness into the past.
+
+  `checked_at` is truncated to the second, so two reads inside one second are
+  indistinguishable and a recompute that happened looks like one that did not.
+  The fix is to stamp rather than to sleep: backdate what is there, then
+  anything recomputed afterwards carries an obviously newer time and anything
+  left alone still carries the old one.
+
+  Added for criterion 3424, which asks which requirements an observation
+  actually cost — a question that cannot be asked while every reading falls in
+  the same second.
+  """
+  @spec backdate_requirement_freshness(Scope.t()) :: :ok
+  def backdate_requirement_freshness(%Scope{active_project_id: project_id}) do
+    past =
+      NaiveDateTime.utc_now()
+      |> NaiveDateTime.add(-3600, :second)
+      |> NaiveDateTime.truncate(:second)
+
+    {_, _} =
+      CodeMySpec.Repo.update_all(
+        from(n in "requirements",
+          where:
+            n.project_id == type(^project_id, :binary_id) or
+              n.component_id in subquery(
+                from(c in "components",
+                  where: c.project_id == type(^project_id, :binary_id),
+                  select: c.id
+                )
+              ) or
+              n.story_id in subquery(
+                from(st in "stories",
+                  where: st.project_id == type(^project_id, :binary_id),
+                  select: st.id
+                )
+              )
+        ),
+        set: [checked_at: past]
+      )
+
+    :ok
   end
 
   @doc """

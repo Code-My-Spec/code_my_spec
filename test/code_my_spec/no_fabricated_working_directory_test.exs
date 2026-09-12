@@ -38,6 +38,13 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # when the operator gave none — the adapters' "explicit opt, else here"
     # shape, on a machine where here is the project.
     "lib/mix/tasks/cms.harness.onboard.ex" => "mix task: cwd is the project by definition",
+    # Reads the partition recorded for the checkout it is standing in, to name
+    # that checkout's three test databases. There is no caller to thread through
+    # — the task's whole subject is "this working copy", and taking the
+    # partition from `MIX_TEST_PARTITION` instead is the thing it deliberately
+    # does not do, since a session routinely inherits another checkout's value.
+    "lib/mix/tasks/cms.migrate_test_partitions.ex" =>
+      "mix task: cwd is the working copy whose partitions it migrates",
     "lib/code_my_spec/agent_tasks/init/cli_config.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init/phoenix_project.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init.ex" => "cms init, on the user's machine",

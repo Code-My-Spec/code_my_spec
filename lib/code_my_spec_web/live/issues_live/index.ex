@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Issues
+  alias CodeMySpec.Stories
 
   @statuses ~w(all incoming accepted dismissed resolved)
   @severities ~w(all critical high medium low info)
@@ -13,64 +14,67 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-      <.header>
-        Issues
-        <:actions>
-          <form phx-change="filter" class="flex items-center gap-2">
-            <select class="select select-sm select-bordered" name="status">
-              <option :for={s <- @status_options} value={s} selected={s == @filter_status}>
-                {String.capitalize(s)}
-              </option>
-            </select>
-            <select class="select select-sm select-bordered" name="severity">
-              <option :for={s <- @severity_options} value={s} selected={s == @filter_severity}>
-                {String.capitalize(s)}
-              </option>
-            </select>
-            <select class="select select-sm select-bordered" name="scope">
-              <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
-                {String.capitalize(s)}
-              </option>
-            </select>
-          </form>
-        </:actions>
-      </.header>
+    <.header>
+      Issues
+      <:actions>
+        <form phx-change="filter" class="flex items-center gap-2">
+          <select class="select select-sm select-bordered" name="status">
+            <option :for={s <- @status_options} value={s} selected={s == @filter_status}>
+              {String.capitalize(s)}
+            </option>
+          </select>
+          <select class="select select-sm select-bordered" name="severity">
+            <option :for={s <- @severity_options} value={s} selected={s == @filter_severity}>
+              {String.capitalize(s)}
+            </option>
+          </select>
+          <select class="select select-sm select-bordered" name="scope">
+            <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
+              {String.capitalize(s)}
+            </option>
+          </select>
+        </form>
+      </:actions>
+    </.header>
 
-      <div :if={@issues == []} class="text-center py-12 text-base-content/60">
-        No issues found.
-      </div>
+    <div :if={@issues == []} class="text-center py-12 text-base-content/60">
+      No issues found.
+    </div>
 
-      <div id="issues" class="space-y-4 mt-6">
-        <div
-          :for={issue <- @issues}
-          id={"issue-#{issue.id}"}
-          class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-          phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
-        >
-          <div class="card-body py-4">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <h2 class="card-title text-base">{issue.title}</h2>
-                <p class="text-sm text-base-content/70 mt-1 line-clamp-2">
-                  {issue.description}
-                </p>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <.badge color={severity_color(issue.severity)}>
-                  {issue.severity}
-                </.badge>
-                <.badge color={status_color(issue.status)}>
-                  {issue.status}
-                </.badge>
-              </div>
+    <div id="issues" class="space-y-4 mt-6">
+      <div
+        :for={issue <- @issues}
+        id={"issue-#{issue.id}"}
+        class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+        phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
+      >
+        <div class="card-body py-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+              <h2 class="card-title text-base">{issue.title}</h2>
+              <p class="text-sm text-base-content/70 mt-1 line-clamp-2">
+                {issue.description}
+              </p>
             </div>
-            <div :if={issue.story_id || issue.scope != :app} class="flex gap-2 mt-2 text-xs text-base-content/50">
-              <span :if={issue.story_id}>Story #{issue.story_id}</span>
-              <span :if={issue.scope != :app} class="badge badge-xs badge-outline">{issue.scope}</span>
+            <div class="flex items-center gap-2 shrink-0">
+              <.badge color={severity_color(issue.severity)}>
+                {issue.severity}
+              </.badge>
+              <.badge color={status_color(issue.status)}>
+                {issue.status}
+              </.badge>
             </div>
+          </div>
+          <div
+            :if={issue.story_id || issue.scope != :app}
+            class="flex gap-2 mt-2 text-xs text-base-content/50"
+          >
+            <span :if={issue.story_id}>Story #{@story_numbers[issue.story_id]}</span>
+            <span :if={issue.scope != :app} class="badge badge-xs badge-outline">{issue.scope}</span>
           </div>
         </div>
       </div>
+    </div>
     """
   end
 
@@ -139,8 +143,27 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   defp load_issues(socket) do
     scope = socket.assigns.current_scope
     filters = build_filters(socket.assigns)
-    assign(socket, :issues, Issues.list_filtered(scope, Map.new(filters)))
+
+    socket
+    |> assign(:issues, Issues.list_filtered(scope, Map.new(filters)))
+    |> assign(:story_numbers, story_numbers(scope))
   end
+
+  # `%{story_id => number}`, so an issue's story is labelled the way the story's
+  # own page labels it.
+  #
+  # A story carries both, and the number is the one that names its spex
+  # directory — id 1031 is number 1065, living in `test/spex/1065_…/`. The two
+  # coincide on a young project and diverge later (1ab62ffd). `issues.story_id`
+  # is a plain integer column with no association, so there is nothing to
+  # preload and the number has to be looked up.
+  #
+  # One query for the project rather than one per issue: this is an admin list
+  # that already loads every matching issue, and a per-row lookup would be an
+  # N+1 for a label. `Stories.story_numbers/1` rather than
+  # `list_project_stories/1`, which would preload `:criteria` and `:tags` for
+  # the whole project to hand back two integers per row.
+  defp story_numbers(scope), do: Stories.story_numbers(scope)
 
   defp build_filters(assigns) do
     []

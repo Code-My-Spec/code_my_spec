@@ -149,7 +149,7 @@ cassette — see the untouched-component recipe below).
    cd ../<app>
    rm -f test/fixtures/cassettes/pipeline_exunit_failure.json
    # (edit spec to use record: :once)
-   mix spex test/spex/<story_id>/<crit_id>_spex.exs
+   mix spex test/spex/<story_number>_<slug>/criterion_<n>_<slug>_spex.exs
    # (edit spec back to record: :none)
    ```
 
@@ -268,7 +268,7 @@ Do not add `:env` or `:cd` to `match_on` for these cassettes.
 
 ### `mix spex <path>` runs the whole directory, not just that file
 
-`mix spex test/spex/<story_id>/<crit_id>_spex.exs` still runs every spec file under
+`mix spex test/spex/<story_number>_<slug>/criterion_<n>_<slug>_spex.exs` still runs every spec file under
 `test/spex/`. Do not assume passing a path narrows execution. When
 recording a single cassette, either delete the other specs' cassettes
 temporarily, or accept that unrelated specs will also try to use the

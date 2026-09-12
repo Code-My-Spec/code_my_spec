@@ -57,7 +57,38 @@ defmodule CmsHarness.Web.McpController do
   # Everything the MCP transport puts on a request that means something to the
   # far end. `authorization` is deliberately absent — Claude Code sends none,
   # and this adds its own.
-  @forwarded ~w(accept content-type mcp-session-id mcp-protocol-version last-event-id)
+  # `x-agent-id` rides along because the far end is already prepared to verify
+  # it: `AgentScope` resolves the agent *within* the project the request is
+  # scoped to and drops one belonging to anywhere else. So forwarding it widens
+  # no trust — it stops discarding a claim the server was waiting for.
+  #
+  # Dropping it was invisible and expensive. `ask_user_question` decides who
+  # holds a question from `frame.assigns[:agent_id]`; with none it writes
+  # `agent_id NULL` and `holder: "user"`, so every question a locally-run agent
+  # asked went straight to the person, bypassing the main agent whose whole
+  # purpose is to answer it first. And `QuestionsRepository` inner-joins on
+  # `agent_id`, so those rows were not merely misrouted but unreachable — the
+  # main agent could not have intercepted them had it known.
+  #
+  # Neither side showed a symptom: the person saw questions and assumed the main
+  # agent had judged them worth escalating; the main agent saw an empty list and
+  # assumed nobody was blocked. Found by QA of story 1016 driving the real
+  # endpoint and reading the row, then missed once more — the first fix put
+  # `AgentScope` on `CodeMySpecLocalWeb`'s pipeline, which is a different door
+  # from this proxy.
+  @forwarded ~w(accept content-type mcp-session-id mcp-protocol-version last-event-id
+                x-agent-id)
+
+  @doc """
+  Request headers this proxy passes through to the server.
+
+  Public because it is a contract rather than a detail: a header absent from
+  this list is dropped in silence, and the caller is told nothing. That is how
+  `x-agent-id` went missing — the far end was waiting for a value the transport
+  had already discarded, and neither end could see it.
+  """
+  @spec forwarded_headers() :: [String.t()]
+  def forwarded_headers, do: @forwarded
 
   # What the far end sends back that the client's transport reads. Content type
   # is set separately because Phoenix owns it on the conn.

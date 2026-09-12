@@ -76,6 +76,12 @@ defmodule CodeMySpec.Stories do
   def list_specs_ready_story_ids(scope), do: impl().list_specs_ready_story_ids(scope)
 
   @doc """
+  `%{story_id => number}` for the project — what a page needs to label a story
+  by the number that names its spex directory rather than by its id (1ab62ffd).
+  """
+  def story_numbers(scope), do: impl().story_numbers(scope)
+
+  @doc """
   `%{story_id => working_copy_id}` for stories assigned to a checkout.
 
   Absent means unassigned — the shared backlog every working copy can see.

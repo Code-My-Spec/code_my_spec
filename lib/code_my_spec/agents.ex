@@ -44,6 +44,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
+      CodeMySpec.MainAgent,
       CodeMySpec.Notifications,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
@@ -72,6 +73,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
@@ -806,7 +808,9 @@ defmodule CodeMySpec.Agents do
   """
   @spec ensure_copy_agents(Scope.t(), map()) ::
           %{started: [Agent.t()], failed: [{atom(), term()}]}
-  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root})
+  def ensure_copy_agents(scope, copy, roles \\ @copy_roles)
+
+  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
     present =
       scope
@@ -814,7 +818,7 @@ defmodule CodeMySpec.Agents do
       |> Enum.filter(&(&1.working_copy_id == copy_id and &1.status != :stopped))
       |> MapSet.new(& &1.role)
 
-    @copy_roles
+    roles
     |> Enum.reject(&MapSet.member?(present, &1))
     |> Enum.reduce(%{started: [], failed: []}, fn role, acc ->
       case start_copy_agent(scope, copy_id, root, role) do
@@ -828,7 +832,23 @@ defmodule CodeMySpec.Agents do
   # A row with no root is not a checkout — the same rule `EpicDispatch`'s
   # `destination/1` applies. Starting agents against a directory that does not
   # exist produces three lanes that cannot run and a copy that looks staffed.
-  def ensure_copy_agents(%Scope{}, _copy), do: %{started: [], failed: [{:copy, :no_checkout}]}
+  def ensure_copy_agents(%Scope{}, _copy, _roles),
+    do: %{started: [], failed: [{:copy, :no_checkout}]}
+
+  @doc """
+  The roles a copy is staffed with when nobody says otherwise.
+
+  Product, coding and QA — the three that build something. `:main` is not among
+  them and a copy does not get one by default: the main agent is the project's,
+  not a checkout's, and staffing one per copy would give a project as many
+  orchestrators as it has worktrees.
+
+  Named rather than left implicit because a caller can now ask for a different
+  roster, and "what do I get if I don't ask" should be readable without finding
+  the module attribute.
+  """
+  @spec copy_roles() :: [atom()]
+  def copy_roles, do: @copy_roles
 
   @doc """
   Staff one working copy and put it into continuous mode, resolving the project
@@ -959,6 +979,13 @@ defmodule CodeMySpec.Agents do
         # its graph moves. Started here rather than at boot: a project nobody is
         # working on needs no watcher.
         GraphWatcher.ensure_watching(scope)
+
+        # And something has to look in on the agents themselves. Same trigger,
+        # same reason, and it belongs beside the watcher rather than only in the
+        # boot seed — QA of story 1017 found a project with eleven running
+        # agents reporting `woken=yes, running=no`, because it gained its
+        # continuous agent after boot and nothing started its cadence.
+        MainAgent.ensure_cadence(scope)
         wake_roles(scope, copy_id)
       end
 
@@ -992,6 +1019,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
+        MainAgent.ensure_cadence(scope)
         wake_or_restart(scope, agent)
       else
         {:ok, agent, :paused}

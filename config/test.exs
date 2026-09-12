@@ -81,14 +81,53 @@ recorded_partition =
     _ -> nil
   end
 
+requested_partition = System.get_env("MIX_TEST_PARTITION")
+
+# The analyzer's own sub-partition is the one environment value that must win.
+#
+# `TestDatabase.partition_for/2` gives each concurrently-running suite its own
+# database by appending a letter to this copy's recorded partition — `…a` for
+# exunit, `…s` for spex — and the only channel it has to say so is
+# `MIX_TEST_PARTITION`. Recorded-first demoted that channel below the recorded
+# value, so the suffix was computed, exported, and then ignored: the analyzer's
+# exunit, its spex, and the agent's interactive `mix test` all resolved to the
+# base database again. Measured 2026-09-12 — `MIX_TEST_PARTITION=h789652afs`
+# resolved to `code_my_spec_testh789652af`, and the `…a`/`…s` databases sat
+# untouched since 2026-09-07 while the comment above claimed the environment
+# still won.
+#
+# That is `bcad622d` restored in full: two suites, one database, a sweep
+# truncating under the other, and failures that name files the session never
+# touched.
+#
+# Narrow on purpose. What is accepted is not "an environment value" but "the
+# recorded value plus one suffix" — a name that can only describe *this* working
+# copy. A value inherited from another worktree cannot match, so the inversion
+# that this restores nothing of (issue 63265687, two sessions migrating past each
+# other) stays closed. Anything else the environment says still loses.
+own_sub_partition? =
+  is_binary(recorded_partition) and is_binary(requested_partition) and
+    requested_partition in [recorded_partition <> "a", recorded_partition <> "s"]
+
 # In a linked worktree `.git` is a file pointing at the real git dir rather than
 # a directory. The primary checkout keeps the bare name.
 partition =
-  recorded_partition ||
-    System.get_env("MIX_TEST_PARTITION") ||
-    if File.regular?(Path.join(File.cwd!(), ".git")),
-      do: "_" <> Path.basename(File.cwd!()),
-      else: ""
+  cond do
+    own_sub_partition? ->
+      requested_partition
+
+    recorded_partition ->
+      recorded_partition
+
+    requested_partition ->
+      requested_partition
+
+    File.regular?(Path.join(File.cwd!(), ".git")) ->
+      "_" <> Path.basename(File.cwd!())
+
+    true ->
+      ""
+  end
 
 # The manual provisioning drill, against the database the *deployed* app talks
 # back to.
@@ -517,3 +556,18 @@ config :code_my_spec, chat_turn_async: false
 # happening, per scenario. The bounded-wait behaviour is what the specs are
 # about; the duration is not.
 config :code_my_spec, :promotion_sweep_timeout, 200
+
+# Dev-only routes are present in test so their wiring can be asserted.
+#
+# They are compile-gated to dev, which meant nothing ever tested that they are
+# mounted — and a route that exists only where no test runs is a route whose
+# wiring is checked by hand or not at all. The most expensive defect of
+# 2026-09-12 was exactly that shape: `AgentScope` was in the hosted pipeline and
+# not the local one, so every locally-run agent's question bypassed the main
+# agent, and no test could have caught it because no test drove the pipeline.
+#
+# Enabling them here costs a few extra routes in the test router and buys the
+# ability to assert that `/dev/sign-in` mints a token the product's own login
+# route accepts — which is the only assertion that makes a dev sign-in helper
+# trustworthy rather than a bypass.
+config :code_my_spec, dev_routes: true

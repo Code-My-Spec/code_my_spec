@@ -62,10 +62,29 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
       {:ok, results} ->
         {:reply, text_response(format_results(query, results)), frame}
 
+      # Names what to do instead, not only why it failed.
+      #
+      # This said "the embed pipeline (Ortex + sqlite_vec) ships only with the
+      # CodeMySpec CLI binary" and stopped — an explanation of the
+      # implementation to an agent that needs a next step. Every internal agent
+      # carries this tool (`ToolSets` gives it to coding, product and main), and
+      # in this runtime every call fails, so the message is the only thing
+      # standing between a failed lookup and a dropped question (`084b8351`).
+      #
+      # `list_knowledge` and `read_knowledge` do work here — measured, the same
+      # session that filed this read `devops/README.md` fine. What is missing is
+      # search, so an agent that knows the tree can still get where it is going;
+      # it just has to look rather than ask.
       {:error, :embeddings_unavailable} ->
         {:reply,
          error_response(
-           "Embeddings are unavailable in this runtime. The embed pipeline (Ortex + sqlite_vec) ships only with the CodeMySpec CLI binary."
+           "Embeddings are unavailable in this runtime — the embed pipeline ships only " <>
+             "with the CodeMySpec CLI binary, so no query will work here and retrying or " <>
+             "rephrasing will not help.\n\n" <>
+             "`list_knowledge` and `read_knowledge` do work: browse the tree and read by " <>
+             "path. Knowledge is organised by area, so a topic usually lives under a " <>
+             "directory you can guess — `devops/`, for instance — and `list_knowledge` " <>
+             "shows what is there."
          ), frame}
 
       {:error, reason} ->
@@ -89,7 +108,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   end
 
   defp format_body([]),
-    do: "\nNo matches found. Run `sync_project` to refresh all embeddings (project knowledge, specs, rules, hex docs)."
+    do:
+      "\nNo matches found. Run `sync_project` to refresh all embeddings (project knowledge, specs, rules, hex docs)."
 
   defp format_body(results) do
     Enum.map_join(results, "\n\n---\n\n", &format_result/1)

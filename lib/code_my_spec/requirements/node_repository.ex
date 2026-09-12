@@ -29,7 +29,15 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement}
   alias CodeMySpec.Users.Scope
 
-  @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
+  @replace {:replace,
+            [
+              :satisfied,
+              :details,
+              :description,
+              :checked_at,
+              :inputs_fingerprint,
+              :updated_at
+            ]}
 
   @doc """
   How many requirements are unsatisfied with every prerequisite met.
@@ -352,6 +360,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           satisfied: node.satisfied,
           details: node.details || %{},
           checked_at: now,
+          inputs_fingerprint: Map.get(node, :inputs_fingerprint),
           inserted_at: now,
           updated_at: now,
           working_copy_id: working_copy_id
