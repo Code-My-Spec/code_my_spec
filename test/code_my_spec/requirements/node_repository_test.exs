@@ -33,6 +33,56 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
     }
   end
 
+  describe "a component that was visited and produced nothing" do
+    # The distinction this exists for: "nobody loaded this component" and "this
+    # component was loaded and yielded no requirements" both leave it out of the
+    # produced node set, and only the first should keep its rows.
+    #
+    # The second is ordinary. `graph_for_type/1` filters a template by the
+    # project's configuration, and `schema_graph/0` is `spec_file` and
+    # `spec_valid` — so on a project with `require_specs: false` every schema
+    # component computes zero nodes. Measured on Code My Spec: 84 schema
+    # components each holding an `implementation_file` row their current type no
+    # longer defines, which `Projection.rehydrate/2` then dropped on every read,
+    # so the graph read back 1844 nodes against a published 2009 — permanently,
+    # because nothing would ever reap them (cc4745dc).
+    test "has its departed rows reaped", %{scope: scope} do
+      component = component_fixture(scope)
+
+      NodeRepository.upsert_all(scope, [node("component", component.id, "implementation_file")])
+
+      assert Repo.aggregate(Node, :count) == 1
+
+      # The next pass visits it and produces nothing for it — the empty-template
+      # case — so its row is departed.
+      NodeRepository.upsert_all(scope, [], %{components: [component.id], stories: []})
+
+      assert Repo.aggregate(Node, :count) == 0,
+             """
+             A component that was visited and produced no requirements kept its
+             rows.
+
+             Every later read finds them and drops them — `rehydrate/2` has no
+             definition for a name the component's type no longer defines — so
+             the projection reads back short of what the publish counted, for
+             good. That is the 1844-against-2009 this was diagnosed from.
+             """
+    end
+
+    test "a component nobody visited keeps its rows", %{scope: scope} do
+      component = component_fixture(scope)
+
+      NodeRepository.upsert_all(scope, [node("component", component.id, "implementation_file")])
+
+      # Not in the visited set at all — filtered out, or belonging to work this
+      # pass did not load. Its rows are not this computation's to remove.
+      NodeRepository.upsert_all(scope, [], %{components: [], stories: []})
+
+      assert Repo.aggregate(Node, :count) == 1,
+             "a component outside this computation must not be treated as departed"
+    end
+  end
+
   describe "upsert_all/2" do
     test "a project node becomes a row keyed by its node_key", %{scope: scope} do
       project_id = scope.active_project_id

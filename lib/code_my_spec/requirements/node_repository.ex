@@ -158,8 +158,9 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   The map is the point: it is how an edge turns a `{entity_type, entity_id, name}`
   pair into the two row ids it needs.
   """
-  @spec upsert_all(Scope.t(), [Requirement.t()]) :: %{tuple() => integer()}
-  def upsert_all(%Scope{active_project_id: project_id} = scope, nodes) when is_list(nodes) do
+  @spec upsert_all(Scope.t(), [Requirement.t()], visited()) :: %{tuple() => integer()}
+  def upsert_all(%Scope{active_project_id: project_id} = scope, nodes, visited \\ nil)
+      when is_list(nodes) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     # Whose view this computation is. `Preloader.load/1` scoped its file query
@@ -178,8 +179,19 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     end)
 
     keys = ids_by_key(project_id, working_copy_id, nodes)
-    delete_departed(scope, working_copy_id, nodes, keys)
+    delete_departed(scope, working_copy_id, visited || from_nodes(nodes), keys)
     keys
+  end
+
+  @typedoc """
+  Which entities this computation looked at, as against which produced nodes.
+
+  The two differ, and conflating them is what let stale rows survive forever.
+  """
+  @type visited :: %{components: [Ecto.UUID.t()], stories: [integer()]} | nil
+
+  defp from_nodes(nodes) do
+    %{components: entity_ids(nodes, "component"), stories: entity_ids(nodes, "story")}
   end
 
   # Nodes that were in the graph and are not any more.
@@ -198,11 +210,28 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # Scoped to the entities this computation covered, not to the project. A
   # component the graph did not visit — filtered out, or belonging to work not
   # loaded — must keep its rows rather than be treated as departed.
-  defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, nodes, keys) do
+  #
+  # "Covered" is what the computation *looked at*, not what it *produced*, and
+  # deriving it from the produced nodes conflated two different things: a
+  # component nobody loaded, and a component that was loaded and yielded
+  # nothing. Only the first should keep its rows.
+  #
+  # The second is ordinary. `graph_for_type/1` filters a template by the
+  # project's configuration, and `schema_graph/0` is `spec_file` and
+  # `spec_valid` — so on a project with `require_specs: false` every schema
+  # component computes zero nodes. Absent from the produced set, each was read
+  # as "not visited" and kept rows from when the template was different.
+  #
+  # Measured on this project, 2026-09-11: 84 schema components each holding an
+  # `implementation_file` row their current type does not define. Every read
+  # found them, `Projection.rehydrate/2` could not rebuild them — no definition
+  # for that name on that type — and dropped them, so the graph read back 1844
+  # nodes against a published 2009. Stable, silent, and permanent, because
+  # nothing would ever reap them (7a6b92e3 / cc4745dc).
+  defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, visited, keys) do
     keep = keys |> Map.values() |> MapSet.new()
 
-    component_ids = entity_ids(nodes, "component")
-    story_ids = entity_ids(nodes, "story")
+    %{components: component_ids, stories: story_ids} = visited
 
     Node
     |> where(
