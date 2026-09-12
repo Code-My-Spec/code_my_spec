@@ -57,6 +57,7 @@ defmodule CodeMySpec.Promotion do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Problems,
       CodeMySpec.Requirements,
@@ -72,6 +73,8 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.BootVersion
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
@@ -285,7 +288,11 @@ defmodule CodeMySpec.Promotion do
   # there is nothing to certify and no reason to spend minutes of analyzer sweep
   # before a dead application comes back.
   defp promote_into(%Scope{active_working_copy_id: id} = scope, %WorkingCopy{id: id} = running) do
-    with {:ok, serving} <- restart(scope, running) do
+    # No merge crossed here, so there is no range to ask `contract_changed?/2`
+    # about — the current commit could still differ from what the harness
+    # booted, same as any ordinary push. Always refresh: the only caller that
+    # gets to skip it is the one that has already checked.
+    with {:ok, serving} <- restart(scope, running, true) do
       {:ok, %{restarted: running.root, serving: serving}}
     end
   end
@@ -304,13 +311,51 @@ defmodule CodeMySpec.Promotion do
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
          carried_before <- blocking_problems(scope, running),
-         {:ok, _} <- Runner.merge(scope, running.root, branch, from.id),
+         {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id),
          :ok <- gate_target(scope, running, carried_before) do
       scope
-      |> restart(running)
+      |> restart(running, refresh_harness?(scope, merge_result))
       |> merged(branch, running, swept, Map.get(pre, :untracked, []))
     end
   end
+
+  # Whether the restart that follows this merge needs to rebuild the harness
+  # too — the other half of `just refresh` that `just restart` always ran
+  # unconditionally, on every promotion, whether or not the merge touched
+  # anything the harness cares about (376e3356).
+  #
+  # Answered from the merge's own `before`/`after` — the checkout's HEAD on
+  # either side of exactly the commits this promotion just brought in — rather
+  # than the harness's general drift, which would also be true for commits
+  # this promotion had nothing to do with.
+  #
+  # `false` is the only answer that changes anything: `:unknown` (the range
+  # could not be read) and `true` both keep today's behavior. That asymmetry
+  # is deliberate. A refresh this promotion did not need costs a shared
+  # harness bounce and some seconds; a refresh it did need and skipped is
+  # d00a3272 again — every stop hook on the machine wrong until someone
+  # notices and restarts it by hand. Only a merge whose range is *provably*
+  # silent on `lib/cms_harness` and the channel modules gets to skip it.
+  #
+  # Scoped to a local promotion on purpose. `BootVersion.contract_changed?/2`
+  # reads the diff against *this process's own* booted root — correct only
+  # when that root is the same checkout the merge just landed in, which is
+  # true for this project's own self-hosted setup but not guaranteed for a
+  # `:harness`-environment promotion, whose checkout lives on a different
+  # machine than the server answering this question. Rather than guess, a
+  # harness-environment promotion always refreshes, unchanged from before.
+  defp refresh_harness?(%Scope{environment: %Environment{type: :harness}}, _merge_result),
+    do: true
+
+  defp refresh_harness?(%Scope{}, %{before: before, after: after_})
+       when is_binary(before) and is_binary(after_) do
+    case BootVersion.contract_changed?(before, after_) do
+      false -> false
+      _ -> true
+    end
+  end
+
+  defp refresh_harness?(%Scope{}, _merge_result), do: true
 
   defp merged({:ok, serving}, branch, running, swept, untracked) do
     {:ok,
@@ -746,9 +791,9 @@ defmodule CodeMySpec.Promotion do
   # rules, and when it is wrong the application serves a build nobody can
   # identify while every signal says the promotion completed. Restarting an app
   # that did not need it costs seconds.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running) do
+  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?) do
     scope
-    |> Runner.restart(root, running.id)
+    |> Runner.restart(root, running.id, refresh_harness?)
     |> record_serving(running)
   end
 

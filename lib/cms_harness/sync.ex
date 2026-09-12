@@ -271,13 +271,25 @@ defmodule CmsHarness.Sync do
   # same as not having the check. A build is made of what is committed and what
   # is modified, not of scratch files beside them.
   #
+  # `--ignore-submodules=all` for the same reason `just refresh`'s own dirty
+  # check already carries it: `.code_my_spec` is a submodule, and a QA agent
+  # writes into it continuously for the one-to-two hours it works — a brief
+  # drafted, a screenshot captured, `prompt.md` regenerated on every task. None
+  # of that touches this superproject's own tracked files, but plain
+  # `git status` reports a dirty submodule as a modified path here regardless,
+  # which is what made `tree_dirty` true (and `code_on_running_copy` refuse)
+  # for a copy's entire QA session (c97bb142). The superproject's own merge
+  # safety was never in question — a submodule's internal working tree is not
+  # part of what `git merge` here would touch.
+  #
   # Silent when git cannot answer — a checkout that is not a repository is an
   # ordinary thing for this to meet, and reporting nothing leaves the column
   # nil, which the gate reads as "not judged" rather than as "in sync".
   defp report_git_state(env, root) do
     with {ahead, 0} <- git(env, ["rev-list", "--count", "main..HEAD"]),
          {behind, 0} <- git(env, ["rev-list", "--count", "HEAD..main"]),
-         {status, 0} <- git(env, ["status", "--porcelain", "--untracked-files=no"]) do
+         {status, 0} <-
+           git(env, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"]) do
       ChannelClient.deliver_git_state(root, %{
         "ahead" => to_count(ahead),
         "behind" => to_count(behind),
