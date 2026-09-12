@@ -2978,10 +2978,99 @@ defmodule CodeMySpecSpex.Fixtures do
         status: :active,
         requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
         story_id: Keyword.get(opts, :story_id),
-        started_at: DateTime.utc_now()
+        # Settable, because a criterion about how long a task has been open
+        # cannot produce elapsed time any other way and must not sleep for it.
+        started_at: Keyword.get(opts, :started_at, DateTime.utc_now())
       })
 
     {agent, TaskOwner.active_task(agent)}
+  end
+
+  @doc """
+  A turn this agent has started and not finished.
+
+  The same `agent_turn_event` push `end_turn/3` sends, with the event a
+  scenario names instead of `:turn_ended` — so an agent mid-response is
+  produced by the harness's own entry point rather than by writing a flag
+  nothing in production sets.
+
+  Nothing ends it. That is the state criteria 3279 and 3297 are about: a
+  connection open to a model with a response coming back, which from every
+  other angle is indistinguishable from an agent that has stopped.
+  """
+  @spec start_turn(Scope.t(), String.t(), keyword()) :: :ok
+  def start_turn(%Scope{} = scope, agent_id, opts \\ []) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    event =
+      ChannelClient.encode_turn_event(%{
+        event: Keyword.get(opts, :event, :turn_started),
+        turn: Keyword.get(opts, :turn, 1)
+      })
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{"agent_id" => agent_id, "event" => event},
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
+  @doc """
+  One agent saying something on its own thread.
+
+  `Conversations.add_agent_message/4` is what `AgentHarness.relay_up/2` calls
+  when a turn arrives from the machine, so "the agent spoke" means here what it
+  means in production. `send_agent_message/2` is the other direction — it
+  dispatches to a real harness over the transport — and a scenario about how
+  long ago an agent last said something must not need one running.
+  """
+  @spec agent_said(Scope.t(), map(), String.t()) :: :ok
+  def agent_said(%Scope{} = scope, %{id: agent_id, role: role}, text) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _message} =
+      Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
+
+    :ok
+  end
+
+  @doc """
+  Put this agent's transcript in the past.
+
+  Backdates every message on the agent's own conversation, so a scenario can
+  ask what an agent that has said nothing for forty-five minutes looks like
+  without waiting forty-five minutes.
+
+  The messages rather than the agent row: "when did it last say something" is a
+  question about what it said, and `agents.updated_at` moves for reasons that
+  have nothing to do with speaking — a status change, a task claimed, a reap
+  pass. A view reading the row would call an agent chatty because something
+  else touched it.
+  """
+  @spec age_agent_messages(Scope.t(), map(), number()) :: :ok
+  def age_agent_messages(%Scope{} = _scope, %{id: agent_id}, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    conversation_ids =
+      from(c in CodeMySpec.Conversations.Conversation,
+        where: c.agent_id == type(^agent_id, :binary_id),
+        select: c.id
+      )
+      |> Repo.all()
+
+    from(m in CodeMySpec.Conversations.Message, where: m.conversation_id in ^conversation_ids)
+    |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
+
+    :ok
   end
 
   # -- Components --
