@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Resources
 
   setup do
@@ -61,6 +62,50 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
       text = response_text(response)
       assert text =~ project.name
       refute text =~ "Sibling Project"
+    end
+
+    # The tool's own docstring tells a caller to "call devops_status to watch
+    # it converge" after starting a run, and until now nothing here ever
+    # looked at whether one was still going — so a caller mid-run and a
+    # caller after a hang read identically (6f982579).
+    test "says a run is already in progress instead of just the last checklist", %{
+      scope: scope,
+      project: project
+    } do
+      {:ok, _} = Configurations.update(scope, %{devops: :prod})
+      test_pid = self()
+
+      {:ok, holder} =
+        Task.start(fn ->
+          RunLock.with_lock(project.id, fn ->
+            send(test_pid, :locked)
+
+            receive do
+              :release -> :ok
+            end
+          end)
+        end)
+
+      assert_receive :locked, 1_000
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      assert {:reply, response, ^frame} = DevopsStatus.execute(%{}, frame)
+
+      text = response_text(response)
+      assert text =~ "A setup run has been in progress",
+             "a run is in flight for this project and nothing said so, which is exactly " <>
+               "how a still-running setup and a hung one read the same way"
+
+      send(holder, :release)
+    end
+
+    test "says nothing about a run when none is in flight", %{scope: scope} do
+      {:ok, _} = Configurations.update(scope, %{devops: :prod})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+      assert {:reply, response, ^frame} = DevopsStatus.execute(%{}, frame)
+
+      refute response_text(response) =~ "in progress"
     end
   end
 

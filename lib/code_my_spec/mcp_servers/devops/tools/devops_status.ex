@@ -39,6 +39,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Resources
 
@@ -57,7 +58,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   defp reply(scope, project) do
     case Resources.project_report(scope, project) do
-      {:ok, report} -> ok(summary(report))
+      {:ok, report} -> ok(summary(report, project))
       {:error, :devops_off} -> devops_off(project)
     end
   end
@@ -70,11 +71,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
     )
   end
 
-  defp summary(report) do
+  defp summary(report, project) do
     missing = Enum.filter(report.checklist, &(&1.state == :missing))
     dangling = Enum.filter(report.resources, &(&1.status == :dangling))
 
     [
+      in_flight(project),
       headline(report, missing),
       section("Missing", missing, &missing_line/1),
       section("Dangling", dangling, &"#{&1.kind} #{&1.location}"),
@@ -82,6 +84,32 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
     ]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n\n")
+  end
+
+  # This tool's own docstring tells a caller who just started a run to "call
+  # devops_status to watch it converge" — and until now nothing here ever
+  # looked at whether one was still going. A caller re-checking this mid-run
+  # got the checklist as it stood before the run started, indistinguishable
+  # from a run that had already finished or one that had hung. `RunLock`
+  # already tracks a run's `started_at`; this is the first thing to read it
+  # (6f982579).
+  #
+  # Elapsed rather than left as a bare timestamp: "started 22 minutes ago"
+  # is what a caller actually needs to decide whether to keep waiting, next
+  # to whatever the observed real-run range for this kind of setup is.
+  defp in_flight(project) do
+    case RunLock.in_flight(project.id) do
+      nil ->
+        ""
+
+      started_at ->
+        minutes = DateTime.diff(DateTime.utc_now(), started_at, :second) |> div(60)
+
+        "A setup run has been in progress since #{DateTime.to_iso8601(started_at)} " <>
+          "(#{minutes} minute#{if minutes == 1, do: "", else: "s"} ago). The checklist " <>
+          "below is read live, so it may show partial progress rather than a finished " <>
+          "or a hung run — check again shortly rather than assuming either."
+    end
   end
 
   defp headline(%{errors: errors}, _missing) when errors != %{},
