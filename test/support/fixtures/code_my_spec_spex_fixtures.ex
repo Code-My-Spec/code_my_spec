@@ -2725,7 +2725,7 @@ defmodule CodeMySpecSpex.Fixtures do
   # called it directly has moved to `CodeMySpecSpex.StoryHelpers.create_story/2`
   # instead — the surface a story is actually supposed to be created through.
   @spec story_fixture(Scope.t(), map()) :: Story.t()
-  defp story_fixture(scope, attrs \\ %{}) do
+  defp story_fixture(scope, attrs) do
     attrs =
       Enum.into(attrs, %{
         title: "QA Story #{System.unique_integer([:positive])}",

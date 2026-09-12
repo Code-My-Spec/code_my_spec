@@ -63,6 +63,17 @@ defmodule CmsHarness.Web.Router do
     # for why this is HTTP and not an MCP tool.
     post("/analysis/wait", AnalysisController, :wait)
 
+    # Promotion's external door. Blocks for the whole promotion — gate, merge,
+    # `just restart` — which is minutes on a cold tree, and that is why it is
+    # here rather than an MCP tool: the same 30s cap that made `analysis/wait`
+    # an endpoint refuses this workload too. See `PromotionController`.
+    #
+    # There is no `/promotion/wait` beside it. Analysis has one because the
+    # server drives a queue that has an idle state to wait for; a promotion is
+    # one act with no ledger and nothing to rejoin, so `run` *is* the wait URL
+    # and a second path would be a second way to do one thing.
+    post("/promotion/run", PromotionController, :run)
+
     # `4396345b`: the surface every `skills/*/skill.md` posts to. Addressed the
     # same way analysis and hooks are — see `SkillsController`.
     post("/skills/start", SkillsController, :start)

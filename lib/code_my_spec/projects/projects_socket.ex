@@ -133,9 +133,6 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
       on_conflict: {:replace_all_except, [:id, :local_path, :inserted_at]},
       conflict_target: :id
     )
-  rescue
-    e ->
-      Logger.warning("[ProjectsSocket] Failed to upsert project: #{Exception.message(e)}")
   end
 
   defp delete_from_payload(payload) do
@@ -143,9 +140,6 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
       nil -> :ok
       project -> CodeMySpec.Repo.delete(project)
     end
-  rescue
-    e ->
-      Logger.warning("[ProjectsSocket] Failed to delete project: #{Exception.message(e)}")
   end
 
   defp safe_atom(nil), do: nil

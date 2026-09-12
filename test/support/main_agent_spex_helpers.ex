@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
     File.mkdir_p!(copy)
     {joined, socket} = join_working_copy_socket(context, copy, "the main checkout", opts)
 
-    {:ok, live, _html} =
+    {:ok, _live, _html} =
       live(
         context.conn,
         ~p"/app/projects/#{context.project.id}/working-copies/#{joined.working_copy_id}"

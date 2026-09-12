@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements do
         {:reply, RequirementsMapper.error("Component '#{component_ref}' not found"), frame}
 
       component ->
-        nodes = RequirementGraph.compute_all(scope)
+        {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
         reqs = Enum.filter(nodes, &(&1.entity_type == "component" and to_string(&1.entity_id) == component.id))
 
         {:reply, component_response(component, reqs), frame}

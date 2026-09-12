@@ -261,6 +261,80 @@ restart port="4000":
     just refresh-harness
 
 
+# Pull main into the running checkout and let the code reloader do the rest.
+#
+# The cheap half of `refresh`, for the changes that do not need a restart —
+# which is most of them. `config/dev.exs` and `config/dev_cli.exs` both set
+# `code_reloader: true`, so a plain module edit is picked up on the next request
+# to the endpoint and Erlang swaps it in process-wide from there.
+#
+# John: "Maybe we should just not restart. Phoenix hot reloads. Just pull the
+# code in and let it update."
+#
+# Restart instead of this when you changed any of:
+#
+#   * a `component(...)` registration on an MCP server. `LocalServer`'s own
+#     moduledoc: "The running BEAM binds its tool registry at boot, so a tool
+#     compiled in but not restarted into appears in `tools/list` and returns
+#     `MCP error -32603` on invocation." Reloading the module does not rebind it.
+#   * a dependency. Hot reload never starts a newly added application; it takes
+#     the live server down instead.
+#   * `application.ex` or any supervision tree. The children are already running
+#     under the old spec.
+#   * compile-time configuration.
+#   * anything in `lib/cms_harness/` that the harness holds in a long-lived
+#     process — use `refresh-harness`, which is also what keeps server and
+#     harness on one commit. Skew there is `unmatched topic` on every stop.
+#
+# Why this matters beyond speed: `restart` bounces the harness, which stops every
+# agent on it and opens a window where agent operations fail with
+# `:harness_not_connected`. Measured in one session: a dozen refreshes, most of
+# them for changes that needed none of it, three separate agent failures caused
+# by the bounce rather than by the code.
+
+# Pull main into the running checkout without restarting — the code reloader takes it.
+pull:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    echo "→ main checkout: $main"
+
+    # Same refusal as `refresh`, for the same reason: several agents share that
+    # directory and a fast-forward over someone's half-finished change is the one
+    # outcome nobody can undo from here.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+
+    if [ "$before" = "$after" ]; then
+        echo "→ already at $after — nothing pulled"
+    else
+        echo "→ $before → $after"
+    fi
+
+    # A request, so the code reloader actually runs. Without one the new modules
+    # sit on disk until something happens to ask for them, and "I pulled it" reads
+    # as "it is live" when it is not.
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "http://localhost:4000/" || true)"
+    if [ "$code" = "000" ]; then
+        echo "✗ :4000 is not answering — nothing reloaded. Use \`just restart\`." >&2
+        exit 1
+    fi
+
+    echo "✓ :4000 answered $code; reloader has seen $after"
+    echo
+    echo "  Restart instead if you changed a component(...) registration, a dep,"
+    echo "  a supervision tree, compile-time config, or harness code."
+
+
 refresh port="4000":
     #!/usr/bin/env bash
     set -euo pipefail

@@ -57,8 +57,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
+  alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Promotion
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -624,6 +626,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, reply_async(socket, ref, "analysis_wait", reply)}
   end
 
+  # Promote this working copy, and answer with what happened.
+  #
+  # The promotion has to run *here*. `Promotion.gate/1` and `gate_target/3`
+  # read the database and the harness has none, which is also why the disk half
+  # goes back the other way as three named `fs_request` ops rather than as a
+  # command — see `Promotion.Runner` and `Environments.Harness.cmd/4`, which
+  # refuses on purpose.
+  #
+  # Replied out of band for the same measured reason `analysis_wait` above is,
+  # and one more that is specific to this: `Promotion.promote/1` calls
+  # `Runner`, which calls back into *this* channel with `{:fs_request, …}`.
+  # Answered inline, that is a `GenServer.call` to self — OTP exits at once
+  # with `{:calling_self, …}`, which `Analysis.harness_fs_request/4` has a whole
+  # clause explaining because a reconcile already made this mistake once. The
+  # task is what keeps the caller and the answerer two processes.
+  #
+  # No `@contract_version` bump. An older harness never sends this, and a newer
+  # harness against an older server gets the `unknown_event` reply, which names
+  # the skew — the same additive reasoning `active_runs` on the join payload is
+  # built on. Bumping would refuse every deployed harness for an event none of
+  # them use.
+  def handle_in("promotion_run", _payload, socket) do
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+
+    {:noreply, reply_async(socket, ref, "promotion_run", fn -> promote_for_caller(scope) end)}
+  end
+
   # The harness's answer to a filesystem request. See `handle_call/3` below.
   # What the machine did about the stop. An unknown ref is dropped rather than
   # crashing the channel: it means the caller already gave up, and taking the
@@ -1098,6 +1128,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 
+  # A refusal that arrived with structure keeps it. `Promotion.Steps` answers
+  # with a sentence and its evidence — the uncommitted files, the conflicted
+  # paths — and the agent needs both. Passed through as a map for
+  # `Promotion.Runner` to key, rather than flattened into a reason atom that
+  # would have to be parsed back apart.
+  defp decode_fs_result(%{"error" => %{} = reason}), do: {:error, reason}
+
   defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
   defp decode_fs_result(%{"ok" => true}), do: :ok
   defp decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
@@ -1289,6 +1326,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         {:error, %{"reason" => inspect(reason)}}
     end
   end
+
+  # A promotion's outcome as the caller reads it, and it always answers
+  # `{:ok, …}`.
+  #
+  # A refusal is an answer. The gate declining, a conflict, uncommitted work —
+  # each of those is the promotion working correctly and naming the thing the
+  # caller has to act on, so it travels as a result with `refused` in it rather
+  # than as a channel error. `{:error, …}` on this wire means the promotion
+  # could not be attempted at all, and the HTTP door turns that into a 502;
+  # collapsing the two would report a gate refusal as a broken server.
+  #
+  # The same split `run_for_agent/3` above makes: a failing suite is an
+  # `{:ok, run}` carrying a non-zero exit status, not an error.
+  #
+  # The words come from `Responses`, which is where the other two doors get
+  # theirs. A third rendering of "what happened to your promotion" is a third
+  # thing to keep in step, and this module exists because two already were.
+  defp promote_for_caller(scope) do
+    result = Promotion.promote(scope)
+
+    {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
+  end
+
+  defp promotion_status({:ok, _report}), do: "promoted"
+  defp promotion_status({:error, _refusal}), do: "refused"
 
   defp accept_manifest(socket, entries) do
     cond do

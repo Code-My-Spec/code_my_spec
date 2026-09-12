@@ -10,6 +10,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementsFormatter
 
   schema do
     field :name, :string, required: true, description: "The requirement name (e.g. 'spec_written', 'tests_written')"
@@ -29,7 +30,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
   end
 
   defp respond_with_matches(scope, name, params, frame) do
-    nodes = RequirementGraph.compute_all(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     matches =
       nodes
@@ -55,7 +56,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
     #{node.description || "No description"}
 
-    **Status:** #{if node.satisfied, do: "Satisfied", else: "Not satisfied"}
+    **Status:** #{if node.satisfied, do: "Satisfied", else: "Not satisfied"}#{reason_line(node)}
     **Entity:** #{String.capitalize(node.entity_type)}: #{node.entity_name}
     **Execution:** #{execution_label(node.execution_type)}
     **Validation:** #{validation_label(node.validation_type)}
@@ -64,6 +65,17 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
     Response.tool()
     |> Response.text(String.trim(text))
   end
+
+  # The checkers already compute this — `three_amigos_complete`'s own
+  # delegate names the seal specifically as its blocker when every other
+  # condition is met — but nothing on this surface read it, so an agent
+  # blocked by it had no way to tell "the seal" from "you haven't done the
+  # work" short of a database read (f56b1787).
+  defp reason_line(%{satisfied: true}), do: ""
+  defp reason_line(%{satisfied: false, details: details}) when map_size(details) == 0, do: ""
+
+  defp reason_line(%{satisfied: false, details: details}),
+    do: "\n**Why:** #{RequirementsFormatter.format_details(details)}"
 
   defp list_response(name, nodes) do
     lines =

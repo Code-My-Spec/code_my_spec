@@ -63,6 +63,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
 
   # Long enough for a transatlantic round trip against a busy server, short
@@ -130,6 +131,22 @@ defmodule CmsHarness.Project.ChannelClient do
   # channel, and the agent cannot act on them the same way.
   defp analysis_timeout,
     do: Application.get_env(:code_my_spec, :harness_analysis_await_timeout, :timer.minutes(32))
+
+  # A promotion, which is minutes and not a decision.
+  #
+  # The server's own worst case is the sum of what `Promotion.promote/1` does:
+  # a precheck and a merge at `Runner`'s `@git_timeout` (60s each), two gate
+  # sweeps at `:promotion_sweep_timeout` (2 minutes each), and a restart at
+  # `@restart_timeout` (600s, because `just restart` compiles, migrates and
+  # polls for the app on a cold tree). Roughly sixteen minutes, and each leg
+  # crossing the wire adds its own five seconds.
+  #
+  # Twenty, so the server's answer arrives as an answer rather than as this
+  # timing out first. Same reasoning as `analysis_timeout/0` above, and the same
+  # reason it matters: a refused gate and a dead channel need opposite
+  # responses, and a timeout here reports the second for the first.
+  defp promotion_timeout,
+    do: Application.get_env(:code_my_spec, :harness_promotion_await_timeout, :timer.minutes(20))
 
   # --- Client API ---
 
@@ -299,6 +316,29 @@ defmodule CmsHarness.Project.ChannelClient do
   def await_idle(root) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, :await_idle, analysis_timeout() + 5_000)
+      [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc """
+  Promote this working copy and wait for the outcome.
+
+  Backs `POST /api/harnesses/<id>/promotion/run`. The promotion runs on the
+  *server* — `Promotion.gate/1` reads the database and this machine has none —
+  and its disk half comes straight back here as `fs_request` ops, so this waits
+  on a round trip that passes through this process twice. Which is fine: the
+  server replies out of band, so nothing is held while it does.
+
+  `{:ok, %{"status" => "promoted" | "refused", "report" => text}}` for anything
+  the promotion decided, including a refusal. `{:error, …}` only when it could
+  not be attempted.
+  """
+  @spec await_promotion(String.t()) :: {:ok, map()} | {:error, term()}
+  def await_promotion(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :await_promotion, promotion_timeout() + 5_000)
       [] -> {:error, :not_connected}
     end
   catch
@@ -590,6 +630,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:silences, 0)
 
     schedule_read_model_refresh()
+    schedule_preview_check()
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -672,6 +713,21 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_read_model_refresh,
     do: Process.send_after(self(), :refresh_read_model, @read_model_refresh_ms)
+
+  # Preview health gets its own clock, because a scan is the wrong one.
+  #
+  # Everything else the sync reports changes only when the disk changes. An
+  # application does not: it crashes while nobody is editing and recovers while
+  # nobody is editing, and `code_on_running_copy` refuses on the result. Tied to
+  # the scan, a recovered app stayed `down` until someone touched a file, and a
+  # crashed one read `serving` for exactly as long.
+  @preview_check_ms 60_000
+
+  @doc "Public so a test can assert against the real interval rather than a copy."
+  def preview_check_ms, do: @preview_check_ms
+
+  defp schedule_preview_check,
+    do: Process.send_after(self(), :measure_preview, @preview_check_ms)
 
   # A join the server refused. The only one we know how to explain is a project
   # another harness holds; anything else is reported as it arrived.
@@ -1113,6 +1169,38 @@ defmodule CmsHarness.Project.ChannelClient do
   # with the same `Environments` API everything else uses, send the outcome
   # back. Nothing about it is harness-specific — the server is simply borrowing
   # this machine's disk.
+  # Promotion's disk work. The same borrowed disk as `fs_request`, and it cannot
+  # share that handler for two reasons.
+  #
+  # It is slow. `just restart` compiles, migrates and waits for the app to
+  # answer — minutes on a cold tree — and `fs_request` applies its op inline, in
+  # this process. This process also carries hook decisions and analyzer replies,
+  # so a promotion answered inline would stall every hook on the machine for the
+  # length of a build. Answered from a task instead; `ref` pairs the reply up.
+  #
+  # And it names a root that is deliberately not this channel's own.
+  # `fs_request` is scoped to `socket.assigns.project.root` because a server
+  # asking to read an arbitrary path would be a hole. A promotion is the one
+  # operation whose whole point is a *second* checkout — the one the application
+  # runs from — so the root arrives in the payload and is checked against the
+  # roots this harness actually serves rather than assumed.
+  def handle_message(
+        _topic,
+        "fs_request",
+        %{"ref" => ref, "op" => "promotion_" <> _ = op} = msg,
+        socket
+      ) do
+    payload = msg["payload"] || %{}
+    topic = socket.assigns.topic
+    client = self()
+
+    Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
+      GenServer.cast(client, {:promotion_result, topic, ref, apply_promotion(op, payload)})
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
     payload = msg["payload"] || %{}
     env = Environment.new(:local, socket.assigns.project.root)
@@ -1289,6 +1377,39 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp to_string_reason(reason) when is_binary(reason), do: reason
   defp to_string_reason(reason), do: inspect(reason)
+
+  # One clause per named operation, and no general `cmd`. That route was refused
+  # deliberately — `analysis/run` already owns command execution here along with
+  # the run ledger, single-flight and `_build` — so promotion gets three named
+  # things it may do rather than the ability to run anything.
+  defp apply_promotion("promotion_precheck", %{"root" => root}),
+    do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1))
+
+  defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
+    do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
+
+  defp apply_promotion("promotion_restart", %{"root" => root}),
+    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
+
+  defp apply_promotion(op, _payload),
+    do: {:error, %{reason: "this harness does not implement #{op}"}}
+
+  # A root this harness does not serve is refused rather than operated on. The
+  # server names the running copy's path and is trusted to know it, but "trusted
+  # to know it" and "may name any path on this machine" are different powers and
+  # only the first one is wanted.
+  defp with_served_root(root, fun) do
+    if root in CmsHarness.Projects.list() do
+      fun.(root)
+    else
+      {:error,
+       %{
+         reason:
+           "this machine does not serve a working copy at #{root}, so it will not " <>
+             "run a promotion there."
+       }}
+    end
+  end
 
   defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
 
@@ -1594,7 +1715,28 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
+  # A refusal with structure keeps it.
+  #
+  # Filesystem ops fail with an atom — `:enoent`, `:eacces` — and `to_string/1`
+  # is right for those. A promotion fails with a sentence and the evidence for
+  # it: which files are uncommitted, which paths conflicted. Flattening that map
+  # through `to_string/1` does not merely lose the evidence, it raises
+  # `Protocol.UndefinedError` and takes this channel process down — which the
+  # server sees as `{:shutdown, :peer_closed}`, a transport failure, for a
+  # correctly-computed refusal.
+  #
+  # Measured on the first live promotion: `git status` on the real disk found
+  # ".code_my_spec/qa/994/brief.md" modified, `Steps.precheck/2` refused exactly
+  # as designed, and encoding that refusal killed the channel.
+  defp encode_fs_result({:error, %{} = reason}), do: %{"error" => stringify_keys(reason)}
   defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
+
+  defp stringify_keys(map) do
+    Map.new(map, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      {k, v} -> {k, v}
+    end)
+  end
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do
@@ -1673,6 +1815,26 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_info(:refresh_read_model, socket) do
     schedule_read_model_refresh()
+    {:noreply, socket}
+  end
+
+  # In a task, never inline: the measurement is a `curl` with a five-second
+  # timeout against an address that may be a dead tunnel, and the channel
+  # process is what carries hook decisions and analyzer replies. Blocking it for
+  # five seconds a minute would make a dead preview look like a slow harness.
+  def handle_info(:measure_preview, %{assigns: %{joined: true}} = socket) do
+    schedule_preview_check()
+    root = socket.assigns.project.root
+
+    Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
+      Sync.measure_checkout(root)
+    end)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:measure_preview, socket) do
+    schedule_preview_check()
     {:noreply, socket}
   end
 
@@ -1862,6 +2024,27 @@ defmodule CmsHarness.Project.ChannelClient do
          ) do
       {:ok, ref} ->
         timer = Process.send_after(self(), {:reply_timeout, ref}, analysis_timeout())
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _reason} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
+  end
+
+  def handle_call(:await_promotion, _from, %{assigns: %{joined: false}} = socket) do
+    reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
+    {:reply, {:error, reason}, socket}
+  end
+
+  # The same `pending` machinery again, and it has to be out of band here for a
+  # reason the two above do not have: the server's promotion sends its disk work
+  # straight back down this channel as `fs_request`. Blocking this process on
+  # the reply would leave nothing to answer the merge and the restart, and the
+  # promotion would wait on a process that is waiting on it.
+  def handle_call(:await_promotion, from, socket) do
+    case push(socket, socket.assigns.topic, "promotion_run", %{}, promotion_timeout()) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, promotion_timeout())
         {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
 
       {:error, _reason} ->
@@ -2104,6 +2287,15 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:preview_status, _status}, socket), do: {:noreply, socket}
+
+  def handle_cast({:promotion_result, topic, ref, result}, %{assigns: %{joined: true}} = socket) do
+    push(socket, topic, "fs_result", Map.put(encode_fs_result(result), "ref", ref))
+    {:noreply, socket}
+  end
+
+  # Disconnected before the work finished. Nothing to push to, and the server's
+  # own call times out and says so — better than a reply into a closed socket.
+  def handle_cast({:promotion_result, _topic, _ref, _result}, socket), do: {:noreply, socket}
 
   # --- Private ---
 

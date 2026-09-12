@@ -19,7 +19,6 @@ defmodule CodeMySpec.Users.Scope do
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.ClientUsers.ClientUser
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.User
 
@@ -38,7 +37,12 @@ defmodule CodeMySpec.Users.Scope do
           user_id: Ecto.UUID.t() | integer() | nil,
           active_account: Account.t() | nil,
           active_account_id: Ecto.UUID.t() | nil,
-          active_project: Project.t() | nil,
+          # A project struct, whatever shape `CodeMySpec.Projects.Project`
+          # currently has — Scope carries it without depending on that
+          # module's compiled type. Users → Projects would be the wrong
+          # direction (a project belongs to an account, which is many-to-many
+          # on users, not the other way round).
+          active_project: struct() | nil,
           active_project_id: Ecto.UUID.t() | nil,
           # Which working copy of the project this scope speaks for. Files and
           # problems are projections of one checkout, so a read or write of them
@@ -88,43 +92,6 @@ defmodule CodeMySpec.Users.Scope do
 
   def for_user(nil), do: nil
 
-  @config_dir ".code_my_spec"
-  @config_file "config.yml"
-
-  @doc """
-  Creates a scope from a local project config file.
-
-  Reads `.code_my_spec/config.yml` from the given project root directory,
-  loads or creates the project, and returns a scope.
-
-  Used by CLI and local MCP server for non-OAuth authenticated access.
-  Expects the project root (containing `.code_my_spec/config.yml`) - callers
-  should resolve subdirectories to the project root before calling this.
-
-  Returns `{:ok, scope}` or `{:error, reason}`.
-  """
-  @spec from_local_config(String.t()) :: {:ok, t()} | {:error, atom() | String.t()}
-  def from_local_config(project_root) when is_binary(project_root) do
-    with {:ok, config} <- read_local_config(project_root),
-         {:ok, project} <- get_or_create_project(config, project_root) do
-      user = default_local_user()
-
-      {:ok,
-       %__MODULE__{
-         user: user,
-         user_id: user.id,
-         active_account: nil,
-         active_account_id: config["account_id"],
-         active_project: project,
-         active_project_id: project.id,
-         cwd: project_root,
-         environment: Environment.new(:local, project_root)
-       }}
-    end
-  end
-
-  def from_local_config(nil), do: {:error, :no_working_dir}
-
   @doc """
   Builds a complete local scope from a project record, preferring a live
   checkout over `local_path`.
@@ -148,12 +115,16 @@ defmodule CodeMySpec.Users.Scope do
   live harness but no persisted column) used to read as unreachable even
   while a harness was actively connected to it.
   """
-  @spec for_local_project(Project.t(), String.t() | nil) :: {:ok, t()} | {:error, atom()}
+  @spec for_local_project(struct(), String.t() | nil) :: {:ok, t()} | {:error, atom()}
   def for_local_project(project, root \\ nil)
 
   def for_local_project(nil, _root), do: {:error, :no_local_path}
 
-  def for_local_project(%Project{} = project, root) do
+  # `%_{}` — any struct, not specifically `CodeMySpec.Projects.Project` — is
+  # the point: every caller already holds a real project, and matching on the
+  # module by name would make Scope depend on Projects' compiled type for no
+  # reason a project belongs to an account, not to Users.
+  def for_local_project(%_{} = project, root) do
     case resolve_environment(project, root) do
       %Environment{cwd: nil} ->
         {:error, :no_local_path}
@@ -216,7 +187,7 @@ defmodule CodeMySpec.Users.Scope do
   # not be written at all. The reclaim deleted the component and the live
   # agent's own sync re-projected it from what it believed was its working
   # copy, which is correct behaviour on a false premise.
-  defp resolve_environment(%Project{} = project, root) do
+  defp resolve_environment(%_{} = project, root) do
     case registered_for(root) || CodeMySpec.Environments.lookup_registered(project.id) do
       nil -> Environment.new(:local, root || project.local_path)
       %Environment{} = env -> env
@@ -237,71 +208,4 @@ defmodule CodeMySpec.Users.Scope do
     }
   end
 
-  @doc """
-  Reads the local config file from the project root directory.
-
-  Expects a directory containing `.code_my_spec/config.yml`.
-
-  Returns `{:ok, config_map}` or `{:error, reason}`.
-  """
-  @spec read_local_config(String.t()) :: {:ok, map()} | {:error, atom()}
-  def read_local_config(project_root) do
-    config_path = Path.join([project_root, @config_dir, @config_file])
-
-    case YamlElixir.read_from_file(config_path) do
-      {:ok, config} when is_map(config) -> {:ok, config}
-      {:ok, nil} -> {:ok, %{}}
-      {:error, _reason} -> {:error, :config_parse_error}
-    end
-  end
-
-  defp get_or_create_project(config, working_dir) do
-    case config["project_id"] do
-      nil ->
-        {:error, :no_project_id}
-
-      project_id ->
-        case CodeMySpec.Repo.get(Project, project_id) do
-          %Project{} = project ->
-            sync_project_from_config(project, config, working_dir)
-
-          nil ->
-            create_project_from_config(config, working_dir)
-        end
-    end
-  end
-
-  defp sync_project_from_config(project, config, working_dir) do
-    attrs =
-      %{}
-      |> maybe_put(:name, config["name"])
-      |> maybe_put(:module_name, config["module_name"])
-      |> maybe_put(:description, config["description"])
-      |> maybe_put(:account_id, config["account_id"])
-      |> maybe_put(:local_path, working_dir)
-
-    if attrs == %{} do
-      {:ok, project}
-    else
-      project
-      |> Ecto.Changeset.cast(attrs, Map.keys(attrs))
-      |> CodeMySpec.Repo.update()
-    end
-  end
-
-  defp create_project_from_config(config, working_dir) do
-    attrs = %{
-      id: config["project_id"],
-      name: config["name"] || "Unnamed Project",
-      module_name: config["module_name"] || "App",
-      description: config["description"],
-      account_id: config["account_id"],
-      local_path: working_dir
-    }
-
-    CodeMySpec.Repo.insert(struct(Project, attrs))
-  end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

@@ -28,6 +28,7 @@ defmodule CodeMySpec.Questions.Question do
           story_id: integer() | nil,
           text: String.t() | nil,
           status: status() | nil,
+          resolution: String.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -36,6 +37,7 @@ defmodule CodeMySpec.Questions.Question do
   schema "questions" do
     field :text, :string
     field :status, Ecto.Enum, values: @statuses, default: :open
+    field :resolution, :string
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :project, Project, type: :binary_id
@@ -51,7 +53,7 @@ defmodule CodeMySpec.Questions.Question do
   @doc false
   def changeset(question, attrs) do
     question
-    |> cast(attrs, [:account_id, :project_id, :story_id, :text, :status])
+    |> cast(attrs, [:account_id, :project_id, :story_id, :text, :status, :resolution])
     |> validate_required([:account_id, :project_id, :story_id, :text])
     |> validate_length(:text, min: 1, max: 2000)
     |> assoc_constraint(:account)

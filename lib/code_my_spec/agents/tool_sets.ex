@@ -72,6 +72,19 @@ defmodule CodeMySpec.Agents.ToolSets do
   # looking at it, and the `code-writer` agent type has carried browser tools
   # since before roles existed. Product does not — it writes specs, and a spec
   # is not verified by driving a page.
+  # `promote` is deliberately NOT in this list, and the mistake is worth
+  # recording because it looked right.
+  #
+  # These lists are the allowlist for *scriptable* tools — `tool_sets_test.exs`
+  # checks every name here against `ScriptableTools`, and a name that matches
+  # nothing "is not a smaller grant, it is a list that reads as bigger than it
+  # is". `promote` is direct-only on `LocalServer`, so adding it here granted
+  # exactly nothing while reading as though it had.
+  #
+  # What an agent in our own BEAM actually carries is the module list in
+  # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
+  # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
+  # between the grant that did nothing and the one that worked.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview

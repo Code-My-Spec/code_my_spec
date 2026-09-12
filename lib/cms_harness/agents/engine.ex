@@ -783,6 +783,12 @@ defmodule CmsHarness.Agents.Engine do
       # choices; `send_message` is for when the answer is genuinely prose.
       # Begins a sweep and returns; the result arrives as a message.
       CmsHarness.Agents.Tools.StartAnalysis,
+      # The same shape, for the other long-running thing an agent starts.
+      # `code_on_running_copy` is handed to the coding role, and without this
+      # the agent could read about `promote` everywhere it looked and still get
+      # `Unknown tool` — `ToolSets` governs Claude Code's MCP surface, this list
+      # governs ours, and a tool added to one is missing from half the fleet.
+      CmsHarness.Agents.Tools.Promote,
       CmsHarness.Agents.Tools.AskUserQuestion,
       CmsHarness.Agents.Tools.SendMessage,
       # Offered on every refusal inside the loop by `Menu.tap_out_offer/1`, and

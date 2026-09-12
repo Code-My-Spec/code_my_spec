@@ -75,6 +75,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
@@ -173,6 +174,13 @@ defmodule CodeMySpec.Agents do
   state of a process — just display the state of the process, and when you
   click play it should start the process again."
 
+  The tool list is recomputed rather than carried over, and that is the half
+  that makes a restart worth anything after a deploy. `tools` is written once at
+  creation, so an agent started before a tool existed could never reach it — no
+  matter how many times it was restarted — and the only symptom available from
+  inside the agent is "it is not in my list", which reads as a client caching
+  problem and is not one. A coding agent sat through exactly that with `promote`.
+
   Deliberately not `start_agent/2` again. That inserts a new row, and
   `find_or_create_agent_conversation/3` keys on `agent_id` — a fresh id is a
   fresh, empty thread, which is exactly the outcome a restart exists to
@@ -188,7 +196,8 @@ defmodule CodeMySpec.Agents do
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,
              os_pid: nil,
-             os_boot_id: nil
+             os_boot_id: nil,
+             tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
            }) do
       agent = launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential}))
       broadcast(scope, {:agent_started, agent})
@@ -507,12 +516,46 @@ defmodule CodeMySpec.Agents do
   cannot stop an agent while a wrong project id claims the write — the
   repository's `:cross_project` guard is doing its job, not being worked around.
   """
+
   @spec stop_any_agent(Ecto.UUID.t()) ::
           {:ok, Agent.t()} | {:error, :no_such_agent | term()}
   def stop_any_agent(agent_id) when is_binary(agent_id) do
     case Repo.get(Agent, agent_id) do
       nil -> {:error, :no_such_agent}
       agent -> stop_agent(%Scope{active_project_id: agent.project_id}, agent.id)
+    end
+  end
+
+  @doc """
+  Restart any agent by id, for the dev tools.
+
+  The counterpart to `stop_any_agent/1`, and the gap that made these tools
+  one-way: `/dev/agents` could observe an agent and stop it, and nothing there
+  could start one again. A stopped agent had exactly one route back — the play
+  control on its own conversation page — and when that control was itself broken
+  there was no way in at all.
+
+  Not `start_any_agent`. `start_agent/2` inserts a new row and
+  `find_or_create_agent_conversation/3` keys on `agent_id`, so starting is a
+  fresh empty thread; this is `restart_agent/2`, which re-runs the launch half
+  against the same row and the same transcript.
+
+  Account and project both come off the agent's row. The account is what the
+  credential lookup needs, and taking it from the caller would be the same hole
+  the `:cross_project` guard exists to close.
+  """
+  @spec restart_any_agent(Ecto.UUID.t()) ::
+          {:ok, Agent.t()} | {:error, :no_such_agent | term()}
+  def restart_any_agent(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        restart_agent(
+          %Scope{active_project_id: agent.project_id, active_account_id: agent.account_id},
+          agent.id
+        )
     end
   end
 
@@ -953,6 +996,37 @@ defmodule CodeMySpec.Agents do
       else
         {:ok, agent, :paused}
       end
+    end
+  end
+
+  # A row that says `:stopped` is the one thing here that is never a lie.
+  #
+  # `:running` can be stale — a shared harness restart leaves it claiming life
+  # with nothing behind it, which is why the clause below checks liveness rather
+  # than trusting the row. But `:stopped` is only ever written by a clean stop,
+  # so there is certainly no process, and asking whether its *working copy* is
+  # connected answers a different question entirely.
+  #
+  # That mismatch is what made the play button do nothing. A deliberately
+  # stopped agent sitting on a perfectly healthy harness took the wake branch,
+  # `StopDecision.wake/2` dispatched to a process that no longer existed, and the
+  # page reported `:woke` — success, with nothing started. John: "I thought I
+  # could now start it with the play button but it's stopped and I can't get it
+  # going again," and, on the same screen, "This agent is not running, so there
+  # is nothing to send a message to" where the chat bar should be. One cause:
+  # the only control that clears `:stopped` could not reach `restart_agent/2`.
+  defp wake_or_restart(scope, %Agent{status: status} = agent)
+       when status in [:stopped, :failed] do
+    case restart_agent(scope, agent.id) do
+      {:ok, restarted} ->
+        {:ok, restarted, :restarted}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Agents] could not restart #{status} agent #{agent.id}: #{inspect(reason)}"
+        )
+
+        {:ok, agent, :restart_failed}
     end
   end
 
@@ -2002,26 +2076,22 @@ defmodule CodeMySpec.Agents do
   # for a type nobody defined is a caller with the wrong idea about what exists.
   defp role_of(attrs) do
     case Map.get(attrs, :role, :main) do
-      role when is_atom(role) -> known_role(role, role)
-      role when is_binary(role) -> role |> safe_atom() |> known_role(role)
+      role when is_atom(role) ->
+        known_role(role, role)
+
+      role when is_binary(role) ->
+        role |> Utils.safe_to_existing_atom(:__unknown__) |> known_role(role)
     end
   end
 
   # `asked` is carried separately from the atom, because the atom may be the
-  # sentinel `safe_atom/1` returns for a name that does not exist — and a
-  # refusal naming `:__unknown__` tells the caller a word it never sent.
+  # sentinel `Utils.safe_to_existing_atom/2` returns for a name that does not
+  # exist — and a refusal naming `:__unknown__` tells the caller a word it
+  # never sent.
   defp known_role(role, asked) do
     if role in Agent.roles(),
       do: {:ok, role},
       else: {:error, {:unknown_role, asked, Agent.roles()}}
-  end
-
-  # `to_existing_atom` so a caller cannot grow the atom table by asking for
-  # types that do not exist.
-  defp safe_atom(name) do
-    String.to_existing_atom(name)
-  rescue
-    ArgumentError -> :__unknown__
   end
 
   # An explicit provider still wins — a caller that names one is asking for it,

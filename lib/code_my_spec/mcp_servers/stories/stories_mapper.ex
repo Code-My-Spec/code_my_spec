@@ -33,11 +33,12 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     criteria_lines = format_criteria_text(story.criteria)
     notes_line = notes_line(story.notes)
     component_line = component_line(story.component)
+    epic_line = epic_line(story.epic)
 
     summary = """
     ## #{story.title} (ID: #{story.id})#{number_line(story)}
 
-    #{story.story || story.description || "No story"}#{notes_line}#{component_line}
+    #{story.story || story.description || "No story"}#{notes_line}#{component_line}#{epic_line}
 
     Ready for development: #{story.ready_for_dev == true}
 
@@ -87,6 +88,9 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp component_line(%{module_name: module_name}), do: "\n\n**Component:** #{module_name}"
   defp component_line(_), do: ""
+
+  defp epic_line(%{name: name}), do: "\n\n**Epic:** #{name}"
+  defp epic_line(_), do: ""
 
   def story_deleted_response(story) do
     Response.tool()
@@ -162,66 +166,6 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       end
 
     hybrid_response(summary_text, %{stories: titles, count: count})
-  end
-
-  def stories_batch_response(stories) do
-    count = length(stories)
-    summaries = Enum.map(stories, &story_summary/1)
-
-    story_lines =
-      stories
-      |> Enum.take(5)
-      |> Enum.map_join("\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
-
-    more = if count > 5, do: "\n... and #{count - 5} more", else: ""
-    summary = "Created #{count} stories:\n#{story_lines}#{more}"
-
-    hybrid_response(summary, %{success: true, count: count, stories: summaries})
-  end
-
-  def batch_errors_response(successes, failures) do
-    created_count = length(successes)
-    failed_count = length(failures)
-
-    success_lines =
-      if created_count > 0 do
-        lines =
-          successes
-          |> Enum.take(3)
-          |> Enum.map_join("\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
-
-        more = if created_count > 3, do: "\n  ... and #{created_count - 3} more", else: ""
-        "Created #{created_count} stories:\n#{lines}#{more}"
-      else
-        "No stories created."
-      end
-
-    failure_lines =
-      failures
-      |> Enum.take(3)
-      |> Enum.map_join("\n", fn {index, changeset} ->
-        errors = Formatters.extract_errors(changeset)
-
-        error_text =
-          Enum.map_join(errors, "; ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-
-        "- Story #{index + 1}: #{error_text}"
-      end)
-
-    more_failures =
-      if failed_count > 3, do: "\n... and #{failed_count - 3} more failures", else: ""
-
-    summary = """
-    ## Batch Creation Partial Failure
-
-    #{success_lines}
-
-    Failed #{failed_count} stories:
-    #{failure_lines}#{more_failures}
-    """
-
-    Response.tool()
-    |> Response.error(String.trim(summary))
   end
 
   def prompt_response(prompt) do

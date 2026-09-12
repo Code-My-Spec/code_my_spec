@@ -83,6 +83,19 @@ defmodule CodeMySpec.CodeMode.Catalog do
     # script must not do this" but "you already have it directly, and going
     # through Lua to reach it buys nothing". The reason says so, because an
     # agent told the wrong reason looks in the wrong place.
+    # Added after an agent hit the exact failure the comment above describes.
+    # Told to promote, it tried `promote()` inside `run_script` and got
+    # "attempt to call a nil value (global 'promote')" — which says nothing
+    # about where the tool is — then tried it directly and got `Unknown tool`,
+    # because the agent-side list did not carry it either. Two dead ends and
+    # neither named the real answer.
+    "promote" =>
+      "you already have it directly — call it as a tool. It returns at once and " <>
+        "messages you the outcome, so a script would have nothing to wait for",
+    "promote_sync" =>
+      "it blocks for the length of a merge, an analyzer sweep and an application " <>
+        "restart, which outlives any script. You are an agent: use `promote`, " <>
+        "which answers immediately and tells you when it lands",
     "get_next_requirement" =>
       "it is one of the four tools you already have directly — call it as a tool",
     "sync_project" => "it is one of the four tools you already have directly — call it as a tool",

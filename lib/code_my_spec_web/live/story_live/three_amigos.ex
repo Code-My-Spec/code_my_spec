@@ -641,6 +641,9 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
         <div class="wv4-q-id">Q · {short_id(@question.id)}</div>
         <span class="wv4-q-state">{@question.status}</span>
         <div class="wv4-q-text">{@question.text}</div>
+        <div :if={@question.resolution not in [nil, ""]} class="wv4-q-resolution">
+          {@question.resolution}
+        </div>
       <% end %>
     </div>
     """
@@ -813,6 +816,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       .wv4-q.resolved .wv4-q-state { color: var(--wall-ok); }
       .wv4-q-text { font-size: 12.5px; line-height: 1.45; margin-top: 5px; }
       .wv4-q.resolved .wv4-q-text { text-decoration: line-through; text-decoration-color: var(--wall-ink-dim); }
+      .wv4-q-resolution { font-size: 11.5px; line-height: 1.4; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--wall-line); color: var(--wall-ink-mid); }
       .wv4-ribbon { border-top: 1.5px solid var(--wall-line); background: var(--wall-bg-2); padding: 10px 22px; display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: var(--wall-ink-mid); }
       .wv4-ribbon-time { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-ink-dim); letter-spacing: 0.04em; flex-shrink: 0; }
       .wv4-ribbon-verb { color: var(--wall-ink); font-weight: 500; }

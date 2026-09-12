@@ -271,15 +271,5 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     end
 
     %{state | last_recompute: DateTime.utc_now()}
-  rescue
-    error ->
-      # A watcher is a background convenience and must not take a project's
-      # supervision tree with it. The next event schedules another pass, and a
-      # reader still computes on demand exactly as before.
-      Logger.warning(
-        "[GraphWatcher] recompute failed for #{state.project_id}: " <> Exception.message(error)
-      )
-
-      state
   end
 end

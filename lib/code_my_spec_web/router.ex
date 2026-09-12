@@ -399,6 +399,17 @@ defmodule CodeMySpecWeb.Router do
       # `/dev/agents` and, until this, not fixable from the same place.
       post "/agents/:agent_id/stop", DevAgentController, :stop
 
+      # And back again. Without this the dev tools could only ever remove
+      # agents, which is half a control surface.
+      post "/agents/:agent_id/restart", DevAgentController, :restart
+
+      # An agent parked on a question is stopped until somebody answers, and
+      # until this the only thing that could was a person on its conversation
+      # page. These tools could start it, stop it and talk to it, and not clear
+      # the one state that makes it sit still.
+      get "/agents/:agent_id/questions", DevAgentController, :questions
+      post "/agents/:agent_id/answer", DevAgentController, :answer
+
       # Staffing has to happen in the server's own VM. The channel registry
       # lives here, so a `mix run` script writes three agent rows, delivers an
       # orchestrator message into the database, and reaches no harness at all —

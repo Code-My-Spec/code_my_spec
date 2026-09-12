@@ -205,7 +205,12 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
       try do
         analyzer.available?(scope)
       rescue
-        _ -> false
+        exception ->
+          Logger.error(
+            "Error checking availability of analyzer #{inspect(analyzer)}: #{inspect(exception)}"
+          )
+
+          false
       end
     end)
   end

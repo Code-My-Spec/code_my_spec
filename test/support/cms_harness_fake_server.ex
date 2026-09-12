@@ -13,6 +13,7 @@ defmodule CmsHarnessTest.FakeServer do
     * `hook_decision` → whatever a test says, including no answer at all
     * `run_analysis` → pushed *to* the harness, naming analyzers to run
     * `analysis_result` → what came back, refusable
+    * `promotion_run` → a rendered promotion outcome, promoted or refused
 
   It exists so the disconnection behaviours can be tested against a connection
   that genuinely goes away, rather than against a flag someone set.
@@ -36,6 +37,14 @@ defmodule CmsHarnessTest.FakeServer do
     listen(self())
     put_hook_decision(Keyword.get(opts, :hook_decision, %{"systemMessage" => "ok"}))
     put_skill_reply(Keyword.get(opts, :skill_reply, %{"prompt" => "ok"}))
+
+    put_promotion_reply(
+      Keyword.get(opts, :promotion_reply, %{
+        "status" => "promoted",
+        "report" => "Promoted feature/x to the running dev copy."
+      })
+    )
+
     :persistent_term.put({__MODULE__, :reject_obs}, nil)
     :persistent_term.put({__MODULE__, :reject_analysis}, nil)
     :persistent_term.put({__MODULE__, :channel}, nil)
@@ -128,6 +137,19 @@ defmodule CmsHarnessTest.FakeServer do
 
   def put_skill_reply(reply), do: :persistent_term.put({__MODULE__, :skill_reply}, reply)
   def skill_reply, do: :persistent_term.get({__MODULE__, :skill_reply}, %{"prompt" => "ok"})
+
+  # What the server answers a `promotion_run` with. The real one runs the whole
+  # promotion and sends back a rendered report plus `promoted` or `refused`;
+  # both are `{:ok, …}` on the wire, because a refused gate is an outcome and
+  # only an un-attemptable promotion is an error.
+  def put_promotion_reply(reply), do: :persistent_term.put({__MODULE__, :promotion_reply}, reply)
+
+  def promotion_reply,
+    do:
+      :persistent_term.get(
+        {__MODULE__, :promotion_reply},
+        %{"status" => "promoted", "report" => "Promoted feature/x to the running dev copy."}
+      )
 
   # Lets a test make the server reject a manifest, the way version skew would.
   def reject_observations(reason), do: :persistent_term.put({__MODULE__, :reject_obs}, reason)
@@ -253,6 +275,19 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
 
     case FakeServer.skill_reply() do
       :no_answer -> {:noreply, socket}
+      reply -> {:reply, {:ok, reply}, socket}
+    end
+  end
+
+  def handle_in("promotion_run", payload, socket) do
+    FakeServer.notify({:promotion_run, socket.assigns.project_id, payload})
+
+    case FakeServer.promotion_reply() do
+      # The real server replies out of band from a task, so a promotion that
+      # never answers is a state the harness has to survive — not a state it can
+      # only reach through a crash.
+      :no_answer -> {:noreply, socket}
+      {:error, _} = refusal -> {:reply, refusal, socket}
       reply -> {:reply, {:ok, reply}, socket}
     end
   end

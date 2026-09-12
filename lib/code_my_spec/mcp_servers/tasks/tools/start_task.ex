@@ -29,6 +29,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
+  alias CodeMySpec.Utils
 
   schema do
     field :requirement_name, :string,
@@ -98,7 +99,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp resolve_from_graph(scope, name, entity_type, entity_id) do
     # Find the matching node in the computed graph
-    all_nodes = RequirementGraph.compute_all(scope)
+    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     case Enum.find(all_nodes, fn n ->
            n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
@@ -163,11 +164,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp safe_get_session(scope, id) do
-    Sessions.get_session(scope, id)
-  rescue
-    Ecto.Query.CastError -> nil
-  end
+  defp safe_get_session(scope, id), do: Utils.safe_get(fn -> Sessions.get_session(scope, id) end)
 
   defp start_or_resume(scope, owner, requirement, agent_id, frame) do
     # Check for existing task for this exact requirement + entity. Must

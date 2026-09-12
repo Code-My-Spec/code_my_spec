@@ -10,6 +10,7 @@ defmodule CodeMySpecLocalWeb.AuthLive do
   alias CodeMySpec.Auth.AuthState
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Projects
+  alias CodeMySpec.Utils
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,8 +38,7 @@ defmodule CodeMySpecLocalWeb.AuthLive do
         {:noreply, redirect(socket, external: auth_url)}
 
       error ->
-        {:noreply,
-         put_flash(socket, :error, "Failed to start sign in: #{inspect(error)}")}
+        {:noreply, put_flash(socket, :error, "Failed to start sign in: #{inspect(error)}")}
     end
   end
 
@@ -114,9 +114,7 @@ defmodule CodeMySpecLocalWeb.AuthLive do
   end
 
   defp safe_list_projects do
-    Projects.list_local_projects()
-  rescue
-    _ -> []
+    Utils.rescued("AuthLive.safe_list_projects", [], &Projects.list_local_projects/0)
   end
 
   defp build_auth_url(server_url, client_id, code_challenge, redirect_uri, state) do

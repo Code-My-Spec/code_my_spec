@@ -817,9 +817,9 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp show_command(_node, _scope), do: {:ok, nil}
 
   defp find_entity_node(scope, entity_type, entity_id, req_name) do
-    scope
-    |> Requirements.compute_all()
-    |> Enum.find(fn n ->
+    {nodes, _computed_at} = Requirements.cached_all(scope)
+
+    Enum.find(nodes, fn n ->
       n.entity_type == entity_type and n.entity_id == entity_id and n.name == req_name
     end)
   end

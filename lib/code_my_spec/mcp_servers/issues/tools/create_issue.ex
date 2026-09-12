@@ -32,6 +32,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Utils
 
   schema do
     field :title, :string, required: true, doc: "Short issue title"
@@ -99,15 +100,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   defp maybe_atomize(map, key) do
     case Map.get(map, key) do
-      val when is_binary(val) ->
-        try do
-          Map.put(map, key, String.to_existing_atom(val))
-        rescue
-          ArgumentError -> map
-        end
-
-      _ ->
-        map
+      val when is_binary(val) -> Map.put(map, key, Utils.safe_to_existing_atom(val, val))
+      _ -> map
     end
   end
 end

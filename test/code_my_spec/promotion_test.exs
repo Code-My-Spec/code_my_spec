@@ -1,6 +1,6 @@
 defmodule CodeMySpec.PromotionTest do
   @moduledoc """
-  What a promotion does when it cannot reach the disk.
+  Where a promotion's disk work runs, and what it does when it cannot run.
 
   Every spec in story 1046 builds `Environment.new(:local, root)` and drives a
   real checkout on the machine running the suite. Production does not look like
@@ -11,9 +11,12 @@ defmodule CodeMySpec.PromotionTest do
 
   So the one environment that matters was the one nothing covered, and the
   tool's first real invocation crashed with `-32603 Internal error`:
-  `refuse_uncommitted/2` matched the error tuple against its `{out, _}` clause
-  and called `String.trim(:error)`. The agent was told the tool was broken,
-  which is both useless and wrong.
+  `String.trim(:error)`, from a caller assuming `cmd/4` always answers
+  `{binary, status}`.
+
+  `Promotion.Runner` is the answer — the gate stays on the server where the
+  database is, and the three disk operations run wherever the checkout is.
+  These cover the paths that have no disk to reach.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -21,37 +24,55 @@ defmodule CodeMySpec.PromotionTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.Promotion.{Runner, Steps}
 
-  describe "an environment that cannot run commands" do
-    test "is refused by name rather than crashing" do
+  describe "a runner with nowhere to run" do
+    test "a harness environment with no working copy id says so" do
       scope = %{full_scope_fixture() | environment: Environment.new(:harness, nil)}
 
-      assert {:error, %{environment: :harness, reason: reason}} = Promotion.promote(scope)
+      assert {:error, %{reason: reason}} = Runner.precheck(scope, "/somewhere", nil)
 
-      assert reason =~ "harness",
-             "the refusal has to name why it cannot promote, or the agent reads it " <>
-               "as the tool being broken. Got: #{reason}"
-
-      assert reason =~ "just restart" or reason =~ "git",
-             "an agent refused here needs to know what it can do instead. Got: #{reason}"
+      assert reason =~ "working copy id",
+             "the harness is addressed by id, not by path — a missing id has to " <>
+               "name itself rather than surface as a failed lookup. Got: #{reason}"
     end
 
-    test "a scope with no environment at all is refused too" do
+    test "a harness that is not connected is reported, not crashed into" do
+      scope = %{full_scope_fixture() | environment: Environment.new(:harness, nil)}
+
+      assert {:error, %{reason: reason}} =
+               Runner.restart(scope, "/somewhere", Ecto.UUID.generate())
+
+      assert reason =~ "could not reach",
+             "an unreachable machine is a state to report, not an exception. " <>
+               "Got: #{reason}"
+    end
+
+    test "a scope with no environment at all is refused" do
       scope = %{full_scope_fixture() | environment: nil}
 
-      assert {:error, %{reason: reason}} = Promotion.promote(scope)
+      assert {:error, %{reason: reason}} = Runner.merge(scope, "/somewhere", "main", nil)
       assert reason =~ "no environment"
     end
+  end
 
-    # The specific crash. `String.trim(:error)` is what a caller gets for
-    # assuming `Environments.cmd/4` always answers `{binary, status}`, and the
-    # guard above is only one of several call sites that assumed it.
-    test "no promotion path raises a FunctionClauseError on an error tuple" do
-      scope = %{full_scope_fixture() | environment: Environment.new(:harness, nil)}
+  describe "a command that errors instead of running" do
+    # The exact crash. `Environments.cmd(nil, ...)` answers `{"no environment", 1}`
+    # and a harness environment answers `{:error, :not_supported_on_harness}`;
+    # `Steps` has to survive both without trimming an atom.
+    test "does not raise out of a step" do
+      assert {:error, %{reason: reason}} = Steps.precheck(nil, "/nowhere")
+      assert is_binary(reason)
+    end
 
-      # Would raise before the fix rather than returning a tuple.
-      assert {:error, %{}} = Promotion.promote(scope)
+    test "a step handed a harness environment reports rather than raises" do
+      env = Environment.new(:harness, nil)
+
+      assert {:error, %{reason: reason}} = Steps.precheck(env, "/nowhere")
+
+      assert is_binary(reason),
+             "this is the call that produced `String.trim(:error)` and a -32603 " <>
+               "on the tool's first real use"
     end
   end
 end

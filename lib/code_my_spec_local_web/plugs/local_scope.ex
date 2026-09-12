@@ -6,7 +6,7 @@ defmodule CodeMySpecLocalWeb.Plugs.LocalScope do
   import Plug.Conn
   require Logger
 
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Projects
 
   @behaviour Plug
 
@@ -17,7 +17,7 @@ defmodule CodeMySpecLocalWeb.Plugs.LocalScope do
   def call(conn, _opts) do
     working_dir = conn.assigns[:working_dir]
 
-    case Scope.from_local_config(working_dir) do
+    case Projects.scope_from_local_config(working_dir) do
       {:ok, scope} ->
         assign(conn, :current_scope, scope)
 

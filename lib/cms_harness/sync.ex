@@ -141,6 +141,54 @@ defmodule CmsHarness.Sync do
   # Silent when no preview is recorded. A checkout with no preview address has
   # nothing to be up, and reporting `down` for it would put every un-previewed
   # copy behind a gate it cannot clear.
+  @doc """
+  Measure this checkout's preview and report it, independent of a scan.
+
+  Public because a scan is the wrong clock for it. Everything else `run/2`
+  reports — the app name, the head commit, the git state — changes only when
+  the disk changes, so measuring it when the disk changes is exactly right. An
+  application does not. It crashes while nobody is editing, and it recovers
+  while nobody is editing.
+
+  Measured: Broken Oaths' preview answered 200 on both the port and the tunnel
+  while `preview_status` still said `down`, because the row was last written by
+  a sync and no file had changed since. `code_on_running_copy` refuses on that
+  column, so the story stayed shut on a fact that had stopped being true — and
+  the inverse is worse, an app that died after the last sync reads as serving
+  and QA is sent to it.
+  """
+  @spec measure_preview(String.t()) :: :ok
+  def measure_preview(root) do
+    :local |> Environment.new(root) |> report_preview_health(root)
+  end
+
+  @doc """
+  Re-measure what `code_on_running_copy` reads, independent of a scan.
+
+  Both facts the gate reads change without any file changing, and only one of
+  them was on a clock. Preview health got its own timer because an application
+  crashes and recovers while nobody is editing. Git state was left on the scan
+  clock, and that was half a fix: **a promotion is exactly the event that moves
+  a checkout's relationship to main without touching a file in it.**
+
+  Measured. A promotion merged this copy's work into the running checkout at
+  05:25; at 06:01 git said `ahead=0 behind=0` and the row still said `ahead=3`,
+  last reported 04:51 — seventy minutes stale, because nothing had edited a file
+  since. The gate read that and went on offering `PromoteWork` for a story whose
+  code was already promoted, serving, and green. The agent reported it as "the
+  graph lags a sync cycle"; it is not a lag, it is an event the clock never sees.
+
+  Cheap enough to sit beside the preview check: three `git` invocations against
+  a local checkout, once a minute.
+  """
+  @spec measure_checkout(String.t()) :: :ok
+  def measure_checkout(root) do
+    env = Environment.new(:local, root)
+
+    report_git_state(env, root)
+    report_preview_health(env, root)
+  end
+
   defp report_preview_health(env, root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->

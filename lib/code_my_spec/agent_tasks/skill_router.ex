@@ -223,7 +223,9 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
 
     case RequirementGraph.next_actionable(scope) do
       [] ->
-        case RequirementGraph.compute_all(scope) do
+        {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+
+        case nodes do
           [] ->
             {:ok,
              %{prompt: "No requirements found. Run `/codemyspec:sync` to refresh the graph."}}

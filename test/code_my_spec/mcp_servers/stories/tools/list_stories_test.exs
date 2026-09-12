@@ -128,6 +128,25 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
       refute content =~ "Untagged Story"
     end
 
+    test "without_epic filters to stories not assigned to any epic" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListStories.execute(%{without_epic: true}, frame)
+
+      protocol = Response.to_protocol(response)
+      content = hd(protocol["content"])["text"]
+
+      assert content =~ "Showing 1-1 of 1 stories"
+      assert content =~ "Unfiled Story"
+      refute content =~ "Filed Story"
+    end
+
     test "returns empty when tag has no stories" do
       scope = full_scope_fixture()
       _story = story_fixture(scope, %{title: "Some Story"})

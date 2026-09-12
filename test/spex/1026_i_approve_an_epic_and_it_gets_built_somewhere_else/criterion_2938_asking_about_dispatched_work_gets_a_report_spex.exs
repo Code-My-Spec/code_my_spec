@@ -24,13 +24,10 @@ defmodule CodeMySpecSpex.Story964.Criterion2938Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
   alias Ecto.Adapters.SQL.Sandbox
-
-  @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
