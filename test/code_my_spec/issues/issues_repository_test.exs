@@ -91,6 +91,57 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
     end
   end
 
+  describe "a story that belongs to another project" do
+    # Found by a QA agent, which filed five issues against another project's
+    # stories and found all five stamped with its own `project_id` (a7d8e008).
+    # It had reported earlier that `create_issue` "works cross-project, unlike
+    # start_agent" — it does not refuse, which is not the same thing.
+    #
+    # Three costs, none of them visible to the filer: the report does not reach
+    # the project it is about, the filer believes it did, and
+    # `Issues.broadcast/2` calls `GraphInputs.changed/1` with the caller's scope
+    # — so the graph signal goes to the wrong project's watcher too. That last
+    # one is what made a burst test look broken when nothing was.
+    test "is refused rather than filed against the caller's project" do
+      scope = full_scope_fixture()
+      other = full_scope_fixture()
+
+      theirs =
+        CodeMySpecSpex.StoryHelpers.create_story(other,
+          title: "a story belonging to somebody else",
+          description: "filed against from the wrong session"
+        )
+
+      assert {:error, changeset} =
+               IssuesRepository.create_issue(scope, %{
+                 title: "filed at the wrong project's story",
+                 severity: :high,
+                 scope: :app,
+                 description: "should be refused",
+                 story_id: theirs.id
+               })
+
+      assert %{story_id: [message]} = errors_on(changeset)
+      assert message =~ "belongs to another project"
+
+      refute Enum.any?(
+               IssuesRepository.list_issues(scope),
+               &(&1.story_id == theirs.id)
+             ),
+             "the issue was filed anyway, stamped with the caller's project"
+    end
+
+    # The link is loose on purpose — issues are filed against story numbers
+    # before a sync has created the row — so the guard must not turn a dangling
+    # id into a refusal.
+    test "an id matching no story at all is still accepted" do
+      scope = full_scope_fixture()
+
+      issue = create_issue(scope, %{story_id: 987_654})
+      assert issue.story_id == 987_654
+    end
+  end
+
   describe "list_by_story/2" do
     test "returns issues for the given story" do
       scope = full_scope_fixture()
@@ -258,7 +309,10 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
       issue = create_issue(scope)
 
       {:ok, accepted} = IssuesRepository.update_status(issue, :accepted)
-      assert {:ok, resolved} = IssuesRepository.update_status(accepted, :resolved, "Fixed in PR #42")
+
+      assert {:ok, resolved} =
+               IssuesRepository.update_status(accepted, :resolved, "Fixed in PR #42")
+
       assert resolved.status == :resolved
       assert resolved.resolution == "Fixed in PR #42"
     end
@@ -267,7 +321,9 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
       scope = full_scope_fixture()
       issue = create_issue(scope)
 
-      assert {:error, changeset} = IssuesRepository.update_status(issue, :resolved, "Skipping steps")
+      assert {:error, changeset} =
+               IssuesRepository.update_status(issue, :resolved, "Skipping steps")
+
       assert errors_on(changeset).status
     end
   end
@@ -297,7 +353,9 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
       _other_issue = create_issue(other_scope, %{severity: :critical})
 
       assert IssuesRepository.count_by_status_and_min_severity(scope, :incoming, :critical) == 1
-      assert IssuesRepository.count_by_status_and_min_severity(other_scope, :incoming, :critical) == 1
+
+      assert IssuesRepository.count_by_status_and_min_severity(other_scope, :incoming, :critical) ==
+               1
     end
   end
 
