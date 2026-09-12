@@ -16,6 +16,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   # Operate/grow CTA destinations (the hosted connect + operate conversion
   # surface) don't exist yet. v1 points the "connect" and "start operating"
@@ -70,32 +71,33 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     {"spex", "spex"}
   ]
 
+  # Gauge is decorative — a missing ledger table (mid-migration) or any read
+  # hiccup must not take down the dashboard. `Utils.rescued/3` logs it instead
+  # of the failure reading identical to "nothing to show."
   defp assign_analysis_gauge(socket, scope) do
-    status = Analysis.status(scope)
-
-    problem_counts =
-      scope
-      |> Problems.list_project_problems([])
-      |> Enum.frequencies_by(& &1.source)
-
     gauge =
-      Enum.map(@gauge_sources, fn {source, label} ->
-        %{state: state, run: run} = Map.fetch!(status, source)
+      Utils.rescued("HomeLive.assign_analysis_gauge", [], fn ->
+        status = Analysis.status(scope)
 
-        %{
-          source: source,
-          label: label,
-          state: state,
-          problems: Map.get(problem_counts, source, 0),
-          finished_at: run && run.finished_at
-        }
+        problem_counts =
+          scope
+          |> Problems.list_project_problems([])
+          |> Enum.frequencies_by(& &1.source)
+
+        Enum.map(@gauge_sources, fn {source, label} ->
+          %{state: state, run: run} = Map.fetch!(status, source)
+
+          %{
+            source: source,
+            label: label,
+            state: state,
+            problems: Map.get(problem_counts, source, 0),
+            finished_at: run && run.finished_at
+          }
+        end)
       end)
 
     assign(socket, :analysis_gauge, gauge)
-  rescue
-    # Gauge is decorative — a missing ledger table (mid-migration) or any
-    # read hiccup must not take down the dashboard.
-    _ -> assign(socket, :analysis_gauge, [])
   end
 
   defp assign_ladder_state(socket, project, scope) do
@@ -149,7 +151,13 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} projects={@projects} project={@project} section={:overview} page_title={assigns[:page_title]}>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:overview}
+      page_title={assigns[:page_title]}
+    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -158,7 +166,9 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1>{@project.name}</h1>
-            <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">{@project.local_path}</p>
+            <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">
+              {@project.local_path}
+            </p>
           </div>
           <.analysis_gauge gauge={assigns[:analysis_gauge] || []} />
         </div>
@@ -270,8 +280,12 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <div class="flex items-center gap-4 px-6 py-5">
         <span class="cms-onboarding-eyebrow">{@eyebrow}</span>
         <span class="flex-1"></span>
-        <span :if={@state == "done"} class="cms-onboarding-eyebrow" style="opacity: 0.7;">✓ Done</span>
-        <span :if={@state == "pending"} class="font-mono text-xs opacity-60 hidden sm:inline">{@hint}</span>
+        <span :if={@state == "done"} class="cms-onboarding-eyebrow" style="opacity: 0.7;">
+          ✓ Done
+        </span>
+        <span :if={@state == "pending"} class="font-mono text-xs opacity-60 hidden sm:inline">
+          {@hint}
+        </span>
       </div>
 
       <.rung_cta :if={@state == "active"} rung={@rung} slug={@slug} />
@@ -422,21 +436,69 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   defp dash_cards(assigns) do
     ~H"""
     <div data-test="project-home-dashcards" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <.dash_card title="Next Task" href={~p"/app/projects/#{@slug}/next-task"} desc="Pick up the next actionable requirement." />
-      <.dash_card title="Files & Sync" href={~p"/app/projects/#{@slug}/files"} desc="Inspect tracked files and re-sync the projection." />
-      <.dash_card title="Configuration" href={~p"/app/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
+      <.dash_card
+        title="Next Task"
+        href={~p"/app/projects/#{@slug}/next-task"}
+        desc="Pick up the next actionable requirement."
+      />
+      <.dash_card
+        title="Files & Sync"
+        href={~p"/app/projects/#{@slug}/files"}
+        desc="Inspect tracked files and re-sync the projection."
+      />
+      <.dash_card
+        title="Configuration"
+        href={~p"/app/projects/#{@slug}/configuration"}
+        desc="Quality gate and analyzer settings."
+      />
 
-      <.dash_card title="Requirements" href={~p"/app/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
-      <.dash_card title="Stories" href={~p"/app/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
-      <.dash_card title="Scheduler" href={~p"/app/projects/#{@slug}/stories/scheduler"} desc="Order and prioritize the story backlog." />
+      <.dash_card
+        title="Requirements"
+        href={~p"/app/projects/#{@slug}/requirements"}
+        desc="Project-level requirement graph."
+      />
+      <.dash_card
+        title="Stories"
+        href={~p"/app/projects/#{@slug}/stories"}
+        desc="User stories and acceptance criteria."
+      />
+      <.dash_card
+        title="Scheduler"
+        href={~p"/app/projects/#{@slug}/stories/scheduler"}
+        desc="Order and prioritize the story backlog."
+      />
 
-      <.dash_card title="Personas" href={~p"/app/projects/#{@slug}/personas"} desc="User personas linked to stories." />
-      <.dash_card title="Issues" href={~p"/app/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
-      <.dash_card title="Sessions" href={~p"/app/projects/#{@slug}/sessions"} desc="Agent session history." />
+      <.dash_card
+        title="Personas"
+        href={~p"/app/projects/#{@slug}/personas"}
+        desc="User personas linked to stories."
+      />
+      <.dash_card
+        title="Issues"
+        href={~p"/app/projects/#{@slug}/issues"}
+        desc="Open problems and incoming triage."
+      />
+      <.dash_card
+        title="Sessions"
+        href={~p"/app/projects/#{@slug}/sessions"}
+        desc="Agent session history."
+      />
 
-      <.dash_card title="Project Init" href={~p"/app/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
-      <.dash_card title="Knowledge Base" href={~p"/app/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
-      <.dash_card title="Project Knowledge" href={~p"/app/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />
+      <.dash_card
+        title="Project Init"
+        href={~p"/app/projects/#{@slug}/init"}
+        desc="Bootstrap checklist for this directory."
+      />
+      <.dash_card
+        title="Knowledge Base"
+        href={~p"/app/projects/#{@slug}/knowledge"}
+        desc="Shared methodology and rules."
+      />
+      <.dash_card
+        title="Project Knowledge"
+        href={~p"/app/projects/#{@slug}/project-knowledge"}
+        desc="Project-specific docs and specs."
+      />
     </div>
     """
   end
@@ -471,5 +533,4 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       {:error, reason} -> {:error, reason}
     end
   end
-
 end

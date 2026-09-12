@@ -36,7 +36,53 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
   defp scope, do: %Scope{active_project: %{name: "Baseline Local"}}
 
-  defp runner, do: Remote.local_runner(cd: System.tmp_dir!())
+  # `local_runner/1` shells out on this machine — right for `docker` itself,
+  # since the CLI already talks to whichever daemon the active context names
+  # regardless of where the shell runs. Wrong for `ensure_htpasswd/3`'s plain
+  # `mkdir`/`touch`/`chmod`: those touch *this* filesystem, and under Colima
+  # that daemon lives in a Linux VM whose own filesystem is not the host's —
+  # only `$HOME`, virtiofs-shared, is. A path under it crosses that boundary
+  # and hits a uid the VM and the host disagree about (dd1f932c); a path
+  # nowhere in the VM's filesystem at all just gets Docker's usual "bind-mount
+  # a path that isn't there yet" trap, an empty directory instead of a file.
+  #
+  # So under Colima specifically, every command in this suite — including the
+  # `docker` ones, for one runner rather than two — runs inside that same VM
+  # instead, where `auth_dir/0`'s plain `/tmp` path is genuinely native.
+  # Anything else (Docker Desktop, a native Linux daemon) keeps running
+  # locally, where `/tmp` is already real.
+  defp runner, do: build_runner(colima_profile())
+
+  defp build_runner(nil), do: Remote.local_runner(cd: System.tmp_dir!())
+  defp build_runner(profile), do: colima_runner(profile)
+
+  defp colima_profile do
+    "docker"
+    |> System.cmd(["context", "show"], stderr_to_stdout: true)
+    |> parse_colima_profile()
+  end
+
+  defp parse_colima_profile({"colima-" <> profile, 0}), do: String.trim(profile)
+  defp parse_colima_profile(_result), do: nil
+
+  # `sudo`, because a real box's own SSH connects as root
+  # (`Remote.ssh_args/2`) — Docker itself auto-creates a bind mount's source
+  # as root the moment a container asks for a path that is not there yet
+  # (`ensure_container/2` starts the registry before any project's `serve/2`
+  # has written a real htpasswd, so this always happens first). Without
+  # `sudo` here, the `colima ssh` user (a plain uid) cannot even write into
+  # what Docker just made, which reads as a second, unrelated permission bug
+  # rather than the same "not root" gap `ssh_args/2` already closed for a
+  # real deploy.
+  defp colima_runner(profile) do
+    fn [command] ->
+      System.cmd(
+        "colima",
+        ["ssh", "--profile", profile, "--", "sudo", "sh", "-c", command],
+        stderr_to_stdout: true
+      )
+    end
+  end
 
   defp docker(args) do
     System.cmd("docker", args, stderr_to_stdout: true)
@@ -77,29 +123,60 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
   # both secret stores.
   defp restore_credential, do: %{username: "app_baseline_restore", password: "restore-pw"}
 
-  # Under the project rather than in the system temp directory. On macOS
-  # `System.tmp_dir!/0` is `/var/folders/...`, which is a symlink to
-  # `/private/var/folders/...`; Docker Desktop does not follow it, so the bind
-  # mount silently creates a *directory* at the path and `distribution` then
-  # refuses every request with "read /auth/htpasswd: is a directory".
-  defp auth_dir, do: Path.join(File.cwd!(), "tmp/cms-registry-test")
+  # Plain `/tmp`, not `System.tmp_dir!/0` (`/var/folders/<random>/T/...` on
+  # macOS) and not under the project checkout either.
+  #
+  # `/var/folders/...` was the first thing tried: Docker Desktop does not
+  # follow that symlink, so the bind mount silently creates a *directory* at
+  # the path instead of finding the file, and `distribution` then refuses
+  # every request with "read /auth/htpasswd: is a directory". Moving it under
+  # the checkout (`File.cwd!()`) fixed that and broke something worse under
+  # Colima specifically: that path is virtiofs-shared into the VM the daemon
+  # actually runs in, and a file `chmod 600`'d by the host user crosses that
+  # boundary as a uid the VM's own root does not recognize as the same user —
+  # "permission denied: open /auth/htpasswd" (dd1f932c), a property of the
+  # sharing rather than of anything this suite does wrong.
+  #
+  # `runner/0` now runs every command for this suite inside the Colima VM
+  # when that is the active context, so a bare `/tmp` path here is created
+  # natively wherever the commands actually run — the VM's own `/tmp` under
+  # Colima, this host's under Docker Desktop or a native daemon — never
+  # crossing the virtiofs boundary that caused either failure.
+  defp auth_dir, do: "/tmp/cms-registry-test"
 
   setup do
     # A failed run leaves docker's own creation behind: bind-mounting a path
     # that does not exist makes a *directory* there, and the next run's
     # `printf >` cannot write over it. Clearing it is what makes this
     # repeatable rather than green only on a clean machine.
-    File.rm_rf(auth_dir())
+    #
+    # Through `runner/0`, not `File.rm_rf/1` — under Colima, `auth_dir/0`
+    # names a path inside the VM, which a bare `File` call on this host
+    # cannot see at all.
+    clear_auth_dir()
+
+    # And pre-create a real, empty file at the mount source, for the ordering
+    # this suite's own two calls have and a real box does not: a real
+    # `:server` step's `serve/2` writes the credential before `docker run`
+    # ever asks for it. Here `ensure_container/2` starts the registry first
+    # (it is account-wide, deliberately deployed before any one project's
+    # `serve/2`), so the very first thing to touch this path is Docker's own
+    # bind-mount, on a path that does not exist yet — which makes a
+    # *directory* there, and no `touch` afterward turns a directory into a
+    # file.
+    runner().(["mkdir -p #{auth_dir()} && touch #{auth_dir()}/htpasswd"])
 
     on_exit(fn ->
       docker(["rm", "-f", "cms-registry"])
       docker(["rm", "-f", "cms-postgres"])
       docker(["volume", "rm", "-f", "cms-postgres-data"])
-      File.rm_rf(auth_dir())
+      clear_auth_dir()
     end)
 
     :ok
   end
+
+  defp clear_auth_dir, do: runner().(["rm -rf #{auth_dir()}"])
 
   describe "the registry we provision actually serves" do
     test "it starts, demands the credential, and round-trips an image" do
@@ -132,15 +209,32 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
       # `serve/2` only returns once its own probe answered, so the registry is
       # up by here. Anonymous access must not be.
-      {_out, status} = docker(["run", "--rm", "--network", "host", "curlimages/curl:8.11.1",
-                               "-sf", "http://127.0.0.1:5000/v2/"])
+      {_out, status} =
+        docker([
+          "run",
+          "--rm",
+          "--network",
+          "host",
+          "curlimages/curl:8.11.1",
+          "-sf",
+          "http://127.0.0.1:5000/v2/"
+        ])
 
       refute status == 0, "an unauthenticated read succeeded — the htpasswd file is not in force"
 
       # And the credential opens it.
       {_out, status} =
-        docker(["run", "--rm", "--network", "host", "curlimages/curl:8.11.1",
-                "-sf", "-u", "cms:hunter2", "http://127.0.0.1:5000/v2/"])
+        docker([
+          "run",
+          "--rm",
+          "--network",
+          "host",
+          "curlimages/curl:8.11.1",
+          "-sf",
+          "-u",
+          "cms:hunter2",
+          "http://127.0.0.1:5000/v2/"
+        ])
 
       assert status == 0, "the credential setup minted does not open the registry it configured"
 
@@ -241,8 +335,17 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
       psql = fn sql ->
         docker([
-          "run", "--rm", "--network", Database.network(),
-          "-e", "PGPASSWORD=pw", "pgvector/pgvector:pg18", "psql", url, "-tAc", sql
+          "run",
+          "--rm",
+          "--network",
+          Database.network(),
+          "-e",
+          "PGPASSWORD=pw",
+          "pgvector/pgvector:pg18",
+          "psql",
+          url,
+          "-tAc",
+          sql
         ])
       end
 

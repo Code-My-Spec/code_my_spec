@@ -77,7 +77,9 @@ curl -sS -X POST https://api.resend.com/webhooks \
   }'
 ```
 
-The response includes a `signing_secret` — store it as `RESEND_WEBHOOK_SECRET`. Retrieve it later with `GET /webhooks/{id}`.
+The response includes a `signing_secret` — store it as `RESEND_WEBHOOK_SECRET`.
+
+**Only the create response carries it.** `CodeMySpec.Provisioning.Steps.seed_webhook_secret/2`'s own comment reports the opposite of "retrieve it later with `GET /webhooks/{id}`" above: list and get never return `signing_secret`, only create does. Re-running setup against an already-enabled webhook therefore has no secret to seed — `seed_webhook_secret/2` treats that as expected (no resource written, nothing lost) rather than trying a GET that would not help. Issue 04349864.
 
 ## Signature verification
 

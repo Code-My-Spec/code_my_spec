@@ -14,6 +14,7 @@ defmodule CodeMySpec.Epics.EpicsRepository do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @type attrs :: map()
 
@@ -66,7 +67,7 @@ defmodule CodeMySpec.Epics.EpicsRepository do
       when not is_nil(project_id) do
     attrs =
       attrs
-      |> normalize()
+      |> Utils.normalize_keys()
       |> Map.put(:project_id, project_id)
       |> Map.put(:account_id, scope.active_account_id)
 
@@ -84,7 +85,7 @@ defmodule CodeMySpec.Epics.EpicsRepository do
       when not is_nil(project_id) do
     if epic.project_id == project_id do
       epic
-      |> Epic.changeset(attrs |> normalize() |> Map.delete(:project_id))
+      |> Epic.changeset(attrs |> Utils.normalize_keys() |> Map.delete(:project_id))
       |> Repo.update()
     else
       {:error, :cross_project}
@@ -158,13 +159,4 @@ defmodule CodeMySpec.Epics.EpicsRepository do
   end
 
   def set_epic_stories_ready(%Scope{}, _epic, _ready?), do: {:error, :missing_active_project}
-
-  defp normalize(attrs) when is_map(attrs) do
-    Map.new(attrs, fn
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
-      {k, v} -> {k, v}
-    end)
-  rescue
-    ArgumentError -> attrs
-  end
 end

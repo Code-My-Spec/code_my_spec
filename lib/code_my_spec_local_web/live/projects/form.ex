@@ -10,7 +10,6 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Users.LocalScope
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -98,7 +97,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
 
   # A scope carrying the local user (for broadcasts) but no account/project.
   defp local_scope do
-    case LocalScope.for_local_cwd(File.cwd!()) do
+    case Scope.for_local_cwd(File.cwd!()) do
       {:ok, %Scope{} = scope} -> %{scope | active_account_id: nil, active_project: nil}
       _ -> %Scope{user: default_local_user(), user_id: 0, active_account_id: nil}
     end

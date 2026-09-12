@@ -61,6 +61,32 @@ defmodule CodeMySpec.TempFile do
     Path.join(System.tmp_dir!(), "#{prefix}-#{token()}")
   end
 
+  @doc """
+  Remove a temp file, quietly, if it exists.
+
+  Was two copies (`CodeMySpec.StaticAnalysis.Analyzers.Credo` and `.Sobelow`),
+  one of them missing the tmp-dir boundary check the other had. One
+  implementation now, with the check: only ever removes a path actually under
+  `System.tmp_dir!/0`, so a caller that passes something else by mistake
+  cannot turn this into an arbitrary `rm`.
+
+  `rescue`s because deleting a file that raced another cleanup, or sits on a
+  filesystem this process can't touch, is not this caller's problem — the
+  temp file is scratch space, not state anything depends on existing.
+  """
+  @spec cleanup(String.t()) :: :ok
+  def cleanup(path) when is_binary(path) do
+    tmp_dir = System.tmp_dir!()
+
+    if String.starts_with?(Path.expand(path), tmp_dir) and File.exists?(path) do
+      File.rm(path)
+    end
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
   # The OS pid makes this unique across processes; `unique_integer` keeps it
   # unique within one; the random suffix covers a recycled pid meeting files an
   # earlier incarnation left behind. Any two of the three would nearly do — all

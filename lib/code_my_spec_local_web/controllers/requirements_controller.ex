@@ -112,7 +112,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
     actionable = RequirementGraph.next_actionable(scope)
 
     markdown =
@@ -127,7 +127,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   def show(conn, %{"name" => name}) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     node =
       Enum.find(nodes, fn n ->
@@ -144,7 +144,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   def prompt(conn, %{"name" => name}) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     node =
       Enum.find(nodes, fn n ->

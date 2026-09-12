@@ -91,6 +91,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)
   component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
   component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
+  component(CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent)
   component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
   component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)

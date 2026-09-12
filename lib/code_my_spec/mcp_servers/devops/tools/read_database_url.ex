@@ -12,6 +12,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl do
   caller with a real checkout elsewhere needs the value itself to encrypt it
   there, rather than this server minting it a second time somewhere it
   cannot commit anything.
+
+  ## The value is unverified
+
+  This reads `ProjectSecrets` alone — it does not check that the role or
+  database the credential names still exists on the box. `serve/3`'s own
+  `sync_password/2` runs unconditionally on every `:server` step, so "run
+  :server, then read this" is always current; read on its own after the box
+  has been touched independently (recreated, restored, migrated to a new
+  server) can hand back a credential for a tenant that no longer exists,
+  with nothing here to say so.
   """
 
   use Anubis.Server.Component, type: :tool

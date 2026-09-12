@@ -27,6 +27,7 @@ defmodule CodeMySpec.Promotion.Runner do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   # A restart compiles, migrates and waits for the app to answer. The analyzer
   # timeout is the closest precedent for "long work on the far machine" and this
@@ -111,16 +112,8 @@ defmodule CodeMySpec.Promotion.Runner do
 
   defp atomize(map) do
     Map.new(map, fn
-      {k, v} when is_binary(k) -> {safe_atom(k), v}
+      {k, v} when is_binary(k) -> {Utils.safe_to_existing_atom(k, k), v}
       {k, v} -> {k, v}
     end)
-  end
-
-  # `to_existing_atom`, so a harness cannot grow this node's atom table by
-  # answering with keys nobody asked for.
-  defp safe_atom(key) do
-    String.to_existing_atom(key)
-  rescue
-    ArgumentError -> key
   end
 end

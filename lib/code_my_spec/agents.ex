@@ -75,6 +75,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
@@ -2075,26 +2076,22 @@ defmodule CodeMySpec.Agents do
   # for a type nobody defined is a caller with the wrong idea about what exists.
   defp role_of(attrs) do
     case Map.get(attrs, :role, :main) do
-      role when is_atom(role) -> known_role(role, role)
-      role when is_binary(role) -> role |> safe_atom() |> known_role(role)
+      role when is_atom(role) ->
+        known_role(role, role)
+
+      role when is_binary(role) ->
+        role |> Utils.safe_to_existing_atom(:__unknown__) |> known_role(role)
     end
   end
 
   # `asked` is carried separately from the atom, because the atom may be the
-  # sentinel `safe_atom/1` returns for a name that does not exist — and a
-  # refusal naming `:__unknown__` tells the caller a word it never sent.
+  # sentinel `Utils.safe_to_existing_atom/2` returns for a name that does not
+  # exist — and a refusal naming `:__unknown__` tells the caller a word it
+  # never sent.
   defp known_role(role, asked) do
     if role in Agent.roles(),
       do: {:ok, role},
       else: {:error, {:unknown_role, asked, Agent.roles()}}
-  end
-
-  # `to_existing_atom` so a caller cannot grow the atom table by asking for
-  # types that do not exist.
-  defp safe_atom(name) do
-    String.to_existing_atom(name)
-  rescue
-    ArgumentError -> :__unknown__
   end
 
   # An explicit provider still wins — a caller that names one is asking for it,

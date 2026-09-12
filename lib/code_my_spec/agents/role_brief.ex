@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.RoleBrief do
   """
 
   alias CodeMySpec.Agents.OperatingRules
+  alias CodeMySpec.Utils
 
   @briefs %{
     main: """
@@ -111,7 +112,7 @@ defmodule CodeMySpec.Agents.RoleBrief do
   """
   @spec for(atom() | String.t() | nil) :: String.t() | nil
   def for(role) when is_binary(role) do
-    __MODULE__.for(safe_atom(role))
+    __MODULE__.for(Utils.safe_to_existing_atom(role))
   end
 
   def for(role) when is_atom(role) and not is_nil(role) do
@@ -126,14 +127,4 @@ defmodule CodeMySpec.Agents.RoleBrief do
   @doc "Every role that has a brief."
   @spec roles() :: [atom()]
   def roles, do: Map.keys(@briefs)
-
-  # `to_existing_atom` rather than `to_atom`, and rescued rather than guarded:
-  # a role arriving from the wire is a string this node may never have interned,
-  # and raising inside agent startup would refuse to start an agent over a name
-  # we simply do not recognise.
-  defp safe_atom(role) do
-    String.to_existing_atom(role)
-  rescue
-    ArgumentError -> nil
-  end
 end

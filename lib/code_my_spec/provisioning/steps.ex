@@ -5170,21 +5170,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   # project read stays for installs that generated one before the account
   # grain existed.
   defp access_public_key(scope, name) do
-    with :error <-
-           stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
-         :error <-
-           stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
-      generate_access_key(scope, name)
+    case AccountSecrets.fetch_account_then_project(scope, @access_key_public) do
+      {:ok, _value} = ok -> ok
+      {:error, :not_found} -> generate_access_key(scope, name)
     end
-  end
-
-  defp stored_public_key(read) do
-    case read.() do
-      {:ok, public} when is_binary(public) and public != "" -> {:ok, public}
-      _ -> :error
-    end
-  rescue
-    _ -> :error
   end
 
   defp generate_access_key(scope, name) do

@@ -27,6 +27,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
+  alias CodeMySpec.Utils
 
   schema do
     field :task_id, :string,
@@ -74,7 +75,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     session =
       Sessions.get_by_external_id(scope, session_id) ||
-        safe_get_session(scope, session_id)
+        Utils.safe_get(fn -> Sessions.get_session(scope, session_id) end)
 
     case session do
       nil -> {:error, :session_not_found}
@@ -84,12 +85,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   defp resolve_session(_scope, _session_id) do
     {:error, no_owner_message()}
-  end
-
-  defp safe_get_session(scope, id) do
-    Sessions.get_session(scope, id)
-  rescue
-    Ecto.Query.CastError -> nil
   end
 
   defp find_task(owner, task_id) do

@@ -12,9 +12,7 @@ defmodule CodeMySpec.McpServers.ComponentsServer do
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
   component(CodeMySpec.McpServers.Components.Tools.ListComponents)
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)
-
-  # Batch operations
-  # component(CodeMySpec.McpServers.Components.Tools.CreateComponents)
+  component(CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent)
 
   # Dependency edges are derived from spec files — the architect edits
   # the source component's `## Dependencies` section and ComponentSync

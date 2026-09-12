@@ -39,6 +39,7 @@ defmodule CodeMySpec.Resources do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Users,
+      CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
@@ -57,6 +58,7 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Resources.Acknowledgement
   alias CodeMySpec.Resources.Inventory
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -374,12 +376,12 @@ defmodule CodeMySpec.Resources do
   # No row, or a row predating the column, means nobody has said this project
   # ships — which is `:off`, the same answer the schema default gives.
   defp devops(scope, project) do
-    case Configurations.get(project_scope(scope, project)) do
-      %{devops: devops} when not is_nil(devops) -> devops
-      _ -> :off
-    end
-  rescue
-    _ -> :off
+    Utils.rescued("Resources.devops", :off, fn ->
+      case Configurations.get(project_scope(scope, project)) do
+        %{devops: devops} when not is_nil(devops) -> devops
+        _ -> :off
+      end
+    end)
   end
 
   # An MCP call arriving over a harness connection carries that harness's own
