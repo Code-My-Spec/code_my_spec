@@ -73,6 +73,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Problems.ProblemRepository
+  alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -235,13 +236,39 @@ defmodule CodeMySpec.Promotion do
   has to act on — the problem holding the gate, the file that conflicts, the
   work it has not committed — because a refusal an agent cannot act on stops
   the pipeline just as surely as a bug.
+
+  One at a time, per project. `Lock.with_lock/2` holds the project's lock for
+  the whole of `promote_into/2` — gate through restart — because a promotion
+  landing between another one's merge and its restart is the same race with
+  its window moved: the surviving build is still decided by timing rather
+  than by either agent, and QA still cannot tell which one it got (db97272b).
+  A second caller is refused outright rather than queued, naming when the
+  first promotion started — a queued promotion whose branch has since moved
+  on would be a merge nobody asked for.
   """
   @spec promote(Scope.t()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope) do
     with {:ok, running} <- running_copy(scope) do
-      promote_into(scope, running)
+      Lock.with_lock(running.project_id, fn -> promote_into(scope, running) end)
+      |> unlocked()
     end
   end
+
+  defp unlocked({:error, {:already_promoting, started_at}}) do
+    {:error,
+     %{
+       reason:
+         "a promotion for this project is already in flight" <> since(started_at) <>
+           ". Two at once decide the surviving build by timing rather than by either of you " <>
+           "— promote again once it finishes.",
+       already_promoting: true
+     }}
+  end
+
+  defp unlocked(other), do: other
+
+  defp since(%DateTime{} = started_at), do: ", since #{DateTime.to_iso8601(started_at)}"
+  defp since(_), do: ""
 
   # Working on the running copy. There is no branch to merge — the work is
   # already where a promotion would put it — so a promotion here is the other
@@ -278,18 +305,87 @@ defmodule CodeMySpec.Promotion do
          {:ok, swept} <- gate(scope),
          carried_before <- blocking_problems(scope, running),
          {:ok, _} <- Runner.merge(scope, running.root, branch, from.id),
-         :ok <- gate_target(scope, running, carried_before),
-         {:ok, serving} <- restart(scope, running) do
-      {:ok,
-       %{
-         merged: branch,
-         into: running.root,
-         serving: serving,
-         swept: swept,
-         untracked: Map.get(pre, :untracked, [])
-       }}
+         :ok <- gate_target(scope, running, carried_before) do
+      scope
+      |> restart(running)
+      |> merged(branch, running, swept, Map.get(pre, :untracked, []))
     end
   end
+
+  defp merged({:ok, serving}, branch, running, swept, untracked) do
+    {:ok,
+     %{
+       merged: branch,
+       into: running.root,
+       serving: serving,
+       swept: swept,
+       untracked: untracked
+     }}
+  end
+
+  # The restart is the one step whose success destroys the channel its own
+  # acknowledgement was coming back on.
+  #
+  # Promotion restarts the application on the running copy; the running copy is
+  # :4000; every harness channel is served by :4000. So the happy path ends with
+  # the server dropping the connection that was about to carry "done", and the
+  # caller is told it could not reach the machine. The merge has already
+  # happened by this point — it is two steps above — so reporting a flat failure
+  # is not merely confusing, it is false about the part that matters.
+  #
+  # What that costs is why this is worth a clause rather than a better sentence:
+  # an agent told its promotion failed promotes again, and each retry restarts
+  # the shared dev server every other working copy on the box is using. Measured
+  # at three restarts in one session before anybody checked the ancestry.
+  #
+  # So a lost acknowledgement during the restart is reported as what it is —
+  # merged, restart unconfirmed — with the one-line check that settles it.
+  defp merged({:error, reason}, branch, running, swept, untracked) do
+    reason
+    |> restart_acknowledgement_lost?()
+    |> unconfirmed(reason, branch, running, swept, untracked)
+  end
+
+  defp unconfirmed(true, reason, branch, running, swept, untracked) do
+    {:ok,
+     %{
+       merged: branch,
+       into: running.root,
+       serving: %{revision: nil, unconfirmed: reason},
+       swept: swept,
+       untracked: untracked
+     }}
+  end
+
+  defp unconfirmed(false, reason, _branch, _running, _swept, _untracked), do: {:error, reason}
+
+  # `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as
+  # "the server went away — someone restarted :4000". For every other operation
+  # that reading is right. For this one the restart *is* the operation
+  # succeeding, which is why the shape has to be read against the op that
+  # produced it rather than on its own.
+  @doc """
+  Whether a restart failure is the expected shape of a restart that worked.
+
+  Public because it is the rule, not an implementation detail: "this error means
+  the opposite of what it says" is exactly the kind of claim that should be
+  written down once and checked, rather than reimplemented by each caller who
+  gets bitten.
+
+  `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as "the
+  server went away — someone restarted :4000", and for every other operation
+  that reading is right. For this one the restart *is* the operation succeeding,
+  so the shape has to be read against the op that produced it rather than on its
+  own.
+  """
+  @spec restart_acknowledgement_lost?(term()) :: boolean()
+  def restart_acknowledgement_lost?(%{reason: reason}) when is_binary(reason) do
+    String.contains?(reason, "promotion_restart") or
+      String.contains?(reason, "not_connected") or
+      String.contains?(reason, "draining")
+  end
+
+  def restart_acknowledgement_lost?(_), do: false
 
   @doc """
   Start a promotion and report the outcome back to the agent that asked.
@@ -405,6 +501,23 @@ defmodule CodeMySpec.Promotion do
     "Your promotion finished. There was nothing to merge — you are working on " <>
       "the running copy — so the application at #{root} was restarted and is " <>
       "serving #{revision || "the code that was already there"}."
+  end
+
+  # Merged, and the restart's acknowledgement never came back — because the
+  # restart is what dropped the channel it was coming back on. Said as its own
+  # outcome rather than as success or failure, because it is neither and both
+  # of the other readings are expensive: reported as failure an agent promotes
+  # again and restarts the shared dev server, reported as success nobody
+  # notices a restart that genuinely did not happen.
+  defp outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
+    "Your promotion merged #{branch} onto the running dev copy. The restart was " <>
+      "issued and its acknowledgement did not come back — expected, because " <>
+      "restarting the running copy drops the channel that reply travels on.\n\n" <>
+      "Do not promote again to find out; that restarts the shared dev server " <>
+      "for every working copy on this machine. Ask what it is serving instead:\n\n" <>
+      "    git merge-base --is-ancestor HEAD $(curl -s localhost:4004/health " <>
+      "| python3 -c 'import json,sys; print(json.load(sys.stdin)[\"build\"])')\n\n" <>
+      "Exit 0 means your work is on it."
   end
 
   defp outcome_text({:error, %{reason: reason}}),

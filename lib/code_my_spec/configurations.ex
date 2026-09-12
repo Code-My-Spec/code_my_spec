@@ -100,4 +100,22 @@ defmodule CodeMySpec.Configurations do
   end
 
   def fix_issues_min_severity(_), do: :medium
+
+  @default_cadence_seconds 20 * 60
+
+  @doc """
+  How often this project's main agent is woken to look in on its agents.
+
+  Twenty minutes when no scope or project is in play, matching the schema's
+  default — the two are stated in both places because a reader of either should
+  not have to find the other, and a `validate_number(greater_than: 0)` keeps
+  them from drifting into disagreement about what is even allowed.
+  """
+  @spec main_agent_cadence_seconds(Scope.t() | nil) :: pos_integer()
+  def main_agent_cadence_seconds(%Scope{active_project_id: project_id} = scope)
+      when not is_nil(project_id) do
+    get_or_create(scope).main_agent_cadence_seconds || @default_cadence_seconds
+  end
+
+  def main_agent_cadence_seconds(_), do: @default_cadence_seconds
 end

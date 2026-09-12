@@ -517,3 +517,18 @@ config :code_my_spec, chat_turn_async: false
 # happening, per scenario. The bounded-wait behaviour is what the specs are
 # about; the duration is not.
 config :code_my_spec, :promotion_sweep_timeout, 200
+
+# Dev-only routes are present in test so their wiring can be asserted.
+#
+# They are compile-gated to dev, which meant nothing ever tested that they are
+# mounted — and a route that exists only where no test runs is a route whose
+# wiring is checked by hand or not at all. The most expensive defect of
+# 2026-09-12 was exactly that shape: `AgentScope` was in the hosted pipeline and
+# not the local one, so every locally-run agent's question bypassed the main
+# agent, and no test could have caught it because no test drove the pipeline.
+#
+# Enabling them here costs a few extra routes in the test router and buys the
+# ability to assert that `/dev/sign-in` mints a token the product's own login
+# route accepts — which is the only assertion that makes a dev sign-in helper
+# trustworthy rather than a bypass.
+config :code_my_spec, dev_routes: true

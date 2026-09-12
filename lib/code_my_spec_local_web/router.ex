@@ -325,6 +325,14 @@ defmodule CodeMySpecLocalWeb.Router do
   pipeline :mcp do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
     plug CodeMySpecLocalWeb.Plugs.HarnessScope
+    # After the scope, because the agent is resolved within the project this
+    # request is already scoped to — see `AgentScope`.
+    #
+    # Missing until QA of story 1016 went looking. Without it every question a
+    # local agent asked was written with a NULL agent_id and holder "user", so
+    # it went straight to the person and was invisible to the main agent that
+    # exists to answer it first.
+    plug CodeMySpecLocalWeb.Plugs.AgentScope
   end
 
   scope "/mcp", CodeMySpecLocalWeb do

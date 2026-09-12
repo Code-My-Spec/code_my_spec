@@ -24,6 +24,7 @@ defmodule CodeMySpec.PromotionTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
 
   describe "a runner with nowhere to run" do
@@ -140,6 +141,134 @@ defmodule CodeMySpec.PromotionTest do
              Naming the file sends the reader to the file, which is where eight
              hours went. Got: #{reason}
              """
+    end
+  end
+
+  describe "a restart whose acknowledgement never comes back" do
+    # Promotion restarts the application on the running copy; the running copy
+    # is :4000; every harness channel is served by :4000. So the happy path ends
+    # with the server dropping the connection the reply was coming back on, and
+    # the caller is told it could not reach the machine — for a promotion whose
+    # merge already landed two steps earlier.
+    #
+    # What the wrong reading costs: an agent told its promotion failed promotes
+    # again, and each retry restarts the shared dev server every other working
+    # copy on the box is using. Measured at three in one session.
+
+    test "the timeout shape a successful restart produces is recognised" do
+      assert Promotion.restart_acknowledgement_lost?(%{
+               reason:
+                 "could not reach the machine holding this checkout: " <>
+                   "{:harness_timeout, %{op: \"promotion_restart\", elapsed_ms: 2377}}"
+             })
+    end
+
+    test "so is the HTTP door's version, which wears a different error" do
+      assert Promotion.restart_acknowledgement_lost?(%{
+               reason: "could not promote: :not_connected"
+             })
+
+      assert Promotion.restart_acknowledgement_lost?(%{reason: "{:shutdown, :draining}"})
+    end
+
+    test "a genuine refusal is not mistaken for one" do
+      refute Promotion.restart_acknowledgement_lost?(%{
+               reason: "this copy has uncommitted work. Commit it, then promote."
+             })
+
+      refute Promotion.restart_acknowledgement_lost?(%{
+               reason: "merging light-harness into the running copy conflicts in foo.exs"
+             })
+
+      refute Promotion.restart_acknowledgement_lost?(:whatever)
+    end
+  end
+
+  describe "a fresh conflict" do
+    setup do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "f.txt"), "side\n")
+      {_, 0} = git.(["commit", "-am", "side"])
+
+      {_, 0} = git.(["checkout", "main"])
+      File.write!(Path.join(root, "f.txt"), "main\n")
+      {_, 0} = git.(["commit", "-am", "main"])
+
+      %{root: root, git: git, env: Environment.new(:local, root)}
+    end
+
+    # bed1d974: a conflict used to stay in the running checkout for the agent
+    # to resolve there. Measured cost: a worktree six commits behind main
+    # wedged the shared dev checkout from 00:28 to 10:40 merging unattended —
+    # the identical conflict, merged main-first in the worktree instead,
+    # resolved in two minutes with a test suite behind it. Aborting and
+    # naming the file sends the agent back to do that, rather than leaving
+    # the shared checkout mid-merge for however long that takes.
+    test "is aborted, names the file, and leaves the checkout exactly as it was",
+         %{root: root, git: git, env: env} do
+      assert {:error, %{reason: reason, conflicts: ["f.txt"]}} = Steps.merge(env, root, "side")
+
+      assert reason =~ "f.txt",
+             "the agent has to know what conflicted to resolve it locally. Got: #{reason}"
+
+      assert reason =~ "Merge main",
+             "the remedy is the agent's to run, in its own copy. Got: #{reason}"
+
+      {status, 0} = git.(["status", "--porcelain"])
+
+      assert status == "",
+             "a conflict that is aborted should leave nothing behind. Got: #{inspect(status)}"
+
+      {head, 0} = git.(["rev-parse", "HEAD"])
+      {main_head, 0} = git.(["rev-parse", "main"])
+      assert String.trim(head) == String.trim(main_head), "HEAD moved despite the abort"
+    end
+  end
+
+  describe "divergence git can reconcile without a conflict" do
+    # 3168's own premise: two branches that diverged (main and the story
+    # branch each have a commit the other lacks) but whose changes do not
+    # touch the same lines merge without a git-level conflict at all, even
+    # though the result may not build (a *semantic* break, caught afterward
+    # by the gate that recompiles the target — not this function's job).
+    # Aborting is for an actual conflict; divergence on its own must still
+    # merge.
+    test "still merges, rather than being refused for the divergence alone" do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work, an unrelated file"])
+
+      {_, 0} = git.(["checkout", "main"])
+      File.write!(Path.join(root, "f.txt"), "main moved on\n")
+      {_, 0} = git.(["commit", "-am", "main moved on, a different file"])
+
+      env = Environment.new(:local, root)
+
+      assert {:ok, %{output: output}} = Steps.merge(env, root, "side")
+      assert output =~ "Merge made"
     end
   end
 end
