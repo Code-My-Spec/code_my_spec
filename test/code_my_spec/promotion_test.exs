@@ -142,4 +142,93 @@ defmodule CodeMySpec.PromotionTest do
              """
     end
   end
+
+  describe "a fresh conflict" do
+    setup do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "f.txt"), "side\n")
+      {_, 0} = git.(["commit", "-am", "side"])
+
+      {_, 0} = git.(["checkout", "main"])
+      File.write!(Path.join(root, "f.txt"), "main\n")
+      {_, 0} = git.(["commit", "-am", "main"])
+
+      %{root: root, git: git, env: Environment.new(:local, root)}
+    end
+
+    # bed1d974: a conflict used to stay in the running checkout for the agent
+    # to resolve there. Measured cost: a worktree six commits behind main
+    # wedged the shared dev checkout from 00:28 to 10:40 merging unattended —
+    # the identical conflict, merged main-first in the worktree instead,
+    # resolved in two minutes with a test suite behind it. Aborting and
+    # naming the file sends the agent back to do that, rather than leaving
+    # the shared checkout mid-merge for however long that takes.
+    test "is aborted, names the file, and leaves the checkout exactly as it was",
+         %{root: root, git: git, env: env} do
+      assert {:error, %{reason: reason, conflicts: ["f.txt"]}} = Steps.merge(env, root, "side")
+
+      assert reason =~ "f.txt",
+             "the agent has to know what conflicted to resolve it locally. Got: #{reason}"
+
+      assert reason =~ "Merge main",
+             "the remedy is the agent's to run, in its own copy. Got: #{reason}"
+
+      {status, 0} = git.(["status", "--porcelain"])
+
+      assert status == "",
+             "a conflict that is aborted should leave nothing behind. Got: #{inspect(status)}"
+
+      {head, 0} = git.(["rev-parse", "HEAD"])
+      {main_head, 0} = git.(["rev-parse", "main"])
+      assert String.trim(head) == String.trim(main_head), "HEAD moved despite the abort"
+    end
+
+  end
+
+  describe "divergence git can reconcile without a conflict" do
+    # 3168's own premise: two branches that diverged (main and the story
+    # branch each have a commit the other lacks) but whose changes do not
+    # touch the same lines merge without a git-level conflict at all, even
+    # though the result may not build (a *semantic* break, caught afterward
+    # by the gate that recompiles the target — not this function's job).
+    # Aborting is for an actual conflict; divergence on its own must still
+    # merge.
+    test "still merges, rather than being refused for the divergence alone" do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work, an unrelated file"])
+
+      {_, 0} = git.(["checkout", "main"])
+      File.write!(Path.join(root, "f.txt"), "main moved on\n")
+      {_, 0} = git.(["commit", "-am", "main moved on, a different file"])
+
+      env = Environment.new(:local, root)
+
+      assert {:ok, %{output: output}} = Steps.merge(env, root, "side")
+      assert output =~ "Merge made"
+    end
+  end
 end
