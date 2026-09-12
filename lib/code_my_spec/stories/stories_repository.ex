@@ -43,6 +43,26 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
+  `%{story_id => number}` for every story in the project.
+
+  What a page needs to label a story the way the story's own page labels it. A
+  story carries both, and the number is the one that names its spex directory —
+  id 1031 is number 1065, whose specs live in `test/spex/1065_…/`. They coincide
+  on a young project and diverge later (1ab62ffd).
+
+  Narrow for the same reason as `list_specs_ready_story_ids/1`: the caller wants
+  two integers per row, and `list_project_stories/1` would preload `:criteria`
+  and `:tags` for the whole project to produce them.
+  """
+  def story_numbers(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id)
+    |> select([s], {s.id, s.number})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   `%{story_id => working_copy_id}` for the project's assigned stories.
 
   Only the assigned ones. A story missing from this map is in the shared

@@ -17,7 +17,14 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
     <div :if={!@error && @story && @project}>
       <.header>
-        Story {@story.id}
+        <%!--
+        The number, not the id. A story carries both, and the number is what
+        names its spex directory — story id 1031 is number 1065, and its specs
+        live in `test/spex/1065_…/`. They coincide on a young project and
+        diverge later, which is how "Story 1031" stayed on this page for months
+        while naming a directory that does not exist (1ab62ffd).
+        --%>
+        Story {@story.number}
         <:subtitle>Story detail, acceptance criteria, tags, and QA history.</:subtitle>
         <:actions>
           <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}>
@@ -165,7 +172,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
             qa_attempts: qa_attempts,
             invalidating_attempt_id: nil,
             error: nil,
-            page_title: "Story #{story.id}"
+            page_title: "Story #{story.number}"
           )
           |> maybe_subscribe(scope)
 
