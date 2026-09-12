@@ -47,24 +47,39 @@ defmodule CodeMySpec.CodeMode.Bindings do
   """
   @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil) :: Lua.t()
   def install(lua, catalog, out_of_scope, kind \\ nil) do
+    Process.put(@printed, [])
+
     lua
-    |> Lua.put_private(@printed, [])
     |> capture_print()
     |> bind_tools(catalog)
     |> explain_exclusions()
     |> explain_scope(out_of_scope, kind)
   end
 
-  @doc "What the script printed, in order."
-  @spec printed(Lua.t()) :: [String.t()]
-  def printed(lua), do: Lua.get_private!(lua, @printed)
+  @doc """
+  What the script printed, in order — up to wherever it got to.
+
+  Process-scoped rather than carried in the Lua state, on purpose
+  (b9f4e5d4). `CodeMode.run/3` rebinds `lua` from `Lua.eval!`'s return, so a
+  script that raises — a rejected tool call, a compile error — leaves `lua`
+  in the `rescue` clause holding the *pre-eval* state, whose captured prints
+  are always empty; the state `eval!` actually produced is discarded with the
+  exception, and the `lua` package exposes no way to get it back. Each
+  `CodeMode.run/3` call already executes in its own `Task`
+  (`Sandbox.with_timeout/2`), so the process dictionary is exactly as
+  privately scoped as the Lua state was meant to be, and survives the one
+  case the state does not: a raise.
+  """
+  @spec printed() :: [String.t()]
+  def printed, do: Process.get(@printed, [])
 
   # `print` writes to real stdout otherwise, which on a server means a script's
   # debugging lands in the server log and never reaches the agent that wrote it.
   defp capture_print(lua) do
     Lua.set!(lua, [:print], fn args, state ->
       line = Enum.map_join(args, "\t", &render/1)
-      {[], Lua.put_private(state, @printed, Lua.get_private!(state, @printed) ++ [line])}
+      Process.put(@printed, Process.get(@printed, []) ++ [line])
+      {[], state}
     end)
   end
 
