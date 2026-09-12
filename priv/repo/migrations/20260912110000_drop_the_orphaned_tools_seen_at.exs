@@ -26,6 +26,30 @@ defmodule CodeMySpec.Repo.Migrations.DropTheOrphanedToolsSeenAt do
   from a clean history never did, and one built mid-repair could go either way.
   Asserting which would be guessing about a state this migration exists to stop
   people guessing about.
+
+  ## Renumbered from 20260912070000, which it collided with
+
+  It was written as `20260912070000` and so was
+  `a_requirement_remembers_what_it_was_computed_from`, on another branch, the
+  same day. Two files, one version — the identical defect this file's own
+  history is about, committed by the fix for it.
+
+  They met at a merge. `Ecto.Migrator` does not refuse the pair; one runs, the
+  other is skipped for good, and nothing says which. That is how
+  `AddTheRequirementFingerprintColumnWhereItNeverLanded` came to exist: its
+  moduledoc reports `code_my_spec_dev` carrying version 20260912070000 with no
+  `requirements.inputs_fingerprint`, and reasons that "the version row committed
+  and the DDL did not".
+
+  **That diagnosis is wrong, and worth correcting here because the right one is
+  the whole argument for this renumber.** The DDL that ran under 20260912070000
+  was *this file's* — dropping `tools_seen_at`. The fingerprint migration never
+  ran at all, because its version was already taken.
+
+  Renumbered rather than the other one because this is idempotent: `DROP COLUMN
+  IF EXISTS` is a no-op on a database that has already had it under the old
+  version, and correct on one that never did. The fingerprint migration is
+  `alter table/add`, which is not.
   """
 
   use Ecto.Migration
