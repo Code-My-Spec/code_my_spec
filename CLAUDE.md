@@ -90,6 +90,12 @@ Errors only, any source:
 
     grep -hE 'level=(warning|error)' ~/.codemyspec/{server,harness,web}.log | tail -40
 
+`ts=` is always UTC (`Z` suffix). `ps -o lstart` and most shell timestamps are
+local. A 34-second gap between a kill and its recovery reads as simultaneous
+once one side is silently converted, which is how a recovery got recorded as
+the cause of the death it followed (225860ce). Convert one side before
+comparing, or compare within one log's own `ts=` column instead.
+
 ### Format
 
 One logfmt event per line:

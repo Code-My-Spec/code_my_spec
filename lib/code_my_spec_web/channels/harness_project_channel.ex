@@ -1573,12 +1573,60 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp log_disconnect(reason, socket) do
     Logger.error(
-      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{death_reason(reason)}" <>
+      "[HarnessProject] channel DIED topic=#{socket.topic}#{instance_tag(socket)}" <>
+        " reason=#{death_reason(reason)}" <>
         " — every in-flight run for this working copy is about to be failed as" <>
         " :harness_disconnected. The analyzers keep running on the harness and" <>
-        " their results will be refused as unknown_run. Fix the crash, not the sweep."
+        " their results will be refused as unknown_run. Fix the crash, not the sweep." <>
+        instance_hint(socket)
     )
   end
+
+  # Names the harness process behind this channel, when the registry still has
+  # it — which it does for the whole of `terminate/2`, since a `Registry` entry
+  # outlives the process that owns it until the process actually exits.
+  #
+  # Without this, `:peer_closed` here and a stale channel registration present
+  # identically from the addressee's side: both drop channels and fail tool
+  # calls with a transport error, and neither project's own log says which one
+  # happened. Two sessions independently guessed wrong, in opposite directions,
+  # on the same incident (225860ce).
+  defp instance_tag(socket) do
+    case working_copy_instance(socket) do
+      nil -> ""
+      instance -> " instance=#{instance}"
+    end
+  end
+
+  # One harness process serves every working copy it holds, so a crash there
+  # drops all of them at once — a signature invisible from any single project's
+  # log, which is what turned a 34-second-later recovery into the suspected
+  # cause. Named rather than counted: a live count racing the same crash that
+  # is killing its own siblings' channels would undercount whichever have not
+  # been through this same callback yet, and a wrong number reads as more
+  # certain than a grep.
+  defp instance_hint(socket) do
+    case working_copy_instance(socket) do
+      nil ->
+        ""
+
+      instance ->
+        " This harness process (instance=#{instance}) serves every working copy it" <>
+          " holds, so every other project on it dropped at the same moment — grep" <>
+          " instance=#{instance} across server.log to see them, rather than reading" <>
+          " this one channel as the whole incident."
+    end
+  end
+
+  defp working_copy_instance(%{assigns: %{scope: %Scope{active_working_copy_id: id}}})
+       when is_binary(id) do
+    case Analysis.executor_holder(id) do
+      {:ok, _pid, instance} -> instance
+      :error -> nil
+    end
+  end
+
+  defp working_copy_instance(_socket), do: nil
 
   # The reason, legibly. This is the one line that says why the channel died,
   # and `inspect(reason, limit: 12)` truncated it before it got to the point:
