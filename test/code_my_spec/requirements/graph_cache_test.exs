@@ -2,6 +2,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.DevicesFixtures
+  import Ecto.Query, only: [from: 2]
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.BddRules
@@ -483,6 +484,56 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
              Whatever a computation stored has to be what the read serving it
              back returns, or `computed_at` is a label on two different answers.
              """
+    end
+
+    # The fixture above round-trips losslessly, so it cannot produce the
+    # shortfall QA measured. This produces it directly: delete some of the
+    # projected rows behind the cache's back, leaving the cache row's own
+    # `node_count` claiming more than the projection can return.
+    #
+    # That is the shape of the real failure without needing whatever made
+    # rehydration fail on a 2009-node project — the read comes back short, and
+    # the only question is whether a short read is served or refused.
+    test "a read that comes back short is refused, not served", %{scope: scope} do
+      viewing = %{scope | active_working_copy_id: nil}
+
+      {{computed_nodes, _, _}, computed} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert computed.served_from == "computed"
+      assert length(computed_nodes) > 1, "need more than one node to remove one"
+
+      victim =
+        Repo.one(
+          from r in "requirements",
+            where: r.project_id == type(^scope.active_project_id, :binary_id),
+            limit: 1,
+            select: r.id
+        )
+
+      {1, _} = Repo.delete_all(from r in "requirements", where: r.id == ^victim)
+
+      {{served_nodes, _, _}, served} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert served.served_from == "computed",
+             """
+             A cache read came back with fewer requirements than the publish
+             counted, and was served as a cache hit anyway.
+
+             The publish records `node_count`, which is the one thing the rows
+             cannot say about themselves, so a read that cannot reconstitute
+             that many has lost something. Serving it reports a strict subset of
+             the graph under the timestamp of the computation that had all of
+             it — two graphs, one `computed_at`, which is exactly what QA
+             measured on story 1062 (2009 -> 1844 -> 2009).
+
+             Recomputing is the correct answer to a short read. Serving it is
+             not.
+             """
+
+      assert length(served_nodes) == length(computed_nodes),
+             "the recompute should restore every node the short read had lost"
     end
   end
 

@@ -170,12 +170,42 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # is a miss — recompute — rather than an empty graph served as current. An
   # empty graph tells an agent it has no work, which is the wrong answer to give
   # for a write that failed.
+  #
+  # Short counts are the same failure, and were served as current until QA found
+  # them. `Projection.load/2` rebuilds each row against the preloaded context and
+  # drops whatever it cannot — `rehydrate/2` answers nil when `entity_for/2`
+  # cannot place the row's entity or `definition_for/2` cannot find its
+  # definition — so a hit could return a strict subset of what the publish
+  # counted, with nothing amiss in either the write or the read.
+  #
+  # Measured on story 1062: 2009 nodes computed, 1844 served from cache, stable
+  # across reads, back to 2009 on the next recompute, all under one `computed_at`
+  # (7a6b92e3). Two graphs wearing one timestamp, which is precisely what
+  # criterion 3246 says must not happen and what criterion 3358 now states
+  # directly.
+  #
+  # Refusing the short read rather than repairing the projection, deliberately.
+  # The count is the publish's own claim about itself and is therefore the one
+  # number a read cannot argue with; whatever makes rehydration fail is worth
+  # finding, but until it is found a recompute is a correct answer and a subset
+  # is not. The cost is a recompute on a project that reproduces it, which is
+  # loud in the log and better than quiet wrong numbers.
   defp served_graph(scope, ctx, published_nodes) do
     case Projection.load(scope, ctx) do
       {[], _} when published_nodes > 0 ->
         Logger.warning(
           "[Requirements] no requirement rows for a graph published with " <>
             "#{published_nodes} nodes — recomputing. The row write for it did not land."
+        )
+
+        :no_rows
+
+      {nodes, _edges} when length(nodes) < published_nodes ->
+        Logger.warning(
+          "[Requirements] a graph published with #{published_nodes} nodes reads back as " <>
+            "#{length(nodes)} — recomputing. `Projection.load/2` rebuilds each row against " <>
+            "the preloaded context and drops what it cannot, so the shortfall is rows the " <>
+            "publish counted and this read could not reconstitute."
         )
 
         :no_rows
