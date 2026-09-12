@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
         {:ok, live, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
         assert html =~ "it_did_this",

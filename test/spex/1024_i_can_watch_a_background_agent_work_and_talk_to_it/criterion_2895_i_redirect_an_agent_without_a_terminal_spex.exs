@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
         {:ok, live, _html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
         html =
@@ -114,7 +114,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2895Spex do
           {:ok, _reloaded, html} =
             live(
               context.conn,
-              ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+              ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: context.conversation.id]}"
             )
 
           assert html =~ "say READY",

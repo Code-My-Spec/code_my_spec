@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
       conn = UserAuth.log_in_user(conn, user)
       assert token = get_session(conn, :user_token)
       assert get_session(conn, :live_socket_id) == "users_sessions:#{Base.url_encode64(token)}"
-      assert redirected_to(conn) == ~p"/app/users/settings"
+      assert redirected_to(conn) == ~p"/app"
       assert Users.get_user_by_session_token(token)
     end
 
@@ -74,13 +74,16 @@ defmodule CodeMySpecWeb.UserAuthTest do
       assert max_age == @remember_me_cookie_max_age
     end
 
-    test "redirects to settings when user is already logged in", %{conn: conn, user: user} do
+    # `/app` rather than settings, which is where logging in used to land for
+    # no reason anybody chose. A user with a project goes to its cockpit; this
+    # one has none, so onboarding is the honest answer.
+    test "redirects to the app when user is already logged in", %{conn: conn, user: user} do
       conn =
         conn
         |> assign(:current_scope, Scope.for_user(user))
         |> UserAuth.log_in_user(user)
 
-      assert redirected_to(conn) == ~p"/app/users/settings"
+      assert redirected_to(conn) == ~p"/app"
     end
 
     test "writes a cookie if remember_me was set in previous session", %{conn: conn, user: user} do

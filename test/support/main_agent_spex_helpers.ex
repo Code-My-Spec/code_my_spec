@@ -157,28 +157,28 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   end
 
   @doc """
-  Where the project's own conversation is, as the index links to it.
+  Where the project's own conversation is.
 
-  Read off the page rather than queried, because the claim every criterion here
-  makes is about what a person clicking "Open" lands on. A path built from a
-  conversation the criterion looked up itself would pass while the link went
-  somewhere else entirely.
+  The cockpit is a project page now, and opening it without naming an agent is
+  what lands you on the project's own — so this is that path, and the claim it
+  carries is that arriving at a project puts you in front of its agent rather
+  than in front of a list.
+
+  Still checked rather than assumed: a page that resolved no agent is a page
+  with nothing to talk to, and every criterion built on this helper would
+  otherwise go on to fail somewhere less obvious.
   """
   @spec main_conversation_path(map()) :: String.t()
   def main_conversation_path(context) do
-    {:ok, _live, html} =
-      live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
+    path = ~p"/app/projects/#{context.project.id}/agent-conversation"
 
-    case Regex.run(~r"href=\"(/app/projects/[0-9a-f-]+/agent-conversation/[0-9a-f-]{36})\"", html) do
-      [_, path] ->
-        path
+    {:ok, _live, html} = live(context.conn, path)
 
-      nil ->
-        flunk(
-          "the project's agent conversation is not linked from its agents page, so " <>
-            "there is nothing for somebody to open"
-        )
-    end
+    assert agent_id_in(html),
+           "the project presents no main agent on its own page, so there is nothing " <>
+             "for somebody to open"
+
+    path
   end
 
   @doc """
