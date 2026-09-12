@@ -54,9 +54,20 @@ defmodule CodeMySpecWeb.Application do
         # And re-establish them for whatever was already being worked. Watchers
         # are in memory, so a restart takes them all, and a deploy is exactly
         # when agents are mid-run — an agent that goes idle after one would have
-        # nothing watching for the work that wakes it. `:temporary` because
-        # failing to seed is not a reason to refuse to boot: the next stop
-        # decision on a project starts its watcher anyway.
+        # nothing watching for the work that wakes it.
+        #
+        # `:temporary` because failing to seed is not a reason to refuse to
+        # boot. This used to add "the next stop decision on a project starts its
+        # watcher anyway", which is not true — the only callers of
+        # `ensure_watching/1` are this task and the two continuous toggles in
+        # `agents.ex`, and no stop path is among them (07f42ebf, where the same
+        # false self-healing claim in `DevState`'s diagnostic cost a QA cycle).
+        #
+        # So the consequence of a failed seed is worse than that sentence
+        # implied: nothing watches until somebody toggles a loop or the server
+        # restarts again. Still not a reason to refuse to boot — a server that
+        # will not start helps nobody — but it is a reason to read a failure
+        # here as something to act on rather than as self-correcting.
         Supervisor.child_spec(
           {Task, &GraphWatcher.watch_active_projects/0},
           id: :watch_active_projects,
