@@ -2,6 +2,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.DevicesFixtures
+  import Ecto.Query, only: [from: 2]
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.BddRules
@@ -299,8 +300,14 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # stuck rather than the one that lets work through: the gate refused a story
     # for being behind, the merge landed, the harness said so, and the cached
     # graph went on serving the refusal the agent had already cleared.
+    #
+    # The scope's own checkout, because that is the one the gate asks about —
+    # `running_copy_check/2` reads `main/1` and the asking copy, and nothing
+    # else. Written against a third, unrelated checkout this passed for a
+    # reason unconnected to the gate: the fingerprint read the whole table, so
+    # any row moving moved it.
     test "a checkout reporting its work is now on main moves it", %{scope: scope} do
-      copy = a_checkout(scope)
+      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
 
       {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 3, behind: 0, dirty: false})
       behind = current_fingerprint(scope)
@@ -315,8 +322,13 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # The other half of the same node. That the code is on the running copy says
     # nothing about whether anything is serving it, and QA needs both — the two
     # came apart within a day of the gate shipping.
+    #
+    # On the main copy, because "the running application" is by definition the
+    # one `WorkingCopies.main/1` answers with — a checkout nobody designated is
+    # not serving anything and the gate never looks at it.
     test "the running application going down moves it", %{scope: scope} do
       copy = a_checkout(scope)
+      {:ok, copy} = WorkingCopies.designate_main(scope, copy.id)
 
       {:ok, _} = WorkingCopies.record_preview_status(copy, "serving")
       up = current_fingerprint(scope)
@@ -430,6 +442,99 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       )
 
     copy
+  end
+
+  # A cache hit and a cache miss must describe the same graph.
+  #
+  # Found by QA on story 1062, reproduced three times on the graph page: 2009
+  # nodes on a fresh compute, 1844 from the cache, stable, under one
+  # `computed_at`, back to 2009 on the next recompute (7a6b92e3). Criterion 3358
+  # is the story's record of it.
+  #
+  # A miss answers with what it computed. A hit answers with `Projection.load/2`
+  # — the projection tables read back — so the two agree only if the round trip
+  # is lossless. It is not obliged to be: `load/2` rehydrates each row against
+  # the preloaded context and drops whatever it cannot rebuild.
+  describe "a cache hit and the computation it came from" do
+    setup do
+      %{scope: setup_project()}
+    end
+
+    test "describe the same graph", %{scope: scope} do
+      viewing = %{scope | active_working_copy_id: nil}
+
+      {{computed_nodes, _edges, _actionable}, computed} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      {{cached_nodes, _edges, _actionable}, cached} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert computed.served_from == "computed"
+      assert cached.served_from == "cache"
+
+      assert length(cached_nodes) == length(computed_nodes),
+             """
+             The cached read and the computed read describe different graphs.
+
+             computed: #{length(computed_nodes)} nodes
+             cached:   #{length(cached_nodes)} nodes
+
+             Both readings are internally coherent, which is why this survived
+             until a page showed them next to each other under one timestamp.
+             Whatever a computation stored has to be what the read serving it
+             back returns, or `computed_at` is a label on two different answers.
+             """
+    end
+
+    # The fixture above round-trips losslessly, so it cannot produce the
+    # shortfall QA measured. This produces it directly: delete some of the
+    # projected rows behind the cache's back, leaving the cache row's own
+    # `node_count` claiming more than the projection can return.
+    #
+    # That is the shape of the real failure without needing whatever made
+    # rehydration fail on a 2009-node project — the read comes back short, and
+    # the only question is whether a short read is served or refused.
+    test "a read that comes back short is refused, not served", %{scope: scope} do
+      viewing = %{scope | active_working_copy_id: nil}
+
+      {{computed_nodes, _, _}, computed} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert computed.served_from == "computed"
+      assert length(computed_nodes) > 1, "need more than one node to remove one"
+
+      victim =
+        Repo.one(
+          from r in "requirements",
+            where: r.project_id == type(^scope.active_project_id, :binary_id),
+            limit: 1,
+            select: r.id
+        )
+
+      {1, _} = Repo.delete_all(from r in "requirements", where: r.id == ^victim)
+
+      {{served_nodes, _, _}, served} =
+        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+
+      assert served.served_from == "computed",
+             """
+             A cache read came back with fewer requirements than the publish
+             counted, and was served as a cache hit anyway.
+
+             The publish records `node_count`, which is the one thing the rows
+             cannot say about themselves, so a read that cannot reconstitute
+             that many has lost something. Serving it reports a strict subset of
+             the graph under the timestamp of the computation that had all of
+             it — two graphs, one `computed_at`, which is exactly what QA
+             measured on story 1062 (2009 -> 1844 -> 2009).
+
+             Recomputing is the correct answer to a short read. Serving it is
+             not.
+             """
+
+      assert length(served_nodes) == length(computed_nodes),
+             "the recompute should restore every node the short read had lost"
+    end
   end
 
   defp setup_project do

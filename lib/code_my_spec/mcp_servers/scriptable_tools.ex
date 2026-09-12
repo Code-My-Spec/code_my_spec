@@ -139,6 +139,13 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
 
+  # The main agent's view across its working copies, and the one act it can
+  # take on what it finds there. Scripted rather than on the spine because the
+  # spine is paid by every agent at connect and exactly one role calls these —
+  # a coding agent has no use for its colleagues' open questions.
+  component(CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions)
+  component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
+
   # Here rather than on the spine, unlike its neighbours `start_agent` and
   # `stop_agent`. Agents are given work by role rather than spawned on request,
   # so what one needs of another is a message, not a handle on its lifecycle.

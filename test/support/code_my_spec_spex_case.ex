@@ -1506,6 +1506,34 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Hold the graph's collection window open for the length of one spex.
+
+      setup :hold_graph_window
+
+  The window is 25ms under test so that criteria about a burst collapsing do
+  not spend two seconds each. That is too short to see anything *inside* the
+  window: by the time a criterion writes and then reads, the timer has already
+  fired, so "the reader did not wait for the window" and "the reader waited out
+  a 25ms window" are the same observation.
+
+  Ten seconds is longer than any spex takes, which makes the timer effectively
+  never fire on its own — so whatever moves the graph during the scenario is
+  the reader, and nothing else.
+
+  Restored on exit. The value is global, and spex are synchronous.
+  """
+  def hold_graph_window(context) do
+    previous = Application.get_env(:code_my_spec, :graph_debounce_ms)
+    Application.put_env(:code_my_spec, :graph_debounce_ms, 10_000)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :graph_debounce_ms, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   POST to a harness hook, addressed by harness id.
 
   Twenty-two criteria across five stories carried their own copy of this, in

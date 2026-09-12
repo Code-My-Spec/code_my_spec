@@ -122,14 +122,27 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
-  Same as `project_graph_with_actionable/1` plus per-phase timings.
+  Same as `project_graph_with_actionable/1`, from the cache, with provenance.
+
+  Serves the published graph when the fingerprint hits and recomputes when it
+  misses, so this is never stale — `metrics.computed_at` says when the answer
+  was made and `metrics.served_from` says which of the two happened.
+
+  It recomputed unconditionally until 2026-09-11, which made the requirements
+  graph page the only reader of the graph that never used the cache: 4.4 seconds
+  against 34ms of preload, on every visit, while stories 1062 and 1063 were
+  being written to make the cached answer trustworthy. The page also had no
+  freshness to show, because it had no cached answer to be fresh or stale.
+
+  `compute_graph_with_actionable_metrics/1` still exists and still recomputes —
+  it is the one honest way to *time* a compute, and a timing function that read
+  a cache would measure nothing.
   """
   @spec project_graph_with_actionable_metrics(Scope.t()) ::
-          {%{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]},
-           %{atom() => integer()}}
+          {%{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}, map()}
   def project_graph_with_actionable_metrics(%Scope{} = scope) do
     {{nodes, edges, actionable}, metrics} =
-      RequirementGraph.compute_graph_with_actionable_metrics(scope)
+      RequirementGraph.cached_graph_with_actionable_metrics(scope)
 
     {%{nodes: nodes, edges: edges, actionable: actionable}, metrics}
   end

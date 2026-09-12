@@ -142,6 +142,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1263,6 +1265,37 @@ defmodule CodeMySpecSpex.Fixtures do
   Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
   spex dependency.
   """
+  @doc """
+  Start watching this project's graph, and subscribe to its announcements.
+
+  Here rather than in a criterion for the same reason as `record_git_state/2`:
+  `CodeMySpec.Requirements` is not a spex dependency, so a criterion naming
+  `GraphWatcher` or `GraphInputs` is a boundary violation. Reaching the domain
+  is the bridge's job.
+
+  Both halves matter and both are easy to forget separately. Without the
+  watcher nothing recomputes on a write; without the subscription nothing
+  arrives. And `settle_graph/1` answers `:ok` when nothing is watching, so a
+  forgotten watcher looks exactly like a graph that did not move.
+  """
+  @spec watch_graph(Scope.t()) :: :ok
+  def watch_graph(%Scope{active_project_id: project_id} = scope) do
+    {:ok, _pid} = GraphWatcher.ensure_watching(scope)
+    :ok = GraphInputs.subscribe(project_id)
+    :ok
+  end
+
+  @doc """
+  Do the watcher's pending pass now instead of when the debounce expires.
+
+  A spec that slept would be asserting the timer rather than the mechanism, and
+  would be flaky on a loaded box — which is where the analyzer runs. Answers
+  `:ok` when no watcher is running, so it is safe to call unconditionally.
+  """
+  @spec settle_graph(Scope.t()) :: :ok
+  def settle_graph(%Scope{} = scope),
+    do: GraphWatcher.settle(scope)
+
   @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
   def record_git_state(working_copy_id, %{} = state) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
@@ -1492,6 +1525,37 @@ defmodule CodeMySpecSpex.Fixtures do
       nil -> base
       conversation -> "#{base}?conversation=#{conversation.id}"
     end
+  end
+
+  @doc """
+  The path of one named agent's transcript.
+
+  `agent_conversation_path/1` answers "the one that moved last", which is what
+  a scenario with a single agent means. A scenario with two of them needs to say
+  which, and "last" is exactly the wrong answer there — two agents on one
+  project would both be read from whichever page happened to be newest, so an
+  assertion about one and a refutation about the other would both be looking at
+  the same transcript and could not disagree.
+
+  `find_or_create_agent_conversation/3` is the same call `running_agent/2` makes,
+  so it finds that agent's thread rather than opening a second one.
+
+  The conversation goes in the query string, matching `agent_conversation_path/1`
+  and the one route the router actually has. This was written as a path segment
+  and every caller 404ed — `live/2` then fails inside `LiveViewTest` with a
+  `FunctionClauseError` about static tokens rather than saying "no route", which
+  reads as a broken page and is a broken URL.
+  """
+  @spec agent_conversation_path(Scope.t(), %{id: Ecto.UUID.t()}) :: String.t()
+  def agent_conversation_path(%Scope{} = scope, %{id: agent_id}) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    "/app/projects/#{scope.active_project_id}/agent-conversation?conversation=#{conversation.id}"
   end
 
   @doc """
@@ -1788,6 +1852,72 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Configurations.get_or_create(scope)
     {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
     config
+  end
+
+  @doc """
+  The question id out of what `AskUserQuestion` answered.
+
+  The tool reports it in prose — "Question id: <uuid>" — because its reader is
+  an agent rather than a parser. A spex that needs to answer the question it
+  just asked has to get the id from somewhere, and reading it back out of the
+  tool's own reply keeps the scenario on the surface instead of reaching into
+  the table the tool wrote.
+  """
+  @spec question_id_from(String.t()) :: String.t()
+  def question_id_from(response_text) do
+    [_, id] = Regex.run(~r/Question id: ([0-9a-f-]{36})/, response_text)
+    id
+  end
+
+  @doc """
+  Answer a question the way the person answering it does.
+
+  `Notifications.answer_question_request/2` is what the inbox form calls, and it
+  is the only thing that marks a request answered and releases whoever was
+  waiting on it. A spex that set the status itself would pass against a listing
+  filtering on a field nothing in the product ever writes.
+
+  `answers` is keyed by the question's own text, which is the shape the form
+  submits and the shape the waiting side reads.
+  """
+  @spec answer_question(Scope.t(), String.t(), String.t()) :: :ok
+  def answer_question(%Scope{} = _scope, question_id, label) do
+    request = CodeMySpec.Repo.get!(CodeMySpec.Notifications.QuestionRequest, question_id)
+
+    answers =
+      Map.new(request.questions, fn question -> {Map.fetch!(question, "question"), label} end)
+
+    {:ok, _answered} = CodeMySpec.Notifications.answer_question_request(question_id, answers)
+
+    :ok
+  end
+
+  @doc """
+  Whether this project asks for spec files, and a component to ask it about.
+
+  `require_specs` is what `graph_for_type/1` filters a template by, so turning it
+  off is how a project stops needing a whole class of requirement — the surface
+  behind criterion 3359.
+  """
+  def require_specs(%Scope{} = scope, required?) do
+    CodeMySpec.Configurations.get_or_create(scope)
+    {:ok, _config} = CodeMySpec.Configurations.update(scope, %{require_specs: required?})
+    :ok
+  end
+
+  @doc """
+  A schema component, whose whole template is spec requirements.
+
+  `schema_graph/0` is `spec_file` and `spec_valid` and nothing else, which makes
+  it the type that computes *zero* requirements once specs are off — the case
+  that kept stale rows forever.
+  """
+  def a_schema_component(%Scope{} = scope) do
+    CodeMySpec.Components.create_component(scope, %{
+      name: "Calculator",
+      module_name: "#{scope.active_project.module_name}.Calculator",
+      type: "schema"
+    })
   end
 
   @doc "The stop hook's blocking decision, as the hook itself asks for it."

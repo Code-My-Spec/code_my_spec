@@ -189,9 +189,17 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 # `_build`. At that length a test that dispatches a run and ends leaves the
 # waiting task alive for half an hour, and the harness-never-answered path
 # cannot be asserted at all.
+# `graph_debounce_ms` is the requirement graph's own coalescing window, two
+# seconds in production. `GraphWatcher.settle/1` already makes the pass
+# deterministic for a test that calls it, and a test asserting ordering should
+# call it rather than lean on this — this is for the ones asserting what
+# happens *without* settling, which would otherwise pay two real seconds an
+# assertion. Not zero: coalescing needs a window more than one event can land
+# inside, and zero makes every event its own pass.
 config :code_my_spec,
   harness_decision_timeout: 1_000,
   harness_watch_debounce_ms: 200,
+  graph_debounce_ms: 25,
   remote_await_timeout: 500
 
 # A harness announcing its machine reaches `CodeMySpecWeb.Endpoint` in-process

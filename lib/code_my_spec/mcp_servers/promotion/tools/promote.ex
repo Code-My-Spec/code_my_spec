@@ -24,8 +24,21 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   #
   # Async for the same reason `start_analysis` is: the sweep takes minutes, and
   # a tool call held open for it blocks an agent with no output and no way to
-  # tell a slow sweep from a hung one. The result reaches the agent through
-  # `Agents.message_agent/4`, which wakes it.
+  # tell a slow sweep from a hung one. An Alloy agent is told through
+  # `Agents.dispatch_message/3`, which wakes it.
+  #
+  # Async for *everyone*, including a connection with no agent on it. This used
+  # to refuse those and point at `promote_sync`, which meant the one caller that
+  # could not be messaged was sent to the one tool that waits minutes over a
+  # transport that gives up in thirty seconds. A Claude Code session promoting
+  # this way got a timeout for a promotion that had already merged and
+  # restarted, retried it, and restarted the shared dev server three times
+  # (88247a09).
+  #
+  # A caller with nowhere to be messaged learns the outcome the same way
+  # `start_analysis` offers: the log records it either way, and
+  # `POST /api/harnesses/<working_copy_id>/promotion/run` is the door that
+  # blocks for the whole thing without a cap. See `CmsHarness.Web.PromotionController`.
 
   use Anubis.Server.Component, type: :tool
 
@@ -39,16 +52,13 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame),
-         agent_id when is_binary(agent_id) <- frame.assigns[:agent_id] do
-      :ok = Promotion.promote_async(scope, agent_id)
-      {:reply, Response.tool() |> Response.text(Responses.started()), frame}
-    else
-      # No agent on the connection. Refused rather than quietly falling back to
-      # the blocking path: a caller that cannot be messaged would wait on a
-      # result this tool never promises to return, and the fix is one tool over.
-      nil ->
-        {:reply, Response.tool() |> Response.error(Responses.no_agent()), frame}
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        :ok = Promotion.promote_async(scope, frame.assigns[:agent_id])
+
+        {:reply,
+         Response.tool()
+         |> Response.text(Responses.started(scope.active_working_copy_id)), frame}
 
       {:error, _reason} ->
         {:reply, Response.tool() |> Response.error(Responses.no_project()), frame}

@@ -5,6 +5,11 @@ defmodule CodeMySpecSpex do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.McpServers,
+      # A zero-dep leaf exporting only path constants. `ProjectBuilder` has to
+      # write where the scanner looks, and hardcoding `.code_my_spec/spec`
+      # beside the module that owns it is how a fixture quietly stops being
+      # synced when the convention moves.
+      CodeMySpec.Paths,
       CodeMySpec.RecordingLock,
       CodeMySpec.TempFile,
       CodeMySpec.Utils,

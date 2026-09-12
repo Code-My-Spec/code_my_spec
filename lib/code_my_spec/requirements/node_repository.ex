@@ -158,8 +158,9 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   The map is the point: it is how an edge turns a `{entity_type, entity_id, name}`
   pair into the two row ids it needs.
   """
-  @spec upsert_all(Scope.t(), [Requirement.t()]) :: %{tuple() => integer()}
-  def upsert_all(%Scope{active_project_id: project_id} = scope, nodes) when is_list(nodes) do
+  @spec upsert_all(Scope.t(), [Requirement.t()], visited()) :: %{tuple() => integer()}
+  def upsert_all(%Scope{active_project_id: project_id} = scope, nodes, visited \\ nil)
+      when is_list(nodes) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     # Whose view this computation is. `Preloader.load/1` scoped its file query
@@ -167,9 +168,19 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     # checkout could see — and writing it without saying so is what let any
     # checkout overwrite the project's whole graph.
     #
-    # `nil` is the UI path, which blends every checkout deliberately. That is a
-    # vantage point too, and gets its own row.
-    working_copy_id = scope.active_working_copy_id
+    # `Projection.vantage/1`, not the raw field: a caller with no checkout to
+    # name (`active_working_copy_id: nil` — the UI path) reads back through
+    # `vantage/1`, which resolves that to the project's default working copy
+    # whenever one is set. Writing under the raw `nil` instead persisted every
+    # UI-triggered publish somewhere `Projection.load/2` would never look again
+    # once a project had a default working copy — a permanent, silent miss
+    # (`verify_round_trip` logging "the projection does not round-trip" on
+    # every single publish, forever; `RequirementGraph.served_graph/3`'s guard
+    # refusing every cache hit as a result — cc4745dc). `vantage/1` only ever
+    # answers something other than the raw field for that one caller shape, so
+    # a scope that already names a checkout persists exactly where it always
+    # did.
+    working_copy_id = Projection.vantage(scope)
 
     nodes
     |> Enum.group_by(& &1.entity_type)
@@ -178,8 +189,19 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     end)
 
     keys = ids_by_key(project_id, working_copy_id, nodes)
-    delete_departed(scope, working_copy_id, nodes, keys)
+    delete_departed(scope, working_copy_id, visited || from_nodes(nodes), keys)
     keys
+  end
+
+  @typedoc """
+  Which entities this computation looked at, as against which produced nodes.
+
+  The two differ, and conflating them is what let stale rows survive forever.
+  """
+  @type visited :: %{components: [Ecto.UUID.t()], stories: [integer()]} | nil
+
+  defp from_nodes(nodes) do
+    %{components: entity_ids(nodes, "component"), stories: entity_ids(nodes, "story")}
   end
 
   # Nodes that were in the graph and are not any more.
@@ -198,11 +220,40 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # Scoped to the entities this computation covered, not to the project. A
   # component the graph did not visit — filtered out, or belonging to work not
   # loaded — must keep its rows rather than be treated as departed.
-  defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, nodes, keys) do
+  #
+  # "Covered" is what the computation *looked at*, not what it *produced*, and
+  # deriving it from the produced nodes conflated two different things: a
+  # component nobody loaded, and a component that was loaded and yielded
+  # nothing. Only the first should keep its rows.
+  #
+  # The second is ordinary: `graph_for_type("infrastructure")` is `[]`, so an
+  # infrastructure-typed component computes nothing at all. There are 11 of them
+  # on this project. Absent from the produced set, each is read as "not visited"
+  # and keeps whatever rows it had from before it was retyped — for good, since
+  # nothing will ever visit-and-produce for it again.
+  #
+  # ## Correction, and it matters because the first version of this comment was
+  # ## wrong
+  #
+  # This originally said `schema_graph/0` was `spec_file` and `spec_valid` only,
+  # so schema components computed nothing under `require_specs: false`, and that
+  # 84 of them held `implementation_file` rows their type no longer defined.
+  # That is false. `schema_graph/0` defines `implementation_file` — it is the
+  # third entry, and `git log -S` shows it unbroken since `a5a7a1fd3`. I read
+  # the head of the function and stopped.
+  #
+  # So schema components *do* produce a node, *are* in the produced set, and
+  # were always reaped correctly. They were never an instance of this bug.
+  #
+  # The change stands on the distinction itself, which is real — a component
+  # that computes nothing is not a component nobody looked at — and on the
+  # infrastructure case above. It does **not** explain the 2009-against-1844
+  # short read on cc4745dc, and the earlier claim that it did was built on the
+  # same misreading.
+  defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, visited, keys) do
     keep = keys |> Map.values() |> MapSet.new()
 
-    component_ids = entity_ids(nodes, "component")
-    story_ids = entity_ids(nodes, "story")
+    %{components: component_ids, stories: story_ids} = visited
 
     Node
     |> where(

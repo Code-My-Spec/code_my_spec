@@ -144,17 +144,19 @@ state without scraping HTML.
 ## Driving the agent surface (hook actions)
 
 ```elixir
-response =
-  Phoenix.ConnTest.build_conn()
-  |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-  |> Plug.Conn.put_req_header("content-type", "application/json")
-  |> post(~p"/api/hooks/stop", %{})
-  |> Phoenix.ConnTest.json_response(200)
+response = post_hook(context, "/api/hooks/stop", %{})
 ```
 
-The `x-working-dir` header is how the hook endpoint resolves the
-scope — set it to `context.scope.cwd` (the stub dir planted by
-`setup_active_project`).
+`post_hook/3` sets `x-harness-id`, dispatches to the **local** endpoint
+explicitly, and returns the decoded body. Take the helper rather than
+building the conn: hooks are a harness-app surface, and a hand-built conn
+dispatches through whatever `@endpoint` the spex file declares — which is
+the cloud app in at least one file.
+
+A request names the working copy, never a path. `x-working-dir`, `?dir=`,
+`Plugs.WorkingDir` and `WorkingDirScope` were removed because resolving a
+checkout from an announced path succeeded against the wrong disk rather
+than failing when it was wrong.
 
 ## Writing files as "the agent"
 

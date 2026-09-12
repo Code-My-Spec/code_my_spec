@@ -31,28 +31,56 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   def text({:ok, report}), do: promoted(report)
   def text({:error, refusal}), do: refused(refusal)
 
-  @spec started() :: String.t()
-  def started do
+  @doc """
+  What a caller is told the moment a promotion is handed off.
+
+  Names the blocking door as well, the way `start_analysis` does. An Alloy agent
+  is messaged when the promotion lands and needs nothing else; every other
+  caller has nowhere to be messaged, and telling it only "you will be told" is a
+  promise this tool cannot keep for it.
+
+  The URL matters more than it looks. Without it the honest instruction was "use
+  promote_sync", which waits for a gate, a merge, an analyzer sweep and a
+  restart over a transport that gives up after thirty seconds — so the caller
+  that could not be messaged was sent to the one tool guaranteed to fail it, and
+  a promotion that had already merged and restarted came back as a timeout
+  (88247a09).
+  """
+  @spec started(Ecto.UUID.t() | nil) :: String.t()
+  def started(working_copy_id) do
     """
     Promotion started.
 
     Gating, merging and restarting takes a while — the analyzer sweep is the
-    slow part — so this returns now and the outcome will arrive as a message.
-    Carry on with something else; you will be told either way.
+    slow part — so this returns now rather than holding the call open.
+
+    If you are an agent, the outcome arrives as a message and there is nothing
+    to do but carry on. If you are not, it is written to the log either way, and
+    #{wait_line(working_copy_id)}
+
+    Do not call this again to find out whether it worked. A second promotion
+    restarts the shared dev server that every other working copy on this machine
+    is using.
     """
     |> String.trim()
   end
+
+  # No working copy on the scope is not worth a second shape of this message —
+  # the caller still knows its own harness id, which is what the URL wants.
+  defp wait_line(nil),
+    do:
+      "POST /api/harnesses/<your working copy id>/promotion/run blocks for the\n" <>
+        "whole thing with no timeout."
+
+  defp wait_line(working_copy_id),
+    do:
+      "this blocks for the whole thing with no timeout:\n\n" <>
+        "    curl -sX POST localhost:4004/api/harnesses/#{working_copy_id}/promotion/run"
 
   @spec no_project() :: String.t()
   def no_project do
     "No project on this connection, so there is no running dev copy to promote " <>
       "to. Onboard this checkout first."
-  end
-
-  @spec no_agent() :: String.t()
-  def no_agent do
-    "This connection is not an agent, so there is nowhere to send the result. " <>
-      "Use promote_sync, which waits and answers."
   end
 
   # A promotion from the running copy itself, which is a restart and nothing

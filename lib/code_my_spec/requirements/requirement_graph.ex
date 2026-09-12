@@ -170,12 +170,42 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # is a miss — recompute — rather than an empty graph served as current. An
   # empty graph tells an agent it has no work, which is the wrong answer to give
   # for a write that failed.
+  #
+  # Short counts are the same failure, and were served as current until QA found
+  # them. `Projection.load/2` rebuilds each row against the preloaded context and
+  # drops whatever it cannot — `rehydrate/2` answers nil when `entity_for/2`
+  # cannot place the row's entity or `definition_for/2` cannot find its
+  # definition — so a hit could return a strict subset of what the publish
+  # counted, with nothing amiss in either the write or the read.
+  #
+  # Measured on story 1062: 2009 nodes computed, 1844 served from cache, stable
+  # across reads, back to 2009 on the next recompute, all under one `computed_at`
+  # (7a6b92e3). Two graphs wearing one timestamp, which is precisely what
+  # criterion 3246 says must not happen and what criterion 3358 now states
+  # directly.
+  #
+  # Refusing the short read rather than repairing the projection, deliberately.
+  # The count is the publish's own claim about itself and is therefore the one
+  # number a read cannot argue with; whatever makes rehydration fail is worth
+  # finding, but until it is found a recompute is a correct answer and a subset
+  # is not. The cost is a recompute on a project that reproduces it, which is
+  # loud in the log and better than quiet wrong numbers.
   defp served_graph(scope, ctx, published_nodes) do
     case Projection.load(scope, ctx) do
       {[], _} when published_nodes > 0 ->
         Logger.warning(
           "[Requirements] no requirement rows for a graph published with " <>
             "#{published_nodes} nodes — recomputing. The row write for it did not land."
+        )
+
+        :no_rows
+
+      {nodes, _edges} when length(nodes) < published_nodes ->
+        Logger.warning(
+          "[Requirements] a graph published with #{published_nodes} nodes reads back as " <>
+            "#{length(nodes)} — recomputing. `Projection.load/2` rebuilds each row against " <>
+            "the preloaded context and drops what it cannot, so the shortfall is rows the " <>
+            "publish counted and this read could not reconstitute."
         )
 
         :no_rows
@@ -225,7 +255,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp persist_projection(:published, scope, ctx, nodes, edges) do
     {:ok, _} =
       Repo.transaction(fn ->
-        ids_by_key = NodeRepository.upsert_all(scope, nodes)
+        ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
         NodeRepository.replace_edges(scope, edges, ids_by_key)
       end)
 
@@ -235,6 +265,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     verify_round_trip(scope, ctx, nodes, edges)
 
     :ok
+  end
+
+  # What this computation looked at, which is the preloaded context rather than
+  # the nodes it produced. A component whose template is empty under this
+  # project's configuration produces nothing and was still visited; its old rows
+  # are departed and must be reaped. See `NodeRepository.delete_departed/4`.
+  defp visited(ctx) do
+    %{
+      components: Enum.map(ctx.components, & &1.id),
+      stories: Enum.map(ctx.stories, & &1.id)
+    }
   end
 
   defp verify_round_trip(scope, ctx, nodes, edges) do
@@ -288,6 +329,69 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       cached_graph_with_actionable(scope, ctx)
     end
   end
+
+  @doc """
+  The same, with what a reader needs to say where the answer came from.
+
+  For the requirements graph page, which used
+  `compute_graph_with_actionable_metrics/1` — the full recompute, 4.4 seconds on
+  a 3200-component project, on every visit. So the most-looked-at reader of the
+  graph was the one reader that never used the cache, while two stories were
+  written to make the cached answer trustworthy.
+
+  It also had nothing to show about freshness, because it had no cached answer
+  to be fresh or stale. QA on story 1063 went looking for `computed_at` on that
+  page and found it discarded; there was nothing to discard.
+
+  `served_from` is `"cache"` when a published graph satisfied the fingerprint
+  and `"computed"` when this call produced it. On a miss `computed_at` is
+  stamped now rather than left nil — the answer *was* computed at that moment,
+  and nil reads as "no answer" while meaning the opposite.
+  """
+  @spec cached_graph_with_actionable_metrics(Scope.t()) ::
+          {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
+  def cached_graph_with_actionable_metrics(%Scope{} = scope) do
+    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
+
+    {us_graph, {{nodes, edges}, actionable, computed_at}} =
+      :timer.tc(fn -> cached_graph_with_actionable(scope, ctx) end)
+
+    metrics = %{
+      preload_ms: div(us_preload, 1000),
+      graph_ms: div(us_graph, 1000),
+      node_count: length(nodes),
+      edge_count: length(edges),
+      computed_at: computed_at || published_at(scope, ctx),
+      served_from: if(computed_at, do: "cache", else: "computed")
+    }
+
+    {{nodes, edges, actionable}, metrics}
+  end
+
+  # The timestamp the compute actually stored, not the moment we got round to
+  # displaying it.
+  #
+  # `cached_graph_with_actionable/2` answers `nil` on a miss — its contract is
+  # "this read computed the answer", and `cached_all/1` depends on that nil
+  # meaning exactly that, so it stays. But a page needs something to show, and
+  # stamping `DateTime.utc_now()` here showed a time the answer was not computed
+  # at: QA measured the gap at 49ms and 185ms on two runs, because the publish
+  # happens before `actionable_from/3` and the round-trip check finish.
+  #
+  # Small, and wrong in the way that matters for this surface. The whole point
+  # of the strip is to let someone compare `computed_at` across reads, and a
+  # fresh compute that reports a different instant from the cached read of the
+  # same computation makes that comparison lie about which is newer.
+  #
+  # One indexed read, immediately after a compute that cost seconds.
+  defp published_at(scope, ctx) do
+    case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config_for(scope))) do
+      {:ok, _nodes, at} -> at
+      :miss -> DateTime.utc_now()
+    end
+  end
+
+  defp config_for(scope), do: CodeMySpec.Configurations.get_or_create(scope)
 
   defp cached_graph_with_actionable(scope, ctx) do
     config = CodeMySpec.Configurations.get_or_create(scope)

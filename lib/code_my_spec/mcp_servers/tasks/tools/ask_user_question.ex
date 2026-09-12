@@ -68,6 +68,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
 
@@ -183,12 +184,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       # Who to hand the answer back to — off the connection, the same as
       # `send_message`. Nil for a Claude Code session, which polls.
       "agent_id" => frame.assigns[:agent_id],
+      # Who it waits on first. An agent's question goes to the project's main
+      # agent, which is story 1052's routing; a Claude Code session's goes
+      # straight to the person, because there is nobody above it to route to.
+      "holder" => MainAgent.holder_for(scope, frame.assigns[:agent_id]),
       "session_external_id" => session_id_unless_agent(frame.assigns[:agent_id], scope)
     }
 
-    case Notifications.create_question_request(user_id, attrs) do
-      {:ok, request} -> {:ok, request.id}
-      {:error, changeset} -> {:error, changeset}
+    with {:ok, request} <- Notifications.create_question_request(user_id, attrs) do
+      # Delivered rather than discovered. Story 1059 wakes the main agent on a
+      # cadence, so a question raised now would be seen eventually — at the cost
+      # of the asking agent waiting out a window for somebody who was idle
+      # throughout.
+      :ok = MainAgent.question_raised(scope, request)
+      {:ok, request.id}
     end
   end
 

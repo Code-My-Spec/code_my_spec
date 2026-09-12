@@ -23,11 +23,11 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   A single sync writes hundreds of files and a three-amigos session writes a
   rule, its scenarios and its criteria in one breath. Recomputing per event
   would be a ~170ms graph per row. So an event schedules a pass and further
-  events fold into it — one recompute for a burst, `@debounce_ms` after it
+  events fold into it — one recompute for a burst, the debounce window after it
   stops.
 
   Coalescing, not throttling: the timer is not extended by later events, so a
-  steady stream still recomputes every `@debounce_ms` rather than never.
+  steady stream still recomputes every window rather than never.
 
   ## The fingerprint decides, not the event
 
@@ -56,7 +56,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   require Logger
 
+  import Ecto.Query, only: [from: 2]
+
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
@@ -73,7 +76,19 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # long is an agent sitting idle for exactly that long with work waiting — the
   # thing this whole mechanism exists to end. So it is short, and the error is
   # on the cheap side.
-  @debounce_ms 2_000
+  @default_debounce_ms 2_000
+
+  # Configurable so tests can collapse it. `settle/1` already makes the pass
+  # deterministic for a test that calls it, but a test asserting what happens
+  # *without* settling — that a burst coalesces, that a steady stream still
+  # gets a pass — otherwise waits two real seconds per assertion.
+  #
+  # Read at schedule time rather than captured at boot: a test that changes it
+  # in `setup` would otherwise be ignored by a watcher already running, and
+  # watchers outlive individual tests.
+  defp debounce_ms do
+    Application.get_env(:code_my_spec, :graph_debounce_ms, @default_debounce_ms)
+  end
 
   # -- Client --
 
@@ -159,7 +174,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   deploy looks exactly like a graph that has not moved, and neither is visible
   from a table.
   """
-  @spec status(Ecto.UUID.t()) :: %{pending: boolean(), last_recompute: DateTime.t() | nil} | nil
+  @spec status(Ecto.UUID.t()) ::
+          %{
+            pending: boolean(),
+            last_recompute: DateTime.t() | nil,
+            last_error: %{at: DateTime.t(), message: String.t()} | nil
+          }
+          | nil
   def status(project_id) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
       [{pid, _}] -> GenServer.call(pid, :status, 5_000)
@@ -205,18 +226,37 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   @impl true
   def init({project_id, scope}) do
     GraphInputs.subscribe(project_id)
-    {:ok, %{project_id: project_id, scope: scope, timer: nil, last_recompute: nil}}
+
+    {:ok,
+     %{
+       project_id: project_id,
+       scope: scope,
+       timer: nil,
+       last_recompute: nil,
+       last_error: nil
+     }}
   end
 
   @impl true
-  def handle_call(:status, _from, state),
-    do: {:reply, %{pending: state.timer != nil, last_recompute: state.last_recompute}, state}
+  def handle_call(:status, _from, state) do
+    report = %{
+      pending: state.timer != nil,
+      last_recompute: state.last_recompute,
+      last_error: state.last_error
+    }
+
+    {:reply, report, state}
+  end
 
   def handle_call(:settle, _from, %{timer: nil} = state), do: {:reply, :ok, state}
 
   def handle_call(:settle, _from, %{timer: timer} = state) do
     Process.cancel_timer(timer)
-    {:reply, :ok, recompute(%{state | timer: nil})}
+
+    case recompute(%{state | timer: nil}) do
+      {:ok, state} -> {:reply, :ok, state}
+      {:gone, state} -> {:stop, :normal, :ok, state}
+    end
   end
 
   @impl true
@@ -225,17 +265,20 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   end
 
   def handle_info(:recompute, state) do
-    {:noreply, recompute(%{state | timer: nil})}
+    case recompute(%{state | timer: nil}) do
+      {:ok, state} -> {:noreply, state}
+      {:gone, state} -> {:stop, :normal, state}
+    end
   end
 
   def handle_info(_other, state), do: {:noreply, state}
 
   # Already scheduled means already covered. Not restarting the timer is what
   # makes this coalescing rather than throttling: a steady stream of writes
-  # still gets a pass every `@debounce_ms`, where extending on each event would
+  # still gets a pass every window, where extending on each event would
   # mean a busy project never recomputes at all.
   defp schedule(%{timer: nil} = state),
-    do: %{state | timer: Process.send_after(self(), :recompute, @debounce_ms)}
+    do: %{state | timer: Process.send_after(self(), :recompute, debounce_ms())}
 
   defp schedule(state), do: state
 
@@ -270,6 +313,65 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end)
     end
 
-    %{state | last_recompute: DateTime.utc_now()}
+    {:ok, %{state | last_recompute: DateTime.utc_now(), last_error: nil}}
+  rescue
+    error ->
+      recompute_failure(state, error)
+  end
+
+  # A watcher whose project is gone has finished, not failed.
+  #
+  # Both halves of this matter, and only one of them is about production.
+  #
+  # A deleted project leaves a watcher running for it, and every event it hears
+  # raises on `project_configurations_project_id_fkey` when
+  # `Configurations.get_or_create/1` tries to insert. Logging that forever says
+  # something is wrong when the truth is there is nothing left to do.
+  #
+  # The half that bites harder is under test. A watcher outlives the spex that
+  # started it, and the sandbox transaction rolls back at the end of the test —
+  # so the project vanishes underneath a process that is still running and the
+  # next pass raises exactly the same way. `SexySpex.ErrorCapture` installs a
+  # handler on `:logger` globally, so an `:error` from that straggler fails
+  # whichever spex happens to be running when it lands. Escalating this line
+  # from `:warning` to `:error` turned a silent race into an intermittent
+  # failure in unrelated specs, and the promote gate caught it on criterion
+  # 5887 of story 559, which touches none of this.
+  #
+  # Stopping is right for both: there is no project, so there is nothing to
+  # recompute, and a `:transient` child that stops `:normal` is not restarted.
+  defp recompute_failure(state, error) do
+    if project_exists?(state.project_id) do
+      # Loud, and still alive.
+      #
+      # Loud because a recompute that fails and says nothing is the worst shape
+      # this whole story guards against: every reader goes on being served the
+      # last good answer, which is correct-looking and frozen, and the only
+      # symptom is agents working from a graph that stopped moving. `:error`
+      # because that is the level somebody looks at, and on `status/1` because a
+      # log is not somewhere anybody looks *at a particular project*.
+      #
+      # Alive because the project is still there to serve. The next event
+      # schedules another pass and a reader still computes on demand, so nothing
+      # is retried quietly and nothing is lost.
+      Logger.error(
+        "[GraphWatcher] recompute failed for #{state.project_id}: " <> Exception.message(error)
+      )
+
+      {:ok, %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}}
+    else
+      Logger.info("[GraphWatcher] stopping: project #{state.project_id} no longer exists")
+
+      {:gone, state}
+    end
+  end
+
+  # Answers false when the question cannot be asked either — a connection that
+  # has gone with the project is the same answer for this purpose, and raising
+  # here would replace the error being classified with a less useful one.
+  defp project_exists?(project_id) do
+    Repo.exists?(from(p in "projects", where: p.id == type(^project_id, :binary_id)))
+  rescue
+    _ -> false
   end
 end

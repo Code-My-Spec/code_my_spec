@@ -374,15 +374,86 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   #
   # One builder, so the next column added cannot land on one path only.
   defp scoped_changeset(%Scope{} = scope, attrs) do
+    project_id = resolve_project_id(scope)
+
     %Issue{}
     |> Issue.changeset(attrs)
-    |> Changeset.put_change(:project_id, resolve_project_id(scope))
+    |> Changeset.put_change(:project_id, project_id)
     |> Changeset.put_change(:account_id, resolve_account_id(scope))
     # From the scope, never from the caller — an issue is raised *by* a working
     # copy, and letting a report name someone else's would make the field worse
     # than absent. Nil where there is no checkout, which is the web UI.
     |> Changeset.put_change(:working_copy_id, scope.active_working_copy_id)
+    |> refuse_foreign_story(project_id)
   end
+
+  # A story from another project is refused rather than linked.
+  #
+  # `project_id` comes from the scope and `story_id` comes from the caller, and
+  # nothing checked they agreed. So an agent filing against a story it could see
+  # but did not own got an issue stamped with *its own* project and the other
+  # project's story — a row whose two halves describe different projects, and
+  # which the owning project never sees.
+  #
+  # Silent, and worse than a refusal in three ways. The filer believes the
+  # report landed. The project it was about never receives it. And
+  # `Issues.broadcast/2` calls `GraphInputs.changed/1` with the caller's scope,
+  # so the graph signal goes to the wrong project's watcher too — a write that
+  # announces itself to somebody else.
+  #
+  # Measured 2026-09-11 by a QA agent that filed five issues against another
+  # project's stories and found all five stamped with its own `project_id`
+  # (a7d8e008). It had earlier reported that `create_issue` "works
+  # cross-project, unlike start_agent"; it does not refuse, which is not the
+  # same thing.
+  #
+  # Refusing rather than honouring the story's project on purpose. "Every scope
+  # files where the caller is" is this tool's documented design and the read
+  # surfaces are built on it — `7c44ed8d` tried writing across the tenancy
+  # boundary and had to be reverted because `get_issue` and `update_issue` had
+  # no matching exception, so the filer could never read its own report back.
+  # The bug is not that it files locally; it is that it accepted a story saying
+  # otherwise.
+  defp refuse_foreign_story(changeset, project_id) do
+    case Changeset.get_change(changeset, :story_id) do
+      nil ->
+        changeset
+
+      story_id ->
+        if story_elsewhere?(story_id, project_id) do
+          Changeset.add_error(
+            changeset,
+            :story_id,
+            "belongs to another project — an issue is filed where the caller is, so " <>
+              "linking it here would stamp this project's id on another project's story. " <>
+              "File it from a session scoped to that project, or leave story_id out."
+          )
+        else
+          changeset
+        end
+    end
+  end
+
+  # Only a story that exists *somewhere else*.
+  #
+  # Not "a story not in this project" — that also catches an id matching no
+  # story at all, and those are routine here: issues are filed against story
+  # numbers before a sync has created the row, and the repository's own tests
+  # use ids like 1 and 99 precisely because the link is loose by design.
+  #
+  # The harm being prevented is narrower and specific: an issue stamped with one
+  # project and linked to a story that demonstrably belongs to another. A
+  # dangling id is a different problem and refusing it here would be this guard
+  # inventing a constraint nobody asked for.
+  defp story_elsewhere?(story_id, project_id) when is_binary(project_id) do
+    Repo.exists?(
+      from s in "stories",
+        where: s.id == ^story_id and s.project_id != type(^project_id, :binary_id)
+    )
+  end
+
+  # No project on the scope is a different refusal, and not this one's to make.
+  defp story_elsewhere?(_story_id, _project_id), do: false
 
   def upsert_issue(%Scope{} = scope, attrs) do
     project_id = resolve_project_id(scope)

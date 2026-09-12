@@ -59,14 +59,23 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     # from the observed filename, so a row is only rewritten when a file
     # claiming to be that criterion's spec is on disk *and* the path it holds
     # is not. Nothing is taken from a record that still resolves.
+    # Which numbers name a story here, so the guard below can tell "this
+    # directory belongs to another story" from "this directory names nothing".
+    story_numbers = project_story_numbers(project_id)
+
     by_row_id =
       from(c in Criterion,
+        join: s in "stories",
+        on: s.id == c.story_id,
         where: c.project_id == ^project_id and c.id in ^ids,
-        select: {c.id, c.spec_path}
+        select: {c.id, c.spec_path, s.number}
       )
       |> Repo.all()
-      |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
-      |> Enum.map(fn {id, previous} -> {id, previous, Map.fetch!(paths, id)} end)
+      |> Enum.filter(fn {id, path, number} ->
+        stale?(path, present) and
+          names_this_story?(Map.fetch!(paths, id), number, story_numbers)
+      end)
+      |> Enum.map(fn {id, previous, _number} -> {id, previous, Map.fetch!(paths, id)} end)
 
     # And the ones the filename cannot name.
     #
@@ -179,6 +188,67 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   end
 
   defp same_dir?(a, b), do: Path.dirname(a) == Path.dirname(b)
+
+  # The directory names a story; the filename names a criterion. Both have to
+  # mean the same story, or the claim is refused.
+  #
+  # `criterion_<id>` is a **project-wide** id and `test/spex/<number>_<slug>/` is
+  # a story, and nothing checked they agreed — so a file written into story A's
+  # directory claimed whichever criterion held that id, wherever it lived.
+  #
+  # Measured by QA on 2026-09-11 against the sandbox project: a probe spex at
+  # `test/spex/29_qa1063_attempt_story_a/criterion_1_probe_spex.exs` stamped its
+  # path onto criterion 1, which belongs to story 7 (number 5). Story 7's
+  # `bdd_specs_exist` then flipped satisfied on a file written for story 29,
+  # whose own stayed open. Both halves wrong, and silent: the right story never
+  # gets credited and the wrong one gets a gate it did not earn (3cec218f).
+  #
+  # The repair path below already matched on the directory, saying in as many
+  # words that "an id reused under a different story cannot pull a path across".
+  # It was right and this path did not do it.
+  #
+  # Only a directory that names a *different, existing* story is refused.
+  #
+  # Not "a number that differs", which is the same over-reach twice: a path
+  # naming no number at all is somebody's deliberate naming, and a number
+  # matching no story is the renumbered-project case this repair exists for —
+  # `criterion_8010_…` on a row that is now 2033, in a directory whose number
+  # went with it. Refusing those would break the recovery that recovered 73
+  # criteria by slug on one project.
+  #
+  # What is refused is the case with a real victim: the directory names story A,
+  # the criterion belongs to story B, and both exist. Then the claim is provably
+  # crossing stories rather than merely looking odd.
+  defp names_this_story?(path, story_number, story_numbers) do
+    case story_number_in(path) do
+      nil -> true
+      ^story_number -> true
+      other -> not MapSet.member?(story_numbers, other)
+    end
+  end
+
+  defp project_story_numbers(project_id) do
+    from(s in "stories",
+      where: s.project_id == type(^project_id, :binary_id) and not is_nil(s.number),
+      select: s.number
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp story_number_in(path) do
+    path
+    |> String.replace_prefix("test/spex/", "")
+    |> String.split("/")
+    |> hd()
+    |> String.split("_")
+    |> hd()
+    |> Integer.parse()
+    |> case do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
 
   # A repair is worth a line; a first claim is not. The two are different
   # events -- one records something new, the other corrects a record that was
