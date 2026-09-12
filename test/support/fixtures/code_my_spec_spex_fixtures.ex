@@ -2995,6 +2995,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The main agent giving up on a question it could not answer.
+
+  Criterion 3259. Trying and failing has to end with the user, and the act of
+  giving up is the thing that has to exist for it to: without one, a question
+  the main agent took and could not settle simply stays with it, and an absorbed
+  question has no symptom on any surface.
+  """
+  @spec give_up_on_question(Scope.t(), String.t()) :: :ok
+  def give_up_on_question(%Scope{} = scope, question_id) do
+    {:ok, _question} = CodeMySpec.MainAgent.give_up_on_question(scope, question_id)
+    :ok
+  end
+
+  @doc """
   The check-in, run now.
 
   The cadence's own tick rather than a wait. A spex that waited for the timer
