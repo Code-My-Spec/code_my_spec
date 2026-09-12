@@ -633,6 +633,14 @@ defmodule CodeMySpecWeb.Router do
       # shape as `MailLive`, where the mailbox is the page and `?thread=` is the
       # selection.
       live "/projects/:project_id/agent-conversation", AgentConversationLive.Show, :show
+
+      # The shape this page used to have. Web Push notifications already on
+      # somebody's phone carry it, and a notification that 404s is worse than
+      # the navigation it saved — so it still resolves, and sends them to the
+      # canonical URL rather than serving a second one forever.
+      live "/projects/:project_id/agent-conversation/:conversation_id",
+           AgentConversationLive.Show,
+           :legacy_conversation_path
     end
 
     post "/users/update-password", UserSessionController, :update_password

@@ -345,6 +345,25 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     # is what holds that now.
   end
 
+  describe "the shape this page used to have" do
+    # Web Push sent conversation links with the id in the path, and the ones
+    # already delivered outlive the change. A notification that 404s costs more
+    # than the navigation moving it into the query string saved.
+    test "an old conversation link lands on the same conversation", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, "/app/projects/#{project.id}/agent-conversation/#{conversation.id}")
+
+      assert to == show_path(project, conversation),
+             "an old link resolved somewhere other than the conversation it names"
+    end
+  end
+
   describe "project resolution" do
     test "an unknown project name redirects with a flash instead of 404ing", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/app/projects", flash: %{"error" => error}}}} =
