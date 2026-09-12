@@ -478,13 +478,25 @@ defmodule CodeMySpec.Analysis do
 
   defp note_analyzer_staleness(result, _payload), do: result
 
-  @doc "Block until every in-flight run for the project has finished."
+  @doc """
+  Block until every in-flight run for the project has finished.
+
+  `timeout: :infinity` waits with no deadline of its own — right for a caller
+  that is already async and would rather learn the real outcome late than a
+  wrong one on time (`Promotion.gate/1`: nothing is blocked on its reply, so a
+  deadline here only turns "still running" into "failed"). The harness's own
+  30-minute hard kill (`CmsHarness.Project.AnalysisServer`) is what actually
+  bounds a stuck run — every dispatched source is answered, one way or another,
+  whether or not anything here is still waiting to hear it.
+  """
   @spec await_all(Scope.t(), keyword()) :: :ok | :timeout
   def await_all(%Scope{} = scope, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, :timer.minutes(10))
-    deadline = System.monotonic_time(:millisecond) + timeout
-    poll_until_idle(scope, deadline)
+    poll_until_idle(scope, deadline_for(timeout))
   end
+
+  defp deadline_for(:infinity), do: :infinity
+  defp deadline_for(timeout), do: System.monotonic_time(:millisecond) + timeout
 
   @doc "Any run currently running or queued for the project?"
   @spec runs_in_flight?(Scope.t()) :: boolean()
@@ -1240,7 +1252,7 @@ defmodule CodeMySpec.Analysis do
       not runs_in_flight?(scope) ->
         :ok
 
-      System.monotonic_time(:millisecond) >= deadline ->
+      deadline != :infinity and System.monotonic_time(:millisecond) >= deadline ->
         :timeout
 
       true ->

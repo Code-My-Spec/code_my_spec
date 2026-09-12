@@ -197,7 +197,7 @@ defmodule CodeMySpecWeb.ChatLive do
       story ->
         {:noreply,
          push_navigate(socket,
-           to: ~p"/app/projects/#{story.project_id}/stories/#{story.id}/three-amigos"
+           to: ~p"/app/projects/#{story.project_id}/stories/#{story.number}/three-amigos"
          )}
     end
   end

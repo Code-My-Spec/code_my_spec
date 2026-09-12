@@ -71,7 +71,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigosCommandTest do
 
       {:ok, prompt} = ThreeAmigos.command(scope, task)
 
-      assert prompt =~ "/stories/#{story.id}/three-amigos",
+      assert prompt =~ "/stories/#{story.number}/three-amigos",
              "without a story there is no session URL, so the PM has nowhere to " <>
                "watch the cards appear."
     end

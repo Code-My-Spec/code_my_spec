@@ -61,4 +61,32 @@ defmodule CodeMySpec.Analysis.AwaitTimeoutTest do
            "a caller cannot tell 'finished' from 'gave up' if both are :ok, and " <>
              "await_analysis reports 'Analysis complete' on the strength of it"
   end
+
+  # Promotion's gate passes this by default now (376e3356): it is already
+  # async, so a deadline here has no caller to protect, only a real answer to
+  # delay into a wrong one.
+  describe "timeout: :infinity" do
+    test "keeps waiting past a deadline that would otherwise have lapsed" do
+      scope = full_scope_fixture() |> serving()
+      run = running_run(scope)
+
+      task = Task.async(fn -> Analysis.await_all(scope, timeout: :infinity) end)
+
+      # Long enough that a finite deadline in this range would already have
+      # given up — proving this one has not, rather than merely not yet
+      # having reached whatever it is bounded by.
+      assert Task.yield(task, 300) == nil,
+             "an :infinity wait answered before the run it was waiting on finished"
+
+      Repo.update!(Ecto.Changeset.change(run, status: :completed))
+
+      assert Task.await(task, 2_000) == :ok
+    end
+
+    test "still returns :ok immediately when nothing is in flight" do
+      scope = full_scope_fixture() |> serving()
+
+      assert :ok = Analysis.await_all(scope, timeout: :infinity)
+    end
+  end
 end

@@ -262,6 +262,27 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
+  @doc """
+  A story by its durable number rather than its id — what a human reads off
+  the page and the URL is expected to carry (1ab62ffd).
+
+  Scoped to the project the same way `get_story/2` is: a number names a
+  position within one project, not a row across all of them, so an unscoped
+  lookup would answer for the wrong project's story the moment two projects'
+  numbering overlaps.
+  """
+  def get_story_by_number(%Scope{} = scope, number) do
+    case cast_story_id(number) do
+      {:ok, story_number} ->
+        Story
+        |> Repo.get_by(number: story_number, project_id: scope.active_project_id)
+        |> Repo.preload([:criteria, :tags, :component, :epic])
+
+      :error ->
+        nil
+    end
+  end
+
   defp cast_story_id(id) when is_integer(id), do: {:ok, id}
 
   defp cast_story_id(id) when is_binary(id) do
@@ -277,6 +298,13 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     Story
     |> Repo.get_by!(id: id, project_id: scope.active_project_id)
     |> Repo.preload([:criteria, :tags])
+  end
+
+  @doc "Bang counterpart to `get_story_by_number/2`."
+  def get_story_by_number!(%Scope{} = scope, number) do
+    Story
+    |> Repo.get_by!(number: number, project_id: scope.active_project_id)
+    |> Repo.preload([:criteria, :tags, :component, :epic])
   end
 
   def create_story(%Scope{active_project: %Project{id: project_id}} = scope, attrs) do

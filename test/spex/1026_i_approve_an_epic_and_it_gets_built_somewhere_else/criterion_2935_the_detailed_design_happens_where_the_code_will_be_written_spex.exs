@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2935Spex do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Stories
   alias CodeMySpecSpex.EpicHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -53,12 +54,12 @@ defmodule CodeMySpecSpex.Story964.Criterion2935Spex do
       when_ "I look at what the agent on that copy has to do", context do
         # A story in the epic, not the project's own requirements — the Three
         # Amigos is owed on stories, and the project page shows project nodes.
-        story_id = hd(context.story_ids)
+        story_number = Stories.get_story!(context.scope, hd(context.story_ids)).number
 
         {:ok, _live, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/stories/#{story_id}/requirements"
+            ~p"/app/projects/#{context.project.id}/stories/#{story_number}/requirements"
           )
 
         {:ok, Map.put(context, :html, html)}
