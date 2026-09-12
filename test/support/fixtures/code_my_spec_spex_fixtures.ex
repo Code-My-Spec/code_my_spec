@@ -2994,6 +2994,24 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  What the machine this checkout runs on is currently carrying.
+
+  The same shape of fact a harness already reports about its preview, its tools
+  and its head commit — a thing it observes about itself and pushes on the
+  channel — for the box underneath. Driven through the channel rather than
+  written to a row, so a scenario cannot produce a state no harness could send.
+  """
+  @spec report_machine_load(Scope.t(), map()) :: :ok
+  def report_machine_load(%Scope{} = scope, load) when is_map(load) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in("machine_load", load, socket) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
+  @doc """
   Switch an agent off without stopping it.
 
   `set_agent_continuous(scope, id, false)` is what the pause control calls, and

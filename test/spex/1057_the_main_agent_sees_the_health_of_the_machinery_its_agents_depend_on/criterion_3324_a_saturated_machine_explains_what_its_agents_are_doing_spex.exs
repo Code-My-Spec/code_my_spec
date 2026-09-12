@@ -1,0 +1,135 @@
+defmodule CodeMySpecSpex.Story1057.Criterion3324Spex do
+  @moduledoc """
+  Story 1057 — The main agent sees the health of the machinery its agents
+  depend on.
+  Criterion 3324 — A saturated machine explains what its agents are doing.
+
+  Rule: slow is a property of the machine as often as of the agent.
+
+  The reading this prevents is the one that costs most, because the remedy makes
+  it worse. Agents on a saturated box are slow and stall; read individually they
+  look faulty; restarting them puts *more* work on the box, and the next reading
+  is worse than the one that prompted it. It is the only failure on this story
+  where acting on the wrong diagnosis actively deepens the fault.
+
+  This project has already been bitten by it from the outside — a test that
+  passes forty-one times alone and fails once under a full analyzer sweep, an
+  agent's turn that dies with `killed` and nothing in the code to explain it.
+  Each time, the answer was the machine, and each time it was found by somebody
+  remembering rather than by anything reporting.
+
+  ## Red on the data model, deliberately
+
+  Nothing records machine load. A harness reports its preview, its tools and its
+  head commit; it does not report what it is running on. So this criterion is
+  not "the report is missing a section" — it is "the fact has never been
+  collected", and the spex names the wire message that would carry it,
+  `machine_load`, beside `preview_status` which is the same shape of fact
+  reported the same way.
+
+  ## Both halves
+
+  The saturation has to be shown, *and* the agents on that machine have to be
+  readable against it. A load figure on its own is a number in a report; what
+  the criterion asks is that the main agent can attribute the slowness to it,
+  which means the two have to appear together.
+  """
+
+  use CodeMySpecSpex.Case
+
+  import CodeMySpecSpex.WorkingCopyHelpers
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  spex "A machine under load is reported as the reason its agents are slow" do
+    scenario "the box is out of memory and its processors are saturated" do
+      given_ "agents on a machine reporting itself saturated", context do
+        reply = join_working_copy(context, "/tmp/spex-3324", "the checkout")
+        scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+
+        agents =
+          for role <- ["coding", "qa"] do
+            agent = Fixtures.running_agent(scope, role: role, working_copy: "/tmp/spex-3324")
+            :ok = Fixtures.agent_said(scope, agent, "starting")
+            :ok = Fixtures.age_agent_messages(scope, agent, 30 * 60)
+            agent
+          end
+
+        # The same shape of fact a harness already reports about its preview and
+        # its head commit, for the thing it runs on.
+        :ok =
+          Fixtures.report_machine_load(scope, %{
+            "load_average" => 31.4,
+            "cpu_count" => 8,
+            "memory_free_mb" => 180
+          })
+
+        {:ok, context |> Map.put(:scope, scope) |> Map.put(:agents, agents)}
+      end
+
+      when_ "the main agent looks at the machinery", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, response, _frame} = CheckMachinery.execute(%{}, frame)
+
+        refute response.isError, inspect(response)
+
+        {:ok, Map.put(context, :report, response_text(response))}
+      end
+
+      then_ "the saturation is shown", context do
+        assert context.report =~ ~r/load|saturat|memory/i,
+               """
+               A machine running at four times its processor count with 180MB
+               free is reported as healthy.
+
+               This is the reading whose remedy deepens the fault: agents on a
+               saturated box look individually slow, restarting them puts more
+               work on the box, and the next reading is worse than the one that
+               prompted it.
+
+               Nothing records machine load today — a harness reports its
+               preview, its tools and its head commit, and not what it is
+               running on. That is what this criterion is about.
+
+               report:
+               #{context.report}
+               """
+
+        {:ok, context}
+      end
+
+      then_ "and the agents on it can be read against it", context do
+        assert Enum.all?(context.agents, &(context.report =~ &1.id)),
+               """
+               The machine's load is reported without saying which agents are
+               running on it.
+
+               A load figure on its own is a number in a report. The criterion
+               asks that slow agents be readable *against* it, which needs the
+               two together — otherwise the main agent has one fact about the
+               box and a separate list of agents behaving oddly, and joining
+               them is the work it was meant to be spared.
+
+               report:
+               #{context.report}
+               """
+
+        {:ok, context}
+      end
+    end
+  end
+end
