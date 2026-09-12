@@ -92,23 +92,101 @@ ExUnit.start(
 # runs that task before booting; this line is the same check for `mix test`.
 Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
 
-# The dirty-database check that stood here is gone, along with the escape it
-# watched for.
+# Back, because the escape it watched for is back too (195ac5e5).
 #
-# It reported rows left in users/accounts/projects/stories/components at suite
-# start, on the reasoning that a row which escaped the sandbox and committed is
-# permanent and surfaces later as unrelated tests failing on unscoped reads.
-# That was true, and worth reporting while nobody knew what was writing them.
+# Removed in 1ee80998 on the reasoning that two known causes were closed and a
+# full 4368-test suite verified all five tables at zero. That was true then and
+# is not now: three accounts/users/projects with fixture-shaped names
+# (`test-account-<N>`) turned up in a private test database on 2026-09-11,
+# inserted by something that is not this session's own tests and does not
+# reproduce on demand. Whatever writes them this time is not either of the two
+# closed causes — `CmsHarness.TestDatabase` still only computes a name, and the
+# env guard below is unchanged — so this is a third mechanism, not a
+# regression of the first two.
 #
-# Two things closed it. `CmsHarness.TestDatabase` no longer truncates anything —
-# it computes a database name and stops — after its truncate was found running
-# against dev, which it emptied three times on 2026-08-13. And the env guard
-# below stops a fixture working copy joining the live server, which was writing
-# a harness row per temp root.
+# The sandbox rolls each test back, so these tables are empty at the start of a
+# run — unless something escaped it and committed, and then the row is
+# permanent, because the test database is created once and reused forever.
 #
-# Measured after both: a full suite of 4368 tests leaves all five tables at zero.
-# A check that reports a condition which no longer occurs is a thing to read and
-# dismiss on every run, and this one was 65 of this file's 248 lines.
+# What that looks like is not a database error. It is a handful of unrelated
+# tests going red days later: anything reading an unscoped query answers about
+# the stranger instead of the row it just made — four different context/test
+# files, all tracing back to nine leaked rows, per 195ac5e5. Reports rather than
+# repairs for the same reason as before: truncating a developer's database from
+# a test helper is a bigger liberty than the problem warrants.
+#
+# Checked at both ends of one run, not just the start. A start-of-run report
+# only ever names the *previous* run's escape — useful, but still "a stranger a
+# day later" for whoever is at the keyboard when it happens. `ExUnit.after_suite/1`
+# checks again once this run's own tests are done, so the run that caused a
+# fresh escape gets to say so itself instead of leaving it for the next one.
+# Sandboxed vs. real pool, same distinction the `Sandbox.mode(:manual)` guard
+# below draws. The `after_suite` call runs once every test has checked its own
+# connection back in and (below) manual mode is engaged, so a sandboxed pool
+# needs an explicit, non-sandboxed checkout to see real committed state at all
+# — a process with none gets `DBConnection.OwnershipError`, not an empty
+# result. A real pool (the drill, e2e) has no ownership concept and queries
+# directly; checking it out through `Sandbox` would raise on the wrong adapter.
+sandboxed? =
+  Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Ecto.Adapters.SQL.Sandbox
+
+report_dirty_tables = fn label ->
+  if sandboxed?, do: Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo, sandbox: false)
+
+  dirty_counts =
+    case Ecto.Adapters.SQL.query(
+           CodeMySpec.Repo,
+           """
+           SELECT 'users', count(*), min(inserted_at), max(inserted_at) FROM users
+           UNION ALL SELECT 'accounts', count(*), min(inserted_at), max(inserted_at) FROM accounts
+           UNION ALL SELECT 'projects', count(*), min(inserted_at), max(inserted_at) FROM projects
+           UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
+           UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
+           """,
+           []
+         ) do
+      {:ok, %{rows: rows}} -> Enum.filter(rows, fn [_table, count | _] -> count > 0 end)
+      {:error, _reason} -> []
+    end
+
+  if sandboxed?, do: Ecto.Adapters.SQL.Sandbox.checkin(CodeMySpec.Repo)
+
+  if dirty_counts != [] do
+    summary = Enum.map_join(dirty_counts, ", ", fn [table, count | _] -> "#{table}=#{count}" end)
+
+    # The timestamps, because the next step is not re-running the suite.
+    #
+    # `afaa6eae` ruled out four vectors by re-running — the full suite, two spex
+    # stories, and its own additions — and all four came back clean, which is
+    # what a condition none of them reproduce looks like. What it did not have
+    # was a way to ask *what ran at that second*, and gathering that meant
+    # querying the rows by hand after the fact. A whole fixture chain sharing
+    # one `inserted_at` is also the strongest evidence available that this is
+    # one escape rather than accumulated strays, and that shape is invisible in
+    # a count.
+    window =
+      Enum.map_join(dirty_counts, "\n  ", fn [table, count, first, last] ->
+        "#{table}: #{count} row(s), inserted_at #{first}" <>
+          if(first == last, do: "", else: " .. #{last}")
+      end)
+
+    IO.puts(
+      :stderr,
+      "[test_helper] the test database is not empty #{label} (#{summary}). " <>
+        "Rows that escaped the ExUnit sandbox and committed are permanent, and they " <>
+        "surface as unrelated tests failing on unscoped reads.\n\n  " <>
+        window <>
+        "\n\nStart from the timestamps — grep ~/.codemyspec/*.log for that second — " <>
+        "rather than by re-running the suite; the residue is the only evidence of " <>
+        "whatever escaped, so read it before clearing it. Clear with " <>
+        "`MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && " <>
+        "MIX_ENV=test mix ecto.migrate`."
+    )
+  end
+end
+
+report_dirty_tables.("before this run")
+ExUnit.after_suite(fn _stats -> report_dirty_tables.("after this run") end)
 
 # Only when there is a sandbox to put in manual mode.
 #
