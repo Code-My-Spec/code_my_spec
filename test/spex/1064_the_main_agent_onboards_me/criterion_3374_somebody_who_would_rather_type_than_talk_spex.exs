@@ -66,11 +66,16 @@ defmodule CodeMySpecSpex.Story1064.Criterion3374Spex do
                an editable form independent of the conversation.
                """
 
-        refute has_element?(context.live, "[data-test='intake-said']"),
+        # Their own turns, not the transcript. It opens with "What do you want
+        # to build?", which is static copy rather than anything the model was
+        # asked for — refusing the whole transcript would make this criterion
+        # unsatisfiable by any page that greets anybody.
+        refute has_element?(context.live, "[data-test='intake-said'][data-from='visitor']"),
                """
-               They have waited on the agent after all: there is already
-               conversation on the page. "Having waited on nothing" is the half of
-               this criterion that a faster agent cannot satisfy.
+               They have said something already, so the model has been consulted
+               and this is not somebody who skipped the conversation. "Having
+               waited on nothing" is the half of this criterion that a faster
+               agent cannot satisfy.
                """
 
         destination =
