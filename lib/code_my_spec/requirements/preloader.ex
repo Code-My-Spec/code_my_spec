@@ -21,7 +21,6 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
