@@ -110,13 +110,68 @@ defmodule CodeMySpec.Promotion.Steps do
   resolved. Aborting would be the tidier-looking failure and the worse one — the
   agent is told "promotion failed", finds a clean tree, and has nothing to work
   on.
+
+  Checked for a merge already in progress before attempting a new one. Git
+  refuses outright when one is — "you have not concluded your merge" — and
+  that refusal used to be read the same way a fresh conflict is: `status
+  --porcelain` re-run against whatever files that refusal happened to leave
+  behind, named as though this merge had just produced them. A conflict
+  resolved in content but never staged reads as a clean tree to `--porcelain`,
+  so the message pointed at a file with nothing wrong with it, hours after the
+  promotion that actually caused it (e17d3946).
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
-    case git(env, root, ["merge", "--no-edit", branch]) do
-      {out, 0} -> {:ok, %{output: String.trim(out)}}
-      {out, _} -> conflict(env, root, branch, out)
+    case merge_in_progress(env, root) do
+      nil ->
+        case git(env, root, ["merge", "--no-edit", branch]) do
+          {out, 0} -> {:ok, %{output: String.trim(out)}}
+          {out, _} -> conflict(env, root, branch, out)
+        end
+
+      info ->
+        {:error, %{reason: stale_merge_reason(root, info), stale_merge: true}}
     end
+  end
+
+  # `-q --verify` answers with the target sha and exit 0 when `MERGE_HEAD`
+  # exists, non-zero otherwise — a plumbing check rather than a guess from
+  # `status`, which does not surface merge-in-progress state at all when there
+  # is nothing left to stage.
+  defp merge_in_progress(env, root) do
+    case git(env, root, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]) do
+      {sha, 0} -> %{sha: String.trim(sha), since: merge_head_mtime(env, root)}
+      _ -> nil
+    end
+  end
+
+  # `since` is best-effort. `--git-path` resolves where `MERGE_HEAD` actually
+  # lives — inside `.git/worktrees/<name>/` for a worktree, not `.git/`
+  # directly — so a hardcoded path would answer wrong for exactly the checkouts
+  # this module runs against. `nil` on any failure: the sha alone is still an
+  # actionable answer, and this is a nicety on top of it, not the fix.
+  defp merge_head_mtime(env, root) do
+    with {path, 0} <- git(env, root, ["rev-parse", "--git-path", "MERGE_HEAD"]),
+         {:ok, %{mtime: mtime}} <- Environments.stat(env, git_path(root, String.trim(path))) do
+      mtime
+    else
+      _ -> nil
+    end
+  end
+
+  defp git_path(_root, "/" <> _ = absolute), do: absolute
+  defp git_path(root, relative), do: Path.join(root, relative)
+
+  defp stale_merge_reason(root, %{sha: sha, since: nil}) do
+    "there is a merge already in progress in #{root}, against #{sha} — left over " <>
+      "from an earlier promotion that never finished. Resolve or abort it there " <>
+      "before promoting again."
+  end
+
+  defp stale_merge_reason(root, %{sha: sha, since: since}) do
+    "there is a merge already in progress in #{root} since #{DateTime.to_iso8601(since)}, " <>
+      "against #{sha} — left over from an earlier promotion that never finished. Resolve " <>
+      "or abort it there before promoting again."
   end
 
   defp conflict(env, root, branch, out) do
