@@ -38,6 +38,8 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # when the operator gave none — the adapters' "explicit opt, else here"
     # shape, on a machine where here is the project.
     "lib/mix/tasks/cms.harness.onboard.ex" => "mix task: cwd is the project by definition",
+    "lib/mix/tasks/cms.migrate_test_partitions.ex" =>
+      "mix task: cwd is the project by definition — migrates this checkout's own test partitions",
     "lib/code_my_spec/agent_tasks/init/cli_config.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init/phoenix_project.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init.ex" => "cms init, on the user's machine",

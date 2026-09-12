@@ -67,7 +67,12 @@ defmodule CodeMySpec.AnalyzerDomainTest do
     # Neither compiler nor spex is config-gated — compiler always runs, and spex
     # runs whatever its mode, because the specs-passing gate needs a current run
     # to exist. See `@config_gated_analyzers`' own note.
-    "code_my_spec/static_analysis/pipeline.ex" => ~w(compiler spex)
+    "code_my_spec/static_analysis/pipeline.ex" => ~w(compiler spex),
+    # Not analyzer sources at all — test *database partitions*, which share the
+    # names because the two suites that own one are named after the source that
+    # schedules them. Compiler and credo run no tests, so they have no database
+    # to migrate, and listing them here would name partitions that do not exist.
+    "mix/tasks/cms.migrate_test_partitions.ex" => ~w(compiler credo)
   }
 
   defp canonical, do: MapSet.new(Run.sources())

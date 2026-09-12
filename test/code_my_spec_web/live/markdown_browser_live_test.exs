@@ -22,14 +22,28 @@ defmodule CodeMySpecWeb.MarkdownBrowserLiveTest do
     assert html =~ ~s(href="/app/projects/#{project.id}/knowledge/process/code.md")
   end
 
-  test "a backtick path naming nothing real stays plain text, not a dead link", %{
+  @doc """
+  Anchored on `CLAUDE.md`, which is a real file and deliberately not a doc in
+  this library.
+
+  This used to read `process/product.md` for `bdd/spex.md` — a reference to a
+  doc that had been renamed away. That made the negative case a bug: QA found
+  the dangling link, the doc was corrected, and a test asserting the corpus
+  still contained a dead reference went red for the fix. An example that is
+  wrong-by-design cannot be kept green without keeping the defect.
+
+  A path outside the library is right-by-design instead. `CLAUDE.md` lives at
+  the repo root, `Knowledge.browse/3` correctly does not find it here, and the
+  doc will go on naming it for as long as it tells an agent where to write.
+  """
+  test "a backtick path naming nothing in this library stays plain text, not a dead link", %{
     conn: conn,
     project: project
   } do
     {:ok, _live, html} =
-      live(conn, ~p"/app/projects/#{project.id}/knowledge/process/product.md")
+      live(conn, ~p"/app/projects/#{project.id}/knowledge/process/devops.md")
 
-    refute html =~ "knowledge/bdd/spex.md"
-    assert html =~ "bdd/spex.md"
+    refute html =~ "knowledge/CLAUDE.md"
+    assert html =~ "CLAUDE.md"
   end
 end
