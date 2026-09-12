@@ -114,6 +114,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     search = Keyword.get(opts, :search)
     tag = Keyword.get(opts, :tag)
     ready_for_dev = Keyword.get(opts, :ready_for_dev)
+    without_epic = Keyword.get(opts, :without_epic)
 
     query =
       from(s in Story,
@@ -123,6 +124,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       |> filter_by_search(search)
       |> filter_by_tag(tag, scope.active_project.id)
       |> filter_by_readiness(ready_for_dev)
+      |> filter_by_epic_membership(without_epic)
 
     total = Repo.aggregate(query, :count, :id)
 
@@ -164,6 +166,14 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     do: from(s in query, where: is_nil(s.ready_for_dev) or s.ready_for_dev == false)
 
   defp filter_by_readiness(query, _), do: query
+
+  # `without_epic: true` answers the question grouping-into-epics work
+  # actually asks — "which ready story sits outside every epic" — directly,
+  # rather than making a caller diff a story count against the sum of every
+  # epic's own count by hand (67b3bba6).
+  defp filter_by_epic_membership(query, true), do: from(s in query, where: is_nil(s.epic_id))
+  defp filter_by_epic_membership(query, false), do: from(s in query, where: not is_nil(s.epic_id))
+  defp filter_by_epic_membership(query, _), do: query
 
   @doc """
   Lists just story IDs and titles (lightweight, no criteria).
@@ -223,7 +233,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       {:ok, story_id} ->
         Story
         |> Repo.get_by(id: story_id, project_id: scope.active_project_id)
-        |> Repo.preload([:criteria, :tags, :component])
+        |> Repo.preload([:criteria, :tags, :component, :epic])
 
       :error ->
         nil
