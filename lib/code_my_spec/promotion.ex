@@ -427,7 +427,8 @@ defmodule CodeMySpec.Promotion do
   def restart_acknowledgement_lost?(%{reason: reason}) when is_binary(reason) do
     String.contains?(reason, "promotion_restart") or
       String.contains?(reason, "not_connected") or
-      String.contains?(reason, "draining")
+      String.contains?(reason, "draining") or
+      String.contains?(reason, "self-restart")
   end
 
   def restart_acknowledgement_lost?(_), do: false
@@ -549,7 +550,12 @@ defmodule CodeMySpec.Promotion do
   end
 
   # Merged, and the restart's acknowledgement never came back — because the
-  # restart is what dropped the channel it was coming back on. Said as its own
+  # restart is what removed whatever would have carried it. Two different
+  # mechanisms produce this same shape: a remote harness's channel goes down
+  # when its own process restarts, and a *self*-hosted promotion's restart
+  # kills the very BEAM running this promotion, before it can report anything
+  # at all (54aa534c) — dispatched detached for exactly that reason, so this
+  # process gets to answer instead of dying mid-sentence. Said as its own
   # outcome rather than as success or failure, because it is neither and both
   # of the other readings are expensive: reported as failure an agent promotes
   # again and restarts the shared dev server, reported as success nobody
@@ -557,7 +563,9 @@ defmodule CodeMySpec.Promotion do
   defp outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
     "Your promotion merged #{branch} onto the running dev copy. The restart was " <>
       "issued and its acknowledgement did not come back — expected, because " <>
-      "restarting the running copy drops the channel that reply travels on.\n\n" <>
+      "restarting the running copy removes whatever would have carried that " <>
+      "reply, whether that is a remote harness's channel or the very process " <>
+      "answering this request.\n\n" <>
       "Do not promote again to find out; that restarts the shared dev server " <>
       "for every working copy on this machine. Ask what it is serving instead:\n\n" <>
       "    git merge-base --is-ancestor HEAD $(curl -s localhost:4004/health " <>
@@ -773,10 +781,66 @@ defmodule CodeMySpec.Promotion do
   # rules, and when it is wrong the application serves a build nobody can
   # identify while every signal says the promotion completed. Restarting an app
   # that did not need it costs seconds.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?) do
+  defp restart(%Scope{} = scope, %WorkingCopy{} = running, refresh_harness?) do
     scope
-    |> Runner.restart(root, running.id, refresh_harness?)
+    |> restart_result(running, refresh_harness?)
     |> record_serving(running)
+  end
+
+  # A self-hosted restart kills the process running this call, before it can
+  # answer (54aa534c). Not a channel drop — `just restart` for this
+  # project's own checkout `kill`s whatever is listening on :4000, and when
+  # that is this very BEAM, the halt takes the promotion's own Task with it.
+  # No exception to catch: `Promotion.Lock`'s own moduledoc already records
+  # that a server restart comes back with an empty lock table, because
+  # nothing — not even a `try/after` — survives to run once the VM is gone.
+  #
+  # So this dispatches the real restart detached and answers immediately with
+  # the same "unconfirmed" shape a remote harness's dropped channel already
+  # produces, reusing `merged/5`'s existing handling rather than a parallel
+  # path: the two are the same claim to a caller either way — merged, restart
+  # unconfirmed, do not promote again to find out.
+  #
+  # Detected by root, not by environment type: a `:harness` scope addresses a
+  # genuinely different machine, where the server issuing this call survives
+  # its own RPC regardless of what happens on the far side — `e721ccf0d`
+  # already covers that shape. This is specifically the case where `root` is
+  # the checkout `BootVersion.capture/1` recorded at this process's own boot.
+  defp restart_result(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?) do
+    if self_restart?(scope, root) do
+      dispatch_self_restart(scope, root, running.id, refresh_harness?)
+      {:error, %{reason: self_restart_reason()}}
+    else
+      Runner.restart(scope, root, running.id, refresh_harness?)
+    end
+  end
+
+  defp self_restart?(%Scope{environment: %Environment{type: :harness}}, _root), do: false
+
+  defp self_restart?(%Scope{}, root) do
+    case BootVersion.booted_root() do
+      nil -> false
+      booted_root -> Path.expand(booted_root) == Path.expand(root)
+    end
+  end
+
+  # Detached rather than linked or awaited: this process may not exist by the
+  # time `just restart` returns, and it must not need to for the restart to
+  # have happened. `CodeMySpec.TaskSupervisor` is the same one `promote_async/2`
+  # already reports through for the same reason — fire, do not wait.
+  defp dispatch_self_restart(scope, root, working_copy_id, refresh_harness?) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Runner.restart(scope, root, working_copy_id, refresh_harness?)
+      end)
+
+    :ok
+  end
+
+  defp self_restart_reason do
+    "the restart is a self-restart: this process is the one serving the " <>
+      "running copy, so running it here would end this call before it could " <>
+      "answer. Dispatched separately instead."
   end
 
   # The restart is a measurement too, and not writing it down is a livelock.
