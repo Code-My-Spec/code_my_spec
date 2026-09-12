@@ -11,9 +11,20 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
   written for, with the added cruelty that the graph now says the code is
   there.
 
-  Asserted against the real merge commit rather than against a message: the
-  promotion reports which revision is being served, and that has to be the
-  revision the merge actually produced in the running checkout.
+  **Changed by 54aa534c, phase two.** This used to assert the revision being
+  served against a SHA in the response text, because `promote_sync` used to
+  wait for the restart before answering. It no longer does — the restart is
+  dispatched and never awaited, by design, so a promotion answers in seconds
+  regardless of how long the restart takes. There is no revision to put in
+  the response any more; asserting one would be asserting the very wait this
+  change removed.
+
+  What still has to be true, and is asserted here instead: the merge really
+  lands in the running checkout before the response comes back (unconditional,
+  not racing the restart), the response says the restart is dispatched and
+  unconfirmed rather than claiming a revision it cannot yet know, and the
+  restart recipe actually runs afterward — polled for, since it is no longer
+  synchronous with the reply.
   """
 
   use CodeMySpecSpex.Case
@@ -72,13 +83,25 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
         {:ok, context}
       end
 
-      then_ "it reports the app serving the revision the merge produced", context do
+      then_ "it says the restart is dispatched rather than claiming a revision", context do
         text = response_text(context.response)
 
-        assert text =~ String.slice(context.head, 0, 7),
-               "the promotion did not say which revision is being served, so " <>
-                 ~s(the words "merged" and "running" remain two different ) <>
-                 "claims. Expected #{String.slice(context.head, 0, 7)} in: #{text}"
+        assert text =~ "not yet confirmed" or text =~ "not awaited" or text =~ "unconfirmed",
+               "the response should say the restart is dispatched and " <>
+                 "unconfirmed, not claim a revision it cannot yet know is " <>
+                 "actually serving. Got: #{text}"
+
+        {:ok, context}
+      end
+
+      then_ "and the restart the merge triggered actually runs", context do
+        eventually(fn ->
+          assert exists?(context.running_root, ".restarted"),
+                 "the merge landed but nothing ever ran the restart recipe, so " <>
+                   ~s(the words "merged" and "running" remain two different ) <>
+                   "claims — just not ones the response can settle any more. " <>
+                   "Got: #{response_text(context.response)}"
+        end)
 
         {:ok, context}
       end

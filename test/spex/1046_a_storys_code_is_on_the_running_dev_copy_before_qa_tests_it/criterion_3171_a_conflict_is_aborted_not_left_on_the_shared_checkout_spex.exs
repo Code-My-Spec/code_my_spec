@@ -1,17 +1,35 @@
 defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion 3171 — The promoting agent resolves its own conflict.
+  Criterion 3171 — A conflict is aborted, not left on the shared checkout.
 
-  Rule: A merge conflict is resolved by the agent promoting the work.
+  Rule: a merge conflict is aborted immediately, and the agent is sent to
+  resolve it in the copy it is promoting from.
 
-  A conflict is a question about intent, and the agent that wrote one side is
-  the only party holding the answer. So the promotion does not guess, and does
-  not quietly `--abort` either: it stops, names the files, and leaves the
-  conflict in the running checkout where it can be resolved.
+  Superseded twice over now.
 
-  Aborting would be the tidier-looking failure and the worse one — the agent is
-  told "promotion failed", finds a clean tree, and has nothing to act on.
+  First (bed1d974): a conflict used to stay in the running checkout,
+  reasoning that the agent who wrote one side is the only party holding the
+  answer and a clean tree after a refusal has nothing to act on. Measured
+  cost of that: a worktree six commits behind main spent 2.5 hours
+  converging a spec main had already retired, then wedged the shared dev
+  checkout — the one machine QA runs from, with no test suite and no way to
+  resolve in place — from 00:28 to 10:40 merging it in unattended. The
+  identical branch, merged main-first in the worktree instead, conflicted
+  immediately and was resolved in two minutes: the same conflict, but with
+  context and a test suite, because it happened somewhere a person could
+  see it. That gave the running checkout an abort-on-conflict merge that
+  named the conflicting file.
+
+  Second (54aa534c, phase two): `Runner.merge/4` is `--ff-only` now, and
+  ff-only never inspects file content — it only checks ancestry, before
+  touching a single byte. Any divergence, conflicting or not, refuses at
+  that check, instantly, with nothing to abort because nothing was ever
+  attempted. So this scenario — a real content conflict — is caught the
+  same way a same-file-different-lines divergence is, or a completely
+  unrelated-files divergence is: refused for being behind main, not
+  merged-then-aborted-and-named. The file name is gone from the message on
+  purpose; there is no merge attempt left to have inspected it.
   """
 
   use CodeMySpecSpex.Case
@@ -34,7 +52,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
     :ok
   end
 
-  spex "A conflict stops the promotion and stays for the agent" do
+  spex "A conflict is refused before it is attempted, and the agent is sent to resolve it locally" do
     scenario "main and the story branch changed the same line" do
       given_ "a story branch that changed a line", context do
         context = a_promotable_project(context)
@@ -69,19 +87,29 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
         {:ok, context}
       end
 
-      then_ "the agent is told which file conflicts", context do
-        assert response_text(context.response) =~ "war.ex",
-               "the agent was told its promotion failed without being told where"
+      then_ "the agent is told it is behind main, not which file conflicts", context do
+        text = response_text(context.response)
+
+        assert text =~ "behind main",
+               "ff-only refuses on ancestry alone and never inspected the tree, " <>
+                 "so the refusal has to name what is actually true rather than " <>
+                 "imply a conflict was found. Got: #{text}"
 
         {:ok, context}
       end
 
-      then_ "the conflict is left in the running checkout to resolve", context do
+      then_ "the agent is told to resolve it in its own copy, not the running one", context do
+        assert response_text(context.response) =~ "git merge --ff-only main",
+               "the agent was refused without being told the remedy is its own to run"
+
+        {:ok, context}
+      end
+
+      then_ "the running checkout is left exactly as it was", context do
         {out, 0} = git(context, context.running_root, ["status", "--porcelain"])
 
-        assert out =~ ~r/^(UU|AA)/m,
-               "the promotion cleaned up after itself, leaving a failure report " <>
-                 "over a clean tree with nothing to act on. Got: #{inspect(out)}"
+        assert out == "",
+               "an aborted conflict is supposed to leave nothing behind. Got: #{inspect(out)}"
 
         {:ok, context}
       end

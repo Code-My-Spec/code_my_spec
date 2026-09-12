@@ -47,24 +47,39 @@ defmodule CodeMySpec.CodeMode.Bindings do
   """
   @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil) :: Lua.t()
   def install(lua, catalog, out_of_scope, kind \\ nil) do
+    Process.put(@printed, [])
+
     lua
-    |> Lua.put_private(@printed, [])
     |> capture_print()
     |> bind_tools(catalog)
     |> explain_exclusions()
     |> explain_scope(out_of_scope, kind)
   end
 
-  @doc "What the script printed, in order."
-  @spec printed(Lua.t()) :: [String.t()]
-  def printed(lua), do: Lua.get_private!(lua, @printed)
+  @doc """
+  What the script printed, in order — up to wherever it got to.
+
+  Process-scoped rather than carried in the Lua state, on purpose
+  (b9f4e5d4). `CodeMode.run/3` rebinds `lua` from `Lua.eval!`'s return, so a
+  script that raises — a rejected tool call, a compile error — leaves `lua`
+  in the `rescue` clause holding the *pre-eval* state, whose captured prints
+  are always empty; the state `eval!` actually produced is discarded with the
+  exception, and the `lua` package exposes no way to get it back. Each
+  `CodeMode.run/3` call already executes in its own `Task`
+  (`Sandbox.with_timeout/2`), so the process dictionary is exactly as
+  privately scoped as the Lua state was meant to be, and survives the one
+  case the state does not: a raise.
+  """
+  @spec printed() :: [String.t()]
+  def printed, do: Process.get(@printed, [])
 
   # `print` writes to real stdout otherwise, which on a server means a script's
   # debugging lands in the server log and never reaches the agent that wrote it.
   defp capture_print(lua) do
     Lua.set!(lua, [:print], fn args, state ->
       line = Enum.map_join(args, "\t", &render/1)
-      {[], Lua.put_private(state, @printed, Lua.get_private!(state, @printed) ++ [line])}
+      Process.put(@printed, Process.get(@printed, []) ++ [line])
+      {[], state}
     end)
   end
 
@@ -91,9 +106,36 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
         raise Lua.RuntimeException,
-              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool."
+              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool.\n\n" <>
+                stale_list_note(name)
       end)
     end)
+  end
+
+  # The one case where "call it directly" is false, and the caller has no way to
+  # tell.
+  #
+  # An MCP connection negotiates its tool list once, when it opens, and never
+  # revisits it. So a session that outlives a server change keeps working
+  # against the old surface with nothing reporting the skew — the same shape the
+  # stop hook already detects and names for the harness/server channel, except
+  # nothing detects it here.
+  #
+  # Measured 2026-09-12 (`9b08283d`): `promote` had just been registered, an
+  # agent was told by `start_task` to call it, and got
+  # "attempt to call a nil value" from a script and `Unknown tool` directly —
+  # while `tools/list` over the proxy showed 19 tools including `promote` and
+  # the session's own list carried 17. A `/mcp` reconnect surfaced it at once.
+  #
+  # Without this the refusal asserts the remedy confidently and the remedy does
+  # not work, which is worse than the bare absence it replaced: an agent that
+  # believes it has the tool reaches for spellings rather than for the
+  # connection.
+  defp stale_list_note(name) do
+    "If calling `#{name}` directly answers `Unknown tool`, you do not have it — " <>
+      "your MCP connection negotiated its tool list when it opened and has not " <>
+      "revisited it, so a tool registered since then is missing from your side " <>
+      "only. Reconnect (`/mcp`) and call it again."
   end
 
   # Named, and named as a scope decision rather than as an absence. The agent

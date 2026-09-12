@@ -93,6 +93,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
         the file you are waiting on; if it still looks stale after a few \
         seconds, the harness log names what it scanned and the server log names \
         what it reconciled.
+
+        If you deleted a spec to remove a component and the component is still \
+        there, that is not this failing. A component survives while **any** \
+        checkout still carries its spec — it is only an orphan in the checkout \
+        holding the file to resolve it with. Your deletion has removed this \
+        copy's row; the component goes when the deletion reaches the others. \
+        Rescanning again will not change that, and neither will rescanning from \
+        somewhere else.
         """
 
         {:reply, Response.tool() |> Response.text(text), frame}

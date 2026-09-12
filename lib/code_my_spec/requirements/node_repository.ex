@@ -29,7 +29,15 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement}
   alias CodeMySpec.Users.Scope
 
-  @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
+  @replace {:replace,
+            [
+              :satisfied,
+              :details,
+              :description,
+              :checked_at,
+              :inputs_fingerprint,
+              :updated_at
+            ]}
 
   @doc """
   How many requirements are unsatisfied with every prerequisite met.
@@ -150,6 +158,72 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           )
     )
     |> where(^copy_filter(working_copy_id))
+  end
+
+  @doc """
+  One requirement's recorded `details`, read straight off the row.
+
+  For the stop hook's nudge, which wants a single reason string and used to get
+  it by asking for the whole graph — `Requirements.cached_all/1`, which computes
+  the project on a cache miss. The stop hook syncs files before it decides, so
+  the fingerprint has always just moved and the miss is the normal case: a full
+  compute, edges included, to read one `details["reason"]` the row already
+  holds. Measured on this project after the incremental recompute shipped, four
+  computes in nine minutes on the new build, two of them stop hooks.
+
+  A stop is not a change. Nothing here recomputes.
+
+  Scoped the same three ways as `actionable_count/1`, and for the same reason:
+  `project_id` is set only on project-level nodes, so filtering on it alone
+  finds the handful and misses every component and story requirement.
+  """
+  @spec requirement_details(Scope.t(), String.t(), [String.t()]) :: map() | nil
+  def requirement_details(%Scope{active_project_id: nil}, _name, _entity_ids), do: nil
+
+  def requirement_details(%Scope{}, _name, []), do: nil
+
+  def requirement_details(%Scope{active_project_id: project_id} = scope, name, entity_ids) do
+    wanted = Enum.map(entity_ids, &to_string/1)
+
+    from(n in Node,
+      where: n.name == ^to_string(name),
+      where:
+        n.project_id == ^project_id or
+          n.component_id in subquery(
+            from(c in "components",
+              where: c.project_id == type(^project_id, :binary_id),
+              select: c.id
+            )
+          ) or
+          n.story_id in subquery(
+            from(s in "stories",
+              where: s.project_id == type(^project_id, :binary_id),
+              select: s.id
+            )
+          ),
+      select: %{
+        details: n.details,
+        project_id: n.project_id,
+        component_id: n.component_id,
+        story_id: n.story_id
+      }
+    )
+    |> where(^copy_filter(Projection.vantage(scope)))
+    |> Repo.all()
+    |> Enum.find(fn row ->
+      # All three, because a row names its entity in exactly one of them and
+      # leaves the other two null — a project requirement carries `project_id`
+      # and no component or story. Matching only the latter two answered "no
+      # reason" for every project-level requirement, which is how the nudge
+      # went back to naming `technical_strategy` without saying what held it.
+      to_string(row.project_id) in wanted or
+        to_string(row.component_id) in wanted or
+        to_string(row.story_id) in wanted
+    end)
+    |> case do
+      %{details: details} -> details
+      nil -> nil
+    end
   end
 
   @doc """
@@ -352,6 +426,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           satisfied: node.satisfied,
           details: node.details || %{},
           checked_at: now,
+          inputs_fingerprint: Map.get(node, :inputs_fingerprint),
           inserted_at: now,
           updated_at: now,
           working_copy_id: working_copy_id

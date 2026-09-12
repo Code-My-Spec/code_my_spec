@@ -2072,7 +2072,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       asked about. --%>
       <div :if={@dynamic_view == "story" and @dynamic_story}>
         <.link
-          navigate={~p"/app/projects/#{@dynamic_story.project_id}/stories/#{@dynamic_story.id}"}
+          navigate={~p"/app/projects/#{@dynamic_story.project_id}/stories/#{@dynamic_story.number}"}
           class="font-semibold link link-hover"
         >
           {@dynamic_story.title}
@@ -2135,7 +2135,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <ul class="space-y-1">
           <li :for={story <- @dynamic_stories} data-test="dynamic-story">
             <.link
-              navigate={~p"/app/projects/#{story.project_id}/stories/#{story.id}"}
+              navigate={~p"/app/projects/#{story.project_id}/stories/#{story.number}"}
               class="flex items-baseline gap-2 link link-hover"
             >
               <span class={[

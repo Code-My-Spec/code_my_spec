@@ -25,6 +25,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Analysis
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Problems
 
@@ -33,7 +34,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   schema do
     field :source, :string,
-      doc: "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex`, `spec_validation` or `qa_validation`."
+      doc:
+        "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex`, `spec_validation` or `qa_validation`."
 
     field :severity, :string,
       doc: "Filter by severity — `error`, `warning` or `info`. Omit for all."
@@ -60,7 +62,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
             %{problems: problems, total_count: total, page: page, total_pages: pages} =
               Problems.list_problems_paginated(scope, opts)
 
-            {:reply, ok(render(problems, total, page, pages, params)), frame}
+            {:reply, ok(render(scope, problems, total, page, pages, params)), frame}
 
           {:error, reason} ->
             {:reply, error(reason), frame}
@@ -107,14 +109,14 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
   # Names the filters in play. "No problems recorded" under a severity or source
   # filter reads as "this working copy is clean", and an agent checking a
   # refusal against the record will believe the refusal is phantom.
-  defp render([], total, _page, _pages, params) when total == 0 do
+  defp render(_scope, [], total, _page, _pages, params) when total == 0 do
     case filters_in_play(params) do
       "" -> "No problems recorded for this working copy."
       filters -> "No problems#{filters} for this working copy. Call without them for all."
     end
   end
 
-  defp render(problems, total, page, pages, params) do
+  defp render(scope, problems, total, page, pages, params) do
     header =
       "# Problems (#{length(problems)} of #{total}) — page #{page}/#{max(pages, 1)}" <>
         severity_note(params)
@@ -129,8 +131,81 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
         do: "\n\nPage #{page + 1} of #{pages}: call again with `page: #{page + 1}`.",
         else: ""
 
-    header <> "\n\n" <> body <> footer
+    header <> "\n\n" <> body <> database_note(scope, problems) <> footer
   end
+
+  # Which database produced these, for the sources that opened one.
+  #
+  # A working copy has three test databases and a run uses exactly one, and this
+  # list never said which. Both times it mattered, every other signal pointed at
+  # the code: 479 spex failures naming a column the tree actually had, against a
+  # partition five days behind the base (`d86b09cd`); and a criterion passing in
+  # isolation while failing every sweep, because a foreign key was `CASCADE` on
+  # one database and `RESTRICT` on the other. The second cost three promotion
+  # refusals before anybody thought to ask which database had answered.
+  #
+  # One line, and the reader's next question becomes "why is *that* one
+  # answering" rather than "what is wrong with my code".
+  #
+  # Only the sources actually on this page, and only those carrying a partition
+  # — the compiler and credo read files rather than opening a connection, and a
+  # run recorded before this shipped has nothing to say. Saying nothing is
+  # correct for all three; inventing a database name would be the failure this
+  # exists to end, one level up.
+  defp database_note(scope, problems) do
+    problems
+    |> Enum.map(& &1.source)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.flat_map(&partition_line(scope, &1))
+    |> case do
+      [] -> ""
+      lines -> "\n\n" <> Enum.join(lines, "\n")
+    end
+  end
+
+  defp partition_line(scope, source) do
+    case Analysis.latest_answer(scope, source) do
+      %{stats: %{"partition" => partition}} = run when is_binary(partition) ->
+        ["#{source} ran against the `#{partition}` test database#{took(run)}."]
+
+      %{} = run ->
+        case took(run) do
+          "" -> []
+          taken -> ["#{source}'s run#{taken}."]
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  # How long the run took, when it took long enough to be worth saying.
+  #
+  # The cheap half of `3e9b7568`: on a saturated box the analyzer manufactures
+  # failures — `** (EXIT from #PID<…>)` on whichever test is heaviest, passing
+  # 4/4 in isolation, a different victim each sweep. Measured at load 54 with
+  # eight concurrent suites. An agent cannot tell that from a regression, and
+  # the natural response to a phantom is a retry, which produces the next one.
+  #
+  # A run's duration is already recorded, so this is surfacing rather than
+  # collection. It is a proxy for load and not load itself — the issue asks for
+  # the real thing, and the real fix it asks for is a machine-wide semaphore on
+  # analyzer runs, neither of which this is. What it does is make a sweep that
+  # took eight minutes where it usually takes ninety seconds say so next to the
+  # failures it produced.
+  #
+  # Silent under two minutes. A number on every listing is wallpaper, and the
+  # whole reason the alert next door is counts-only is that a line the model
+  # learns to skip costs the signal permanently.
+  defp took(%{started_at: %DateTime{} = started, finished_at: %DateTime{} = finished}) do
+    case DateTime.diff(finished, started, :second) do
+      seconds when seconds >= 120 -> ", and took #{div(seconds, 60)}m#{rem(seconds, 60)}s"
+      _ -> ""
+    end
+  end
+
+  defp took(_run), do: ""
 
   defp filters_in_play(params) do
     [

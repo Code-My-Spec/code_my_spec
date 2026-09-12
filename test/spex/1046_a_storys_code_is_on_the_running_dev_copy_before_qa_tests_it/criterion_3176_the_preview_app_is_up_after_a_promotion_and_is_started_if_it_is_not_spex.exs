@@ -140,10 +140,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
       end
 
       then_ "the application is started", context do
-        assert exists?(context.running_root, ".restarted"),
-               "the gate named `promote` as the way to bring a dead application " <>
-                 "back, and promoting did not start it. Got: " <>
-                 response_text(context.response)
+        # Polled, not asserted immediately: the restart is dispatched and never
+        # awaited (54aa534c, phase two), so `promote` answering is not evidence
+        # the recipe has run yet — only that it has been handed off.
+        eventually(fn ->
+          assert exists?(context.running_root, ".restarted"),
+                 "the gate named `promote` as the way to bring a dead application " <>
+                   "back, and promoting did not start it. Got: " <>
+                   response_text(context.response)
+        end)
 
         {:ok, context}
       end

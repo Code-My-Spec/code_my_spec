@@ -58,7 +58,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
     # Opened once, before anything is recorded into it, and that is not a
-    # formality. `record_orchestrator_action/3` looks the conversation up by
+    # formality. `record_sent_to_agent/2` looks the conversation up by
     # agent and answers `:ok` when there is none — correct for a caller that
     # must not crash, and silent. An agent that has never spoken has no
     # conversation, so its very first thing to hear is exactly the one that
@@ -201,7 +201,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   #
   # Nothing is lost by stopping, because the answer comes back as a message —
   # `Notifications.answer_question_request/2` dispatches it through
-  # `Agents.deliver_answer/3` the moment it lands. That is the difference from
+  # `Agents.send_to_agent/3` the moment it lands. That is the difference from
   # `check_answer`, which needs a running agent to do the checking and so cannot
   # be combined with going quiet.
   #
@@ -304,17 +304,15 @@ defmodule CodeMySpec.Agents.StopDecision do
   defp send_to(scope, agent, message) do
     # Recorded as well as sent, and recorded first.
     #
-    # `Conversations.record_orchestrator_action/3` is the half story 1041
-    # already shares — it takes an agent and knows nothing about how that agent
-    # runs, which is why the handover shows up for both kinds today. The
-    # decision is the same sort of thing: something the orchestrator did *to*
-    # the agent, and a transcript that shows only what the agent did is the gap
-    # 1041 exists to close.
+    # `Conversations.record_sent_to_agent/2` because this dispatches through the
+    # transport directly rather than through `Agents.dispatch_message/3`, which
+    # is the thing that normally records. Without it the decision reaches the
+    # agent and appears in no transcript.
     #
     # Before the dispatch, because delivery can fail — a halted agent has
     # nobody to tell — and what the orchestrator decided is true whether or not
     # anyone was there to hear it. The conversation was opened by `deliver/2`.
-    Conversations.record_orchestrator_action(agent, message, kind: "decision")
+    Conversations.record_sent_to_agent(agent, message)
 
     deliver_message(scope, agent, message)
   end

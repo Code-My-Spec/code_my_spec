@@ -148,6 +148,45 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
+  describe "labelling an issue's story" do
+    # A story carries an id and a number, and the number is the one that names
+    # its spex directory — id 1031 is number 1065, whose specs live in
+    # `test/spex/1065_…/`. They coincide on a young project and diverge later,
+    # which is how the id survived in the places people read for months
+    # (1ab62ffd). John: "We should name the story from the number, not the id."
+    #
+    # Asserted through the assign rather than the rendered markup, which is what
+    # this view's other tests do — `handle_params` is the seam here.
+    test "the view is given the number for each story, not the id" do
+      {project, scope} = setup_local_project()
+
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope)
+
+      issue_fixture(scope, %{title: "against a story", story_id: story.id})
+
+      socket = build_socket(project, scope)
+      {:noreply, socket} = Index.handle_params(%{}, "/", socket)
+
+      assert socket.assigns.story_numbers[story.id] == story.number,
+             "the issues list labels a story `Story #<n>`; taking that from the id " <>
+               "names a spex directory that does not exist"
+    end
+
+    test "a project's numbers are all present, so no issue renders a blank story" do
+      {project, scope} = setup_local_project()
+
+      first = CodeMySpec.StoriesFixtures.story_fixture(scope)
+      second = CodeMySpec.StoriesFixtures.story_fixture(scope)
+
+      socket = build_socket(project, scope)
+      {:noreply, socket} = Index.handle_params(%{}, "/", socket)
+
+      for story <- [first, second] do
+        assert is_integer(socket.assigns.story_numbers[story.id])
+      end
+    end
+  end
+
   defp setup_local_project do
     scope = full_scope_fixture()
     project = scope.active_project

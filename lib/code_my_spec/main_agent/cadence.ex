@@ -31,12 +31,13 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   require Logger
 
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Configurations
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.MainAgent.CadenceRegistry
-  @default_interval_seconds 20 * 60
 
   # -- the interval -----------------------------------------------------------
 
@@ -53,40 +54,62 @@ defmodule CodeMySpec.MainAgent.Cadence do
   guess. In code it would be a deploy to change, which in practice means never.
   """
   @spec interval(Scope.t()) :: pos_integer()
-  def interval(%Scope{active_project_id: project_id}) do
-    :code_my_spec
-    |> Application.get_env(:main_agent_cadence, %{})
-    |> Map.get(project_id, @default_interval_seconds)
-  end
+  def interval(%Scope{} = scope), do: Configurations.main_agent_cadence_seconds(scope)
 
-  @doc "Set how often this project's main agent is woken."
-  @spec set_interval(Scope.t(), pos_integer()) :: :ok
-  def set_interval(%Scope{active_project_id: project_id}, seconds)
-      when is_integer(seconds) and seconds > 0 do
-    intervals = Application.get_env(:code_my_spec, :main_agent_cadence, %{})
+  @doc """
+  Set how often this project's main agent is woken.
 
-    Application.put_env(
-      :code_my_spec,
-      :main_agent_cadence,
-      Map.put(intervals, project_id, seconds)
-    )
-
-    :ok
+  A row on the project's configuration, beside every other per-project setting.
+  It used to be `Application.put_env/3` — shared mutable state for the whole
+  node, lost on every restart, and reachable without a scope. QA found it: a
+  deliberately set interval silently reverted to the default at the next boot,
+  which is worse than never having offered the setting, because the operator
+  believes it is in force.
+  """
+  @spec set_interval(Scope.t(), pos_integer()) :: :ok | {:error, Ecto.Changeset.t()}
+  def set_interval(%Scope{} = scope, seconds) when is_integer(seconds) and seconds > 0 do
+    case Configurations.update(scope, %{main_agent_cadence_seconds: seconds}) do
+      {:ok, _configuration} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   # -- running ----------------------------------------------------------------
 
   @doc """
-  Whether this project's cadence is still waking its main agent.
+  Whether this project's main agent is still *meant* to be woken.
 
-  Read from the stopped set rather than from a process, so the answer survives
-  the server being restarted for reasons that have nothing to do with the main
-  agent's decision. A tap-out is a decision; a supervisor restart is not, and a
-  decision that a restart silently reverses is one nobody made.
+  Intent, not fact. Read from the stopped set rather than from a process, so the
+  answer survives the server being restarted for reasons that have nothing to do
+  with the main agent's decision. A tap-out is a decision; a supervisor restart
+  is not, and a decision that a restart silently reverses is one nobody made.
+
+  It answers "has this project stood down", and `check_in/1` is right to branch
+  on it — by the time a check-in runs, the process asking is the timer itself,
+  so existence is not in question there.
+
+  It is **not** the health signal it reads as, and that is how nothing starting
+  the cadence went unnoticed: this answered true for every project that had
+  never stood down, including every project with no timer at all. `alive?/1` is
+  the question about fact.
   """
   @spec running?(Scope.t()) :: boolean()
   def running?(%Scope{active_project_id: project_id}) do
     project_id not in Application.get_env(:code_my_spec, :main_agent_stood_down, [])
+  end
+
+  @doc """
+  Whether a timer actually exists for this project right now.
+
+  The counterpart to `running?/1`, which is about intent. Both are needed and
+  they disagree in exactly the case worth catching: meant to be woken, and
+  nothing there to wake it.
+  """
+  @spec alive?(Scope.t()) :: boolean()
+  def alive?(%Scope{active_project_id: nil}), do: false
+
+  def alive?(%Scope{active_project_id: project_id}) do
+    Registry.lookup(@registry, project_id) != []
   end
 
   @doc "Stop waking this project's main agent, because it has stood down."
@@ -116,6 +139,76 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   def start_link(%Scope{} = scope) do
     GenServer.start_link(__MODULE__, scope, name: via(scope.active_project_id))
+  end
+
+  @doc """
+  Start this project's cadence if it is not already running.
+
+  The same shape `GraphWatcher.ensure_watching/1` uses, and for the same reason:
+  a project nobody is working on needs no timer, so one is started on demand
+  rather than one per project at boot.
+
+  QA found this missing entirely — the GenServer was written, and nothing
+  anywhere called `start_link/1`. No `:check_in` message was ever sent, so the
+  story's whole promise — a problem surfacing even when the agent in trouble
+  cannot say so — never happened.
+
+  What hid it is worth keeping: `running?/1` answered **true** throughout,
+  because it reads the stood-down set and no project had stood down. The one
+  signal that looked like health was reporting intent. The spex did not catch it
+  either, because they start the process themselves — which proves the loop
+  works once started and can say nothing about whether anything starts it.
+  """
+  @spec ensure_running(Scope.t()) :: {:ok, pid()} | {:error, term()}
+  def ensure_running(%Scope{active_project_id: nil}), do: {:error, :no_project}
+
+  def ensure_running(%Scope{} = scope) do
+    case DynamicSupervisor.start_child(
+           CodeMySpec.MainAgent.CadenceSupervisor,
+           {__MODULE__, cadence_scope(scope)}
+         ) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      other -> other
+    end
+  end
+
+  # The scope outlives the request that started the timer, so it keeps only what
+  # a check-in needs and none of the caller's session — a cadence holding a
+  # `conn`-shaped scope would be waking on behalf of whoever happened to be
+  # first.
+  defp cadence_scope(%Scope{} = scope) do
+    %Scope{
+      user: scope.user,
+      user_id: scope.user_id,
+      active_account: scope.active_account,
+      active_account_id: scope.active_account_id,
+      active_project: scope.active_project,
+      active_project_id: scope.active_project_id,
+      active_working_copy_id: scope.active_working_copy_id
+    }
+  end
+
+  @doc """
+  Re-establish cadences for whatever was already being worked.
+
+  Timers are in memory, so a restart takes them all — and a deploy is exactly
+  when agents are mid-run. Without this, a project whose agents were running
+  before the restart would never be looked in on again until somebody happened
+  to touch it.
+  """
+  @spec wake_active_projects() :: :ok
+  def wake_active_projects do
+    AgentsRepository.continuous_project_scopes()
+    |> Enum.each(fn scope ->
+      case ensure_running(scope) do
+        {:ok, _pid} ->
+          :ok
+
+        other ->
+          Logger.warning("[Cadence] could not wake #{scope.active_project_id}: #{inspect(other)}")
+      end
+    end)
   end
 
   defp via(project_id), do: {:via, Registry, {@registry, project_id}}

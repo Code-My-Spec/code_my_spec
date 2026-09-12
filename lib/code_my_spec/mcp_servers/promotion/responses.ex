@@ -114,6 +114,14 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     |> String.trim()
   end
 
+  # The standard shape now (54aa534c, phase two): the restart is dispatched,
+  # never awaited, so there is no revision to report here — only that it is
+  # running, not confirmed.
+  defp serving_line(%{unconfirmed: _}),
+    do:
+      "Serving: restart dispatched, not yet confirmed — check what is serving " <>
+        "if you want to know before QA does"
+
   defp serving_line(%{revision: nil}), do: "Serving: restarted (revision unavailable)"
   defp serving_line(%{revision: revision}), do: "Serving: #{revision}"
 

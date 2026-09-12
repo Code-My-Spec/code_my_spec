@@ -397,6 +397,23 @@ defmodule CodeMySpecWeb.Router do
       get "/agents", DevAgentController, :index
       post "/agents/:agent_id/message", DevAgentController, :message
 
+      # A real session for QA, without the shared mailbox.
+      #
+      # QA drives the browser and so needs a real session; getting one meant
+      # working the magic-link flow by hand every run, against a `/dev/mailbox`
+      # every agent on the box shares — so "the right message" is whichever
+      # login arrived last, and a second agent testing concurrently takes yours.
+      #
+      # These mint the same `"login"` token `deliver_login_instructions/2` puts
+      # in the email, redeemed at the same route by the same controller. QA
+      # exercises the product's real session auth; what it skips is the mailbox,
+      # not the authentication.
+      #
+      # Inside `:dev_routes` for a sharper reason than its neighbours: that one
+      # can message an agent, this one can become a user.
+      post "/sign-in", DevSignInController, :create
+      post "/sign-up", DevSignInController, :register
+
       # Thinning a working copy that has collected more agents than it can feed.
       # Three coding agents on one checkout is three stories in flight and seven
       # concurrent analyzer runs against one Postgres — observable through
@@ -528,10 +545,10 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
       live "/projects/:project_id/stories/new", StoryLive.Form, :new
       live "/projects/:project_id/stories/import", StoryLive.Import, :import
-      live "/projects/:project_id/stories/:id", StoryLive.Show, :show
-      live "/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
-      live "/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
-      live "/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+      live "/projects/:project_id/stories/:number", StoryLive.Show, :show
+      live "/projects/:project_id/stories/:number/edit", StoryLive.Form, :edit
+      live "/projects/:project_id/stories/:number/three-amigos", StoryLive.ThreeAmigos
+      live "/projects/:project_id/stories/:number/gherkin", StoryLive.Gherkin
 
       live "/projects/:project_id/epics", EpicsLive.Index, :index
       live "/projects/:project_id/epics/new", EpicsLive.Index, :new
@@ -601,11 +618,11 @@ defmodule CodeMySpecWeb.Router do
       # `:story_show` had a `handle_params` clause and no route to reach it by,
       # so a story's own requirements were unreachable while every component's
       # were one click away.
-      live "/projects/:project_id/stories/:story_id/requirements",
+      live "/projects/:project_id/stories/:story_number/requirements",
            RequirementsLive,
            :story_show
 
-      live "/projects/:project_id/stories/:story_id/requirements/:name",
+      live "/projects/:project_id/stories/:story_number/requirements/:name",
            RequirementsLive,
            :story_req_show
     end

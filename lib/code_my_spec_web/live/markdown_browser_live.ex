@@ -37,7 +37,7 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
     case Knowledge.browse(socket.assigns.scope, library, path_segments) do
       {:ok, result} ->
-        view = build_view(result, config, base_url, path_segments)
+        view = build_view(result, config, base_url, path_segments, socket.assigns.scope, library)
 
         {:noreply,
          assign(socket,
@@ -116,7 +116,7 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
   # --- View builders ---
 
-  defp build_view({:dir, entries}, config, base_url, path_segments) do
+  defp build_view({:dir, entries}, config, base_url, path_segments, _scope, _library) do
     {:dir,
      %{
        title: dir_title(config, path_segments),
@@ -129,13 +129,39 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
      }}
   end
 
-  defp build_view({:file, content}, _config, base_url, path_segments) do
+  defp build_view({:file, content}, _config, base_url, path_segments, scope, library) do
     {:file,
      %{
        title: file_title(path_segments),
        back_url: parent_url(base_url, path_segments),
-       content: content
+       content: linkify(content, scope, library, base_url)
      }}
+  end
+
+  # Turns a backtick-quoted, root-relative `.md` path into a markdown link,
+  # when — and only when — it names a real file in this library. The docs
+  # hand off to each other this way deliberately (`process/product.md` ->
+  # `process/code.md`), but the same shape shows up for a path that is not a
+  # doc in this library at all (`CLAUDE.md`, which lives at the repo root and
+  # is named as somewhere to write) — silently linking that would trade an
+  # honest piece of plain text for a 404, which is worse.
+  #
+  # Root-relative, matching how the docs are actually written: a doc in
+  # `process/` refers to a sibling as `process/code.md`, not `code.md`, so
+  # resolving against the library root rather than the current file's own
+  # directory is what the corpus already assumes.
+  #
+  # A markdown link wrapping a code span (`` [`path`](url) ``), not a bare
+  # `<a>` spliced into rendered HTML — this runs on the source before Earmark
+  # ever sees it, so the existing renderer's escaping and code-span styling
+  # apply unchanged; a real path renders exactly as before, plus a click.
+  defp linkify(markdown, scope, library, base_url) do
+    Regex.replace(~r/`([a-zA-Z0-9_.\/-]+\.md)`/, markdown, fn full, path ->
+      case Knowledge.browse(scope, library, Path.split(path)) do
+        {:ok, {:file, _content}} -> "[`#{path}`](#{base_url}/#{path})"
+        _ -> full
+      end
+    end)
   end
 
   defp dir_title(config, []), do: config.title

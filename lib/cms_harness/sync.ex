@@ -189,6 +189,172 @@ defmodule CmsHarness.Sync do
     report_preview_health(env, root)
   end
 
+  @doc """
+  Re-measure what the machine this checkout runs on is carrying, independent
+  of a scan and on its own clock, for the same reason `measure_checkout/1` is:
+  a saturated box gets more or less saturated while nobody touches a file.
+
+  Story 1057, criterion 3324. A harness already reports facts it observes
+  about its checkout — its preview, its tools, its head commit — and never
+  what it runs on, so a saturated machine read as several individually slow
+  agents, and the obvious remedy (restart them) is the one thing that makes a
+  saturated box worse.
+
+  Not through `Environments` / `CodeMySpec.Environments.cmd`: that abstraction
+  exists to reach a *checkout* — local, docker, remote — and the box a harness
+  runs on is always this one, regardless of which environment a project's code
+  happens to run in. Plain `System.cmd` against whatever this platform's own
+  tools are, same as `CmsHarness.WorkingCopies.Create`'s `git worktree add`.
+
+  `:os_mon` (`:cpu_sup.avg1/0`, `:memsup.get_system_memory_data/0`) is the
+  obvious way to read load and memory and is not available here —
+  `extra_applications` never starts it, and adding an OTP application would
+  need a deliberate restart of every running dev server, not a quiet mix.exs
+  edit that a live session would never pick up.
+
+  Silent on whatever a field this platform cannot answer, the same as
+  `report_git_state/2` is on a checkout that is not a repository: a box this
+  has not been taught to read is the ordinary case for a platform nobody has
+  run it on yet, not a reason to crash the sync loop that carries every other
+  fact this checkout reports.
+  """
+  @spec measure_machine_load(String.t()) :: :ok
+  def measure_machine_load(root) do
+    case machine_load() do
+      load when map_size(load) > 0 -> ChannelClient.deliver_machine_load(root, load)
+      _ -> :ok
+    end
+  end
+
+  defp machine_load do
+    platform_load =
+      case :os.type() do
+        {:unix, :darwin} -> darwin_load()
+        {:unix, _} -> linux_load()
+        _ -> %{}
+      end
+
+    Map.merge(platform_load, cpu_count())
+  end
+
+  # `:logical_processors_available` over `:logical_processors`: the latter
+  # counts what the hardware has, the former what the BEAM was actually given
+  # (a cgroup/taskset limit on a shared box), which is the number
+  # `Machinery.saturated?/2` compares `load_average` against.
+  defp cpu_count do
+    case :erlang.system_info(:logical_processors_available) do
+      n when is_integer(n) and n > 0 -> %{"cpu_count" => n}
+      _ -> %{}
+    end
+  end
+
+  defp darwin_load do
+    Map.merge(darwin_load_average(), darwin_memory_free_mb())
+  end
+
+  defp darwin_load_average do
+    case System.cmd("sysctl", ["-n", "vm.loadavg"], stderr_to_stdout: true) do
+      {out, 0} -> parse_darwin_loadavg(out)
+      _ -> %{}
+    end
+  end
+
+  # "{ 1.23 2.45 2.10 }\n" — one-minute, five-minute, fifteen-minute. The
+  # first is the one `over_committed?/2` wants.
+  #
+  # `Float.parse/1` rather than `String.to_float/1`, matching the Linux twin:
+  # the pattern above captures digits and dots, so a reading with no decimal
+  # point yields "31", and `String.to_float("31")` raises. This runs inside a
+  # detached task, so that would fail with nothing to report it and the machine
+  # would go back to "has not reported what it is carrying" leaving no trace of
+  # why. macOS always prints two decimals, so this is about keeping the two
+  # parsers honest rather than a failure anybody has seen.
+  defp parse_darwin_loadavg(out) do
+    with [_, average] <- Regex.run(~r/\{\s*([\d.]+)/, out),
+         {load, _rest} <- Float.parse(average) do
+      %{"load_average" => load}
+    else
+      _ -> %{}
+    end
+  end
+
+  defp darwin_memory_free_mb do
+    case System.cmd("vm_stat", [], stderr_to_stdout: true) do
+      {out, 0} -> parse_darwin_vm_stat(out)
+      _ -> %{}
+    end
+  end
+
+  # Free plus speculative pages, not raw free pages. macOS keeps a large file
+  # cache in inactive pages by design, and a script that stopped there would
+  # read a machine that has been up for an hour as perpetually low on memory.
+  # Free pages are idle; speculative pages are read-ahead nothing has touched
+  # yet — both give themselves back with no write-back, which is what "free"
+  # needs to mean for `short_of_memory?/1`'s threshold to be a real signal
+  # rather than noise off every macOS box that has been running a while.
+  defp parse_darwin_vm_stat(out) do
+    with [_, page_size] <- Regex.run(~r/page size of (\d+) bytes/, out),
+         [_, free] <- Regex.run(~r/Pages free:\s*(\d+)/, out),
+         [_, speculative] <- Regex.run(~r/Pages speculative:\s*(\d+)/, out) do
+      bytes =
+        (String.to_integer(free) + String.to_integer(speculative)) * String.to_integer(page_size)
+
+      %{"memory_free_mb" => div(bytes, 1_048_576)}
+    else
+      _ -> %{}
+    end
+  end
+
+  # `/proc` directly rather than shelling out to `uptime`/`free`: both files
+  # are always present on a real Linux kernel, `File.read/1` already answers
+  # `{:error, _}` instead of raising on whatever is not, and it needs no
+  # cassette to test. The dev box is macOS — this exists so a harness running
+  # on a Linux box reports the same facts rather than reporting nothing.
+  defp linux_load do
+    Map.merge(linux_load_average(), linux_memory_free_mb())
+  end
+
+  defp linux_load_average do
+    case File.read("/proc/loadavg") do
+      {:ok, contents} -> parse_linux_loadavg(contents)
+      {:error, _} -> %{}
+    end
+  end
+
+  # "0.08 0.03 0.01 1/512 12345\n" — the first figure is the one-minute
+  # average, same as `parse_darwin_loadavg/1`'s first field.
+  defp parse_linux_loadavg(contents) do
+    case String.split(contents, " ", trim: true) do
+      [one | _] ->
+        case Float.parse(one) do
+          {average, _} -> %{"load_average" => average}
+          :error -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp linux_memory_free_mb do
+    case File.read("/proc/meminfo") do
+      {:ok, contents} -> parse_linux_meminfo(contents)
+      {:error, _} -> %{}
+    end
+  end
+
+  # `MemAvailable` over `MemFree`, for the same reason the darwin side adds
+  # speculative pages back onto free ones: Linux also keeps a large reclaimable
+  # page cache, and `MemAvailable` is the kernel's own estimate of what a new
+  # process could get without swapping — `MemFree` alone reads a healthy box as
+  # perpetually starved.
+  defp parse_linux_meminfo(contents) do
+    case Regex.run(~r/^MemAvailable:\s*(\d+) kB/m, contents) do
+      [_, kb] -> %{"memory_free_mb" => div(String.to_integer(kb), 1024)}
+      _ -> %{}
+    end
+  end
+
   defp report_preview_health(env, root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->
@@ -271,13 +437,25 @@ defmodule CmsHarness.Sync do
   # same as not having the check. A build is made of what is committed and what
   # is modified, not of scratch files beside them.
   #
+  # `--ignore-submodules=all` for the same reason `just refresh`'s own dirty
+  # check already carries it: `.code_my_spec` is a submodule, and a QA agent
+  # writes into it continuously for the one-to-two hours it works — a brief
+  # drafted, a screenshot captured, `prompt.md` regenerated on every task. None
+  # of that touches this superproject's own tracked files, but plain
+  # `git status` reports a dirty submodule as a modified path here regardless,
+  # which is what made `tree_dirty` true (and `code_on_running_copy` refuse)
+  # for a copy's entire QA session (c97bb142). The superproject's own merge
+  # safety was never in question — a submodule's internal working tree is not
+  # part of what `git merge` here would touch.
+  #
   # Silent when git cannot answer — a checkout that is not a repository is an
   # ordinary thing for this to meet, and reporting nothing leaves the column
   # nil, which the gate reads as "not judged" rather than as "in sync".
   defp report_git_state(env, root) do
     with {ahead, 0} <- git(env, ["rev-list", "--count", "main..HEAD"]),
          {behind, 0} <- git(env, ["rev-list", "--count", "HEAD..main"]),
-         {status, 0} <- git(env, ["status", "--porcelain", "--untracked-files=no"]) do
+         {status, 0} <-
+           git(env, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"]) do
       ChannelClient.deliver_git_state(root, %{
         "ahead" => to_count(ahead),
         "behind" => to_count(behind),

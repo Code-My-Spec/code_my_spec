@@ -405,7 +405,7 @@ defmodule CodeMySpec.Notifications do
     # Before the message, so the agent cannot be woken between the two.
     if tap_out_approved?(request), do: CodeMySpec.Agents.leave_loop(agent_id)
 
-    _ = CodeMySpec.Agents.deliver_answer(agent_id, decision_message(request))
+    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request))
     :ok
   end
 
@@ -566,7 +566,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_to_agent(%{agent_id: nil}), do: :ok
 
   defp deliver_to_agent(%{agent_id: agent_id} = request) do
-    _ = CodeMySpec.Agents.deliver_answer(agent_id, answer_message(request))
+    _ = CodeMySpec.Agents.send_to_agent(agent_id, answer_message(request))
     :ok
   end
 

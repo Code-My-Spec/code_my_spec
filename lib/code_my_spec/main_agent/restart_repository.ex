@@ -122,7 +122,10 @@ defmodule CodeMySpec.MainAgent.RestartRepository do
       join: c in Conversation,
       on: c.id == m.conversation_id,
       where: c.agent_id == type(^agent_id, :binary_id),
-      where: m.role != :orchestrator,
+      # What the *agent* said. A message sent to it is not it speaking, and
+      # counting one would make an agent that has gone quiet look alive every
+      # time the orchestrator wrote to it.
+      where: m.role == :assistant,
       select: max(m.inserted_at)
     )
     |> Repo.one()

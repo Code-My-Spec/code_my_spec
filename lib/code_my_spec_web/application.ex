@@ -54,12 +54,47 @@ defmodule CodeMySpecWeb.Application do
         # And re-establish them for whatever was already being worked. Watchers
         # are in memory, so a restart takes them all, and a deploy is exactly
         # when agents are mid-run — an agent that goes idle after one would have
-        # nothing watching for the work that wakes it. `:temporary` because
-        # failing to seed is not a reason to refuse to boot: the next stop
-        # decision on a project starts its watcher anyway.
+        # nothing watching for the work that wakes it.
+        #
+        # `:temporary` because failing to seed is not a reason to refuse to
+        # boot. This used to add "the next stop decision on a project starts its
+        # watcher anyway", which is not true — the only callers of
+        # `ensure_watching/1` are this task and the two continuous toggles in
+        # `agents.ex`, and no stop path is among them (07f42ebf, where the same
+        # false self-healing claim in `DevState`'s diagnostic cost a QA cycle).
+        #
+        # So the consequence of a failed seed is worse than that sentence
+        # implied: nothing watches until somebody toggles a loop or the server
+        # restarts again. Still not a reason to refuse to boot — a server that
+        # will not start helps nobody — but it is a reason to read a failure
+        # here as something to act on rather than as self-correcting.
         Supervisor.child_spec(
           {Task, &GraphWatcher.watch_active_projects/0},
           id: :watch_active_projects,
+          restart: :temporary
+        ),
+        # One cadence per project with agents running in it, waking the main
+        # agent on an interval with the digest in hand.
+        #
+        # Same shape as the watcher above, and missing entirely until QA went
+        # looking: `MainAgent.Cadence` was written, supervised by nobody, and
+        # called `start_link/1` from nowhere, so no check-in ever fired — the
+        # story's whole promise, that a problem surfaces even when the agent in
+        # trouble cannot report it, silently did not happen.
+        #
+        # Nothing said so. `running?/1` reads the stood-down set, so it answered
+        # true for every project that had never stood down, including every one
+        # with no timer at all; and the spex start the process themselves, so
+        # they proved the loop and not the wiring.
+        {Registry, keys: :unique, name: CodeMySpec.MainAgent.CadenceRegistry},
+        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.MainAgent.CadenceSupervisor},
+        # And re-establish them after a restart, for the reason the watcher's
+        # seeding gives: timers are in memory and a deploy lands mid-run.
+        # `:temporary` on the same grounds — failing to seed is not a reason to
+        # refuse to boot.
+        Supervisor.child_spec(
+          {Task, &CodeMySpec.MainAgent.wake_active_projects/0},
+          id: :wake_active_projects,
           restart: :temporary
         ),
         # Which projects a light harness is holding, and therefore where their
@@ -76,6 +111,11 @@ defmodule CodeMySpecWeb.Application do
         # providers from here, not from the local harness, so the lock that
         # keeps two runs from racing the same project belongs here too.
         CodeMySpec.Provisioning.RunLock,
+        # Which projects have a promotion in flight. A promotion merges and
+        # restarts the one running checkout a project has, and two of them at
+        # once decide the surviving build by timing (db97272b) — the lock
+        # that closes that belongs here for the same reason RunLock does.
+        CodeMySpec.Promotion.Lock,
         CodeMySpecWeb.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to

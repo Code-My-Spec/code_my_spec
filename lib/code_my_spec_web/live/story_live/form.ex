@@ -164,8 +164,8 @@ defmodule CodeMySpecWeb.StoryLive.Form do
   defp return_to("show"), do: "show"
   defp return_to(_), do: "index"
 
-  defp apply_action(socket, :edit, %{"id" => id}, scope) do
-    story = Stories.get_story!(scope, id)
+  defp apply_action(socket, :edit, %{"number" => number}, scope) do
+    story = Stories.get_story_by_number!(scope, number)
 
     socket
     |> assign(:page_title, "Edit Story")
@@ -257,6 +257,6 @@ defmodule CodeMySpecWeb.StoryLive.Form do
     do: path(ctx, ~p"/app/projects/#{slug}/stories")
 
   defp return_path(ctx, slug, "show", story),
-    do: path(ctx, ~p"/app/projects/#{slug}/stories/#{story.id}")
+    do: path(ctx, ~p"/app/projects/#{slug}/stories/#{story.number}")
 
 end

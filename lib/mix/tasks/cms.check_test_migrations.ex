@@ -198,10 +198,16 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   defp blank?(""), do: true
   defp blank?(_), do: false
 
+  # `CodeMySpec.Repo.__adapter__()`, not `config[:adapter]` — the adapter is
+  # how `use Ecto.Repo` declared the repo, not a key `Repo.config/0` carries;
+  # nothing in `config/test.exs` sets one, so this read `nil` and crashed the
+  # one time this path was live: `nil.storage_up/1` is undefined. Caught
+  # exercising d86b09cd's sibling fix live against a genuinely-missing
+  # partition, which is exactly the case this branch exists for.
   defp create(config) do
     IO.puts(:stderr, "[check_test_migrations] creating #{config[:database]}")
 
-    case config[:adapter].storage_up(config) do
+    case CodeMySpec.Repo.__adapter__().storage_up(config) do
       :ok -> :ok
       {:error, :already_up} -> :ok
       {:error, reason} -> {:error, "could not create #{config[:database]}: #{inspect(reason)}"}

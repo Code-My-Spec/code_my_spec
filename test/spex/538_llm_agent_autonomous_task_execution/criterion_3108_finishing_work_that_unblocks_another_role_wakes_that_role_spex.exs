@@ -142,11 +142,11 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
   end
 
   # How many things the orchestrator has said to this agent.
-  defp heard(scope, agent_id), do: length(Fixtures.orchestrator_actions(scope, agent_id))
+  defp heard(scope, agent_id), do: length(Fixtures.messages_to_agent(scope, agent_id))
 
   defp latest(scope, agent_id) do
     scope
-    |> Fixtures.orchestrator_actions(agent_id)
+    |> Fixtures.messages_to_agent(agent_id)
     |> List.last()
     |> inspect()
   end

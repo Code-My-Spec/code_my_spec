@@ -433,6 +433,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  @doc "What the machine this checkout runs on is carrying, measured on its own clock."
+  @spec deliver_machine_load(String.t(), map()) :: :ok
+  def deliver_machine_load(root, load) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:machine_load, load})
+      [] -> :ok
+    end
+  end
+
   @doc "Called from the analysis queue with a finished (or failed) run."
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do
@@ -631,6 +640,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
     schedule_read_model_refresh()
     schedule_preview_check()
+    schedule_machine_load_check()
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -728,6 +738,18 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_preview_check,
     do: Process.send_after(self(), :measure_preview, @preview_check_ms)
+
+  # What the box is carrying gets its own clock too, and for the same reason
+  # preview health does: it is a fact about the machine, not the checkout, and
+  # the machine keeps getting more or less saturated while nobody touches a
+  # file. Story 1057, criterion 3324.
+  @machine_load_check_ms 60_000
+
+  @doc "Public so a test can assert against the real interval rather than a copy."
+  def machine_load_check_ms, do: @machine_load_check_ms
+
+  defp schedule_machine_load_check,
+    do: Process.send_after(self(), :measure_machine_load, @machine_load_check_ms)
 
   # A join the server refused. The only one we know how to explain is a project
   # another harness holds; anything else is reported as it arrived.
@@ -1388,8 +1410,10 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
-  defp apply_promotion("promotion_restart", %{"root" => root}),
-    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
+  defp apply_promotion("promotion_restart", %{"root" => root} = payload) do
+    refresh_harness? = Map.get(payload, "refresh_harness", true)
+    with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1, refresh_harness?))
+  end
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}
@@ -1838,6 +1862,25 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
+  # In a task for the same reason :measure_preview is: gathering load average
+  # and free memory shells out, and the channel process is what carries hook
+  # decisions and analyzer replies while it waits.
+  def handle_info(:measure_machine_load, %{assigns: %{joined: true}} = socket) do
+    schedule_machine_load_check()
+    root = socket.assigns.project.root
+
+    Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
+      Sync.measure_machine_load(root)
+    end)
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:measure_machine_load, socket) do
+    schedule_machine_load_check()
+    {:noreply, socket}
+  end
+
   @impl Slipstream
   def handle_info(:reconnect, socket) do
     case Config.socket_url(socket.assigns.project.root) do
@@ -2268,6 +2311,25 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:git_state, _state}, socket), do: {:noreply, socket}
+
+  def handle_cast({:machine_load, load}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "machine_load",
+           load,
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send machine_load: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:machine_load, _load}, socket), do: {:noreply, socket}
 
   def handle_cast({:preview_status, status}, %{assigns: %{joined: true}} = socket) do
     case transport().push(

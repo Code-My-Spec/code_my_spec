@@ -53,6 +53,16 @@ defmodule CmsHarness.Supervisor do
       # and a dead process deregisters itself.
       {Registry, keys: :unique, name: CmsHarness.Registry},
 
+      # How many analyzer runs this machine will execute at once, across every
+      # working copy. `Project.AnalysisServer` serializes within a copy and
+      # nothing serialized across them, so six agents wanting to promote ran six
+      # full suites against one box — and under that load the analyzer invents
+      # failures rather than merely being slow (`3e9b7568`).
+      #
+      # Above the project supervisor, because it is the one thing here that is
+      # about the machine rather than about a project.
+      CmsHarness.AnalysisSlots,
+
       # Projects arrive at runtime — from the environment on a sprite, from a
       # hook's working directory on a laptop — so the tree cannot be static.
       # This is also the fix for a real defect: the server's watcher is a

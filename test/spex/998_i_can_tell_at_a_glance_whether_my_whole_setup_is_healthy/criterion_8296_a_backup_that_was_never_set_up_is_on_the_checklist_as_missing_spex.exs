@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
 
         {:ok, view, _html} = live(context.conn, "/app/resources")
 
-        {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view)))}
+        {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end
 
       then_ "backups appear on the checklist, marked missing", context do

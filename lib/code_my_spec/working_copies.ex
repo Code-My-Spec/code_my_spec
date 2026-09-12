@@ -1197,7 +1197,7 @@ defmodule CodeMySpec.WorkingCopies do
              working_copy_id: id
            ),
          {:ok, copy} <- report_root(copy, root) do
-      {:ok, copy, Agents.ensure_copy_agents(scope, copy)}
+      {:ok, copy, Agents.ensure_copy_agents(scope, copy, opts[:roles] || Agents.copy_roles())}
     end
   end
 

@@ -249,7 +249,7 @@ defmodule CodeMySpecWeb.QaLive do
       </td>
       <td class="font-medium">
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@attempt.story_id}")}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story_number(@attempt)}")}
           class="link link-hover"
         >
           {story_title(@attempt)}
@@ -283,6 +283,13 @@ defmodule CodeMySpecWeb.QaLive do
 
   defp story_title(%{story: %{title: title}}) when is_binary(title), do: title
   defp story_title(%{story_id: id}), do: "story ##{id}"
+
+  # The route is keyed by number (1ab62ffd); `story_id` is the id and falling
+  # back to it here would send the link to a story number that likely names a
+  # different story, or none. The story association not being loaded is the
+  # same "nothing to link to usefully" case `story_title/1` already accepts.
+  defp story_number(%{story: %{number: number}}) when not is_nil(number), do: number
+  defp story_number(%{story_id: id}), do: id
 
   defp format_dt(nil), do: ""
 

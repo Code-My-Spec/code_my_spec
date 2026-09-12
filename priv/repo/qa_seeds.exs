@@ -25,9 +25,27 @@ alias CodeMySpec.Users.User
 alias CodeMySpec.Users.Scope
 
 email = "qa@codemyspec.local"
-# Project lives under the existing Code My Spec team account so it shows up
-# in the local project list when authenticated as the dev user.
-target_account_slug = "code-my-spec"
+# The QA user's own account, and the dev user is added to it as a member so the
+# fixture project still shows up in the local project list.
+#
+# It used to live under the real `code-my-spec` account, for that visibility.
+# That put it under an account owned by johns10@gmail.com, and
+# `Accounts.get_account_owner/1` routes a question to its project's account
+# owner — correctly. Composed, every `escalate_question` and `ask_user_question`
+# from the sandbox landed in the real owner's real inbox, and QA could not
+# verify a notification criterion without putting test traffic there. It
+# reported `partial` and cleaned up after itself rather than leave two live
+# entries (cd6f9eda). John's call, 2026-09-12: give it its own account.
+#
+# This also serves the worry the old comment had better than the old comment
+# did. "We don't want the QA fixture user to administer the real account" is
+# satisfied completely by an account that *is* the QA user's — it administers
+# only its own — rather than by joining the real one at a lower rank.
+target_account_slug = "qa-account"
+target_account_name = "QA Account"
+target_account_id = "22222222-2222-4222-8222-222222222222"
+# Who still needs to see the fixture project in their own list.
+visitor_email = "johns10@gmail.com"
 project_id = "11111111-1111-4111-8111-111111111111"
 project_name = "QA Fixture Project"
 project_module = "QaFixtureProject"
@@ -166,30 +184,62 @@ case Repo.one(from a in "oauth_applications", where: a.uid == ^cli_oauth_uid, se
     IO.puts("  oauth_application: exists codemyspec-cli")
 end
 
-# 2. Resolve target account. We use the existing Code My Spec team account so
-#    the QA Fixture Project shows up in the dev user's local project list.
+# 2. The QA account, made here rather than borrowed. See the note at the top:
+#    an account it owns is what keeps sandbox escalations out of a real inbox.
 account =
   case Repo.one(from a in Accounts.Account, where: a.slug == ^target_account_slug) do
     nil ->
-      raise "Account `#{target_account_slug}` not found — create it first or pick another slug"
+      account =
+        Repo.insert!(%Accounts.Account{
+          id: target_account_id,
+          name: target_account_name,
+          slug: target_account_slug
+        })
+
+      IO.puts("  account: created #{target_account_slug} (#{account.id})")
+      account
 
     account ->
       IO.puts("  account: using existing #{target_account_slug} (#{account.id})")
       account
   end
 
-# 3. Member — qa user joins the Code My Spec team account as :member (not
-#    owner; we don't want the QA fixture user to administer the real account).
-case Repo.one(from m in Member, where: m.user_id == ^user.id and m.account_id == ^account.id) do
-  nil ->
-    %Member{}
-    |> Member.changeset(%{user_id: user.id, account_id: account.id, role: :member})
-    |> Repo.insert!()
+# 3. Membership. The QA user OWNS this one — that is the whole point, since
+#    `Accounts.get_account_owner/1` is what decides whose inbox a question
+#    reaches.
+#
+#    `get_account_owner/1` takes the OLDEST owner when there are several, so a
+#    second owner added later would not displace this one — but one owner is
+#    the state to keep, and the dev user below is deliberately a member.
+upsert_member = fn user_id, role, label ->
+  case Repo.one(from m in Member, where: m.user_id == ^user_id and m.account_id == ^account.id) do
+    nil ->
+      %Member{}
+      |> Member.changeset(%{user_id: user_id, account_id: account.id, role: role})
+      |> Repo.insert!()
 
-    IO.puts("  member: added #{email} as member of #{target_account_slug}")
+      IO.puts("  member: added #{label} as #{role} of #{target_account_slug}")
 
-  _existing ->
-    IO.puts("  member: exists")
+    %Member{role: ^role} ->
+      IO.puts("  member: #{label} already #{role}")
+
+    existing ->
+      existing
+      |> Member.changeset(%{role: role})
+      |> Repo.update!()
+
+      IO.puts("  member: corrected #{label} from #{existing.role} to #{role}")
+  end
+end
+
+upsert_member.(user.id, :owner, email)
+
+# The dev user as a member, so the fixture project still appears in their
+# project list — the visibility the old arrangement was reaching for, without
+# making them the owner the router picks.
+case Repo.one(from u in CodeMySpec.Users.User, where: u.email == ^visitor_email) do
+  nil -> IO.puts("  member: no #{visitor_email} on this box, skipping the visitor")
+  visitor -> upsert_member.(visitor.id, :member, visitor_email)
 end
 
 # 4. Project linked to this checkout via local_path. Bootstrap changeset

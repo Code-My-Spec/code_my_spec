@@ -147,6 +147,58 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
       refute content =~ "Filed Story"
     end
 
+    # The other half of `without_epic`. It shipped alone, so "which stories are
+    # in no epic" was answerable and "which stories are in this one" was not —
+    # `list_epics` gives a count, not the members, and the only route to an
+    # epic's contents was `get_story` per story. The main agent supplied the
+    # answer for the product role three times, smoothly, which is why nobody
+    # filed it for so long (cf035b50).
+    test "epic filters to the stories that epic contains, by slug" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListStories.execute(%{epic: epic.slug}, frame)
+
+      content = hd(Response.to_protocol(response)["content"])["text"]
+
+      assert content =~ "Showing 1-1 of 1 stories"
+      assert content =~ "Filed Story"
+      refute content =~ "Unfiled Story"
+    end
+
+    # `list_epics` prints both spellings, so a caller should be able to paste
+    # back either. The id path is separate code: a slug is not a UUID, and
+    # comparing one against `epic_id` is a cast error rather than an empty list.
+    test "epic accepts the id as well as the slug" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListStories.execute(%{epic: epic.id}, frame)
+
+      content = hd(Response.to_protocol(response)["content"])["text"]
+
+      assert content =~ "Filed Story"
+      refute content =~ "Unfiled Story"
+    end
+
+    # Anubis drops a parameter the schema does not declare, silently — the
+    # defect behind `update_story`'s epic_id earlier today. A filter that is
+    # dropped returns every story, which reads as "this epic contains
+    # everything" rather than as an error.
+    test "the epic filter is declared in the schema, so it survives the transport" do
+      assert %{"epic" => _} = ListStories.input_schema()["properties"]
+    end
+
     test "returns empty when tag has no stories" do
       scope = full_scope_fixture()
       _story = story_fixture(scope, %{title: "Some Story"})
@@ -161,5 +213,4 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
       assert content =~ "No stories found"
     end
   end
-
 end

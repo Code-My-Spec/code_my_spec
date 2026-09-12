@@ -124,7 +124,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
             Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
           end
 
-        told = Fixtures.orchestrator_actions(context.scope, context.agent_id)
+        told = Fixtures.messages_to_agent(context.scope, context.agent_id)
 
         assert told != [], """
         The agent was told nothing at all, so the refutations below prove

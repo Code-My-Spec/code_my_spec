@@ -34,6 +34,7 @@ defmodule CodeMySpec.MainAgent do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Devices,
       CodeMySpec.Issues,
@@ -50,7 +51,6 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolSets
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Cadence
@@ -304,7 +304,11 @@ defmodule CodeMySpec.MainAgent do
   defp attempt(scope, agent, reason, _tried) do
     with {:ok, restarted} <- Agents.restart_agent(scope, agent.id),
          {:ok, _restart} <- RestartRepository.record(agent, reason) do
-      Conversations.record_orchestrator_action(agent, "Restarted: #{reason}", kind: "restart")
+      # Told to the agent, not written past it. A restarted agent has lost the
+      # turn it was in the middle of; why that happened is the one thing it
+      # cannot work out for itself, and an orchestrator row saying so was
+      # dropped from its context before it ever got there.
+      Agents.send_to_agent(restarted.id, "Restarted: #{reason}")
 
       {:ok, restarted}
     end
@@ -400,9 +404,32 @@ defmodule CodeMySpec.MainAgent do
   @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
   defdelegate set_cadence_interval(scope, seconds), to: Cadence, as: :set_interval
 
-  @doc "Whether this project's cadence is still waking its main agent."
+  @doc """
+  Whether this project's main agent is still meant to be woken.
+
+  Intent. Answers "has it stood down", and says nothing about whether a timer
+  exists — see `cadence_alive?/1` for that.
+  """
   @spec cadence_running?(Scope.t()) :: boolean()
   defdelegate cadence_running?(scope), to: Cadence, as: :running?
+
+  @doc "Whether a cadence timer actually exists for this project right now."
+  @spec cadence_alive?(Scope.t()) :: boolean()
+  defdelegate cadence_alive?(scope), to: Cadence, as: :alive?
+
+  @doc "Start this project's cadence if it is not already running."
+  @spec ensure_cadence(Scope.t()) :: {:ok, pid()} | {:error, term()}
+  defdelegate ensure_cadence(scope), to: Cadence, as: :ensure_running
+
+  @doc """
+  Re-establish cadences for every project with agents running in it.
+
+  The application's boot seeding calls this. Exposed on the context rather than
+  reached into, because `Cadence` is inside this boundary and the web app is
+  outside it — the compiler said so, which is the boundary doing its job.
+  """
+  @spec wake_active_projects() :: :ok
+  defdelegate wake_active_projects, to: Cadence
 
   defp deliver_check_in(scope, %Digest{failed: reason} = digest) when is_binary(reason) do
     # Not delivered as an empty all-quiet, and raised. Criterion 3333: those are
@@ -432,12 +459,20 @@ defmodule CodeMySpec.MainAgent do
     tell_main_agent(scope, CheckInReport.render(digest))
   end
 
+  # The report reaches the main agent as a message, the way everything else
+  # that has something to say to an agent does. It used to be written into the
+  # conversation as an orchestrator row, which `Chat.Runner.to_provider_message/1`
+  # drops on the floor — so the check-in the main agent was meant to act on was
+  # visible to the person watching and to nobody else.
   defp tell_main_agent(scope, text) do
-    scope
-    |> main_agent_other_than(nil)
-    |> Conversations.record_orchestrator_action(text, kind: "check-in", tool: "list_agent_work")
+    case main_agent_other_than(scope, nil) do
+      nil ->
+        :ok
 
-    :ok
+      agent ->
+        Agents.send_to_agent(agent.id, text)
+        :ok
+    end
   end
 
   @doc """
@@ -744,18 +779,35 @@ defmodule CodeMySpec.MainAgent do
   defdelegate stand_down(scope), to: Cadence
 
   @doc """
-  Take a task off an agent, when it is work that agent cannot do.
+  Refuse to take a task off an agent that can do it.
 
-  Refused when it can. The main agent may do anything, so watching an agent work
-  slowly on something it could finish itself is a standing temptation — and each
-  individual takeover is defensible while the end state is one agent doing
-  everything with three idle, decided by nobody.
+  **Every call is refused today, and that is the specified behaviour.** The name
+  reads like a capability and it is a boundary: criterion 3328 asserts that full
+  scope does not mean the main agent does everybody's work, and nothing anywhere
+  specifies when a takeover should instead succeed.
 
-  It also removes what the roles are for. A coding agent's work is reviewed by
-  QA because it is a coding agent's; work the main agent did itself has no
-  counterpart to check it.
+  Why refusing is the whole of it. The main agent may do anything, so watching an
+  agent work slowly on something it could finish itself is a standing temptation
+  — and each individual takeover is defensible while the end state is one agent
+  doing everything with three idle, decided by nobody. It also removes what the
+  roles are for: a coding agent's work is reviewed by QA because it is a coding
+  agent's, and work the main agent did itself has no counterpart to check it.
+
+  Where the main agent legitimately acts past a role's reach, it acts directly —
+  criterion 3327, and `ready_stories_without_epic` is the worked example. That
+  is a different act from confiscating an agent's task, and it already works.
+
+  `task_id` is accepted and unused. It is kept because a caller naturally has one
+  and dropping it from the signature would be a breaking change for nothing —
+  but it is not consulted, so the refusal is unconditional rather than a
+  judgement about the task's state. QA found that worth recording (3b7023ae):
+  the refusal message reads like an assessment and is not one.
+
+  If a real takeover is ever wanted, it needs a criterion saying when — and then
+  `task_id` becomes load-bearing.
   """
-  @spec take_over_work(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  @spec take_over_work(Scope.t(), String.t(), String.t()) ::
+          {:error, {:their_work, String.t()} | :not_mine}
   def take_over_work(%Scope{} = scope, agent_id, _task_id) do
     case mine(scope, agent_id) do
       {:ok, %{role: role}} -> {:error, {:their_work, role}}
@@ -828,14 +880,14 @@ defmodule CodeMySpec.MainAgent do
   @spec question_raised(Scope.t(), map()) :: :ok
   def question_raised(%Scope{} = scope, %{agent_id: agent_id} = request)
       when is_binary(agent_id) do
-    scope
-    |> main_agent_other_than(agent_id)
-    |> Conversations.record_orchestrator_action(raised(request),
-      kind: "question",
-      tool: "list_open_questions"
-    )
+    case main_agent_other_than(scope, agent_id) do
+      nil ->
+        :ok
 
-    :ok
+      agent ->
+        Agents.send_to_agent(agent.id, raised(request))
+        :ok
+    end
   end
 
   def question_raised(%Scope{}, _request), do: :ok
@@ -868,11 +920,10 @@ defmodule CodeMySpec.MainAgent do
   # asker's own side; this is the push, that is the pull, and an agent that
   # stopped after asking has only the push.
   defp tell_the_asker_it_went_up({:ok, escalated}, %OpenQuestion{agent_id: agent_id}) do
-    Conversations.record_orchestrator_action(
+    Agents.send_to_agent(
       agent_id,
       "Your question went up to the user: #{escalated.escalation_reason}. " <>
-        "It is still open and now waiting on them.",
-      kind: "escalation"
+        "It is still open and now waiting on them."
     )
 
     {:ok, escalated}

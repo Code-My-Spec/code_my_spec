@@ -13,11 +13,13 @@ defmodule CodeMySpec.Promotion.Steps do
   here, `Runner.Harness` sends the same three operations down the channel to be
   answered by this module on the far side.
 
-  Three named operations rather than one `promote`, because the server has to
-  look at the database *between* the merge and the restart — `gate_target/3`
-  asks whether the merge carried problems into the copy QA tests, and a merge
-  that broke the target must not be served. One atomic op would have to either
-  skip that check or move it after the restart, and after is too late.
+  Three named operations rather than one `promote`, because `precheck` reads
+  the *promoting* copy's root while `merge` and `restart` act on the
+  *running* one — two different disks a single op cannot address — and
+  because `restart` is dispatched separately from the other two on purpose
+  (54aa534c, phase two): `promote/1` answers as soon as `merge` lands, and
+  the restart it starts afterward is never awaited, so it cannot be a step
+  inside the same call that reports the merge.
 
   Three named operations rather than a general `cmd`, because that route was
   refused deliberately: `analysis/run` already owns command execution on the
@@ -51,10 +53,24 @@ defmodule CodeMySpec.Promotion.Steps do
   that same checkout — measured on Broken Oaths, where an untracked
   `code_my_spec_test_repos` directory belonging to nobody on the team would have
   blocked every promotion from that copy forever.
+
+  `--ignore-submodules=all`, for the same reason and matching the same gate:
+  `.code_my_spec` is a submodule a QA agent writes into continuously for the
+  one-to-two hours it works — a brief drafted, a screenshot captured,
+  `prompt.md` regenerated on every task — none of which touches anything this
+  checkout's own merge would carry. Without the flag here too, the two checks
+  would disagree again the moment one of them dropped it: `code_on_running_copy`
+  waving a copy through while `promote` refused the same submodule dirt it had
+  just ignored (c97bb142).
   """
   @spec precheck(Environments.Environment.t(), String.t()) :: result()
   def precheck(env, root) do
-    case git(env, root, ["status", "--porcelain", "--untracked-files=no"]) do
+    case git(env, root, [
+           "status",
+           "--porcelain",
+           "--untracked-files=no",
+           "--ignore-submodules=all"
+         ]) do
       {"", 0} -> branch(env, root)
       {dirty, 0} -> uncommitted(dirty)
       {out, _} -> {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
@@ -104,58 +120,79 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Merge `branch` into the checkout at `root`.
 
-  A conflict is a question about intent, and the agent that wrote one side is
-  the only party holding the answer. So this does not guess, and does not
-  `--abort` either: the conflict stays in the running checkout where it can be
-  resolved. Aborting would be the tidier-looking failure and the worse one — the
-  agent is told "promotion failed", finds a clean tree, and has nothing to work
-  on.
+  Fast-forward only. A promotion no longer attempts a three-way merge at
+  all: `branch` must already contain everything `root`'s current HEAD has,
+  and `git merge --ff-only` is both the precondition check and the merge in
+  one command — it either advances the ref instantly with nothing that could
+  conflict, or refuses instantly having touched nothing, with no third
+  outcome (John: "we should guarantee with our preconditions that the merge
+  will be clean").
 
-  Leaving it there has a cost this did not pay, though: `git merge` will not run
-  at all while `MERGE_HEAD` exists, so the *next* promotion failed on the old
-  merge and described it as a new one. Concluding a resolved merge before
-  starting this one is what closes that, and it is a step rather than a
-  judgement — the resolution is already on disk, only the commit is missing. A
-  path that still carries markers is refused, and the refusal says a merge is in
-  progress rather than naming a file.
+  This replaced a three-way merge that aborted on conflict (`git merge
+  --abort`, `bed1d974`) rather than leaving one in place. That was already
+  right about *never leaving the shared checkout wedged* — a promotion lands
+  cleanly or does not touch the tree at all — but a real conflict was still
+  reachable, and reaching it meant a promotion had already spent the time to
+  find out. Requiring the ancestor relationship up front removes the
+  question rather than answering it faster: a branch missing commits from
+  main cannot conflict here any more than it can succeed here, because
+  neither is attempted.
+
+  `git merge` also refuses outright while `MERGE_HEAD` exists from an
+  earlier, unconcluded merge — the shape a three-way merge could leave and a
+  fast-forward cannot create going forward. Concluding a resolved one before
+  starting this one, below, stays as a defensive path for a checkout that
+  still carries one from before this change, or from a human merging by hand
+  outside a promotion.
+
+  A successful merge's result also carries `before`/`after` — the checkout's
+  HEAD on either side of it. `Promotion` needs that range to ask
+  `BootVersion.contract_changed?/2` whether the merge touched the code that
+  decides whether a harness and a server can talk to each other (376e3356);
+  reading it here, where the git access to `root` already is, is cheaper than
+  a fourth round trip to ask again.
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
+    before = head(env, root)
+
     env
     |> unmerged(root)
-    |> resume(env, root, branch)
+    |> resume(env, root, branch, before)
   end
 
   # A merge already in progress, finished before this one starts.
   #
   # `git merge` refuses outright while `MERGE_HEAD` exists — "you have not
-  # concluded your merge" — and that refusal used to fall into `conflict/4`,
-  # which reads `git status` and reports whatever is unmerged as though this
-  # merge had just produced it. So a half-merge left by one promotion made every
-  # later promotion report the same file, and the message named the file rather
-  # than the state. Eight hours went into resolving a conflict that was four
-  # hours old and already resolved.
+  # concluded your merge" — which is a state only a three-way merge could ever
+  # leave. `--ff-only` cannot: it either advances the ref or refuses having
+  # touched nothing, so nothing here is reachable from a promotion that ran
+  # under this version. Kept for a checkout still carrying one from before
+  # this change, or from a human merging by hand outside a promotion —
+  # measured cost of a stale one going unhandled: eight hours resolving a
+  # conflict that was four hours old and already resolved, because the old
+  # code read `git status` fresh and reported it as new.
   #
   # Concluding somebody's resolution is not the same as guessing at it. If no
   # unmerged path still carries conflict markers then the decision has been
   # made and only the commit is missing, which is a step and not a judgement. A
   # marker anywhere means the question is still open, and that is refused —
   # saying what the state actually is, which is the sentence that was missing.
-  defp resume({:ok, []}, env, root, branch), do: do_merge(env, root, branch)
+  defp resume({:ok, []}, env, root, branch, before), do: do_merge(env, root, branch, before)
 
-  defp resume({:ok, paths}, env, root, branch) do
+  defp resume({:ok, paths}, env, root, branch, before) do
     case Enum.filter(paths, &marked?(env, root, &1)) do
-      [] -> conclude(env, root, branch, paths)
+      [] -> conclude(env, root, branch, paths, before)
       unresolved -> still_open(root, unresolved)
     end
   end
 
-  defp resume({:error, _} = error, _env, _root, _branch), do: error
+  defp resume({:error, _} = error, _env, _root, _branch, _before), do: error
 
-  defp conclude(env, root, branch, paths) do
+  defp conclude(env, root, branch, paths, before) do
     with {_, 0} <- git(env, root, ["add", "--"] ++ paths),
          {_, 0} <- git(env, root, ["commit", "--no-edit"]) do
-      do_merge(env, root, branch)
+      do_merge(env, root, branch, before)
     else
       {out, _} ->
         {:error,
@@ -180,10 +217,46 @@ defmodule CodeMySpec.Promotion.Steps do
      }}
   end
 
-  defp do_merge(env, root, branch) do
-    case git(env, root, ["merge", "--no-edit", branch]) do
-      {out, 0} -> {:ok, %{output: String.trim(out)}}
-      {out, _} -> conflict(env, root, branch, out)
+  defp do_merge(env, root, branch, before) do
+    case git(env, root, ["merge", "--ff-only", branch]) do
+      {out, 0} -> {:ok, %{output: String.trim(out), before: before, after: head(env, root)}}
+      {out, _} -> not_fast_forward(root, branch, out)
+    end
+  end
+
+  # `--ff-only` refuses before touching the tree — no three-way merge is
+  # attempted, so there is nothing to abort and no conflicted file to name.
+  # The one thing it can mean is the one thing it says: `branch` does not
+  # already contain everything `root`'s current HEAD has.
+  #
+  # Said as routine, not as fault. This is the most-read string in the
+  # system — someone else's promotion landing on main while this one was
+  # being worked is ordinary on a shared box, not a mistake, and it will fire
+  # often (phx-new-generator-0f: three times in two hours on this machine).
+  # The wording says so directly rather than reading like an error the agent
+  # caused.
+  defp not_fast_forward(root, branch, out) do
+    {:error,
+     %{
+       reason:
+         "#{branch} is behind main, most likely because another promotion " <>
+           "landed while this one was in progress — normal on a shared " <>
+           "checkout, not a mistake. Nothing was merged — #{root} is " <>
+           "unchanged. In the copy you are promoting from: " <>
+           "`git merge --ff-only main` (or a real merge if that refuses), " <>
+           "then promote again.",
+       output: String.trim(out)
+     }}
+  end
+
+  # `nil` rather than raising when HEAD cannot be read — `before` is read
+  # before anything is known to be safe, and a checkout with no commits yet
+  # (or a transient git failure) must not take the merge down over a value
+  # that only ever feeds an optimization, never a correctness check.
+  defp head(env, root) do
+    case git(env, root, ["rev-parse", "HEAD"]) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
     end
   end
 
@@ -206,43 +279,37 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  defp conflict(env, root, branch, out) do
-    {status, _} = git(env, root, ["status", "--porcelain"])
-
-    conflicted =
-      status
-      |> String.split("\n", trim: true)
-      |> Enum.filter(&String.match?(&1, ~r/^(UU|AA|DD|AU|UA|DU|UD)/))
-      |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
-
-    {:error,
-     %{
-       reason:
-         "merging #{branch} into the running copy conflicts" <>
-           conflict_files(conflicted) <>
-           ". The conflict is left in #{root} for you to resolve.",
-       conflicts: conflicted,
-       output: String.trim(out)
-     }}
-  end
-
-  defp conflict_files([]), do: ""
-  defp conflict_files(files), do: " in " <> Enum.join(files, ", ")
-
   @doc """
   Bring the application at `root` back up on whatever is now checked out.
 
   Through the project's own `just restart`, which is the seam. A promotion does
   not know how to start a Phoenix app, and should not learn.
+
+  `refresh_harness?` (default `true`) is whether `restart` should also rebuild
+  the harness at its tail. `Promotion` passes `false` only when it has already
+  established, from the merge that just landed, that the range could not have
+  touched the channel contract (376e3356) — skipping is a cost-saving
+  optimization for that one caller, not a new default.
+
+  Signaled through an environment variable, not a `just` CLI argument. This
+  function calls `root`'s *own* `just restart` — a promoted project's own
+  recipe, or the synthetic one criterion 3175's spex writes to prove the
+  restart always runs — and neither is guaranteed to declare a parameter for
+  this. An env var a recipe never reads is invisible to it; an extra
+  positional argument to a recipe that does not declare it is not silently
+  ignored — `just` reads the next token as the name of a *second* recipe to
+  also run and fails with "justfile does not contain recipe <value>"
+  (confirmed empirically before this shipped, against exactly the zero-
+  parameter shape criterion 3175's fixture uses).
   """
-  @spec restart(Environments.Environment.t(), String.t()) :: result()
-  def restart(env, root) do
+  @spec restart(Environments.Environment.t(), String.t(), boolean()) :: result()
+  def restart(env, root, refresh_harness? \\ true) do
     env
     |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(env, root)
+    |> run_restart(env, root, refresh_harness?)
   end
 
-  defp run_restart(false, _env, root) do
+  defp run_restart(false, _env, root, _refresh_harness?) do
     {:error,
      %{
        reason:
@@ -260,12 +327,17 @@ defmodule CodeMySpec.Promotion.Steps do
   # nothing merged onward — and then reported "`just restart` failed (1):" with
   # an empty body, telling the agent its promotion failed and not one word about
   # what broke.
-  defp run_restart(true, env, root) do
-    case normalize(Environments.cmd(env, "just", ["restart"], cd: root, stderr_to_stdout: true)) do
+  defp run_restart(true, env, root, refresh_harness?) do
+    opts = [cd: root, stderr_to_stdout: true, env: skip_harness_env(refresh_harness?)]
+
+    case normalize(Environments.cmd(env, "just", ["restart"], opts)) do
       {out, 0} -> serving(env, root, out)
       {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
     end
   end
+
+  defp skip_harness_env(true), do: []
+  defp skip_harness_env(false), do: [{"CMS_SKIP_HARNESS_REFRESH", "true"}]
 
   defp serving(env, root, out) do
     case git(env, root, ["rev-parse", "--short", "HEAD"]) do

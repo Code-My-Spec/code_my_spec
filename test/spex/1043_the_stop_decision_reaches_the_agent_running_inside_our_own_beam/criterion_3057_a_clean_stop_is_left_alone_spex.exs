@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3057Spex do
       end
 
       then_ "the agent is sent nothing", context do
-        told = Fixtures.orchestrator_actions(context.scope, context.agent_id)
+        told = Fixtures.messages_to_agent(context.scope, context.agent_id)
 
         assert told == [], """
         The agent was told something about a clean tree with no work open.

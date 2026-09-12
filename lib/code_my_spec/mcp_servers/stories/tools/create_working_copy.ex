@@ -37,6 +37,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   require Logger
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.WorkingCopies
 
@@ -48,6 +49,12 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
       description:
         "Where to put it. Defaults to a worktree beside the project's checkout; " <>
           "pass one only when it has to go somewhere specific."
+
+    field :roles, :string,
+      description:
+        "Who to staff it with, comma-separated: main, product, coding, qa. " <>
+          "Defaults to product,coding,qa — the three that build something. " <>
+          "Name your own when you need a particular shape, e.g. `main` alone."
   end
 
   @impl true
@@ -74,11 +81,55 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   # What stays here is the part that is this tool's: turning the answer into
   # something an agent can read.
   defp create(scope, params) do
-    case WorkingCopies.mint(scope, label: params[:label], root: params[:root]) do
+    case requested_roles(params[:roles]) do
+      {:ok, roles} -> mint(scope, params, roles)
+      {:error, message} -> Response.tool() |> Response.error(message)
+    end
+  end
+
+  defp mint(scope, params, roles) do
+    case WorkingCopies.mint(scope, label: params[:label], root: params[:root], roles: roles) do
       {:ok, copy, staffed} -> Response.tool() |> Response.text(report(copy, staffed))
       {:error, reason} -> Response.tool() |> Response.error(refusal(reason))
     end
   end
+
+  # The roster, parsed and checked here rather than passed through.
+  #
+  # An unknown role reaching `start_copy_agent/4` fails per-role and lands in
+  # `failed:`, so a typo would read as "coding could not start" rather than as
+  # "there is no role called coading". The list is short and the valid names are
+  # worth printing.
+  #
+  # Why this is settable at all: QA could not test criteria about delivery *to*
+  # a main agent, because the only sanctioned way to get disposable agents
+  # always staffed exactly product, coding and qa, and the alternatives were
+  # reaching into the real project or writing an agent row behind the tool
+  # surface (fcbcc3ed). Both defeat the point of a sandbox.
+  defp requested_roles(nil), do: {:ok, Agents.copy_roles()}
+
+  defp requested_roles(spec) do
+    known = Agents.roles()
+
+    spec
+    |> String.split(",", trim: true)
+    |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&{&1, Enum.find(known, fn role -> to_string(role) == &1 end)})
+    |> Enum.split_with(fn {_given, found} -> found end)
+    |> checked(spec, known)
+  end
+
+  defp checked({[], _bad}, spec, known),
+    do: {:error, "`roles: #{spec}` named none of #{names(known)}."}
+
+  defp checked({_good, [{given, nil} | _]}, _spec, known),
+    do: {:error, "There is no `#{given}` role. Pick from #{names(known)}."}
+
+  defp checked({good, []}, _spec, _known),
+    do: {:ok, Enum.map(good, fn {_given, role} -> role end)}
+
+  defp names(known), do: Enum.map_join(known, ", ", &to_string/1)
 
   defp report(copy, %{started: started, failed: []}) do
     """

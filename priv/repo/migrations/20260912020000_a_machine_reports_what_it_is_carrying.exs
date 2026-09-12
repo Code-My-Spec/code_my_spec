@@ -40,8 +40,14 @@ defmodule CodeMySpec.Repo.Migrations.AMachineReportsWhatItIsCarrying do
       add :load_reported_at, :utc_datetime_usec
     end
 
-    alter table(:working_copies) do
-      remove :tools_seen_at, :utc_datetime_usec
-    end
+    # `IF EXISTS`, because the two databases disagree about whether the column
+    # was ever created. 20260912010000 gained its `alter table(:working_copies)`
+    # block after it had already run on the dev database, so that one has the
+    # migration marked up and no column; a database created since has both.
+    #
+    # Rewriting the earlier migration would be the other way to reconcile them,
+    # and is worse — it has run everywhere, so the edit changes nothing that has
+    # already happened and only makes the record disagree with what was done.
+    execute "ALTER TABLE working_copies DROP COLUMN IF EXISTS tools_seen_at", ""
   end
 end
