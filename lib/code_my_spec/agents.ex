@@ -73,8 +73,8 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.Repo
   alias CodeMySpec.MainAgent
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
