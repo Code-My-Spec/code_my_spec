@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
+  alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
@@ -1443,6 +1444,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         files = Map.get(ctx.files_by_story, story.id, [])
         id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
+        # Stamped once per story rather than once per requirement: every
+        # requirement of a story reads the same slice of the context, so they
+        # go stale together and hashing it seven times would answer the same
+        # question seven ways.
+        fingerprint = Freshness.story(ctx, story)
+
         nodes =
           Enum.map(template, fn definition ->
             result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
@@ -1464,7 +1471,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
               parent_entity_id: project && project.id,
               parent_entity_name: project && project.name,
               prerequisites: [],
-              details: Requirement.normalize_details(result.details)
+              details: Requirement.normalize_details(result.details),
+              inputs_fingerprint: fingerprint
             }
           end)
 

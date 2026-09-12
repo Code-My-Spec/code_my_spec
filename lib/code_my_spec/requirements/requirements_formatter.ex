@@ -67,8 +67,12 @@ defmodule CodeMySpec.Requirements.RequirementsFormatter do
     "#{reason} — #{Enum.join(errors, "; ")}"
   end
 
-  def format_details(%{"reason" => reason, "expected_path" => path}), do: "#{reason} (expected at #{path})"
-  def format_details(%{reason: reason, expected_path: path}), do: "#{reason} (expected at #{path})"
+  def format_details(%{"reason" => reason, "expected_path" => path}),
+    do: "#{reason} (expected at #{path})"
+
+  def format_details(%{reason: reason, expected_path: path}),
+    do: "#{reason} (expected at #{path})"
+
   def format_details(%{"reason" => reason}), do: reason
   def format_details(%{reason: reason}), do: reason
   def format_details(_), do: "unsatisfied"

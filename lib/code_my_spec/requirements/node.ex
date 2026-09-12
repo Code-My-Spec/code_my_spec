@@ -54,6 +54,11 @@ defmodule CodeMySpec.Requirements.Node do
     field :details, :map, default: %{}
     field :checked_at, :naive_datetime
 
+    # What this requirement's own sources looked like when its answer was last
+    # worked out. `nil` on a row computed before this existed, which reads as
+    # "no basis to skip it" rather than as "unchanged".
+    field :inputs_fingerprint, :string
+
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
@@ -81,6 +86,7 @@ defmodule CodeMySpec.Requirements.Node do
     :satisfied,
     :details,
     :checked_at,
+    :inputs_fingerprint,
     :component_id,
     :story_id,
     :project_id,

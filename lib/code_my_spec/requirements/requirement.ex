@@ -26,7 +26,8 @@ defmodule CodeMySpec.Requirements.Requirement do
           render_command_always?: boolean(),
           role: atom() | nil,
           details: map(),
-          checked_at: NaiveDateTime.t() | nil
+          checked_at: NaiveDateTime.t() | nil,
+          inputs_fingerprint: String.t() | nil
         }
 
   # When this requirement's answer was last worked out.
@@ -42,6 +43,7 @@ defmodule CodeMySpec.Requirements.Requirement do
   @enforce_keys [:entity_type, :entity_id, :name, :satisfied]
   defstruct [
     :checked_at,
+    :inputs_fingerprint,
     :entity_type,
     :entity_id,
     :entity_name,

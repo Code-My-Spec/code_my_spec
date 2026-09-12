@@ -193,7 +193,8 @@ defmodule CodeMySpec.Requirements.Projection do
         render_command_always?: definition.render_command_always? || false,
         role: definition.role,
         details: row.details || %{},
-        checked_at: row.checked_at
+        checked_at: row.checked_at,
+        inputs_fingerprint: row.inputs_fingerprint
       }
     else
       _ -> nil
