@@ -522,7 +522,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
                 >
                   <.button
                     navigate={
-                      ~p"/app/projects/#{@project.id}/agent-conversation/#{chat_for(@row, agent).conversation.id}"
+                      ~p"/app/projects/#{@project.id}/agent-conversation?#{[conversation: chat_for(@row, agent).conversation.id]}"
                     }
                     data-test="open-agent-chat"
                     class="btn btn-xs btn-primary"

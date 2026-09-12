@@ -32,13 +32,14 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   setup :setup_project
 
-  # The index. One page per project, listing its agent sessions.
+  # The cockpit, on whichever agent the project opens with.
   defp path(project), do: "/app/projects/#{project.id}/agent-conversation"
 
-  # One session's transcript. The page is per-session now — it used to show
-  # whichever conversation moved most recently, which hid every other agent.
+  # The cockpit, on one named agent. A query param rather than a path segment:
+  # the page is about the project, and which agent you are reading is a
+  # selection inside it that can be patched without rebuilding the screen.
   defp show_path(project, conversation),
-    do: "/app/projects/#{project.id}/agent-conversation/#{conversation.id}"
+    do: "#{path(project)}?conversation=#{conversation.id}"
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
     {:ok, conversation} =
@@ -52,10 +53,20 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "before any turn has been recorded" do
-    test "shows an empty state", %{conn: conn, project: project} do
+    # The cockpit is where somebody lands now, so an empty one has to say which
+    # kind of empty it is. A project nobody has onboarded a checkout for has
+    # nowhere to run an agent at all, and saying "no activity yet" would send
+    # them looking for an agent that could never have started.
+    test "a project with no checkout says there is nowhere to run", %{
+      conn: conn,
+      project: project
+    } do
       {:ok, _view, html} = live(conn, path(project))
 
-      assert html =~ "No agent has recorded a turn"
+      assert html =~ "no main working copy",
+             "an empty cockpit that does not say why is indistinguishable from a " <>
+               "broken one, and the remedy for this state is a checkout rather than " <>
+               "waiting."
     end
   end
 
@@ -325,34 +336,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
                "saying who spoke — and stopping one would look like stopping both."
     end
 
-    test "each row names its checkout and role", %{conn: conn, scope: scope, project: project} do
-      lane(scope, project, "/tmp/copy-alpha", "coding")
-      lane(scope, project, "/tmp/copy-alpha", "qa")
-
-      {:ok, _view, html} = live(conn, path(project))
-
-      assert html =~ "/tmp/copy-alpha · coding"
-
-      assert html =~ "/tmp/copy-alpha · qa",
-             "the rows carry generated names and nothing else, so an index of three " <>
-               "copies is three identical-looking rows. That is 18f50c87, which is why " <>
-               "the checkout was in the conversation key before it moved to the agent."
-    end
-
-    test "a Claude Code lane still shows its external id", %{
-      conn: conn,
-      scope: scope,
-      project: project
-    } do
-      # No agent row of its own — it arrives with an external id and is exactly
-      # the caller `find_or_create_session_conversation/3` was split out for.
-      agent_conversation(scope, project, "pi:/tmp/claude-code-lane")
-
-      {:ok, _view, html} = live(conn, path(project))
-
-      assert html =~ "pi:/tmp/claude-code-lane",
-             "the left join dropped the row that has no agent, or blanked its line."
-    end
+    # The two tests that used to sit here asserted the agents index's rows —
+    # "/tmp/copy-alpha · coding" and a Claude Code lane's external id, read off
+    # a list page that no longer exists. Telling two lanes apart is still the
+    # claim; the surface that makes it is the cockpit's team panel, which names
+    # each agent's role under its checkout's heading and carries
+    # `data-test="team-agent"` with the agent's id. Story 1018's criterion 2824
+    # is what holds that now.
   end
 
   describe "project resolution" do

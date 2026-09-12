@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
         {:ok, live, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
         # Nothing has happened yet, and the page must say that rather than
@@ -122,7 +122,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2893Spex do
         {:ok, _reloaded, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: context.conversation.id]}"
           )
 
         assert html =~ "read lib/mix.exs",

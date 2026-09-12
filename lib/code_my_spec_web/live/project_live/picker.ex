@@ -3,7 +3,6 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
-  alias CodeMySpecWeb.MainAgentConversation
 
   @impl true
   def render(assigns) do
@@ -76,8 +75,9 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
           active_project_id: project_id
         })
 
-        path = MainAgentConversation.path(socket.assigns.current_scope, project)
-        {:noreply, push_navigate(socket, to: path)}
+        # Straight to the project's cockpit, which resolves its own agent on
+        # arrival. Building the link no longer has to start one first.
+        {:noreply, push_navigate(socket, to: ~p"/app/projects/#{project.id}/agent-conversation")}
 
       nil ->
         {:noreply, put_flash(socket, :error, "You don't have access to this project")}

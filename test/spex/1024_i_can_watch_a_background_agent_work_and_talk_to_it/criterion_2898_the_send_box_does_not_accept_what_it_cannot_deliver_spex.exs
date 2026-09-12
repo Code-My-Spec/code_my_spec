@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
         {:ok, live, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
         {:ok,
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
         {:ok, _reloaded, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{context.conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: context.conversation.id]}"
           )
 
         refute html =~ "are you there",

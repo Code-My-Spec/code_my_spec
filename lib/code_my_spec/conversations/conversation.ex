@@ -103,25 +103,4 @@ defmodule CodeMySpec.Conversations.Conversation do
         changeset
     end
   end
-
-  @doc """
-  Rename a conversation, and nothing else.
-
-  Separate from `agent_changeset/2` so the rename form cannot reach the session
-  id or the account: a form that casts what it does not show is how a hidden
-  field becomes an edit.
-
-  A blank name clears it rather than storing `""` — the display falls back to
-  the session id, which is the same thing an unnamed row does, and one empty
-  state beats two.
-  """
-  def rename_changeset(conversation, attrs) do
-    conversation
-    |> cast(attrs, [:name])
-    |> update_change(:name, fn
-      name when is_binary(name) -> if String.trim(name) == "", do: nil, else: String.trim(name)
-      name -> name
-    end)
-    |> validate_length(:name, max: 120)
-  end
 end

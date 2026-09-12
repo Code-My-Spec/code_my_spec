@@ -38,8 +38,13 @@ defmodule CodeMySpecSpex.Story605.Criterion2386Spex do
       end
 
       then_ "the workspace button points at that project", context do
-        assert context.html =~ ~s|href="/app/projects/#{context.project.id}"|,
-               "the button exists to resume work, and /app is one click short of it"
+        # At the project's cockpit, which is the screen work happens on. The
+        # button exists to resume work, and the project's detail page — like
+        # `/app` before it — is one click short of that.
+        assert context.html =~
+                 ~s|href="/app/projects/#{context.project.id}/agent-conversation"|,
+               "the button exists to resume work, and a page about the project is one " <>
+                 "click short of the page you work on"
 
         {:ok, context}
       end

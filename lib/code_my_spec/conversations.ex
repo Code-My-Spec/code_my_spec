@@ -57,6 +57,21 @@ defmodule CodeMySpec.Conversations do
   @doc "Per-conversation topic the widget channel subscribes to for live delivery."
   def conversation_topic(conversation_id), do: "conversation:#{conversation_id}:messages"
 
+  @doc "Listen to one conversation's messages."
+  def subscribe_conversation(conversation_id),
+    do: Phoenix.PubSub.subscribe(CodeMySpec.PubSub, conversation_topic(conversation_id))
+
+  @doc """
+  Stop listening to one conversation's messages.
+
+  The counterpart exists because a reader can now move between conversations
+  without the process ending — the agent cockpit patches from one to the next.
+  Without this the first subscription outlives the screen that wanted it and
+  one agent's turns arrive in another's transcript.
+  """
+  def unsubscribe_conversation(conversation_id),
+    do: Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, conversation_topic(conversation_id))
+
   # ---- Widget side (account_id / project_id, no CMS scope) ----
 
   @doc """
@@ -994,29 +1009,6 @@ defmodule CodeMySpec.Conversations do
       }
     )
     |> Repo.all()
-  end
-
-  @doc """
-  Rename a conversation.
-
-  Scoped, because the id comes off a URL: without the account check any
-  conversation id renames any conversation.
-  """
-  @spec rename_conversation(Scope.t(), Ecto.UUID.t(), String.t()) ::
-          {:ok, Conversation.t()} | {:error, :not_found | Ecto.Changeset.t()}
-  def rename_conversation(%Scope{} = scope, conversation_id, name) do
-    Conversation
-    |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
-    |> Repo.one()
-    |> case do
-      nil ->
-        {:error, :not_found}
-
-      conversation ->
-        conversation
-        |> Conversation.rename_changeset(%{name: name})
-        |> Repo.update()
-    end
   end
 
   @doc """

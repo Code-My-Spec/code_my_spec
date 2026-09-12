@@ -637,11 +637,13 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
-      live "/projects/:project_id/agent-conversation", AgentConversationLive.Index, :index
-
-      live "/projects/:project_id/agent-conversation/:conversation_id",
-           AgentConversationLive.Show,
-           :show
+      # The cockpit is a *project* page, and which agent you are reading is a
+      # selection within it (`?conversation=<id>`) rather than a different
+      # route. Switching agents is then a patch: the transcript changes and the
+      # panels, preview and pane widths around it stay where they were. Same
+      # shape as `MailLive`, where the mailbox is the page and `?thread=` is the
+      # selection.
+      live "/projects/:project_id/agent-conversation", AgentConversationLive.Show, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password

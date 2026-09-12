@@ -64,6 +64,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
+  alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -98,21 +99,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
          |> push_navigate(to: ~p"/app/projects")}
 
       project ->
-        {:noreply, mount_conversation(socket, project, params["conversation_id"])}
+        {:noreply, mount_conversation(socket, project, params["conversation"])}
     end
   end
 
   defp mount_conversation(socket, project, conversation_id) do
     scope = with_active_project(socket.assigns.current_scope, project)
-    conversation = Conversations.get_agent_conversation_by_id(scope, conversation_id)
+
+    # Which agent this project's own is, asked once and kept. It answers three
+    # questions — the conversation to open when the URL names none, the agent id
+    # the page marks as the project's, and why there is nothing to talk to when
+    # there is nothing to talk to — and `ensure/1` can *start* an agent, which
+    # is not something to redo on every agent you click through to.
+    socket = assign_new(socket, :main, fn -> MainAgentConversation.ensure(scope) end)
+
+    conversation = resolve_conversation(scope, conversation_id, socket.assigns.main)
     messages = messages_for(conversation)
 
-    if connected?(socket) && conversation do
-      Phoenix.PubSub.subscribe(
-        CodeMySpec.PubSub,
-        Conversations.conversation_topic(conversation.id)
-      )
-    end
+    socket = follow_conversation(socket, conversation)
 
     # The activity tab is about agents this conversation is not. A question
     # asked from another working copy arrives on the user's notification topics
@@ -127,7 +131,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # unreachable — it compiles, it sits above the catch-all, and it never runs.
     # The hook's own moduledoc names the way through: the list topic is passed
     # on with `:cont`.
-    if connected?(socket) do
+    # Everything below is about the *project*, not about the agent you happen to
+    # be reading, and `handle_params` runs again every time you pick a different
+    # one. Subscribing once — the same guard `FilesLive` uses — rather than
+    # trusting PubSub to dedupe a pid it already has on a topic.
+    if connected?(socket) && !socket.assigns[:watching_project?] do
       case user_id_of(scope) do
         nil ->
           :ok
@@ -184,6 +192,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:current_scope, scope)
     |> assign(:project, project)
     |> assign(:conversation, conversation)
+    # True exactly when the block above has run, and false on the disconnected
+    # first render that precedes it — which is what makes the guard there fire
+    # once on the connected mount rather than never.
+    |> assign(:watching_project?, connected?(socket))
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
@@ -227,6 +239,66 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
     |> assign_dynamic()
+  end
+
+  # Which conversation the URL is asking for.
+  #
+  # No `?conversation=` means the project's own agent, which is the answer to
+  # "I opened my project" — the cockpit is a project page and its default
+  # subject is the agent that runs the project. Naming one explicitly wins over
+  # the default, and a name that resolves to nothing falls back rather than
+  # erroring: a stale link from a deleted conversation should land you on your
+  # agent, not on a broken page.
+  defp resolve_conversation(_scope, nil, main), do: main_conversation(main)
+
+  defp resolve_conversation(scope, conversation_id, main) do
+    Conversations.get_agent_conversation_by_id(scope, conversation_id) ||
+      main_conversation(main)
+  end
+
+  defp main_conversation({:ok, _agent, conversation}), do: conversation
+  defp main_conversation(_error), do: nil
+
+  defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
+  defp main_copy_id(_error), do: nil
+
+  defp main_summary({:ok, %{status: :running}, _conversation}),
+    do: "Working on your project. Its steps appear below as it takes them."
+
+  defp main_summary({:ok, _agent, _conversation}),
+    do: "Getting ready. It will start work as soon as its machine picks it up."
+
+  defp main_summary(_error), do: ""
+
+  # Listen to the conversation on screen, and stop listening to the one that
+  # was.
+  #
+  # Switching agents is a patch now, so this process outlives the conversation
+  # it opened with. Without the unsubscribe the old topic stays bound and the
+  # agent you just navigated away from goes on appending its turns to the
+  # transcript of the one you are reading — the subscription leaking is not
+  # noise, it is the wrong agent's work in the wrong window.
+  defp follow_conversation(socket, conversation) do
+    previous = socket.assigns[:conversation]
+
+    case {connected?(socket), previous, conversation} do
+      {false, _, _} ->
+        socket
+
+      # The same conversation, re-resolved by a patch that changed something
+      # else. Already subscribed; resubscribing would double every turn.
+      {true, %{id: id}, %{id: id}} ->
+        socket
+
+      {true, previous, conversation} ->
+        previous && Conversations.unsubscribe_conversation(previous.id)
+        conversation && Conversations.subscribe_conversation(conversation.id)
+
+        # The composer belongs to the agent you were talking to, not to the
+        # screen. Carrying a half-typed message across to a different agent is
+        # how you send it to the wrong one.
+        assign(socket, :draft, "")
+    end
   end
 
   # Where this project's preview answers, and what it is doing.
@@ -1252,6 +1324,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           waiting={@waiting}
           copies={@copies}
           project_id={@project.id}
+          conversation_id={@conversation && @conversation.id}
           preview_src={@preview_src}
           preview_state={@preview_state}
         />
@@ -1271,6 +1344,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           analysis_running={@analysis_running}
           working?={@working?}
           draft={@draft}
+          main_agent?={@main_agent?}
+          main={@main}
         />
 
         <%!-- `auto_save` persists a person's drag to local storage keyed by
@@ -1311,6 +1386,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               analysis_running={@analysis_running}
               working?={@working?}
               draft={@draft}
+              main_agent?={@main_agent?}
+              main={@main}
             />
           </LivePane.pane>
 
@@ -1344,6 +1421,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               waiting={@waiting}
               copies={@copies}
               project_id={@project.id}
+              conversation_id={@conversation && @conversation.id}
               preview_src={@preview_src}
               preview_state={@preview_state}
             />
@@ -1375,6 +1453,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :working?, :boolean, required: true
   attr :draft, :string, required: true
 
+  # Whether the thread on screen is the project's own agent, and — when there
+  # is no agent to have — why. Both came from the agents index, which was the
+  # only page that said either; this is the page people land on now, so it is
+  # the page that has to say them.
+  attr :main_agent?, :boolean, required: true
+  attr :main, :any, required: true
+
   # The transcript, its composer, and the header above them — pulled out of
   # `render/1` so a wide screen can put it inside a `LivePane.pane` and a
   # narrow one can put it directly in the stacked column, without maintaining
@@ -1386,18 +1471,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       data-project-id={@project.id}
       class="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
-        <.link
-          navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
-          class="btn btn-ghost btn-sm btn-square"
-          title="All agents"
-        >
-          <.icon name="hero-arrow-left" class="size-4" />
-        </.link>
+      <%!-- Which checkout the agent is in, on the page rather than inferred
+      from elsewhere: "the agent runs in the copy you designated" is a claim a
+      reader should be able to check without going and looking somewhere else.
+      It was on the agents index's main card, and this is the page that landed
+      people now. --%>
+      <header
+        data-test={@main_agent? && "main-agent"}
+        data-agent-id={@main_agent? && @conversation.agent_id}
+        data-working-copy-id={@main_agent? && main_copy_id(@main)}
+        class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3"
+      >
         <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
-        <h1 class="min-w-0 truncate text-lg font-semibold">
-          {@conversation && Conversations.display_name(@conversation)}
-        </h1>
+        <div class="flex min-w-0 flex-col">
+          <h1 class="min-w-0 truncate text-lg font-semibold">
+            {@conversation && Conversations.display_name(@conversation)}
+          </h1>
+          <%!-- Where the project is, in the words somebody who does not read
+          code would use. Deliberately not a status line assembled from row
+          counts: the agent is what will write this, and a summary built out of
+          numbers here would have to be unbuilt when it does. Paths, module
+          names and commands are the vocabulary this agent exists to translate
+          out of, so they must not appear. --%>
+          <p
+            :if={@main_agent?}
+            data-test="project-summary"
+            class="min-w-0 truncate text-xs opacity-60"
+          >
+            {main_summary(@main)}
+          </p>
+        </div>
         <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
           {short_session(@conversation)}
         </span>
@@ -1439,15 +1542,46 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           inserting above jumps you backwards by exactly the height added.
           `StickToBottom` opens at the newest turn and follows it only while
           you are already down there. --%>
+      <%!-- The id carries the conversation so switching agents remounts this
+      element rather than patching it. `StickToBottom` pins on `mounted` and
+      otherwise only reacts to `updated`, where it holds whatever
+      `wasAtBottom` was — so a patched-in-place transcript would open the next
+      agent at the scroll offset you left the last one at, halfway up a
+      conversation you have never read. --%>
       <div
-        id="agent-scroll"
+        id={"agent-scroll-#{(@conversation && @conversation.id) || "empty"}"}
         data-test="conversation-scroll"
         phx-hook="StickToBottom"
         class="min-h-0 flex-1 overflow-y-auto py-4"
         style="overflow-anchor: auto"
       >
+        <%!-- Two failures, two remedies, and telling them apart is the whole
+        value of saying anything. Nowhere to run is `mix cms.new` or designating
+        a checkout you already have; nothing to run on is connecting a provider.
+        A single "unavailable" would send half the people who read it to the
+        wrong place. Carried over from the agents index, which used to be where
+        somebody landed and so used to be where this was said. --%>
         <p
-          :if={@conversation == nil}
+          :if={match?({:error, :no_main_working_copy}, @main)}
+          data-test="no-main-working-copy"
+          class="rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          This project has no main working copy yet, so there is nowhere for its
+          agent to run. Run <code>mix cms.new</code> to make one, or open a
+          checkout you already have and make it the main copy.
+        </p>
+
+        <p
+          :if={match?({:error, :not_connected}, @main)}
+          data-test="no-provider"
+          class="rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          This project has a main working copy but no provider connected, so its
+          agent has nothing to run on. Connect one and it will come up.
+        </p>
+
+        <p
+          :if={@conversation == nil and match?({:ok, _, _}, @main)}
           data-test="agent-conversation-empty"
           class="py-8 text-center opacity-60"
         >
@@ -1659,6 +1793,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :waiting, :list, required: true
   attr :copies, :list, required: true
   attr :project_id, :string, required: true
+  attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
 
@@ -1725,6 +1860,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           activity={@activity}
           copies={@copies}
           project_id={@project_id}
+          conversation_id={@conversation_id}
           preview_src={@preview_src}
           preview_state={@preview_state}
         />
@@ -1817,6 +1953,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               activity={@activity}
               copies={@copies}
               project_id={@project_id}
+              conversation_id={@conversation_id}
               preview_src={@preview_src}
               preview_state={@preview_state}
             />
@@ -1896,6 +2033,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :activity, :list, required: true
   attr :copies, :list, required: true
   attr :project_id, :string, required: true
+  attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
 
@@ -2060,13 +2198,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
+          <%!-- `patch`, not `navigate`: this panel is the fastest way to a
+          different agent, and the panel is part of what a navigate would tear
+          down and rebuild — including the preview pane and the widths somebody
+          dragged. Patching swaps the transcript and leaves the rest alone.
+
+          The one you are reading is marked, because a list whose whole job is
+          picking between agents should say which one you picked. `aria-current`
+          rather than only a background: the same claim, said once, in the way
+          assistive tech reads. --%>
           <.link
             :if={a.chat}
-            navigate={~p"/app/projects/#{@project_id}/agent-conversation/#{a.chat.conversation.id}"}
+            patch={conversation_path(@project_id, a.chat.conversation.id)}
             data-question={to_string(a.question?)}
+            data-current={to_string(current_agent?(a, @conversation_id))}
+            aria-current={current_agent?(a, @conversation_id) && "true"}
             class={[
               "flex items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
-              a.question? && "font-semibold text-warning"
+              a.question? && "font-semibold text-warning",
+              current_agent?(a, @conversation_id) && "bg-base-300 font-semibold"
             ]}
           >
             <.icon
@@ -2104,6 +2254,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural
+
+  # The cockpit, showing one agent. Built here rather than inline so the query
+  # param has one spelling — `FilesLive` keeps its own `files_path/2` for the
+  # same reason.
+  defp conversation_path(project_id, conversation_id),
+    do: ~p"/app/projects/#{project_id}/agent-conversation?#{[conversation: conversation_id]}"
+
+  defp current_agent?(%{chat: %{conversation: %{id: id}}}, id) when is_binary(id), do: true
+  defp current_agent?(_agent, _conversation_id), do: false
 
   # Mirrors the story dot's done/not-yet split, widened to the epic's four
   # states: dispatched is done, proposed is waiting on a person (the same

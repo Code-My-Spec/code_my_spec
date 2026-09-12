@@ -59,7 +59,7 @@ defmodule CodeMySpecWeb.OrchestratorActionRendersTest do
     {:ok, _live, html} =
       live(
         conn,
-        "/app/projects/#{conversation.project_id}/agent-conversation/#{conversation.id}"
+        "/app/projects/#{conversation.project_id}/agent-conversation?conversation=#{conversation.id}"
       )
 
     html
