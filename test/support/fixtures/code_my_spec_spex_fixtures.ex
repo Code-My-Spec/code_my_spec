@@ -2987,6 +2987,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Switch an agent off without stopping it.
+
+  `set_agent_continuous(scope, id, false)` is what the pause control calls, and
+  pausing is deliberately not stopping: the row stays alive and the process
+  stays alive, and what goes off is being woken for new work. A scenario that
+  wrote the field would be modelling a state the product reaches a different
+  way — and the way it reaches it is the part criterion 3305 is about.
+  """
+  @spec pause_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, map(), atom()} | {:error, term()}
+  def pause_agent(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.set_agent_continuous(scope, agent_id, false)
+  end
+
+  @doc """
   A turn this agent has started and not finished.
 
   The same `agent_turn_event` push `end_turn/3` sends, with the event a
