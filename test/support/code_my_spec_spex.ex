@@ -4,6 +4,11 @@ defmodule CodeMySpecSpex do
     top_level?: true,
     deps: [
       CodeMySpec.Environments,
+      # "The agent cannot be reached" is external system state, and the shaper
+      # behaviour is the only seam the application offers for standing the
+      # model down. A spec about what onboarding does when the model is
+      # unavailable has to be able to make it unavailable.
+      CodeMySpec.Intake,
       CodeMySpec.McpServers,
       # A zero-dep leaf exporting only path constants. `ProjectBuilder` has to
       # write where the scanner looks, and hardcoding `.code_my_spec/spec`
