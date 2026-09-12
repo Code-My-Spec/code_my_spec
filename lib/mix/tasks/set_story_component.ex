@@ -17,15 +17,15 @@ defmodule Mix.Tasks.SetStoryComponent do
   use Mix.Task
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
 
   @shortdoc "Link a story to an architecture component by module name"
 
   def run([story_id, module_name]) do
     Mix.Task.run("app.start")
 
-    case Scope.from_local_config(File.cwd!()) do
+    case Projects.scope_from_local_config(File.cwd!()) do
       {:ok, scope} ->
         link_story(scope, story_id, module_name)
 
