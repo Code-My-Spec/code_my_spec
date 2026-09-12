@@ -101,12 +101,19 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
 
         refute rule.isError, inspect(rule)
 
-        before = read_settled_graph(context)
+        _warm = read_settled_graph(context)
 
-        # Stamp rather than sleep. `checked_at` is second-resolution, so
-        # without this the reading before the observation and the reading
-        # after it land in the same second and a recompute is invisible.
+        # Stamp rather than sleep. `checked_at` is second-resolution, so two
+        # readings inside one second are indistinguishable and a recompute that
+        # happened looks like one that did not.
+        #
+        # The baseline is taken *after* the backdating, not before it: what this
+        # criterion compares is which requirements carry a time from after the
+        # observation, and a baseline read before the stamp would carry one from
+        # before it for everything.
         :ok = Fixtures.backdate_requirement_freshness(context.scope)
+
+        before = read_settled_graph(context)
 
         {:ok,
          context

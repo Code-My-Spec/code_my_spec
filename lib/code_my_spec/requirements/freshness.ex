@@ -90,6 +90,64 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   @doc """
+  The shape the graph's edges describe, as a fingerprint.
+
+  Nodes and edges are computed from different things, and conflating them is
+  how a partial recompute goes quietly wrong. An edge comes from four places
+  and none of them is a file's contents:
+
+    * the template, chosen by `component.type` and filtered by the config
+    * the component tree, via `parent_component_id`
+    * cross-context dependencies, via `component.dependencies`
+    * story attachment, via `story.component_id`
+
+  So a spec file that declares a new dependency moves the component's inputs —
+  which is caught — and moves the graph's shape, which is not, because the
+  entity set is unchanged and the edges were kept. Membership is not shape.
+
+  Deliberately blind to everything else. Whether a file is valid, whether QA
+  passed, when a deploy ran: all of it moves nodes and none of it moves an
+  edge, and including it would recompute 6489ms of edges to describe a shape
+  that had not changed — which is the behaviour this exists to end.
+  """
+  @spec topology(Preloader.context(), map()) :: String.t()
+  def topology(ctx, config) do
+    components =
+      ctx.components
+      |> Enum.map(&{&1.id, &1.type, &1.parent_component_id, dependency_ids(&1)})
+      |> Enum.sort()
+
+    stories = ctx.stories |> Enum.map(&{&1.id, &1.component_id}) |> Enum.sort()
+
+    hash([
+      {:components, components},
+      {:stories, stories},
+      {:config, config_shape(config)}
+    ])
+  end
+
+  # An unloaded association is not an empty one. Answering `[]` for it would
+  # hash two different shapes the same way and reuse edges that describe
+  # neither, so it is named for what it is and always looks changed.
+  defp dependency_ids(component) do
+    case component.dependencies do
+      deps when is_list(deps) -> deps |> Enum.map(& &1.id) |> Enum.sort()
+      _ -> :not_loaded
+    end
+  end
+
+  # The config decides which requirement definitions exist, and an edge can
+  # only connect definitions that do. Taken by the four keys the filters
+  # actually read rather than by hashing the whole struct, which carries
+  # timestamps and would make every config save look like a new shape.
+  defp config_shape(config) do
+    Enum.map(
+      [:require_specs, :require_reviews, :require_unit_tests, :devops],
+      &{&1, Map.get(config, &1)}
+    )
+  end
+
+  @doc """
   The project's own inputs, as a fingerprint.
 
   Project requirements read counts rather than contents — whether any story
