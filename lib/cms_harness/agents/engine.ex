@@ -458,6 +458,7 @@ defmodule CmsHarness.Agents.Engine do
   # may work. Threading it in made the two the same thing and cost a QA run.
   defp start_turn(state, ref, message, _timeout, awaiting) do
     announce_delivery(state, ref)
+    announce_turn_start(state)
 
     %{
       task: Task.async(fn -> run_turn(state, message, @turn_timeout) end),
@@ -522,6 +523,36 @@ defmodule CmsHarness.Agents.Engine do
   # 3 of a long run goes unmentioned until the run ends. Accepted deliberately —
   # splitting fast analyzers from slow ones would keep both properties and is
   # more machinery than the problem is worth today.
+  # A turn beginning, said out loud — the half that was missing.
+  #
+  # `Agents.record_turn_event/4` has always stamped `turn_started_at` from a
+  # `"turn_started"` event, `WorkRepository.list_agent_work/1` reads it, and
+  # `AgentWorkMapper.in_flight/1` renders it. All three were built for story
+  # 1054's criteria 3297 and 3279, and the server-side comment names them. The
+  # only producer was a spex fixture calling the channel directly, so the field
+  # was reachable in test and unreachable in production.
+  #
+  # QA found it by measurement rather than by reading: a real coding agent given
+  # a long generation, polled ~90 times across two runs while `message_agent`'s
+  # own tracking agreed it was mid-turn, answered "in flight: nothing — no turn
+  # is open" on every sample (`b48aa9e8`).
+  #
+  # What that costs is 3279's whole point: a long reasoning turn is supposed to
+  # be distinguishable from a stalled agent, so nobody restarts it mid-flight
+  # and throws away the turn and the spend. With no signal, a stall can never be
+  # ruled out.
+  #
+  # No queue guard, unlike the end. `announce_turn_end` stays quiet while more
+  # work is queued because the loop has not finished; a turn *starting* is true
+  # each time one does, and a run of queued turns should read as continuously
+  # busy rather than as busy once.
+  defp announce_turn_start(%{on_event: nil}), do: :ok
+
+  defp announce_turn_start(state) do
+    state.on_event.(state.agent_id, %{event: :turn_started})
+    :ok
+  end
+
   defp announce_turn_end(%{on_event: nil}), do: :ok
 
   defp announce_turn_end(%{queue: [_ | _]}), do: :ok
