@@ -17,7 +17,15 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Projection, Requirement, RequirementGraph}
+
+  alias CodeMySpec.Requirements.{
+    Edge,
+    Node,
+    NodeRepository,
+    Projection,
+    Requirement,
+    RequirementGraph
+  }
 
   setup do
     %{scope: full_scope_fixture()}
@@ -116,11 +124,23 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       row = Repo.one!(Node)
 
-      assert row.working_copy_id == scope.active_working_copy_id, """
+      assert is_nil(row.working_copy_id), """
       A publish with no checkout named must land where `Projection.vantage/1`
-      will look for it on the next read with no checkout named — the
-      project's default working copy, once it has one — not under the raw
-      `nil`, which no read of this project will ever resolve back to.
+      will look for it on the next read with no checkout named.
+
+      That is the property, and the answer to it changed. `cc4745dc` aligned
+      both at the project's default working copy, which fixed the rows and
+      left `GraphCache` keying its row on the raw `active_working_copy_id` —
+      so the count a UI publish recorded under `nil` was checked against the
+      default checkout's rows. Measured on this project: a cache row claiming
+      2064 nodes read back 2021, and every read recomputed.
+
+      Aligning at `nil` instead separates the two readers rather than making
+      them share: a reader with no checkout gets its own rows and its own
+      cache row, and the checkout it would have borrowed keeps its own. The
+      default copy still decides whose *files* an unscoped reader is shown —
+      `Preloader.files_vantage/1` — which is a different question from whose
+      answer this is.
       """
 
       ctx = %{
