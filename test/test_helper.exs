@@ -104,6 +104,14 @@ Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
 # env guard below is unchanged — so this is a third mechanism, not a
 # regression of the first two.
 #
+# Also widened past the original five tables: 5059300b and 209031ff separately
+# traced a run of "passes alone, fails in a full sweep" spex/tests
+# (`NodeRepositoryTest`, `ProjectionTest`, `GraphCacheTest`) to 42 committed
+# `requirements` rows outside any sandbox, asserted against by global-count
+# checks (`Repo.aggregate(Node, :count) == 0`). Same shape, same fix, different
+# tables — added `requirements`, `requirement_edges` and `requirement_graphs`
+# rather than filing that as a fourth instance of this bug class.
+#
 # The sandbox rolls each test back, so these tables are empty at the start of a
 # run — unless something escaped it and committed, and then the row is
 # permanent, because the test database is created once and reused forever.
@@ -142,6 +150,9 @@ report_dirty_tables = fn label ->
            UNION ALL SELECT 'projects', count(*), min(inserted_at), max(inserted_at) FROM projects
            UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
            UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
+           UNION ALL SELECT 'requirements', count(*), min(inserted_at), max(inserted_at) FROM requirements
+           UNION ALL SELECT 'requirement_edges', count(*), min(inserted_at), max(inserted_at) FROM requirement_edges
+           UNION ALL SELECT 'requirement_graphs', count(*), min(inserted_at), max(inserted_at) FROM requirement_graphs
            """,
            []
          ) do
