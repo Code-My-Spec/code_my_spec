@@ -135,6 +135,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     tag = Keyword.get(opts, :tag)
     ready_for_dev = Keyword.get(opts, :ready_for_dev)
     without_epic = Keyword.get(opts, :without_epic)
+    epic_id = Keyword.get(opts, :epic_id)
 
     query =
       from(s in Story,
@@ -145,6 +146,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       |> filter_by_tag(tag, scope.active_project.id)
       |> filter_by_readiness(ready_for_dev)
       |> filter_by_epic_membership(without_epic)
+      |> filter_by_epic(epic_id)
 
     total = Repo.aggregate(query, :count, :id)
 
@@ -194,6 +196,33 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   defp filter_by_epic_membership(query, true), do: from(s in query, where: is_nil(s.epic_id))
   defp filter_by_epic_membership(query, false), do: from(s in query, where: not is_nil(s.epic_id))
   defp filter_by_epic_membership(query, _), do: query
+
+  # One named epic's stories — the half `without_epic` shipped without.
+  #
+  # "Which stories are in no epic" was answerable and "which stories are in this
+  # epic" was not, so the only route to an epic's contents was `get_story` per
+  # story: `list_epics` reports a count, not the members. The main agent
+  # supplied the answer for the product role three times (cf035b50).
+  #
+  # Slug or id, because `list_epics` prints both and a caller should be able to
+  # paste back either. The cast decides which — a slug is not a UUID, and
+  # comparing a non-UUID against `s.epic_id` is a cast error rather than an
+  # empty result.
+  defp filter_by_epic(query, epic) when epic in [nil, ""], do: query
+
+  defp filter_by_epic(query, epic) do
+    case Ecto.UUID.cast(epic) do
+      {:ok, id} ->
+        from(s in query, where: s.epic_id == ^id)
+
+      :error ->
+        from(s in query,
+          join: e in CodeMySpec.Epics.Epic,
+          on: e.id == s.epic_id,
+          where: e.slug == ^epic
+        )
+    end
+  end
 
   @doc """
   Ready stories that belong to no epic.
