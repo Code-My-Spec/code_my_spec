@@ -80,9 +80,18 @@ defmodule CodeMySpec.Questions do
     end
   end
 
-  @doc "Marks a question as resolved."
-  def resolve_question(scope, %Question{} = question),
-    do: update_question(scope, question, %{status: :resolved})
+  @doc """
+  Marks a question as resolved, with the answer that resolved it.
+
+  `resolution` is the artifact — the playbook's reason a red card blocks a
+  session is that "an unanswered question that nobody ever returns to is how
+  a story gets built on a guess," and `status: :resolved` only ever recorded
+  the receipt, not the answer (5a7ef95b). Optional and nullable: the
+  three_amigos LiveView resolves with a plain status toggle and has no text
+  box to supply one.
+  """
+  def resolve_question(scope, %Question{} = question, resolution \\ nil),
+    do: update_question(scope, question, %{status: :resolved, resolution: resolution})
 
   @doc "Marks a question as deferred (parked indefinitely)."
   def defer_question(scope, %Question{} = question),

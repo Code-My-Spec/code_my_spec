@@ -27,6 +27,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
       doc:
         "Filter by readiness. Pass false to see the parked backlog — the " <>
           "stories the development graph hides (optional)"
+
+    field :without_epic, :boolean,
+      doc:
+        "Pass true to see only stories not yet assigned to any epic — " <>
+          "useful when grouping stories into epics (optional)"
   end
 
   @impl true
@@ -37,15 +42,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
       {:ok, scope} ->
         limit = (params[:limit] || @default_limit) |> max(0) |> min(@max_limit)
         offset = max(params[:offset] || 0, 0)
-
-        opts = [limit: limit, offset: offset]
-        opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
-        opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
-
-        opts =
-          if is_boolean(params[:ready_for_dev]),
-            do: Keyword.put(opts, :ready_for_dev, params[:ready_for_dev]),
-            else: opts
+        opts = build_opts(params, limit, offset)
 
         Logger.debug("[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}")
         {stories, total} = Stories.list_project_stories_paginated(scope, opts)
@@ -56,5 +53,20 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
         Logger.warning("[ListStories] validation failed: #{inspect(atom)}")
         {:reply, StoriesMapper.error(atom), frame}
     end
+  end
+
+  defp build_opts(params, limit, offset) do
+    opts = [limit: limit, offset: offset]
+    opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
+    opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
+
+    opts =
+      if is_boolean(params[:ready_for_dev]),
+        do: Keyword.put(opts, :ready_for_dev, params[:ready_for_dev]),
+        else: opts
+
+    if is_boolean(params[:without_epic]),
+      do: Keyword.put(opts, :without_epic, params[:without_epic]),
+      else: opts
   end
 end

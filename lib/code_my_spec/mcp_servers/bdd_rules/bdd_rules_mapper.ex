@@ -91,7 +91,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
   def questions_list_response(questions) when is_list(questions) do
     lines =
       Enum.map_join(questions, "\n", fn q ->
-        "- (id: `#{q.id}`, status: `#{q.status}`) #{q.text}"
+        "- (id: `#{q.id}`, status: `#{q.status}`) #{q.text}#{resolution_suffix(q)}"
       end)
 
     summary = "Questions on this story (#{length(questions)}):\n\n#{lines}"
@@ -102,8 +102,20 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def question_resolved_response(question) do
     Response.tool()
-    |> Response.text("Question resolved: id `#{question.id}` is now `#{question.status}`.")
+    |> Response.text(
+      "Question resolved: id `#{question.id}` is now `#{question.status}`.#{resolution_line(question)}"
+    )
   end
+
+  defp resolution_suffix(%{resolution: resolution}) when is_binary(resolution) and resolution != "",
+    do: " — #{resolution}"
+
+  defp resolution_suffix(_question), do: ""
+
+  defp resolution_line(%{resolution: resolution}) when is_binary(resolution) and resolution != "",
+    do: " Answer: #{resolution}"
+
+  defp resolution_line(_question), do: ""
 
   def validation_error(changeset) do
     Response.tool()

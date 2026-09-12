@@ -96,9 +96,10 @@ defmodule CodeMySpec.Qa do
   @doc """
   Is `qa_complete` satisfied for the story?
 
-  True iff at least one attempt with `status: :pass` exists for the
-  story AND has not been invalidated. Filesystem state (legacy
-  `result_complete.md`) is not consulted.
+  True iff the **most-recent** attempt on the story is `status: :pass`
+  and carries no invalidation. Not "at least one pass exists" — a later
+  `:partial` or `:fail` overrides an earlier pass. Filesystem state
+  (legacy `result_complete.md`) is not consulted.
   """
   defdelegate qa_complete?(scope, story_id), to: QaAttempts, as: :complete?
 

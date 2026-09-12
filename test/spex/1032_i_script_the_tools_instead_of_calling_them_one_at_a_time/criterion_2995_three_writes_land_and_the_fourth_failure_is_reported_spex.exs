@@ -6,6 +6,24 @@ defmodule CodeMySpecSpex.Story1032.Criterion2995Spex do
   The no-transaction decision, made visible. Our tools call GitHub, Cloudflare
   and Resend; a database transaction could not roll those back, so a script
   that fails partway has already written and has to say so.
+
+  ## Why this reads differently than it did
+
+  The claim is unchanged and so is the scenario. What changed is where the
+  script sees the fourth failure, and it changed on purpose.
+
+  This used to catch the failure in Lua — `local bad, err = create_story({})`
+  — and return a sentence about it. Story 1032 ("A tool call that is wrong
+  fails like a failure") decided that a call the sandbox rejects stops the
+  script instead, because a rejection handed back as `nil, err` is two lines
+  from an empty answer and a script that discards the second value carries on
+  and reports a conclusion it never read.
+
+  So the fourth call now ends the run, and the failure arrives as the response
+  rather than as the script's return value. That makes this criterion's point
+  more sharply than before, not less: the script was **stopped in the middle**
+  and the first three stories are still there. Nothing rolled back. If a
+  transaction were ever wrapped around a script, this is the spec that fails.
   """
 
   use CodeMySpecSpex.Case
@@ -25,12 +43,14 @@ defmodule CodeMySpecSpex.Story1032.Criterion2995Spex do
       end
 
       when_ "the script creates three stories and then one that is invalid", context do
+        # No longer caught in Lua: the fourth call is rejected and ends the run.
+        # The line after it is here to prove that — if it ever appears in the
+        # answer, the script was allowed past a call that never happened.
         script = ~S"""
         for _, title in ipairs({ "First landed", "Second landed", "Third landed" }) do
           create_story({ title = title, story = "As an agent, I want " .. title .. "." })
         end
-        local bad, err = create_story({})
-        if bad == nil then return "failed on the fourth: " .. err.message end
+        create_story({})
         return "the fourth unexpectedly worked"
         """
 
@@ -40,7 +60,20 @@ defmodule CodeMySpecSpex.Story1032.Criterion2995Spex do
       end
 
       then_ "the answer names the call that failed", context do
-        assert response_text(context.response) =~ "failed on the fourth"
+        text = response_text(context.response)
+
+        assert context.response.isError,
+               "the fourth call failed and the run did not report it as a failure. Got:\n" <>
+                 text
+
+        assert text =~ "create_story",
+               "the failure does not name the call that failed, so an agent reading it " <>
+                 "has to work out which of the four writes stopped the script. Got:\n" <>
+                 text
+
+        refute text =~ "the fourth unexpectedly worked",
+               "the script carried on past a rejected call and answered anyway."
+
         {:ok, context}
       end
 

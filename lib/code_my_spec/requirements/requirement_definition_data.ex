@@ -856,13 +856,13 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         config: %{module: CodeMySpec.Qa, function: :complete_check},
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
-        description: "QA complete: at least one valid DB-backed pass attempt exists",
+        description: "QA complete: the latest DB-backed attempt is a valid pass",
         # Was [3] — straight off `bdd_specs_passing`. That is what let nine
         # stories reach QA on 2026-09-09 whose code had never left the coding
         # agent's worktree; QA failed all nine for code that was never there.
         prerequisites: [18],
         execution_type: :sub_agent,
-        # Automatic, because "at least one valid DB-backed pass attempt exists"
+        # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
         # completes on a real attempt, so nothing here needs a human to say it
         # is done.

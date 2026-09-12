@@ -103,7 +103,12 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "evaluate_task" => "it is one of the four tools you already have directly — call it as a tool"
   }
 
-  @type invoke :: (map() -> {:ok, term()} | {:error, String.t()})
+  # Three answers, not two. `:error` is the tool saying it could not do the
+  # thing — a script decides what that means and carries on. `:invalid_call` is
+  # the call itself being wrong, which no script can do anything useful with:
+  # the tool never ran, so there is no answer to handle and everything after it
+  # would be built on a call that did not happen.
+  @type invoke :: (map() -> {:ok, term()} | {:error, String.t()} | {:invalid_call, String.t()})
 
   @type tool :: %{
           name: String.t(),

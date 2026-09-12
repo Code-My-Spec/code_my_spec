@@ -15,6 +15,9 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion do
 
   schema do
     field :question_id, :string, required: true, doc: "UUID of the question to resolve."
+
+    field :resolution, :string,
+      doc: "The answer that resolved it — recorded on the record, not just that it was settled."
   end
 
   @impl true
@@ -22,7 +25,8 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:question, %Questions.Question{} = question} <-
            {:question, Questions.get_question(scope, get_param(params, :question_id))},
-         {:ok, resolved} <- Questions.resolve_question(scope, question) do
+         {:ok, resolved} <-
+           Questions.resolve_question(scope, question, get_param(params, :resolution)) do
       {:reply, BddRulesMapper.question_resolved_response(resolved), frame}
     else
       {:question, nil} ->

@@ -238,6 +238,10 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     Read `three_amigos/workflow.md` via the `read_knowledge` MCP tool —
     protocol ordering (persona → rules → scenarios → questions), MCP tool
     usage per phase, done-signal conditions, anti-patterns to avoid.
+
+    Then `process/product.md`, which is what that playbook assumes: where
+    the story came from, what sealing does and does not buy, and why a
+    sealed story can still be offered to nobody.
     """
   end
 end

@@ -3,6 +3,19 @@
 Reference materials for AI-assisted Phoenix LiveView code generation.
 Extracted from official documentation — each file lists source URLs at the top.
 
+## Start here
+
+`process/` is the map: what each family of work does, in what order, and
+what finishes each step. The per-task playbooks assume it.
+
+| Doing...                                  | Read                    |
+|-------------------------------------------|-------------------------|
+| Anything, for the first time              | `process/product.md`    |
+| Building a component                      | `process/code.md`       |
+| Testing a story                           | `process/qa.md`         |
+| Getting work onto the running dev copy    | `process/devops.md`     |
+| Taking a new arrival from nothing to a project | `process/onboarding.md` |
+
 ## When to read what
 
 | Building...                        | Read                                      |

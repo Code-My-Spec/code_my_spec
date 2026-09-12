@@ -33,11 +33,12 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     criteria_lines = format_criteria_text(story.criteria)
     notes_line = notes_line(story.notes)
     component_line = component_line(story.component)
+    epic_line = epic_line(story.epic)
 
     summary = """
     ## #{story.title} (ID: #{story.id})#{number_line(story)}
 
-    #{story.story || story.description || "No story"}#{notes_line}#{component_line}
+    #{story.story || story.description || "No story"}#{notes_line}#{component_line}#{epic_line}
 
     Ready for development: #{story.ready_for_dev == true}
 
@@ -87,6 +88,9 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp component_line(%{module_name: module_name}), do: "\n\n**Component:** #{module_name}"
   defp component_line(_), do: ""
+
+  defp epic_line(%{name: name}), do: "\n\n**Epic:** #{name}"
+  defp epic_line(_), do: ""
 
   def story_deleted_response(story) do
     Response.tool()
