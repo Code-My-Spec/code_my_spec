@@ -53,8 +53,9 @@ than there:
 ## Specified
 
 `bdd_specs_exist` wants spec files on disk under `test/spex/`. The
-conventions for writing them are in `bdd/spex.md` and are not repeated
-here.
+conventions for writing them are in `bdd/spex/` and are not repeated here —
+start at `bdd/spex/index.md`, and read `bdd/spex/writing_a_spex.md` before
+your first one.
 
 One detail that is process rather than craft, because getting it wrong
 puts good specs in a directory nothing reads:
