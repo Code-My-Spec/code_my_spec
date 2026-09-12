@@ -3,13 +3,27 @@
 ## File layout
 
 ```
-test/spex/<story_id>/<criterion_id>_spex.exs
+test/spex/<story_number>_<story_slug>/criterion_<criterion_number>_<criterion_slug>_spex.exs
 ```
 
-One file per acceptance criterion. Module name mirrors the path:
+Worked example — story **id** 1031, whose **number** is 1065:
+
+```
+test/spex/1065_every_process_an_agent_is_expected_to_follow_is_written_down/
+  criterion_3379_an_agent_finds_the_process_without_reading_the_code_spex.exs
+```
+
+**The directory is named from the story's number, not its id.** Every MCP tool
+takes the id, so the id is the number you are holding when you come to do this,
+and it is the wrong one. They are different integers that coincide on a young
+project, which is what makes the assumption survive. `get_story` returns both.
+See `process/product.md`.
+
+One file per acceptance criterion. Module name mirrors the path, and uses the
+same number:
 
 ```elixir
-defmodule <App>Spex.Story<id>.Criterion<id>Spex do
+defmodule <App>Spex.Story<story_number>.Criterion<criterion_number>Spex do
 ```
 
 ## Minimal template
@@ -173,9 +187,9 @@ what the sync pipeline will pick up when the LiveView sync button runs.
 ## Running specs
 
 ```
-mix spex                                          # whole suite
-mix spex test/spex/<story_id>                     # one story
-mix spex test/spex/<story_id>/<crit_id>_spex.exs  # one criterion
+mix spex                                    # whole suite
+mix spex test/spex/1065_every_process_...   # one story, by its NUMBER
+mix spex --pattern "test/spex/1065_*/*_spex.exs"   # same, without typing the slug
 ```
 
 `mix spex` is aliased in `mix.exs` to `spex --quiet` under `MIX_ENV=test`.

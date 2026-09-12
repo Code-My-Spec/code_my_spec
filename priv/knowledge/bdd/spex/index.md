@@ -24,7 +24,10 @@ scenario is wrong.
 
 ## Quick orientation
 
-- Specs live at `test/spex/<story_id>/<criterion_id>_spex.exs`.
+- Specs live at
+  `test/spex/<story_number>_<slug>/criterion_<criterion_number>_<slug>_spex.exs`
+  — named from the story's **number**, which is not its id. `writing_a_spex.md`
+  has a worked example and says why the distinction bites.
 - One criterion = one `spex` block. One `spex` may contain one or more
   `scenario` blocks.
 - The only module a spec is allowed to reach into the app through is
