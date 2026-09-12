@@ -99,7 +99,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
       when_ "someone who does not know what a DNS record is opens the page", context do
         {:ok, view, _html} = live(context.conn, "/app/resources")
 
-        {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view)))}
+        {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end
 
       then_ "the page reports the account unhealthy before any resource is read", context do
