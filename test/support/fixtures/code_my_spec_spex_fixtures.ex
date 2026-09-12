@@ -1523,7 +1523,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     case Conversations.get_agent_conversation(scope, scope.active_project_id) do
       nil -> base
-      conversation -> "#{base}/#{conversation.id}"
+      conversation -> "#{base}?conversation=#{conversation.id}"
     end
   end
 

@@ -611,7 +611,7 @@ defmodule CodeMySpec.Notifications do
   defp question_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
     case conversation_for_agent(agent_id) do
       %{id: conversation_id, project_id: project_id} ->
-        "/app/projects/#{project_id}/agent-conversation/#{conversation_id}#question-#{id}"
+        "/app/projects/#{project_id}/agent-conversation?conversation=#{conversation_id}#question-#{id}"
 
       _ ->
         "/app/questions/#{id}"
@@ -628,7 +628,7 @@ defmodule CodeMySpec.Notifications do
   defp permission_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
     case conversation_for_agent(agent_id) do
       %{id: conversation_id, project_id: project_id} ->
-        "/app/projects/#{project_id}/agent-conversation/#{conversation_id}#permission-#{id}"
+        "/app/projects/#{project_id}/agent-conversation?conversation=#{conversation_id}#permission-#{id}"
 
       _ ->
         "/app/permissions/#{id}"

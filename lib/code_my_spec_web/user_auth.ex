@@ -335,14 +335,27 @@ defmodule CodeMySpecWeb.UserAuth do
     end)
   end
 
-  @doc "Returns the path to redirect to after log in."
+  @doc """
+  Returns the path to redirect to after log in.
+
+  Straight to the project you were last working on, because that is what
+  logging in is for — John: "this is what people should be working from
+  entirely". Settings was a strange place to land and nobody chose it; it was
+  simply the path that did not need to know anything.
+
+  `/app` for a user with no project yet, which is the onboarding it renders.
+  """
   # Called with a User struct directly (e.g. from log_in_user/3 before the scope plug runs)
-  def signed_in_path(%Users.User{}), do: ~p"/app/users/settings"
+  def signed_in_path(%Users.User{} = user), do: user |> Scope.for_user() |> signed_in_path()
 
   # Called with a Conn that already has current_scope populated (legacy callers)
-  def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{user: %Users.User{}}}}) do
-    ~p"/app/users/settings"
-  end
+  def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{} = scope}}),
+    do: signed_in_path(scope)
+
+  def signed_in_path(%Scope{active_project_id: id}) when is_binary(id),
+    do: ~p"/app/projects/#{id}/agent-conversation"
+
+  def signed_in_path(%Scope{user: %Users.User{}}), do: ~p"/app"
 
   def signed_in_path(_), do: ~p"/"
 

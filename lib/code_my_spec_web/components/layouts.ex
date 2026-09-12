@@ -177,7 +177,11 @@ defmodule CodeMySpecWeb.Layouts do
         <label for="drawer-toggle" class="drawer-overlay"></label>
         <aside class="w-64 min-h-full bg-base-200">
           <div class="p-6 border-b border-base-300">
-            <a href={~p"/app"} class="flex items-center gap-3">
+            <%!-- Home is the cockpit once there is a project to open — the
+            screen work happens on, not the overview that describes getting
+            started. `/app` remains home for someone who has not got one yet,
+            which is exactly the onboarding it still renders. --%>
+            <a href={home_path(@project)} class="flex items-center gap-3">
               <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-6 w-6" />
               <span class="text-lg font-semibold">CodeMySpec</span>
             </a>
@@ -290,6 +294,15 @@ defmodule CodeMySpecWeb.Layouts do
   # Prefix match, not equality: a blog post lives at /blog/:slug and is still
   # the Blog section. Guarded on the boundary so /blogroll does not light up
   # /blog, which is the bug a bare String.starts_with?/2 would have.
+  # Where the logo goes. Same rule as "Open workspace" below, off the project in
+  # the current path rather than off the scope, because the logo sits on a page
+  # that already knows which project you are looking at.
+  # Guarded on the id being a real one: the project form renders this layout
+  # around a project that does not exist yet, and `~p` raises rather than
+  # rendering a broken link when handed `nil`.
+  defp home_path(%{id: id}) when is_binary(id), do: ~p"/app/projects/#{id}/agent-conversation"
+  defp home_path(_no_project), do: ~p"/app"
+
   # Where "Open workspace" goes.
   #
   # `/app` for a visitor with nothing selected, and straight to the project for
@@ -300,7 +313,14 @@ defmodule CodeMySpecWeb.Layouts do
   # Reads `active_project_id` rather than `active_project`, so it does not
   # depend on the preference having preloaded the struct. `Scope.for_user/1`
   # populates both from user preferences, so a dead marketing view has it.
-  defp workspace_path(%{active_project_id: id}) when is_binary(id), do: ~p"/app/projects/#{id}"
+  #
+  # The cockpit rather than the project's detail page: John, on what people
+  # should be working from, "this is what people should be working from
+  # entirely". Resuming work means the screen with the agent and the panels on
+  # it, not the page describing the project.
+  defp workspace_path(%{active_project_id: id}) when is_binary(id),
+    do: ~p"/app/projects/#{id}/agent-conversation"
+
   defp workspace_path(_scope), do: ~p"/app"
 
   defp nav_active(nil, _section), do: nil

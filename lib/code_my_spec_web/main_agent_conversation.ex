@@ -1,65 +1,41 @@
 defmodule CodeMySpecWeb.MainAgentConversation do
   @moduledoc """
-  Where a project's own agent conversation lives, or the index when there is
-  not one yet.
+  A project's own agent, and the conversation it is reached through.
 
-  `AgentConversationLive.Index` already resolves this — a main agent, and its
-  conversation, created if either is missing — to build one link on a page
-  that also lists every other agent. Every place that sends someone *into* a
-  project (the picker, the sidebar) wants the same answer without wanting the
-  list: John, on where a project should land you, "the agent conversation for
-  the main agent of the project" — not a page that still makes you pick one.
+  ## Why there is no longer a path to build
 
-  So this is that resolution, pulled out to where both callers can reach it,
-  rather than the picker growing its own second copy of `ensure_main_agent/1`
-  plus `find_or_create_agent_conversation/3` with nothing keeping the two in
-  step.
+  There used to be a `path/2` here, because the cockpit's URL named a
+  conversation — so every link into a project had to resolve one first, and the
+  picker could not render a link without deciding, and starting, the agent you
+  would land on.
+
+  The cockpit is a project page now (`/app/projects/:id/agent-conversation`,
+  with `?conversation=` naming an agent only once you have picked one), so that
+  link is an ordinary route its callers build with `~p`. The resolution happens
+  on arrival, in the page that needs the answer, which also means rendering a
+  link stopped being a thing that starts an agent.
 
   ## Why this can fail, and what happens when it does
 
   `Agents.ensure_main_agent/1` answers `{:error, :no_main_working_copy}` for a
   project nobody has onboarded a checkout for yet — there is no copy to run an
-  agent in, so there is no main agent and nothing here can invent one. `path/2`
-  falls back to the index in that case: it renders its own explanation, and a
-  project with no checkout is precisely the state it already has to handle for
-  the "open a project" list, which cannot know in advance which projects have
-  one.
+  agent in, so there is no main agent and nothing here can invent one. The
+  cockpit renders that as its own explanation rather than as an empty
+  transcript: "nowhere to run" and "nothing said yet" are different states with
+  different remedies, and a single blank screen for both sends half the people
+  who see it to the wrong place.
   """
-
-  use CodeMySpecWeb, :verified_routes
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Users.Scope
-
-  @doc """
-  The path into this project's main agent conversation, or its index.
-
-  `scope` must already be resolved to `project` — callers that switch projects
-  read from a picker or a list rather than a scope already carrying the target,
-  so this takes `project` explicitly instead of trusting `scope.active_project`
-  to agree with it.
-  """
-  @spec path(Scope.t(), Project.t()) :: String.t()
-  def path(%Scope{} = scope, %Project{} = project) do
-    scope = %{scope | active_project: project, active_project_id: project.id}
-
-    case ensure(scope) do
-      {:ok, _agent, conversation} ->
-        ~p"/app/projects/#{project.id}/agent-conversation/#{conversation.id}"
-
-      {:error, _reason} ->
-        ~p"/app/projects/#{project.id}/agent-conversation"
-    end
-  end
 
   @doc """
   The main agent and its conversation, created if either is missing.
 
-  Public so a page that needs more than the path — which working copy the
-  agent is in, whether to render a link at all — can ask the same question
-  `path/2` answers, rather than growing its own copy of these two calls.
+  Public so a page that needs more than the conversation — which working copy
+  the agent is in, whether there is an agent at all — can ask the same question
+  rather than growing its own copy of these two calls.
   """
   @spec ensure(Scope.t()) ::
           {:ok, Agents.Agent.t(), Conversations.Conversation.t()} | {:error, term()}

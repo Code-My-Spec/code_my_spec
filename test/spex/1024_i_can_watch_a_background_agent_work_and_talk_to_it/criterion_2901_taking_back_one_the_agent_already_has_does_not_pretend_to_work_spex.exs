@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2901Spex do
         {:ok, live, _html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/agent-conversation/#{conversation.id}"
+            ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
         waiting =

@@ -63,18 +63,15 @@ defmodule CodeMySpecSpex.Story963.Criterion2904Spex do
       end
 
       when_ "I open it", context do
-        {:ok, live, _html} =
+        # No click at all now, where there used to be one. Opening the project
+        # *is* opening its agent: the cockpit is the project's page and the
+        # conversation it resolves is the project's own. The claim was only
+        # ever that nothing had to be started first, and it holds a step
+        # earlier than it used to.
+        {:ok, live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/agent-conversation")
 
-        # One click, not one setup step. The claim is that nothing had to be
-        # started, not that the conversation is the first thing on screen.
-        {:ok, chat, html} =
-          live
-          |> element("[data-test=main-agent] a")
-          |> render_click()
-          |> follow_redirect(context.conn)
-
-        {:ok, context |> Map.put(:live, chat) |> Map.put(:html, html)}
+        {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end
 
       then_ "I can say something to the main agent without starting anything first",
