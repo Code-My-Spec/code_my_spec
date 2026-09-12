@@ -3,21 +3,26 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
   Story 1046 — A story's code is on the running dev copy before QA tests it.
   Criterion 3168 — A merge that breaks the target is not a completed promotion.
 
-  Rule: A promotion that merges must not leave the target carrying problems it
-  did not carry before.
+  Rule, as originally written: a promotion that merges must not leave the
+  target carrying problems it did not carry before — checked by re-gating
+  the target *after* the merge, because two branches can each be clean and
+  merge without conflict into a tree that does not compile, and no gate run
+  before the merge can see that.
 
-  Two branches can each be clean and merge without conflict into a tree that
-  does not compile. That is a semantic conflict, and no gate run *before* the
-  merge can see it — which is why the gate runs again on the other side, and the
-  promotion is not finished until it answers.
+  **Superseded by 54aa534c, phase two.** The scenario this criterion is
+  built on — `main` renames `declare/0` after the story branch already
+  exists, the two diverge, and a three-way merge combines them into
+  something that does not compile — cannot reach a merge at all any more.
+  `Runner.merge/4` is `--ff-only` now, and `main` having a commit the branch
+  does not have (the rename) is exactly what `--ff-only` refuses before
+  attempting anything. The divergence that used to be *invisible until
+  compiled* is now caught at the precondition, by name, before either
+  branch's content is even compared.
 
-  The premise is real rather than described: `main` renames `declare/0`, the
-  story branch adds a caller of the old name, and git merges the two happily.
-  Arranging it any other way — seeding a problem on the target and calling it
-  the merge's fault — would make this indistinguishable from 3169, which says
-  problems the target *already* had do not block. The difference between the
-  two criteria is attribution, so the merge has to really be what introduced
-  it.
+  So this asserts the thing that is actually true post-54aa534c: the same
+  divergent setup this criterion always used is refused, and refused for
+  being behind main — not because compiling it broke, which is no longer
+  reachable behavior to assert on.
   """
 
   use CodeMySpecSpex.Case
@@ -40,8 +45,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
     :ok
   end
 
-  spex "A merge is not complete until the target is no worse" do
-    scenario "two clean branches merge into a tree that does not compile" do
+  spex "A divergence that would have merged into something broken is refused, not merged" do
+    scenario "main renamed a module the story branch still calls by its old name" do
       given_ "a story branch whose new module imports War", context do
         context = a_promotable_project(context)
 
@@ -58,7 +63,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
         {:ok, context}
       end
 
-      given_ "main has since renamed that module", context do
+      given_ "main has since renamed that module, so the branch is behind", context do
         write(context.running_root, "lib/broken_oaths/diplomacy/war.ex", """
         defmodule BrokenOaths.Diplomacy.Warfare do
           def declare, do: :base
@@ -67,22 +72,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
 
         {_, 0} =
           git(context, context.running_root, ["commit", "-q", "-am", "rename War to Warfare"])
-
-        {:ok, context}
-      end
-
-      given_ "the two merge without conflict", context do
-        # Proving the premise and then undoing it. If these branches conflicted,
-        # this would be criterion 3171 and the spec would pass for the wrong
-        # reason.
-        {_out, code} =
-          git(context, context.running_root, ["merge", "--no-commit", "--no-ff", "story/war"])
-
-        assert code == 0,
-               "the premise failed: these branches conflict, so this is a " <>
-                 "conflict scenario rather than a semantic break"
-
-        {_, 0} = git(context, context.running_root, ["merge", "--abort"])
 
         {:ok, context}
       end
@@ -97,24 +86,43 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
 
       then_ "the promotion is not reported complete", context do
         assert context.response.isError,
-               "a merge that left the running checkout unable to build was " <>
-                 "reported as a finished promotion. Got: " <>
-                 response_text(context.response)
+               "a branch missing a commit main has was reported as a finished " <>
+                 "promotion. Got: " <> response_text(context.response)
 
         {:ok, context}
       end
 
-      then_ "the agent is told what the merge broke", context do
-        assert response_text(context.response) =~ ~r/peace\.ex|declare/,
-               "the agent was told its promotion failed without being told what " <>
-                 "its merge broke"
+      then_ "the agent is told it is behind main, not that a merge broke something",
+            context do
+        text = response_text(context.response)
+
+        assert text =~ "behind main",
+               "ff-only refuses on ancestry before any content is compared, so " <>
+                 "there is no merge attempt left to have found a semantic break " <>
+                 "in. Got: #{text}"
 
         {:ok, context}
       end
 
       then_ "and the application was not left claiming to have restarted", context do
         refute exists?(context.running_root, ".restarted"),
-               "the restart recorded success over a tree that does not build"
+               "nothing was merged, so nothing should have been restarted either"
+
+        {:ok, context}
+      end
+
+      then_ "and the running checkout was never put in the state that would have broken",
+            context do
+        war_file = read(context.running_root, "lib/broken_oaths/diplomacy/war.ex")
+
+        assert war_file =~ "Warfare",
+               "the refusal is only meaningful if the running checkout still " <>
+                 "has main's rename rather than some half-merged mix of both " <>
+                 "branches"
+
+        refute exists?(context.running_root, "lib/broken_oaths/diplomacy/peace.ex"),
+               "the story's file crossed into the running checkout despite the " <>
+                 "refusal — ff-only is supposed to touch nothing when it refuses"
 
         {:ok, context}
       end

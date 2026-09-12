@@ -50,22 +50,6 @@ defmodule CodeMySpec.BootVersion do
   end
 
   @doc """
-  The checkout this process booted from, or nil.
-
-  The other half of the pair `capture/1` stores. `booted/0` answers "which
-  commit"; this answers "which checkout" — needed by a caller asking not
-  "is my code current" but "is the checkout I am about to restart the one
-  running me", which is a question about the root, not the sha.
-  """
-  @spec booted_root() :: String.t() | nil
-  def booted_root do
-    case :persistent_term.get(@key, nil) do
-      {root, _sha} when is_binary(root) -> root
-      _ -> nil
-    end
-  end
-
-  @doc """
   What to call this build, in one string.
 
   The commit where there is one, the release version otherwise. A packaged
