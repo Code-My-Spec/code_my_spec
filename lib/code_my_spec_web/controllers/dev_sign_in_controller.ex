@@ -22,11 +22,16 @@ defmodule CodeMySpecWeb.DevSignInController do
 
   ## It mints the real token
 
-  `UserToken.build_email_token(user, "login")` — the same token
+  `Users.mint_login_token/1` — the same `"login"` token
   `deliver_login_instructions/2` puts in the email, redeemed at the same
   `/users/log-in/:token` route by the same controller. So QA exercises the
   product's actual session auth rather than a test-only bypass, and a break in
   the real flow still fails QA rather than being routed around.
+
+  Minted through the context rather than here. The first cut built and inserted
+  the token in this module, which put a `Repo` call in `CodeMySpecWeb` — the
+  boundary refused it, and was right to: a second implementation of credential
+  minting is how the two drift.
 
   What it skips is the mailbox, not the authentication.
 
@@ -50,7 +55,6 @@ defmodule CodeMySpecWeb.DevSignInController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.UserToken
 
   def create(conn, %{"email" => email, "password" => password})
       when is_binary(email) and is_binary(password) do
@@ -84,8 +88,7 @@ defmodule CodeMySpecWeb.DevSignInController do
   defp respond(nil, conn, reason), do: refuse(conn, reason)
 
   defp respond(user, conn, _reason) do
-    {encoded_token, user_token} = UserToken.build_email_token(user, "login")
-    CodeMySpec.Repo.insert!(user_token)
+    encoded_token = Users.mint_login_token(user)
 
     json(conn, %{
       email: user.email,

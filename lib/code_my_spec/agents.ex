@@ -44,6 +44,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
+      CodeMySpec.MainAgent,
       CodeMySpec.Notifications,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
@@ -73,6 +74,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Repo
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
@@ -959,6 +961,13 @@ defmodule CodeMySpec.Agents do
         # its graph moves. Started here rather than at boot: a project nobody is
         # working on needs no watcher.
         GraphWatcher.ensure_watching(scope)
+
+        # And something has to look in on the agents themselves. Same trigger,
+        # same reason, and it belongs beside the watcher rather than only in the
+        # boot seed — QA of story 1017 found a project with eleven running
+        # agents reporting `woken=yes, running=no`, because it gained its
+        # continuous agent after boot and nothing started its cadence.
+        MainAgent.ensure_cadence(scope)
         wake_roles(scope, copy_id)
       end
 
@@ -992,6 +1001,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
+        MainAgent.ensure_cadence(scope)
         wake_or_restart(scope, agent)
       else
         {:ok, agent, :paused}
