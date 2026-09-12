@@ -38,6 +38,23 @@ defmodule CodeMySpec.Requirements.Freshness do
   would make every save look like a change, which is the failure this replaces
   rather than a cheaper version of it.
 
+  ## Rows that are read are hashed by `updated_at`, not by named fields
+
+  For a row a checker *does* read, the opposite holds, and criterion 5887 is
+  what settled it. Naming fields means the fingerprint covers the fields this
+  module happens to know about, and it was wrong twice in the same afternoon:
+  `add_scenario` sets an existing criterion's `kind` and `rule_id`, which
+  `BddRulesChecker` reads and this hashed by id alone; and the Three Amigos seal
+  is `story.three_amigos_sealed`, which was not in the story's named fields at
+  all. Both moved an answer without moving its fingerprint, so the stale row was
+  kept and the graph went on offering work that had already been done.
+
+  A missed input is silent and expensive — an agent holds a session that is
+  already sealed — while an extra one costs a recompute. So every row a checker
+  reads is keyed `{id, updated_at}`, the convention
+  `Preloader.delegated_inputs/2` already uses, which covers every field read
+  today and every field read later without this module tracking which.
+
   ## On hashing things we do not own
 
   For files the source key is a content hash, which is honest: we have the
@@ -58,15 +75,29 @@ defmodule CodeMySpec.Requirements.Freshness do
   @spec story(Preloader.context(), map()) :: String.t()
   def story(ctx, story) do
     hash([
-      {:story, story.id, story.ready_for_dev, story.working_copy_id, story.component_id},
+      {:story, story.id, row_key(story), story.ready_for_dev, story.working_copy_id,
+       story.component_id},
       {:files, file_keys(Map.get(ctx.files_by_story, story.id, []))},
-      {:rules, ids(Map.get(ctx.rules_by_story, story.id, []))},
-      {:criteria, ids(Map.get(ctx.criteria_by_story, story.id, []))},
-      {:questions, ids(Map.get(ctx.questions_by_story, story.id, []))},
-      {:personas, ids(Map.get(ctx.personas_by_story, story.id, []))},
+      {:rules, row_keys(Map.get(ctx.rules_by_story, story.id, []))},
+      {:criteria, row_keys(Map.get(ctx.criteria_by_story, story.id, []))},
+      {:questions, row_keys(Map.get(ctx.questions_by_story, story.id, []))},
+      {:personas, row_keys(Map.get(ctx.personas_by_story, story.id, []))},
       {:qa, attempt_key(Map.get(ctx.qa_latest_by_story, story.id))},
       {:deploy, deploy_key(Map.get(ctx.uat_deploy_by_story, story.id))},
-      {:running_copy, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("working_copies")}
+      {:running_copy, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("working_copies")},
+      # `story_issues_resolved` delegates to `IssuesChecker.story_resolved?/3`,
+      # and the preloader groups issues by nothing — they reach the context only
+      # as project-wide stamps. Project-wide is what gets hashed, so an issue
+      # accepted against one story reconsiders every story.
+      #
+      # Coarse on purpose, and the trade is not close. Issues are filed and
+      # resolved by hand, a handful a day; files churn every time an agent
+      # writes one. The alternative is leaving the input out, which is what
+      # criterion 5887 already showed the cost of: the graph keeps offering work
+      # that is finished, and nothing ever changes its mind. Grouping issues by
+      # story in `Preloader` would narrow this, and until it does this is the
+      # side to be wrong on.
+      {:issues, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("issues")}
     ])
   end
 
@@ -81,7 +112,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   @spec component(Preloader.context(), map()) :: String.t()
   def component(ctx, component) do
     hash([
-      {:component, component.id, component.type, component.module_name},
+      {:component, component.id, row_key(component), component.type, component.module_name},
       {:files, file_keys(Map.get(ctx.files_by_component, component.id, []))},
       {:children, ids(Map.get(ctx.children_by_parent, component.id, []))},
       {:problems, Map.get(ctx.problems_by_component, component.id, %{})},
@@ -175,6 +206,43 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   defp ids(rows), do: rows |> Enum.map(& &1.id) |> Enum.sort()
+
+  # `{id, updated_at}`, because these rows are edited in place and the checkers
+  # read their contents rather than their existence.
+  #
+  # Identity alone was wrong and criterion 5887 is what said so. `add_scenario`
+  # sets an existing criterion's `kind` and `rule_id`; `BddRulesChecker` reads
+  # exactly those two — `Enum.filter(criteria, &(not is_nil(&1.kind)))`, then
+  # `Enum.group_by(scenarios, & &1.rule_id)` — so a story went from "a rule with
+  # no scenario" to "covered" with its set of criterion ids unchanged. The
+  # fingerprint matched, the row was kept, and the graph went on offering a
+  # Three Amigos session that had already been held. A question being answered
+  # is the same shape: `status` moves from `:open`, the id does not.
+  #
+  # `updated_at` rather than the fields themselves, which is the convention
+  # `Preloader.delegated_inputs/2` already uses for the same reason: it covers
+  # every field a checker reads today and every one it starts reading later,
+  # without this module having to track what that is. The objection in the
+  # moduledoc — that a timestamp makes every save look like a change — is about
+  # rows nothing consults. These are consulted.
+  defp row_keys(rows), do: rows |> Enum.map(&row_key/1) |> Enum.sort()
+
+  # The same question asked of one row, including the entity's own.
+  #
+  # Criterion 5887 found the second half of this: `three_amigos_complete`
+  # delegates to `BddRulesChecker.sealed?/2`, which reads
+  # `story.three_amigos_sealed` — a field on the story itself, flipped by
+  # `ThreeAmigos.evaluate/2` through a normal changeset update. The fields named
+  # beside this one are the fields *this module* happened to know about, and the
+  # seal was not among them, so a story went from unsealed to sealed with its
+  # fingerprint unchanged and the graph kept offering a conversation that had
+  # already been held.
+  #
+  # Enumerating fields means being wrong again the next time a checker reads one
+  # nobody added here — silently, and in the direction that costs an agent a
+  # session rather than costing a recompute. The row's own `updated_at` is the
+  # question actually being asked: did this row change.
+  defp row_key(row), do: {row.id, Map.get(row, :updated_at)}
 
   # The attempt's identity, not its contents. A QA attempt is immutable once
   # inserted, so its id is a complete answer to "is this the same attempt" —
