@@ -257,8 +257,24 @@ restart port="4000":
     # inside the poll window, because the server is detached and usually
     # arrives moments later. Skipping the harness on a slow boot would leave
     # exactly the mismatch this exists to prevent.
+    #
+    # `pull=false`: this recipe's own contract is "nothing to do with moving
+    # git" (see its header) — `restart` never touches origin, `refresh` is what
+    # adds the pull. `refresh-harness`'s default pull broke that silently:
+    # `CodeMySpec.Promotion` merges a branch straight into this checkout with
+    # nothing pushed anywhere, and the very next thing `restart` did was ask
+    # `refresh-harness` to `git pull --ff-only` against `origin/main` — which
+    # fails outright the moment `origin/main` has *also* moved since this
+    # checkout's own upstream was last read (main ahead from the merge, origin
+    # ahead from someone else's push — a real two-way divergence, not a
+    # fast-forward). `set -e` turned that failure into `restart` never reaching
+    # the kill-and-relaunch at all, so a promotion whose merge touched
+    # `lib/cms_harness` or the channel modules landed the code and left the
+    # harness on the old contract with no restart attempted (d00a3272). The
+    # checkout just got here by merging or being pulled — it needs no further
+    # pulling to be current, only a rebuild and a relaunch.
     echo
-    just refresh-harness
+    just refresh-harness pull=false
 
 
 # Pull main into the running checkout and let the code reloader do the rest.
@@ -387,7 +403,7 @@ refresh port="4000":
 
 
 # Restart the harness on :4004, from any worktree.
-refresh-harness port="4004":
+refresh-harness port="4004" pull="true":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -444,26 +460,41 @@ refresh-harness port="4004":
     # Same refusal as `just refresh`, for the same reason: pulling over another
     # agent's uncommitted work in the shared checkout is worse than not
     # restarting.
-    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
-    if [ -n "$dirty" ]; then
-        echo "✗ refusing: the main checkout has uncommitted work." >&2
-        echo "$dirty" >&2
-        echo "" >&2
-        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
-        echo "  or restart by hand once it is clear." >&2
-        exit 1
-    fi
+    #
+    # `pull=false` skips this whole block, for the one caller that already
+    # knows the checkout is current: `restart`'s own tail, run right after a
+    # build at whatever commit is already on disk (including one `just merge`d
+    # there and never pushed, which is what a promotion is). A pull there
+    # answers a question nobody asked and can refuse outright — `--ff-only`
+    # fails the moment `origin/main` has *also* moved since this branch's own
+    # upstream was last read, a real divergence rather than a fast-forward —
+    # and `set -e` turned that refusal into the kill-and-relaunch below never
+    # running at all, landing a contract-changing merge with the harness never
+    # told to catch up (d00a3272).
+    if [ "{{pull}}" = "true" ]; then
+        dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+        if [ -n "$dirty" ]; then
+            echo "✗ refusing: the main checkout has uncommitted work." >&2
+            echo "$dirty" >&2
+            echo "" >&2
+            echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+            echo "  or restart by hand once it is clear." >&2
+            exit 1
+        fi
 
-    before="$(git -C "$main" rev-parse --short HEAD)"
-    git -C "$main" pull --ff-only
-    after="$(git -C "$main" rev-parse --short HEAD)"
-    echo "→ $before → $after"
+        before="$(git -C "$main" rev-parse --short HEAD)"
+        git -C "$main" pull --ff-only
+        after="$(git -C "$main" rev-parse --short HEAD)"
+        echo "→ $before → $after"
 
-    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
-        echo "→ mix.lock moved, fetching deps"
-        ( cd "$main" && mix deps.get )
+        if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
+            echo "→ mix.lock moved, fetching deps"
+            ( cd "$main" && mix deps.get )
+        else
+            echo "→ mix.lock unchanged, skipping deps.get"
+        fi
     else
-        echo "→ mix.lock unchanged, skipping deps.get"
+        echo "→ pull=false — the checkout is already where it needs to be"
     fi
 
     # The same satisfiability check `refresh` carries, in dev_cli — the env the
