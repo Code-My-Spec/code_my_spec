@@ -230,6 +230,12 @@ defmodule CodeMySpec.MainAgent do
     end
   end
 
+  # Grouped with the clause above rather than sitting after the private
+  # functions it used to follow: separated clauses of one function are a
+  # compiler warning, and the warning is right — a reader who finds this one
+  # first sees a `restart_agent/3` that refuses everything.
+  def restart_agent(%Scope{}, _agent_id, _reason), do: {:error, :needs_a_reason}
+
   # A fault underneath the agent is not one a restart reaches.
   #
   # Criterion 3312, and it fires on the first attempt rather than the fourth.
@@ -273,8 +279,6 @@ defmodule CodeMySpec.MainAgent do
   defp decide(_fault, scope, agent, reason) do
     attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
   end
-
-  def restart_agent(%Scope{}, _agent_id, _reason), do: {:error, :needs_a_reason}
 
   @restart_limit 3
 
@@ -729,6 +733,17 @@ defmodule CodeMySpec.MainAgent do
   end
 
   @doc """
+  The main agent has finished and asks not to be woken again.
+
+  The timer only. Criterion 3335: an agent's question still reaches a
+  stood-down main agent, because the alternative has no symptom on either side
+  — it is not woken, which is what it asked for, and the question never
+  arrives.
+  """
+  @spec stand_down(Scope.t()) :: :ok
+  defdelegate stand_down(scope), to: Cadence
+
+  @doc """
   Take a task off an agent, when it is work that agent cannot do.
 
   Refused when it can. The main agent may do anything, so watching an agent work
@@ -740,17 +755,6 @@ defmodule CodeMySpec.MainAgent do
   QA because it is a coding agent's; work the main agent did itself has no
   counterpart to check it.
   """
-  @doc """
-  The main agent has finished and asks not to be woken again.
-
-  The timer only. Criterion 3335: an agent's question still reaches a
-  stood-down main agent, because the alternative has no symptom on either side
-  — it is not woken, which is what it asked for, and the question never
-  arrives.
-  """
-  @spec stand_down(Scope.t()) :: :ok
-  defdelegate stand_down(scope), to: Cadence
-
   @spec take_over_work(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def take_over_work(%Scope{} = scope, agent_id, _task_id) do
     case mine(scope, agent_id) do

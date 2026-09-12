@@ -159,18 +159,6 @@ defmodule CodeMySpec.Stories do
   end
 
   @doc """
-  Updates a story.
-
-  ## Examples
-
-      iex> update_story(story, %{field: new_value})
-      {:ok, %Story{}}
-
-      iex> update_story(story, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  @doc """
   Ready stories that belong to no epic.
 
   The reading story 1058 came from: a product agent asked to group ready stories
@@ -186,6 +174,18 @@ defmodule CodeMySpec.Stories do
   @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
   defdelegate ready_stories_without_epic(scope), to: StoriesRepository
 
+  @doc """
+  Updates a story.
+
+  ## Examples
+
+      iex> update_story(story, %{field: new_value})
+      {:ok, %Story{}}
+
+      iex> update_story(story, %{field: bad_value})
+      {:error, %Ecto.Changeset{}}
+
+  """
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
     true = story.account_id == scope.active_account_id
 
