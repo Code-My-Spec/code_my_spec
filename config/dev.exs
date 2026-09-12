@@ -214,3 +214,22 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # So dev previews are opened from dev.codemyspec.com. `PreviewSameSiteTest`
 # fails if this list ever gains an origin that cannot hold a session.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://dev.codemyspec.com"
+
+# How long promotion's gate waits for the analyzer sweep it triggered.
+#
+# The default is two minutes, which is right for a machine running one project
+# and wrong for this one. Measured 2026-09-12: five to eight concurrent
+# `mix test` / `mix spex` runs across the worktrees on this box, load averages
+# 30–54 sustained for over half an hour, and a full sweep well past two minutes.
+#
+# What that produced is worse than slow. `gate/1` enqueues the stale sources and
+# `certify_clean/2` waits on `Analysis.await_all`; when the wait lapses the agent
+# is told "the sweep is still running — promote again shortly". The obvious
+# reading is to go and produce a fresh sweep, and each one an agent starts is
+# another run the next gate must wait out. Every promotion in that window needed
+# three or four attempts, none of them because anything was wrong with the tree.
+#
+# Ten minutes matches `Analysis.await_all`'s own default, so the gate stops
+# being the tighter of the two clocks. It does not make promotion slower — it
+# stops it giving up on work already in flight.
+config :code_my_spec, :promotion_sweep_timeout, to_timeout(minute: 10)
