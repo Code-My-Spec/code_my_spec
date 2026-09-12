@@ -2995,6 +2995,58 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The check-in, run now.
+
+  The cadence's own tick rather than a wait. A spex that waited for the timer
+  would be slow and — worse — would pass by accident on a machine loaded enough
+  for the timer to fire twice. What every criterion on story 1059 claims is
+  about the wake-up's *content and consequences*, and the tick is that wake-up.
+  """
+  @spec cadence_tick(Scope.t()) :: :ok
+  def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+
+  @doc "How often this project's main agent is woken, in seconds."
+  @spec cadence_interval(Scope.t()) :: pos_integer()
+  def cadence_interval(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_interval(scope)
+
+  @doc """
+  Set how often this project's main agent is woken.
+
+  Through the configuration the product writes, not a module attribute — the
+  whole of criterion 3331 is that the number is somewhere it can be changed
+  without a deploy.
+  """
+  @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
+  def set_cadence_interval(%Scope{} = scope, seconds),
+    do: CodeMySpec.MainAgent.set_cadence_interval(scope, seconds)
+
+  @doc "Whether this project's cadence is still waking its main agent."
+  @spec cadence_running?(Scope.t()) :: boolean()
+  def cadence_running?(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_running?(scope)
+
+  @doc """
+  Make one of the things the digest reads unanswerable.
+
+  Criterion 3333 is about a digest that *cannot be built*, which is a different
+  state from one that finds nothing — and the difference is invisible unless a
+  scenario can produce the first. The analyzer ledger is the source broken here
+  because it is the one the digest reads that has a failure mode of its own.
+  """
+  @spec break_digest_source(Scope.t()) :: :ok
+  def break_digest_source(%Scope{} = scope) do
+    Application.put_env(:code_my_spec, :main_agent_digest_source, :unavailable)
+    on_exit_reset()
+    _ = scope
+    :ok
+  end
+
+  defp on_exit_reset do
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, :main_agent_digest_source)
+    end)
+  end
+
+  @doc """
   An epic on this project.
 
   Through `Epics.create_epic/2`, the same call the product agent's `create_epic`
