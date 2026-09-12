@@ -421,10 +421,18 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # does not know, or a blank key all leave `CmsHarness.Token` to answer
   # exactly as it did before this existed, and a copy served by a daemon holding
   # that project's key already works.
+  #
+  # Answers the key rather than exporting it. It used to `System.put_env` into
+  # `CMS_DEPLOY_KEY` and return `:ok`, and nothing has read that variable since
+  # the environment came out of `CmsHarness.Config`:
+  # `Credentials.from_configured_deploy_key/0` reads `:harness_deploy_key`,
+  # which no config file in this repo sets. So this found the right key, put it
+  # somewhere nothing looks, and onboarding failed `:no_credential` telling the
+  # operator to export the same variable.
   defp ensure_local_credential(project_id) do
     cond do
       not blank?(System.get_env("CMS_DEPLOY_KEY")) ->
-        :ok
+        {:ok, System.get_env("CMS_DEPLOY_KEY")}
 
       not local_server?(Config.server_url()) ->
         # The database this reads is on this machine, and it backs a server on
@@ -444,15 +452,25 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
           :reset
         ])
 
-        :ok
+        :none
 
       true ->
         case local_project_deploy_key(project_id) do
-          key when is_binary(key) and key != "" -> System.put_env("CMS_DEPLOY_KEY", key)
-          _ -> :ok
+          key when is_binary(key) and key != "" -> {:ok, key}
+          _ -> :none
         end
     end
   end
+
+  # A key in hand exchanges directly; otherwise fall back to the lookup.
+  #
+  # `Token.access_token/0` cannot serve this call. Every credential it consults
+  # is indexed by a root or by a project the daemon is already serving, and a
+  # copy being onboarded is neither — that is what onboarding it means. So it
+  # answers `:no_credential`, which reads as "this machine has no credential"
+  # while eleven onboarded copies sit beside it holding good ones.
+  defp token_for({:ok, key}), do: Token.access_token_for_key(key)
+  defp token_for(:none), do: Token.access_token()
 
   # Does this machine's database back the server being posted to?
   #
@@ -865,8 +883,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # be served and would never acquire one.
   defp mint(root, project_id) do
     with {:ok, project} <- project_for(root, project_id),
-         _ = ensure_local_credential(project.id),
-         {:ok, token} <- Token.access_token(),
+         {:ok, token} <- token_for(ensure_local_credential(project.id)),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <-
            HarnessConfig.write(root, %{

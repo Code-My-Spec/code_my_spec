@@ -203,6 +203,36 @@ for {title, description} <- stories do
   end
 end
 
+# ---------------------------------------------------------------- on-disk config
+#
+# `cms.harness.onboard` reads these two from the tree it is pointed at, and says
+# so clearly when they are missing — but only one at a time, so a fixture
+# without them costs two failed runs to discover.
+#
+# `config.yml` is which project this checkout is. Without it onboarding stops at
+# "does not say which project it is".
+config_yml = Path.join([local_path, ".code_my_spec", "config.yml"])
+
+unless File.exists?(config_yml) do
+  File.write!(config_yml, """
+  account_id: #{account.id}
+  description: "A generated Phoenix app used as a QA fixture for the requirement graph's watcher and wake criteria. Nothing here ships."
+  module_name: #{Macro.camelize(app_name)}
+  name: #{project_name}
+  project_id: #{project.id}
+  """)
+
+  IO.puts("  config.yml: written")
+end
+
+# A deploy key is the credential onboarding mints the harness id against, and a
+# project created through `create_project/2` has none — `ensure_deploy_key/2` is
+# a separate call nothing here had made.
+{:ok, project} = Projects.ensure_deploy_key(scope, project)
+IO.puts("  deploy key: #{String.slice(project.deploy_key, 0, 12)}… (ensured)")
+
+scope = %{scope | active_project: project}
+
 # ---------------------------------------------------------------- the checkout
 #
 # Minted here rather than onboarded, which reverses what this seed said an hour
@@ -267,23 +297,35 @@ device_attrs = %{hostname: "qa-wake-fixture", kind: :local}
 copy =
   case Repo.one(
          from w in CodeMySpec.WorkingCopies.WorkingCopy,
-           where: w.project_id == type(^project.id, :binary_id),
+           where: w.project_id == type(^project.id, :binary_id) and not is_nil(w.root),
            order_by: [asc: w.inserted_at],
            limit: 1
        ) do
     nil ->
-      {:ok, c} =
-        CodeMySpec.WorkingCopies.issue(scope, nil,
-          label: "wake fixture (no harness behind it)",
-          root: local_path,
-          device: device
-        )
+      IO.puts(:stderr, """
 
-      IO.puts("  working copy: created #{c.id}")
-      c
+      No onboarded checkout for #{project_name}.
+
+      This seed does not mint one any more. A copy it invents has no root and no
+      harness behind it, and `Agents.dispatch_message/3` calls the transport
+      before it records anything — so a wake to an agent on such a copy is
+      undeliverable and never reaches the conversation. The four wake criteria
+      then look broken when nothing is.
+
+      Onboard it, which now works:
+
+          mix cms.seed priv/repo/qa_wake_key.exs        # prints the deploy key
+          CMS_DEPLOY_KEY=<that key> \\
+            mix cms.harness.onboard #{local_path} \\
+              --project #{project.id}
+
+      Then re-run this seed and it will attach the agents to that checkout.
+      """)
+
+      System.halt(1)
 
     c ->
-      IO.puts("  working copy: exists #{c.id}")
+      IO.puts("  working copy: #{c.id} (onboarded, root #{c.root})")
       c
   end
 

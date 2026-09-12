@@ -92,6 +92,29 @@ defmodule CmsHarness.Token do
     end
   end
 
+  @doc """
+  The same exchange, for a caller that already holds the key.
+
+  For onboarding a checkout that has none yet, which is the one case
+  `access_token/1` cannot serve: it looks a credential up, and every place it
+  looks is indexed by a root or a served project. A copy being onboarded is
+  neither — that is what onboarding it means — so the lookup is asked a question
+  with no answer and reports `:no_credential`, which reads as "this machine has
+  no credential" when the truth is "the copy you named has none yet, and I never
+  looked anywhere else".
+
+  Measured 2026-09-11: onboarding a fresh fixture checkout failed this way with
+  eleven onboarded copies on the same machine and the project's key in the local
+  database. `mix cms.harness.onboard` was putting that key in `CMS_DEPLOY_KEY`,
+  and nothing has read that variable since the environment came out of
+  `CmsHarness.Config` — `Credentials.from_configured_deploy_key/0` reads
+  `:harness_deploy_key`, which no config file in this repo sets. So the task's
+  own remedy, printed in its own error, had no effect.
+  """
+  @spec access_token_for_key(String.t()) :: {:ok, String.t()} | {:error, refusal()}
+  def access_token_for_key(key) when is_binary(key) and key != "",
+    do: call_for_token(nil, key)
+
   # A working copy when the caller has one, any credential when it does not.
   # `WorkingCopies.ask_server/1` asks the server where a harness is; the answer
   # does not depend on who asks, and demanding a root there would make the
