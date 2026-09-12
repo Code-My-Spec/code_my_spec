@@ -142,12 +142,12 @@ defmodule CmsHarness.AnalysisSlotsTest do
 
   defp wait_until(_check, 0), do: flunk("condition never became true")
 
-  defp wait_until(check, remaining) do
-    if check.() do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until(check, remaining - 1)
-    end
+  defp wait_until(check, remaining), do: settled(check, check.(), remaining)
+
+  defp settled(_check, true, _remaining), do: :ok
+
+  defp settled(check, false, remaining) do
+    Process.sleep(10)
+    wait_until(check, remaining - 1)
   end
 end
