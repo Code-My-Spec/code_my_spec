@@ -192,7 +192,8 @@ defmodule CodeMySpec.Requirements.Projection do
         orchestrated_by: definition.orchestrated_by,
         render_command_always?: definition.render_command_always? || false,
         role: definition.role,
-        details: row.details || %{}
+        details: row.details || %{},
+        checked_at: row.checked_at
       }
     else
       _ -> nil

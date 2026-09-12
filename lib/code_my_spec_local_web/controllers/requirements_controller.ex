@@ -101,12 +101,22 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   defp error_report(nil), do: nil
   defp error_report(%{at: at, message: message}), do: %{at: at, message: message}
 
+  # `checked_at` per node, not only `computed_at` for the graph.
+  #
+  # "An observation recomputes what it touched and leaves the rest" is a
+  # question about individual requirements, and one timestamp for the whole
+  # graph cannot answer it — every node moves together whether or not the work
+  # was necessary. A reader comparing these across two reads can see which
+  # requirements actually cost something.
+  #
+  # `nil` means the node was computed on this request rather than read back.
   defp node_report(node) do
     %{
       name: node.name,
       entity_type: node.entity_type,
       entity_id: node.entity_id,
-      satisfied: node.satisfied
+      satisfied: node.satisfied,
+      checked_at: Map.get(node, :checked_at)
     }
   end
 
