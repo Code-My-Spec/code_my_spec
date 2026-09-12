@@ -35,8 +35,12 @@ defmodule CodeMySpecSpex.Story1064.Criterion3371Spex do
   spex "the agent is asking what they are building" do
     scenario "The paperwork sits beside the talking" do
       given_ "the agent is asking what they are building", context do
-        conn = Phoenix.ConnTest.build_conn()
-        {:ok, live, _html} = live(conn, "/build")
+        # From `get/2` rather than `live/2`, which discards the conn it built.
+        # The last step re-mounts `/build`, and on a fresh conn that would be a
+        # stranger arriving — never redirected, whatever happened to the person
+        # this scenario is about.
+        conn = get(Phoenix.ConnTest.build_conn(), "/build")
+        {:ok, live, _html} = live(conn)
 
         describe_idea(live, @description)
 
