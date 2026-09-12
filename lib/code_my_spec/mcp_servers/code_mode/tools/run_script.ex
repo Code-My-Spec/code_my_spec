@@ -10,11 +10,19 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
       print("checking", story.title)
       return story.title
 
-  A tool that cannot answer returns nil and an error table rather than stopping
-  the script, so a loop can report what it could not find:
+  A tool that ran and could not answer returns nil and an error table rather
+  than stopping the script, so a loop can report what it could not find:
 
       local story, err = get_story({ story_id = 12345 })
       if story == nil then return "missing: " .. err.message end
+
+  A call the sandbox *rejects* — wrong argument type, missing required
+  argument — is different: the tool never ran, and the script stops there. You
+  do not have to check for it, and you cannot carry on past it. That is
+  deliberate. A malformed call used to come back as `nil` and an error table
+  too, which is indistinguishable at a glance from a tool that found nothing,
+  and a script that discarded the second value would go on to answer from a
+  call that never happened.
 
   Call `tool_docs` to see what tools there are and what each one takes.
 

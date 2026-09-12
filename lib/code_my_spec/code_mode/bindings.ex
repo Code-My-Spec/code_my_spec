@@ -123,11 +123,30 @@ defmodule CodeMySpec.CodeMode.Bindings do
           {encoded, state} = Lua.encode!(state, value)
           {[encoded], state}
 
+        # Stops the script. The tool never ran, so there is no answer to hand
+        # back and nothing after this point can be standing on one. Returning
+        # `nil, err` here is what let a script discard the second value, carry
+        # on, and report a confident conclusion drawn from a call that did not
+        # happen — which reads exactly like a tool that found nothing.
+        {:invalid_call, message} ->
+          raise Lua.RuntimeException, rejected(tool, message)
+
         {:error, message} ->
           {encoded, state} = Lua.encode!(state, %{"tool" => tool.name, "message" => message})
           {[nil, encoded], state}
       end
     end
+  end
+
+  # Names the tool, because a script makes several calls and one that fails
+  # without saying which sends the reader through all of them. The rest of the
+  # detail — which argument, what it wanted — is already in `message`.
+  defp rejected(tool, message) do
+    "#{tool.name} was called wrong and did not run: #{message}.\n\n" <>
+      "The script stopped here. This is not an empty answer — nothing was " <>
+      "read, so anything after this call would have been built on a call that " <>
+      "never happened. Fix the call; `tool_docs({ name = \"#{tool.name}\" })`, " <>
+      "called directly, gives its arguments and their types."
   end
 
   # A tool called with no arguments is the common case for the listing tools,

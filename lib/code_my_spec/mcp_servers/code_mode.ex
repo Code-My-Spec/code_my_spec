@@ -237,10 +237,16 @@ defmodule CodeMySpec.McpServers.CodeMode do
   # script a second, laxer door onto the same tools, and the casting is
   # load-bearing besides — the schema is what turns a Lua number into the
   # integer a tool expects.
+  #
+  # A rejection here is `:invalid_call`, not `:error`, and the difference is the
+  # whole of story 1032. `:error` means the tool ran and could not answer, which
+  # a script handles. This means the tool never ran because the call was
+  # malformed — there is nothing to handle, and handing back `nil, err` let a
+  # script carry on and answer from a call that never happened.
   defp validate(%{validate_input: validate}, args) when is_function(validate, 1) do
     case validate.(args) do
       {:ok, params} -> {:ok, params}
-      {:error, reason} -> {:error, "invalid arguments: #{describe(reason)}"}
+      {:error, reason} -> {:invalid_call, "invalid arguments: #{describe(reason)}"}
     end
   end
 

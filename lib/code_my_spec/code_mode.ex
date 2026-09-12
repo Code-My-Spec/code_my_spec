@@ -206,6 +206,10 @@ defmodule CodeMySpec.CodeMode do
       message =~ "stack overflow" -> :call_depth
       message =~ "resulting string too large" -> :result_too_large
       message =~ "is sandboxed" -> :sandboxed
+      # Its own kind because it is the one failure here that is neither a limit
+      # nor a bug in the script's logic: the script is fine and one call in it
+      # is malformed. An agent reading this edits one line.
+      message =~ "was called wrong and did not run" -> :rejected_call
       true -> :runtime
     end
   end
