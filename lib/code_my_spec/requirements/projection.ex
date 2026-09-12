@@ -78,42 +78,15 @@ defmodule CodeMySpec.Requirements.Projection do
 
   def vantage(%Scope{active_project: %{default_working_copy_id: id}}) when is_binary(id), do: id
 
-  # Two fields mean "main" and only one of them is written.
-  #
-  # `WorkingCopies.designate_main/2` — the product operation, the button on the
-  # working-copies page — sets `working_copy.main`. This function read
-  # `project.default_working_copy_id`, which nothing in `lib/` writes at all.
-  # Measured 2026-09-12: 8 projects had designated a main copy and **1 of 55**
-  # had `default_working_copy_id` set.
-  #
-  # So on 54 projects this answered nil and every reader without a checkout
-  # wrote to the unscoped row-space, and on the one project where it did
-  # resolve, a blended computation was stored where that checkout's answer
-  # belongs — two readers overwriting each other, `served_graph/3` refusing a
-  # projection that never matched its count, and a full recompute on every
-  # read. Measured there: 348 computes in one log, median 2.6s, max 14.8s, 116
-  # of them from stop hooks.
-  #
-  # Falling through to the designated copy makes the two agree, and makes
-  # designating one mean something to the graph. `default_working_copy_id`
-  # stays first: a project that has set it has said so explicitly.
-  def vantage(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+  def vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.one(
       from p in CodeMySpec.Projects.Project,
         where: p.id == ^project_id,
         select: p.default_working_copy_id
-    ) || designated_main_id(scope)
+    )
   end
 
   def vantage(%Scope{}), do: nil
-
-  defp designated_main_id(%Scope{active_project_id: project_id}) do
-    Repo.one(
-      from w in CodeMySpec.WorkingCopies.WorkingCopy,
-        where: w.project_id == ^project_id and w.main,
-        select: w.id
-    )
-  end
 
   @doc """
   Which requirements a file bears on.

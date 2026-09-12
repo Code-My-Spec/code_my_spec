@@ -86,50 +86,34 @@ defmodule CodeMySpec.Requirements.Preloader do
   stops existing, and this clause can go.
   """
   @spec load(Scope.t()) :: {:ok, context()}
-  # Resolved here rather than only at the write.
+  # Two axes, and they do not want the same answer.
   #
-  # `Projection.vantage/1` decides which checkout's rows a reader reads and
-  # writes. This function used to ignore it and blend every checkout whenever
-  # the scope named none — so a reader's *computation* and its *storage*
-  # disagreed about whose view it was, and the blend was written where one
-  # checkout's answer belonged. Nothing was stale; the two simply differed, and
-  # `served_graph/3` refused a projection that never matched the count it
-  # published. The cost was a full recompute on every read: 348 of them in one
-  # log on this project, median 2.6s, max 14.8s, 116 from stop hooks.
+  # **Files** must be one checkout's. Blended, a file present in another
+  # worktree reads as present here — the over-satisfaction this module's own
+  # moduledoc measured at 303 skipped specs. So an unscoped reader is given the
+  # designated checkout's files: a tree that actually existed, which a union is
+  # not.
   #
-  # Resolving first means there is one answer to "whose view is this" and the
-  # preloader, the cache and the projection all use it. This is what both
-  # docstrings already argued for; the clause below is what was left of the
-  # question.
+  # **Stories** must not be narrowed. A person looking at the project is asking
+  # about the project, and a story dispatched to a worktree is still its work.
+  # Narrowing both together hid dispatched stories from the browser entirely,
+  # which criterion 2935 caught: the Three Amigos owed on an epic's stories
+  # stopped being visible to anyone not standing in that copy.
+  #
+  # The result is written to the **unscoped** row-space, because that is what it
+  # is — neither checkout's answer. That is what removes the recompute loop:
+  # this reader and an agent no longer overwrite each other, so
+  # `served_graph/3` stops refusing a projection that never matched the count it
+  # published. Measured before: 348 computes in one log, median 2.6s, max
+  # 14.8s, 116 of them from stop hooks.
   def load(%Scope{active_working_copy_id: nil} = scope) do
-    case Projection.vantage(scope) do
-      nil ->
-        load_blended(scope)
-
-      working_copy_id ->
-        do_load(%{scope | active_working_copy_id: working_copy_id}, working_copy_id)
-    end
+    do_load(scope, nil, files_vantage(scope))
   end
 
   def load(%Scope{active_working_copy_id: working_copy_id} = scope),
-    do: do_load(scope, working_copy_id)
+    do: do_load(scope, working_copy_id, working_copy_id)
 
-  # The only remaining way to get a blend: a project with no checkout at all,
-  # designated or otherwise. There is nothing to resolve to, and answering
-  # "this project has no requirements" would be worse than answering loudly
-  # from everything it has.
-  defp load_blended(%Scope{active_project_id: project_id} = scope) do
-    Logger.warning(
-      "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
-        "copy — every checkout's files are read together, so a file present in one and " <>
-        "absent in another reads as present. This project has named no main checkout and " <>
-        "no default; designating one makes this go away."
-    )
-
-    do_load(scope, nil)
-  end
-
-  defp do_load(%Scope{active_project_id: project_id} = scope, working_copy_id) do
+  defp do_load(%Scope{active_project_id: project_id} = scope, working_copy_id, files_copy_id) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -162,7 +146,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     all_files =
       File
       |> where([f], f.project_id == ^project_id)
-      |> scope_to_harness(working_copy_id)
+      |> scope_to_harness(files_copy_id)
       |> Repo.all()
 
     files_by_component =
@@ -306,6 +290,34 @@ defmodule CodeMySpec.Requirements.Preloader do
   # checkout's identity is worse than reading widely" — and the browser has no
   # working copy to name. Refusing there took the requirement graph out of the
   # UI entirely and failed 86 spex.
+  # Which checkout's files a reader that named none is shown.
+  #
+  # Two fields mean "main" and the application writes only one.
+  # `WorkingCopies.designate_main/2` — the button on the working-copies page —
+  # sets `working_copy.main`. `Projection.vantage/1` reads
+  # `project.default_working_copy_id`, which nothing in `lib/` writes at all.
+  # Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
+  # the other field set.
+  #
+  # So the explicit setting wins where somebody made one, and designating a
+  # main copy means something here where nobody did. `nil` — a project with no
+  # checkout at all — still blends, because there is nothing to blend down to
+  # and "this project has no requirements" would be a worse answer.
+  defp files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.one(
+      from p in CodeMySpec.Projects.Project,
+        where: p.id == ^project_id,
+        select: p.default_working_copy_id
+    ) ||
+      Repo.one(
+        from w in CodeMySpec.WorkingCopies.WorkingCopy,
+          where: w.project_id == ^project_id and w.main,
+          select: w.id
+      )
+  end
+
+  defp files_vantage(%Scope{}), do: nil
+
   defp scope_to_harness(query, nil), do: query
 
   defp scope_to_harness(query, working_copy_id),

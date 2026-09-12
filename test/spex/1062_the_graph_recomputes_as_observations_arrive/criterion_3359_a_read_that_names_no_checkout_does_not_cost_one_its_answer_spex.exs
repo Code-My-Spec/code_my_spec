@@ -1,10 +1,10 @@
 defmodule CodeMySpecSpex.Story1062.Criterion3359Spex do
   @moduledoc """
   Story 1062 — The graph recomputes as observations arrive.
-  Criterion 3359 — Every read of the graph is a read of one checkout.
+  Criterion 3359 — A read that names no checkout keeps its own answer.
 
-  Rule: a requirement graph is a statement about a checkout, so a reader that
-  names none is answered for one rather than for all of them at once.
+  Rule: a read with nothing pending does not force a recompute — for every
+  reader, not only the one that computed last.
 
   ## Why this is a criterion and not a preference
 
@@ -79,10 +79,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3359Spex do
 
   alias CodeMySpecSpex.Fixtures
 
+  defp again_served_from_cache?(context), do: context.again["served_from"] == "cache"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A reader that names no checkout is answered for one" do
+  spex "A reader that names no checkout keeps its own answer" do
     scenario "a project whose checkouts do not hold the same work" do
       given_ "two checkouts, one of them the default, and work belonging to the other",
              context do
@@ -102,57 +104,50 @@ defmodule CodeMySpecSpex.Story1062.Criterion3359Spex do
         {:ok, Map.put(context, :main_copy_id, main.active_working_copy_id)}
       end
 
-      when_ "the graph is read as the default checkout and by a reader naming none",
-            context do
-        as_checkout = read_graph(context, context.main_copy_id)
-        naming_none = read_graph(context)
+      when_ "it is answered, a checkout reads, and it asks again", context do
+        _cold = read_graph(context)
+        warmed = read_graph(context)
+        _checkout = read_graph(context, context.main_copy_id)
+        again = read_graph(context)
 
-        {:ok,
-         context
-         |> Map.put(:as_checkout, as_checkout)
-         |> Map.put(:naming_none, naming_none)}
+        {:ok, context |> Map.put(:warmed, warmed) |> Map.put(:again, again)}
       end
 
-      then_ "it is given that checkout's graph, not every checkout's at once", context do
-        assert length(context.naming_none["nodes"]) == length(context.as_checkout["nodes"]),
+      then_ "it is served the answer it already had", context do
+        assert again_served_from_cache?(context),
                """
-               A reader that named no checkout was given a blend of all of them.
+               A reader that named no checkout was made to recompute by one that did.
 
-               A requirement graph is a statement about a checkout: these
-               requirements are met *in this tree*. A reader handed the union of
-               every checkout is told work is done because some other worktree
-               did it — the over-satisfaction `Preloader`'s own moduledoc
-               measured at 303 skipped specs.
+               Both had answers. Neither input moved. They were writing into the
+               same rows: `Projection.vantage/1` resolved the reader with no
+               checkout to the default copy, so the two overwrote each other and
+               every read found a projection that did not match the count it
+               published.
 
-               It is also why the cache cannot hold. `Projection.vantage/1`
-               stores this blend where the default checkout's answer belongs, so
-               the two readers overwrite each other and every read recomputes:
-               a median of 2.6 seconds and a maximum of 14.8 on this project,
-               116 of them triggered by stop hooks.
+               Nothing here is stale. They disagreed, and went on disagreeing,
+               and the cost was a full recompute on every read — 348 of them in
+               one log on this project, median 2.6s, max 14.8s, 116 from stop
+               hooks. The cockpit carries this component and re-renders on every
+               turn the main agent takes.
 
-               as the default checkout: #{length(context.as_checkout["nodes"])} requirements
-               naming no checkout:      #{length(context.naming_none["nodes"])} requirements
+               warmed: #{inspect(context.warmed["served_from"])}
+               again:  #{inspect(context.again["served_from"])}
                """
 
         {:ok, context}
       end
 
-      then_ "and having been answered once, it is answered again without recomputing",
-            context do
-        again = read_graph(context)
-
-        assert again["served_from"] == "cache",
+      then_ "and it still holds the same requirements", context do
+        assert length(context.again["nodes"]) == length(context.warmed["nodes"]),
                """
-               A read that named no checkout recomputed, having already been
-               answered once with nothing written in between.
+               The reader was handed a different graph than the one it had.
 
-               This follows from the blend rather than being a separate fault:
-               two vantages write different graphs into one row-space, so each
-               read finds a projection that does not match the count it
-               published and computes a new one. Nothing here is stale. They
-               disagree, and go on disagreeing.
+               A recompute that answers with fewer requirements than the cached
+               answer it replaced is the shortfall criterion 3358 is about,
+               reached by the route that produces it rather than manufactured.
 
-               served_from: #{inspect(again["served_from"])}
+               before: #{length(context.warmed["nodes"])} requirements
+               after:  #{length(context.again["nodes"])} requirements
                """
 
         {:ok, context}
