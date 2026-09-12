@@ -73,6 +73,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Problems.ProblemRepository
+  alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -235,13 +236,39 @@ defmodule CodeMySpec.Promotion do
   has to act on — the problem holding the gate, the file that conflicts, the
   work it has not committed — because a refusal an agent cannot act on stops
   the pipeline just as surely as a bug.
+
+  One at a time, per project. `Lock.with_lock/2` holds the project's lock for
+  the whole of `promote_into/2` — gate through restart — because a promotion
+  landing between another one's merge and its restart is the same race with
+  its window moved: the surviving build is still decided by timing rather
+  than by either agent, and QA still cannot tell which one it got (db97272b).
+  A second caller is refused outright rather than queued, naming when the
+  first promotion started — a queued promotion whose branch has since moved
+  on would be a merge nobody asked for.
   """
   @spec promote(Scope.t()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope) do
     with {:ok, running} <- running_copy(scope) do
-      promote_into(scope, running)
+      Lock.with_lock(running.project_id, fn -> promote_into(scope, running) end)
+      |> unlocked()
     end
   end
+
+  defp unlocked({:error, {:already_promoting, started_at}}) do
+    {:error,
+     %{
+       reason:
+         "a promotion for this project is already in flight" <> since(started_at) <>
+           ". Two at once decide the surviving build by timing rather than by either of you " <>
+           "— promote again once it finishes.",
+       already_promoting: true
+     }}
+  end
+
+  defp unlocked(other), do: other
+
+  defp since(%DateTime{} = started_at), do: ", since #{DateTime.to_iso8601(started_at)}"
+  defp since(_), do: ""
 
   # Working on the running copy. There is no branch to merge — the work is
   # already where a promotion would put it — so a promotion here is the other

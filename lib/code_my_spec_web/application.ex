@@ -100,6 +100,11 @@ defmodule CodeMySpecWeb.Application do
         # providers from here, not from the local harness, so the lock that
         # keeps two runs from racing the same project belongs here too.
         CodeMySpec.Provisioning.RunLock,
+        # Which projects have a promotion in flight. A promotion merges and
+        # restarts the one running checkout a project has, and two of them at
+        # once decide the surviving build by timing (db97272b) — the lock
+        # that closes that belongs here for the same reason RunLock does.
+        CodeMySpec.Promotion.Lock,
         CodeMySpecWeb.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to
