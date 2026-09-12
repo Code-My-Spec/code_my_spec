@@ -1,10 +1,10 @@
-defmodule CodeMySpecSpex.Story1062.Criterion3359Spex do
+defmodule CodeMySpecSpex.Story1062.Criterion3423Spex do
   @moduledoc """
   Story 1062 — The graph recomputes as observations arrive.
-  Criterion 3359 — A read that names no checkout keeps its own answer.
+  Criterion 3423 — A reader is not made to recompute a graph nothing has touched.
 
-  Rule: a read with nothing pending does not force a recompute — for every
-  reader, not only the one that computed last.
+  Rule: a recompute fires only when an observation has moved something the
+  graph depends on.
 
   ## Why this is a criterion and not a preference
 
