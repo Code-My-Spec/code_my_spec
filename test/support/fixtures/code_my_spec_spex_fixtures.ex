@@ -2994,6 +2994,43 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  An epic on this project.
+
+  Through `Epics.create_epic/2`, the same call the product agent's `create_epic`
+  tool makes, so an epic in a scenario is the shape one really takes.
+  """
+  def epic_fixture(%Scope{} = scope, attrs \\ %{}) do
+    attrs =
+      Enum.into(attrs, %{
+        title: "an epic #{System.unique_integer([:positive])}",
+        description: "what this epic is for"
+      })
+
+    {:ok, epic} = CodeMySpec.Epics.create_epic(scope, attrs)
+    epic
+  end
+
+  @doc """
+  Put a story in an epic.
+
+  Through `Stories.update_story/3`, which is what every surface that moves a
+  story calls. `epic_id` is a column on the story — one story belongs to at most
+  one epic — so there is no join table to write.
+  """
+  @spec put_story_in_epic(Scope.t(), map(), map()) :: :ok
+  def put_story_in_epic(%Scope{} = scope, story, epic) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{epic_id: epic.id})
+    :ok
+  end
+
+  @doc "Mark a story ready for development, the way the epics page does."
+  @spec mark_story_ready(Scope.t(), map()) :: :ok
+  def mark_story_ready(%Scope{} = scope, story) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: true})
+    :ok
+  end
+
+  @doc """
   What the machine this checkout runs on is currently carrying.
 
   The same shape of fact a harness already reports about its preview, its tools
