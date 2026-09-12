@@ -25,6 +25,21 @@ defmodule CodeMySpecSpex.Story1053.Criterion3265Spex do
   Observed through the main agent's own conversation, which is where a delivered
   message lands. Not through the listing — a listing cannot distinguish
   "delivered" from "found when asked", which is the whole distinction.
+
+  ## Why the question's text is not the assertion
+
+  It was, and it passed with delivery ripped out. The conversation page carries
+  a second thing beside the transcript: `waiting_for/2` renders every question
+  pending for the *user*, on every conversation page, filtered only by session
+  id — so an agent-raised question (which has none) appears on the main agent's
+  page whether or not anything ever told it. The text was there for a reason
+  that has nothing to do with this criterion.
+
+  That is the listing the moduledoc above says not to read, arriving on the
+  page the criterion does read. So the assertion is on the transcript entry
+  instead: an orchestrator action of kind `question`, which exists only because
+  something recorded a delivery onto this conversation. Both are asserted — the
+  entry proves delivery happened here, the text proves it was this question.
   """
 
   use CodeMySpecSpex.Case
@@ -105,20 +120,26 @@ defmodule CodeMySpecSpex.Story1053.Criterion3265Spex do
             CodeMySpecSpex.Fixtures.agent_conversation_path(context.scope, context.main)
           )
 
-        assert html =~ "Do we drop the column or keep it nullable?",
+        assert html =~ ~s(data-action-kind="question"),
                """
-               The question did not reach the main agent.
+               Nothing was delivered to the main agent's thread.
 
-               Nothing in this scenario woke it or read anything, so if the
-               question is not in its conversation then the only way it would
-               ever learn is by going to look — at its next cadence tick, which
-               story 1059 provides and which this criterion explicitly rules
-               out.
+               Nothing in this scenario woke it or read anything, so if no entry
+               was recorded on its conversation then the only way it would ever
+               learn is by going to look — at its next cadence tick, which story
+               1059 provides and which this criterion explicitly rules out.
 
                The cost is bounded and real: an agent blocked at the start of a
                window waits the whole window for someone who was idle
                throughout.
+
+               Asserted on the transcript entry rather than the question's text
+               because the page also renders every question pending for the
+               *user*, which put the text on this page with delivery removed.
                """
+
+        assert html =~ "Do we drop the column or keep it nullable?",
+               "the main agent was told something, but not which question"
 
         {:ok, context}
       end

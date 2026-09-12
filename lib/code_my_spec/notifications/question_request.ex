@@ -27,11 +27,28 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   # only terminal state, and in use it is enough (83309b2a).
   @statuses ~w(pending answered)
 
+  # Who the question is waiting on right now. Orthogonal to `status`, which says
+  # whether it is finished — a pending question held by the main agent and a
+  # pending question held by the user are the same status and opposite states,
+  # and story 1053's main agent has to tell them apart to know what is left for
+  # it to do.
+  #
+  # `user` is the default because it is what a question is when nothing routes
+  # it: Claude Code asks the person directly. An agent's question starts on the
+  # main agent and moves here when it escalates.
+  @holders ~w(main_agent user)
+
   schema "question_requests" do
     field :title, :string
     field :questions, {:array, :map}, default: []
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
+    field :holder, :string, default: "user"
+
+    # Why the main agent could not answer it. Carried so the person reads a
+    # question that arrived with a reason rather than one that simply appeared,
+    # and so the main agent can tell its own escalations apart on the way back.
+    field :escalation_reason, :string
 
     # Claude's session id, so a question can be shown in the conversation it
     # was asked in. Nil when it was asked outside a harness.
@@ -65,12 +82,19 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :questions,
       :status,
       :answers,
+      :holder,
+      :escalation_reason,
       :session_external_id
     ])
     |> validate_required([:user_id])
     |> validate_nonempty_questions()
     |> validate_inclusion(:status, @statuses)
+    |> validate_inclusion(:holder, @holders)
   end
+
+  @doc "Who a question can be waiting on."
+  @spec holders() :: [String.t()]
+  def holders, do: @holders
 
   # `validate_length` skips when the value equals the schema default ([]), so
   # check the field directly to reject a request with no questions.

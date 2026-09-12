@@ -1539,6 +1539,12 @@ defmodule CodeMySpecSpex.Fixtures do
 
   `find_or_create_agent_conversation/3` is the same call `running_agent/2` makes,
   so it finds that agent's thread rather than opening a second one.
+
+  The conversation goes in the query string, matching `agent_conversation_path/1`
+  and the one route the router actually has. This was written as a path segment
+  and every caller 404ed — `live/2` then fails inside `LiveViewTest` with a
+  `FunctionClauseError` about static tokens rather than saying "no route", which
+  reads as a broken page and is a broken URL.
   """
   @spec agent_conversation_path(Scope.t(), %{id: Ecto.UUID.t()}) :: String.t()
   def agent_conversation_path(%Scope{} = scope, %{id: agent_id}) do
@@ -1549,7 +1555,7 @@ defmodule CodeMySpecSpex.Fixtures do
         agent_id
       )
 
-    "/app/projects/#{scope.active_project_id}/agent-conversation/#{conversation.id}"
+    "/app/projects/#{scope.active_project_id}/agent-conversation?conversation=#{conversation.id}"
   end
 
   @doc """
