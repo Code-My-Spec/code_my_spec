@@ -2,21 +2,22 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   @shortdoc "Migrate every test database this working copy uses"
 
   @moduledoc """
-  Migrate all three of this working copy's test databases, not just the one
-  `mix ecto.migrate` happens to be pointed at.
+  Migrate every partition of this working copy's test database.
 
-  A working copy has three:
+      MIX_ENV=test mix cms.migrate_test_partitions
+
+  A working copy has three, not one:
 
       code_my_spec_test<partition>     the interactive session's `mix test`
       code_my_spec_test<partition>a    the analyzer's exunit run
       code_my_spec_test<partition>s    the analyzer's spex run
 
-  `MIX_ENV=test mix ecto.migrate` migrates whichever one the environment
-  resolves to and says nothing about the other two. So after a schema change a
-  targeted `mix test` passes against the base while the analyzer reports
-  hundreds of failures against a partition still on last week's schema, and
-  `ecto.migrate` answers "Migrations already up" — truthfully, about a different
-  database.
+  A running VM is connected to exactly one — whichever the environment resolved
+  — so `MIX_ENV=test mix ecto.migrate` migrates that one and says nothing about
+  the other two. After a schema change a targeted `mix test` passes against the
+  base while the analyzer reports hundreds of failures against a partition on
+  last week's schema, and `ecto.migrate` answers "Migrations already up",
+  truthfully, about a different database.
 
   Measured (`d86b09cd`): 479 spex problems, every one
   `ERROR 42703 (undefined_column) column q0.resolution does not exist`, against
@@ -27,6 +28,15 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   was two databases with different schemas both answering, and nothing naming
   which one had.
 
+  ## Existing partitions only — nothing is created here
+
+  A partition nothing has used yet has no database, and that is not a problem to
+  solve here: `Mix.Tasks.Cms.CheckTestMigrations` creates one lazily at the
+  moment something actually needs it. Creating them here as well would be a
+  second place holding that judgement, and it would pay a full migration
+  (~37.6s) for a database that may never be used — on a box whose Postgres
+  connection arithmetic already reaches its limit exactly (`51fb4adb`).
+
   ## Why a task and not an alias on `ecto.migrate`
 
   `cms.check_test_migrations` refuses a run whose database is behind and prints
@@ -35,36 +45,35 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   the remedy it points at. Three databases means three of those refusals, one
   run at a time — this settles all three in one pass.
 
-  ## In this VM, like the check
+  ## Why this runs entirely in this VM
 
-  `Ecto.Migrator.with_repo/2` per database, no child process. The version this
-  replaces in `TestDatabase` shelled out to `mix` with an environment that had
-  `MIX_ENV` scrubbed from it, so "migrate the test database" acted on **dev**
-  and a sibling truncate emptied the shared development database three times on
-  2026-08-13. There is no child here to hand a wrong environment to, and
-  `partitions/2` refuses to name a database that is not a `code_my_spec_test…`.
-
-  `app.config` rather than `app.start`: the repo must not already be running
-  under one database when the point is to visit three. `with_repo/2` starts each
-  and stops what it started.
+  Each sibling is migrated through its own dynamically-configured connection to
+  `Repo`, never by exporting `MIX_TEST_PARTITION` and shelling out to `mix` per
+  partition. That is the reason `CmsHarness.TestDatabase`'s own moduledoc gives
+  for not doing it: `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a
+  child's environment, so a shelled-out "migrate this partition" ran against
+  **dev** and a sibling truncate emptied the shared development database three
+  times on 2026-08-13. A dynamic repo connection is named by this function call,
+  in this process, from a database string built here — there is no child and no
+  environment variable for anything to misdirect.
   """
 
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
   alias ClientUtils.Harness.Onboarding
+  alias CodeMySpec.Repo
 
-  @requirements ["app.config"]
+  @requirements ["app.start"]
 
   @suffixes ["", "a", "s"]
 
   @impl Mix.Task
   def run(_args) do
-    config = CodeMySpec.Repo.config()
     base = "code_my_spec_test" <> Onboarding.resolve_partition!(File.cwd!())
 
     case partitions(base) do
-      {:ok, databases} -> Enum.each(databases, &migrate(config, &1))
+      {:ok, databases} -> Enum.each(databases, &report(&1, migrate_if_exists(&1)))
       {:error, reason} -> Mix.raise(reason)
     end
   end
@@ -103,32 +112,59 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
     end
   end
 
-  defp migrate(config, database) do
-    Application.put_env(
-      :code_my_spec,
-      CodeMySpec.Repo,
-      Keyword.put(config, :database, database)
-    )
+  @doc """
+  Migrate `database` if it exists, doing nothing (and creating nothing) if it
+  does not. `:migrated`, `:absent`, or `{:error, reason}` when the existence
+  check itself could not answer — never a raise, so one sibling this cannot read
+  does not stop the others from being checked.
 
-    create(config, database)
+  Public, and taking a bare database name rather than a partition or a cwd, so
+  the migration mechanism is reachable without a real working copy's onboarding
+  file to resolve one.
+  """
+  @spec migrate_if_exists(String.t()) :: :migrated | :absent | {:error, term()}
+  def migrate_if_exists(database) do
+    config = Keyword.put(Repo.config(), :database, database)
 
-    {:ok, _, _} =
-      Ecto.Migrator.with_repo(CodeMySpec.Repo, &Ecto.Migrator.run(&1, :up, all: true))
-
-    Mix.shell().info("[migrate_test_partitions] #{database} up to date")
-  end
-
-  # A partition nothing has used yet has no database. Creating it here is the
-  # same call `cms.check_test_migrations` makes for the same reason, and
-  # `:already_up` is the ordinary answer.
-  # `Repo.__adapter__/0` rather than `config[:adapter]`: under `app.config` the
-  # repo has not started, and an unstarted repo's config carries no adapter key —
-  # which fails as `nil.storage_up/1`, a message that names nothing useful.
-  defp create(config, database) do
-    case CodeMySpec.Repo.__adapter__().storage_up(Keyword.put(config, :database, database)) do
-      :ok -> Mix.shell().info("[migrate_test_partitions] created #{database}")
-      {:error, :already_up} -> :ok
-      {:error, reason} -> Mix.raise("could not create #{database}: #{inspect(reason)}")
+    case Repo.__adapter__().storage_status(config) do
+      :up -> migrate(config)
+      :down -> :absent
+      {:error, reason} -> {:error, reason}
     end
   end
+
+  # A plain, unpooled connection for the duration of one migration — never the
+  # sandbox pool `config/test.exs` configures for everyday test runs, which
+  # expects a test process to check a connection out before using it and nothing
+  # here is one.
+  defp migrate(config) do
+    config =
+      config
+      |> Keyword.put(:name, nil)
+      |> Keyword.put(:pool, DBConnection.ConnectionPool)
+      |> Keyword.put(:pool_size, 2)
+
+    {:ok, pid} = Repo.start_link(config)
+    previous = Repo.get_dynamic_repo()
+
+    try do
+      Repo.put_dynamic_repo(pid)
+      Ecto.Migrator.run(Repo, :up, all: true)
+      :migrated
+    after
+      Repo.put_dynamic_repo(previous)
+      GenServer.stop(pid)
+    end
+  end
+
+  # Said per database, including the ones nothing happened to. "Which database
+  # answered" is the fact this whole family of failures turns on, and a task
+  # that printed only what it changed would leave the reader to infer the rest.
+  defp report(database, :migrated), do: Mix.shell().info("  migrated  #{database}")
+
+  defp report(database, :absent),
+    do: Mix.shell().info("  absent    #{database} (created on first use)")
+
+  defp report(database, {:error, reason}),
+    do: Mix.shell().error("  failed    #{database}: #{inspect(reason)}")
 end
