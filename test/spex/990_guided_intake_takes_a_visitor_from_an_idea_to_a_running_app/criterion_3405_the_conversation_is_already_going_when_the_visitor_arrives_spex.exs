@@ -1,7 +1,11 @@
-defmodule CodeMySpecSpex.Story990.Criterion2972Spex do
+defmodule CodeMySpecSpex.Story990.Criterion3405Spex do
   @moduledoc """
   Story 990 — Guided intake takes a visitor from an idea to a running app.
-  Criterion 2972 — The conversation is already going when the visitor arrives.
+  Criterion 3405 — The conversation is already going when the visitor arrives.
+
+  (Written under this story's earlier numbering as criterion 2972; renamed
+  to track the criterion after a Three Amigos renumbering. Same scenario,
+  same file history.)
 
   Rule: An agent is working in the visitor's copy by the time they are looking
   at it.

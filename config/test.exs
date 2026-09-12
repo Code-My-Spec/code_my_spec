@@ -506,11 +506,6 @@ config :code_my_spec, intake_shaping_async: false
 # the real process with an explicit sandbox grant.
 config :code_my_spec, intake_conversation_process: false
 
-# The story-interview chat runs its turn inline in test, for the same reason as
-# `intake_shaping_async` above. The tests that are *about* the async path turn
-# this back on for themselves and assert on the assign rather than on the turn.
-config :code_my_spec, chat_turn_async: false
-
 # A promotion's gate dispatches an analyzer sweep and waits for it. Nothing
 # runs those analyzers in a spex — the checkouts are temp directories with no
 # project — so the production default of two minutes is two minutes of nothing

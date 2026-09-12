@@ -11,7 +11,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   import CodeMySpecWeb.IntakeComponents
 
-  alias CodeMySpec.{Agents, Intake, UserPreferences, Workspaces}
+  alias CodeMySpec.{Agents, Billing, Intake, UserPreferences, Workspaces}
+  alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Intake.Interview
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Workspaces.Workspace
@@ -92,11 +93,52 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{local_commands(@plan)}</code></pre>
       </div>
 
+      <.cloud_payment
+        :if={@workspace.status == :awaiting_payment}
+        client_secret={@client_secret}
+        publishable_key={@publishable_key}
+        error={@payment_error}
+      />
+
       <.boot_status
-        :if={@workspace.status not in [:failed, :local]}
+        :if={@workspace.status not in [:failed, :local, :awaiting_payment]}
         workspace={@workspace}
         app_state={@app_state}
       />
+    </div>
+    """
+  end
+
+  # A purchase, in plain terms — not a technical setting to configure. The
+  # real cost of a cloud copy is not the compute; it is the operational
+  # lifecycle of abandoned, unpaid instances, so nothing is provisioned on
+  # the shared host until this succeeds. Reuses the same Stripe Payment
+  # Element `CheckoutLive` already pays with, wired to the same JS hook.
+  defp cloud_payment(assigns) do
+    ~H"""
+    <div data-test="cloud-payment" class="border border-base-300 rounded p-4">
+      <p class="text-sm font-medium mb-1">Running in the cloud is $100/month.</p>
+      <p class="text-sm opacity-70 mb-3">
+        Pay to bring your working copy up — nothing is provisioned on our servers
+        until this goes through.
+      </p>
+
+      <div
+        :if={@client_secret}
+        id="stripe-payment"
+        phx-hook="StripePaymentElement"
+        phx-update="ignore"
+        data-publishable-key={@publishable_key}
+        data-client-secret={@client_secret}
+      >
+        <form id="payment-form">
+          <div id="payment-element"></div>
+          <button id="payment-submit" class="btn btn-primary mt-4" type="submit">Pay</button>
+          <p id="payment-error" class="text-error text-sm mt-2"></p>
+        </form>
+      </div>
+
+      <p :if={@error} class="text-error text-sm mt-2">{@error}</p>
     </div>
     """
   end
@@ -209,28 +251,100 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   defp mount_workspace(socket, %Scope{} = scope, plan) do
     with {:ok, plan} <- Intake.convert(plan, scope),
-         {:ok, scope} <- select_plan_scope(scope, plan),
-         {:ok, workspace} <- Workspaces.boot(scope) do
-      Workspaces.subscribe_workspace(workspace.project_id)
-      start_the_conversation(scope)
-
-      # Subscribe, then re-read. The watcher starts inside boot/1 and can
-      # record a phase before this process is subscribed; since an unchanged
-      # step is never re-broadcast, that lost message would leave the bar
-      # showing "Getting ready" for the rest of the boot.
-      workspace = Workspaces.reload(workspace) || workspace
-
+         {:ok, scope} <- select_plan_scope(scope, plan) do
       socket
       |> assign(page_title: "Your workspace")
       |> assign(scope: scope, plan: plan)
-      |> assign_workspace(workspace)
       |> assign_interview(plan)
+      |> start_cloud_or_gate_on_payment(scope, plan)
     else
       # A boot that never starts is still a boot that failed, and the visitor
       # has to be told. Returning the bare error tuple here crashed mount/3
       # with an ArgumentError instead — a white page at exactly the moment the
       # story says they must be told what happened and keep their plan.
       {:error, reason} -> failed_to_start(socket, scope, plan, reason)
+    end
+  end
+
+  # The real cost of a cloud copy is not the compute — it is the operational
+  # lifecycle of abandoned, unpaid instances — so nothing is provisioned on
+  # the shared host until payment succeeds. Gated on whether *this project*
+  # already has a workspace, not only on the account's plan: an account can
+  # be mid-checkout (a client secret handed out, no webhook yet) or the
+  # visitor can simply be reloading the page after their workspace already
+  # came up, and neither of those is "ask them to pay again". Once a
+  # workspace row exists, every later mount just shows it — the same as
+  # before this gate existed.
+  defp start_cloud_or_gate_on_payment(socket, scope, _plan) do
+    case Workspaces.get_workspace(scope) do
+      nil -> gate_new_cloud_workspace(socket, scope)
+      workspace -> assign_workspace(socket, workspace)
+    end
+  end
+
+  defp gate_new_cloud_workspace(socket, scope) do
+    if paid?(scope) do
+      boot_workspace(socket, scope)
+    else
+      case Billing.start_subscription(scope, :pro) do
+        {:ok, %{client_secret: secret}} when is_binary(secret) ->
+          assign_awaiting_payment(socket, secret, nil)
+
+        # Nothing to collect — a tier change whose proration was a credit,
+        # not a charge. Already paid, so boot rather than show a payment
+        # form asking for money that is not owed.
+        {:ok, %{client_secret: nil}} ->
+          boot_workspace(socket, scope)
+
+        {:error, reason} ->
+          Logger.error("[IntakeLive.Workspace] could not start payment: #{inspect(reason)}")
+
+          assign_awaiting_payment(
+            socket,
+            nil,
+            "We couldn't start checkout. Refresh the page to try again."
+          )
+      end
+    end
+  end
+
+  defp paid?(%Scope{active_account: %Account{plan: plan}}), do: plan in [:light, :pro, :paid]
+  defp paid?(%Scope{}), do: false
+
+  defp assign_awaiting_payment(socket, client_secret, error) do
+    socket
+    |> assign(:client_secret, client_secret)
+    |> assign(:publishable_key, publishable_key())
+    |> assign(:payment_error, error)
+    |> assign(:workspace, %{status: :awaiting_payment})
+    |> assign(:app_state, :awaiting_payment)
+  end
+
+  defp publishable_key do
+    Application.get_env(:code_my_spec, CodeMySpec.Billing, [])[:publishable_key] || ""
+  end
+
+  defp boot_workspace(socket, scope) do
+    case Workspaces.boot(scope) do
+      {:ok, workspace} ->
+        Workspaces.subscribe_workspace(workspace.project_id)
+        start_the_conversation(scope)
+
+        # Subscribe, then re-read. The watcher starts inside boot/1 and can
+        # record a phase before this process is subscribed; since an
+        # unchanged step is never re-broadcast, that lost message would
+        # leave the bar showing "Getting ready" for the rest of the boot.
+        workspace = Workspaces.reload(workspace) || workspace
+
+        assign_workspace(socket, workspace)
+
+      {:error, reason} ->
+        Logger.error("[IntakeLive.Workspace] could not start a workspace: #{inspect(reason)}")
+
+        assign_workspace(socket, %Workspace{
+          status: :failed,
+          error: "Your workspace could not be started."
+        })
     end
   end
 
@@ -374,6 +488,17 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     {:ok, workspace} = Workspaces.boot(socket.assigns.scope)
 
     {:noreply, assign_workspace(socket, workspace)}
+  end
+
+  # The browser confirmed the payment. Stripe has it; the webhook has the
+  # last word on the account's plan, same as `CheckoutLive` — this only
+  # stops waiting and starts provisioning.
+  def handle_event("payment_confirmed", _params, socket) do
+    {:noreply, boot_workspace(socket, socket.assigns.scope)}
+  end
+
+  def handle_event("payment_failed", %{"message" => message}, socket) do
+    {:noreply, assign(socket, :payment_error, message)}
   end
 
   # Transitions are recorded where they happen, in Workspaces — this task can

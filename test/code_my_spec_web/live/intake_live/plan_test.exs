@@ -110,12 +110,18 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
 
       token = get_session(conn, "intake_token")
 
-      assert {:error, {:live_redirect, %{to: "/users/register"}}} =
-               view
-               |> form("form[phx-submit=confirm_names]", %{
-                 plan: %{account_name: "Acme", project_name: "Widget Tracker"}
-               })
-               |> render_submit()
+      # Anonymous, so this moves the visitor on to the sign-up card in the
+      # same conversation — not a redirect, which is what confirming a plan
+      # used to send an anonymous visitor to and no longer does.
+      html =
+        view
+        |> form("form[phx-submit=confirm_names]", %{
+          plan: %{account_name: "Acme", project_name: "Widget Tracker"}
+        })
+        |> render_submit()
+
+      assert html =~ "Acme"
+      assert html =~ "Widget Tracker"
 
       plan = Intake.get_plan(token)
       assert plan.account_name == "Acme"

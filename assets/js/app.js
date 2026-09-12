@@ -259,7 +259,32 @@ document.addEventListener("click", (ev) => {
   const campaign = url.searchParams.get("utm_campaign");
   if (campaign) params.utm_campaign = campaign;
 
+  // gtag.js is deferred to this same pointerdown on most pages (see
+  // root.html.heex) — it may still be mid-fetch when a same-tab click
+  // starts unloading the page for navigation, and a dataLayer push queued
+  // but never flushed does not survive the unload. Hold navigation open
+  // just long enough for the event to actually send, with a hard timeout
+  // so a slow network or blocked request can't strand the click. New-tab
+  // clicks (modifier keys, middle-click, target=_blank) don't race an
+  // unload, so they're left alone.
+  const opensNewTab = a.target === "_blank" || ev.button === 1 ||
+    ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey;
+
+  if (opensNewTab) {
+    gtag('event', 'cta_click', params);
+    return;
+  }
+
+  ev.preventDefault();
+  let navigated = false;
+  const go = () => {
+    if (navigated) return;
+    navigated = true;
+    window.location.href = href;
+  };
+  params.event_callback = go;
   gtag('event', 'cta_click', params);
+  setTimeout(go, 300);
 });
 
 function isImplicitCTA(href) {

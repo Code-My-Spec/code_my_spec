@@ -1,7 +1,11 @@
-defmodule CodeMySpecSpex.Story990.Criterion8213Spex do
+defmodule CodeMySpecSpex.Story990.Criterion3409Spex do
   @moduledoc """
   Story 990 — Guided intake takes a visitor from an idea to a running app.
-  Criterion 8213 — A name someone else already uses is accepted anyway.
+  Criterion 3409 — A name someone else already uses is accepted anyway.
+
+  (Written under this story's earlier numbering as criterion 8213; renamed
+  to track the criterion after a Three Amigos renumbering. Same scenario,
+  same file history.)
 
   Rule: the names the visitor confirmed are the names that get created.
 
