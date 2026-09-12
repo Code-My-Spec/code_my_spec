@@ -340,9 +340,22 @@ defmodule CodeMySpec.Promotion do
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
          {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id) do
+      Logger.info(
+        "[Promotion] merged #{branch} into #{running.root} " <>
+          "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
+          "dispatching restart"
+      )
+
       scope
       |> restart(running, refresh_harness?(scope, merge_result))
       |> merged(branch, running, swept, Map.get(pre, :untracked, []))
+    else
+      {:error, reason} = error ->
+        Logger.warning(
+          "[Promotion] refused for #{running.root}: #{Map.get(reason, :reason, inspect(reason))}"
+        )
+
+        error
     end
   end
 
@@ -764,13 +777,41 @@ defmodule CodeMySpec.Promotion do
   # time `just restart` returns, and it must not need to for the restart to
   # have happened. `CodeMySpec.TaskSupervisor` is the same one `promote_async/2`
   # already reports through for the same reason — fire, do not wait.
+  #
+  # `Runner.restart/4`'s own result is logged here rather than discarded,
+  # because dispatched-and-forgotten used to mean exactly that: a `just
+  # restart` failing on the far side of this task — a broken migration, a
+  # compile error the merge itself couldn't have caught since nothing crosses
+  # here that wasn't already gated — had nowhere to go. The caller had already
+  # been told "merged, restart unconfirmed" and moved on; this is the one
+  # place that outcome is ever actually resolved one way or the other.
   defp dispatch_restart(scope, root, working_copy_id, refresh_harness?) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        Runner.restart(scope, root, working_copy_id, refresh_harness?)
+        scope
+        |> Runner.restart(root, working_copy_id, refresh_harness?)
+        |> log_restart_outcome(root)
       end)
 
     :ok
+  end
+
+  defp log_restart_outcome({:ok, %{revision: revision}}, root) do
+    Logger.info(
+      "[Promotion] restart confirmed for #{root}, now serving #{revision || "unknown revision"}"
+    )
+  end
+
+  defp log_restart_outcome({:error, %{reason: reason}}, root) do
+    Logger.error(
+      "[Promotion] restart FAILED for #{root}, application not confirmed up: #{reason}"
+    )
+  end
+
+  defp log_restart_outcome(other, root) do
+    Logger.error(
+      "[Promotion] restart for #{root} returned something unexpected: #{inspect(other)}"
+    )
   end
 
   defp deployment_dispatched_reason do
