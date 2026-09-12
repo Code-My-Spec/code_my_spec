@@ -25,13 +25,11 @@ defmodule CodeMySpec.MainAgent.CadenceWiringTest do
     scope = full_scope_fixture()
 
     on_exit(fn ->
-      case Registry.lookup(CodeMySpec.MainAgent.CadenceRegistry, scope.active_project_id) do
-        [{pid, _}] ->
-          DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
-
-        [] ->
-          :ok
-      end
+      CodeMySpec.MainAgent.CadenceRegistry
+      |> Registry.lookup(scope.active_project_id)
+      |> Enum.each(fn {pid, _} ->
+        DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+      end)
     end)
 
     %{scope: scope}
