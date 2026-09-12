@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
           end
 
         {:ok,
-         Map.put(context, :told, Fixtures.orchestrator_actions(context.scope, context.agent_id))}
+         Map.put(context, :told, Fixtures.messages_to_agent(context.scope, context.agent_id))}
       end
 
       then_ "it is told the task is still open", context do

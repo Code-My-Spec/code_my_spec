@@ -95,11 +95,11 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
       end
 
       then_ "and it is not woken on a timer with nothing to look at", context do
-        before = Fixtures.orchestrator_actions(context.scope, context.main.id)
+        before = Fixtures.messages_to_agent(context.scope, context.main.id)
 
         :ok = Fixtures.cadence_tick(context.scope)
 
-        assert Fixtures.orchestrator_actions(context.scope, context.main.id) == before,
+        assert Fixtures.messages_to_agent(context.scope, context.main.id) == before,
                """
                A tick after the tap-out still woke the main agent.
 

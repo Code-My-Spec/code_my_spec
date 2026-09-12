@@ -39,6 +39,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -193,9 +194,17 @@ defmodule CodeMySpec.Requirements do
   scope cannot see, leaves the caller's message exactly as it was rather than
   appending an empty clause.
 
-  Reads the cached graph, which is 34ms of preload against 4.4 seconds of
-  recompute on a large project. Only call it on a path that has already decided
-  to say something.
+  Reads the one row, and computes nothing.
+
+  It used to read `cached_all/1`, whose docstring calls itself cheap — "34ms of
+  preload against 4.4 seconds of recompute". That is the hit. The stop hook,
+  which is this function's only caller, syncs files before it decides, so the
+  graph fingerprint has always just moved and the miss is the normal case: the
+  whole project rebuilt, edges included, to read one string the row already
+  holds. Measured on the running build, four full computes in nine minutes, two
+  of them stop hooks.
+
+  A stop is not a change, so nothing here recomputes.
   """
   @spec open_reason(Scope.t(), String.t() | nil, [String.t()]) :: String.t()
   def open_reason(scope, requirement_name, entity_ids)
@@ -203,26 +212,19 @@ defmodule CodeMySpec.Requirements do
   def open_reason(_scope, nil, _entity_ids), do: ""
 
   def open_reason(%Scope{} = scope, requirement_name, entity_ids) do
-    wanted = Enum.map(entity_ids, &to_string/1)
-
-    {nodes, _computed_at} = cached_all(scope)
-
-    nodes
-    |> Enum.find(fn node ->
-      to_string(node.name) == to_string(requirement_name) and
-        to_string(node.entity_id) in wanted
-    end)
+    scope
+    |> NodeRepository.requirement_details(requirement_name, entity_ids)
     |> reason_of()
   end
 
-  defp reason_of(%{details: details}) when is_map(details) do
+  defp reason_of(details) when is_map(details) do
     case Map.get(Requirement.normalize_details(details), "reason") do
       reason when is_binary(reason) and reason != "" -> reason
       _ -> ""
     end
   end
 
-  defp reason_of(_node), do: ""
+  defp reason_of(_details), do: ""
 
   @doc """
   Nodes, edges and the actionable set, from the read model.

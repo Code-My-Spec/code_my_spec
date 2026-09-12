@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "args": [
+        "-n",
+        "vm.loadavg"
+      ],
+      "command": "sysctl",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "{ 31.40 25.10 20.05 }\n",
+      "recorded_at": "2026-09-12T00:00:00.000000Z"
+    },
+    {
+      "args": [],
+      "command": "vm_stat",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               10000.\nPages active:                            300000.\nPages inactive:                          250000.\nPages speculative:                          1520.\nPages throttled:                               0.\nPages wired down:                        400000.\nPages purgeable:                              500.\n\"Translation faults\":                123456789.\nPages copy-on-write:                    9876543.\nPages zero filled:                     98765432.\nPages reactivated:                       123456.\nPages purged:                              12345.\nFile-backed pages:                      150000.\nAnonymous pages:                        400000.\nPages stored in compressor:              50000.\nPages occupied by compressor:            20000.\nDecompressions:                         100000.\nCompressions:                           150000.\nPageins:                                2000000.\nPageouts:                                  5000.\nSwapins:                                       0.\nSwapouts:                                      0.\n",
+      "recorded_at": "2026-09-12T00:00:00.000000Z"
+    }
+  ],
+  "ports": []
+}

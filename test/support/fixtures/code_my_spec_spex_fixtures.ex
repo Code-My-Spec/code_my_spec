@@ -920,16 +920,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  What the orchestrator has said to this agent, oldest first.
+  What has been sent to this agent, oldest first.
 
   The transcript rather than the agent's mailbox, and deliberately: a message
   dispatched to a live agent starts or queues a turn, so reading the queue is a
-  race and reading what was *recorded* is not. It is also the half story 1041
-  already shares — `record_orchestrator_action/3` takes an agent and knows
-  nothing about how it runs — so a criterion asserting here is asserting on the
-  surface a person actually sees.
+  race and reading what was *recorded* is not.
+
+  `:operator` because that is the role a message sent to an agent carries.
+  This used to read `:orchestrator`, which was retired when it turned out
+  `Chat.Runner.to_provider_message/1` dropped that role from every model's
+  context — so the rows this helper was reading proved the person watching
+  could see something, and never that the agent had been told it. These rows
+  are the ones the agent is actually given.
   """
-  def orchestrator_actions(%Scope{} = scope, agent_id) do
+  def messages_to_agent(%Scope{} = scope, agent_id) do
     case CodeMySpec.Repo.get_by(CodeMySpec.Conversations.Conversation,
            account_id: scope.active_account_id,
            project_id: scope.active_project_id,
@@ -941,7 +945,7 @@ defmodule CodeMySpecSpex.Fixtures do
       conversation ->
         conversation
         |> CodeMySpec.Conversations.list_messages()
-        |> Enum.filter(&(&1.role == :orchestrator))
+        |> Enum.filter(&(&1.role == :operator))
         |> Enum.map(&message_text/1)
     end
   end

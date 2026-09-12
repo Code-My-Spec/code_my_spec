@@ -23,14 +23,11 @@ defmodule CodeMySpec.Hooks.Stop do
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -70,124 +67,7 @@ defmodule CodeMySpec.Hooks.Stop do
     scope
     |> do_decide(session_id, session, active_task, validation_opts, req_id)
     |> note_config_edits(session_id)
-    |> note_on_conversation(scope)
-    |> tap(fn _ -> nudge_open_task(scope, session) end)
   end
-
-  # The decision, on the conversation of the agent it was about.
-  #
-  # Story 985: the transcript recorded what the agent did and nothing done to
-  # it, so a conversation that changed direction between one turn and the next
-  # had no explanation in it — and a stop is the commonest cause of that change.
-  #
-  # Here rather than beside the block, because *both* verdicts are decisions. An
-  # allow is the agent being let go, which is exactly as much a thing that
-  # happened to it, and a reader who only ever saw the blocks would think the
-  # analyzers ran once.
-  #
-  # One action per decision, not one per analyzer — John's call. A stop where
-  # compile failed and three analyzers were skipped is one thing that happened;
-  # three entries saying `skipped_compile_errors` is the log rather than the
-  # story.
-  defp note_on_conversation(response, scope) do
-    Conversations.record_orchestrator_action(
-      Agents.main_agent(scope),
-      stop_sentence(response),
-      count: decision_count(response),
-      tool: "list_problems",
-      kind: "decision"
-    )
-
-    response
-  rescue
-    # Never the reason a stop fails. The hook's job is the verdict; the note is
-    # so somebody can read why later, and a note able to break the verdict would
-    # be worse than no note.
-    error ->
-      Logger.warning(
-        "[StopHook] could not record the decision on the conversation: " <>
-          Exception.message(error)
-      )
-
-      response
-  end
-
-  # An agent stopping with a task still open is told to close it, on its own
-  # thread, and nothing closes it for it.
-  #
-  # John, on why the orchestrator must not do it: "the agent should be nudged to
-  # complete its own task ... it should always be at the agent's discretion."
-  #
-  # The nudge carries the whole call, task id and all, because the agent is
-  # being told to make it — "run `evaluate_task` for the detail" described its
-  # own next act as somewhere to go reading (QA 985). Precedent is
-  # `TasksMapper`, which footers a started task with its id for the same reason.
-  # Completing work for an agent decides on its behalf whether the work is done,
-  # which is the one judgement the agent is there to make.
-  #
-  # On the task's own agent rather than the project's — the agent that looks
-  # like it walked away is the one that needs the record, and John: "we don't
-  # care about showing this on the main agent's conversation."
-  defp nudge_open_task(scope, session) do
-    case session && Session.active_task(session) do
-      nil ->
-        :ok
-
-      task ->
-        because =
-          case Requirements.open_reason(scope, task.requirement_name, task_entity_ids(task)) do
-            "" -> ""
-            reason -> " It is open because: #{reason}"
-          end
-
-        Conversations.record_orchestrator_action(
-          Map.get(task, :agent_id) || Agents.main_agent(scope),
-          "You stopped with #{task.requirement_name} still open. Close it yourself when " <>
-            "it is done — nothing will do it for you." <> because,
-          tool: ~s(evaluate_task task_id: "#{task.id}"),
-          kind: "nudge"
-        )
-    end
-  rescue
-    error ->
-      Logger.warning("[StopHook] could not record the nudge: " <> Exception.message(error))
-      :ok
-  end
-
-  defp task_entity_ids(task) do
-    [Map.get(task, :story_id), Map.get(task, :component_id), Map.get(task, :project_id)]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.map(&to_string/1)
-  end
-
-  defp stop_sentence(%{"decision" => "block", "reason" => reason}),
-    do: "Stopped you: " <> first_line(reason)
-
-  defp stop_sentence(_allowed), do: "Ran the analyzers and let you stop."
-
-  defp first_line(reason) do
-    reason |> to_string() |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 160)
-  end
-
-  # How much of *this* decision, not how much is on the board.
-  #
-  # It was `Problems.list_project_problems/1`, so an allow that found nothing
-  # rendered "476 problems" — and an hour later, "500". A reader concluded the
-  # stop had found 476 problems and waved the agent through anyway. QA 985: the
-  # number a decision reports has to be the decision's own claim.
-  #
-  # Off the same per-source counts the log line reads, because the reason was
-  # built from exactly them. An allow has nothing to count, and `nil` omits the
-  # part rather than drawing an empty one.
-  defp decision_count(%{"decision" => "block", "reason" => reason}) do
-    case reason |> blocking_counts() |> Enum.reduce(0, fn {_source, n}, acc -> acc + n end) do
-      0 -> nil
-      1 -> "1 problem"
-      n -> "#{n} problems"
-    end
-  end
-
-  defp decision_count(_allowed), do: nil
 
   # There was a second half to this, and it is gone: a `note_stale_config/1`
   # that compared the sha this server booted at against the sha on disk and

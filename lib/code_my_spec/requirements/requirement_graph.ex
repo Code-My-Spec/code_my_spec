@@ -162,10 +162,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     topology = Freshness.topology(ctx, config)
 
-    with true <- stored_nodes != [],
-         true <- same_entity_set?(stored_nodes, ctx),
-         true <- topology == GraphCache.topology_fingerprint(scope),
-         stale when stale != :all <- stale_entities(stored_nodes, ctx) do
+    with {_, true} <- {:no_stored_rows, stored_nodes != []},
+         {_, true} <- {:entity_set_moved, same_entity_set?(stored_nodes, ctx)},
+         {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
+         {_, stale} when stale != :all <-
+           {:everything_stale, stale_entities(stored_nodes, ctx)} do
       reduced = reduce_to(ctx, stale)
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
@@ -198,7 +199,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {nodes, stored_edges}
     else
-      _ -> compute_and_publish(scope, ctx, config)
+      # Which guard sent it to the whole computation, because without this the
+      # only observable difference between "reuse is working" and "reuse never
+      # fires" is a log line that does not appear — and on this project it did
+      # not appear once. Reuse is the point of the function; a fallback nobody
+      # can see the reason for is the function quietly not doing it.
+      {why, _} ->
+        Logger.info("[Requirements] full recompute — #{why}")
+        compute_and_publish(scope, ctx, config)
     end
   end
 

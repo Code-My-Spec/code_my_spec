@@ -59,7 +59,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.SendMessage do
   # story 896's `given_`, and John's instruction: "stop arbitraging Claude's ask
   # user question and implement our own mcp tool."
   #
-  # `QuestionClient` stays for the CLI, which genuinely is a different process.
+  # `QuestionClient` is gone entirely — 3b038c842 removed it along with the rest
+  # of the arbitrage path. This paragraph said it "stays for the CLI", which was
+  # true when written and outlived the module by two days.
 
   use Anubis.Server.Component, type: :tool
 

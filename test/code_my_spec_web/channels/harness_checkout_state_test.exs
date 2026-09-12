@@ -25,11 +25,13 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
   import Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  alias CodeMySpec.AgentTasks.PromoteWork
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -109,6 +111,43 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
 
     assert reason =~ "3 commit(s) here are not on main",
            "the gate did not read what the harness just reported. Got: #{reason}"
+  end
+
+  # Behind, with nothing of its own to send and a clean tree — which is exactly
+  # what a *successful* promotion leaves behind, since promotion merges this
+  # branch into the running copy and leaves this worktree where it was.
+  #
+  # This rendered as "its work is not on the checkout the application runs from
+  # ... Call `promote`" and cost twenty minutes on 2026-09-12: the running copy's
+  # HEAD was literally `Merge branch 'light-harness'`, the promotion's own merge
+  # commit. Following the advice restarts the shared dev server and leaves the
+  # reader exactly as far behind.
+  #
+  # Asserted on the prompt rather than only on the reason, because the reason was
+  # never the wrong part — "N commit(s) on main are not here" was true. The
+  # remedy wrapped around it was wrong, and the remedy is what an agent acts on.
+  test "a behind-only checkout is told to merge main in, not to promote",
+       %{scope: scope, socket: socket} do
+    ref = report(socket, %{"ahead" => 0, "behind" => 7, "dirty" => false})
+    assert_reply(ref, :ok)
+
+    assert {false, %{behind: 7, ahead: 0, dirty: false}} =
+             Promotion.running_copy_check(scope, %{id: 1}),
+           "the gate stopped carrying the counts the remedy branches on"
+
+    story = story_fixture(scope, %{title: "a story whose work already went across"})
+    {:ok, prompt} = PromoteWork.command(scope, %{story_id: story.id})
+
+    assert prompt =~ "git merge --ff-only main",
+           "the remedy that actually fixes this is not in the prompt. Got: #{prompt}"
+
+    refute prompt =~ ~r/Call `promote`/,
+           """
+           The prompt still tells the agent to promote. Promotion merges this
+           branch into the running copy; it does not bring main into this
+           worktree, so it cannot fix being behind — it restarts the shared dev
+           server and leaves the agent exactly as far behind as before.
+           """
   end
 
   test "a clean, in-sync checkout passes", %{scope: scope, socket: socket} do
