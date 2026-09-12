@@ -1792,6 +1792,50 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Push every stored requirement's freshness into the past.
+
+  `checked_at` is truncated to the second, so two reads inside one second are
+  indistinguishable and a recompute that happened looks like one that did not.
+  The fix is to stamp rather than to sleep: backdate what is there, then
+  anything recomputed afterwards carries an obviously newer time and anything
+  left alone still carries the old one.
+
+  Added for criterion 3424, which asks which requirements an observation
+  actually cost — a question that cannot be asked while every reading falls in
+  the same second.
+  """
+  @spec backdate_requirement_freshness(Scope.t()) :: :ok
+  def backdate_requirement_freshness(%Scope{active_project_id: project_id}) do
+    past =
+      NaiveDateTime.utc_now()
+      |> NaiveDateTime.add(-3600, :second)
+      |> NaiveDateTime.truncate(:second)
+
+    {_, _} =
+      CodeMySpec.Repo.update_all(
+        from(n in "requirements",
+          where:
+            n.project_id == type(^project_id, :binary_id) or
+              n.component_id in subquery(
+                from(c in "components",
+                  where: c.project_id == type(^project_id, :binary_id),
+                  select: c.id
+                )
+              ) or
+              n.story_id in subquery(
+                from(st in "stories",
+                  where: st.project_id == type(^project_id, :binary_id),
+                  select: st.id
+                )
+              )
+        ),
+        set: [checked_at: past]
+      )
+
+    :ok
+  end
+
+  @doc """
   A second project to migrate into.
 
   Story 991 has two ends and they are different projects. A spec that uses one
