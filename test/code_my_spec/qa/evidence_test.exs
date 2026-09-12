@@ -108,6 +108,50 @@ defmodule CodeMySpec.Qa.EvidenceTest do
 
       assert {:unknown, _reason} = Evidence.committed?(Environment.new(:local, root), 874)
     end
+
+    # The shape every QA session run from a git worktree is in: the superproject
+    # records `.code_my_spec` as a gitlink, and the directory itself is not
+    # checked out, so it holds whatever was written into it and nothing more.
+    #
+    # `ab52cdfa`, three diversions in one day. This is the case the module could
+    # not see, and it is worse than the bare non-repository above because git
+    # answers confidently: it ignores a gitlink's contents, so `status` prints
+    # nothing whether the evidence is committed, uncommitted, or missing. That
+    # is indistinguishable from clean, and it was read as clean.
+    test "an uninitialized submodule is unknown, not clean" do
+      {:ok, root} = Briefly.create(directory: true)
+      submodule = Path.join(root, ".code_my_spec")
+
+      git!(root, ["init", "--quiet"])
+      File.mkdir_p!(Path.join(submodule, "qa/874"))
+      git!(submodule, ["init", "--quiet"])
+      git!(submodule, ["config", "user.email", "test@example.com"])
+      git!(submodule, ["config", "user.name", "Test"])
+      File.write!(Path.join(submodule, "seed"), "x")
+      git!(submodule, ["add", "."])
+      git!(submodule, ["commit", "--quiet", "-m", "seed"])
+
+      # The superproject now records it as a gitlink…
+      git!(root, ["add", ".code_my_spec"])
+      # …and this is what a worktree has: the pointer, without the checkout.
+      File.rm_rf!(Path.join(submodule, ".git"))
+
+      write_brief(submodule, 874)
+
+      # The defect, stated as an assertion rather than as prose: the command
+      # this module used to trust reports nothing at all, with the brief sitting
+      # right there untracked.
+      assert {"", 0} =
+               System.cmd("git", ["status", "--porcelain", "-uall", "--", "qa/874"],
+                 cd: submodule,
+                 stderr_to_stdout: true
+               )
+
+      assert {:unknown, :submodule_not_initialized} =
+               Evidence.committed?(Environment.new(:local, root), 874),
+             "an empty `git status` from a directory that is not its own repository is " <>
+               "the outer repo ignoring a gitlink, not evidence that anything is committed"
+    end
   end
 
   describe "refusal/2" do
@@ -140,6 +184,30 @@ defmodule CodeMySpec.Qa.EvidenceTest do
       assert note =~ "not independently verified"
       assert note =~ "expected, not"
       assert note =~ "qa/<story_id>"
+    end
+
+    # The harness note is the one that fires on nearly every real pass, and the
+    # command it hands over is the one that lies in a worktree. Telling an agent
+    # to run a check that cannot fail is worse than telling it nothing.
+    test "the harness case hands over the tell as well as the check" do
+      note = Evidence.unknown_note(:not_supported_on_harness)
+
+      assert note =~ "rev-parse --show-toplevel"
+      assert note =~ "worktree"
+    end
+
+    test "the uninitialized submodule case names the remedy and both consequences" do
+      note = Evidence.unknown_note(:submodule_not_initialized)
+
+      assert note =~ "git submodule update --init"
+
+      assert note =~ "looks missing is not missing",
+             "the read side matters as much as the write side — a QA agent that " <>
+               "concludes the plan is absent regenerates it, over a tracked 32KB file"
+
+      assert note =~ "destination path already exists",
+             "the obvious remedy fails here when the stub holds loose files, and " <>
+               "the next step is to move them aside rather than delete them"
     end
 
     test "any other reason says it could not check, rather than implying it did" do
