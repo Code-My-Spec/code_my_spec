@@ -23,19 +23,28 @@ defmodule CodeMySpec.McpServers.MainAgent.MachineryMapper do
 
   @doc "The whole report."
   @spec report(Machinery.t()) :: Response.t()
-  def report(%Machinery{} = machinery) do
-    Response.tool()
-    |> Response.text(
-      Enum.join(
-        [
-          harnesses(machinery),
-          tools(machinery),
-          previews(machinery),
-          analyzers(machinery),
-          machines(machinery)
-        ],
-        "\n"
-      )
+  def report(%Machinery{} = machinery), do: Response.tool() |> Response.text(text(machinery))
+
+  @doc """
+  The same report as prose, for a caller composing a larger message.
+
+  Shared rather than re-rendered: the check-in and the tool describing the same
+  machinery two ways is how a reader learns to trust one of them and not the
+  other.
+  """
+  @spec text(Machinery.t() | nil) :: String.t()
+  def text(nil), do: "machinery: not read."
+
+  def text(%Machinery{} = machinery) do
+    Enum.join(
+      [
+        harnesses(machinery),
+        tools(machinery),
+        previews(machinery),
+        analyzers(machinery),
+        machines(machinery)
+      ],
+      "\n"
     )
   end
 

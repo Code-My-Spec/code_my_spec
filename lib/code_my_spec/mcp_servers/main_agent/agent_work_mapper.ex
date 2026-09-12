@@ -37,11 +37,20 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
     """)
   end
 
-  def listing(work) do
-    body = Enum.map_join(work, "\n", &entry/1)
+  def listing(work), do: Response.tool() |> Response.text(text(work))
 
-    Response.tool()
-    |> Response.text("#{length(work)} agent(s) running.\n\n#{body}")
+  @doc """
+  The same body as prose, for a caller composing a larger message.
+
+  Shared rather than re-rendered so the check-in and the tool cannot drift into
+  describing the same fleet two ways — which is how a reader learns to trust one
+  of them and not the other.
+  """
+  @spec text([AgentWork.t()]) :: String.t()
+  def text([]), do: "agents: none running on this project."
+
+  def text(work) do
+    "#{length(work)} agent(s) running.\n\n" <> Enum.map_join(work, "\n", &entry/1)
   end
 
   @doc "Why the fleet could not be read."

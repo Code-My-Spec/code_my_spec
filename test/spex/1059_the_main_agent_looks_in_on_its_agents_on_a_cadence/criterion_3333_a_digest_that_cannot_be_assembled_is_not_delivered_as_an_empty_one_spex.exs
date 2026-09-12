@@ -27,6 +27,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
   Both halves are asserted. Nothing that reads as all-quiet, *and* the failure
   raised: a cadence that silently skipped a tick would satisfy the first half
   and leave the same hole, with one fewer clue.
+
+  ## The first assertion is positive
+
+  It was a refutation of some phrases an all-quiet might use, and it passed
+  against a build where a failed digest was deliberately marked quiet — because
+  the wording that build produced was not among the ones guessed at. What the
+  criterion actually asks is that the message say the looking failed, so that is
+  what is asserted; the refutation stays beside it, widened, for the report that
+  says both.
   """
 
   use CodeMySpecSpex.Case
@@ -82,7 +91,19 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
         {:ok, _live, html} =
           live(context.conn, Fixtures.agent_conversation_path(context.scope, context.main))
 
-        refute html =~ ~r/nothing to report|all quiet|everything is fine/i,
+        assert html =~ ~r/could not be assembled|could not look|did not answer/i,
+               """
+               The check-in does not say that it failed to look.
+
+               A digest that could not be built and one that found nothing are
+               opposite answers, and only the first has to be said out loud —
+               the second is what a healthy fleet produces every twenty minutes.
+
+               transcript:
+               #{html}
+               """
+
+        refute html =~ ~r/nothing needs you|nothing to report|all quiet|everything is fine/i,
                """
                A digest that could not be built was delivered as though it had
                been, and found nothing.

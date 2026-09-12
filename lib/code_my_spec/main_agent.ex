@@ -53,6 +53,9 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.MainAgent.CheckInReport
+  alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.MainAgent.GapRepository
   alias CodeMySpec.MainAgent.Machinery
   alias CodeMySpec.MainAgent.MachineryRepository
@@ -365,6 +368,74 @@ defmodule CodeMySpec.MainAgent do
   end
 
   @doc """
+  Wake the main agent and hand it what is going on.
+
+  The check-in, and the thing that makes this story's cadence worth having: it
+  carries the digest rather than an instruction to go and assemble one, so the
+  wake-up is an answer instead of a turn spent getting to one.
+
+  Quiet check-ins reach the main agent and nobody else — criterion 3320. A
+  person hearing from this seventy-two times a day turns it off, and turning it
+  off removes the one mechanism that catches an agent too broken to report.
+
+  Silent when the main agent has stood down (3334) and when there is no main
+  agent to wake, which is ordinary rather than an error.
+  """
+  @spec check_in(Scope.t()) :: :ok
+  def check_in(%Scope{} = scope), do: wake(Cadence.running?(scope), scope)
+
+  defp wake(false, _scope), do: :ok
+  defp wake(true, scope), do: deliver_check_in(scope, Cadence.digest(scope))
+
+  @doc "How often this project's main agent is woken, in seconds."
+  @spec cadence_interval(Scope.t()) :: pos_integer()
+  defdelegate cadence_interval(scope), to: Cadence, as: :interval
+
+  @doc "Set how often this project's main agent is woken."
+  @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
+  defdelegate set_cadence_interval(scope, seconds), to: Cadence, as: :set_interval
+
+  @doc "Whether this project's cadence is still waking its main agent."
+  @spec cadence_running?(Scope.t()) :: boolean()
+  defdelegate cadence_running?(scope), to: Cadence, as: :running?
+
+  defp deliver_check_in(scope, %Digest{failed: reason} = digest) when is_binary(reason) do
+    # Not delivered as an empty all-quiet, and raised. Criterion 3333: those are
+    # opposite answers, and the empty one is the reassuring half — it says what
+    # a healthy fleet says, for as long as whatever broke stays broken.
+    raise_fault(
+      scope,
+      nil,
+      "The check-in could not be assembled",
+      """
+      The cadence came round and the digest could not be built:
+
+        #{reason}
+
+      Nothing was delivered to the main agent, because an empty digest reads as \
+      all-quiet and would go on doing so every interval until this is fixed.
+      """
+    )
+
+    tell_main_agent(scope, "The check-in could not be assembled: #{reason}")
+
+    _ = digest
+    :ok
+  end
+
+  defp deliver_check_in(scope, %Digest{} = digest) do
+    tell_main_agent(scope, CheckInReport.render(digest))
+  end
+
+  defp tell_main_agent(scope, text) do
+    scope
+    |> main_agent_other_than(nil)
+    |> Conversations.record_orchestrator_action(text, kind: "check-in", tool: "list_agent_work")
+
+    :ok
+  end
+
+  @doc """
   Answer one of this project's open questions from what the project records.
 
   Story 1058's point: the main agent's wider reach is for *using*. A main agent
@@ -515,6 +586,17 @@ defmodule CodeMySpec.MainAgent do
   QA because it is a coding agent's; work the main agent did itself has no
   counterpart to check it.
   """
+  @doc """
+  The main agent has finished and asks not to be woken again.
+
+  The timer only. Criterion 3335: an agent's question still reaches a
+  stood-down main agent, because the alternative has no symptom on either side
+  — it is not woken, which is what it asked for, and the question never
+  arrives.
+  """
+  @spec stand_down(Scope.t()) :: :ok
+  defdelegate stand_down(scope), to: Cadence
+
   @spec take_over_work(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def take_over_work(%Scope{} = scope, agent_id, _task_id) do
     case mine(scope, agent_id) do
