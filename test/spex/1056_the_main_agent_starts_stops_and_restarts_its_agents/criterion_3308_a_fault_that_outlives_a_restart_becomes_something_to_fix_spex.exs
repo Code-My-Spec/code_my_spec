@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
-  @reason "its tools stopped resolving after the harness reconnected"
+  @reason "it stopped answering after its last turn"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -68,7 +68,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
 
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3308")
 
-        Fixtures.record_machine_tools(scope, [])
+        # A healthy machine: a machinery fault is refused outright (story 1057,
+        # criterion 3312) and never reaches the "restarted and it did not help"
+        # state this criterion is about.
+        Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+        :ok = Fixtures.agent_said(scope, agent, "starting on it")
+        :ok = Fixtures.age_agent_messages(scope, agent, 3 * 60 * 60)
 
         frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -81,9 +86,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
       end
 
       when_ "the main agent sees the restart changed nothing", context do
-        # Still reporting no tools. The restart ran and the fault is exactly
-        # where it was.
-        Fixtures.record_machine_tools(context.scope, [])
+        # Still silent. The restart ran and the fault is exactly where it was.
 
         # Seeing is `list_agent_work` — the criterion says "when the main agent
         # sees", not "when it tries again", and the difference is the whole

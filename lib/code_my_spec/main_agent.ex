@@ -33,7 +33,9 @@ defmodule CodeMySpec.MainAgent do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Analysis,
       CodeMySpec.Conversations,
+      CodeMySpec.Devices,
       CodeMySpec.Issues,
       CodeMySpec.Notifications,
       CodeMySpec.Problems,
@@ -50,6 +52,8 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.MainAgent.Machinery
+  alias CodeMySpec.MainAgent.MachineryRepository
   alias CodeMySpec.MainAgent.OpenQuestion
   alias CodeMySpec.MainAgent.QuestionsRepository
   alias CodeMySpec.MainAgent.RestartRepository
@@ -122,6 +126,60 @@ defmodule CodeMySpec.MainAgent do
   end
 
   @doc """
+  The state of everything this project's agents depend on.
+
+  The answer to "is it the agent or is it the machine", which is the question
+  the main agent actually has when something is wrong — and the one it could
+  not ask before, so it answered it by restarting things until something
+  changed.
+  """
+  @spec check_machinery(Scope.t()) :: Machinery.t()
+  def check_machinery(%Scope{} = scope) do
+    machinery = MachineryRepository.check(scope)
+    :ok = report_machinery_fault(scope, machinery)
+    machinery
+  end
+
+  # Looking is when a machinery fault is raised, because nothing else looks.
+  #
+  # Criterion 3312's words are "when the main agent *finds* it, then it raises
+  # the fault" — finding is the act. The alternative is raising it when somebody
+  # next tries to restart something, which means a fault nobody happens to trip
+  # over goes unrecorded, and this is precisely the class of fault that went
+  # unseen for four hours.
+  #
+  # Only the machine-wide case. A fault belonging to one agent is that agent's
+  # and is within reach — criterion 3321 — so filing it would be the "raise
+  # everything and fix nothing" failure that criterion exists to prevent.
+  defp report_machinery_fault(scope, %Machinery{tool_fault: :machine} = machinery) do
+    raise_fault(
+      scope,
+      root_of(machinery),
+      "The machinery is serving no tools",
+      """
+      Every agent on this project is on a machine reporting an empty tool list, \
+      so every tool call any of them makes will fail. This is one fault \
+      underneath them rather than several agents in trouble.
+
+      Restarting the agents will not reach it — they come back into the same \
+      client. Clearing it means restarting the harness, which serves every \
+      working copy on that machine and is not the main agent's to restart.
+      """
+    )
+
+    :ok
+  end
+
+  defp report_machinery_fault(_scope, %Machinery{}), do: :ok
+
+  defp root_of(%Machinery{copies: copies}) do
+    case Enum.find(copies, &(&1.machine_tools == [])) do
+      nil -> nil
+      copy -> copy.root
+    end
+  end
+
+  @doc """
   Restart one of this project's agents, saying why.
 
   The reason is required and is the whole mechanism. A main agent restarts on
@@ -150,17 +208,63 @@ defmodule CodeMySpec.MainAgent do
   the third to say so costs two more turns.
   """
   @spec restart_agent(Scope.t(), String.t(), String.t()) ::
-          {:ok, map()} | {:error, :not_mine | :needs_a_reason | {:already_tried, pos_integer()}}
+          {:ok, map()}
+          | {:error,
+             :not_mine | :needs_a_reason | :machinery_faulty | {:already_tried, pos_integer()}}
   def restart_agent(%Scope{} = scope, agent_id, reason)
       when is_binary(reason) and reason != "" do
     case mine(scope, agent_id) do
       {:ok, agent} ->
         :ok = RestartRepository.settle(agent)
-        attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
+        consider(scope, agent, reason)
 
       {:error, :not_mine} ->
         out_of_reach(scope, agent_id, reason)
     end
+  end
+
+  # A fault underneath the agent is not one a restart reaches.
+  #
+  # Criterion 3312, and it fires on the first attempt rather than the fourth.
+  # 3292 and 3308 are about noticing after several that restarting is not
+  # working — a count of failed remedies. This is about not starting: the
+  # machinery being faulty is known *before* the first restart, from the same
+  # report the main agent just read, and acting anyway is a mistake that report
+  # already carried the information to prevent.
+  #
+  # The agent comes back into the same dead client, so the attempt costs a turn
+  # and changes nothing — and the main agent cannot learn that from the outcome,
+  # because an agent that came back broken looks exactly like one that is slow
+  # to recover.
+  defp consider(scope, agent, reason) do
+    scope
+    |> check_machinery()
+    |> Map.get(:tool_fault)
+    |> decide(scope, agent, reason)
+  end
+
+  defp decide(:machine, scope, agent, reason) do
+    raise_fault(
+      scope,
+      agent.working_copy,
+      titled("The machinery is what is broken", reason),
+      """
+      Every agent on this project is on a machine reporting no tools, so this is \
+      one fault underneath them rather than an agent that needs restarting:
+
+        #{reason}
+
+      Restarting was refused. An agent restarted into the same client comes back \
+      into the same fault, and the attempt is indistinguishable from an agent \
+      that is merely slow to recover. `check_machinery` has the detail.
+      """
+    )
+
+    {:error, :machinery_faulty}
+  end
+
+  defp decide(_fault, scope, agent, reason) do
+    attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
   end
 
   def restart_agent(%Scope{}, _agent_id, _reason), do: {:error, :needs_a_reason}

@@ -24,6 +24,18 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
   a conversation keys on the agent id, so the replacement comes back with an
   empty transcript. A restart that costs the agent its memory is not a restart.
 
+  ## The fault is the agent's own, deliberately
+
+  This first said "its machine reports no tools", which is a *machinery* fault —
+  and story 1057's criterion 3312 says the main agent must refuse to restart for
+  one of those, because the agent comes back into the same dead client. The two
+  criteria contradicted each other until this one used a fault a restart can
+  actually reach.
+
+  So: an agent holding a task, silent for hours, on a machine that is answering
+  normally. That is 1057's criterion 3311 shape — a fault nothing else shares —
+  and it is the only kind restarting is the right remedy for.
+
   ## What this criterion claims
 
   Only that the act is available to the main agent and takes effect. The reason,
@@ -71,16 +83,24 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
             working_copy: "/tmp/spex-3290"
           )
 
-        # Its machine answers that it can run nothing, which is what a harness
-        # holding a dead MCP client looks like — and what criterion 3272 makes
-        # visible to the main agent in the first place.
-        CodeMySpecSpex.Fixtures.record_machine_tools(scope, [])
+        # The machine is answering normally, so whatever is wrong is this
+        # agent's own — the only kind a restart reaches.
+        CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+
+        {_agent, _task} =
+          CodeMySpecSpex.Fixtures.agent_task_fixture(scope, agent,
+            requirement_name: "implementation_file",
+            started_at: DateTime.add(DateTime.utc_now(), -3 * 60 * 60, :second)
+          )
+
+        :ok = CodeMySpecSpex.Fixtures.agent_said(scope, agent, "starting on it")
+        :ok = CodeMySpecSpex.Fixtures.age_agent_messages(scope, agent, 3 * 60 * 60)
 
         frame = %Frame{assigns: %{current_scope: scope}}
         {:reply, view, _frame} = ListAgentWork.execute(%{}, frame)
 
-        assert response_text(view) =~ ~r/cannot work/i,
-               "the premise is an agent the main agent can see is broken:\n" <>
+        assert response_text(view) =~ ~r/last said/i,
+               "the premise is an agent the main agent can see has stopped:\n" <>
                  response_text(view)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
@@ -93,7 +113,10 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
 
         {:reply, response, _frame} =
           RestartAgent.execute(
-            %{agent_id: context.agent.id, reason: "its machine reports no tools"},
+            %{
+              agent_id: context.agent.id,
+              reason: "it has held a task for three hours in silence"
+            },
             frame
           )
 

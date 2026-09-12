@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1057.Criterion3309Spex do
         # The three things an agent depends on, each reported the way the
         # machine reports it.
         Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
-        Fixtures.record_preview_status(reply.working_copy_id, :serving)
+        Fixtures.record_preview_status(reply.working_copy_id, "serving")
         Fixtures.fresh_analysis_runs(scope)
 
         _agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3309")

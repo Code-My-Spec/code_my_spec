@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
-  @reason "its tools stopped resolving after the harness reconnected"
+  @reason "it stopped answering after its last turn"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -73,10 +73,15 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
             working_copy: "/tmp/spex-3292"
           )
 
-        # Broken before, broken after, and still broken now. Nothing clears it
-        # between restarts, which is what makes them changes that changed
-        # nothing.
-        CodeMySpecSpex.Fixtures.record_machine_tools(scope, [])
+        # The machine is fine — a machinery fault is refused outright (story
+        # 1057, criterion 3312), and this criterion is about a fault a restart
+        # could reach and does not.
+        CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+
+        # Silent before, silent after, silent still. The agent never speaks
+        # again, which is what makes each restart a change that changed nothing.
+        :ok = CodeMySpecSpex.Fixtures.agent_said(scope, agent, "starting on it")
+        :ok = CodeMySpecSpex.Fixtures.age_agent_messages(scope, agent, 3 * 60 * 60)
 
         frame = %Frame{assigns: %{current_scope: scope}}
 

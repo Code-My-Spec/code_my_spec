@@ -75,6 +75,19 @@ defmodule CodeMySpec.Devices.Device do
     field :account_id, Ecto.UUID
     field :last_seen_at, :utc_datetime_usec
 
+    # What this machine is carrying, as it last reported it.
+    #
+    # Story 1057, criterion 3324. A harness reports facts it observes about
+    # itself — its preview, its tools, its head commit — and never what it runs
+    # on, so a saturated box looked like several individually slow agents. The
+    # remedy for that reading is restarts, which put more work on the box.
+    #
+    # A map because what a machine can say about itself differs by platform and
+    # will grow; `load_reported_at` because a figure with no age is a figure
+    # nobody should act on.
+    field :load, :map
+    field :load_reported_at, :utc_datetime_usec
+
     has_many :working_copies, WorkingCopy
 
     timestamps(type: :utc_datetime)
@@ -86,7 +99,15 @@ defmodule CodeMySpec.Devices.Device do
   @doc false
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:hostname, :label, :kind, :account_id, :last_seen_at])
+    |> cast(attrs, [
+      :hostname,
+      :label,
+      :kind,
+      :account_id,
+      :last_seen_at,
+      :load,
+      :load_reported_at
+    ])
     # Refused here rather than by the database, so an announce that does not say
     # what the machine is comes back as an error somebody can read instead of a
     # `not_null_violation` on a column name.

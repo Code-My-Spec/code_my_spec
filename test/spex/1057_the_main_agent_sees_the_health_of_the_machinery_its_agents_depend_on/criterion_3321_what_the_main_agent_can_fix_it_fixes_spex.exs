@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1057.Criterion3321Spex do
         # The machine is fine — tools present, preview serving. Whatever is
         # wrong is the agent's own, which is the only case a restart reaches.
         Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
-        Fixtures.record_preview_status(reply.working_copy_id, :serving)
+        Fixtures.record_preview_status(reply.working_copy_id, "serving")
 
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3321")
 

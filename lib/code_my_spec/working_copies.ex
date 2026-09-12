@@ -405,18 +405,9 @@ defmodule CodeMySpec.WorkingCopies do
   # column is left alone rather than blanked: what is recorded is one join stale
   # and better than nothing, which is what overwriting it with `nil` would leave.
   defp machine_attrs(names, docs) when is_map(docs) and map_size(docs) > 0,
-    do: seen(%{machine_tools: names, machine_tool_docs: docs}, names)
+    do: %{machine_tools: names, machine_tool_docs: docs}
 
-  defp machine_attrs(names, _docs), do: seen(%{machine_tools: names}, names)
-
-  # Stamped only when the machine says it can do something.
-  #
-  # An empty list is an answer — a harness holding a dead MCP client says
-  # exactly that — and stamping it would make "when did this machine last work"
-  # move every time it reported that it does not. Story 1056 reads this to tell
-  # a remedy that worked from one that did not.
-  defp seen(attrs, []), do: attrs
-  defp seen(attrs, _names), do: Map.put(attrs, :tools_seen_at, DateTime.utc_now())
+  defp machine_attrs(names, _docs), do: %{machine_tools: names}
 
   @doc """
   Why this machine's browser tool list is what it is.

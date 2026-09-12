@@ -52,6 +52,19 @@ defmodule CodeMySpec.McpServers.MainAgent.RestartMapper do
     """)
   end
 
+  def error(:machinery_faulty) do
+    refuse("""
+    Not restarted: the fault is underneath this agent, not in it.
+
+    Every agent on this project is on a machine reporting no tools. Restarting \
+    one brings it back into the same client, so the attempt costs a turn and \
+    changes nothing — and from the outside it looks identical to an agent that \
+    is merely slow to recover, which is how this turns into a loop.
+
+    It has been raised as an issue. `check_machinery` has the detail.\
+    """)
+  end
+
   def error(:needs_a_reason) do
     refuse("""
     A restart needs a reason.

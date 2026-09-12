@@ -17,6 +17,17 @@ defmodule CodeMySpecSpex.Story1057.Criterion3311Spex do
   machinery, because there is nothing wrong with it; and the issue raised about
   it is dismissed, which teaches everybody to dismiss the next one.
 
+  ## Read from the tools section, not the whole report
+
+  Both assertions here first ran against the whole report and both passed with
+  the attribution blinded to "always blame the machine" — the machine section
+  lists every agent on the box (criterion 3324 requires it to), so "the broken
+  agent is named" was true whoever was blamed, and the machinery's fault was
+  phrased in words the refutation did not happen to match.
+
+  The tools line is the one that attributes the fault, so it is the one this
+  criterion reads.
+
   ## Two checkouts, because that is what makes the comparison possible
 
   One copy's machine reports no tools, another's reports plenty. A report that
@@ -82,7 +93,9 @@ defmodule CodeMySpecSpex.Story1057.Criterion3311Spex do
       end
 
       then_ "the machinery is shown as working", context do
-        refute context.report =~ ~r/machinery (is )?(faulty|broken|down)/i,
+        attribution = section(context.report, "tools:")
+
+        refute attribution =~ ~r/faulty|broken|down/i,
                """
                One agent in trouble is being reported as a machinery fault.
 
@@ -92,15 +105,17 @@ defmodule CodeMySpecSpex.Story1057.Criterion3311Spex do
                with it; and the issue raised about it gets dismissed, which
                teaches everybody to dismiss the next one.
 
-               report:
-               #{context.report}
+               tools section:
+               #{attribution}
                """
 
         {:ok, context}
       end
 
       then_ "and the fault is placed with that agent", context do
-        assert context.report =~ context.broken.id,
+        attribution = section(context.report, "tools:")
+
+        assert attribution =~ context.broken.id,
                """
                The report does not say which agent is the one in trouble.
 
@@ -110,12 +125,25 @@ defmodule CodeMySpecSpex.Story1057.Criterion3311Spex do
                where it started, with one more thing ruled out and nothing to
                do.
 
-               report:
-               #{context.report}
+               tools section:
+               #{attribution}
                """
 
         {:ok, context}
       end
     end
+  end
+
+  # One labelled section of the report, up to the next one.
+  #
+  # Asserting against the whole report matches whichever section happens to use
+  # a word, which is how both of this criterion's assertions passed with the
+  # attribution deliberately blinded out — the machine section lists every agent
+  # on the box, so "the broken agent is named" was true no matter who was
+  # blamed.
+  defp section(report, label) do
+    report
+    |> String.split(~r/^(?=\w+:)/m)
+    |> Enum.find("", &String.starts_with?(&1, label))
   end
 end

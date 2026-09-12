@@ -33,6 +33,14 @@ defmodule CodeMySpecSpex.Story1057.Criterion3324Spex do
   readable against it. A load figure on its own is a number in a report; what
   the criterion asks is that the main agent can attribute the slowness to it,
   which means the two have to appear together.
+
+  ## Not the presence of the word "load"
+
+  The first assertion here was `=~ ~r/load|saturat|memory/i` against the whole
+  report, and it passed with the saturation judgement blinded to always-false —
+  because the machine section prints the figures either way, under a line
+  reading "load is fine". Printing numbers is not the claim; the claim is that
+  this machine is carrying more than it can, so that is what is asserted.
   """
 
   use CodeMySpecSpex.Case
@@ -91,7 +99,13 @@ defmodule CodeMySpecSpex.Story1057.Criterion3324Spex do
       end
 
       then_ "the saturation is shown", context do
-        assert context.report =~ ~r/load|saturat|memory/i,
+        # The block for the box these agents are on. The report covers every
+        # machine the project touches, and asserting against all of them at once
+        # cannot say which one is in trouble — which is the very confusion this
+        # criterion is about.
+        machine = machine_carrying(context.report, context.agents)
+
+        refute machine =~ ~r/load is fine|has not reported/i,
                """
                A machine running at four times its processor count with 180MB
                free is reported as healthy.
@@ -105,15 +119,30 @@ defmodule CodeMySpecSpex.Story1057.Criterion3324Spex do
                preview, its tools and its head commit, and not what it is
                running on. That is what this criterion is about.
 
-               report:
-               #{context.report}
+               machine section:
+               #{machine}
+               """
+
+        assert machine =~ ~r/saturat|carrying more|short of memory/i,
+               """
+               The machine's figures are printed with nothing saying they are a
+               problem.
+
+               31.4 against 8 processors and 180MB free is a box in trouble, and
+               a main agent reading two numbers has no way to know that — the
+               relationship between them is platform knowledge it cannot
+               acquire. Printing them under "load is fine" is worse than not
+               printing them.
+
+               machine section:
+               #{machine}
                """
 
         {:ok, context}
       end
 
       then_ "and the agents on it can be read against it", context do
-        assert Enum.all?(context.agents, &(context.report =~ &1.id)),
+        assert machine_carrying(context.report, context.agents) != "",
                """
                The machine's load is reported without saying which agents are
                running on it.
@@ -131,5 +160,24 @@ defmodule CodeMySpecSpex.Story1057.Criterion3324Spex do
         {:ok, context}
       end
     end
+  end
+
+  # The machine block that names these agents.
+  #
+  # Empty when no block does, which is the failure the second `then_` reports:
+  # a load figure the main agent cannot attach to anything is a number in a
+  # report.
+  defp machine_carrying(report, agents) do
+    report
+    |> section("machine:")
+    |> String.split(~r/\n(?=  \S)/)
+    |> Enum.find("", fn block -> Enum.all?(agents, &String.contains?(block, &1.id)) end)
+  end
+
+  # One labelled section of the report, up to the next one.
+  defp section(report, label) do
+    report
+    |> String.split(~r/^(?=\w+:)/m)
+    |> Enum.find("", &String.starts_with?(&1, label))
   end
 end

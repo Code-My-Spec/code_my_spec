@@ -21,11 +21,10 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
 
   ## What "worked" means, and why the scenario has to produce it
 
-  The fault was the machine reporting no tools; it worked when the machine
-  reports tools again. Asserted by restarting a second time for the same reason
-  after the fault has cleared and finding it allowed — which is exactly what
-  3292 forbids while the fault persists, and is the observable difference
-  between the two criteria.
+  The fault was an agent that stopped answering; it worked when the agent spoke
+  again. Asserted by restarting a second time for the same reason after it has
+  recovered and finding it allowed — which is exactly what 3292 forbids while
+  the agent stays silent, and is the observable difference between the two.
   """
 
   use CodeMySpecSpex.Case
@@ -37,7 +36,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
-  @reason "its tools stopped resolving after the harness reconnected"
+  @reason "it stopped answering after its last turn"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -67,24 +66,33 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
 
         frame = %Frame{assigns: %{current_scope: scope}}
 
-        for _recurrence <- 1..3 do
-          CodeMySpecSpex.Fixtures.record_machine_tools(scope, [])
+        # The machine is answering throughout: this is an agent-level fault, the
+        # only kind a restart reaches.
+        CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
 
+        for recurrence <- 1..3 do
           {:reply, response, _frame} =
             RestartAgent.execute(%{agent_id: agent.id, reason: @reason}, frame)
 
           refute response.isError, inspect(response)
 
-          # It worked. The fault is gone until the next recurrence, which is the
-          # difference between this scenario and 3292's.
-          CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+          # It worked: the agent spoke again. That is what closes the reason, and
+          # the difference between this scenario and 3292's.
+          :ok =
+            CodeMySpecSpex.Fixtures.agent_said(
+              scope,
+              agent,
+              "back after restart #{recurrence}"
+            )
         end
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end
 
       when_ "the same fault appears again and the main agent restarts it", context do
-        CodeMySpecSpex.Fixtures.record_machine_tools(context.scope, [])
+        # Quiet again, three recoveries later.
+        :ok =
+          CodeMySpecSpex.Fixtures.age_agent_messages(context.scope, context.agent, 3 * 60 * 60)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 

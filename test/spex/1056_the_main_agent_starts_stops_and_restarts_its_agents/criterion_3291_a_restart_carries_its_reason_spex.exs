@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
 
   spex "A restart says what it was for" do
     scenario "the main agent restarts an agent whose tools stopped resolving" do
-      given_ "an agent whose machine reports no tools", context do
+      given_ "an agent that has gone silent on a machine that is answering", context do
         reply = join_working_copy(context, "/tmp/spex-3291", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -64,7 +64,11 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
             working_copy: "/tmp/spex-3291"
           )
 
-        CodeMySpecSpex.Fixtures.record_machine_tools(scope, [])
+        # A healthy machine, so the fault is the agent's own — a machinery fault
+        # is refused rather than restarted (story 1057, criterion 3312).
+        CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
+        :ok = CodeMySpecSpex.Fixtures.agent_said(scope, agent, "starting on it")
+        :ok = CodeMySpecSpex.Fixtures.age_agent_messages(scope, agent, 3 * 60 * 60)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end
@@ -76,7 +80,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
           RestartAgent.execute(
             %{
               agent_id: context.agent.id,
-              reason: "its tools stopped resolving after the harness reconnected"
+              reason: "it stopped answering after its last turn"
             },
             frame
           )
@@ -93,7 +97,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
             CodeMySpecSpex.Fixtures.agent_conversation_path(context.scope, context.agent)
           )
 
-        assert html =~ "its tools stopped resolving after the harness reconnected",
+        assert html =~ "it stopped answering after its last turn",
                """
                The restart was recorded with no account of what it was for.
 

@@ -23,6 +23,12 @@ defmodule CodeMySpecSpex.Story1057.Criterion3310Spex do
   refutation is the real assertion: the agents must not each be presented as
   carrying a fault of their own, because the thing that is wrong is not theirs.
 
+  Scoped to the section that attributes the fault, not to the whole report. An
+  agent id elsewhere is not a blaming — criterion 3324 requires the agents on a
+  machine to be listed beside its load, precisely so slowness can be read
+  against it. What this forbids is the *tools* line naming them, because that
+  line is the one that says whose fault it is.
+
   ## Why three agents and not one
 
   One agent that cannot call tools is 3311 — a fault that belongs to the agent —
@@ -95,8 +101,9 @@ defmodule CodeMySpecSpex.Story1057.Criterion3310Spex do
       end
 
       then_ "and it is not presented as several unrelated agent faults", context do
-        blamed =
-          Enum.count(context.agents, fn agent -> context.report =~ agent.id end)
+        attribution = section(context.report, "tools:")
+
+        blamed = Enum.count(context.agents, fn agent -> attribution =~ agent.id end)
 
         assert blamed == 0,
                """
@@ -109,12 +116,19 @@ defmodule CodeMySpecSpex.Story1057.Criterion3310Spex do
                first half of this criterion while failing the reader exactly as
                badly as naming only the agents.
 
-               report:
-               #{context.report}
+               tools section:
+               #{attribution}
                """
 
         {:ok, context}
       end
     end
+  end
+
+  # One labelled section of the report, up to the next one.
+  defp section(report, label) do
+    report
+    |> String.split(~r/^(?=\w+:)/m)
+    |> Enum.find("", &String.starts_with?(&1, label))
   end
 end

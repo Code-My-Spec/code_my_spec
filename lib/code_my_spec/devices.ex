@@ -276,6 +276,50 @@ defmodule CodeMySpec.Devices do
   end
 
   @doc """
+  Record what a machine is carrying, from the working copy that reported it.
+
+  Story 1057, criterion 3324. The figure belongs to the box rather than the
+  checkout — two copies on one machine share its processors, and recording it
+  per copy would report the same saturation twice and let the two disagree.
+
+  Stamped with the time it arrived, because a load figure with no age is one
+  nobody should act on: a machine that was saturated an hour ago and has been
+  quiet since is not a reason to leave its agents alone now.
+
+  Best-effort, like `mark_alive/1` beside it. A checkout with no device on it is
+  the ordinary case for a harness too old to announce one, and losing a
+  bookkeeping fact is not a reason to refuse the message carrying it.
+  """
+  @spec record_load(Ecto.UUID.t() | nil, map()) :: :ok
+  def record_load(working_copy_id, load) when is_map(load) do
+    working_copy_id
+    |> device_for_copy()
+    |> write_load(load)
+  end
+
+  defp device_for_copy(nil), do: nil
+
+  defp device_for_copy(working_copy_id) do
+    from(w in WorkingCopy,
+      join: d in Device,
+      on: d.id == w.device_id,
+      where: w.id == type(^working_copy_id, :binary_id),
+      select: d
+    )
+    |> Repo.one()
+  end
+
+  defp write_load(nil, _load), do: :ok
+
+  defp write_load(%Device{} = device, load) do
+    device
+    |> Device.changeset(%{load: load, load_reported_at: DateTime.utc_now()})
+    |> Repo.update()
+
+    :ok
+  end
+
+  @doc """
   Remove a machine, leaving its working copies behind.
 
   Destroying is a real act for a sprite, and uninstalling CMS from a laptop
