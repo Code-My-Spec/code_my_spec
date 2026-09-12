@@ -3164,29 +3164,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Where a dispatched agent's own thread is read.
-
-  The same `epic:<id>` key `EpicDispatch.record_question/3` writes under, so the
-  path names the thread the product actually put the question on rather than one
-  a scenario hoped for.
-
-  Here rather than in a spex because a criterion asserting on a page should not
-  also be the thing that resolves the page's address — and `Show` is reached by
-  `?conversation=`, which is the one route the router has.
-  """
-  @spec dispatched_thread_path(map()) :: String.t()
-  def dispatched_thread_path(%{scope: scope, project: project, epic: epic_id}) do
-    {:ok, conversation} =
-      Conversations.find_or_create_session_conversation(
-        scope.active_account_id,
-        scope.active_project_id,
-        "epic:#{epic_id}"
-      )
-
-    "/app/projects/#{project.id}/agent-conversation?conversation=#{conversation.id}"
-  end
-
-  @doc """
   One agent saying something on its own thread.
 
   `Conversations.add_agent_message/4` is what `AgentHarness.relay_up/2` calls
