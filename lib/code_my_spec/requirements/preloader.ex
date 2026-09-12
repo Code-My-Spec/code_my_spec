@@ -21,6 +21,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -85,18 +86,48 @@ defmodule CodeMySpec.Requirements.Preloader do
   stops existing, and this clause can go.
   """
   @spec load(Scope.t()) :: {:ok, context()}
-  def load(%Scope{active_working_copy_id: nil, active_project_id: project_id} = scope) do
-    Logger.warning(
-      "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
-        "copy — every checkout's files are read together, so a file present in one and " <>
-        "absent in another reads as present. Expected for the UI; an agent path here is a bug."
-    )
+  # Resolved here rather than only at the write.
+  #
+  # `Projection.vantage/1` decides which checkout's rows a reader reads and
+  # writes. This function used to ignore it and blend every checkout whenever
+  # the scope named none — so a reader's *computation* and its *storage*
+  # disagreed about whose view it was, and the blend was written where one
+  # checkout's answer belonged. Nothing was stale; the two simply differed, and
+  # `served_graph/3` refused a projection that never matched the count it
+  # published. The cost was a full recompute on every read: 348 of them in one
+  # log on this project, median 2.6s, max 14.8s, 116 from stop hooks.
+  #
+  # Resolving first means there is one answer to "whose view is this" and the
+  # preloader, the cache and the projection all use it. This is what both
+  # docstrings already argued for; the clause below is what was left of the
+  # question.
+  def load(%Scope{active_working_copy_id: nil} = scope) do
+    case Projection.vantage(scope) do
+      nil ->
+        load_blended(scope)
 
-    do_load(scope, nil)
+      working_copy_id ->
+        do_load(%{scope | active_working_copy_id: working_copy_id}, working_copy_id)
+    end
   end
 
   def load(%Scope{active_working_copy_id: working_copy_id} = scope),
     do: do_load(scope, working_copy_id)
+
+  # The only remaining way to get a blend: a project with no checkout at all,
+  # designated or otherwise. There is nothing to resolve to, and answering
+  # "this project has no requirements" would be worse than answering loudly
+  # from everything it has.
+  defp load_blended(%Scope{active_project_id: project_id} = scope) do
+    Logger.warning(
+      "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
+        "copy — every checkout's files are read together, so a file present in one and " <>
+        "absent in another reads as present. This project has named no main checkout and " <>
+        "no default; designating one makes this go away."
+    )
+
+    do_load(scope, nil)
+  end
 
   defp do_load(%Scope{active_project_id: project_id} = scope, working_copy_id) do
     # 1. All components with deps and children preloaded
