@@ -166,13 +166,46 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   defp partition_line(scope, source) do
     case Analysis.latest_answer(scope, source) do
-      %{stats: %{"partition" => partition}} when is_binary(partition) ->
-        ["#{source} ran against the `#{partition}` test database."]
+      %{stats: %{"partition" => partition}} = run when is_binary(partition) ->
+        ["#{source} ran against the `#{partition}` test database#{took(run)}."]
+
+      %{} = run ->
+        case took(run) do
+          "" -> []
+          taken -> ["#{source}'s run#{taken}."]
+        end
 
       _ ->
         []
     end
   end
+
+  # How long the run took, when it took long enough to be worth saying.
+  #
+  # The cheap half of `3e9b7568`: on a saturated box the analyzer manufactures
+  # failures — `** (EXIT from #PID<…>)` on whichever test is heaviest, passing
+  # 4/4 in isolation, a different victim each sweep. Measured at load 54 with
+  # eight concurrent suites. An agent cannot tell that from a regression, and
+  # the natural response to a phantom is a retry, which produces the next one.
+  #
+  # A run's duration is already recorded, so this is surfacing rather than
+  # collection. It is a proxy for load and not load itself — the issue asks for
+  # the real thing, and the real fix it asks for is a machine-wide semaphore on
+  # analyzer runs, neither of which this is. What it does is make a sweep that
+  # took eight minutes where it usually takes ninety seconds say so next to the
+  # failures it produced.
+  #
+  # Silent under two minutes. A number on every listing is wallpaper, and the
+  # whole reason the alert next door is counts-only is that a line the model
+  # learns to skip costs the signal permanently.
+  defp took(%{started_at: %DateTime{} = started, finished_at: %DateTime{} = finished}) do
+    case DateTime.diff(finished, started, :second) do
+      seconds when seconds >= 120 -> ", and took #{div(seconds, 60)}m#{rem(seconds, 60)}s"
+      _ -> ""
+    end
+  end
+
+  defp took(_run), do: ""
 
   defp filters_in_play(params) do
     [
