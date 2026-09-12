@@ -216,18 +216,30 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # component nobody loaded, and a component that was loaded and yielded
   # nothing. Only the first should keep its rows.
   #
-  # The second is ordinary. `graph_for_type/1` filters a template by the
-  # project's configuration, and `schema_graph/0` is `spec_file` and
-  # `spec_valid` — so on a project with `require_specs: false` every schema
-  # component computes zero nodes. Absent from the produced set, each was read
-  # as "not visited" and kept rows from when the template was different.
+  # The second is ordinary: `graph_for_type("infrastructure")` is `[]`, so an
+  # infrastructure-typed component computes nothing at all. There are 11 of them
+  # on this project. Absent from the produced set, each is read as "not visited"
+  # and keeps whatever rows it had from before it was retyped — for good, since
+  # nothing will ever visit-and-produce for it again.
   #
-  # Measured on this project, 2026-09-11: 84 schema components each holding an
-  # `implementation_file` row their current type does not define. Every read
-  # found them, `Projection.rehydrate/2` could not rebuild them — no definition
-  # for that name on that type — and dropped them, so the graph read back 1844
-  # nodes against a published 2009. Stable, silent, and permanent, because
-  # nothing would ever reap them (7a6b92e3 / cc4745dc).
+  # ## Correction, and it matters because the first version of this comment was
+  # ## wrong
+  #
+  # This originally said `schema_graph/0` was `spec_file` and `spec_valid` only,
+  # so schema components computed nothing under `require_specs: false`, and that
+  # 84 of them held `implementation_file` rows their type no longer defined.
+  # That is false. `schema_graph/0` defines `implementation_file` — it is the
+  # third entry, and `git log -S` shows it unbroken since `a5a7a1fd3`. I read
+  # the head of the function and stopped.
+  #
+  # So schema components *do* produce a node, *are* in the produced set, and
+  # were always reaped correctly. They were never an instance of this bug.
+  #
+  # The change stands on the distinction itself, which is real — a component
+  # that computes nothing is not a component nobody looked at — and on the
+  # infrastructure case above. It does **not** explain the 2009-against-1844
+  # short read on cc4745dc, and the earlier claim that it did was built on the
+  # same misreading.
   defp delete_departed(%Scope{active_project_id: project_id}, working_copy_id, visited, keys) do
     keep = keys |> Map.values() |> MapSet.new()
 
