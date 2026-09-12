@@ -36,6 +36,10 @@ defmodule CodeMySpecSpex.Story1065.Criterion3394Spex do
   spex "An agent handed a component to build finds the order" do
     scenario "an agent looks up how component work is done here" do
       given_ "an agent handed a component to build", context do
+        # given: already true — `process/code.md` is committed to the
+        # repository, and that is the whole precondition. Creating a component
+        # would be scenery: the criterion is that the order between the steps
+        # is written down, which is true or false before any component exists.
         {:ok, context}
       end
 

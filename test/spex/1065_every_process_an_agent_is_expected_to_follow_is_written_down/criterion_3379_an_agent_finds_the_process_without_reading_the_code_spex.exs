@@ -49,9 +49,13 @@ defmodule CodeMySpecSpex.Story1065.Criterion3379Spex do
   spex "An agent finds the process without reading the code" do
     scenario "an agent that has never done product work here looks it up" do
       given_ "an agent with no prior knowledge of this project's process", context do
-        # Nothing to establish. "Has never done product work here" is the
-        # ordinary state of a fresh agent, and seeding anything would make the
-        # scenario about the seed rather than about the knowledge base.
+        # given: already true — a fresh scope carries no knowledge state to
+        # begin with, so "has never done product work here" needs nothing done
+        # to it. The only thing that has to exist is the knowledge base, which
+        # is committed to the repository under `priv/knowledge/`.
+        #
+        # Seeding anything here would make the scenario about the seed rather
+        # than about what the knowledge base answers.
         {:ok, context}
       end
 

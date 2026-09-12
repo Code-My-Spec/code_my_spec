@@ -49,6 +49,9 @@ defmodule CodeMySpecSpex.Story1065.Criterion3383Spex do
   spex "A playbook hands off rather than restating" do
     scenario "a playbook that assumes the process is read" do
       given_ "an agent reading a task playbook that assumes the process around it", context do
+        # given: already true — the playbook is `priv/knowledge/three_amigos/
+        # workflow.md`, committed to the repository. Reading it is the `when_`,
+        # and there is no state that makes an agent "reading" it beyond that.
         {:ok, context}
       end
 

@@ -44,6 +44,14 @@ defmodule CodeMySpecSpex.Story1065.Criterion3392Spex do
   spex "An unfamiliar task has a playbook" do
     scenario "an agent handed a task it has not done before goes looking" do
       given_ "an agent handed a task it has not done before", context do
+        # given: already true — "has not done it before" is the ordinary state
+        # of a fresh agent and there is nothing to unset. What the assertion
+        # needs is the knowledge index, which the checkout provides: the
+        # library is committed under `priv/knowledge/`.
+        #
+        # Starting a real `promote_work` task would be the wrong scene to set.
+        # The criterion is that an agent can look the task up *before* running
+        # it, which is exactly when no task exists.
         {:ok, context}
       end
 

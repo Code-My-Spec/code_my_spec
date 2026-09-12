@@ -43,9 +43,13 @@ defmodule CodeMySpecSpex.Story1065.Criterion3380Spex do
   spex "Why nobody is being offered a story" do
     scenario "an agent consults the document about a story nobody is being offered" do
       given_ "a story that no agent is being offered", context do
-        # Not built here on purpose. The criterion is about what the document
-        # says, and a story in any particular state would be scenery — the
-        # document has to answer whether or not one is in front of you.
+        # given: already true — nothing reads a story here. The criterion is
+        # about what `process/product.md` says, and that file is committed to
+        # the repository, so the precondition is satisfied by the checkout.
+        #
+        # A story in any particular state would be scenery: the document has to
+        # answer this whether or not one is in front of you, and building one
+        # would suggest the assertion depends on it.
         {:ok, context}
       end
 

@@ -39,6 +39,11 @@ defmodule CodeMySpecSpex.Story1065.Criterion3381Spex do
   spex "Which number names the spex directory" do
     scenario "an agent about to write specs looks up where they belong" do
       given_ "an agent that has a story and is about to write specs for it", context do
+        # given: already true — the agent in this scenario is the test, and
+        # `process/product.md` is committed to the repository. Nothing reads a
+        # story: the criterion is that the document tells an agent holding an
+        # id which number names the directory, and building a story whose id
+        # and number happened to differ would test the fixture, not the prose.
         {:ok, context}
       end
 

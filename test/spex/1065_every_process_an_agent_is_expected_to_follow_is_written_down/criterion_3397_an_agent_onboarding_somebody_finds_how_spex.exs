@@ -44,6 +44,10 @@ defmodule CodeMySpecSpex.Story1065.Criterion3397Spex do
   spex "An agent onboarding somebody finds how" do
     scenario "an agent put in front of a new arrival looks up what to do" do
       given_ "an agent put in front of somebody who has just arrived", context do
+        # given: already true — `process/onboarding.md` is committed to the
+        # repository. "Somebody who has just arrived" has no rows by
+        # definition: an intake plan or a half-filled form would be a visitor
+        # part-way through, which is the opposite of the scenario.
         {:ok, context}
       end
 

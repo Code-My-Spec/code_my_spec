@@ -44,6 +44,10 @@ defmodule CodeMySpecSpex.Story1065.Criterion3396Spex do
   spex "An agent promoting work finds what the gate does" do
     scenario "an agent with finished work looks up how it reaches the running copy" do
       given_ "an agent that has finished work and wants it on the running copy", context do
+        # given: already true — `process/devops.md` is committed to the
+        # repository. Deliberately no promotion is run: the criterion is that
+        # an agent can find out what the gate does *before* tripping it, and
+        # the incident behind this story is an hour spent learning it after.
         {:ok, context}
       end
 

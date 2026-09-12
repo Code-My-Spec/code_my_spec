@@ -37,6 +37,10 @@ defmodule CodeMySpecSpex.Story1065.Criterion3395Spex do
   spex "An agent testing a story finds how a result is recorded" do
     scenario "an agent about to test a story looks up how the result counts" do
       given_ "an agent about to test a story", context do
+        # given: already true — `process/qa.md` is committed to the repository.
+        # "About to test" is deliberately before any attempt exists, so there
+        # is nothing to record yet; submitting one would be testing QA rather
+        # than testing whether the bookkeeping is written down.
         {:ok, context}
       end
 
