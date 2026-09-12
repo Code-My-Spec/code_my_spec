@@ -104,20 +104,37 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Merge `branch` into the checkout at `root`.
 
-  A conflict is a question about intent, and the agent that wrote one side is
-  the only party holding the answer. So this does not guess, and does not
-  `--abort` either: the conflict stays in the running checkout where it can be
-  resolved. Aborting would be the tidier-looking failure and the worse one — the
-  agent is told "promotion failed", finds a clean tree, and has nothing to work
-  on.
+  A conflict is aborted, not left. `git merge --abort` runs the instant one is
+  detected, so the running checkout comes back exactly as it was before this
+  call — a promotion either lands cleanly or does not touch the tree at all
+  (John: "force the agent to deal with anything on their end so the git ops
+  in the main checkout are clean").
 
-  Leaving it there has a cost this did not pay, though: `git merge` will not run
-  at all while `MERGE_HEAD` exists, so the *next* promotion failed on the old
-  merge and described it as a new one. Concluding a resolved merge before
-  starting this one is what closes that, and it is a step rather than a
-  judgement — the resolution is already on disk, only the commit is missing. A
-  path that still carries markers is refused, and the refusal says a merge is in
-  progress rather than naming a file.
+  That reverses this function's original design, on purpose (bed1d974). A
+  conflict used to stay in place, reasoning that the agent who wrote one side
+  is the only party holding the answer and a clean tree after a refusal has
+  nothing to act on. What it cost: a worktree six commits behind main spent
+  2.5 hours converging a spec main had already retired, then wedged the
+  shared dev checkout — the one machine QA runs from, with no test suite and
+  no way to resolve in place — from 00:28 to 10:40 merging it in unattended.
+  The same branch, merged main-first *in the worktree* instead, conflicted
+  immediately and was resolved in two minutes: the identical conflict, but
+  with context and a test suite, because it happened somewhere a person could
+  see it. Aborting and sending the agent back to resolve it there costs one
+  merge it can run locally; leaving it costs the machine QA runs from.
+
+  Still names the file, same as before — the abort answers "is this checkout
+  safe", not "what conflicted", and an agent told only the first has to go
+  find the second by running the same merge again.
+
+  Leaving nothing behind has a second effect worth stating: `git merge` will
+  not run at all while `MERGE_HEAD` exists, and that used to be the *next*
+  promotion's problem — failing on the old merge and describing it as a new
+  one. Concluding a resolved merge before starting this one, below, is what
+  closed that; it stays as a defensive path rather than the everyday one now
+  that a fresh conflict no longer leaves `MERGE_HEAD` behind — a crashed
+  process or a human merging by hand outside a promotion are the two ways one
+  still could.
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
@@ -215,12 +232,19 @@ defmodule CodeMySpec.Promotion.Steps do
       |> Enum.filter(&String.match?(&1, ~r/^(UU|AA|DD|AU|UA|DU|UD)/))
       |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
 
+    # Read before the abort — `git merge --abort` restores the tree and the
+    # unmerged paths above go with it, so this is the only moment the files
+    # are still there to name.
+    {_, _} = git(env, root, ["merge", "--abort"])
+
     {:error,
      %{
        reason:
-         "merging #{branch} into the running copy conflicts" <>
+         "merging #{branch} would conflict" <>
            conflict_files(conflicted) <>
-           ". The conflict is left in #{root} for you to resolve.",
+           ". Nothing was merged — #{root} is unchanged. Merge main into #{branch} in the " <>
+           "copy you are promoting from, resolve it there against your own test suite, " <>
+           "and promote again.",
        conflicts: conflicted,
        output: String.trim(out)
      }}
