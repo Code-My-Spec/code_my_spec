@@ -644,11 +644,19 @@ defmodule CodeMySpecWeb.Router do
       # shape as `MailLive`, where the mailbox is the page and `?thread=` is the
       # selection.
       live "/projects/:project_id/agent-conversation", AgentConversationLive.Show, :show
-      # Plural, because the singular is the cockpit above and a session is a
-      # selection within it rather than a page of its own. The spec's route
-      # table still shows `/agent-conversation` for the list and
-      # `/agent-conversation/:conversation_id` for one session — written before
-      # the cockpit decision, and corrected in the spec alongside this line.
+
+      # The shape this page used to have. Web Push notifications already on
+      # somebody's phone carry it, and a notification that 404s is worse than
+      # the navigation it saved — so it still resolves, and sends them to the
+      # canonical URL rather than serving a second one forever.
+      live "/projects/:project_id/agent-conversation/:conversation_id",
+           AgentConversationLive.Show,
+           :legacy_conversation_path
+
+      # The list. Plural, because the singular is the cockpit above and a
+      # session is a selection within it rather than a page of its own — and
+      # because the singular plus a segment is now the legacy redirect, which
+      # is the other half of the same decision.
       live "/projects/:project_id/agent-conversations", AgentConversationLive.Index, :index
     end
 

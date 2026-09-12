@@ -91,6 +91,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # resolves `:project_id` for every route in this live_session. It attaches on
   # `handle_params`, which is why this cannot run in `mount`.
   @impl true
+  # A link written before the conversation moved into the query string — a Web
+  # Push notification sitting on a phone, a bookmark. Answered by sending it to
+  # the URL this page has now, so there is one canonical address rather than two
+  # that both work.
+  def handle_params(%{"conversation_id" => id, "project_id" => project_id}, _uri, socket) do
+    {:noreply,
+     push_navigate(socket,
+       to: ~p"/app/projects/#{project_id}/agent-conversation?#{[conversation: id]}"
+     )}
+  end
+
   def handle_params(params, _uri, socket) do
     case socket.assigns[:project] do
       nil ->
