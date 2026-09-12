@@ -31,6 +31,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   require Logger
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Configurations
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
@@ -198,7 +199,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
   """
   @spec wake_active_projects() :: :ok
   def wake_active_projects do
-    CodeMySpec.Agents.AgentsRepository.continuous_project_scopes()
+    AgentsRepository.continuous_project_scopes()
     |> Enum.each(fn scope ->
       case ensure_running(scope) do
         {:ok, _pid} ->

@@ -21,6 +21,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Validators
 
@@ -46,8 +47,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
   # unreachable, which was right — they were speculative error handling for a
   # function that cannot fail that way.
   defp deliver(:ok) do
-    Anubis.Server.Response.text(
-      Anubis.Server.Response.tool(),
+    Response.text(
+      Response.tool(),
       """
       Checked in.
 
@@ -63,8 +64,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
   end
 
   defp refusal(reason) do
-    Anubis.Server.Response.error(
-      Anubis.Server.Response.tool(),
+    Response.error(
+      Response.tool(),
       "Could not check in: #{inspect(reason)}"
     )
   end

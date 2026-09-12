@@ -30,6 +30,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Validators
 
@@ -59,16 +60,16 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
   # only sensible reading is "stop", and `tap_out` already says that — guessing
   # here would give two ways to stop and one of them silent.
   defp apply_and_report(_scope, seconds) do
-    Anubis.Server.Response.error(
-      Anubis.Server.Response.tool(),
+    Response.error(
+      Response.tool(),
       "An interval has to be a positive number of seconds; got #{inspect(seconds)}. " <>
         "To stop being woken, tap out."
     )
   end
 
   defp report(scope) do
-    Anubis.Server.Response.text(
-      Anubis.Server.Response.tool(),
+    Response.text(
+      Response.tool(),
       """
       interval: every #{MainAgent.cadence_interval(scope)}s
       woken: #{woken(MainAgent.cadence_running?(scope))}
@@ -86,8 +87,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
     do: "no — nothing is scheduled to wake you, so a silent agent will not be noticed"
 
   defp refusal(reason) do
-    Anubis.Server.Response.error(
-      Anubis.Server.Response.tool(),
+    Response.error(
+      Response.tool(),
       "Could not read this project's cadence: #{inspect(reason)}"
     )
   end
