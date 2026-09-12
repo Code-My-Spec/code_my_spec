@@ -1388,8 +1388,10 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
-  defp apply_promotion("promotion_restart", %{"root" => root}),
-    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
+  defp apply_promotion("promotion_restart", %{"root" => root} = payload) do
+    refresh_harness? = Map.get(payload, "refresh_harness", true)
+    with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1, refresh_harness?))
+  end
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}

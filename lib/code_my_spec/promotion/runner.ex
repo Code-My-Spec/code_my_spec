@@ -57,13 +57,23 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
-  @doc "Bring the application at `root` back up."
-  @spec restart(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
-  def restart(scope, root, copy_id),
+  @doc """
+  Bring the application at `root` back up.
+
+  `refresh_harness?` (default `true`) is passed straight through to
+  `Steps.restart/3` — see its doc for why a caller would ever say `false`.
+  """
+  @spec restart(Scope.t(), String.t(), Ecto.UUID.t() | nil, boolean()) :: Steps.result()
+  def restart(scope, root, copy_id, refresh_harness? \\ true),
     do:
-      run(scope, copy_id, "promotion_restart", %{"root" => root}, @restart_timeout, fn env ->
-        Steps.restart(env, root)
-      end)
+      run(
+        scope,
+        copy_id,
+        "promotion_restart",
+        %{"root" => root, "refresh_harness" => refresh_harness?},
+        @restart_timeout,
+        fn env -> Steps.restart(env, root, refresh_harness?) end
+      )
 
   # The harness cannot be asked without knowing which working copy to ask, and
   # that is the id the channel is registered under — not the root, because two

@@ -135,12 +135,21 @@ defmodule CodeMySpec.Promotion.Steps do
   that a fresh conflict no longer leaves `MERGE_HEAD` behind — a crashed
   process or a human merging by hand outside a promotion are the two ways one
   still could.
+
+  A successful merge's result also carries `before`/`after` — the checkout's
+  HEAD on either side of it. `Promotion` needs that range to ask
+  `BootVersion.contract_changed?/2` whether the merge touched the code that
+  decides whether a harness and a server can talk to each other (376e3356);
+  reading it here, where the git access to `root` already is, is cheaper than
+  a fourth round trip to ask again.
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
+    before = head(env, root)
+
     env
     |> unmerged(root)
-    |> resume(env, root, branch)
+    |> resume(env, root, branch, before)
   end
 
   # A merge already in progress, finished before this one starts.
@@ -158,21 +167,21 @@ defmodule CodeMySpec.Promotion.Steps do
   # made and only the commit is missing, which is a step and not a judgement. A
   # marker anywhere means the question is still open, and that is refused —
   # saying what the state actually is, which is the sentence that was missing.
-  defp resume({:ok, []}, env, root, branch), do: do_merge(env, root, branch)
+  defp resume({:ok, []}, env, root, branch, before), do: do_merge(env, root, branch, before)
 
-  defp resume({:ok, paths}, env, root, branch) do
+  defp resume({:ok, paths}, env, root, branch, before) do
     case Enum.filter(paths, &marked?(env, root, &1)) do
-      [] -> conclude(env, root, branch, paths)
+      [] -> conclude(env, root, branch, paths, before)
       unresolved -> still_open(root, unresolved)
     end
   end
 
-  defp resume({:error, _} = error, _env, _root, _branch), do: error
+  defp resume({:error, _} = error, _env, _root, _branch, _before), do: error
 
-  defp conclude(env, root, branch, paths) do
+  defp conclude(env, root, branch, paths, before) do
     with {_, 0} <- git(env, root, ["add", "--"] ++ paths),
          {_, 0} <- git(env, root, ["commit", "--no-edit"]) do
-      do_merge(env, root, branch)
+      do_merge(env, root, branch, before)
     else
       {out, _} ->
         {:error,
@@ -197,10 +206,21 @@ defmodule CodeMySpec.Promotion.Steps do
      }}
   end
 
-  defp do_merge(env, root, branch) do
+  defp do_merge(env, root, branch, before) do
     case git(env, root, ["merge", "--no-edit", branch]) do
-      {out, 0} -> {:ok, %{output: String.trim(out)}}
+      {out, 0} -> {:ok, %{output: String.trim(out), before: before, after: head(env, root)}}
       {out, _} -> conflict(env, root, branch, out)
+    end
+  end
+
+  # `nil` rather than raising when HEAD cannot be read — `before` is read
+  # before anything is known to be safe, and a checkout with no commits yet
+  # (or a transient git failure) must not take the merge down over a value
+  # that only ever feeds an optimization, never a correctness check.
+  defp head(env, root) do
+    case git(env, root, ["rev-parse", "HEAD"]) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
     end
   end
 
@@ -258,15 +278,32 @@ defmodule CodeMySpec.Promotion.Steps do
 
   Through the project's own `just restart`, which is the seam. A promotion does
   not know how to start a Phoenix app, and should not learn.
+
+  `refresh_harness?` (default `true`) is whether `restart` should also rebuild
+  the harness at its tail. `Promotion` passes `false` only when it has already
+  established, from the merge that just landed, that the range could not have
+  touched the channel contract (376e3356) — skipping is a cost-saving
+  optimization for that one caller, not a new default.
+
+  Signaled through an environment variable, not a `just` CLI argument. This
+  function calls `root`'s *own* `just restart` — a promoted project's own
+  recipe, or the synthetic one criterion 3175's spex writes to prove the
+  restart always runs — and neither is guaranteed to declare a parameter for
+  this. An env var a recipe never reads is invisible to it; an extra
+  positional argument to a recipe that does not declare it is not silently
+  ignored — `just` reads the next token as the name of a *second* recipe to
+  also run and fails with "justfile does not contain recipe <value>"
+  (confirmed empirically before this shipped, against exactly the zero-
+  parameter shape criterion 3175's fixture uses).
   """
-  @spec restart(Environments.Environment.t(), String.t()) :: result()
-  def restart(env, root) do
+  @spec restart(Environments.Environment.t(), String.t(), boolean()) :: result()
+  def restart(env, root, refresh_harness? \\ true) do
     env
     |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(env, root)
+    |> run_restart(env, root, refresh_harness?)
   end
 
-  defp run_restart(false, _env, root) do
+  defp run_restart(false, _env, root, _refresh_harness?) do
     {:error,
      %{
        reason:
@@ -284,12 +321,17 @@ defmodule CodeMySpec.Promotion.Steps do
   # nothing merged onward — and then reported "`just restart` failed (1):" with
   # an empty body, telling the agent its promotion failed and not one word about
   # what broke.
-  defp run_restart(true, env, root) do
-    case normalize(Environments.cmd(env, "just", ["restart"], cd: root, stderr_to_stdout: true)) do
+  defp run_restart(true, env, root, refresh_harness?) do
+    opts = [cd: root, stderr_to_stdout: true, env: skip_harness_env(refresh_harness?)]
+
+    case normalize(Environments.cmd(env, "just", ["restart"], opts)) do
       {out, 0} -> serving(env, root, out)
       {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
     end
   end
+
+  defp skip_harness_env(true), do: []
+  defp skip_harness_env(false), do: [{"CMS_SKIP_HARNESS_REFRESH", "true"}]
 
   defp serving(env, root, out) do
     case git(env, root, ["rev-parse", "--short", "HEAD"]) do
