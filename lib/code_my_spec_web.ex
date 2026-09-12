@@ -62,6 +62,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Issues,
       CodeMySpec.Knowledge,
       CodeMySpec.Logging,
+      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.McpServers,
       CodeMySpec.Migration,

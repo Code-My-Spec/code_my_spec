@@ -400,9 +400,32 @@ defmodule CodeMySpec.MainAgent do
   @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
   defdelegate set_cadence_interval(scope, seconds), to: Cadence, as: :set_interval
 
-  @doc "Whether this project's cadence is still waking its main agent."
+  @doc """
+  Whether this project's main agent is still meant to be woken.
+
+  Intent. Answers "has it stood down", and says nothing about whether a timer
+  exists — see `cadence_alive?/1` for that.
+  """
   @spec cadence_running?(Scope.t()) :: boolean()
   defdelegate cadence_running?(scope), to: Cadence, as: :running?
+
+  @doc "Whether a cadence timer actually exists for this project right now."
+  @spec cadence_alive?(Scope.t()) :: boolean()
+  defdelegate cadence_alive?(scope), to: Cadence, as: :alive?
+
+  @doc "Start this project's cadence if it is not already running."
+  @spec ensure_cadence(Scope.t()) :: {:ok, pid()} | {:error, term()}
+  defdelegate ensure_cadence(scope), to: Cadence, as: :ensure_running
+
+  @doc """
+  Re-establish cadences for every project with agents running in it.
+
+  The application's boot seeding calls this. Exposed on the context rather than
+  reached into, because `Cadence` is inside this boundary and the web app is
+  outside it — the compiler said so, which is the boundary doing its job.
+  """
+  @spec wake_active_projects() :: :ok
+  defdelegate wake_active_projects, to: Cadence
 
   defp deliver_check_in(scope, %Digest{failed: reason} = digest) when is_binary(reason) do
     # Not delivered as an empty all-quiet, and raised. Criterion 3333: those are
