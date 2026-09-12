@@ -15,7 +15,6 @@ defmodule CodeMySpec.AcceptanceCriteria do
     deps: [
       CodeMySpec.Files,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -23,7 +22,6 @@ defmodule CodeMySpec.AcceptanceCriteria do
 
   alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -50,12 +48,6 @@ defmodule CodeMySpec.AcceptanceCriteria do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:acceptance_criteria", message)
-
-    # And to the graph's own topic. A new scenario or a verification flip can
-    # make `three_amigos_complete` or `bdd_specs_passing` actionable, which an
-    # idle continuous agent would not otherwise learn about until something
-    # else woke it (d8c5d193). See `Requirements.GraphInputs`.
-    GraphInputs.changed(scope)
   end
 
   @doc "Returns the list of acceptance criteria for a story."

@@ -20,7 +20,6 @@ defmodule CodeMySpec.Deploys do
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -31,7 +30,6 @@ defmodule CodeMySpec.Deploys do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -61,7 +59,6 @@ defmodule CodeMySpec.Deploys do
     end
     |> Deploy.changeset(attrs)
     |> Repo.insert_or_update()
-    |> tap(&announce_graph_change(project_id, &1))
   end
 
   @doc """
@@ -82,16 +79,8 @@ defmodule CodeMySpec.Deploys do
         deploy
         |> Deploy.changeset(%{health_verified_at: at || DateTime.utc_now()})
         |> Repo.update()
-        |> tap(&announce_graph_change(project_id, &1))
     end
   end
-
-  # Only `deploy` is gated on this — `uat_check/2,3` reads
-  # `health_verified_at` directly, so a verify is exactly the write that can
-  # make it actionable, which an idle continuous agent would not otherwise
-  # learn about until something else woke it (d8c5d193).
-  defp announce_graph_change(project_id, {:ok, _deploy}), do: GraphInputs.changed(project_id)
-  defp announce_graph_change(_project_id, _other), do: :ok
 
   @doc """
   Record the stories a successful deploy carried.
