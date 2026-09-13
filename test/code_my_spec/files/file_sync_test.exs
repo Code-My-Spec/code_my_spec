@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Files.FileSyncTest do
   use ExUnit.Case, async: true
 
+  import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Embeddings.TestBackend
@@ -8,6 +9,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
+  alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -704,6 +706,31 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       assert result.changed_path == "lib/my_app/old.ex"
       refute Files.get_by_path(scope, "lib/my_app/old.ex")
+    end
+
+    # Issue 07a09cba: two working copies of the same project — a harness
+    # restart briefly leaves an old and a new registration both pointed at
+    # the same checkout — syncing the same path concurrently used to violate
+    # `UNIQUE (files.project_id, files.path)`, before the path's uniqueness
+    # was scoped to include the working copy. `upsert_file_metadata/2` now
+    # targets `[:project_id, :working_copy_id, :path]`, which only matches
+    # the index actually in place (20260807220000 dropped the narrower one).
+    # This proves the two rows coexist instead of racing.
+    test "two working copies syncing the same path do not collide" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, second_copy} =
+        WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: tmp_dir)
+
+      other_scope = %{scope | active_working_copy_id: second_copy.id}
+
+      abs_path = write_file(tmp_dir, "lib/my_app/shared.ex", "defmodule MyApp.Shared do\nend")
+
+      assert {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+      assert {:ok, _} = FileSync.sync_path(other_scope, abs_path, base_dir: tmp_dir)
+
+      assert Files.get_by_path(scope, "lib/my_app/shared.ex")
+      assert Files.get_by_path(other_scope, "lib/my_app/shared.ex")
     end
 
     test "returns nil changed_path for unrecognized file types" do
