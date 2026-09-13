@@ -25,7 +25,12 @@ defmodule CodeMySpecWeb.DevAgentController do
   share code precisely so that loosening one cannot loosen the other.
 
       POST /dev/agents/<agent_id>/message   {"message": "…"}
+      POST /dev/agents/<agent_id>/answer    {"answer": "…", "question_id": "…"}
       GET  /dev/agents                      list, so you can find the id
+
+  `question_id` on the answer route is optional and you should pass it whenever
+  you have one: without it the *oldest* pending question is answered, which is
+  how a caller once answered two questions belonging to somebody else.
 
   Answers what the agent said, or the transport's error. A message to a stopped
   agent is `{:error, :not_running}` and is reported as such rather than as a
@@ -198,10 +203,41 @@ defmodule CodeMySpecWeb.DevAgentController do
     })
   end
 
+  # `question_id` is optional and it exists because omitting it is dangerous.
+  #
+  # Without it this answers the agent's *oldest* pending question, which is fine
+  # for a person poking at one stuck agent and wrong for anything holding an id.
+  # On 2026-09-13 a caller clearing two questions it had just raised answered two
+  # unrelated ones belonging to another agent instead: the agent had a backlog,
+  # there was nowhere to say which question was meant, and the only feedback was
+  # `request_id` in the response body — after the write. `Notifications` has no
+  # un-answer path by design ("questions never expire"), so those answers are
+  # permanent. Issue `2638fbf5`.
+  #
+  # The trap is aimed squarely at QA, which is the main caller: exercising
+  # escalation *creates* questions, so the agent doing the exercising very often
+  # has others open, and issue `7586cf46` recommends this endpoint for exactly
+  # that cleanup.
+  #
+  # A mismatch lists the pending ids rather than falling back to the oldest.
+  # Falling back is what this is here to stop — a caller that named the wrong
+  # question wants to be told, not to have a different one answered for it.
   def answer(conn, %{"agent_id" => agent_id} = params) do
     given = answers_from(params)
+    wanted = params["question_id"]
 
-    case pending_request(agent_id) do
+    case pending_request(agent_id, wanted) do
+      nil when is_binary(wanted) ->
+        pending = agent_id |> pending_requests() |> Enum.map(& &1.id)
+
+        conn
+        |> put_status(404)
+        |> json(%{
+          error: "no pending question #{wanted} for agent #{agent_id}",
+          agent_id: agent_id,
+          pending: pending
+        })
+
       nil ->
         conn
         |> put_status(404)
@@ -220,10 +256,16 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  defp pending_request(agent_id) do
+  defp pending_requests(agent_id) do
     agent_id
     |> Notifications.list_question_requests_for_agent()
-    |> Enum.find(&(&1.status == "pending"))
+    |> Enum.filter(&(&1.status == "pending"))
+  end
+
+  defp pending_request(agent_id, nil), do: agent_id |> pending_requests() |> List.first()
+
+  defp pending_request(agent_id, question_id) when is_binary(question_id) do
+    agent_id |> pending_requests() |> Enum.find(&(&1.id == question_id))
   end
 
   defp render_request(request) do
