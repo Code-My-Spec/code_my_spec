@@ -158,6 +158,12 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
         "event" => %{"kind" => "assistant", "text" => text}
       })
 
-    Phoenix.ChannelTest.assert_reply(ref, :ok)
+    # `assert_reply/2` waits 100ms. That is the reply to a channel push on a
+    # machine running several agents and two analyzer suites, and it is not
+    # enough: this went red with the reply absent and an unrelated Swoosh email
+    # the only thing in the mailbox, while passing alone and in its own story's
+    # suite at a lower load. Same shape as story 998's `render_async/1` calls,
+    # and the same 5s the rest of the suite settled on.
+    Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 5_000)
   end
 end

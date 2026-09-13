@@ -18,6 +18,7 @@ defmodule CodeMySpec.Intake do
       CodeMySpec.Accounts,
       CodeMySpec.Analytics,
       CodeMySpec.Events,
+      CodeMySpec.Faults,
       CodeMySpec.Personas,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
@@ -53,6 +54,16 @@ defmodule CodeMySpec.Intake do
   @spec get_plan(String.t() | nil) :: Plan.t() | nil
   def get_plan(nil), do: nil
   def get_plan(session_token), do: PlansRepository.get_by_token(session_token)
+
+  @doc """
+  The most recent plans, newest first. For the dev route only.
+
+  A visitor's session token is signed into the Phoenix session and unreadable
+  from a browser, so this is how somebody testing the intake addresses the plan
+  they just started — see `PlansRepository.recent/1`.
+  """
+  @spec recent_plans(pos_integer()) :: [Plan.t()]
+  def recent_plans(limit \\ 20), do: PlansRepository.recent(limit)
 
   @doc """
   The plan with this id, or nil.

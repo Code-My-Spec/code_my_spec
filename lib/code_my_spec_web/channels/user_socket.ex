@@ -37,7 +37,7 @@ defmodule CodeMySpecWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   @impl true
-  def connect(%{"token" => token}, socket, _connect_info) do
+  def connect(%{"token" => token}, socket, connect_info) do
     case AccessTokens.get_by_token(token, otp_app: :code_my_spec) do
       %{resource_owner_id: user_id} = access_token ->
         if AccessTokens.is_accessible?(access_token) do
@@ -51,18 +51,22 @@ defmodule CodeMySpecWeb.UserSocket do
            |> assign(:user_id, user.id)
            |> assign(:scope, scope)}
         else
-          Logger.warning("[UserSocket] connect refused — token expired/revoked")
+          Logger.warning(
+            "[UserSocket] connect refused — token expired/revoked #{caller(token, connect_info)}"
+          )
+
           :error
         end
 
       nil ->
-        connect_with_deploy_key(token, socket)
+        connect_with_deploy_key(token, socket, connect_info)
     end
   end
 
-  def connect(params, _socket, _connect_info) do
+  def connect(params, _socket, connect_info) do
     Logger.warning(
-      "[UserSocket] connect refused — missing token (params keys: #{inspect(Map.keys(params))})"
+      "[UserSocket] connect refused — missing token " <>
+        "(params keys: #{inspect(Map.keys(params))}) #{peer(connect_info)}"
     )
 
     :error
@@ -88,21 +92,81 @@ defmodule CodeMySpecWeb.UserSocket do
   # Same trade as `Plugs.DeployKeyOrOAuth`: the key resolves to the project's
   # account owner, because it is their project and their inbox. Tried only after
   # the token lookup misses, so nothing about the user path changes.
-  defp connect_with_deploy_key(token, socket) do
-    with %{account_id: account_id} = project when not is_nil(account_id) <-
-           Projects.get_project_by_deploy_key(token),
-         %{} = user <- Accounts.get_account_owner(account_id) do
-      Logger.info("[UserSocket] connect ok via deploy key project_id=#{project.id}")
+  defp connect_with_deploy_key(token, socket, connect_info) do
+    case Projects.get_project_by_deploy_key(token) do
+      %{account_id: account_id} = project when not is_nil(account_id) ->
+        owned(project, Accounts.get_account_owner(account_id), socket, token, connect_info)
 
-      {:ok,
-       socket
-       |> assign(:user_id, user.id)
-       |> assign(:scope, Scope.for_user(user))
-       |> assign(:deploy_key_project_id, project.id)}
-    else
-      _ ->
-        Logger.warning("[UserSocket] connect refused — token not found")
+      %{id: id} ->
+        # Not a credential problem, and saying "token not found" sent the
+        # operator to check a key that was fine. The key resolved; the project
+        # it names has no account, so there is no owner to act as.
+        Logger.warning(
+          "[UserSocket] connect refused — deploy key resolves to project #{id}, " <>
+            "which has no account #{caller(token, connect_info)}"
+        )
+
+        :error
+
+      nil ->
+        Logger.warning(
+          "[UserSocket] connect refused — token not found #{caller(token, connect_info)}"
+        )
+
         :error
     end
   end
+
+  defp owned(project, %{} = user, socket, _token, _connect_info) do
+    Logger.info("[UserSocket] connect ok via deploy key project_id=#{project.id}")
+
+    {:ok,
+     socket
+     |> assign(:user_id, user.id)
+     |> assign(:scope, Scope.for_user(user))
+     |> assign(:deploy_key_project_id, project.id)}
+  end
+
+  defp owned(project, _no_owner, _socket, token, connect_info) do
+    Logger.warning(
+      "[UserSocket] connect refused — account #{project.account_id} has no owner, " <>
+        "so project #{project.id}'s deploy key cannot act for anyone " <>
+        "#{caller(token, connect_info)}"
+    )
+
+    :error
+  end
+
+  # Enough to identify the credential, and nothing that could be replayed.
+  #
+  # A refusal that names no token is unusable when several are in flight: on one
+  # night this logged "token not found" 273 times while other keys connected
+  # fine in the same second, and nothing in it said which caller to look at
+  # (`d96809d4`). The digest is matchable — hash a key you suspect and compare —
+  # without the log carrying any part of the secret. The shape is there because
+  # the two forms in use look nothing alike (`dk_`-prefixed, and 128 hex
+  # characters), and a key of the wrong shape names the wrong source outright.
+  defp caller(token, connect_info) do
+    "key=#{shape(token)}:#{digest(token)} #{peer(connect_info)}"
+  end
+
+  defp digest(token) when is_binary(token) do
+    :sha256 |> :crypto.hash(token) |> Base.encode16(case: :lower) |> binary_part(0, 12)
+  end
+
+  defp shape("dk_" <> _rest), do: "dk"
+  defp shape(token) when is_binary(token), do: "len#{byte_size(token)}"
+
+  defp peer(%{peer_data: %{address: address}} = connect_info) do
+    "peer=#{:inet.ntoa(address)} agent=#{inspect(connect_info[:user_agent])}"
+  end
+
+  # Says what it did get. "unreported" on its own is a dead end — it looks like
+  # the transport was mounted without `connect_info` and gives no way to tell
+  # that apart from a transport that supplied something else, which is exactly
+  # where the first reading of this got stuck.
+  defp peer(connect_info) when is_map(connect_info),
+    do: "peer=unreported(connect_info=#{inspect(Map.keys(connect_info))})"
+
+  defp peer(other), do: "peer=unreported(#{inspect(other)})"
 end

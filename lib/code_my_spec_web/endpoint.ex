@@ -17,8 +17,13 @@ defmodule CodeMySpecWeb.Endpoint do
     longpoll: [connect_info: [session: @session_options]]
   )
 
+  # `connect_info` so a refused upgrade can say who was refused. A harness that
+  # cannot hold a socket retries on a backoff, and 273 identical "token not
+  # found" lines in one night named neither the caller nor the credential — the
+  # operator chasing it read the harness's logs instead, which can only say that
+  # the far side said no (`d96809d4`).
   socket("/socket", CodeMySpecWeb.UserSocket,
-    websocket: true,
+    websocket: [connect_info: [:peer_data, :user_agent]],
     longpoll: false
   )
 

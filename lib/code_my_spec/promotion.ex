@@ -866,28 +866,39 @@ defmodule CodeMySpec.Promotion do
   # recipient would mean messaging an agent that never saw the first one.
   defp correct_the_agent(result, _scope, _root, nil), do: result
 
-  defp correct_the_agent({:error, %{reason: reason}} = result, scope, root, agent_id) do
-    text =
-      "Correction on the promotion I just reported. The merge landed, but the " <>
-        "deployment that followed it failed, so the application at #{root} is NOT " <>
-        "serving your work — disregard the part of that message saying QA can " <>
-        "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
-        "is still on the running copy. Fix what broke the restart and promote again."
+  # A lost acknowledgement is not a failure — see `restart_acknowledgement_lost?/1`
+  # above and `merged/5`'s use of it. The agent's first message already said
+  # "merged, QA can start" and that is still true; correcting it here would
+  # tell the agent to "fix what broke the restart and promote again" for a
+  # restart that most likely already succeeded, which is exactly the retry
+  # this check exists to prevent — each unnecessary retry restarts the shared
+  # dev server every other working copy on the box is using.
+  defp correct_the_agent({:error, %{reason: reason} = error} = result, scope, root, agent_id) do
+    if restart_acknowledgement_lost?(error) do
+      result
+    else
+      text =
+        "Correction on the promotion I just reported. The merge landed, but the " <>
+          "deployment that followed it failed, so the application at #{root} is NOT " <>
+          "serving your work — disregard the part of that message saying QA can " <>
+          "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
+          "is still on the running copy. Fix what broke the restart and promote again."
 
-    case Agents.dispatch_message(scope, agent_id, text) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
+      case Agents.dispatch_message(scope, agent_id, text) do
+        {:ok, disposition, _message} ->
+          Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
 
-      # Logged rather than retried, matching `report_to/3`: the agent may already
-      # be acting on the wrong message, and a delivery loop does not fix that.
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] restart failed for #{root} and the agent could not be told: " <>
-            inspect(deliver_error)
-        )
+        # Logged rather than retried, matching `report_to/3`: the agent may already
+        # be acting on the wrong message, and a delivery loop does not fix that.
+        {:error, deliver_error} ->
+          Logger.warning(
+            "[Promotion] restart failed for #{root} and the agent could not be told: " <>
+              inspect(deliver_error)
+          )
+      end
+
+      result
     end
-
-    result
   end
 
   defp correct_the_agent(result, _scope, _root, _agent_id), do: result

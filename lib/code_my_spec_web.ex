@@ -50,6 +50,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Epics,
       CodeMySpec.Events,
       CodeMySpec.ExternalUsers,
+      CodeMySpec.Faults,
       CodeMySpec.Files,
       CodeMySpec.Generators,
       # The harness channel decides hooks. `Hooks` is its own top-level boundary

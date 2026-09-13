@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.DevAgentController do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Notifications
+  alias CodeMySpec.WorkingCopies
 
   # Only when the caller asked to wait, and short on purpose.
   #
@@ -141,6 +142,40 @@ defmodule CodeMySpecWeb.DevAgentController do
           continuous: wanted,
           agents_updated: count
         })
+
+      {:error, reason} ->
+        conn |> put_status(404) |> json(%{error: inspect(reason), working_copy_id: copy_id})
+    end
+  end
+
+  # What a checkout can drive, set by hand.
+  #
+  # A working copy's `machine_tools` is written only by the harness, on join.
+  # That made "a machine that can drive nothing" — the state `Machinery`
+  # attributes a tool fault from, and the precondition of criteria 3272, 3310,
+  # 3311 and 3312 — reachable only by breaking a real machine's MCP client,
+  # which four other projects' checkouts share. Five QA passes refused on that
+  # ground and left the criteria verified-by-reading (0fb7bf03).
+  #
+  # `[]` and `nil` are different answers and only one is a fault: a copy that
+  # has never said what it can do is most of the fleet, and calling that broken
+  # would report everything as unable to work. So an empty list is written
+  # literally, not as an absence.
+  #
+  # Scoped to one copy, which is the whole point — `tool_fault/1` compares a
+  # project's copies against each other, so a project of your own shows a
+  # machine-wide fault or a single agent's without any other project seeing
+  # either. The next harness join overwrites this; nothing here needs undoing.
+  def machine_tools(conn, %{"working_copy_id" => copy_id} = params) do
+    tools = params["tools"] || []
+
+    with true <- is_list(tools),
+         {:ok, copy} <- WorkingCopies.fetch(copy_id) do
+      :ok = WorkingCopies.record_machine_tools(copy, tools)
+      json(conn, %{status: "recorded", working_copy_id: copy_id, machine_tools: tools})
+    else
+      false ->
+        conn |> put_status(422) |> json(%{error: ~s("tools" must be a list of names)})
 
       {:error, reason} ->
         conn |> put_status(404) |> json(%{error: inspect(reason), working_copy_id: copy_id})

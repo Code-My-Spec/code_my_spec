@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   @doc "The catalog of tools a script may call, acting as `scope`."
   @spec catalog(term()) :: Catalog.t()
-  def catalog(scope), do: catalog(scope, nil)
+  def catalog(scope), do: catalog(scope, nil, %{})
 
   @doc """
   The same, scoped to what one agent may call.
@@ -54,9 +54,33 @@ defmodule CodeMySpec.McpServers.CodeMode do
   `CodeMySpec.Agents.ToolSets`.
   """
   @spec catalog(Scope.t(), [String.t()] | nil) :: Catalog.t()
-  def catalog(scope, allowed) do
+  def catalog(scope, allowed), do: catalog(scope, allowed, %{})
+
+  @doc """
+  The same, carrying who is asking.
+
+  `caller` is `%{session_id: …, agent_id: …}`, either key optional. Without it
+  a script could not call a tool that needs to know whose work it is — which
+  covered `list_tasks`, `evaluate_task`, `start_task`, `cancel_task` and
+  `assign_task`, so a caller could script everything except claiming or
+  finishing a piece of work. Issue `1a892606`.
+
+  Two carriers because there are two kinds of caller, and neither can use the
+  other's. An agent we run is identified by its connection, so `agent_id` is on
+  the frame the outer call arrived on; a Claude Code session is identified by a
+  `session_id` the `PreToolUse` hook injects into the tool's input. The script
+  path had a fresh frame and untouched arguments, so it dropped both.
+
+  What that looked like from outside was worse than a missing feature: a caller
+  was told to call `register_session`, did, was told it had worked, and got the
+  same "no owner" refusal from the very next line of the same script — so the
+  advice read as a lie and the caller went looking for a session id to pass by
+  hand. There was none to find.
+  """
+  @spec catalog(Scope.t(), [String.t()] | nil, map()) :: Catalog.t()
+  def catalog(scope, allowed, caller) do
     ScriptableTools.__components__()
-    |> Catalog.from(&invoker(&1, scope), allowed)
+    |> Catalog.from(&invoker(&1, scope, caller), allowed)
   end
 
   @doc """
@@ -223,14 +247,43 @@ defmodule CodeMySpec.McpServers.CodeMode do
   @spec out_of_scope([String.t()] | nil) :: [String.t()]
   def out_of_scope(allowed), do: Catalog.out_of_scope(ScriptableTools.__components__(), allowed)
 
-  defp invoker(tool, scope) do
-    frame = %Frame{assigns: %{current_scope: scope}}
+  defp invoker(tool, scope, caller) do
+    frame = %Frame{assigns: Map.put(caller, :current_scope, scope)}
 
     fn args ->
-      with {:ok, params} <- validate(tool, args) do
+      with {:ok, params} <- validate(tool, identified(tool, args, caller)) do
         execute(tool, params, frame)
       end
     end
+  end
+
+  # `session_id` reaches a direct call as an argument, injected into the tool's
+  # input by `Hooks.PreToolUse`, so a script has to arrive the same way rather
+  # than through the frame — the tools read it from their params and there is no
+  # reason for the script path to be the one place that differs.
+  #
+  # Only where the tool declares it. Merging it into every call would hand a
+  # field to tools whose schemas do not have one, and the schema is the thing
+  # that decides a call is malformed.
+  #
+  # Never over what the script passed. A caller naming a session explicitly is
+  # making a choice, and silently substituting its own would be the same class
+  # of bug as answering the oldest pending question instead of the named one.
+  defp identified(tool, args, %{session_id: session_id}) when is_binary(session_id) do
+    if takes_session_id?(tool) and not Map.has_key?(args, "session_id") do
+      Map.put(args, "session_id", session_id)
+    else
+      args
+    end
+  end
+
+  defp identified(_tool, args, _caller), do: args
+
+  defp takes_session_id?(tool) do
+    tool
+    |> Map.get(:input_schema, %{})
+    |> Map.get("properties", %{})
+    |> Map.has_key?("session_id")
   end
 
   # The same casting a real MCP call goes through. Skipping it would make a

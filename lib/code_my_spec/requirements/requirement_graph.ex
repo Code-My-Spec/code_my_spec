@@ -179,7 +179,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
   def serve(nodes, ctx) do
     fresh = Map.get(ctx, :analysis_fresh, %{})
-
     Enum.map(nodes, &apply_freshness(&1, fresh))
   end
 
