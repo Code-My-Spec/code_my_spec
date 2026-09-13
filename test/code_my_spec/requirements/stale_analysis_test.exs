@@ -39,6 +39,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementGraph
 
   setup do
     scope = full_scope_fixture()
@@ -58,9 +59,27 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
   defp credo_check,
     do: %{name: "credo_clean", check_type: :no_problems, config: %{"source" => "credo"}}
 
+  # Computed, then served — because that is now where the asymmetry lives.
+  #
+  # `problem_verdict/5` stores the durable half, this component's own problem
+  # count, so that an analyzer finishing does not invalidate every component in
+  # the project to correct one term (criterion 3448). Freshness is applied by
+  # `RequirementGraph.serve/2` on the way to a reader, and every path that hands
+  # nodes to a reader goes through it.
+  #
+  # So this asserts the verdict a caller actually receives. Driving
+  # `compute_one/5` alone would assert the stored half and pass while the served
+  # answer was wrong, which is the opposite of what this file is for.
   defp evaluate(scope, definition) do
     {:ok, ctx} = Preloader.load(scope)
-    result = RequirementCalculator.compute_one(scope, scope.active_project, definition, [], ctx)
+
+    result =
+      scope
+      |> RequirementCalculator.compute_one(scope.active_project, definition, [], ctx)
+      |> List.wrap()
+      |> RequirementGraph.serve(ctx)
+      |> hd()
+
     {result.satisfied, result.details}
   end
 
@@ -127,9 +146,17 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
       )
     end
 
+    # Served, for the same reason `evaluate/2` above is.
     defp evaluate_component(scope, component) do
       {:ok, ctx} = Preloader.load(scope)
-      result = RequirementCalculator.compute_one(scope, component, credo_check(), [], ctx)
+
+      result =
+        scope
+        |> RequirementCalculator.compute_one(component, credo_check(), [], ctx)
+        |> List.wrap()
+        |> RequirementGraph.serve(ctx)
+        |> hd()
+
       {result.satisfied, result.details}
     end
 

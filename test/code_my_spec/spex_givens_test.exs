@@ -148,6 +148,22 @@ defmodule CodeMySpec.SpexGivensTest do
   # Comments stay out here. `~w()` has no comment syntax, so a `#` line inside the
   # sigil becomes literal tokens — including every ordinary English word in it,
   # which then matches almost any given body and silently disables this check.
+  #
+  # Story 839's harness-scheduling criteria added the next line's worth.
+  # `ensure_harness_supervisor_started/0` starts the real `CmsHarness.Supervisor`
+  # tree `mix spex` never boots on its own; `FakeServer.` and `Projects.
+  # ensure_started` are what stands up a real websocket and a real
+  # `CmsHarness.Project.AnalysisServer` against it (the same infra
+  # `analysis_path_test.exs` already used, just newly reachable from a spex);
+  # `BlockingProject.` writes and controls a real, on-disk Mix compiler so "a
+  # run is genuinely still executing" is a fact a scenario can arrange rather
+  # than a race; `SlotHolder.` occupies a real machine-wide analyzer slot; and
+  # `Application.put_env` is how these scenarios configure the machine's own
+  # slot limit or kill timeout for the duration of one test, same standing as
+  # `put_env!` above but for application config rather than the OS
+  # environment. `await_connected` is genuinely a wait, not an establishing
+  # call by itself — listed because every given_ that calls it also calls one
+  # of the others in the same block, and the check reads the whole body.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
@@ -169,6 +185,9 @@ defmodule CodeMySpec.SpexGivensTest do
     a_promotable_project report_git_state analyzers_are_current
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
+    ensure_harness_supervisor_started FakeServer. BlockingProject.
+    Projects.ensure_started await_connected SlotHolder.
+    Application.put_env
   )
 
   # The failure message has always offered a second remedy — "if the

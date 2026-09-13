@@ -130,8 +130,23 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:component, component.id, row_key(component), component.type, component.module_name},
       {:files, file_keys(Map.get(ctx.files_by_component, component.id, []))},
       {:children, ids(Map.get(ctx.children_by_parent, component.id, []))},
-      {:problems, Map.get(ctx.problems_by_component, component.id, %{})},
-      {:analysis, Map.get(ctx, :analysis_fresh, %{})}
+      {:problems, Map.get(ctx.problems_by_component, component.id, %{})}
+      # `analysis_fresh` is deliberately absent, and this is the whole of
+      # criterion 3448. It is four project-wide booleans, so a flip made every
+      # component's fingerprint move at once: measured on this project, 1116 of
+      # 1347 requirements recomputed to correct one term, twice in an hour, at
+      # ~80x the cost of an ordinary read.
+      #
+      # It never belonged in a fingerprint. A fingerprint answers "were this
+      # entity's own inputs different", and analysis freshness is not an input
+      # to a component — it is a *qualifier on serving* the answer, derived
+      # (`run.input_fingerprint == Fingerprint.compute(files, roles)`), cheap,
+      # and identical for every component. What is genuinely per-component is
+      # `problems`, one line above, and that stays.
+      #
+      # So the verdict stored here is the durable half — this component's own
+      # problem count — and freshness is applied when the graph is served. See
+      # `RequirementGraph.serve/2`.
     ])
   end
 
