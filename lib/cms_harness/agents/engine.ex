@@ -131,9 +131,42 @@ defmodule CmsHarness.Agents.Engine do
           {:ok, %{agent_id: agent_id, pid: pid}}
 
         {:error, reason} ->
+          Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
     end
+  end
+
+  @doc """
+  Why a start failed, for the harness's own log.
+
+  This branch used to log nothing at all. A failed start was therefore invisible
+  here: the only record was the server's `keep_starting/2` line, which carries
+  the reason as a string and nothing about where it came from.
+
+  That cost a day. An agent stranded at `:starting` reported
+
+      {:shutdown, {:failed_to_start_child, Anubis.Client, {:already_started, …}}}
+
+  and the harness log had one line for the whole episode — the `terminate/2`
+  that preceded it. With nothing else to go on, the module name in the reason
+  was the only clue to which supervisor raised it, and the inference drawn from
+  it was wrong twice (`68e535fd`).
+
+  Names the agent and the checkout, because a harness serves fifteen of them and
+  a reason with neither cannot be matched to the server's line for the same
+  event.
+  """
+  @spec describe_start_failure(String.t(), String.t(), term()) :: String.t()
+  def describe_start_failure(agent_id, working_copy, reason) do
+    # `limit:` bounds elements, not bytes — one option list of long strings
+    # still renders to kilobytes, so the rendered form is sliced as well.
+    rendered =
+      reason
+      |> inspect(limit: 12, printable_limit: 200)
+      |> String.slice(0, 500)
+
+    "[CmsHarness] agent #{agent_id} did not start in #{working_copy}: " <> rendered
   end
 
   @doc """

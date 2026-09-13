@@ -24,7 +24,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   Returns `%{scope, frame, session_id, project, req1, req2, tmp_dir}`.
   """
   def setup_workflow_scenario do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("workflow_scenario")
     scope = full_scope_fixture()
 
     # Set local_path so the WorkingDirScope plug can find this project

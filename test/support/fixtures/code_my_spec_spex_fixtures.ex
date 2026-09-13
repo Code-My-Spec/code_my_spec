@@ -1197,7 +1197,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # agent's scan re-creates the very files the reclaim just removed and
     # re-projects the component from them — correct behaviour, and it would make
     # every scenario here assert that reclaiming does nothing.
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("reclaim_copy")
     {:ok, harness} = WorkingCopies.report_root(harness, root)
 
     # Its own **environment**, not just its own path, and registered against its

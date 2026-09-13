@@ -13,10 +13,12 @@ defmodule CmsHarness.Web.AnalysisController do
   copy is named in the URL rather than inferred from a directory, so a worktree,
   a sprite and another laptop are all distinguishable.
 
-  The body is the tool's own output with a status footer. `curl` exits 0 whether
-  or not tests failed, so the footer is how the agent tells pass from fail —
-  identical in shape to `CodeMySpecLocalWeb.AnalysisController`, because from
-  the agent's side these must be indistinguishable.
+  The body is the tool's own output and nothing else — no footer, no run id,
+  no trace that this was routed at all. Pass or fail travels as the HTTP
+  status (200 clean, 422 otherwise) instead, because that is the one thing
+  the rewritten curl script can read without printing it: identical in shape
+  to `CodeMySpecLocalWeb.AnalysisController`, because from the agent's side
+  a routed `mix test` and a real one must be indistinguishable.
   """
   use Phoenix.Controller, formats: [:json]
 
@@ -121,12 +123,9 @@ defmodule CmsHarness.Web.AnalysisController do
   end
 
   defp reply(conn, {:ok, %{"output" => output} = run}) do
-    text(conn, """
-    #{output}
-
-    ── analysis run #{run["run_id"]}: #{run["status"]}, #{stats_line(run)} ──
-    exit status: #{exit_status(run)}
-    """)
+    conn
+    |> put_status(if exit_status(run) == 0, do: 200, else: 422)
+    |> text(output || "")
   end
 
   # The run happened but the reply is not one this knows how to read. Not
@@ -140,28 +139,15 @@ defmodule CmsHarness.Web.AnalysisController do
     fail(conn, 502, "analysis run failed: #{inspect(reason)}")
   end
 
-  defp stats_line(%{"stats" => stats}) when is_map(stats) and map_size(stats) > 0 do
-    Enum.map_join(stats, ", ", fn {k, v} -> "#{k}: #{v}" end)
-  end
-
-  defp stats_line(_run), do: "no stats"
-
   # A run that failed without a tool exit code — a crash, a skip, a timeout —
   # still has to read as failure.
   defp exit_status(%{"exit_status" => status}) when is_integer(status), do: status
   defp exit_status(%{"status" => "completed"}), do: 0
   defp exit_status(_run), do: 1
 
-  # Non-zero in the footer as well as in the HTTP status. The agent reads the
-  # body; a wrapper reads the code; neither should have to consult the other.
   defp fail(conn, status, message) do
     conn
     |> put_status(status)
-    |> text("""
-    #{message}
-
-    ── analysis run: not completed ──
-    exit status: 1
-    """)
+    |> text(message)
   end
 end

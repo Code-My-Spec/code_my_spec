@@ -71,10 +71,42 @@ defmodule CmsHarness.Analysis do
 
     Logger.info(
       "[CmsHarness] #{source} #{inspect(args)} in #{project.root} took " <>
-        "#{System.monotonic_time(:millisecond) - started}ms"
+        "#{System.monotonic_time(:millisecond) - started}ms — #{describe_outcome(result)}"
     )
 
     result
+  end
+
+  @doc """
+  What a finished run found, for the line that says it finished.
+
+  The line used to end at the duration, and the `\#{inspect(args)}` before it
+  reads as a result when it is not — `exunit [] in <root> took 418381ms` says
+  the run took no arguments and nothing whatever about what it found. A run
+  that found twelve failures and a run that found none logged identically.
+
+  That is not a cosmetic gap. Tracing a refused promotion on 2026-09-13 I read
+  eight of these as "clean", concluded two checkouts were green, and spent four
+  hours on the wrong theory while one of them carried a regression of mine.
+  `harness.log` is the first place anybody looks and it was the one place that
+  could not answer (`9afcbbdf`).
+
+  Every source's result carries `"diagnostics"` and `"exit_status"`, so there is
+  nothing to compute — only to say.
+  """
+  @spec describe_outcome({:ok, map()} | {:error, term()}) :: String.t()
+  def describe_outcome({:ok, %{"diagnostics" => diagnostics} = result})
+      when is_list(diagnostics) do
+    "#{length(diagnostics)} finding(s), exit #{Map.get(result, "exit_status", "?")}"
+  end
+
+  # A source that reported no diagnostics key at all. Said plainly rather than
+  # rendered as zero: "nothing found" and "nothing reported" are the distinction
+  # `execution_status` exists for, and flattening them here would undo it.
+  def describe_outcome({:ok, _result}), do: "no diagnostics reported"
+
+  def describe_outcome({:error, reason}) do
+    "failed: " <> (reason |> to_string() |> String.slice(0, 160))
   end
 
   # Which database the suite answered about, carried with the answer.

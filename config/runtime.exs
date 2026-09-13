@@ -437,6 +437,14 @@ config :code_my_spec, CodeMySpec.Billing,
   light_price_id: env!("STRIPE_LIGHT_PRICE_ID", :string, ""),
   pro_price_id: env!("STRIPE_PRO_PRICE_ID", :string, "")
 
+# Our own credential for a visitor's first turns before they connect a
+# provider (story 875) — `Credential.platform_credential/1` reads this and is
+# off by default (blank string), which the module's own moduledoc calls
+# deliberate: spending real money on someone who may never come back needs a
+# human to switch it on, bounded by `:platform_turn_cap`.
+config :code_my_spec, CodeMySpec.Agents.Credential,
+  platform_api_key: env!("PLATFORM_API_KEY", :string, "")
+
 # Svix signing secret for the inbound Resend webhook (`whsec_…`). When unset
 # (e.g. tests, dev without inbound) signature verification is skipped.
 config :code_my_spec, :resend_webhook_secret, env!("RESEND_WEBHOOK_SECRET", :string, "")
