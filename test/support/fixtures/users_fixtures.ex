@@ -128,12 +128,11 @@ defmodule CodeMySpec.UsersFixtures do
     # every promotion until something re-ran the suite when the machine was
     # quieter. `TempFile.dir/1` touches no process at all.
     #
-    # Cleanup registered here so it runs last — `on_exit` is LIFO, and this is
-    # the first callback any test using this fixture registers, so anything
-    # else tearing down still has its directory.
-    tmp_dir = CodeMySpec.TempFile.dir("full_scope")
-    File.mkdir_p!(tmp_dir)
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(tmp_dir) end)
+    # `owned_dir/1` rather than an `on_exit`: cleanup keyed on this process
+    # exiting works from any caller, and `on_exit/1` raises outside the test
+    # process — which is where `InProcessAgentTransport` calls its equivalent
+    # from, and how I broke eleven of story 1026's spex with the first version.
+    tmp_dir = CodeMySpec.TempFile.owned_dir("full_scope")
 
     user_scope_fixture(user, account, project)
     |> Map.put(:environment, Environment.new(:local, tmp_dir))

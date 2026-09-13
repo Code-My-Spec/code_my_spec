@@ -24,7 +24,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   Returns `%{scope, frame, session_id, project, req1, req2, tmp_dir}`.
   """
   def setup_workflow_scenario do
-    tmp_dir = temp_dir("workflow_scenario")
+    tmp_dir = CodeMySpec.TempFile.owned_dir("workflow_scenario")
     scope = full_scope_fixture()
 
     # Set local_path so the WorkingDirScope plug can find this project
@@ -241,24 +241,5 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   def response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
-  end
-
-  # A temp directory, without `Briefly`.
-  #
-  # `Briefly.Entry.ensure_tmp/0` asks one GenServer for the calling process's
-  # temp root with a hardcoded 5-second `GenServer.call` and no option to raise
-  # it, so on a box running several suites at once it times out and the test
-  # exits — `** (exit) exited in: GenServer.call(_, {:monitor, _}, 5000)`,
-  # recorded as a failure and blocking every promotion until somebody re-ran the
-  # suite while the machine was quiet. `TempFile.dir/1` touches no process.
-  #
-  # Cleanup is ours now rather than Briefly's process-exit hook. Registered at
-  # the point the directory is made, and `on_exit` is LIFO, so it runs after
-  # anything the caller registers afterwards.
-  defp temp_dir(prefix) do
-    dir = CodeMySpec.TempFile.dir(prefix)
-    File.mkdir_p!(dir)
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
-    dir
   end
 end
