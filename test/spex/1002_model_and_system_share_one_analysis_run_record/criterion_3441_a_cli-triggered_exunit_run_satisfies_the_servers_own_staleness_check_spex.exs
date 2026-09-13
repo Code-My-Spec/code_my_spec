@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
   It can only be false in one of two places, and this drives both:
 
     * the routing — if `mix test` runs as `mix test`, the CLI never touches the
-      service and writes nothing the server reads. `PreToolUse.decide/3` is what
+      service and writes nothing the server reads. `PreToolUse.decide/4` is what
       turns it into a request to the analysis endpoint, so that rewrite is the
       first half.
     * the ledger — if the endpoint writes somewhere the staleness check does not
@@ -65,7 +65,8 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
           PreToolUse.decide(
             context.scope,
             %{"tool_name" => "Bash", "tool_input" => %{"command" => "mix test"}},
-            4004
+            4004,
+            :harness
           )
 
         {:ok, Map.put(context, :decision, decision)}

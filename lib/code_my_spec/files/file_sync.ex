@@ -176,7 +176,7 @@ defmodule CodeMySpec.Files.FileSync do
     # `GraphWatcher` asks the fingerprint anyway, so this is an optimisation
     # rather than a correctness rule. See `Requirements.GraphInputs`.
     if changed_paths != [] or upserted > 0 or removed > 0 do
-      GraphInputs.changed(scope)
+      announce_graph_change(scope, length(changed_paths), upserted, removed)
     end
 
     {:ok,
@@ -295,7 +295,7 @@ defmodule CodeMySpec.Files.FileSync do
     # nothing and changed nothing is the steady state of a quiet tree, and the
     # harness sends one every few minutes.
     if changed != [] or upserted > 0 or removed > 0 do
-      GraphInputs.changed(scope)
+      announce_graph_change(scope, length(changed), upserted, removed)
     end
 
     %{
@@ -371,7 +371,7 @@ defmodule CodeMySpec.Files.FileSync do
           timeout: @reconcile_timeout_ms
         )
 
-      log_duration(scope, observations, System.monotonic_time(:millisecond) - started)
+      log_duration(scope, observations, System.monotonic_time(:millisecond) - started, result)
 
       result
     rescue
@@ -448,9 +448,47 @@ defmodule CodeMySpec.Files.FileSync do
   # At :info, beside the per-scan line above, because nothing runs at :debug —
   # dev and test both sit at :warning or :info, so a duration logged at :debug
   # is a duration nobody ever reads.
-  defp log_duration(scope, observations, ms) do
+  # How much of the scan actually moved anything.
+  #
+  # The count beside it is how many files were *looked at*, which on a quiet
+  # tree is every file every time — 4969 observations changing three rows and
+  # 4969 changing eight hundred are the same line without this, and they predict
+  # completely different graph work.
+  defp moved_summary(%{upserted: upserted, removed: removed} = result) do
+    changed = result |> Map.get(:changed_entries, []) |> length()
+    " — #{changed} changed, #{upserted} upserted, #{removed} removed"
+  end
+
+  defp moved_summary(_result), do: ""
+
+  # The one line that ties a sync to the recompute it causes.
+  #
+  # Without it the chain breaks exactly here: `[FileSync] reconciled N
+  # observations` is visible and `[Requirements] recomputed N of M` is visible,
+  # and nothing says the first caused the second. Reading a graph recompute then
+  # means finding the nearest preceding event and assuming — which, on a machine
+  # with several agents, analyzer runs and deploys interleaved, produced two
+  # confidently wrong diagnoses in one evening: analyzer completions blamed for
+  # full computes that were deploys, and readers blamed for overwriting a
+  # topology fingerprint that was simply never written.
+  #
+  # `reconciled N observations` cannot stand in for it either. N is how many
+  # files were *looked at*: 4969 observations with three changed rows and 4969
+  # with eight hundred read identically, and they predict completely different
+  # graph work.
+  defp announce_graph_change(scope, changed, upserted, removed) do
+    Logger.info(
+      "[FileSync] announcing a graph change for #{working_copy(scope)} — " <>
+        "#{changed} changed, #{upserted} upserted, #{removed} removed"
+    )
+
+    GraphInputs.changed(scope)
+  end
+
+  defp log_duration(scope, observations, ms, result) do
     count = length(observations)
     copy = working_copy(scope)
+    moved = moved_summary(result)
 
     if ms >= @reconcile_slow_ms do
       Logger.warning(
@@ -461,7 +499,7 @@ defmodule CodeMySpec.Files.FileSync do
           "load again. See 5be796f2."
       )
     else
-      Logger.info("[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms")
+      Logger.info("[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms#{moved}")
     end
   end
 

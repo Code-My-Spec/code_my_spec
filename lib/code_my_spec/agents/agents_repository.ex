@@ -100,6 +100,40 @@ defmodule CodeMySpec.Agents.AgentsRepository do
       distinct: a.project_id,
       select: a.project_id
     )
+    |> project_scopes()
+  end
+
+  @doc """
+  Projects with a `main` agent running, for the cadence to wake.
+
+  The cadence used to be seeded from `continuous_project_scopes/0`, and QA found
+  what that costs: this project had twelve agents running, one of them `main`,
+  posting real messages minutes apart and fielding real questions — and every
+  one of them had `continuous = false`, so nothing was scheduled to wake anybody
+  (`11aea8f5`). "Nothing is in a loop" and "there is nobody to look in on" are
+  different statements, and the first was standing in for the second.
+
+  The trigger is the agent the cadence actually wakes. A project with continuous
+  coding agents and no `main` has nothing to deliver a digest to; a project with
+  a `main` agent and no loops is exactly the case story 1059 exists for — the
+  failure worth catching is the one where an agent cannot report its own
+  trouble, and that does not require it to have been looping.
+
+  `:starting` counts, on the same reasoning as `list_running/1`: an agent that
+  has not finished coming up is one the cadence should already be watching.
+  """
+  @spec main_agent_project_scopes() :: [Scope.t()]
+  def main_agent_project_scopes do
+    from(a in Agent,
+      where: a.role == :main and a.status in [:starting, :running] and not is_nil(a.project_id),
+      distinct: a.project_id,
+      select: a.project_id
+    )
+    |> project_scopes()
+  end
+
+  defp project_scopes(query) do
+    query
     |> Repo.all()
     |> Enum.map(&Repo.get(CodeMySpec.Projects.Project, &1))
     |> Enum.reject(&is_nil/1)

@@ -197,10 +197,18 @@ defmodule CodeMySpec.MainAgent.Cadence do
   when agents are mid-run. Without this, a project whose agents were running
   before the restart would never be looked in on again until somebody happened
   to touch it.
+
+  Seeded from projects with a `main` agent running, not from projects with
+  continuous agents. QA found what the old trigger cost: twelve agents running
+  on this project, one of them `main`, posting real messages minutes apart —
+  and `continuous = false` on every one of them, so `running: no` roughly twenty
+  minutes after a boot that was supposed to have re-established it (`11aea8f5`).
+  "Nothing is in a loop" was standing in for "there is nobody to look in on",
+  and they are not the same statement.
   """
   @spec wake_active_projects() :: :ok
   def wake_active_projects do
-    AgentsRepository.continuous_project_scopes()
+    AgentsRepository.main_agent_project_scopes()
     |> Enum.each(fn scope ->
       case ensure_running(scope) do
         {:ok, _pid} ->
