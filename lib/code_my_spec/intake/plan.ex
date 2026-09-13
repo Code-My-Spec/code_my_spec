@@ -144,8 +144,8 @@ defmodule CodeMySpec.Intake.Plan do
   """
   def names_changeset(%__MODULE__{} = plan, attrs) do
     plan
-    |> default_location()
     |> cast(attrs, [:account_name, :project_name, :needs_sign_in, :separate_copies, :location])
+    |> default_location()
     |> validate_required([
       :account_name,
       :project_name,
@@ -161,8 +161,26 @@ defmodule CodeMySpec.Intake.Plan do
   # before the card was ever shown must still read as "never asked" — just what
   # the select starts on, so the visitor sees a choice already made rather than
   # an empty dropdown they have to discover.
-  defp default_location(%__MODULE__{location: nil} = plan), do: %{plan | location: :cloud}
-  defp default_location(%__MODULE__{} = plan), do: plan
+  #
+  # Applied to the changeset via `put_change/3`, not by pre-mutating the
+  # struct handed to `cast/3`: `cast/3` only records a field in `changes` when
+  # the casted value differs from `data`'s current value, so a struct already
+  # defaulted to `:cloud` made "the visitor accepted the pushed default" (the
+  # common case, `attrs["location"] == "cloud"`) look like no change at all.
+  # The changeset returned in-memory still read `location: :cloud` — copied
+  # straight from `data` — so it looked confirmed to whichever process just
+  # built it, but the column was never actually written: a fresh read from
+  # the row (a reload, or another page mounting the same plan) saw `nil` and
+  # nothing it gated ever fired. Reading the *cast* value with `get_field/2`
+  # and only defaulting what is still genuinely unset makes the default a
+  # real, persisted change instead of a value that merely looks set.
+  defp default_location(changeset) do
+    if get_field(changeset, :location) do
+      changeset
+    else
+      put_change(changeset, :location, :cloud)
+    end
+  end
 
   @doc "The gate. Records what was created so a second visit adopts it rather than creating again."
   def conversion_changeset(%__MODULE__{} = plan, %Account{} = account, %Project{} = project) do

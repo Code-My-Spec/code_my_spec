@@ -179,4 +179,34 @@ defmodule CmsHarness.Projects do
         {:error, :not_serving}
     end
   end
+
+  @doc """
+  Drop one working copy's channel and take it up again.
+
+  The reconnect the harness performs on a restart, for one root instead of all
+  of them. `handle_join/3` is where the `agents_to_restore` handshake lives, so
+  a rejoin is what makes the server name this copy's agents and the harness
+  relaunch them — the only way that path runs.
+
+  Until now it ran only on a real harness restart, which is one process serving
+  every checkout on the machine: seeing the handshake meant killing four other
+  projects' in-flight work, and `0fb7bf03` records five QA passes declining to.
+  This is the same event with the blast radius it should always have had.
+
+  It is not only for testing. An operator whose copy has stopped reporting has
+  had exactly one remedy — restart the harness — and the restart notice says
+  what that costs: "in-flight analysis for every working copy dies with it".
+
+  Honest about what it does cost: this copy's own analyzers die with its
+  supervisor, and its next stop re-enqueues them. Sequential rather than
+  supervised-restart so the join is a fresh one — `ensure_started/1` reads the
+  config again, which is what makes this a reconnect rather than a resume.
+  """
+  @spec rejoin(String.t()) :: {:ok, ProjectIdentity.t()} | {:error, term()}
+  def rejoin(root) when is_binary(root) do
+    Logger.info("[CmsHarness] rejoining #{root} — this copy's channel only")
+
+    _ = stop_serving(root)
+    ensure_started(root)
+  end
 end
