@@ -85,13 +85,24 @@ defmodule CodeMySpec.Agents do
   # project's, there is one of it, and it lives on the main checkout.
   @copy_roles [:product, :coding, :qa]
 
-  # How long the machine is given to wind the agent down before it insists.
-  # Bounded on purpose: an unbounded stop is one the meter outlives.
-  # Bounded *below* the MCP transport's own 30s request timeout, so a slow turn
-  # is reported by us as still working rather than by the transport as an
-  # internal error. The agent is not interrupted — this is how long we wait for
-  # it, not how long it has.
-  @message_timeout_ms 25_000
+  # How long we wait for a turn before reporting "still working" instead of
+  # blocking further. The agent is not interrupted — this is how long we wait
+  # for it, not how long it has.
+  #
+  # Bounded well below 30s, not just below it. The MCP transport's 30s bare
+  # default long ago stopped being the tight constraint here for direct HTTP
+  # calls -- `/mcp/harness` carries a 5-minute `request_timeout` (see
+  # router.ex) precisely because a real provisioning step runs longer than
+  # 30s. What still caps this one is `CodeMySpec.CodeMode.Sandbox`'s own 30s
+  # wall clock: `message_agent` is reachable only through `run_script`
+  # (`ScriptableTools`, not `LocalServer`'s spine), so every call to it runs
+  # inside that sandbox's `Task.shutdown(:brutal_kill)`. A 25s wait left only
+  # 5s of margin for Lua overhead, the tool call itself and the response
+  # trip back out, and it was too tight in practice -- several real calls in
+  # one QA session came back as a raw sandbox kill ("the script ran longer
+  # than it is allowed to") instead of this module's own graceful
+  # `:still_working`, indistinguishable from a broken tool. Issue ddcff0c8.
+  @message_timeout_ms 15_000
 
   @stop_timeout_ms 10_000
 
