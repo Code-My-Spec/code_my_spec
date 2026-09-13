@@ -173,10 +173,32 @@ defmodule CodeMySpec.Agents do
       # here even on a call named `start`, which is the whole of "it picks up
       # the same conversation every time".
       agent = launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential}))
+      watch_over(scope, agent)
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
   end
+
+  # Starting a `main` agent is what the cadence exists to look after, so it is
+  # also what should start one. Without this the only triggers were the boot
+  # sweep and a continuous-mode flip, so a main agent started on a running node
+  # — the ordinary case — had nothing scheduled to wake it until the next
+  # restart (`11aea8f5`).
+  #
+  # Starting one is also the clearest statement that this project is back at
+  # work, which is what `resume/1` is for. It had no caller anywhere: a project
+  # whose main agent tapped out stayed stood down permanently, and a later
+  # cadence would tick and no-op forever because `running?/1` still found the
+  # project in the stood-down list — indistinguishable from a project nobody
+  # works on (`5f9fad45`). Ordered before `ensure_cadence/1` so the timer that
+  # comes up is one that will actually deliver.
+  defp watch_over(scope, %Agent{role: :main}) do
+    MainAgent.resume(scope)
+    MainAgent.ensure_cadence(scope)
+    :ok
+  end
+
+  defp watch_over(_scope, _agent), do: :ok
 
   @doc """
   Restart one agent's process in place — same id, same conversation.

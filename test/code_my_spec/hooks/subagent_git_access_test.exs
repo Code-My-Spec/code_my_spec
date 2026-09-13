@@ -34,7 +34,8 @@ defmodule CodeMySpec.Hooks.SubagentGitAccessTest do
         "tool_input" => %{"command" => command},
         "agent_id" => agent_id
       },
-      1
+      1,
+      :harness
     )
   end
 

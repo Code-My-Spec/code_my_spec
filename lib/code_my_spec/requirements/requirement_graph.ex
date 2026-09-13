@@ -273,6 +273,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp analysis_source(_node), do: nil
 
   defp recompute_stale(scope, ctx, config) do
+    stamp_project(scope)
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
     topology = Freshness.topology(ctx, config)
@@ -334,7 +335,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         {nodes, stored_edges},
         topology
       )
-      |> persist_projection(scope, reduced, fresh, stored_edges)
+      |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
       {serve(nodes, ctx), stored_edges}
     else
@@ -368,6 +369,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         compute_and_publish(scope, ctx, config)
     end
   end
+
+  # Whose graph this is, on every line the read emits.
+  #
+  # These lines carried `ts`, `level`, `src`, `inst` and `mfa` and no project,
+  # so a count of full computes or analyzer-driven recomputes was a count across
+  # every project this server handles — `broken_oaths`, `math_test_project` and
+  # the qa sandboxes among them. I reported "no full computes since the backfill"
+  # from exactly that measurement, and only caught it because the topology
+  # digest happens to include the config, which is per project and gave three
+  # of them away as somebody else's.
+  #
+  # `cms_project`, matching the `cms_session` / `cms_hook` convention the stop
+  # hook already uses. Process metadata, so every subsequent line in the same
+  # read inherits it.
+  defp stamp_project(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: Logger.metadata(cms_project: project_id)
+
+  defp stamp_project(_scope), do: :ok
 
   # Which entities' answers no longer match what their inputs say now.
   #
@@ -512,6 +531,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
+    stamp_project(scope)
+
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
 
@@ -656,7 +677,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
   # page view is exactly what `publish/3` already refuses to do for one row.
-  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
+  defp persist_projection(publish, scope, ctx, nodes, edges, verify \\ nil)
+
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges, _verify), do: :ok
 
   # Writes the read model. Atomically, and loudly.
   #
@@ -690,7 +713,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The transaction stays for the reason it was added: `upsert_all/2` and
   # `replace_edges/3` were two independent statements, so a failure between them
   # left nodes without their edges and the next read served that as the graph.
-  defp persist_projection(:published, scope, ctx, nodes, edges) do
+  defp persist_projection(:published, scope, ctx, nodes, edges, verify) do
     {:ok, _} =
       Repo.transaction(fn ->
         ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
@@ -700,7 +723,25 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # Outside the transaction on purpose. Verification is a check *about* the
     # write, not part of it — running it inside would let a failed check roll
     # back rows that are correct, which is the opposite of what it is for.
-    verify_round_trip(scope, ctx, nodes, edges)
+    #
+    # `verify` carries the *whole* graph when the write was a partial one. A
+    # partial write is given the reduced context and the fresh nodes, which is
+    # right for writing — `visited/1` must not reap the rows being kept — and
+    # wrong for checking, because `Projection.load/2` rehydrates against the
+    # context it is handed and so reads back only the stale entities' rows.
+    # Comparing that against a full payload reports thousands of edges missing
+    # that were never read.
+    #
+    # It did: 70 warnings from the first partial recompute onward, on a check
+    # whose own comment recorded that it had never fired in 828 computations.
+    # Nothing was actually lost — `replace_edges/3` deletes only among the node
+    # ids it is given, so edges touching kept nodes are left alone — but a
+    # warning that cries wolf 70 times is worse than no warning at all, because
+    # the next real one is invisible.
+    case verify do
+      {verify_ctx, verify_nodes} -> verify_round_trip(scope, verify_ctx, verify_nodes, edges)
+      nil -> verify_round_trip(scope, ctx, nodes, edges)
+    end
 
     :ok
   end

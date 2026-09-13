@@ -1677,8 +1677,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # somewhere plausible.
   defp decide_hook("pre-tool-use", _scope, _payload, nil), do: {:error, "port_required"}
 
+  # `:harness` because that is what answers on this port: a decision made here is
+  # returned down the channel to `cms_harness`, whose routes are all addressed
+  # `/api/harnesses/<id>/...`. It used to be inferred from the scope carrying a
+  # `cwd` — which every proxied copy does, since it describes the agent's disk —
+  # so the rewrite pointed at the packaged server's bare route and 404'd (60b50e40).
   defp decide_hook("pre-tool-use", scope, payload, port),
-    do: {200, PreToolUse.decide(scope, payload, port)}
+    do: {200, PreToolUse.decide(scope, payload, port, :harness)}
 
   defp decide_hook("stop", scope, payload, _port), do: {200, Stop.decide(scope, payload)}
 
