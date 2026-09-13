@@ -136,6 +136,20 @@ defmodule CodeMySpec.Requirements.GraphCache do
       # the web UI does, on every render — so writing unconditionally would be a
       # row rewrite per page view to say what the row already says, and would
       # move `computed_at` to now on a graph that was computed much earlier.
+      #
+      # The topology is the exception, and it has to be, because it is not part
+      # of that "already says" — the column was added later and is nullable, so
+      # a row whose whole-project fingerprint has not moved since the migration
+      # never acquires one from this branch. A `nil` topology matches no digest,
+      # so `recompute_stale/3` answers `topology_moved` on *every* read for that
+      # vantage, forever: measured, the unscoped row (2064 nodes, the web UI's
+      # own view) and one checkout's were both still `(none)`, and
+      # `topology_moved` was 4 of 5 fallbacks.
+      #
+      # Written only when it is actually absent or different, so this stays a
+      # no-op per page view in the steady state — which is what the paragraph
+      # above is protecting.
+      backfill_topology(scope, topology_fingerprint)
       :unchanged
     else
       do_publish(
@@ -155,6 +169,21 @@ defmodule CodeMySpec.Requirements.GraphCache do
   # second indexed SELECT on a path the UI hits every render, and two checks
   # could disagree.
   def publish(_scope, _fingerprint, _graph, _topology_fingerprint), do: :unchanged
+
+  # Only when it would change something, and never touching `computed_at` —
+  # that timestamp describes when the graph was computed, and this writes a
+  # fingerprint of the shape rather than recomputing anything.
+  defp backfill_topology(_scope, nil), do: :ok
+
+  defp backfill_topology(%Scope{active_project_id: project_id} = scope, topology) do
+    CachedGraph
+    |> where([g], g.project_id == ^project_id)
+    |> for_copy(scope)
+    |> where([g], is_nil(g.topology_fingerprint) or g.topology_fingerprint != ^topology)
+    |> Repo.update_all(set: [topology_fingerprint: topology])
+
+    :ok
+  end
 
   @doc """
   The shape the stored edges describe, or `nil` if the row does not say.
