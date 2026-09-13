@@ -122,10 +122,23 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     end)
   end
 
+  # Two kinds of line name an observation, and both must count.
+  #
+  # `[Requirements] recomputed` is the watcher's own pass doing the work. But
+  # the architecture's normal case is a *reader* triggering the computation in
+  # its own process, which carries no metadata — so the watcher also writes
+  # `[GraphWatcher] accounted for`, saying which observations its pass answered
+  # for whatever did the computing. Counting only the first reported an
+  # observation as dropped that had in fact been applied nine seconds earlier.
   defp recomputes(lines, since) do
     lines
-    |> Enum.filter(&(String.contains?(&1, "[Requirements] recomputed") and after?(&1, since)))
+    |> Enum.filter(&(naming_line?(&1) and after?(&1, since)))
     |> Enum.map(&%{at: timestamp(&1), obs: obs_ids(&1), line: &1})
+  end
+
+  defp naming_line?(line) do
+    String.contains?(line, "[Requirements] recomputed") or
+      String.contains?(line, "[GraphWatcher] accounted for")
   end
 
   # `obs=none` is a recompute that named nothing, which is a real answer rather
@@ -176,7 +189,16 @@ defmodule Mix.Tasks.Cms.GraphObservations do
       unprompted    #{length(unprompted)}  (recomputes that named no observation)
     """)
 
-    show("DROPPED — announced and never named by a recompute", dropped, verbose)
+    show("UNACCOUNTED FOR — announced, never named by any recompute", dropped, verbose)
+
+    if dropped != [] do
+      Mix.shell().info("""
+        Either the graph never acted on these, or something acted on them that
+        could not name them. Both look identical here, which is the point: an
+        observation nothing accounts for cannot be shown to have been applied.
+      """)
+    end
+
     show("PENDING — too recent to judge", pending, verbose)
 
     if verbose do
@@ -187,7 +209,13 @@ defmodule Mix.Tasks.Cms.GraphObservations do
   end
 
   defp flag([]), do: ""
-  defp flag(_), do: "   <-- every one of these is an observation the graph ignored"
+
+  # "Ignored" is a stronger claim than the evidence supports, and overstating
+  # it is how a report gets discounted. An unnamed observation may have been
+  # applied by a reader-driven recompute that could not name it — measured, on
+  # the run that produced this comment — so the honest word is unaccounted-for,
+  # with the two candidate causes said out loud.
+  defp flag(_), do: "   <-- announced and never accounted for"
 
   defp show(_title, [], _verbose), do: :ok
 
@@ -213,5 +241,5 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     do: "  PASS — every settled observation was named by a recompute.\n"
 
   defp verdict(dropped, _announced),
-    do: "  FAIL — #{length(dropped)} observation(s) never reached a recompute.\n"
+    do: "  FAIL — #{length(dropped)} observation(s) unaccounted for.\n"
 end
