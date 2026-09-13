@@ -41,39 +41,22 @@ defmodule CodeMySpec.Intake.Planner do
   # would mean every visitor hits a failure the moment the key is missing —
   # a worse first impression than a plainly-worded plan.
   #
-  # The key it looks for is the one the *configured model* needs. It asked for
-  # `:anthropic_api_key` by name, so a deployment holding an OpenAI key and an
-  # OpenAI model still answered "no key" and fell through to the heuristic —
-  # every visitor, silently, while the shaper beside it called OpenAI happily.
-  # That is what wrote "a beginners for Beginner mahjong players" and named the
-  # project "Beginners", and it reads as the model being stupid rather than
-  # absent.
+  # `Agent.key_configured?/1` is named after the *configured model*'s
+  # provider, not a fixed one — this used to ask for `:anthropic_api_key` by
+  # name, so a deployment holding an OpenAI key and an OpenAI model still
+  # answered "no key" and fell through to the heuristic — every visitor,
+  # silently, while the shaper beside it called OpenAI happily. That is what
+  # wrote "a beginners for Beginner mahjong players" and named the project
+  # "Beginners", and it reads as the model being stupid rather than absent.
   defp default_impl do
-    if configured_key?(),
+    if CodeMySpec.Intake.Agent.key_configured?(planner_model()),
       do: CodeMySpec.Intake.Planner.Llm,
       else: CodeMySpec.Intake.Planner.Inferred
   end
 
-  # `:<provider>_api_key`, because `get_key/1` with an atom is a straight
-  # `Application.get_env(:req_llm, key)` — the name has to match the config key
-  # exactly or it silently reads nil and falls back, which is the failure this
-  # whole function has already had once.
-  defp configured_key? do
-    case ReqLLM.get_key(:"#{provider()}_api_key") do
-      key when is_binary(key) and key != "" -> true
-      _ -> false
-    end
-  end
-
-  # "openai:gpt-5-mini" -> "openai". A model string without a provider is not a
-  # thing ReqLLM accepts, so there is no sensible answer for the bare case and
-  # no key to look up either.
-  defp provider do
+  defp planner_model do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Intake, [])
     |> Keyword.get(:planner_model, "anthropic:claude-sonnet-5")
-    |> to_string()
-    |> String.split(":", parts: 2)
-    |> hd()
   end
 end

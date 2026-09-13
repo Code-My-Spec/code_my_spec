@@ -476,3 +476,7 @@ ga_api_secret =
 config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics,
   measurement_id: ga_measurement_id,
   api_secret: ga_api_secret
+
+# Microsoft Clarity — prod only (see envs/prod.env comment). Unset in every
+# other env, so the script simply doesn't render there.
+config :code_my_spec, :clarity_project_id, env!("CLARITY_PROJECT_ID", :string, nil)

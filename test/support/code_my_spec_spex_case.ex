@@ -238,8 +238,61 @@ defmodule CodeMySpecSpex.Case do
     end
 
     stage_local_only_push()
+    stub_stripe_by_default()
 
     {:ok, conn: ConnTest.build_conn()}
+  end
+
+  # A spex choosing "cloud" now pays for it (990/3400) — `StripeClient`'s
+  # `plug:` already routes to `Req.Test` globally (config/test.exs), but a
+  # replay still needs a stub actually registered, and price ids configured
+  # or `Billing.price_id!/1` raises. Every spex gets an instant-success
+  # default, same shape `CodeMySpec.BillingTest` records by hand, so the
+  # dozens of scenarios that only need a working copy to come up are not
+  # each responsible for standing up a fake Stripe. A spex whose subject is
+  # payment itself (990/3400, 1067/3420) overrides this stub for its own
+  # scenario.
+  defp stub_stripe_by_default do
+    previous_client = Application.get_env(:code_my_spec, CodeMySpec.Billing.StripeClient)
+    previous_billing = Application.get_env(:code_my_spec, CodeMySpec.Billing)
+
+    Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
+      secret_key: "sk_test_spex",
+      plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+    )
+
+    Application.put_env(:code_my_spec, CodeMySpec.Billing,
+      webhook_secret: "whsec_spex",
+      light_price_id: "price_light_spex",
+      pro_price_id: "price_pro_spex"
+    )
+
+    Req.Test.stub(CodeMySpec.Billing.StripeClient, &stripe_stub_response/1)
+
+    on_exit(fn ->
+      restore_app_env(CodeMySpec.Billing.StripeClient, previous_client)
+      restore_app_env(CodeMySpec.Billing, previous_billing)
+    end)
+  end
+
+  defp restore_app_env(key, nil), do: Application.delete_env(:code_my_spec, key)
+  defp restore_app_env(key, value), do: Application.put_env(:code_my_spec, key, value)
+
+  defp stripe_stub_response(%{request_path: "/v1/customers"} = conn) do
+    Conn.put_resp_content_type(conn, "application/json")
+    |> Conn.send_resp(200, Jason.encode!(%{"id" => "cus_spex"}))
+  end
+
+  defp stripe_stub_response(%{request_path: "/v1/subscriptions"} = conn) do
+    body = %{
+      "id" => "sub_spex",
+      "latest_invoice" => %{
+        "confirmation_secret" => %{"client_secret" => "pi_spex_secret"}
+      }
+    }
+
+    Conn.put_resp_content_type(conn, "application/json")
+    |> Conn.send_resp(200, Jason.encode!(body))
   end
 
   @doc """

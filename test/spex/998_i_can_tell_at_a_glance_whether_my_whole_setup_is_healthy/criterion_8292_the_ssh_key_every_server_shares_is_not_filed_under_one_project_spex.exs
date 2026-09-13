@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8292Spex do
       when_ "he opens the resources page", context do
         {:ok, view, _html} = live(context.conn, "/app/resources")
 
-        {:ok, Map.put(context, :html, render_async(view))}
+        {:ok, Map.put(context, :html, render_async(view, 5_000))}
       end
 
       then_ "the SSH key is listed once", context do

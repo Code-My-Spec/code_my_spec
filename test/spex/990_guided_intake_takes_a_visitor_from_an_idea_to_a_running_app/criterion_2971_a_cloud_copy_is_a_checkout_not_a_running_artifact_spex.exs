@@ -69,6 +69,12 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
       when_ "their working copy has been provisioned", context do
         {:ok, view, _html} = live(context.conn, "/build/workspace")
 
+        # Cloud now pays before it provisions (990/3400) — not this
+        # criterion's subject, so the payment step is cleared the way the
+        # browser's own Stripe hook would, to reach the provisioning this
+        # scenario is actually about.
+        render_hook(view, "payment_confirmed", %{})
+
         {:ok, Map.merge(context, %{view: view, html: await(view, ~r/running/i)})}
       end
 

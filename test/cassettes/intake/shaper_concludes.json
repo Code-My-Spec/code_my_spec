@@ -1,0 +1,397 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-09-12T19:16:22.418168Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\na booking tool for hair salons, my clients book their own slots\n\nYou asked: Do your clients log in to book?\nThey said: yes, they create an account\nYou asked: Is this for one salon, or many separate salons each with their own data?\nThey said: just my one salon\n\nDo not ask anything. Return an empty question and your best reading of the\nanswers from what they have already said, even if you are unsure — the\nvisitor sees every one of these and can correct it.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "caller": {
+                "type": "direct"
+              },
+              "id": "toolu_012tVNksRXXdQj7UUc5MRi6M",
+              "input": {
+                "needs_sign_in": true,
+                "question": "",
+                "separate_copies": false,
+                "who_uses": "Salon owner/staff managing bookings, and clients booking their own appointments"
+              },
+              "name": "shape_plan",
+              "type": "tool_use"
+            }
+          ],
+          "id": "msg_011Cez5h672b9E6kWvChNsb3",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 917,
+            "output_tokens": 147,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T19:16:21Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T19:16:22Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T19:16:20Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T19:16:21Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a13efd7967ef5d-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 19:16:22 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-a4e8c1c4f5c3fe26c4b205d8e3f3d372-98ea1a4a3f15db71-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-09-12T19:16:23.393163Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\na booking tool for hair salons, my clients book their own slots\n\nYou asked: Do your clients log in to book?\nThey said: yes, they create an account\nYou asked: Is this for one salon, or many separate salons each with their own data?\nThey said: just my one salon\n\nDo not ask anything. Return an empty question and your best reading of the\nanswers from what they have already said, even if you are unsure — the\nvisitor sees every one of these and can correct it.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "id": "toolu_012tVNksRXXdQj7UUc5MRi6M",
+                  "input": {
+                    "needs_sign_in": true,
+                    "question": "",
+                    "separate_copies": false,
+                    "who_uses": "Salon owner/staff managing bookings, and clients booking their own appointments"
+                  },
+                  "name": "shape_plan",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": "Recorded.",
+                  "tool_use_id": "toolu_012tVNksRXXdQj7UUc5MRi6M",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "text": "Recorded — single-salon booking tool with client accounts for sign-in, no multi-tenant support needed.",
+              "type": "text"
+            }
+          ],
+          "id": "msg_011Cez5hDPpkUyQ19Vq1Eebj",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 1074,
+            "output_tokens": 37,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "9999000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T19:16:23Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T19:16:23Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T19:16:22Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "11999000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T19:16:23Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a13f083d84ef5d-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 19:16:23 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-3c72dda6b399e63ba62ebc8ce28eedb0-bcfaaad60dd77537-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
