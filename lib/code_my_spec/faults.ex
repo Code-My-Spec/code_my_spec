@@ -59,7 +59,10 @@ defmodule CodeMySpec.Faults do
 
   @faults %{
     digest_unavailable: "the main agent's digest cannot be assembled (criterion 3333)",
-    intake_shaper_fails: "the intake shaper errors instead of answering (criterion 3375)"
+    intake_shaper_fails: "the intake shaper errors instead of answering (criterion 3375)",
+    agent_stays_silent:
+      "this agent (key is its id) counts as never having spoken, so a restart " <>
+        "does not resolve itself (criteria 3292, 3293, 3308)"
   }
 
   @doc "What can be injected, and what each one does."
