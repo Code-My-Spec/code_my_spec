@@ -123,6 +123,39 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
     assert [%{source: "exunit", run_id: 2, tied_run_ids: [3], args: []}] = after_state.queue
   end
 
+  # For the dev dashboard's DashboardStatusController: the one place that
+  # knows a running entry and its ties are one execution, not four separate
+  # things happening — the `analysis_runs` ledger cannot draw that line.
+  test "status/2 reports the running entry's tie count and every queued source" do
+    running_state = %{
+      project: %{root: "/tmp/a-checkout"},
+      running: %{run_id: 1, source: "exunit", tied_run_ids: [2], task: nil},
+      queue: [
+        %{run_id: 4, tied_run_ids: [], source: "credo", args: []},
+        %{run_id: 5, tied_run_ids: [], source: "spex", args: ["test/a_spex.exs"]}
+      ],
+      timer: nil
+    }
+
+    {:reply, status, _state} = AnalysisServer.handle_call(:status, self(), running_state)
+
+    assert %{run_id: 1, source: "exunit", tied_count: 1} = status.running
+    assert Enum.map(status.queued, & &1.source) |> Enum.sort() == ["credo", "spex"]
+    assert Enum.find(status.queued, &(&1.source == "spex")).args == ["test/a_spex.exs"]
+  end
+
+  test "status/2 reports no running entry as nil, not an error" do
+    {:reply, status, _state} =
+      AnalysisServer.handle_call(:status, self(), %{
+        project: %{root: "/tmp/idle-checkout"},
+        running: nil,
+        queue: [],
+        timer: nil
+      })
+
+    assert status == %{running: nil, queued: []}
+  end
+
   defp enqueue_run_id(state, run_id, source) do
     {:noreply, next} =
       AnalysisServer.handle_cast(

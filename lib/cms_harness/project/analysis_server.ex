@@ -111,6 +111,27 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
+  @doc """
+  A snapshot of what this project's queue actually believes right now: the
+  one entry executing (or waiting for a machine-wide slot) and everything
+  tied to it, plus every other source still queued behind it.
+
+  For the dev dashboard. The server's own `analysis_runs` ledger cannot
+  answer this — every entry tied to a source reads as its own `:running`
+  row, so four ties on one execution look like four things happening at
+  once. This is the one place that actually knows there is one.
+
+  `nil` when nothing is queued for this root, which reads as "asked and
+  there is nothing to say" rather than an error.
+  """
+  @spec status(String.t()) :: %{running: map() | nil, queued: [map()]} | nil
+  def status(root) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.call(pid, :status, 5_000)
+      [] -> nil
+    end
+  end
+
   # --- Server ---
 
   @impl true
@@ -140,6 +161,10 @@ defmodule CmsHarness.Project.AnalysisServer do
   def handle_call(:in_flight, _from, state) do
     running = if state.running, do: [state.running.run_id], else: []
     {:reply, running ++ Enum.map(state.queue, & &1.run_id), state}
+  end
+
+  def handle_call(:status, _from, state) do
+    {:reply, %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)}, state}
   end
 
   @impl true
@@ -205,6 +230,21 @@ defmodule CmsHarness.Project.AnalysisServer do
   def handle_info(_message, state), do: {:noreply, state}
 
   # --- Internals ---
+
+  # Strips the live `Task` struct (a pid/ref, not meaningful off-process) and
+  # names how many requests are riding on this one execution — `tied_run_ids`
+  # itself plus the primary — which is the number a dashboard actually wants,
+  # not a list to re-count in every caller.
+  defp entry_summary(nil), do: nil
+
+  defp entry_summary(entry) do
+    %{
+      source: entry.source,
+      run_id: entry.run_id,
+      args: Map.get(entry, :args, []),
+      tied_count: length(Map.get(entry, :tied_run_ids, []))
+    }
+  end
 
   # Two `mix test` processes in one `_build` is the corruption this server
   # exists to prevent, and the queue is what prevents it: `maybe_start_next/1`
