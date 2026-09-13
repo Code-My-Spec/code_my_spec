@@ -33,6 +33,11 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
+        # Per-caller failure injection, so QA can break one project's digest or
+        # one visitor's intake without breaking the shared box. Owns an ETS
+        # table and nothing else; only `/dev/faults` ever writes to it, and that
+        # route is compile-time absent from the release.
+        CodeMySpec.Faults,
         # Guided intake conversations, one process per plan. The conversation
         # owns the flow so a LiveView can come and go without taking it — every
         # bug in that feature has been a variation on the socket holding state

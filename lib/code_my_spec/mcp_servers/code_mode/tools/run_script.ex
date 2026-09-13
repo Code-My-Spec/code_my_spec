@@ -50,6 +50,8 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
       description:
         "The agent running this, when one is. Its row says which tools it carries; " <>
           "omitted, the script may call everything the caller can."
+
+    field :session_id, :string, description: "Injected by hook — do not set manually"
   end
 
   @impl true
@@ -63,7 +65,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
         {allowed, kind} = agent_scope(scope, Map.get(params, :agent_id))
 
         result =
-          CodeMode.eval(Layer.catalog(scope, allowed), script,
+          CodeMode.eval(Layer.catalog(scope, allowed, caller(params, frame)), script,
             out_of_scope: Layer.out_of_scope(allowed),
             agent_kind: kind
           )
@@ -74,6 +76,31 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
     end
   end
+
+  # Who the tools inside the script are acting for.
+  #
+  # Two carriers, because there are two kinds of caller and neither can use the
+  # other's: an agent we run is identified by its connection, so `agent_id` is
+  # already on this frame; a Claude Code session is identified by a `session_id`
+  # the `PreToolUse` hook injects into this tool's input. The script path used to
+  # carry neither, so every tool that asks whose work it is refused — `list_tasks`,
+  # `evaluate_task`, `start_task`, `cancel_task`, `assign_task`. A caller could
+  # script everything except claiming or finishing a piece of work (`1a892606`).
+  #
+  # `agent_id` from the frame first. The parameter says which agent's *tool list*
+  # to use and a caller may legitimately name another one; the connection says
+  # who is actually calling, and that is the one whose tasks these are.
+  defp caller(params, frame) do
+    %{}
+    |> put_present(:session_id, Map.get(params, :session_id))
+    |> put_present(:agent_id, frame.assigns[:agent_id] || Map.get(params, :agent_id))
+  end
+
+  # Absent rather than nil: `list_tasks` guards on `is_binary(agent_id)`, so a
+  # nil would be harmless, and leaving the key out keeps the frame honest about
+  # what is actually known.
+  defp put_present(caller, _key, nil), do: caller
+  defp put_present(caller, key, value), do: Map.put(caller, key, value)
 
   # `nil` for a call nobody attributed to an agent — a person at an MCP client,
   # or an agent started before scoping existed. Both could already call

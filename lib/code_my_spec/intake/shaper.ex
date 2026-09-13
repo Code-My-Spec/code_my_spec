@@ -16,6 +16,7 @@ defmodule CodeMySpec.Intake.Shaper do
   yet, and the third one is where people leave.
   """
 
+  alias CodeMySpec.Faults
   alias CodeMySpec.Intake.Plan
 
   @max_questions 2
@@ -38,11 +39,19 @@ defmodule CodeMySpec.Intake.Shaper do
   correctable on the next screen.
   """
   @spec shape(Plan.t(), [turn()]) :: {:ask, String.t()} | {:ok, map()} | {:error, term()}
-  def shape(%Plan{} = plan, turns) when length(turns) >= @max_questions do
+  def shape(%Plan{} = plan, turns) do
+    if Faults.active?(plan.session_token, :intake_shaper_fails) do
+      {:error, :fault_injected}
+    else
+      ask_or_conclude(plan, turns)
+    end
+  end
+
+  defp ask_or_conclude(%Plan{} = plan, turns) when length(turns) >= @max_questions do
     impl().conclude(plan, turns)
   end
 
-  def shape(%Plan{} = plan, turns) do
+  defp ask_or_conclude(%Plan{} = plan, turns) do
     impl().shape(plan, turns)
   end
 
