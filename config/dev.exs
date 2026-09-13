@@ -82,7 +82,15 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/code_my_spec_web/(controllers|live|components)/.*(ex|heex)$"
+      ~r"lib/code_my_spec_web/(controllers|live|components)/.*(ex|heex)$",
+      # The contexts, so changing behaviour reloads the page showing it.
+      #
+      # Paired with `lib/code_my_spec` in `:dirs` below and worth nothing
+      # without it: `:dirs` decides what is *watched* and this decides what a
+      # watched change *does*, so a directory with no matching pattern is
+      # events delivered and discarded, and a pattern with no matching
+      # directory never fires at all.
+      ~r"lib/code_my_spec/.*\.ex$"
     ]
   ]
 

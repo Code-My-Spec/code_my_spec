@@ -53,10 +53,36 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   defp recorded_against(_agent), do: ""
 
   @spec started(Agent.t()) :: Response.t()
+  # A row at `:starting` has not been confirmed by any machine, and saying
+  # "Agent started." for one is the whole of criterion 3211's complaint: the
+  # caller cannot tell it from a working agent except by watching it not work.
+  #
+  # `Agents.start_agent/2` still answers `{:ok, agent}` here, and that is not
+  # laxness — a row is intent, and `create_working_copy` staffs a copy with its
+  # three roles *before* that copy has joined, with the machine reconciling
+  # afterwards through `agents_to_restore`. Refusing instead was measured at 16
+  # broken tests across `agents_destination`, `agents_ensure_copy_agents` and
+  # `offboard_ends_the_agents`, all failing at their premise.
+  #
+  # So the honesty belongs in the reply rather than the contract. What is still
+  # owed is the retry — `34e03128`, "a :starting row is never retried" — and
+  # until that lands this line is what stops an unconfirmed row reading as a
+  # running agent.
+  defp headline(%Agent{status: :starting}),
+    do: """
+    Agent recorded, not yet confirmed by the machine.
+
+    Nothing is taking turns for it yet. The machine picks it up when it next
+    joins; if it never does, this row stays as it is and `check_machinery` is
+    what says why.
+    """
+
+  defp headline(%Agent{}), do: "Agent started."
+
   def started(%Agent{} = agent) do
     Response.tool()
     |> Response.text("""
-    Agent started.
+    #{headline(agent)}
 
     Agent: #{agent.id}
     Type: #{agent.role}
