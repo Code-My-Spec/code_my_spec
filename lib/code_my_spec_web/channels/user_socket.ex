@@ -161,7 +161,12 @@ defmodule CodeMySpecWeb.UserSocket do
     "peer=#{:inet.ntoa(address)} agent=#{inspect(connect_info[:user_agent])}"
   end
 
-  # A transport that was mounted without `connect_info`, which is worth saying
-  # rather than leaving a blank where the peer should be.
-  defp peer(_connect_info), do: "peer=unreported"
+  # Says what it did get. "unreported" on its own is a dead end — it looks like
+  # the transport was mounted without `connect_info` and gives no way to tell
+  # that apart from a transport that supplied something else, which is exactly
+  # where the first reading of this got stuck.
+  defp peer(connect_info) when is_map(connect_info),
+    do: "peer=unreported(connect_info=#{inspect(Map.keys(connect_info))})"
+
+  defp peer(other), do: "peer=unreported(#{inspect(other)})"
 end
