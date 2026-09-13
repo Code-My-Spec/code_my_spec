@@ -65,8 +65,8 @@ defmodule CodeMySpecSpex.Story839.Criterion3445Spex do
 
         assert result_1["status"] == "ok"
 
-        assert Map.delete(result_2, "run_id") == Map.delete(result_1, "run_id")
-        assert Map.delete(result_3, "run_id") == Map.delete(result_1, "run_id")
+        assert_same_real_result(result_1, result_2)
+        assert_same_real_result(result_1, result_3)
 
         assert BlockingProject.execution_count(context.project.root) == 2,
                "run 1, plus exactly one coalesced next run serving both ties — " <>

@@ -137,7 +137,14 @@ defmodule CodeMySpec.Compile do
         diagnostics_available: diagnostics_available
       },
       exit_code: exit_code,
-      output_file: output_file
+      output_file: output_file,
+      # The tool's own stdout, kept whole rather than only mined for
+      # diagnostics. `output` used to end here: parsed into `compiler_results`
+      # and discarded, so nothing downstream could ever answer a routed
+      # `mix compile` with what the compiler actually printed — only a count
+      # reformatted from the structured diagnostics. See
+      # `.code_my_spec/rules/analysis_output_fidelity.md`.
+      output: output
     }
   end
 

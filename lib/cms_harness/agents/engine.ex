@@ -49,6 +49,7 @@ defmodule CmsHarness.Agents.Engine do
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
+  alias CmsHarness.Mcp.Transport
 
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
@@ -131,9 +132,42 @@ defmodule CmsHarness.Agents.Engine do
           {:ok, %{agent_id: agent_id, pid: pid}}
 
         {:error, reason} ->
+          Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
     end
+  end
+
+  @doc """
+  Why a start failed, for the harness's own log.
+
+  This branch used to log nothing at all. A failed start was therefore invisible
+  here: the only record was the server's `keep_starting/2` line, which carries
+  the reason as a string and nothing about where it came from.
+
+  That cost a day. An agent stranded at `:starting` reported
+
+      {:shutdown, {:failed_to_start_child, Anubis.Client, {:already_started, …}}}
+
+  and the harness log had one line for the whole episode — the `terminate/2`
+  that preceded it. With nothing else to go on, the module name in the reason
+  was the only clue to which supervisor raised it, and the inference drawn from
+  it was wrong twice (`68e535fd`).
+
+  Names the agent and the checkout, because a harness serves fifteen of them and
+  a reason with neither cannot be matched to the server's line for the same
+  event.
+  """
+  @spec describe_start_failure(String.t(), String.t(), term()) :: String.t()
+  def describe_start_failure(agent_id, working_copy, reason) do
+    # `limit:` bounds elements, not bytes — one option list of long strings
+    # still renders to kilobytes, so the rendered form is sliced as well.
+    rendered =
+      reason
+      |> inspect(limit: 12, printable_limit: 200)
+      |> String.slice(0, 500)
+
+    "[CmsHarness] agent #{agent_id} did not start in #{working_copy}: " <> rendered
   end
 
   @doc """
@@ -437,10 +471,28 @@ defmodule CmsHarness.Agents.Engine do
   # than being lost with the process.
   @impl true
   def terminate(_reason, state) do
+    # The session goes with the agent that opened it.
+    #
+    # `connect/2` unlinks the client's supervisor deliberately, so nothing here
+    # took it down and a stopped agent left its client registered under a name
+    # the next launch needs — which is how a restart could leave an agent worse
+    # off than before it (`4078e7bf`, `dfa1ee9e`).
+    #
+    # The machine's browser is not this and must not be stopped here: it is
+    # shared, `CmsHarness.Browser` owns it under its own name, and a second
+    # agent on this machine is still using it.
+    disconnect_mcp(state.mcp_client)
+
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     :ok
   end
+
+  # `nil` on every path where the session was never opened — a machine that
+  # could not authenticate gets one from `mcp_session/1`, and the agent still
+  # works without it.
+  defp disconnect_mcp(nil), do: :ok
+  defp disconnect_mcp(client), do: Transport.impl().disconnect(client)
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok

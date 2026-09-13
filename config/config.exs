@@ -143,6 +143,11 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [
     :request_id,
+    # One observation's id, carried from the writer that published a graph
+    # input through to the recompute that consumed it. Listed here because the
+    # dev/test formatter shows only named keys, and the whole value of the id
+    # is being able to read it in the line.
+    :obs,
     :reason,
     :total,
     :success,

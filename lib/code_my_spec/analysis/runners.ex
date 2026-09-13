@@ -49,7 +49,7 @@ defmodule CodeMySpec.Analysis.Runners do
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter
-  alias CodeMySpec.StaticAnalysis.Runner, as: StaticRunner
+  alias CodeMySpec.StaticAnalysis.Analyzers
   alias CodeMySpec.Tests
   alias CodeMySpec.Users.Scope
 
@@ -71,7 +71,8 @@ defmodule CodeMySpec.Analysis.Runners do
     from_raw("compiler", %{
       "exit_status" => result.exit_code,
       "diagnostics" => result.data.compiler_results,
-      "diagnostics_available" => Map.get(result.data, :diagnostics_available, true)
+      "diagnostics_available" => Map.get(result.data, :diagnostics_available, true),
+      "output" => result.output
     })
   end
 
@@ -80,23 +81,33 @@ defmodule CodeMySpec.Analysis.Runners do
   # (partial — refreshes only those files' problems, mirrors the old
   # pipeline's per-turn scoping and its recorded cassettes).
   #
-  # This one does not decompose into execute-then-convert the way the other
-  # three do: `StaticRunner.run/3` owns availability checks and project
-  # validation as well as the shell-out, and hands back `%Problem{}` structs
-  # already. What it uses to build them is `ProblemConverter.from_credo/1` —
-  # the same function `from_raw/2` calls — so the two paths still agree about
-  # what a credo issue means, which is the property that matters.
+  # Goes straight to `Analyzers.Credo`, not through `StaticRunner.run/3`,
+  # because that generic interface answers `{:ok, [Problem.t()]}` for every
+  # analyzer it wraps — no raw output channel, since Sobelow and
+  # SpecAlignment share the same contract and neither needed one before this.
+  # `run_with_output/2` is the one place that contract was loosened, for
+  # exactly this caller. `available?/1` is checked here explicitly since
+  # skipping `StaticRunner` also skips its availability check.
   def run("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
     runner_opts = [files: files] |> maybe_output_file(opts)
 
-    case StaticRunner.run(scope, :credo, runner_opts) do
-      {:ok, problems} ->
-        {:ok,
-         summarize(problems, if(problems == [], do: 0, else: 1), %{"issues" => length(problems)})}
+    if Analyzers.Credo.available?(scope) do
+      case Analyzers.Credo.run_with_output(scope, runner_opts) do
+        {:ok, problems, output} ->
+          {:ok,
+           summarize(
+             problems,
+             if(problems == [], do: 0, else: 1),
+             %{"issues" => length(problems)},
+             output
+           )}
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, "Analyzer credo is not available"}
     end
   end
 
@@ -191,16 +202,20 @@ defmodule CodeMySpec.Analysis.Runners do
       {:error, {:compile_diagnostics_unavailable, raw["exit_status"]}}
     else
       {:ok,
-       summarize(problems, raw["exit_status"], %{
-         "errors" => length(errors),
-         "warnings" => length(warnings)
-       })}
+       summarize(
+         problems,
+         raw["exit_status"],
+         %{"errors" => length(errors), "warnings" => length(warnings)},
+         raw["output"]
+       )}
     end
   end
 
   def from_raw("credo", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
-    {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)})}
+
+    {:ok,
+     summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
   end
 
   # `mix test` exited nonzero without reporting a single failure: bad args, a
@@ -300,7 +315,7 @@ defmodule CodeMySpec.Analysis.Runners do
 
       {failures, code} ->
         case lost_build_failures(raw) do
-          [] -> {:ok, with_partition(spex_result(failures, code), raw)}
+          [] -> {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
           lost -> {:error, {:build_changed_mid_run, length(lost), hd(lost)}}
         end
     end
@@ -312,12 +327,12 @@ defmodule CodeMySpec.Analysis.Runners do
   # must never be reached by accident.
   def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
 
-  defp spex_result(failures, exit_code) do
+  defp spex_result(failures, exit_code, output) do
     problems =
       failures
       |> Enum.map(&%{spex_failure_to_problem(&1) | source: "spex"})
 
-    summarize(problems, exit_code, %{"failures" => length(failures)})
+    summarize(problems, exit_code, %{"failures" => length(failures)}, output)
   end
 
   # `diagnostics` is required, not defaulted. A payload arriving without the key
@@ -426,10 +441,19 @@ defmodule CodeMySpec.Analysis.Runners do
 
   defp lost_build?(_message), do: false
 
-  defp summarize(problems, exit_status, stats) do
+  # `output` is the tool's own text — what `mix compile`/`mix credo`/`mix
+  # spex` actually printed — not a summary reformatted from `problems`. See
+  # `.code_my_spec/rules/analysis_output_fidelity.md`.
+  #
+  # The `format_problem_lines/1` fallback exists for exactly one case: an
+  # older harness that predates this field and sends no `"output"` key at
+  # all. It is not a style choice for the normal path — every current caller
+  # passes real output, and a caller with real output at hand and a nil
+  # here would be the same defect this rule exists to catch.
+  defp summarize(problems, exit_status, stats, output) do
     %{
       problems: problems,
-      output: cap(format_problem_lines(problems)),
+      output: cap(output || format_problem_lines(problems)),
       exit_status: exit_status,
       stats: stats
     }

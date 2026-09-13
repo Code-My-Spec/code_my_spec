@@ -43,11 +43,17 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   - `:files` — restrict the sweep to these paths (relative to the project root)
   - `:config_file` — passed through as `--config-file`
 
-  Returns `{:ok, [issue_map]}` or `{:error, reason}`. An empty list means Credo
-  ran and found nothing; a failure to run is an error, never an empty list —
-  those two must not arrive at the server as the same answer.
+  Returns `{:ok, [issue_map], raw_output}` or `{:error, reason}`. An empty
+  list means Credo ran and found nothing; a failure to run is an error, never
+  an empty list — those two must not arrive at the server as the same answer.
+
+  `raw_output` is what Credo actually printed — JSON, per `@output_args`, so
+  it is not what a human running `mix credo` themselves would see, but it is
+  the real tool output rather than a count or a line reformatted from the
+  parsed issues. See `.code_my_spec/rules/analysis_output_fidelity.md`.
   """
-  @spec run(Environments.Environment.t(), keyword()) :: {:ok, [map()]} | {:error, String.t()}
+  @spec run(Environments.Environment.t(), keyword()) ::
+          {:ok, [map()], String.t()} | {:error, String.t()}
   def run(environment, opts \\ []) do
     if available?(environment) do
       execute(environment, opts)
@@ -174,10 +180,10 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   defp parse(output) do
     case extract_json(output) do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
-        {:ok, issues}
+        {:ok, issues, output}
 
       {:ok, %{}} ->
-        {:ok, []}
+        {:ok, [], output}
 
       {:ok, _other} ->
         {:error, "unexpected JSON structure from credo"}

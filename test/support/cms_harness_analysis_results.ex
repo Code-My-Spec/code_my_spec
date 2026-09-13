@@ -70,4 +70,40 @@ defmodule CmsHarnessTest.AnalysisResults do
       timeout -> :ok
     end
   end
+
+  @doc """
+  Assert two `analysis_result` payloads answer with the same real result —
+  run_id aside — without requiring their raw `output` text to match
+  byte-for-byte.
+
+  Two independent, genuinely clean runs of the same real tool legitimately
+  print different things: a cold `mix compile` announces what it compiled,
+  a warm one with nothing left to redo prints nothing at all, even though
+  neither run found a single diagnostic. Requiring literal `output` equality
+  here would assert the tool is deterministic, not that what came back is a
+  real result rather than the old `{:superseded, "already queued"}` shape
+  this guards against — so each payload's own `output` is checked for being
+  real captured text instead of compared to the other's.
+  """
+  @spec assert_same_real_result(map(), map()) :: :ok
+  def assert_same_real_result(a, b) do
+    assert is_binary(get_in(a, ["result", "output"])),
+           "expected a real captured output, got: #{inspect(a)}"
+
+    assert is_binary(get_in(b, ["result", "output"])),
+           "expected a real captured output, got: #{inspect(b)}"
+
+    strip = fn payload ->
+      payload
+      |> Map.delete("run_id")
+      |> Map.update!("result", &Map.delete(&1, "output"))
+    end
+
+    assert strip.(a) == strip.(b),
+           "expected the same real result (run_id and raw tool output " <>
+             "aside), never a synthetic status carrying no data. Got: " <>
+             "#{inspect(a)} and #{inspect(b)}"
+
+    :ok
+  end
 end

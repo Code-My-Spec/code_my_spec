@@ -27,7 +27,7 @@ defmodule CmsHarness.Analysis do
         "source" => "compiler" | "credo" | "exunit" | "spex",
         "exit_status" => integer() | nil,
         "diagnostics" => [map()],       # raw, source-specific
-        "output" => String.t() | nil,   # raw stdout; exunit only
+        "output" => String.t() | nil,   # raw stdout, all four sources
         "stats" => map() | nil,         # exunit only
         "partition" => String.t()       # exunit and spex: which database answered
       }
@@ -148,7 +148,10 @@ defmodule CmsHarness.Analysis do
        # Whether anything was recording. `mix compile --return-errors` exits 0
        # even on a compile error, so the exit status cannot tell the server
        # "clean" from "nobody looked" — only this can.
-       "diagnostics_available" => Map.get(result.data, :diagnostics_available, true)
+       "diagnostics_available" => Map.get(result.data, :diagnostics_available, true),
+       # What the compiler actually printed, not a count reformatted from
+       # `diagnostics`. See .code_my_spec/rules/analysis_output_fidelity.md.
+       "output" => result.output
      }}
   rescue
     exception -> crashed("compiler", exception)
@@ -158,7 +161,7 @@ defmodule CmsHarness.Analysis do
     files = if args == [], do: nil, else: args
 
     case CredoRun.run(env, files: files, extra_env: AnalyzerEnv.extra_env(env, "credo")) do
-      {:ok, issues} ->
+      {:ok, issues, output} ->
         {:ok,
          %{
            "source" => "credo",
@@ -166,7 +169,11 @@ defmodule CmsHarness.Analysis do
            # the issue count exactly as `Runners.run/4` does locally, so the
            # two paths record the same number.
            "exit_status" => if(issues == [], do: 0, else: 1),
-           "diagnostics" => issues
+           "diagnostics" => issues,
+           # What credo actually printed (JSON, per CredoRun's fixed output
+           # flags) — not a count, not a line reformatted from `issues`. See
+           # .code_my_spec/rules/analysis_output_fidelity.md.
+           "output" => output
          }}
 
       {:error, reason} ->

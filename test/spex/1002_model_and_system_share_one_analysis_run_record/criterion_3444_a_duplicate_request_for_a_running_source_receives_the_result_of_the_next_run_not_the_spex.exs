@@ -58,10 +58,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3444Spex do
 
         assert result_1["status"] == "ok"
 
-        assert Map.delete(result_2, "run_id") == Map.delete(result_1, "run_id"),
-               "the second requester should receive the exact same real result, " <>
-                 "never a synthetic 'superseded' status carrying no data. " <>
-                 "Got: #{inspect(result_2)}"
+        assert_same_real_result(result_1, result_2)
 
         {:ok, context}
       end

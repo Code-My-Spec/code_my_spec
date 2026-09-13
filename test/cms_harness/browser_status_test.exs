@@ -42,6 +42,9 @@ defmodule CmsHarness.BrowserStatusTest do
 
     @impl true
     def list_tool_names(_client), do: {:error, "Server capabilities not set"}
+
+    @impl true
+    def disconnect(_client), do: :ok
   end
 
   describe "a machine with no browser" do

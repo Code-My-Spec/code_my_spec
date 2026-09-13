@@ -233,6 +233,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
        project_id: project_id,
        scope: scope,
        timer: nil,
+       pending_observations: [],
        last_recompute: nil,
        last_error: nil
      }}
@@ -261,8 +262,19 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   end
 
   @impl true
+  # The observation id rides along so the recompute can name what it consumed.
+  # Accumulated rather than replaced, because the debounce coalesces a burst
+  # into one pass: a recompute answers for every publish since the last one,
+  # and listing them is the only way to show that none was dropped.
+  def handle_info({:graph_inputs_changed, _project_id, obs}, state) do
+    {:noreply, schedule(%{state | pending_observations: add_observation(obs, state)})}
+  end
+
+  # A publisher that has not been taught to mint an id yet. Counted as an
+  # unnamed observation rather than ignored — the report needs to know it
+  # happened, and silently dropping it is how the gap this closes got there.
   def handle_info({:graph_inputs_changed, _project_id}, state) do
-    {:noreply, schedule(state)}
+    {:noreply, schedule(%{state | pending_observations: add_observation(nil, state)})}
   end
 
   def handle_info(:recompute, state) do
@@ -273,6 +285,41 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   end
 
   def handle_info(_other, state), do: {:noreply, state}
+
+  # Every observation this watcher received gets named in a line, even when the
+  # graph emitted none of its own.
+  #
+  # Stamping `obs=` as metadata covers the case where the watcher's own pass
+  # does the recomputing, and misses the one the architecture says is normal:
+  # "every graph computation in this application is triggered by a reader"
+  # (`GraphInputs`). A reader that arrives first recomputes in its own process,
+  # carrying no metadata, and leaves nothing stale — so the watcher's pass logs
+  # nothing, clears its pending list, and the ids vanish.
+  #
+  # Measured the first time the report ran against live traffic: `dc63ca83`
+  # announced at 16:31:01, applied by a reader's recompute nine seconds later,
+  # and named by nothing. Reported as dropped, which was the right answer to
+  # the question asked — unaccounted-for and ignored are the same thing to
+  # anyone reading the log afterwards.
+  #
+  # So this closes the books rather than describing the work: it says which
+  # observations this pass answered for, whatever did the computing.
+  defp account_for([]), do: :ok
+
+  defp account_for(consumed) do
+    Logger.info("[GraphWatcher] accounted for #{length(consumed)} observation(s)")
+  end
+
+  defp add_observation(obs, %{pending_observations: pending}) do
+    [obs || "unnamed" | pending]
+  end
+
+  # `none` rather than an empty string, because a recompute with nothing
+  # pending is a real and interesting answer: it ran without any observation
+  # asking it to, which is exactly the case the counts could never distinguish
+  # from a busy one.
+  defp observation_tag([]), do: "none"
+  defp observation_tag(ids), do: Enum.join(ids, ",")
 
   # Already scheduled means already covered. Not restarting the timer is what
   # makes this coalescing rather than throttling: a steady stream of writes
@@ -286,8 +333,17 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   defp recompute(state) do
     refuse_if_faulted(state.project_id)
 
+    # Stamped as metadata rather than threaded as an argument, so every line
+    # the computation emits carries it without `RequirementGraph` having to
+    # know this process exists. `config/config.exs` lists `:obs` for the same
+    # reason it lists `:cms_project`.
+    consumed = Enum.reverse(state.pending_observations)
+    Logger.metadata(obs: observation_tag(consumed))
+
     {_graph, actionable, _computed_at} =
       RequirementGraph.cached_graph_with_actionable(state.scope)
+
+    account_for(consumed)
 
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
@@ -316,7 +372,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end)
     end
 
-    {:ok, %{state | last_recompute: DateTime.utc_now(), last_error: nil}}
+    {:ok,
+     %{state | last_recompute: DateTime.utc_now(), last_error: nil, pending_observations: []}}
   rescue
     error ->
       recompute_failure(state, error)

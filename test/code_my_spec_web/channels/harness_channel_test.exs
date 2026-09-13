@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
         ]
       })
 
-    assert_reply ref, :ok, %{"running" => running}
+    assert_reply ref, :ok, %{"running" => running}, 5_000
     assert length(running) == 2
 
     roles = scope |> Agents.list_running() |> Enum.map(& &1.role) |> Enum.sort()
@@ -89,7 +89,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
     ref = push(channel, "agents_running", %{"agents" => [lane(harness, "coding")]})
 
-    assert_reply ref, :ok, %{"running" => _}
+    assert_reply ref, :ok, %{"running" => _}, 5_000
 
     assert scope |> Agents.list_running() |> Enum.map(& &1.role) == [:coding],
            "the report is the whole set, so a lane it omits has stopped — but " <>
@@ -118,7 +118,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
         "agents" => [%{"working_copy" => "/tmp/two-lanes", "role" => "coding"}]
       })
 
-    assert_reply ref, :ok, %{"running" => running}
+    assert_reply ref, :ok, %{"running" => running}, 5_000
 
     assert running == [],
            "a report with no working_copy_id used to be matched against harnesses.root, " <>

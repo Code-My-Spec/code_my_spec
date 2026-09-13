@@ -28,6 +28,8 @@ defmodule CodeMySpec.Issues do
     ],
     exports: :all
 
+  require Logger
+
   alias CodeMySpec.Documents.QaIssue
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
@@ -376,7 +378,9 @@ defmodule CodeMySpec.Issues do
     # and asks the fingerprint whether anything really moved. An incoming issue
     # makes `issues_triaged` actionable, which is work appearing that no reader
     # would notice. See `Requirements.GraphInputs`.
-    GraphInputs.changed(scope)
+    obs = GraphInputs.observation_id()
+    Logger.info("[Issues] announcing a graph change", obs: obs)
+    GraphInputs.changed(scope, obs)
   end
 
   defp broadcast(_scope, _message), do: :ok

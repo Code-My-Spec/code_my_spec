@@ -115,7 +115,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
         severity: :low
       })
 
-    assert_receive {:graph_inputs_changed, project_id}, 1_000
+    assert_receive {:graph_inputs_changed, project_id, _obs}, 1_000
     assert project_id == ctx.scope.active_project_id
   end
 
@@ -137,7 +137,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
       }
     ])
 
-    assert_receive {:graph_inputs_changed, _project_id}, 1_000
+    assert_receive {:graph_inputs_changed, _project_id, _obs}, 1_000
   end
 
   test "a manifest that changed nothing stays quiet", ctx do
@@ -145,7 +145,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
 
     FileSync.reconcile(ctx.scope, [])
 
-    refute_receive {:graph_inputs_changed, _project_id}, 300
+    refute_receive {:graph_inputs_changed, _project_id, _obs}, 300
   end
 
   test "the watcher says when the graph has been recomputed", ctx do
