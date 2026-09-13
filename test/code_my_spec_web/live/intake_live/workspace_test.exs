@@ -157,6 +157,33 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       # The conversation is the foreground even once it is up — the boot is
       # ambient, which is the whole reason the interview runs during it.
       assert html =~ "What do you want to build?"
+
+      # The only way onboarding used to point at the real project dashboard
+      # and agent conversation was back through the marketing homepage's own
+      # nav — never surfaced here, where a visitor coming straight out of
+      # paid onboarding actually is (9cd0103b).
+      assert has_element?(view, "[data-test='open-project-dashboard']")
+      assert html =~ ~r{/app/projects/[^/"]+/agent-conversation}
+    end
+  end
+
+  describe "the payment window" do
+    test "the interview and the payment card both stay live, with a note explaining why",
+         %{conn: conn} do
+      fake(healthy?: false, alive?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      # Both live and interactive at once used to have nothing saying they
+      # were two independent things rather than one confusing sequence
+      # (66272b59). Criterion 3404 answers the interview all the way to its
+      # derived rules on this same page with nothing ever paid, so the
+      # composer being gone during payment was the wrong fix — it broke that
+      # criterion outright. The right fix is saying they're independent.
+      assert html =~ "cloud-payment"
+      assert has_element?(view, "[data-test='intake-composer']")
+      assert html =~ "you can keep answering above while you decide"
     end
   end
 
