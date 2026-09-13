@@ -131,7 +131,15 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # truth every other conditional on this page reads from.
   defp dynamic_panel(assigns) do
     ~H"""
-    <div class="shrink-0 overflow-y-auto border-t border-base-300 p-4 lg:w-96 lg:border-t-0 lg:border-l">
+    <%!--
+      Capped, not shrink-0, on narrow screens. A card whose own content is
+      tall (Stripe's payment element, with Link's optional fields expanded)
+      claimed its full natural height and pushed the chat column's flex-1 to
+      zero — the chat did not shrink, it vanished. `max-h` plus its own
+      scroll keeps both sections visible; the fixed-width side column on
+      `lg:` has no such competition, so it can go back to not shrinking.
+    --%>
+    <div class="max-h-[45dvh] overflow-y-auto border-t border-base-300 p-4 lg:max-h-none lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l">
       <%!--
         What to run, for a visitor who chose their own machine. There is no
         container to watch, so the ambient strip is replaced by the one thing
