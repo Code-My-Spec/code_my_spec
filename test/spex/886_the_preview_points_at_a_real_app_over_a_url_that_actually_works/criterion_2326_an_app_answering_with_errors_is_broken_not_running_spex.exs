@@ -62,19 +62,11 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
         # as its starting point.
         render_hook(view, "payment_confirmed", %{})
 
-        # Waited for, not asserted on the next line. The boot is asynchronous:
-        # `Workspaces.boot/1` answers a workspace at `:booting` and a watcher
-        # broadcasts `:running` afterwards, so the render this hook returns
-        # still shows the spinner. The page needs `status == :running and
-        # app_state == :running`, and measured at the moment this used to
-        # assert they were `:booting` and `:running` — the app was already
-        # serving and the row had not caught up.
-        #
-        # Which made it a race the criterion never meant to run: green on a
-        # quiet box and red on a loaded one, five times out of five at load
-        # 14. `eventually/2` documents exactly this shape on itself, and its
-        # last attempt runs outside the rescue so the failure below is still
-        # this scenario's own.
+        # The fake runner's own poll (poll_interval) can still be mid-cycle
+        # the instant payment_confirmed returns -- boot_workspace/2 kicking
+        # off the container is not the same moment as the watcher's first
+        # broadcast landing. eventually/1 (not a fixed sleep) absorbs that
+        # without hardcoding how long it takes.
         eventually(fn ->
           assert render(view) =~ "It&#39;s running.",
                  "a serving app should say so before we break it"
