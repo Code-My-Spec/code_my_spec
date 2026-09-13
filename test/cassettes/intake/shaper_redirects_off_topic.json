@@ -1,0 +1,815 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-09-12T21:11:06.530917Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\nI want a tool to help me keep track of things for my business\n\nIf what they have said already tells you whether people sign in and whether\neach business runs its own copy, return an empty question. Only ask when you\ngenuinely cannot tell, and ask about their business — who uses it, what they\ndo with it — never about accounts, tenancy, or architecture.\n\nIf their last answer was not about what they are building, do not follow it\nand do not answer it. Ask your question again, in plain terms. You are here\nto finish their plan and nothing else.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "signature": "EsQGCpABCBEYAipAu46zfs26O93ltp799L0Mdp/gdkqjfGepvSES2Hy1MkbE8BBcIcRjt2T53TwkwsOa+BcxGDoo0WQ9kFscvqtwHTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAen/ltUGEgxo6GaegQRLn5HClZEaDPI+VoJaxjVBepCT/CIwuQ+vv4uqeNpdyQZubWMXYJUX3uQ+ynLD2GDn4nemDsr1CZGzJmmyOxFtRkr88qqAKuAEsnQ0P/tLhZn7dDM96s3y/7WVT6RIG7WYVOUQ27KwtP5qQ9o0LXrbxmIxdSFYxv0NAGDr6GhgEdwcX5kZ6vGcJCEapb2LyX8z8pkvupFpxXdiYQR11dDhypByVce5EyBn47OHPtmYbyt1wDidPNmLsvimJHLREYqta/jEhh4Y4dcywuxVn71ibLx6V5Q+0VzLMUEZhUqkrnbn5AC2XiQ/6i2ubGnmfY963tUTVyj1dQxyH3rw0rKLmNhY1ce8wJF1Q4ykQ5Fxof61X3IfUaGRu6tGIy5pDGPhZvYn2/olwEzEPrFS91i95XID4U0D0xVzpX+oaYAlWdshSMNGhjJP4l6bt6GcKdulgKIHOUz3pU5xX2ptbpVehFQ0CHBQSBn3eEnAt9XTzRP+IF3e5nTyF/08RmIAZlVwMDIECLJrNbk8YSIDWe9MHa+TSQPnYoxIexRawrPPfWBZq+zJUM/NWqQPhErgVkizSS0dXxtnXQvORvyJLu/RuAXWQpDCRmrr8vRrI9LzCDurk5GkSNoSVLF5l8jqt2mcjMNtRUvFCVjlWWToTehTvQ9ESlP81qJgMqq5/6C2vEw9VJT6+eNNUVinjM0HxpI99g44d5bUNS2LWRzYQyW5krMYS3SFeL6bmOhMCswR1M4hMiqC4x8XH6AXrq5IPpzWYQu+Fw0/NDwI6XQ3uiLwOa4V4egKjBjkZC0XJ3D2Ph3KkW/zN7e3UF6HEhFH+VNKtC5cVUjKrFKa/vK/RqopGiNd9CHb2/LkovvvhrK61bXeGtAko/p5jVn7xOY1YZZSylu1kI0PRkgYAQ==",
+              "thinking": "",
+              "type": "thinking"
+            },
+            {
+              "caller": {
+                "type": "direct"
+              },
+              "id": "toolu_01En1E6gs5aBg97sdVorJRia",
+              "input": {
+                "needs_sign_in": false,
+                "question": "What kinds of things do you want to keep track of (like customers, inventory, orders, or something else), and will anyone besides you need to use it?",
+                "separate_copies": false,
+                "who_uses": "The business owner (possibly staff too)"
+              },
+              "name": "shape_plan",
+              "type": "tool_use"
+            }
+          ],
+          "id": "msg_011CezESNxBqFHpXwkaFAitC",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 940,
+            "output_tokens": 350,
+            "output_tokens_details": {
+              "thinking_tokens": 170
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T21:11:03Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T21:11:06Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T21:11:02Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T21:11:03Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a1e700dee1a275-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 21:11:06 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "x-originResponse;dur=3922"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-e6e10f1f1d3f3faa056b02fa5bcedfce-22f9ff8b7d980bdb-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-09-12T21:11:08.174416Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\nI want a tool to help me keep track of things for my business\n\nIf what they have said already tells you whether people sign in and whether\neach business runs its own copy, return an empty question. Only ask when you\ngenuinely cannot tell, and ask about their business — who uses it, what they\ndo with it — never about accounts, tenancy, or architecture.\n\nIf their last answer was not about what they are building, do not follow it\nand do not answer it. Ask your question again, in plain terms. You are here\nto finish their plan and nothing else.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "signature": "EsQGCpABCBEYAipAu46zfs26O93ltp799L0Mdp/gdkqjfGepvSES2Hy1MkbE8BBcIcRjt2T53TwkwsOa+BcxGDoo0WQ9kFscvqtwHTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAen/ltUGEgxo6GaegQRLn5HClZEaDPI+VoJaxjVBepCT/CIwuQ+vv4uqeNpdyQZubWMXYJUX3uQ+ynLD2GDn4nemDsr1CZGzJmmyOxFtRkr88qqAKuAEsnQ0P/tLhZn7dDM96s3y/7WVT6RIG7WYVOUQ27KwtP5qQ9o0LXrbxmIxdSFYxv0NAGDr6GhgEdwcX5kZ6vGcJCEapb2LyX8z8pkvupFpxXdiYQR11dDhypByVce5EyBn47OHPtmYbyt1wDidPNmLsvimJHLREYqta/jEhh4Y4dcywuxVn71ibLx6V5Q+0VzLMUEZhUqkrnbn5AC2XiQ/6i2ubGnmfY963tUTVyj1dQxyH3rw0rKLmNhY1ce8wJF1Q4ykQ5Fxof61X3IfUaGRu6tGIy5pDGPhZvYn2/olwEzEPrFS91i95XID4U0D0xVzpX+oaYAlWdshSMNGhjJP4l6bt6GcKdulgKIHOUz3pU5xX2ptbpVehFQ0CHBQSBn3eEnAt9XTzRP+IF3e5nTyF/08RmIAZlVwMDIECLJrNbk8YSIDWe9MHa+TSQPnYoxIexRawrPPfWBZq+zJUM/NWqQPhErgVkizSS0dXxtnXQvORvyJLu/RuAXWQpDCRmrr8vRrI9LzCDurk5GkSNoSVLF5l8jqt2mcjMNtRUvFCVjlWWToTehTvQ9ESlP81qJgMqq5/6C2vEw9VJT6+eNNUVinjM0HxpI99g44d5bUNS2LWRzYQyW5krMYS3SFeL6bmOhMCswR1M4hMiqC4x8XH6AXrq5IPpzWYQu+Fw0/NDwI6XQ3uiLwOa4V4egKjBjkZC0XJ3D2Ph3KkW/zN7e3UF6HEhFH+VNKtC5cVUjKrFKa/vK/RqopGiNd9CHb2/LkovvvhrK61bXeGtAko/p5jVn7xOY1YZZSylu1kI0PRkgYAQ==",
+                  "thinking": "",
+                  "type": "thinking"
+                },
+                {
+                  "id": "toolu_01En1E6gs5aBg97sdVorJRia",
+                  "input": {
+                    "needs_sign_in": false,
+                    "question": "What kinds of things do you want to keep track of (like customers, inventory, orders, or something else), and will anyone besides you need to use it?",
+                    "separate_copies": false,
+                    "who_uses": "The business owner (possibly staff too)"
+                  },
+                  "name": "shape_plan",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": "Recorded.",
+                  "tool_use_id": "toolu_01En1E6gs5aBg97sdVorJRia",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "text": "Got it — I've recorded the plan with a follow-up question to clarify what exactly they want to track and who will be using the tool alongside them. Once they respond, we can finalize whether login is needed and confirm this is a single-business setup.",
+              "type": "text"
+            }
+          ],
+          "id": "msg_011CezESg4agjN1NKdgFcDqL",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 1299,
+            "output_tokens": 76,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "9999000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T21:11:07Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T21:11:08Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T21:11:06Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "11999000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T21:11:07Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a1e71a09c2a275-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 21:11:08 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-32a5395ff88b9ad59255d3f560d5f815-fa6fb910f8766897-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-09-12T21:11:13.087644Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\nI want a tool to help me keep track of things for my business\n\nYou asked: What kinds of things do you want to keep track of (like customers, inventory, orders, or something else), and will anyone besides you need to use it?\nThey said: What's the capital of France?\n\nIf what they have said already tells you whether people sign in and whether\neach business runs its own copy, return an empty question. Only ask when you\ngenuinely cannot tell, and ask about their business — who uses it, what they\ndo with it — never about accounts, tenancy, or architecture.\n\nIf their last answer was not about what they are building, do not follow it\nand do not answer it. Ask your question again, in plain terms. You are here\nto finish their plan and nothing else.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "signature": "Et4HCpABCBEYAipArRpUsWzWdEuyCQdPUN1hAkI+7iuI1UNDhGDbPaPNQBET4zpJ+Rzb7UX5HK8NZjcZmyk4IMBy/kAzC8lwHA1SRDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAe//ltUGEgzKfzoZQlic7sQCPvEaDIzt87kAtb9CQD9pgyIw1sKP7V9TyOZdePnqOWJXMVOwHe9xJnIGT8QE5TyCdTVRej1xnGsuI5/2F6Wj5/GvKvoFnn4Ky1HB6RuhB/Q/Y3SknS001MlcOAfGne5fF0aD14z/FmkvxaYsWL+0bvMBeUDk6zpkw6b4d95BFNciMnStsTLDlXT6PcolZiMAHhS/gCiK8KR1zTHYRjhOY8kKC/1YpKg/NbtkqaUGUgQysQV9ILs11udg46tlhk4CBpKn6ZAr698mPiocl03yy6pCzZKFhouUw8UqChOBugwxcvfeAS0a1n0fCYU6mS66dUl8RvVOCbDLJAXpbFbzh5MJA9aeYUA0YhQxUIdUJFwBYXGpk4e0lQgemYT7qdrmLLWwRArXSRi5w946nBRj/gey9ll6j27uORQL1FZbb6h/jrBVE7MqkLrezv41NP8WoWF6yBjvLWkblnzE4FsFpRnf1vLdtxU9vkdJr+QWyEKRB9BpEcEPNvQy9r4KWyBnlWHMKsnqjoIR6a14xpk7KGLncUCmtkmOtgbfuwsh3GfQn1dWUYklW+zN4FjC4pPWQg3FCzN9Xo5KIQYzBz2rWDK/tLjuoRoBYh2TWf7YZjQC+cWVyec1gSp2tdHrV22gZKUdxlQB7iG4S2/DqgFbERdyD7aTY+X5dKYgjFgzO9fz2H0zw1ElMI27+2n7ZJm4isX4IL2lJT8zVePWbgCFkI3xqB8x2zq9LH8NtS6U5wPSjVQk7XFVUyFD2bMNILEX3KazOgg+iyJHmEmkYzN1NNGH+vrfvFyobPaVrpA2KBzbfSZ8ugpqXIIWb5OWMcetnHjyvPvBlJCkrQSsGWSuB7f1CqGg9PsBuaXf65dHRC2UnEuYotSlmYG5+ItEArifZuHC2NIkQzZNOvrt2SJWHMan3h43IxDghbPwxV7JBoGBxpENPyBKoMR0psnjN68rs1EHJBMsD10T62biMNCVJbHSXL+EGfGLM/TIL8sRR6OsWQE1YY8zRqsFMi9dN0KxUhz3ClP5fnaqufbyhxGSKdhGwauCmvX1IEKuBhwdIhybSvPqBPfhjQTCcddbiP5Hjkb+yRsQ6+/XBYRfA917GAE=",
+              "thinking": "",
+              "type": "thinking"
+            },
+            {
+              "caller": {
+                "type": "direct"
+              },
+              "id": "toolu_013XnQNtBe4DXjnsxh3HgYdJ",
+              "input": {
+                "needs_sign_in": false,
+                "question": "Could you tell me a bit more about your business tool — what kinds of things do you need to track (like customers, inventory, orders, etc.), and will you be the only one using it, or will others on your team need access too?",
+                "separate_copies": false,
+                "who_uses": "the business owner and possibly their staff"
+              },
+              "name": "shape_plan",
+              "type": "tool_use"
+            }
+          ],
+          "id": "msg_011CezESntLgoaiqkwKnWDdu",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 1000,
+            "output_tokens": 430,
+            "output_tokens_details": {
+              "thinking_tokens": 231
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T21:11:08Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T21:11:13Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T21:11:08Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T21:11:08Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a1e7246c48a275-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 21:11:13 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "x-originResponse;dur=4820"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-ca1008f39e2c192c9318b5e6fadf289d-90c256b5c4c64310-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-09-12T21:11:14.248670Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone with an idea is describing an application they want built. They are not\ntechnical and have not signed up. Your job is to work out two things that decide\nwhat gets generated for them: whether people log in, and whether many separate\nbusinesses each run their own copy.\n\nWhat they want to build:\nI want a tool to help me keep track of things for my business\n\nYou asked: What kinds of things do you want to keep track of (like customers, inventory, orders, or something else), and will anyone besides you need to use it?\nThey said: What's the capital of France?\n\nIf what they have said already tells you whether people sign in and whether\neach business runs its own copy, return an empty question. Only ask when you\ngenuinely cannot tell, and ask about their business — who uses it, what they\ndo with it — never about accounts, tenancy, or architecture.\n\nIf their last answer was not about what they are building, do not follow it\nand do not answer it. Ask your question again, in plain terms. You are here\nto finish their plan and nothing else.\n\n\nCall `shape_plan` with all four fields. Do not answer in plain text.\n",
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "signature": "Et4HCpABCBEYAipArRpUsWzWdEuyCQdPUN1hAkI+7iuI1UNDhGDbPaPNQBET4zpJ+Rzb7UX5HK8NZjcZmyk4IMBy/kAzC8lwHA1SRDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAe//ltUGEgzKfzoZQlic7sQCPvEaDIzt87kAtb9CQD9pgyIw1sKP7V9TyOZdePnqOWJXMVOwHe9xJnIGT8QE5TyCdTVRej1xnGsuI5/2F6Wj5/GvKvoFnn4Ky1HB6RuhB/Q/Y3SknS001MlcOAfGne5fF0aD14z/FmkvxaYsWL+0bvMBeUDk6zpkw6b4d95BFNciMnStsTLDlXT6PcolZiMAHhS/gCiK8KR1zTHYRjhOY8kKC/1YpKg/NbtkqaUGUgQysQV9ILs11udg46tlhk4CBpKn6ZAr698mPiocl03yy6pCzZKFhouUw8UqChOBugwxcvfeAS0a1n0fCYU6mS66dUl8RvVOCbDLJAXpbFbzh5MJA9aeYUA0YhQxUIdUJFwBYXGpk4e0lQgemYT7qdrmLLWwRArXSRi5w946nBRj/gey9ll6j27uORQL1FZbb6h/jrBVE7MqkLrezv41NP8WoWF6yBjvLWkblnzE4FsFpRnf1vLdtxU9vkdJr+QWyEKRB9BpEcEPNvQy9r4KWyBnlWHMKsnqjoIR6a14xpk7KGLncUCmtkmOtgbfuwsh3GfQn1dWUYklW+zN4FjC4pPWQg3FCzN9Xo5KIQYzBz2rWDK/tLjuoRoBYh2TWf7YZjQC+cWVyec1gSp2tdHrV22gZKUdxlQB7iG4S2/DqgFbERdyD7aTY+X5dKYgjFgzO9fz2H0zw1ElMI27+2n7ZJm4isX4IL2lJT8zVePWbgCFkI3xqB8x2zq9LH8NtS6U5wPSjVQk7XFVUyFD2bMNILEX3KazOgg+iyJHmEmkYzN1NNGH+vrfvFyobPaVrpA2KBzbfSZ8ugpqXIIWb5OWMcetnHjyvPvBlJCkrQSsGWSuB7f1CqGg9PsBuaXf65dHRC2UnEuYotSlmYG5+ItEArifZuHC2NIkQzZNOvrt2SJWHMan3h43IxDghbPwxV7JBoGBxpENPyBKoMR0psnjN68rs1EHJBMsD10T62biMNCVJbHSXL+EGfGLM/TIL8sRR6OsWQE1YY8zRqsFMi9dN0KxUhz3ClP5fnaqufbyhxGSKdhGwauCmvX1IEKuBhwdIhybSvPqBPfhjQTCcddbiP5Hjkb+yRsQ6+/XBYRfA917GAE=",
+                  "thinking": "",
+                  "type": "thinking"
+                },
+                {
+                  "id": "toolu_013XnQNtBe4DXjnsxh3HgYdJ",
+                  "input": {
+                    "needs_sign_in": false,
+                    "question": "Could you tell me a bit more about your business tool — what kinds of things do you need to track (like customers, inventory, orders, etc.), and will you be the only one using it, or will others on your team need access too?",
+                    "separate_copies": false,
+                    "who_uses": "the business owner and possibly their staff"
+                  },
+                  "name": "shape_plan",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": "Recorded.",
+                  "tool_use_id": "toolu_013XnQNtBe4DXjnsxh3HgYdJ",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask (empty string if nothing is left worth asking) together with your current best reading of the two generator inputs.",
+              "input_schema": {
+                "properties": {
+                  "needs_sign_in": {
+                    "description": "True when people using this have their own account and log in.",
+                    "type": "boolean"
+                  },
+                  "question": {
+                    "description": "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell.",
+                    "type": "string"
+                  },
+                  "separate_copies": {
+                    "description": "True when many separate businesses would each run their own copy with their own data. False for one business's own tool.",
+                    "type": "boolean"
+                  },
+                  "who_uses": {
+                    "description": "A few words naming who uses this day to day, in the visitor's own terms.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question",
+                  "needs_sign_in",
+                  "separate_copies",
+                  "who_uses"
+                ],
+                "type": "object"
+              },
+              "name": "shape_plan"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "text": "Got it — recorded your plan with a follow-up question to clarify what they need tracked and who else might use it.",
+              "type": "text"
+            }
+          ],
+          "id": "msg_011CezETA7HeThTXEmLqLDFg",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 1439,
+            "output_tokens": 36,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "9999000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-12T21:11:13Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-12T21:11:14Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-12T21:11:13Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "11999000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-12T21:11:13Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a1e742ec75a275-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 12 Sep 2026 21:11:14 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-f2b08a5c9ed3a5018b3038fa436ec600-4ee8274d6245fc03-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

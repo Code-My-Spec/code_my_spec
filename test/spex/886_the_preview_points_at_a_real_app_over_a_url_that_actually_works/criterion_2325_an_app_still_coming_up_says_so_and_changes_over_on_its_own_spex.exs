@@ -59,7 +59,13 @@ defmodule CodeMySpecSpex.Story886.Criterion2325Spex do
         })
         |> render_submit()
 
-        {:ok, workspace_view, html} = live(conn, "/build/workspace")
+        {:ok, workspace_view, _html} = live(conn, "/build/workspace")
+
+        # Cloud now pays before it provisions (990/3400) — not this
+        # criterion's subject, so cleared the way the browser's own Stripe
+        # hook would, to reach the still-starting workspace this scenario
+        # is about.
+        html = render_hook(workspace_view, "payment_confirmed", %{})
 
         {:ok, Map.merge(context, %{conn: conn, view: workspace_view, html: html})}
       end

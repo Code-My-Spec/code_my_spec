@@ -152,7 +152,13 @@ defmodule CodeMySpecWeb.MarketingComponents do
             </li>
           </ul>
           <div class="card-actions mt-4">
-            <.link href={~p"/install"} class="btn btn-primary btn-block">Start free</.link>
+            <.link
+              href={~p"/install"}
+              class="btn btn-primary btn-block"
+              data-event-label="cta-start-free-pricing-tier"
+            >
+              Start free
+            </.link>
           </div>
         </div>
       </div>
@@ -216,7 +222,13 @@ defmodule CodeMySpecWeb.MarketingComponents do
             </li>
           </ul>
           <div class="card-actions mt-4">
-            <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-block">Talk to John</a>
+            <a
+              href={ExternalLinks.cal_john()}
+              class="btn btn-outline btn-block"
+              data-event-label="cta-service-inquiry-pricing-tier"
+            >
+              Talk to John
+            </a>
           </div>
         </div>
       </div>

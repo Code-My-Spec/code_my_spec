@@ -233,7 +233,6 @@ defmodule CodeMySpecWeb.Layouts do
                     which the page says. --%>
               <li><a href={~p"/app/projects/#{project.id}/setup"}>Setup</a></li>
               <li><a href={~p"/app/projects/#{project.id}/provisioning"}>Provisioning</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/chat"}>Chat</a></li>
               <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
               <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
               <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>

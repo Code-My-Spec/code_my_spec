@@ -6,40 +6,21 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
   generator inputs are. They are one decision — you only know a question is
   worth asking if you cannot already infer the answer — so splitting them into
   two calls would let the model ask about something it had already worked out.
+
+  Runs through `CodeMySpec.Intake.Agent` — the one place that knows how to
+  call an LLM outside the harness and the filesystem. What is specific to the
+  shaper is the prompt and the tool below; the mechanism is shared with the
+  planner and the story interview.
   """
 
   @behaviour CodeMySpec.Intake.Shaper
 
-  alias CodeMySpec.Intake.Plan
+  alias CodeMySpec.Intake.{Agent, Plan}
 
   require Logger
 
   @default_model "anthropic:claude-sonnet-5"
-
-  @schema [
-    question: [
-      type: :string,
-      required: true,
-      doc:
-        "The one thing still worth asking, phrased the way you would ask a shop owner — never about logins, tenancy, or architecture. Empty string when you can already tell."
-    ],
-    needs_sign_in: [
-      type: :boolean,
-      required: true,
-      doc: "True when people using this have their own account and log in."
-    ],
-    separate_copies: [
-      type: :boolean,
-      required: true,
-      doc:
-        "True when many separate businesses would each run their own copy with their own data. False for one business's own tool."
-    ],
-    who_uses: [
-      type: :string,
-      required: true,
-      doc: "A few words naming who uses this day to day, in the visitor's own terms."
-    ]
-  ]
+  @tool_name "shape_plan"
 
   @impl true
   def shape(%Plan{} = plan, turns) do
@@ -60,25 +41,49 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
   end
 
   defp ask_model(plan, turns, opts) do
-    # A timeout the model can actually finish inside.
-    #
-    # Req defaults `receive_timeout` to 15s and this set none, which is a budget
-    # that fits a fast chat model and nothing else. Measured against the same
-    # turn: gpt-4o answers in 2.2s and gpt-5 in 15.0s — right on the line
-    # locally, and reliably over it from a Fly region. So the conversation
-    # worked or did not depending on which side of 15s the model landed, which
-    # reads as the model being broken rather than the caller being impatient.
-    #
-    # 120s because the visitor is watching a "Thinking…" bubble and would rather
-    # wait than be told to start again; a model that has not answered by then is
-    # genuinely wrong, not slow.
-    case ReqLLM.generate_object(model(), prompt(plan, turns, opts), @schema,
-           temperature: 0.2,
-           receive_timeout: to_timeout(second: 120)
-         ) do
-      {:ok, response} -> {:ok, response |> ReqLLM.Response.object() |> to_attrs()}
+    run_opts = [model: model(), req_options: configured_req_options()]
+
+    case Agent.run(prompt(plan, turns, opts), shape_tool(), run_opts) do
+      {:ok, input} -> {:ok, to_attrs(input)}
       {:error, reason} -> failed(reason)
     end
+  end
+
+  defp shape_tool do
+    Alloy.Tool.inline(
+      name: @tool_name,
+      description:
+        "Submit the next question to ask (empty string if nothing is left worth " <>
+          "asking) together with your current best reading of the two generator inputs.",
+      input_schema: %{
+        type: "object",
+        properties: %{
+          question: %{
+            type: "string",
+            description:
+              "The one thing still worth asking, phrased the way you would ask a shop " <>
+                "owner — never about logins, tenancy, or architecture. Empty string when " <>
+                "you can already tell."
+          },
+          needs_sign_in: %{
+            type: "boolean",
+            description: "True when people using this have their own account and log in."
+          },
+          separate_copies: %{
+            type: "boolean",
+            description:
+              "True when many separate businesses would each run their own copy with " <>
+                "their own data. False for one business's own tool."
+          },
+          who_uses: %{
+            type: "string",
+            description: "A few words naming who uses this day to day, in the visitor's own terms."
+          }
+        },
+        required: ["question", "needs_sign_in", "separate_copies", "who_uses"]
+      },
+      execute: fn _input, _context -> {:ok, "Recorded."} end
+    )
   end
 
   # The question is scaffolding for the conversation, not part of the plan.
@@ -121,6 +126,8 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
     #{description}
     #{if said == "", do: "", else: "\n" <> said <> "\n"}
     #{closing}
+
+    Call `#{@tool_name}` with all four fields. Do not answer in plain text.
     """
   end
 
@@ -131,8 +138,10 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
   @spec to_attrs_for_test(map()) :: map()
   def to_attrs_for_test(object), do: to_attrs(object)
 
+  @schema_fields [:question, :needs_sign_in, :separate_copies, :who_uses]
+
   defp to_attrs(object) do
-    Map.new(@schema, fn {field, _spec} -> {field, field_value(object, field)} end)
+    Map.new(@schema_fields, fn field -> {field, field_value(object, field)} end)
   end
 
   # `false` is an answer, not a missing one.
@@ -162,6 +171,13 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
     Logger.warning("[Intake.Shaper] the model call failed: #{inspect(reason)}")
     {:error, reason}
   end
+
+  # A test's cassette plug, most often — merged onto `Agent.run/3`'s own
+  # default timeout. Config-driven rather than a new public parameter: this
+  # module already reads `:model` from the same bag, and a second way to
+  # reach it would only invite the two to drift.
+  defp configured_req_options,
+    do: Application.get_env(:code_my_spec, CodeMySpec.Intake, [])[:req_options] || []
 
   defp model do
     Application.get_env(:code_my_spec, CodeMySpec.Intake, [])[:model] || @default_model

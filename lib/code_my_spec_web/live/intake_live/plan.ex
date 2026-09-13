@@ -51,17 +51,17 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
       --%>
       <.conversation transcript={@transcript} thinking={@thinking} trouble={@trouble}>
         <%!--
-          Always, rather than once the agent has concluded. The card used to
-          appear on `:planned`, which put the paperwork downstream of the
-          talking: somebody who would rather type than discuss had no way in,
-          and an unreachable model took the form down with it — they were told
-          what had gone wrong and left with nothing to do about it.
-
-          Beside the composer, not instead of it. Both are live the whole time,
-          so filling a field in and saying something are two ways of answering
-          the same question rather than two modes to be in.
+          Always, rather than once the agent has concluded — until the visitor
+          has signed up. The card used to appear on `:planned`, which put the
+          paperwork downstream of the talking: somebody who would rather type
+          than discuss had no way in, and an unreachable model took the form
+          down with it. Beside the composer, not instead of it, so filling a
+          field in and saying something are two ways of answering the same
+          question. Once names are confirmed by a stranger, the sign-up card
+          replaces it — the panel holds one thing at a time.
         --%>
-        <.plan_card plan={@plan} form={@names_form} />
+        <.signup_card :if={@awaiting_signup?} plan={@plan} />
+        <.plan_card :if={not @awaiting_signup?} plan={@plan} form={@names_form} />
       </.conversation>
 
       <.composer
@@ -203,6 +203,70 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     """
   end
 
+  # The gate is a card in the same conversation, not a page the visitor is
+  # sent to. GitHub, Google and email are offered together — never one at a
+  # time — and the names already confirmed are shown, not asked for again:
+  # what gets created is exactly what was just typed into the plan card.
+  #
+  # Email is a plain HTML form rather than `phx-submit`, on purpose: creating
+  # the session cookie is a job for a controller, not a LiveView process,
+  # which cannot write the session itself. GitHub and Google are plain links
+  # for the same reason — both already go through `IntegrationsController`,
+  # which this only has to point back at `/build/workspace` afterward.
+  attr :plan, :map, required: true
+
+  defp signup_card(assigns) do
+    ~H"""
+    <div data-test="signup-card" class="chat chat-start">
+      <div class="chat-bubble chat-bubble-neutral max-w-full">
+        <p>One more thing, and we can start building.</p>
+
+        <div class="mt-3 space-y-2">
+          <input
+            type="text"
+            value={@plan.account_name}
+            readonly
+            aria-label="Account name"
+            class="w-full input text-base-content"
+          />
+          <input
+            type="text"
+            value={@plan.project_name}
+            readonly
+            aria-label="Project name"
+            class="w-full input text-base-content"
+          />
+        </div>
+
+        <div class="mt-4 flex flex-col gap-2">
+          <a
+            href={~p"/auth/github/login?return_to=/build/workspace"}
+            class="btn btn-primary w-full"
+          >
+            Continue with GitHub
+          </a>
+          <a href={~p"/auth/google/login?return_to=/build/workspace"} class="btn btn-outline w-full">
+            Continue with Google
+          </a>
+        </div>
+
+        <div class="divider text-xs text-base-content/50">or email</div>
+
+        <.form for={nil} action={~p"/build/sign-up"} method="post" class="flex gap-2">
+          <input
+            type="email"
+            name="user[email]"
+            required
+            placeholder="you@domain.dev"
+            class="input input-bordered flex-1 text-base-content"
+          />
+          <.button class="btn-secondary">Continue</.button>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
   def mount(_params, session, socket) do
     token = Map.fetch!(session, IntakeSession.session_key())
     {:ok, plan} = Intake.start_plan(token)
@@ -252,11 +316,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     case Intake.confirm_names(socket.assigns.plan, attrs) do
       {:ok, plan} ->
         Funnel.plan_reached(:names_confirmed, %{plan_id: plan.id})
+        socket = assign_plan(socket, plan)
 
-        {:noreply,
-         socket
-         |> assign_plan(plan)
-         |> push_navigate(to: gate_for(socket.assigns.current_scope))}
+        {:noreply, confirmed(socket, socket.assigns.current_scope)}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :names_form, to_form(changeset))}
@@ -286,12 +348,16 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     end
   end
 
-  # The gate is a sign-up for a stranger and nothing at all for someone already
-  # signed in. Sending everyone to /users/register meant an existing customer
-  # was bounced off it by redirect_if_user_is_authenticated and landed on the
-  # marketing site, plan stranded.
-  defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
-  defp gate_for(_scope), do: ~p"/users/register"
+  # The gate is a card in this same conversation for a stranger, and nothing
+  # at all for someone already signed in. `/users/register` used to be where
+  # every visitor went — which bounced an existing customer off it by
+  # `redirect_if_user_is_authenticated` and landed them on the marketing
+  # site, plan stranded, and cost a stranger the conversation they were
+  # already in.
+  defp confirmed(socket, %Scope{user: %User{}}),
+    do: push_navigate(socket, to: ~p"/build/workspace")
+
+  defp confirmed(socket, _scope), do: assign(socket, :awaiting_signup?, true)
 
   # No fallback questionnaire. The conversation is the product, so when the
   # model is unreachable the honest thing is to say so rather than hand over
@@ -339,6 +405,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     |> assign(:thinking, plan.shaping_status == :thinking)
     |> assign(:trouble, trouble_for(plan))
     |> assign_new(:draft, fn -> "" end)
+    |> assign_new(:awaiting_signup?, fn -> false end)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
     |> assign_transcript()
