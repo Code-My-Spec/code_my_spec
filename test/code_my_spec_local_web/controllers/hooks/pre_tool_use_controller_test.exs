@@ -5,6 +5,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
   import Plug.Conn
   import Plug.Test
 
+  alias CodeMySpec.Hooks.PreToolUse
   alias CodeMySpecLocalWeb.Hooks.PreToolUseController
 
   setup do
@@ -102,21 +103,26 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ "X-Harness-Id: #{scope.active_working_copy_id}"
 
       refute command =~ "X-Working-Dir",
-             "the endpoint is chosen by cwd; the working copy is named by id"
+             "the working copy is named by id, never by a path on the wire"
 
       # A big suite outlives the Bash tool's ~2 min default kill.
       assert body["hookSpecificOutput"]["updatedInput"]["timeout"] == 600_000
     end
 
     # A heavy harness carries *both* a harness id and a cwd — `HarnessScope`
-    # resolves the id and builds a scope with a cwd on it. So "has a harness id"
-    # does not mean "is the light harness", and routing on it would send this to
-    # the id-addressed endpoint only the light harness serves: a 404 on every
-    # `mix test` an agent runs here.
+    # resolves the id and builds a scope with a cwd on it. So neither the id nor
+    # the cwd says which router answers, and both were tried: routing on the id
+    # sent a heavy harness at a route it does not serve, and routing on the cwd
+    # sent every *proxied* copy at this router's bare route, which `cms_harness`
+    # does not serve either — a 404 on every `mix test` an agent ran there
+    # (`60b50e40`, reproduced against :4004).
     #
-    # The question the rewrite is actually asking is whether whoever answers can
-    # reach the disk, and `cwd` is what answers it.
-    test "a harness id does not divert a run that has a working dir", %{scope: scope} do
+    # The question is which router answers on that port, and no property of the
+    # scope knows it. The caller does: this controller is the packaged server, so
+    # it says `:local`, and the answer stops depending on what a scope happens to
+    # carry.
+    test "the packaged server addresses its own route, whatever the scope carries",
+         %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
@@ -135,9 +141,11 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       refute command =~ "/api/harnesses/"
     end
 
-    # The light harness: a project, no disk. This used to produce no rewrite at
-    # all, so the agent's suite ran unrecorded and the stop hook ran it again.
-    test "with no working dir the run is addressed to the harness", %{scope: scope} do
+    # A scope with no disk still reaches this router, and this router still takes
+    # the bare route — `cwd` was never what the endpoint depended on. This shape
+    # used to produce no rewrite at all, so the agent's suite ran unrecorded and
+    # the stop hook ran it again.
+    test "and still does when the scope has no working dir", %{scope: scope} do
       working_copy_id = Ecto.UUID.generate()
       scope = %{scope | cwd: nil, active_working_copy_id: working_copy_id}
 
@@ -154,8 +162,30 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
         |> Jason.decode!()
         |> get_in(["hookSpecificOutput", "updatedInput", "command"])
 
-      assert command =~ "/api/harnesses/#{working_copy_id}/analysis/run"
+      assert command =~ "/api/analysis/run"
+      assert command =~ "X-Harness-Id: #{working_copy_id}"
       refute command =~ "X-Working-Dir"
+    end
+
+    # The other half, and the one `60b50e40` is about: the same decision computed
+    # on the cloud server is returned down the channel to `cms_harness`, whose
+    # routes are all id-addressed. Asserted against `PreToolUse` directly because
+    # there is no controller on that side — the channel is the caller.
+    test "a proxied copy is addressed the way its harness routes", %{scope: scope} do
+      answer =
+        PreToolUse.decide(
+          scope,
+          %{"tool_name" => "Bash", "tool_input" => %{"command" => "mix test"}},
+          4004,
+          :harness
+        )
+
+      command = get_in(answer, ["hookSpecificOutput", "updatedInput", "command"])
+
+      assert command =~ "/api/harnesses/#{scope.active_working_copy_id}/analysis/run"
+
+      refute command =~ "X-Harness-Id",
+             "the id is in the path already; a header would be a second place to disagree"
     end
 
     test "rewrites mix spex with env prefix to the spex source", %{scope: scope} do

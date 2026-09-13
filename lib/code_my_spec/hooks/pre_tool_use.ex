@@ -44,9 +44,27 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   `port` is where the rewritten analysis curl should point — the harness that
   will actually serve it, since the analysis endpoint is local by nature. An
   empty map means "no opinion, proceed".
+
+  `served_by` says *which router* answers on that port, and it is the caller's
+  to state rather than this module's to infer. `:local` is the packaged
+  `cms server`, which takes a bare `/api/analysis/run` and an `X-Harness-Id`
+  header; `:harness` is `cms_harness`, where every route is addressed
+  `/api/harnesses/<id>/…`.
+
+  It used to be guessed from whether the scope carried a `cwd`, and the guess was
+  wrong for every proxied working copy: a decision made on the cloud server and
+  returned down the channel carries a `cwd` (it describes the agent's disk) and
+  is destined for a harness (which has no bare route). So `mix test` and
+  `mix spex` rewrote to a URL that 404s, and the agent's command never ran at
+  all — the failure it saw was the hook's, in the hook's voice, for a command it
+  had asked to run itself. Reported live by another session and reproduced here
+  against :4004: bare route 404, id-addressed route serves. Issue `60b50e40`.
+
+  The two callers each know the answer with certainty and neither has to look at
+  a scope to find it.
   """
-  @spec decide(CodeMySpec.Users.Scope.t() | nil, map(), pos_integer()) :: map()
-  def decide(scope, params, port) do
+  @spec decide(CodeMySpec.Users.Scope.t() | nil, map(), pos_integer(), :local | :harness) :: map()
+  def decide(scope, params, port, served_by) do
     tool_name = Map.get(params, "tool_name", "unknown")
 
     cond do
@@ -56,7 +74,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
       tool_name == "Bash" ->
         case classify_bash(params) do
           {:deny, reason} -> deny_bash(reason)
-          :pass_through -> maybe_rewrite_test_command(scope, params, port)
+          :pass_through -> maybe_rewrite_test_command(scope, params, port, served_by)
         end
 
       true ->
@@ -251,11 +269,11 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     end
   end
 
-  defp maybe_rewrite_test_command(scope, params, port) do
+  defp maybe_rewrite_test_command(scope, params, port, served_by) do
     command = get_in(params, ["tool_input", "command"]) || ""
 
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
-         {:ok, endpoint} <- analysis_endpoint(scope),
+         {:ok, endpoint} <- analysis_endpoint(scope, served_by),
          {:ok, task, source, args} <- classify_test_command(command) do
       replacement = build_curl(port, endpoint, source, args)
 
@@ -355,14 +373,11 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # `X-Working-Dir` header — and separating them is the point: a path on the wire
   # is a filesystem location supplied by the caller, which the server then writes
   # to, and a wrong one succeeds against the wrong disk rather than failing.
-  defp analysis_endpoint(%{cwd: cwd, active_working_copy_id: id})
-       when is_binary(cwd) and is_binary(id),
-       do: {:ok, {:local, id}}
+  defp analysis_endpoint(%{active_working_copy_id: id}, served_by)
+       when is_binary(id) and served_by in [:local, :harness],
+       do: {:ok, {served_by, id}}
 
-  defp analysis_endpoint(%{active_working_copy_id: id}) when is_binary(id),
-    do: {:ok, {:harness, id}}
-
-  defp analysis_endpoint(_scope), do: :error
+  defp analysis_endpoint(_scope, _served_by), do: :error
 
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})

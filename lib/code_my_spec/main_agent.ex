@@ -780,6 +780,24 @@ defmodule CodeMySpec.MainAgent do
   defdelegate stand_down(scope), to: Cadence
 
   @doc """
+  The project is back at work, so it may be woken again.
+
+  The other half of `stand_down/1`, and until `5f9fad45` it had no caller at
+  all — so a tap-out stood a project down permanently. Starting continuous work
+  again began a fresh timer, and every tick of it no-oped, because the delivery
+  gate still found the project in the stood-down list and nothing ever removed
+  it. A cadence that ticks and never delivers is indistinguishable from a
+  project nobody works on, which is the exact state story 1059 exists to make
+  impossible.
+
+  Called where somebody says the project is working again — a `main` agent
+  starting. Not from the boot sweep, which would make a deploy silently undo a
+  decision somebody made.
+  """
+  @spec resume(Scope.t()) :: :ok
+  defdelegate resume(scope), to: Cadence
+
+  @doc """
   Refuse to take a task off an agent that can do it.
 
   **Every call is refused today, and that is the specified behaviour.** The name
