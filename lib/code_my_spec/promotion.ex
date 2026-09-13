@@ -98,14 +98,26 @@ defmodule CodeMySpec.Promotion do
   linkage, and on roles being classified right — three ways to answer "yes" for
   a checkout that is behind.
 
-  Three conditions, all of them the checkout's own report:
+  Two conditions, both the checkout's own report, and both about ancestry
+  rather than sync:
 
-    * nothing on this checkout that main does not have
-    * nothing on main that this checkout does not have
-    * no uncommitted changes
+    * nothing on this checkout that main does not have (`commits_ahead_of_main`)
+    * no uncommitted changes (`tree_dirty`)
 
-  A worktree shares an object store with the checkout it was made from, so all
-  three are answerable from the copy alone. The machine that holds the disk
+  Deliberately not a third: whether main has commits this checkout does not
+  (`commits_behind_main`). That was gated once and it produced a demonstrable
+  false negative — a promotion lands, the story is satisfied, and an unrelated
+  push by somebody else on the shared box moves main forward and un-satisfies
+  it, even though the story's own commit is still exactly as much an ancestor
+  of main as it ever was. Git history only grows, so once
+  `commits_ahead_of_main` reads 0 for a checkout it stays true forever after —
+  the honest question is "is this checkout's work an ancestor of what main is
+  now", not "is this checkout caught up with everything else that has since
+  landed on main", and those two came apart the moment two agents shared a
+  box. See issue `cf06b908`.
+
+  A worktree shares an object store with the checkout it was made from, so
+  both are answerable from the copy alone. The machine that holds the disk
   measures them on every sync — the server has no `git` to run, and a graph
   computed inside the channel process cannot ask the channel.
 
@@ -203,9 +215,12 @@ defmodule CodeMySpec.Promotion do
     |> sync_verdict(copy)
   end
 
+  # `commits_behind_main` is deliberately not one of these — see the moduledoc
+  # on `running_copy_check/2`. Being behind main says somebody else's work has
+  # landed since; it says nothing about whether *this checkout's* work is
+  # still there, and it always still is once `ahead` has ever read 0.
   defp out_of_sync_reasons(%WorkingCopy{} = copy) do
     []
-    |> behind_reason(copy.commits_behind_main)
     |> ahead_reason(copy.commits_ahead_of_main)
     |> dirty_reason(copy.tree_dirty)
   end
@@ -215,29 +230,22 @@ defmodule CodeMySpec.Promotion do
 
   defp ahead_reason(reasons, _), do: reasons
 
-  defp behind_reason(reasons, n) when is_integer(n) and n > 0,
-    do: ["#{n} commit(s) on main are not here — merge main in first" | reasons]
-
-  defp behind_reason(reasons, _), do: reasons
-
   defp dirty_reason(reasons, true), do: ["uncommitted changes — commit them" | reasons]
   defp dirty_reason(reasons, _), do: reasons
 
-  defp sync_verdict([], _copy), do: {true, %{status: "In sync with main, tree clean"}}
+  defp sync_verdict([], _copy), do: {true, %{status: "Story's work is on main, tree clean"}}
 
-  # The counts travel with the sentence, because "behind only" is a materially
-  # different situation from the others and the reader cannot tell from the
-  # prose. Promotion merges this branch *into* the running copy and leaves this
-  # worktree where it was, so the state immediately after a successful promotion
-  # is behind-only — and the remedy there is to merge main in here, not to
-  # promote again. Told to promote, an agent restarts the shared dev server for
-  # nothing and is no less behind afterwards.
+  # `behind` still travels in the details even though it no longer gates —
+  # it is real information about the checkout ("merge main in before your next
+  # promotion") and dropping it from the report would make it harder to notice
+  # a checkout drifting far behind, even though it correctly stopped being a
+  # reason to fail *this* check.
   defp sync_verdict(reasons, %WorkingCopy{} = copy) do
     {false,
      %{
        reason:
-         "this checkout and main have diverged, so QA would not test what you " <>
-           "wrote: " <> Enum.join(Enum.reverse(reasons), "; ") <> ".",
+         "this checkout has work main does not: " <>
+           Enum.join(Enum.reverse(reasons), "; ") <> ".",
        out_of_sync: reasons,
        behind: copy.commits_behind_main || 0,
        ahead: copy.commits_ahead_of_main || 0,

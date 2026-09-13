@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponent do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :id, :integer, required: true
+    field :id, :string, required: true
   end
 
   @impl true

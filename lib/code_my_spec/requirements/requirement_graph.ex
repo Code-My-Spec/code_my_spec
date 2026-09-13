@@ -228,6 +228,26 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # fires" is a log line that does not appear — and on this project it did
       # not appear once. Reuse is the point of the function; a fallback nobody
       # can see the reason for is the function quietly not doing it.
+      {:topology_moved, _} ->
+        # Which of the three, because "the shape moved" is as unanswerable as
+        # "the entity set moved" was, and that one turned out to be a guard that
+        # could never hold. Printed as the parts themselves so two consecutive
+        # lines name the mover by the digest that differs between them.
+        # Flat and short, because a logfmt value is truncated at 500 bytes and an
+        # `inspect/1` of a map wraps: the first attempt logged `%{config:` and
+        # nothing else, which is a diagnostic that reports only that it ran.
+        parts =
+          ctx
+          |> Freshness.topology_parts(config)
+          |> Enum.sort()
+          |> Enum.map_join(" ", fn {part, digest} ->
+            "#{part}=#{binary_part(digest, 0, 8)}"
+          end)
+
+        Logger.info("[Requirements] full recompute — topology_moved #{parts}")
+
+        compute_and_publish(scope, ctx, config)
+
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
         compute_and_publish(scope, ctx, config)

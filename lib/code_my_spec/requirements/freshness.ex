@@ -158,6 +158,23 @@ defmodule CodeMySpec.Requirements.Freshness do
   """
   @spec topology(Preloader.context(), map()) :: String.t()
   def topology(ctx, config) do
+    ctx |> topology_parts(config) |> Enum.sort() |> hash()
+  end
+
+  @doc """
+  The same three inputs, hashed separately.
+
+  For the reader that has to say *which* of them moved. A single topology hash
+  can only report that the shape changed, and `topology_moved` turned out to be
+  the dominant cause of full recomputes on a live project — which is
+  unanswerable from one digest, in exactly the way `same_entity_set?` was
+  unanswerable before its guard named itself.
+
+  Sorted into the combined hash so the two can never disagree about what they
+  cover: `topology/2` is these parts and nothing else.
+  """
+  @spec topology_parts(Preloader.context(), map()) :: %{atom() => String.t()}
+  def topology_parts(ctx, config) do
     components =
       ctx.components
       |> Enum.map(&{&1.id, &1.type, &1.parent_component_id, dependency_ids(&1)})
@@ -165,11 +182,11 @@ defmodule CodeMySpec.Requirements.Freshness do
 
     stories = ctx.stories |> Enum.map(&{&1.id, &1.component_id}) |> Enum.sort()
 
-    hash([
-      {:components, components},
-      {:stories, stories},
-      {:config, config_shape(config)}
-    ])
+    %{
+      components: hash(components),
+      stories: hash(stories),
+      config: hash(config_shape(config))
+    }
   end
 
   # An unloaded association is not an empty one. Answering `[]` for it would
