@@ -49,6 +49,7 @@ defmodule CmsHarness.Agents.Engine do
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
+  alias CmsHarness.Mcp.Transport
 
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
@@ -491,7 +492,7 @@ defmodule CmsHarness.Agents.Engine do
   # could not authenticate gets one from `mcp_session/1`, and the agent still
   # works without it.
   defp disconnect_mcp(nil), do: :ok
-  defp disconnect_mcp(client), do: CmsHarness.Mcp.Transport.impl().disconnect(client)
+  defp disconnect_mcp(client), do: Transport.impl().disconnect(client)
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok
