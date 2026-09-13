@@ -215,9 +215,40 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     """
     Asked #{length(questions)} question(s). Question id: #{id}
 
-    #{waiting_advice(frame.assigns[:agent_id])}
+    #{waiting_advice(frame.assigns[:agent_id])}#{who_holds_it(frame)}
     """
   end
+
+  # Says when a question has reached a person, because it cannot be taken back.
+  #
+  # A question has no dismiss and no expiry — deliberately, and story 896 argues
+  # it well: one vanishing on a clock is a decision the user never made. The cost
+  # falls on anybody who asks one by accident, and it has fallen twice. A QA
+  # agent exercising the ask→answer round trip called this from a worktree of the
+  # real project, so its typed tool was bound to the real dev harness, and two
+  # "please ignore" probes are now permanent clutter in the owner's inbox that
+  # only they can clear (`08d4d7bd`).
+  #
+  # A typed tool cannot be pointed at another harness, so nothing about the call
+  # could have gone differently. What was missing is that the caller had no way
+  # to know, at the moment of asking, that this one was real.
+  #
+  # Only when the holder is the person. An agent's question routed to the main
+  # agent is ordinary traffic, and saying this every time would make the sentence
+  # worth ignoring.
+  defp who_holds_it(%{assigns: %{current_scope: %{user: %{id: _id}} = scope}} = frame),
+    do: held_by(MainAgent.holder_for(scope, frame.assigns[:agent_id]))
+
+  defp who_holds_it(_frame), do: ""
+
+  defp held_by("user") do
+    "\n\nThis one is waiting on a person, and a question cannot be withdrawn or " <>
+      "expired — only answered. If you meant to exercise the ask path rather than " <>
+      "actually ask, you have just written to somebody's real inbox and only they " <>
+      "can clear it: use a sandbox project's harness over HTTP instead."
+  end
+
+  defp held_by(_main_agent), do: ""
 
   # Same split as `send_message`: an agent we run stops and is woken by the answer,
   # a Claude Code session keeps running and polls.
