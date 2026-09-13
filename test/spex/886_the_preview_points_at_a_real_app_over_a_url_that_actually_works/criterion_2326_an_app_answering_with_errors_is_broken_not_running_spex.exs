@@ -54,7 +54,13 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
         })
         |> render_submit()
 
-        {:ok, _view, html} = live(conn, "/build/workspace")
+        {:ok, view, _html} = live(conn, "/build/workspace")
+
+        # Cloud now pays before it provisions (990/3400) — not this
+        # criterion's subject, so cleared the way the browser's own Stripe
+        # hook would, to reach the running workspace this scenario needs
+        # as its starting point.
+        html = render_hook(view, "payment_confirmed", %{})
 
         assert html =~ "It&#39;s running.",
                "a serving app should say so before we break it"
@@ -65,6 +71,10 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
       when_ "the app starts raising on every request", context do
         Fixtures.put_workspace_serving(:erroring)
 
+        # The workspace already exists from the mount above, so this reload
+        # shows its current status directly — a project with a workspace
+        # already provisioned is never asked to pay again just to look at
+        # the page again.
         {:ok, _view, html} = live(context.conn, "/build/workspace")
 
         {:ok, Map.put(context, :html, html)}

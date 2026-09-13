@@ -52,6 +52,11 @@ defmodule CodeMySpecSpex.Story990.Criterion8217Spex do
       when_ "the workspace finishes coming up", context do
         {:ok, view, _html} = live(context.conn, "/build/workspace")
 
+        # Cloud now pays before it provisions (990/3400) — not this
+        # criterion's subject, so cleared the way the browser's own Stripe
+        # hook would, to reach the running workspace this scenario asserts.
+        render_hook(view, "payment_confirmed", %{})
+
         {:ok, Map.merge(context, %{view: view, html: await(view, "It&#39;s running.")})}
       end
 

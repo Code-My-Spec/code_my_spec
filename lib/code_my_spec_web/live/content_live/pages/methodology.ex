@@ -586,7 +586,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             </p>
             <div class="mt-9 flex flex-wrap items-center gap-5">
               <a href={~p"/users/register"} class="btn btn-primary">Try CodeMySpec</a>
-              <a href={ExternalLinks.cal_john()} class="link link-hover text-base-content/80 font-medium">
+              <a
+                href={ExternalLinks.cal_john()}
+                class="link link-hover text-base-content/80 font-medium"
+                data-event-label="cta-service-inquiry-methodology"
+              >
                 Talk to John →
               </a>
             </div>

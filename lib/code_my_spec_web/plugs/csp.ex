@@ -35,14 +35,18 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # Stripe's own iframe, which is what keeps card details off our origin.
       # Without these the form silently never mounts — the page renders, the
       # element does not, and nothing in the server logs says why.
-      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com",
+      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com https://www.clarity.ms",
       # Previews are framed from a subdomain of our own domain, which is not
       # `'self'` — a different host is a different origin however closely
       # related. Without this the app is willing to be framed and we refuse to
       # frame it, which looks identical to the app refusing: a blank pane, no
       # server-side error, and an iframe element that inspects perfectly.
       "frame-src 'self' #{PreviewAddress.csp_origin()} https://js.stripe.com https://hooks.stripe.com",
-      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://api.stripe.com",
+      # Clarity's data collection rotates across regional subdomains
+      # (https://*.clarity.ms), not just www — a single hostname here silently
+      # drops session data with no visible error, the exact failure mode this
+      # policy exists to avoid for every other analytics vendor listed.
+      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://api.stripe.com https://*.clarity.ms",
       "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
       # Video is served from the same bucket as the images, but media-src does
       # not inherit from img-src — without this it falls back to default-src
@@ -51,7 +55,10 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # that simply never plays.
       "media-src 'self' https://images.codemyspec.com",
       "style-src 'self' 'unsafe-inline'",
-      "font-src 'self'",
+      # data: is for Clarity, which injects data-URI fonts as part of its
+      # recording instrumentation (microsoft/clarity#688) — without it,
+      # Clarity's script still loads but throws CSP errors afterward.
+      "font-src 'self' data:",
       "object-src 'none'",
       "base-uri 'self'",
       "frame-ancestors 'self'"

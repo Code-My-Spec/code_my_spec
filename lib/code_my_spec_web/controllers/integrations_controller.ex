@@ -32,7 +32,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
   Uses minimal scopes (email/profile only) since this is for identity.
   Users can connect with full scopes later from settings.
   """
-  def login(conn, %{"provider" => provider_str}) do
+  def login(conn, %{"provider" => provider_str} = params) do
     provider = String.to_existing_atom(provider_str)
 
     case Integrations.authorize_login_url(provider) do
@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
         |> put_session(:oauth_session_params, session_params)
         |> put_session(:oauth_provider, provider)
         |> put_session(:oauth_flow, :login)
+        |> put_return_to(params["return_to"])
         |> redirect(external: url)
 
       {:error, reason} ->
@@ -138,7 +139,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
       conn =
         conn
-        |> put_session(:user_return_to, ~p"/app")
+        |> put_session(:user_return_to, get_session(conn, :user_return_to) || ~p"/app")
         |> maybe_flash_confirmed(status)
 
       UserAuth.log_in_user(conn, user, %{"remember_me" => "true"})
@@ -251,6 +252,19 @@ defmodule CodeMySpecWeb.IntegrationsController do
     do: put_flash(conn, :info, "User confirmed successfully.")
 
   defp maybe_flash_confirmed(conn, _), do: conn
+
+  # Local paths only — a bare `params["return_to"]` handed straight to the
+  # session would make this an open redirect. `//host/path` is a
+  # protocol-relative URL a browser follows off-site, so exactly one leading
+  # slash is required; anything else (no leading slash, two of them, not a
+  # path at all) is refused.
+  defp put_return_to(conn, "/" <> rest = path) when byte_size(rest) > 0 do
+    if String.starts_with?(rest, "/"),
+      do: conn,
+      else: put_session(conn, :user_return_to, path)
+  end
+
+  defp put_return_to(conn, _invalid), do: conn
 
   defp provider_name(:github), do: "GitHub"
   defp provider_name(:gitlab), do: "GitLab"

@@ -25,8 +25,55 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     # dragging the rest of the suite with it.
     CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
 
+    stub_stripe()
+
     %{conn: log_in_user(conn, user_fixture())}
   end
+
+  # Cloud now pays before it provisions (990/3400). `with_confirmed_plan/1`
+  # always ends up cloud (the default location), so every test in this file
+  # needs a working Stripe stub to get past `Billing.start_subscription/2` —
+  # same shape `CodeMySpec.BillingTest` records by hand.
+  defp stub_stripe do
+    Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
+      secret_key: "sk_test_workspace",
+      plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+    )
+
+    Application.put_env(:code_my_spec, CodeMySpec.Billing,
+      webhook_secret: "whsec_workspace",
+      light_price_id: "price_light_workspace",
+      pro_price_id: "price_pro_workspace"
+    )
+
+    Req.Test.stub(CodeMySpec.Billing.StripeClient, &stripe_response/1)
+
+    on_exit(fn ->
+      Application.delete_env(:code_my_spec, CodeMySpec.Billing.StripeClient)
+      Application.delete_env(:code_my_spec, CodeMySpec.Billing)
+    end)
+  end
+
+  defp stripe_response(%{request_path: "/v1/customers"} = conn) do
+    Plug.Conn.put_resp_content_type(conn, "application/json")
+    |> Plug.Conn.send_resp(200, Jason.encode!(%{"id" => "cus_workspace"}))
+  end
+
+  defp stripe_response(%{request_path: "/v1/subscriptions"} = conn) do
+    body = %{
+      "id" => "sub_workspace",
+      "latest_invoice" => %{
+        "confirmation_secret" => %{"client_secret" => "pi_workspace_secret"}
+      }
+    }
+
+    Plug.Conn.put_resp_content_type(conn, "application/json")
+    |> Plug.Conn.send_resp(200, Jason.encode!(body))
+  end
+
+  # Clears the payment step the way the browser's own Stripe hook would, so
+  # a test not about payment can reach the workspace it actually needs.
+  defp pay(view), do: render_hook(view, "payment_confirmed", %{})
 
   defp fake(opts), do: start_supervised!({FakeWorkspaceRunner, opts})
 
@@ -90,6 +137,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       assert html =~ "a booking tool for hair salons"
 
+      pay(view)
       assert render_async_progress(view) =~ "Fetching dependencies"
 
       finish_boot()
@@ -100,6 +148,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       conn = with_confirmed_plan(conn)
 
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
 
       html = eventually(view, "It&#39;s running.")
 
@@ -117,6 +166,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       conn = with_confirmed_plan(conn)
 
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
 
       html = eventually(view, "didn&#39;t come up")
 
@@ -133,6 +183,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       conn = with_confirmed_plan(conn)
 
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
       eventually(view, "Fetching dependencies")
 
       # The visitor closes the tab while it is still coming up.
@@ -152,6 +203,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       conn = with_confirmed_plan(conn)
 
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
       eventually(view, "It&#39;s running.")
 
       ref = Process.monitor(view.pid)
@@ -177,6 +229,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       conn = with_confirmed_plan(conn)
 
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
       eventually(view, "It&#39;s running.")
 
       scope = :sys.get_state(view.pid).socket.assigns.scope

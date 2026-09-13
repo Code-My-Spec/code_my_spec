@@ -1,7 +1,11 @@
-defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
+defmodule CodeMySpecSpex.Story990.Criterion3404Spex do
   @moduledoc """
   Story 990 — Guided intake takes a visitor from an idea to a running app.
-  Criterion 8220 — The interview pays out within four questions.
+  Criterion 3404 — The interview pays out within four questions.
+
+  (Written under this story's earlier numbering as criterion 8220; renamed
+  to track the criterion after a Three Amigos renumbering. Same scenario,
+  same file history.)
 
   Rule: the interview shows the visitor its derived rules within four
   questions.

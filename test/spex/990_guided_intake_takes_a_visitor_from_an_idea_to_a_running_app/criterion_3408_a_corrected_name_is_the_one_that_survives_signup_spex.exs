@@ -1,7 +1,11 @@
-defmodule CodeMySpecSpex.Story990.Criterion8212Spex do
+defmodule CodeMySpecSpex.Story990.Criterion3408Spex do
   @moduledoc """
   Story 990 — Guided intake takes a visitor from an idea to a running app.
-  Criterion 8212 — A corrected name is the one that survives signup.
+  Criterion 3408 — A corrected name is the one that survives signup.
+
+  (Written under this story's earlier numbering as criterion 8212; renamed
+  to track the criterion after a Three Amigos renumbering. Same scenario,
+  same file history.)
 
   Rule: the names the visitor confirmed are the names that get created.
 
