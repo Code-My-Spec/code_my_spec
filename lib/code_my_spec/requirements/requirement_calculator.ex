@@ -227,31 +227,23 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # had already corrected, because a stale list is indistinguishable from a
   # current one when nothing says so — and for "nesting too deep" there is no
   # idempotent second fix, so it degrades correct code on every pass.
+  # The component's own problem count, and nothing else.
+  #
+  # Freshness used to be half of this verdict, and storing the product of a
+  # per-component count and a project-wide boolean is what made an analyzer
+  # finishing cost 1116 of 1347 requirements. The count is durable and belongs
+  # in a row; whether the run behind it is still current is a qualifier applied
+  # when the graph is served — `RequirementGraph.serve/2`. Criterion 3448.
+  #
+  # The asymmetry the old table encoded is unchanged, only relocated: a stale
+  # count above zero is still reported (it was true of recent code), and a stale
+  # zero is still refused (a clean result from a run that never saw the current
+  # code is a false pass). The overlay only ever downgrades, so nothing here can
+  # be turned into a pass by it.
   defp problem_verdict(scope, entity, source, ctx, noun) do
-    count = get_problem_count(scope, entity_id(entity), source, ctx)
-
-    case {analysis_fresh?(scope, source, ctx), count} do
-      {true, 0} ->
-        {true, %{status: "No #{noun}s"}}
-
-      {true, n} ->
-        {false, %{reason: "#{n} #{noun}(s)", count: n}}
-
-      {false, 0} ->
-        {false,
-         %{
-           reason:
-             "#{source} results not current — the last completed run predates your " <>
-               "changes, so a clean result from it proves nothing"
-         }}
-
-      {false, n} ->
-        {false,
-         %{
-           reason: "#{n} #{noun}(s), from the last completed #{source} run",
-           count: n,
-           stale: true
-         }}
+    case get_problem_count(scope, entity_id(entity), source, ctx) do
+      0 -> {true, %{status: "No #{noun}s", analysis_source: source}}
+      n -> {false, %{reason: "#{n} #{noun}(s)", count: n, analysis_source: source}}
     end
   end
 
@@ -566,13 +558,4 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     )
     |> Repo.aggregate(:count)
   end
-
-  # Freshness of a source's latest analysis run vs the current inputs.
-  # Preloaded per project; falls back to a direct ledger check for legacy
-  # callers without a ctx.
-  defp analysis_fresh?(_scope, source, %{analysis_fresh: fresh}) when is_map(fresh) do
-    Map.get(fresh, source, false)
-  end
-
-  defp analysis_fresh?(scope, source, _ctx), do: CodeMySpec.Analysis.fresh?(scope, source)
 end

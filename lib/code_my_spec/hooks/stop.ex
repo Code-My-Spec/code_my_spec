@@ -28,7 +28,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
@@ -620,7 +620,17 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       true ->
-        case NodeRepository.actionable_count(scope) do
+        # The same count the menu renders two lines below, and deliberately.
+        #
+        # `NodeRepository.actionable_count/1` reads `n.satisfied` straight from
+        # the rows, which now hold the *durable* verdict — a component's own
+        # problem count, without the analysis-freshness qualifier that
+        # `RequirementGraph.serve/2` applies on the way to a reader. So a
+        # `tests_passing` whose run has gone stale reads satisfied here and
+        # unsatisfied in the menu: this branch would tell a continuous agent its
+        # work was finished while the menu in the same response listed the work.
+        # Criterion 3448 is what forbids those two disagreeing.
+        case Requirements.actionable_count(scope, nil) do
           n when n > 0 ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
