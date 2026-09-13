@@ -11,10 +11,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   import CodeMySpecWeb.IntakeComponents
 
-  alias CodeMySpec.{Agents, Billing, Intake, UserPreferences, Workspaces}
   alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Billing
+  alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Interview
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.Workspace
 
   require Logger

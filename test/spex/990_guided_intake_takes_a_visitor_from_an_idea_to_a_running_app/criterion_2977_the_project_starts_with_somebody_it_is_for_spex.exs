@@ -81,9 +81,10 @@ defmodule CodeMySpecSpex.Story990.Criterion2977Spex do
     assert html =~ project_name,
            "expected the project intake just created to appear on /app/projects, got: #{html}"
 
-    case Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) do
-      [_, id] -> id
-      nil -> flunk("could not find any project link on /app/projects, got: #{html}")
-    end
+    [_, id] =
+      Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) ||
+        raise("could not find any project link on /app/projects, got: #{html}")
+
+    id
   end
 end
