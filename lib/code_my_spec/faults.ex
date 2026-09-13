@@ -60,6 +60,8 @@ defmodule CodeMySpec.Faults do
   @faults %{
     digest_unavailable: "the main agent's digest cannot be assembled (criterion 3333)",
     intake_shaper_fails: "the intake shaper errors instead of answering (criterion 3375)",
+    graph_recompute_fails:
+      "this project's graph watcher raises instead of recomputing (criterion 3248)",
     agent_stays_silent:
       "this agent (key is its id) counts as never having spoken, so a restart " <>
         "does not resolve itself (criteria 3292, 3293, 3308)"

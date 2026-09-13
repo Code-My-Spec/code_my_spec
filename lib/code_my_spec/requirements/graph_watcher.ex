@@ -59,6 +59,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.RequirementGraph
@@ -283,6 +284,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   defp schedule(state), do: state
 
   defp recompute(state) do
+    refuse_if_faulted(state.project_id)
+
     {_graph, actionable, _computed_at} =
       RequirementGraph.cached_graph_with_actionable(state.scope)
 
@@ -317,6 +320,40 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   rescue
     error ->
       recompute_failure(state, error)
+  end
+
+  # The one thing a recompute could not be made to do: fail for a reason that is
+  # actually a fault.
+  #
+  # `3ad5e45c` closed a day of looking with "every remaining path either
+  # succeeds or means the project is gone" — `Preloader.load/1` is `Repo.all`,
+  # the file side channel is gone, and `wake_project_roles/1` runs in a Task
+  # whose failures never reach the rescue below. The machinery criterion 3248
+  # describes is real and right: a genuine fault logs at `:error` and lands on
+  # `status/1` as `last_error`, which the requirements graph page renders.
+  # Nothing exercised it, and the seam that looked like one turned out to be
+  # completion.
+  #
+  # That issue named two ways forward and asked for a decision. This is the
+  # second: a deliberate fault, keyed on the project so it reaches one watcher.
+  #
+  # A raise rather than an error tuple, because the thing under test is the
+  # `rescue` — a recompute that fails is an exception escaping
+  # `cached_graph_with_actionable/1`, and a seam that returned a tuple would
+  # exercise a path production never takes.
+  #
+  # Note for anyone injecting this during a spex rather than live: the failure
+  # logs at `:error`, and `SexySpex.ErrorCapture` fails a run on any logged
+  # error — including one from a straggler watcher landing in somebody else's
+  # spex. That is the same crossfire this issue records.
+  defp refuse_if_faulted(project_id) do
+    raise_if(Faults.active?(project_id, :graph_recompute_fails))
+  end
+
+  defp raise_if(false), do: :ok
+
+  defp raise_if(true) do
+    raise RuntimeError, "graph recompute failed (fault injected for this project)"
   end
 
   # A watcher whose project is gone has finished, not failed.
