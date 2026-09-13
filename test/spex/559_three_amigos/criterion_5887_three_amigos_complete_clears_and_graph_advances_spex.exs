@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecTest.GraphHelpers, only: [settle_graph: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -100,6 +101,17 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post("/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
+
+        # The stop hook can start or wake this project's GraphWatcher (a
+        # continuous-mode toggle is one of its two triggers), whose recompute
+        # runs on a debounce timer, off the test process, against a DB
+        # connection this test's sandbox owns. Left un-settled, that timer
+        # can fire after the test ends and the sandbox connection is gone —
+        # `DBConnection.ConnectionError: owner ... exited` — an intermittent
+        # crash on a loaded box, not a signal about story 559 itself.
+        # `settle_graph/1` does the pending pass now, synchronously, and is a
+        # no-op if nothing is watching.
+        settle_graph(context)
 
         {:ok, Map.put(context, :stop_response, response)}
       end

@@ -378,6 +378,13 @@ defmodule CodeMySpecWeb.Router do
 
       live_dashboard "/dashboard", metrics: CodeMySpecWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+
+      # Live view of `/dev/state`'s own data — every project's working
+      # copies, what the ledger says is running/queued per analyzer source,
+      # and story 839's "current run, next run" ceiling per source. Built
+      # to watch the queue-accumulation investigation live instead of
+      # polling `/dev/state` by hand.
+      live "/analysis", CodeMySpecWeb.DevAnalysisLive
     end
 
     # Reaching an agent that is not on your project, from a terminal.
