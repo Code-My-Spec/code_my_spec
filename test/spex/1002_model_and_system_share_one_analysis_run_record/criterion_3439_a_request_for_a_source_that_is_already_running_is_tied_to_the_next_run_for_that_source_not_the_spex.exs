@@ -85,10 +85,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3439Spex do
         assert result_1["status"] == "ok",
                "the premise failed: the run itself did not succeed. Got: #{inspect(result_1)}"
 
-        assert Map.delete(result_2, "run_id") == Map.delete(result_1, "run_id"),
-               "the tied request has to receive the exact same real result the " <>
-                 "primary one does (run_id aside — each request keeps its own) " <>
-                 "— never a synthetic status carrying no data. Got: #{inspect(result_2)}"
+        assert_same_real_result(result_1, result_2)
 
         {:ok, context}
       end
