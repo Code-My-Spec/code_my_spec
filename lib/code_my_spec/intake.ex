@@ -267,6 +267,28 @@ defmodule CodeMySpec.Intake do
   def change_names(%Plan{} = plan, attrs \\ %{}), do: Plan.names_changeset(plan, attrs)
 
   @doc """
+  Whether a visitor has already confirmed the account/project names.
+
+  The same signal `confirmed_names/2` in `transcript/3` uses: `location` is
+  only ever set by `names_changeset` (via `confirm_names/2`), never by the
+  planner's own write, so its presence means a confirmation actually
+  happened rather than the plan merely holding freshly-generated guesses.
+
+  Public because the LiveView needs it too — a mount is a fresh process with
+  no memory of what a previous process already assigned, so whether to show
+  the signup card has to be re-derived from the row, not carried in a
+  transient socket assign (990/3425 follow-up: reloading after confirming
+  names was flipping the signup card back to the plan-confirmation card).
+  """
+  @spec names_confirmed?(Plan.t()) :: boolean()
+  def names_confirmed?(%Plan{
+        location: location,
+        account_name: account,
+        project_name: project
+      }),
+      do: not is_nil(location) and is_binary(account) and is_binary(project)
+
+  @doc """
   Everything said so far, in the order it was said.
 
   Derived from the plan row rather than accumulated anywhere, which is what
@@ -279,16 +301,43 @@ defmodule CodeMySpec.Intake do
   is what made the visitor's own description the only thing on screen that was
   not part of a conversation.
 
-  `turns` and `question` are whatever the caller is holding live: the shaping
-  turns before the plan, the interview turns after it. Both are the same shape,
-  because to the visitor they are the same conversation.
+  The shaping half — turns and pending question — comes off `plan` itself
+  rather than from the caller: both are `Plan` schema state
+  (`shaping_turns`, `pending_question`), so deriving them here is what keeps
+  the confirmation turn in its actual chronological place. `turns` and
+  `question` here are only ever the *interview* half, which happens strictly
+  after confirmation and has nowhere else to live (it is a separate `Turn`
+  schema the caller already queried) — passing shaping data through these
+  used to let it land after `confirmed_names/2` regardless of when shaping
+  vs. confirming actually happened, so a visitor who confirmed names before
+  the interview even started read as having answered its first question with
+  their account name (990/3431 follow-up).
   """
   @spec transcript(Plan.t(), [map()], String.t() | nil) :: [
           %{from: :agent | :visitor, text: String.t()}
         ]
-  def transcript(%Plan{} = plan, turns \\ [], question \\ nil) do
+  def transcript(%Plan{} = plan, interview_turns \\ [], interview_question \\ nil) do
     [%{from: :agent, text: "What do you want to build?"}]
     |> said(plan.description)
+    |> shaping(plan)
+    |> confirmed_names(plan)
+    |> interview(interview_turns, interview_question)
+  end
+
+  defp shaping(transcript, plan) do
+    transcript
+    |> then(fn transcript ->
+      Enum.reduce(turns(plan), transcript, fn turn, acc ->
+        acc
+        |> said(turn.question, :agent)
+        |> said(turn.answer)
+      end)
+    end)
+    |> said(plan.pending_question, :agent)
+  end
+
+  defp interview(transcript, turns, question) do
+    transcript
     |> then(fn transcript ->
       Enum.reduce(turns, transcript, fn turn, acc ->
         acc
@@ -297,31 +346,20 @@ defmodule CodeMySpec.Intake do
       end)
     end)
     |> said(question, :agent)
-    |> confirmed_names(plan)
   end
 
   # An action taken in the panel is a turn in the conversation, not a silent
   # write (990/3417) — `confirm_names` used to update the row and say nothing,
   # so the agent's last line kept referring to its own superseded guess.
-  #
-  # `location` is the signal a confirmation actually happened rather than the
-  # plan merely having been generated: `plan_changeset` (the planner's own
-  # write) never touches it, and `names_changeset` (only reachable from
-  # `confirm_names`) always sets it, defaulting it when the visitor didn't
-  # choose one. So a plan sitting on its freshly-generated guesses, not yet
-  # confirmed, has `location: nil` and gets no turn here.
-  defp confirmed_names(transcript, %Plan{
-         location: location,
-         account_name: account,
-         project_name: project
-       })
-       when not is_nil(location) and is_binary(account) and is_binary(project) do
-    transcript
-    |> said("Call it #{account} — the project is #{project}.")
-    |> said("Got it — #{account}'s #{project} it is.", :agent)
+  defp confirmed_names(transcript, %Plan{account_name: account, project_name: project} = plan) do
+    if names_confirmed?(plan) do
+      transcript
+      |> said("Call it #{account} — the project is #{project}.")
+      |> said("Got it — #{account}'s #{project} it is.", :agent)
+    else
+      transcript
+    end
   end
-
-  defp confirmed_names(transcript, %Plan{}), do: transcript
 
   defp said(transcript, text, from \\ :visitor)
 
