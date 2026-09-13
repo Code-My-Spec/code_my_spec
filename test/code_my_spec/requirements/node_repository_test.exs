@@ -321,6 +321,38 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       assert Repo.all(Edge) == []
     end
 
+    # A partial recompute resolves ids only for the entities it recomputed, and
+    # hands `replace_edges/3` the whole edge set. An edge leading out of a
+    # recomputed node into a kept one therefore cannot be rebuilt on that pass —
+    # its `to` resolves to nothing — and must be left alone rather than deleted.
+    #
+    # It was deleted. `delete_edges_outside/2` filtered on `from` alone, so
+    # every such edge matched the filter and could never be in `keep`, and each
+    # partial recompute silently dropped the edges leading out of what it
+    # touched. `verify_round_trip/4` reported it from the first partial onward —
+    # "13788 edges only in the payload" — and full recomputes kept restoring
+    # them, so the stored totals looked right in between and hid it for hours.
+    #
+    # Nothing covered this: every other test here writes every node it has
+    # edges for, which is the whole-graph pass and the case that always worked.
+    test "a partial write leaves an edge into a node it did not write", %{scope: scope} do
+      {keys, from, to} = two_nodes(scope)
+      {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
+
+      # The next pass recomputes only `from`. `to` is kept, so its id is absent
+      # from this pass's map — exactly what `recompute_stale/3` hands over.
+      partial = Map.take(keys, [from])
+
+      NodeRepository.replace_edges(scope, [%{from: from, to: to}], partial)
+
+      assert [survivor] = Repo.all(Edge),
+             "a partial write deleted an edge it could not rewrite — the edges " <>
+               "leading out of every recomputed node into a kept one go with it"
+
+      assert survivor.from_requirement_id == keys[from]
+      assert survivor.to_requirement_id == keys[to]
+    end
+
     # `compute_edges/3` already filters to known nodes, so an unknown endpoint
     # here means the two passes disagree. Dropping it beats a foreign key error.
     test "an edge naming a node outside the graph is dropped", %{scope: scope} do

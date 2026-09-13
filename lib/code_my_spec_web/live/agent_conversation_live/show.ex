@@ -118,12 +118,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp mount_conversation(socket, project, conversation_id) do
     scope = with_active_project(socket.assigns.current_scope, project)
 
-    # Which agent this project's own is, asked once and kept. It answers three
-    # questions — the conversation to open when the URL names none, the agent id
-    # the page marks as the project's, and why there is nothing to talk to when
-    # there is nothing to talk to — and `ensure/1` can *start* an agent, which
-    # is not something to redo on every agent you click through to.
-    socket = assign_new(socket, :main, fn -> MainAgentConversation.ensure(scope) end)
+    # Which agent this project's own is, asked once per project and kept. It
+    # answers three questions — the conversation to open when the URL names
+    # none, the agent id the page marks as the project's, and why there is
+    # nothing to talk to when there is nothing to talk to — and `ensure/1` can
+    # *start* an agent, which is not something to redo on every agent you click
+    # through to.
+    #
+    # Per *project*, not per socket. `assign_new/3` keeps whatever is already
+    # there, and this LiveView survives navigation between projects — so a main
+    # agent resolved for one project stayed assigned while the page rendered
+    # another, and "the project's own agent" named somebody else's. Only ever
+    # visible to somebody who reaches two projects, which is why it went unseen
+    # and why QA found it (`21325686`).
+    socket = assign_main(socket, project, scope)
 
     conversation = resolve_conversation(scope, conversation_id, socket.assigns.main)
     messages = messages_for(conversation)
@@ -261,12 +269,41 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # the default, and a name that resolves to nothing falls back rather than
   # erroring: a stale link from a deleted conversation should land you on your
   # agent, not on a broken page.
+  # Keyed on the project it was resolved for, so navigating to another one asks
+  # again instead of keeping an answer to a different question.
+  defp assign_main(socket, project, scope) do
+    socket
+    |> assign_new(:main_for, fn -> project.id end)
+    |> then(&main_for_this_project(&1, project, scope))
+  end
+
+  defp main_for_this_project(%{assigns: %{main_for: id}} = socket, %{id: id}, scope),
+    do: assign_new(socket, :main, fn -> MainAgentConversation.ensure(scope) end)
+
+  defp main_for_this_project(socket, project, scope) do
+    socket
+    |> assign(:main_for, project.id)
+    |> assign(:main, MainAgentConversation.ensure(scope))
+  end
+
   defp resolve_conversation(_scope, nil, main), do: main_conversation(main)
 
-  defp resolve_conversation(scope, conversation_id, main) do
-    Conversations.get_agent_conversation_by_id(scope, conversation_id) ||
-      main_conversation(main)
-  end
+  # A named conversation that does not resolve is not an invitation to show a
+  # different one.
+  #
+  # This used to fall through to the project's main agent, and the page rendered
+  # it without a word: the URL named one agent, the transcript and the
+  # pause control belonged to another, and a missing agent looked exactly like
+  # an agent that is not working. QA hit it twice trying to confirm criterion
+  # 3293 and reasonably concluded the scope was wrong — it is not, the scope is
+  # corrected on the line above this call. The substitution was the whole of it
+  # (`21325686`).
+  #
+  # `nil` is already a state this page handles, because the no-conversation
+  # clause above can produce it. So an unresolvable id renders as nothing to
+  # show rather than as somebody else's thread, and `handle_params/3` says so.
+  defp resolve_conversation(scope, conversation_id, _main),
+    do: Conversations.get_agent_conversation_by_id(scope, conversation_id)
 
   defp main_conversation({:ok, _agent, conversation}), do: conversation
   defp main_conversation(_error), do: nil
@@ -1778,5 +1815,4 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     </div>
     """
   end
-
 end

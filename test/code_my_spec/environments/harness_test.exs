@@ -34,6 +34,12 @@ defmodule CodeMySpec.Environments.HarnessTest do
     tag in [
       :harness_not_registered,
       :harness_timeout,
+      # Split back out of `:harness_timeout`: registered, took the request, and
+      # the process serving it died before answering. A member of this family
+      # like the rest — the harness could not be reached — but distinct from a
+      # timeout, because waiting longer is the fix for one and irrelevant to
+      # the other. See `Analysis.harness_fs_request/4`.
+      :harness_gone,
       :harness_self_call,
       :harness_registry_down,
       :harness_not_configured,

@@ -209,8 +209,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.IndexTest do
       assert html =~ "can&#39;t be blank",
              "a refusal that does not say what was wrong leaves the person retyping the same thing."
 
+      # Scoped to the project, the way every real caller reaches this: the show
+      # page sets `active_project_id` from the URL before reading. The lookup
+      # narrowed to the project after one project's transcript was found
+      # rendering under another's URL (7dbf9709), so a scope carrying only the
+      # account no longer resolves anything.
+      project_scope = %{scope | active_project: project, active_project_id: project.id}
+
       assert Conversations.display_name(
-               Conversations.get_agent_conversation_by_id(scope, conversation.id)
+               Conversations.get_agent_conversation_by_id(project_scope, conversation.id)
              ) == generated
     end
   end

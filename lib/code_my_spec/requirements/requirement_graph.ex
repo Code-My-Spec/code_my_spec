@@ -280,7 +280,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
-         {_, stale} when stale != :all <-
+         {_, {:partial, stale}} <-
            {:everything_stale, stale_entities(stored_nodes, ctx)} do
       reduced = reduce_to(ctx, stale)
 
@@ -364,6 +364,22 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         compute_and_publish(scope, ctx, config)
 
+      # The counts that decided it, for the same reason `topology_moved` prints
+      # its parts one clause up: `everything_stale` on its own says a full
+      # recompute happened and nothing about why, and "why" here is a
+      # comparison between two numbers that are not otherwise recoverable.
+      #
+      # Cost of not having them: three wrong hypotheses in one sitting, each
+      # plausible and each taking a database query to rule out — entities that
+      # never produce rows counting as new forever, a component family
+      # expanding to the whole project, a vantage small enough that an ordinary
+      # stale set clears its bar. The line below distinguishes all three, and
+      # the last one is not a fault at all: a copy holding twenty entities has
+      # nothing to reuse, and recomputing it whole is both correct and cheap.
+      {:everything_stale, {:all, why}} ->
+        Logger.info("[Requirements] full recompute — everything_stale #{why}")
+        compute_and_publish(scope, ctx, config)
+
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
         compute_and_publish(scope, ctx, config)
@@ -444,12 +460,38 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       )
       |> MapSet.reject(&Map.has_key?(recorded, &1))
 
+    moved = stale
     stale = MapSet.union(stale, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    if MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0,
-      do: :all,
-      else: stale
+    verdict(stale, entities, moved, appeared, ctx)
+  end
+
+  # `{:partial, set}` or `{:all, why}`, rather than a set or the bare atom the
+  # guard used to compare against. The reason travels with the verdict because
+  # the caller logs it and cannot reconstruct it: by then `recorded` and
+  # `appeared` are out of scope, and the two numbers being compared are the
+  # whole of the decision.
+  defp verdict(stale, entities, moved, appeared, ctx) do
+    all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
+
+    if all?,
+      do: {:all, why_all(stale, entities, moved, appeared, ctx)},
+      else: {:partial, stale}
+  end
+
+  # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
+  # of an inspected map wraps — `topology_moved` learned that the expensive way.
+  #
+  # `appeared` separated from `moved` because they are different faults with
+  # different fixes. `appeared` is an entity the rows have never held, and a
+  # population of those that never shrinks is a guard that can never pass —
+  # which is exactly how `entity_set_moved` died. `moved` is fingerprints
+  # genuinely differing, which is the honest reason to recompute.
+  defp why_all(stale, entities, moved, appeared, ctx) do
+    "stale=#{MapSet.size(stale)} >= recorded=#{MapSet.size(entities)} " <>
+      "(moved=#{MapSet.size(moved)} appeared=#{MapSet.size(appeared)}) " <>
+      "ctx=#{length(ctx.components)}c/#{length(ctx.stories)}s"
   end
 
   # What each entity's inputs say right now.

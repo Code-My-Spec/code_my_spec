@@ -382,19 +382,59 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     Repo.transaction(fn ->
       delete_edges_outside(node_ids, rows)
 
-      {count, _} =
-        Repo.insert_all(Edge, stamp(rows),
-          on_conflict: :nothing,
-          conflict_target: [:from_requirement_id, :to_requirement_id]
-        )
-
-      count
+      insert_every(Edge, stamp(rows),
+        on_conflict: :nothing,
+        conflict_target: [:from_requirement_id, :to_requirement_id]
+      )
     end)
   end
 
   defp stamp(rows) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     Enum.map(rows, &Map.put(&1, :inserted_at, now))
+  end
+
+  # Postgres binds one parameter per column per row, and the wire protocol
+  # counts them in a 16-bit field: 65535 for the whole statement, no matter how
+  # the rows are shaped. An `insert_all` that crosses it does not get slower, it
+  # refuses — "postgresql protocol can not handle 71982 parameters, the maximum
+  # is 65535" — before touching the database.
+  #
+  # Which made it a livelock rather than a failed write. The recompute that
+  # produced those rows stores nothing, so the next read finds the graph stale
+  # and computes it again, and fails again, forever: 44 failures and 54 full
+  # recomputes in 45 minutes.
+  #
+  # Per vantage rather than per project, which is what hid it. Rows are scoped
+  # to a working copy, so a project holds one graph per checkout and only the
+  # widest crosses the limit — four checkouts of the project this was found on
+  # sat at 9,346 to 14,571 edges and reused their rows normally, while the
+  # fifth at 23,994 had never once managed to write any. Both were logged side
+  # by side, so the partial-recompute count looked healthy the whole time.
+  # 71982 is that fifth graph exactly: 23,994 edges at three columns.
+  #
+  # Chunked on the row's own width rather than a fixed row count, so a column
+  # added to either table cannot quietly walk the limit back under us. The
+  # budget leaves headroom against the hard cap for the same reason.
+  # Overridable so the chunking can be tested by crossing a boundary at four
+  # rows instead of twenty thousand. A test that has to build a graph the size
+  # of the one that broke is a test nobody runs.
+  @default_bind_budget 60_000
+
+  defp bind_budget,
+    do: Application.get_env(:code_my_spec, :bind_budget, @default_bind_budget)
+
+  defp insert_every(_schema, [], _opts), do: 0
+
+  defp insert_every(schema, rows, opts) do
+    per_row = rows |> hd() |> map_size() |> max(1)
+
+    rows
+    |> Enum.chunk_every(max(div(bind_budget(), per_row), 1))
+    |> Enum.reduce(0, fn chunk, total ->
+      {count, _} = Repo.insert_all(schema, chunk, opts)
+      total + count
+    end)
   end
 
   # Only edges among *this* graph's nodes are ours to remove. Deleting by
@@ -419,18 +459,23 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     keep_pairs = MapSet.new(keep, &{&1.from_requirement_id, &1.to_requirement_id})
     owned = MapSet.new(node_ids)
 
-    Edge
-    |> where([e], e.from_requirement_id in ^node_ids)
-    |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
-    |> Repo.all()
+    # `in ^list` binds one parameter per element, so both of these are the
+    # insert's failure mode wearing a different shape — latent rather than
+    # hypothetical, since the list is a whole graph's worth either way.
+    node_ids
+    |> Enum.chunk_every(bind_budget())
+    |> Enum.flat_map(fn ids ->
+      Edge
+      |> where([e], e.from_requirement_id in ^ids)
+      |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
+      |> Repo.all()
+    end)
     |> Enum.reject(fn {_id, from, to} ->
       MapSet.member?(keep_pairs, {from, to}) or not MapSet.member?(owned, to)
     end)
     |> Enum.map(&elem(&1, 0))
-    |> case do
-      [] -> :ok
-      ids -> Repo.delete_all(from(e in Edge, where: e.id in ^ids))
-    end
+    |> Enum.chunk_every(bind_budget())
+    |> Enum.each(fn ids -> Repo.delete_all(from(e in Edge, where: e.id in ^ids)) end)
   end
 
   defp upsert_group(entity_type, nodes, working_copy_id, now) do
@@ -452,7 +497,10 @@ defmodule CodeMySpec.Requirements.NodeRepository do
         |> Map.put(owner_field, node.entity_id)
       end)
 
-    Repo.insert_all(Node, entries, on_conflict: @replace, conflict_target: conflict_target)
+    # Ten columns a row, so this one refuses at 6,553 nodes rather than the
+    # edge table's 21,845 — the narrower limit of the two, and the one nothing
+    # would have found first because edges outnumber nodes.
+    insert_every(Node, entries, on_conflict: @replace, conflict_target: conflict_target)
   end
 
   # Only the owner column is set: `Map.put(owner_field, entity_id)` puts a
