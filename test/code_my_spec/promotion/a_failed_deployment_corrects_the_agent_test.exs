@@ -32,6 +32,7 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     previous = Application.get_env(:code_my_spec, :agent_transport)
@@ -42,7 +43,7 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
 
     # The correction is sent from the detached restart task, which checks out
     # its own connection.
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     :ok
   end

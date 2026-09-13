@@ -146,6 +146,27 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     {:ok, :valid}
   end
 
+  # The same orphan, said in words rather than as an atom.
+  #
+  # `WriteBddSpecs.resolve_story/2` answers `{:story_not_found, message}` and the
+  # message is a good one for an agent that typed an id — "the story may have
+  # been deleted, or you're scoped to the wrong project". Reaching *here* it is
+  # neither useful nor recoverable: a deleted story left a task the evaluator
+  # then failed on at every stop, so the agent got no verdict at all, about work
+  # that had nothing to do with the story in question. Issue `3d7ae872`.
+  #
+  # Cancelling is safe despite the message's second possibility, because the
+  # scope doing the evaluating is the task's own session's scope — the project
+  # the task was created under. "Wrong project" is a thing an agent can do by
+  # hand and not a thing a stop hook can do by accident, so not-found on this
+  # path means gone.
+  defp handle_result({:error, {kind, _message}}, scope, session, task, _type_name, _opts)
+       when kind in [:story_not_found, :component_not_found] do
+    Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — #{kind}")
+    Sessions.complete_task(scope, session, task.id, :cancelled)
+    {:ok, :valid}
+  end
+
   # Distinguish crashes from requirement failures. The marker text at the front
   # lets agents (and humans) tell the difference from a legitimate "not met".
   defp handle_result(
