@@ -177,12 +177,30 @@ defmodule CmsHarness.Project.AnalysisServer do
   # waiting for one (story 839, criterion 3440). Guarded on `run_id` so a
   # message from a run this server has already moved past (superseded by a
   # kill, or already delivered) cannot arm a timer for whatever runs next.
-  def handle_info({:slot_acquired, run_id}, %{running: %{run_id: run_id}} = state) do
+  #
+  # Logged, not just armed. `AnalysisSlots` logs the *start* of a wait ("an
+  # analyzer run is waiting for a machine-wide slot") but nothing ever said
+  # how it ended — a reader saw the wait begin and had no line telling them
+  # it resolved, how long it took, or that this exact run is what the timer
+  # is now counting for. `waited_ms` only worth naming past a few hundred
+  # milliseconds: most runs acquire a slot immediately, and logging "waited
+  # 2ms" for every single one would bury the ones that actually waited.
+  def handle_info(
+        {:slot_acquired, run_id, waited_ms},
+        %{running: %{run_id: run_id, source: source}} = state
+      ) do
+    if waited_ms > 500 do
+      Logger.info(
+        "[CmsHarness] #{source} run #{run_id} for #{state.project.root} got a machine-wide " <>
+          "slot after waiting #{waited_ms}ms — starting now, kill timer armed from here"
+      )
+    end
+
     timer = Process.send_after(self(), {:timeout, run_id}, timeout())
     {:noreply, %{state | timer: timer}}
   end
 
-  def handle_info({:slot_acquired, _run_id}, state), do: {:noreply, state}
+  def handle_info({:slot_acquired, _run_id, _waited_ms}, state), do: {:noreply, state}
 
   def handle_info(_message, state), do: {:noreply, state}
 
@@ -333,7 +351,7 @@ defmodule CmsHarness.Project.AnalysisServer do
     do: %{state | queue: Enum.map(queue, &Map.put(&1, :settled, true))}
 
   # No timer armed here any more — `run_with_slot/3` reports back once it
-  # actually has a slot, and `handle_info({:slot_acquired, _}, _)` arms it
+  # actually has a slot, and `handle_info({:slot_acquired, _, _}, _)` arms it
   # then. Arming at dispatch was what forced `AnalysisSlots.acquire/0` to
   # refuse instantly rather than wait: a run queued behind others would have
   # spent the kill budget waiting and been killed for being slow (story 839,
@@ -367,9 +385,12 @@ defmodule CmsHarness.Project.AnalysisServer do
   # started is a `:running` row in its ledger, and one nobody finishes makes
   # the stop hook report analysis pending forever.
   defp run_with_slot(project, entry, parent) do
+    requested_at = System.monotonic_time(:millisecond)
+
     case AnalysisSlots.acquire() do
       :ok ->
-        send(parent, {:slot_acquired, entry.run_id})
+        waited_ms = System.monotonic_time(:millisecond) - requested_at
+        send(parent, {:slot_acquired, entry.run_id, waited_ms})
         Analysis.run(project, entry.source, entry.args)
 
       :busy ->
