@@ -205,6 +205,73 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ "--stale"
     end
 
+    # Same treatment for all four analyzers, not just test/spex — the
+    # analysis service already accepted compiler/credo as sources
+    # (`@valid_sources` on both controllers); this locks in that the rewrite
+    # actually offers them.
+    test "rewrites mix compile to the compiler source", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix compile --warnings-as-errors"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      body = Jason.decode!(conn.resp_body)
+      command = body["hookSpecificOutput"]["updatedInput"]["command"]
+
+      assert command =~ ~s("source":"compiler")
+      assert command =~ "--warnings-as-errors"
+    end
+
+    test "rewrites mix credo to the credo source", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix credo --strict"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      body = Jason.decode!(conn.resp_body)
+      command = body["hookSpecificOutput"]["updatedInput"]["command"]
+
+      assert command =~ ~s("source":"credo")
+      assert command =~ "--strict"
+    end
+
+    # The whole point of routing a command through the shared ledger is that
+    # the agent cannot tell — no footer, no run id, nothing this rewrite
+    # added. Pass/fail has to travel some other way; see both
+    # `AnalysisController`s for the HTTP-status half of this.
+    test "the rewritten command is a script that reports the same exit status a real run would, not curl's own",
+         %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix test test/my_test.exs"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      command =
+        conn.resp_body
+        |> Jason.decode!()
+        |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+      assert command =~ ~r/^sh -c /,
+             "a bare curl always exits 0 on a completed request, tests failed " <>
+               "or not — only a wrapping script can make the shell's own exit " <>
+               "status track the analyzer's"
+
+      assert command =~ "-o", "the body has to land somewhere other than stdout first"
+      assert command =~ "-w", "the HTTP status has to be read separately from the body"
+
+      refute command =~ "analysis run",
+             "no trace of the rewrite belongs in what the agent sees printed"
+    end
+
     test "does not rewrite compound shell commands", %{scope: scope} do
       conn =
         build_post(scope, %{
@@ -310,11 +377,14 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body == %{}
     end
 
-    test "does not rewrite non-test bash commands", %{scope: scope} do
+    # `mix compile`/`mix credo` are analyzer commands too now — see the test
+    # below this one — so a real negative case has to be something none of
+    # the four sources answer to.
+    test "does not rewrite non-analyzer bash commands", %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
-          "tool_input" => %{"command" => "mix compile"}
+          "tool_input" => %{"command" => "mix deps.get"}
         })
 
       conn = PreToolUseController.handle(conn, conn.body_params)
