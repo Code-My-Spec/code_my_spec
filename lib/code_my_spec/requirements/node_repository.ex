@@ -400,14 +400,32 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # Only edges among *this* graph's nodes are ours to remove. Deleting by
   # project would take edges belonging to nodes this computation did not
   # produce, and there is no project column here to do it with anyway.
+  # Both endpoints, not just the source.
+  #
+  # `keep` holds only the edges whose *both* ends resolved in `ids_by_key`, and
+  # a partial recompute resolves ids for the nodes it recomputed and no others.
+  # Filtering on `from` alone therefore deleted every edge leading out of a
+  # recomputed node into a kept one: its `from` matched, and it could never be
+  # in `keep` because its `to` was never resolved.
+  #
+  # Reported honestly by `verify_round_trip/4` from the first partial recompute
+  # onward — "13788 edges only in the payload" — and I explained it away twice
+  # before reading this function. Full recomputes kept restoring the edges, so
+  # the stored totals looked right between partials and hid it.
+  #
+  # A write owns what it can rewrite. A partial write can rewrite the edges
+  # between the nodes it recomputed, so those are the only ones it may delete.
   defp delete_edges_outside(node_ids, keep) do
     keep_pairs = MapSet.new(keep, &{&1.from_requirement_id, &1.to_requirement_id})
+    owned = MapSet.new(node_ids)
 
     Edge
     |> where([e], e.from_requirement_id in ^node_ids)
     |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
     |> Repo.all()
-    |> Enum.reject(fn {_id, from, to} -> MapSet.member?(keep_pairs, {from, to}) end)
+    |> Enum.reject(fn {_id, from, to} ->
+      MapSet.member?(keep_pairs, {from, to}) or not MapSet.member?(owned, to)
+    end)
     |> Enum.map(&elem(&1, 0))
     |> case do
       [] -> :ok
