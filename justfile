@@ -303,10 +303,27 @@ restart port="4000":
     # also run rather than rejecting it, failing with "justfile does not
     # contain recipe <value>" the moment one is passed. An env var this
     # recipe was not written to check is simply invisible to it.
+    #
+    # Said before it happens, not after. The blast radius is bigger than the
+    # recipe's name: this stops and restores every agent on every checkout the
+    # harness serves — fourteen on this box — and a QA pass or a long analyzer
+    # run in flight elsewhere dies with it. Measured on 2026-09-13, where one
+    # session's ten deploys cost four QA passes and the person running them
+    # spent hours holding deploys back rather than reaching for the switch they
+    # did not know existed (abe1504f, 733ac788).
+    #
+    # The default stays as it is, for the reason argued above: a skipped refresh
+    # that was needed is worse than an unnecessary one. What was missing is that
+    # nobody could see the choice.
     if [ "${CMS_SKIP_HARNESS_REFRESH:-}" = "true" ]; then
         echo "→ skipping harness refresh — the merge this restart follows did not touch the channel contract"
     else
         echo
+        echo "→ refreshing the harness on 4004 as well"
+        echo "  this stops and restores every agent on every checkout it serves,"
+        echo "  so anything mid-flight elsewhere — a QA pass, an analyzer sweep — dies with it."
+        echo "  CMS_SKIP_HARNESS_REFRESH=true skips it, when you know this change"
+        echo "  did not touch lib/cms_harness or the channel modules."
         just refresh-harness 4004 false
     fi
 
