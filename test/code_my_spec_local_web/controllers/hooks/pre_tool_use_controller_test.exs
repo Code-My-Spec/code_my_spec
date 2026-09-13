@@ -96,7 +96,8 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       body = Jason.decode!(conn.resp_body)
       command = body["hookSpecificOutput"]["updatedInput"]["command"]
 
-      assert command =~ "curl -sS -X POST"
+      assert command =~ "sh -c"
+      assert command =~ "curl -sS -o"
       assert command =~ "/api/analysis/run"
       assert command =~ ~s("source":"exunit")
       assert command =~ "test/my_test.exs"

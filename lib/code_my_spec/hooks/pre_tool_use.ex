@@ -7,7 +7,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   1. Enrich CodeMySpec MCP tool inputs with `session_id` so tools resolve the
      session without the agent passing it explicitly.
   2. Refuse git from a sub-agent. Commits stay with the engineer.
-  3. Route a whole, simple `mix test`/`mix spex` through the analysis service.
+  3. Route a whole, simple `mix test`/`spex`/`compile`/`credo` through the
+     analysis service.
 
   Lives here rather than in a controller because this rule has already been
   duplicated once — the Antigravity hooks controller kept its own copy of the
@@ -222,10 +223,17 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   end
 
   # Only rewrite a whole, simple invocation — optional env-var prefixes, then
-  # `mix test`/`mix spex`, then plain args to end-of-command. Compound shell
-  # (cd &&, pipes, subshells) passes through: replacing part of a compound
-  # command with a curl would silently change the rest's semantics.
-  @test_command ~r/^\s*((?:[A-Z_]+=\S+\s+)*)mix\s+(test|spex)(?:\s+(.*))?$/s
+  # one of the four analyzers, then plain args to end-of-command. Compound
+  # shell (cd &&, pipes, subshells) passes through: replacing part of a
+  # compound command with a curl would silently change the rest's semantics.
+  #
+  # All four rather than just test/spex — `compiler` and `credo` get the same
+  # single-flight ledger, the same machine-wide slot, and the same duplicate
+  # coalescing as the other two. The analysis service already treated all
+  # four as equally valid sources (`@valid_sources` on both controllers); this
+  # was the one place that still only asked for two of them. John: "Same
+  # treatment to all analyzers."
+  @test_command ~r/^\s*((?:[A-Z_]+=\S+\s+)*)mix\s+(test|spex|compile|credo)(?:\s+(.*))?$/s
 
   # `(.*)` with `/s` swallows everything to end of command, including shell
   # that follows the mix invocation — so the "compound shell passes through"
@@ -244,8 +252,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   @harmless_env_prefix ~r/^(?:MIX_ENV=test\s+)*$/
 
   @doc """
-  Whether a shell command is a whole, simple `mix test`/`mix spex` invocation
-  worth routing through the analysis service.
+  Whether a shell command is a whole, simple `mix test`/`spex`/`compile`/`credo`
+  invocation worth routing through the analysis service.
 
   `{:ok, task, source, args}` when it is; `:skip` when the command carries
   shell the rewrite would swallow, an env-var prefix the curl would drop, or
@@ -263,11 +271,16 @@ defmodule CodeMySpec.Hooks.PreToolUse do
          true <- Regex.match?(@harmless_env_prefix, env_prefix),
          false <- compound_shell?(rest),
          {:ok, args} <- parse_args(rest) do
-      {:ok, task, if(task == "spex", do: "spex", else: "exunit"), args}
+      {:ok, task, source_for(task), args}
     else
       _ -> :skip
     end
   end
+
+  defp source_for("spex"), do: "spex"
+  defp source_for("compile"), do: "compiler"
+  defp source_for("credo"), do: "credo"
+  defp source_for("test"), do: "exunit"
 
   defp maybe_rewrite_test_command(scope, params, port, served_by) do
     command = get_in(params, ["tool_input", "command"]) || ""
@@ -379,13 +392,31 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   defp analysis_endpoint(_scope, _served_by), do: :error
 
+  # A bare `curl` can't hand back the analyzer's own pass/fail as its own exit
+  # code — curl exits 0 for any HTTP request it completed, tests failed or
+  # not. That is why the response used to carry a footer line spelling out
+  # the exit status in the body: nothing else was reading it. It also meant
+  # `mix test` never looked like `mix test` again — the whole point of
+  # routing it was to be invisible, and a footer the agent had never seen
+  # from a real test run was the opposite of that.
+  #
+  # So the two are split at the transport instead of glued into the body:
+  # `-o`/`-w` send the response body to a file and the HTTP status to stdout
+  # on their own, the endpoint answers 200 for a clean run and something
+  # else for anything short of it (see both `AnalysisController`s), and this
+  # script re-emits the body untouched and exits 0 or 1 to match — the same
+  # two numbers a real `mix test`/`mix spex` would have given back.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
+    url = "http://localhost:#{port}#{path(endpoint)}"
 
-    "curl -sS -X POST http://localhost:#{port}#{path(endpoint)} " <>
-      "-H 'Content-Type: application/json' " <>
-      header(endpoint) <>
-      "--data #{shell_quote(payload)}"
+    script =
+      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code}' -X POST '#{url}' " <>
+        "-H 'Content-Type: application/json' " <>
+        header(endpoint) <>
+        "--data #{shell_quote(payload)}); cat \"$t\"; rm -f \"$t\"; [ \"$c\" = 200 ]"
+
+    "sh -c " <> shell_quote(script)
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"
