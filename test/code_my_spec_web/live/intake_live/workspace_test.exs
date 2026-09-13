@@ -198,6 +198,22 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       finish_boot()
     end
 
+    test "leaving before paying does not crash the termination", %{conn: conn} do
+      fake(healthy?: false, alive?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+
+      # No `pay(view)` here — `@workspace` is still the `%{status:
+      # :awaiting_payment}` placeholder assigned before a real `%Workspace{}`
+      # row exists (69a1ff70 follow-up: `Workspaces.abandoned/1` only matches
+      # `%Workspace{}`, so terminating on the placeholder used to crash with
+      # a FunctionClauseError instead of quietly doing nothing).
+      ref = Process.monitor(view.pid)
+      GenServer.stop(view.pid, :normal)
+      assert_receive {:DOWN, ^ref, :process, _, :normal}, 1_000
+    end
+
     test "staying until it is up is not an abandonment", %{conn: conn} do
       fake(healthy?: true)
       conn = with_confirmed_plan(conn)
