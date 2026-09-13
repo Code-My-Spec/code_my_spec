@@ -37,13 +37,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3435Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
+  import CodeMySpecSpex.PromotionHelpers
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -53,9 +48,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3435Spex do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
-
-  spec_tags = []
-  _ = spec_tags
 
   spex "A branch that does not contain main is refused before the merge" do
     scenario "somebody else's commit landed on main while this agent worked" do
@@ -149,87 +141,4 @@ defmodule CodeMySpecSpex.Story1046.Criterion3435Spex do
       end
     end
   end
-
-  defp head_of(context, root) do
-    {out, 0} = git(context, root, ["rev-parse", "HEAD"])
-    String.trim(out)
-  end
-
-  defp analyzers_are_current(context) do
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
-
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
-
-    context
-  end
-
-  defp a_promotable_project(context) do
-    running_root = CodeMySpec.TempFile.dir("spex-1046-running")
-    {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
-
-    {_, 0} = git(context, running_root, ["init", "--initial-branch", "main"])
-    {_, 0} = git(context, running_root, ["config", "user.email", "spex@example.com"])
-    {_, 0} = git(context, running_root, ["config", "user.name", "Spex"])
-
-    write(running_root, "lib/broken_oaths/diplomacy/war.ex", war(":base"))
-
-    write(running_root, "justfile", """
-    restart:
-        @elixirc -o {{justfile_directory()}}/_spex_build \\
-            {{justfile_directory()}}/lib/broken_oaths/diplomacy/*.ex
-        @date > {{justfile_directory()}}/.restarted
-    """)
-
-    {_, 0} = git(context, running_root, ["add", "-A"])
-    {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
-
-    agent_root = CodeMySpec.TempFile.dir("spex-1046-agent")
-    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", agent_root])
-
-    {_out, 0} =
-      git(context, running_root, ["worktree", "add", "-b", "story/war", agent_root, "main"])
-
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
-
-    {:ok, _view, html} =
-      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
-
-    refute html =~
-             ~s(phx-value-id="#{running.working_copy_id}" data-test="designate-main-copy"),
-           "the premise failed: the running checkout is not this project's main copy"
-
-    context
-    |> Map.put(:running_root, running_root)
-    |> Map.put(:agent_root, agent_root)
-    |> Map.put(:running, running)
-    |> Map.put(:agent, agent)
-    |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
-  end
-
-  defp promote(context) do
-    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
-    response
-  end
-
-  defp git(context, dir, args),
-    do: Environments.cmd(context.environment, "git", args, cd: dir, stderr_to_stdout: true)
-
-  defp war(body) do
-    "defmodule BrokenOaths.Diplomacy.War do\n  def declare, do: #{body}\nend\n"
-  end
-
-  defp treaty do
-    "defmodule BrokenOaths.Diplomacy.Treaty do\n  def sign, do: :signed\nend\n"
-  end
-
-  defp disk(root), do: Environment.new(:local, root)
-
-  defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
-
-  defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
 end
