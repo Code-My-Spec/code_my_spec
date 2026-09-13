@@ -6,10 +6,11 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
   Runs the analyzer through the same single-flight `Analysis` service the
   stop hook uses: one shared run record, Problems reconciled centrally, and
   a duplicate concurrent request joins the in-flight execution instead of
-  double-running. The response body is the raw tool output (so the agent
-  reads normal test results) plus a trailing exit-status marker line — curl
-  exits 0 even when tests fail, so the marker is how the agent (and any
-  wrapper) distinguishes pass from fail.
+  double-running. The response body is the raw tool output and nothing
+  else — pass/fail travels as the HTTP status (200 clean, 422 otherwise)
+  rather than a line appended to the body, because the rewritten curl script
+  reads that without the agent ever seeing it. A `mix test` routed through
+  here has to come back looking exactly like one that was not.
 
   Blocks for as long as the run takes; Bandit doesn't time out long-running
   handlers, and the rewritten Bash command carries a raised tool timeout.
@@ -121,14 +122,11 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
 
     case Analysis.await_run(scope, source, args) do
       {:ok, run} ->
-        body = """
-        #{run.output || ""}
+        status = run.exit_status || exit_for(run)
 
-        ── analysis run #{run.id}: #{run.status}, #{stats_line(run)} ──
-        exit status: #{run.exit_status || exit_for(run)}
-        """
-
-        text(conn, body)
+        conn
+        |> put_status(if status == 0, do: 200, else: 422)
+        |> text(run.output || "")
 
       {:error, reason} ->
         conn
@@ -136,12 +134,6 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
         |> text("analysis run failed: #{inspect(reason)}")
     end
   end
-
-  defp stats_line(%{stats: stats}) when is_map(stats) and map_size(stats) > 0 do
-    Enum.map_join(stats, ", ", fn {k, v} -> "#{k}: #{v}" end)
-  end
-
-  defp stats_line(_run), do: "no stats"
 
   # A run that failed without a recorded tool exit (crash, skip, timeout)
   # still needs a non-zero marker.

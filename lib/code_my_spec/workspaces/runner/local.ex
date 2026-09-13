@@ -129,6 +129,37 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     """
   end
 
+  @doc """
+  How a boot script is shelled out.
+
+  `merge_clean_env/1`, not `clean_otp_env/0`, and the difference is the whole
+  bug. The scrub clears the release and `MIX_*` variables but leaves PATH in
+  whatever order this server inherited — and under a version manager that order
+  names our own resolved Elixir *ahead* of the shims, because that is how we got
+  our Elixir. A child `mix` inherits that resolution wholesale.
+
+  The script runs `mix cms.new` in a brand-new empty directory, which pins no
+  version of its own, so the shims would have fallen back to the machine's
+  default. Instead it got ours — 1.19.4-otp-28, where `cms_new` is not
+  installed as an archive — and every boot died on
+
+      ** (Mix) The task "cms.new" could not be found
+
+  Deterministic, not flaky: four rounds of story 1033's QA, each attributed to
+  disk exhaustion or Docker, on a box with 33GiB free running no containers at
+  all (`114843ff`). The error was only ever in the workspace's own `run.log`,
+  which nothing was reading.
+
+  `Environments.merge_clean_env/1`'s own comment names this exact situation —
+  "the two callers that run a child mix inside another project's directory,
+  which is the only situation where whose toolchain resolves is a question".
+  This was a third such caller and was not on the list.
+
+  Public so the environment can be asserted on without shelling anything out.
+  """
+  @spec launch_env() :: keyword()
+  def launch_env, do: Environments.merge_clean_env(stderr_to_stdout: true)
+
   defp launch(script_path, log_file) do
     setsid = System.find_executable("setsid")
 
@@ -139,21 +170,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
         "#{script_path} > #{log_file} 2>&1 < /dev/null & disown; echo $!"
       end
 
-    # `merge_clean_env/1`, not `clean_otp_env/0` alone: the script runs `mix
-    # cms.new` inside a brand-new project directory pinning its own Elixir
-    # (`~> 1.20`), and `clean_otp_env/0` only scrubs the release's own PATH
-    # entries — it does not put an asdf/mise shim ahead of this BEAM's
-    # already-resolved Elixir the way `merge_clean_env/1` does. Without that,
-    # the spawned `mix` inherited our resolved toolchain and `mix cms.new`
-    # failed with "The task \"cms.new\" could not be found" whenever the
-    # pinned version's `cms_new` archive wasn't installed under the parent's
-    # own Elixir (114843ff).
-    env = Environments.merge_clean_env(env: [])[:env]
-
-    case System.cmd("bash", ["-c", shell],
-           stderr_to_stdout: true,
-           env: env
-         ) do
+    case System.cmd("bash", ["-c", shell], launch_env()) do
       {out, 0} ->
         case out |> String.trim() |> Integer.parse() do
           {pid, _} -> {:ok, pid}
