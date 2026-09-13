@@ -187,9 +187,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       nodes = kept ++ fresh
 
+      # Split by kind, and with the two project-wide inputs beside it, because
+      # "665 entities stale" does not say whether that was 665 real changes or
+      # one shared input taking everybody with it. Stories and components have
+      # different shared inputs — `analysis_fresh` for components, the running
+      # copy for stories — so the split alone distinguishes them: all components
+      # and no stories is the analyser flipping, all stories and no components
+      # is the running copy moving, and a partial count of each is genuine file
+      # change. Guessing between those three cost most of a day.
+      {stale_stories, stale_comps} =
+        Enum.split_with(stale, fn {type, _id} -> type == "story" end)
+
       Logger.info(
         "[Requirements] recomputed #{length(fresh)} of #{length(nodes)} requirements — " <>
-          "#{MapSet.size(stale)} entity(ies) stale"
+          "#{MapSet.size(stale)} entity(ies) stale " <>
+          "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
+          "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
+          "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
 
       # `reduced`, not `ctx`, and this is the whole reason the first attempt

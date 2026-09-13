@@ -10,6 +10,23 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   The work itself is one tool call. This task's job is to say so, and to name
   which files are behind so the agent can tell "I have not promoted yet" from
   "something else is wrong".
+
+  ## The hedge that used to live here
+
+  A behind-only, ahead-0, clean checkout — exactly the state a *successful*
+  promotion leaves behind, since promotion merges this branch into the running
+  copy and leaves this worktree where it was — used to reach here as a
+  refusal, and this task hedged around it ("may already be on the running dev
+  copy ... merge main in, then evaluate again") rather than telling the agent
+  it was actually done. That cost twenty minutes on 2026-09-12.
+
+  Issue cf06b908 fixed the actual defect one layer down instead:
+  `Promotion.running_copy_check/2` no longer gates on `commits_behind_main` at
+  all, because ancestry (`commits_ahead_of_main == 0`) already proves this
+  checkout's work is on main and only grows more true as main gains commits
+  nobody here wrote. A behind-only checkout now reaches `verdict/2` and
+  `prompt_for/2` as `{true, _}`, the same as any other satisfied checkout, so
+  the hedge had nothing left to catch and was removed with it.
   """
 
   alias CodeMySpec.Promotion
@@ -46,13 +63,6 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     {:ok, :valid, "Story #{story.number}'s work is on the running dev copy (#{status})."}
   end
 
-  defp verdict({false, %{behind: behind, ahead: 0, dirty: false}}, story) when behind > 0 do
-    {:ok, :invalid,
-     "Story #{story.number}'s work may already be on the running dev copy — this " <>
-       "checkout is #{behind} commit(s) behind it and has nothing of its own to send. " <>
-       "Merge main in here (`git merge --ff-only main`), then evaluate again."}
-  end
-
   defp verdict({false, %{reason: reason}}, story) do
     {:ok, :invalid,
      "Story #{story.number} is not on the running dev copy yet: " <>
@@ -69,47 +79,6 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     """
     Story #{story.number} — "#{story.title}" — is already on the running dev
     copy. Nothing to promote; evaluate this task to record it.
-    """
-    |> String.trim()
-  end
-
-  # Behind, with nothing of its own to send and a clean tree. Almost always the
-  # state a *successful* promotion leaves behind: it merges this branch into the
-  # running copy and leaves this worktree where it was, so the worktree is now
-  # behind the copy that already has the work.
-  #
-  # This used to render as "its work is not on the checkout the application runs
-  # from ... Call `promote`", which is the inverse of the truth and cost twenty
-  # minutes on 2026-09-12 — the running copy's HEAD was literally
-  # `Merge branch 'light-harness'`, the promotion's own merge commit. Following
-  # the advice restarts the shared dev server and leaves the reader exactly as
-  # behind as before.
-  #
-  # Hedged rather than asserted ("may already be"), because behind-with-nothing-
-  # to-send is also what a checkout that never promoted looks like. The remedy is
-  # the same either way, and it is cheap and safe, which is what makes it worth
-  # stating without proving which case this is.
-  defp prompt_for({false, %{behind: behind, ahead: 0, dirty: false}}, story)
-       when behind > 0 do
-    """
-    Story #{story.number} — "#{story.title}" — may already be on the running dev
-    copy. This checkout is #{behind} commit(s) behind it and has nothing of its
-    own to send, which is the state a successful promotion leaves: promotion
-    merges your branch into the running copy and leaves your worktree where it
-    was.
-
-    Do NOT call `promote` for this. It would restart the shared dev server and
-    leave you exactly as far behind. Catch this checkout up instead:
-
-        git merge --ff-only main
-
-    Then evaluate this task again. If that refuses, this checkout has genuinely
-    diverged and `promote` is the right call after all.
-
-    Note `main` here means the checkout the application runs from, not
-    `origin/main` — the two differ whenever the running copy holds commits
-    nobody has pushed, so `git status` can read 0/0 while this says you are
-    behind. Both are correct.
     """
     |> String.trim()
   end
