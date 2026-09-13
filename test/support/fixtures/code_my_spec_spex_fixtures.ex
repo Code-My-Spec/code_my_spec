@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Environments,
       CodeMySpec.Epics,
       CodeMySpec.Events,
+      CodeMySpec.Faults,
       CodeMySpec.FileEdits,
       CodeMySpec.Files,
       CodeMySpec.Generators,
@@ -122,6 +123,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Faults
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Integrations.Integration
@@ -3165,19 +3167,17 @@ defmodule CodeMySpecSpex.Fixtures do
   state from one that finds nothing — and the difference is invisible unless a
   scenario can produce the first. The analyzer ledger is the source broken here
   because it is the one the digest reads that has a failure mode of its own.
+
+  Scoped to this project rather than set on the node, which is what lets QA
+  exercise 3333 at all: the seam used to be `Application.put_env/3`, so using it
+  live broke every project's digest on a box four other checkouts share, and
+  five QA passes in a row refused on exactly that ground (0fb7bf03).
   """
   @spec break_digest_source(Scope.t()) :: :ok
-  def break_digest_source(%Scope{} = scope) do
-    Application.put_env(:code_my_spec, :main_agent_digest_source, :unavailable)
-    on_exit_reset()
-    _ = scope
+  def break_digest_source(%Scope{active_project_id: project_id}) do
+    :ok = Faults.inject(project_id, :digest_unavailable)
+    ExUnit.Callbacks.on_exit(fn -> Faults.clear(project_id, :digest_unavailable) end)
     :ok
-  end
-
-  defp on_exit_reset do
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.delete_env(:code_my_spec, :main_agent_digest_source)
-    end)
   end
 
   @doc """

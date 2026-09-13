@@ -25,4 +25,18 @@ defmodule CodeMySpec.Intake.PlansRepository do
   def update(%Ecto.Changeset{} = changeset) do
     Repo.update(changeset)
   end
+
+  @doc """
+  The most recent plans, newest first.
+
+  For the dev route that hands QA a session token. The token is minted into the
+  Phoenix session by `Plugs.IntakeSession` and signed, so somebody driving a
+  browser has no way to read the one they are holding — which made every
+  per-session intake seam unreachable from outside the application. They open
+  `/build`, find the plan they just started here, and address it by its token.
+  """
+  @spec recent(pos_integer()) :: [Plan.t()]
+  def recent(limit) when is_integer(limit) and limit > 0 do
+    Repo.all(from p in Plan, order_by: [desc: p.inserted_at, desc: p.id], limit: ^limit)
+  end
 end
