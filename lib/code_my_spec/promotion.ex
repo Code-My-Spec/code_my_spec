@@ -271,8 +271,7 @@ defmodule CodeMySpec.Promotion do
   A second caller is refused outright rather than queued, naming when the
   first promotion started — a queued promotion whose branch has since moved
   on would be a merge nobody asked for.
-  """
-  @doc """
+
   `notify:` is who to correct if the deployment fails after this has answered.
 
   The answer goes out as soon as the merge lands, which means it is sent before
