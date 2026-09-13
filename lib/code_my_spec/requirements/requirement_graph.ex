@@ -179,16 +179,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
   def serve(nodes, ctx) do
     fresh = Map.get(ctx, :analysis_fresh, %{})
+    Enum.map(nodes, &serve_one(&1, fresh))
+  end
 
-    Enum.map(nodes, fn node ->
-      case analysis_source(node) do
-        source when is_binary(source) ->
-          if Map.get(fresh, source, false), do: node, else: stale(node, source)
+  defp serve_one(node, fresh) do
+    source = analysis_source(node)
 
-        nil ->
-          node
-      end
-    end)
+    cond do
+      is_nil(source) -> node
+      Map.get(fresh, source, false) -> node
+      true -> stale(node, source)
+    end
   end
 
   # Both directions of the asymmetry, applied at serve time rather than baked
