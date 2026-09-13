@@ -228,6 +228,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # fires" is a log line that does not appear — and on this project it did
       # not appear once. Reuse is the point of the function; a fallback nobody
       # can see the reason for is the function quietly not doing it.
+      {:topology_moved, _} ->
+        # Which of the three, because "the shape moved" is as unanswerable as
+        # "the entity set moved" was, and that one turned out to be a guard that
+        # could never hold. Printed as the parts themselves so two consecutive
+        # lines name the mover by the digest that differs between them.
+        Logger.info(
+          "[Requirements] full recompute — topology_moved " <>
+            inspect(Freshness.topology_parts(ctx, config))
+        )
+
+        compute_and_publish(scope, ctx, config)
+
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
         compute_and_publish(scope, ctx, config)

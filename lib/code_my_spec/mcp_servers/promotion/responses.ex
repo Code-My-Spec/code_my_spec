@@ -108,10 +108,32 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     Merged into: #{root}
     #{serving_line(serving)}#{swept_line(report)}#{untracked_line(report)}
 
-    The application is running this work now, so QA on these stories will test
-    what you wrote.
+    #{closing_line(serving)}
     """
     |> String.trim()
+  end
+
+  # The closing sentence has to agree with the serving line above it.
+  #
+  # It used to be fixed — "The application is running this work now" — and once
+  # the restart stopped being awaited (54aa534c, phase two) that put two
+  # contradicting claims two lines apart: "restart dispatched, not yet
+  # confirmed", then a flat statement that it is running. The second is the one
+  # an agent acts on, because it is the one that mentions QA.
+  #
+  # Saying the merge is testable is still right and is the useful half — QA
+  # tests the merged code, and the merge has landed. Claiming the application is
+  # already serving it is the part that was not verified and cannot be, from
+  # here.
+  defp closing_line(%{unconfirmed: _}) do
+    "QA on these stories can start against the merge. The application is still " <>
+      "restarting — that is dispatched rather than waited on, so this answer " <>
+      "does not confirm it."
+  end
+
+  defp closing_line(_serving) do
+    "The application is running this work now, so QA on these stories will test " <>
+      "what you wrote."
   end
 
   # The standard shape now (54aa534c, phase two): the restart is dispatched,
