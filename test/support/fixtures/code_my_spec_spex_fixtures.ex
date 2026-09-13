@@ -3817,27 +3817,21 @@ defmodule CodeMySpecSpex.Fixtures do
   def create_spex_repository(name, opts \\ []) do
     with token when is_binary(token) <- spex_env("GITHUB_SPEX_ADMIN_TOKEN"),
          owner when is_binary(owner) <- spex_env("GITHUB_SPEX_OWNER") do
-      Req.post("https://api.github.com/orgs/#{owner}/repos",
-        headers: [
-          {"authorization", "Bearer #{token}"},
-          {"accept", "application/vnd.github+json"}
-        ],
-        # Public, deliberately. The app's own grant has to *see* this repository
-        # for the collision to be detected at all, and a private one in an org
-        # it reads through a narrow scope is invisible to it — so setup found
-        # no collision and quietly created its own. The organisation is a
-        # throwaway holding nothing but spex repositories.
-        json: %{name: name, private: false, auto_init: Keyword.get(opts, :commits, false)}
-      )
-      |> case do
-        {:ok, %{status: status}} when status in [201, 422] ->
-          :ok
-
-        {:ok, %{status: status, body: body}} ->
-          raise "could not create #{owner}/#{name}: #{status} #{inspect(body, limit: 5)}"
-
-        other ->
-          raise "could not create #{owner}/#{name}: #{inspect(other, limit: 5)}"
+      # Asked rather than inferred from the failure. The 422 below is GitHub's
+      # documented answer for "a repository with that name already exists", and
+      # treating it as success was right — but it is not the only answer it
+      # gives. Creating over the repository this criterion left behind three
+      # weeks ago returned `500 ""` and then `502 "Server Error"` on the next
+      # attempt, neither of which is 422, so the collision arrived as a raise
+      # and the criterion went red on a premise that was already satisfied.
+      #
+      # A GET settles it in one request and cannot be answered with a server
+      # error that means the opposite of what it says. The 422 clause stays for
+      # the race: two runs creating the same name at once.
+      if adoptable?(owner, name, token, opts) do
+        :ok
+      else
+        post_spex_repository(owner, name, token, opts)
       end
     else
       # Loudly, not silently. A criterion whose premise is "this repository
@@ -3849,6 +3843,63 @@ defmodule CodeMySpecSpex.Fixtures do
         GITHUB_SPEX_ADMIN_TOKEN and GITHUB_SPEX_OWNER must both be set to create
         the repository this criterion's premise depends on.
         """
+    end
+  end
+
+  # Present *and* good enough for what was asked. A repository that exists but
+  # holds no commit does not satisfy `commits: true` — the premise there is a
+  # remote a fresh history cannot fast-forward onto, and an empty one can be
+  # fast-forwarded onto perfectly well. Adopting it would make the criterion
+  # pass for the wrong reason, which is the failure this whole fixture exists
+  # to stop.
+  defp adoptable?(owner, name, token, opts) do
+    case github_get(owner, name, token, "") do
+      {:ok, %{status: 200}} ->
+        not Keyword.get(opts, :commits, false) or has_commits?(owner, name, token)
+
+      _ ->
+        false
+    end
+  end
+
+  defp has_commits?(owner, name, token) do
+    case github_get(owner, name, token, "/commits?per_page=1") do
+      {:ok, %{status: 200, body: [_ | _]}} -> true
+      _ -> false
+    end
+  end
+
+  defp github_get(owner, name, token, suffix) do
+    Req.get("https://api.github.com/repos/#{owner}/#{name}#{suffix}",
+      headers: [
+        {"authorization", "Bearer #{token}"},
+        {"accept", "application/vnd.github+json"}
+      ]
+    )
+  end
+
+  defp post_spex_repository(owner, name, token, opts) do
+    Req.post("https://api.github.com/orgs/#{owner}/repos",
+      headers: [
+        {"authorization", "Bearer #{token}"},
+        {"accept", "application/vnd.github+json"}
+      ],
+      # Public, deliberately. The app's own grant has to *see* this repository
+      # for the collision to be detected at all, and a private one in an org
+      # it reads through a narrow scope is invisible to it — so setup found
+      # no collision and quietly created its own. The organisation is a
+      # throwaway holding nothing but spex repositories.
+      json: %{name: name, private: false, auto_init: Keyword.get(opts, :commits, false)}
+    )
+    |> case do
+      {:ok, %{status: status}} when status in [201, 422] ->
+        :ok
+
+      {:ok, %{status: status, body: body}} ->
+        raise "could not create #{owner}/#{name}: #{status} #{inspect(body, limit: 5)}"
+
+      other ->
+        raise "could not create #{owner}/#{name}: #{inspect(other, limit: 5)}"
     end
   end
 
