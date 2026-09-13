@@ -73,7 +73,7 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
       handler,
       [:code_my_spec, :repo, :query],
       fn _event, _measurements, meta, _config ->
-        if self() == parent, do: send(parent, {ref, meta[:source], meta[:query]})
+        forward(self(), parent, ref, meta)
       end,
       nil
     )
@@ -81,17 +81,27 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
     on_exit(fn -> :telemetry.detach(handler) end)
   end
 
-  defp inserts_into(ref, table) do
-    receive do
-      {^ref, ^table, query} ->
-        if String.starts_with?(query, "INSERT"),
-          do: [query | inserts_into(ref, table)],
-          else: inserts_into(ref, table)
+  # Two heads rather than a comparison: the first matches only when the emitting
+  # process and the test process are the same term.
+  defp forward(same, same, ref, meta), do: send(same, {ref, meta[:source], meta[:query]})
+  defp forward(_emitter, _parent, _ref, _meta), do: :ok
 
-      {^ref, _other_source, _query} ->
-        inserts_into(ref, table)
+  defp inserts_into(ref, table) do
+    ref
+    |> drain([])
+    |> Enum.filter(fn {source, query} ->
+      source == table and String.starts_with?(query, "INSERT")
+    end)
+  end
+
+  # Everything this test's own process emitted, taken in one pass and sorted out
+  # afterwards — a mailbox loop that decides what to keep as it goes has to put
+  # the ones it rejects somewhere, and the somewhere is another recursion.
+  defp drain(ref, seen) do
+    receive do
+      {^ref, source, query} -> drain(ref, [{source, query} | seen])
     after
-      0 -> []
+      0 -> seen
     end
   end
 
