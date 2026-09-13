@@ -58,6 +58,30 @@ defmodule CmsHarness.AnalysisSlotsTest do
     end
   end
 
+  # A holder expected to be left *waiting* rather than to answer at once —
+  # returns before any reply arrives, tagged with a ref so the caller can
+  # assert on the pending state and later `assert_receive` the eventual one.
+  defp holder_pending do
+    test = self()
+    ref = make_ref()
+
+    pid =
+      spawn(fn ->
+        send(test, {:took, ref, AnalysisSlots.acquire()})
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    on_exit(fn -> Process.exit(pid, :kill) end)
+    {pid, ref}
+  end
+
+  defp refute_holder_answered_yet({_pid, ref}) do
+    refute_receive {:took, ^ref, _answer}, 200
+  end
+
   describe "the limit" do
     test "is a fraction of the cores, not a count of projects" do
       assert AnalysisSlots.limit() == max(1, div(System.schedulers_online(), 4))
@@ -86,24 +110,52 @@ defmodule CmsHarness.AnalysisSlotsTest do
       assert AnalysisSlots.in_use() == 2
     end
 
-    # Not queued. `AnalysisServer` arms its thirty-minute kill timer at dispatch,
-    # before the run reaches the slot, so a run that waited its turn would spend
-    # that budget waiting and then be killed for being slow — reported as a hung
-    # tool, which is the misattribution this whole thing exists to prevent.
-    test "refuses the one past the limit rather than making it wait" do
+    # Queued, not refused — the timer that used to make waiting expensive has
+    # moved to `AnalysisServer`, which now arms it only once `acquire/0`
+    # actually returns `:ok` (story 839, criterion 3440). A third caller here
+    # waits rather than answering at once.
+    test "a third caller waits rather than being refused at once" do
       {_first, :ok} = holder()
       {_second, :ok} = holder()
 
-      assert {_third, :busy} = holder(),
-             "a third run was admitted, or worse, left waiting behind the other two"
+      refute_holder_answered_yet(holder_pending())
     end
 
-    test "a refused caller holds nothing" do
-      {_first, :ok} = holder()
+    test "a waiting caller is granted a slot once one frees" do
+      {first, :ok} = holder()
       {_second, :ok} = holder()
-      {_third, :busy} = holder()
 
+      {third_pid, ref} = holder_pending()
+      send(first, :stop)
+
+      assert_receive {:took, ^ref, :ok}, 1000
       assert AnalysisSlots.in_use() == 2
+      Process.exit(third_pid, :kill)
+    end
+  end
+
+  describe "waiting past the ceiling" do
+    setup do
+      Application.put_env(:code_my_spec, :analysis_slots, 1)
+      Application.put_env(:code_my_spec, :analysis_slot_wait_ceiling, 50)
+
+      on_exit(fn ->
+        Application.delete_env(:code_my_spec, :analysis_slots)
+        Application.delete_env(:code_my_spec, :analysis_slot_wait_ceiling)
+      end)
+    end
+
+    test "answers :busy once the wait ceiling elapses, rather than waiting forever" do
+      {_first, :ok} = holder()
+
+      assert {_second, :busy} = holder()
+    end
+
+    test "a caller answered :busy holds nothing" do
+      {_first, :ok} = holder()
+      {_second, :busy} = holder()
+
+      assert AnalysisSlots.in_use() == 1
     end
   end
 
