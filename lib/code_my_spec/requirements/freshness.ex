@@ -177,6 +177,35 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   @doc """
+  Each shared input's stamps, digested separately, so a recompute can name
+  which one moved.
+
+  `story/2` and `component/2` both hash `delegated_inputs` wholesale, and those
+  inputs are *project-wide* by construction: one issue resolved anywhere moves
+  the `issues` stamp, which moves every story's fingerprint, which recomputes
+  every story's requirements. The module says so — "an issue accepted against
+  one story reconsiders every story" — and accepts the trade on the grounds
+  that issues are "filed and resolved by hand, a handful a day".
+
+  That premise is now measurably false. Issues were touched at 14:12, 14:21,
+  14:24 and 14:34 in one half hour, each by an agent rather than a person, and
+  three of those are within ten seconds of a 973-requirement recompute.
+
+  This does not change the trade. It makes it legible: two consecutive log
+  lines name the mover by the digest that differs between them, the same way
+  `topology_parts/2` does for the edge set. Without it a recompute reports how
+  much it did and nothing about what asked for it, so an observation that
+  should have caused one — or a recompute that no observation asked for — is
+  invisible either way.
+  """
+  @spec delegated_parts(Preloader.context()) :: %{String.t() => String.t()}
+  def delegated_parts(ctx) do
+    ctx
+    |> Map.get(:delegated_inputs, %{})
+    |> Map.new(fn {table, stamps} -> {table, hash(stamps)} end)
+  end
+
+  @doc """
   The same three inputs, hashed separately.
 
   For the reader that has to say *which* of them moved. A single topology hash
