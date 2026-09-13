@@ -52,7 +52,17 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     # The storage step's own words, so a project missing one credential is not
     # told two different things by two steps.
-    assert instructions == Storage.credentials_instructions()
+    assert instructions == Storage.credentials_instructions(scope.active_project_id)
+
+    # And they name where to go. Whoever reads a pause is not looking at the
+    # app — often an agent, which cannot link a credential itself and should
+    # not be handed one to relay, but can hand a person a link (e2a9ed8c).
+    assert instructions =~ "/projects/#{scope.active_project_id}/provisioning/credentials",
+           """
+           The pause says to save the keys "on this project" and names neither
+           the project nor the page, so the only way to act on it is to already
+           know where that is.
+           """
 
     # The point of the guard: nothing was asked of the provider. A server was
     # created before this check existed, and it billed from the moment Hetzner

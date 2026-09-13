@@ -518,6 +518,37 @@ defmodule CodeMySpec.Provisioning.Storage do
       "instead of leaving both on the shared default."
   end
 
+  @doc """
+  The same instructions, naming the page to save the keys on.
+
+  For a step that pauses, because whoever reads that is not looking at the app.
+  Often it is an agent, and an agent has no way to link a credential and should
+  not be handed one to relay — `set_provisioning_credential` existed for a
+  fortnight and was reverted for exactly that (`1e826564`). What it can do is
+  hand a person somewhere to go, and until now it could not: the instructions
+  said "save it on this project" and named no project and no page
+  (`e2a9ed8c`).
+
+  The value still never passes through the agent. It goes from the person's
+  browser to the server, and setup re-checks on resume.
+
+  `credentials_instructions/0` stays for `ProvisioningLive`, which is already
+  the page this would link to.
+  """
+  @spec credentials_instructions(term()) :: String.t()
+  def credentials_instructions(project_id) do
+    credentials_instructions() <> " Save them at #{credentials_url(project_id)}."
+  end
+
+  # Built from `:base_url` the way `widget_socket_url/0` is, rather than with
+  # `~p`: verified routes bind an endpoint at compile time, and this string is
+  # read by somebody on a different machine from the one that wrote it.
+  defp credentials_url(project_id) do
+    base = Application.get_env(:code_my_spec, :base_url) || "https://codemyspec.com"
+
+    String.trim_trailing(base, "/") <> "/projects/#{project_id}/provisioning/credentials"
+  end
+
   ## Internals
 
   defp resource(bucket, location, origin) do
