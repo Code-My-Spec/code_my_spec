@@ -92,13 +92,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
   # `register_session` is named only to the caller that can follow it. It is a
   # Claude Code tool and no coding agent carries one — being told to call it is
   # what sent an agent to ask a person for a session id.
+  #
+  # The Claude Code half used to stop at "call `register_session`", and a caller
+  # that did got this same refusal from the next line of the same script — so the
+  # advice read as a lie and the caller went looking for a session id to pass by
+  # hand. Registering creates the session; it was never what carried the id here.
+  # Since `1a892606` the id travels into a script from `run_script`'s own input,
+  # so the remaining case is a conversation whose SessionStart hook is not
+  # injecting one at all, and the remedy for that is to say which id rather than
+  # to register again.
   defp resolve_session(_scope, _),
     do:
       {:error,
        "No session_id and no agent id on this call, so there is no owner whose " <>
          "tasks to list.\n\n" <>
-         "If you are Claude Code: `register_session` with this conversation's id " <>
-         "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
+         "If you are Claude Code: normally the hook injects `session_id` and you " <>
+         "never see this. Without it, pass the id yourself — `list_tasks({ " <>
+         "session_id = \"…\" })` — and `register_session` first if this server has " <>
+         "never seen the conversation. Registering alone will not fix this: it " <>
+         "creates the session, it does not tell this call which one you are.\n\n" <>
          "If you are an agent we run: your id travels on the connection and you " <>
          "cannot supply it — this is a harness fault, not something to retry or " <>
          "ask a person about. Report it with `create_issue` and carry on."}
