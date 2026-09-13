@@ -74,6 +74,19 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
     |> Enum.sort_by(&{&1.count, &1.project_name, &1.root, &1.source}, :desc)
   end
 
+  # Every root on this box shares the same long prefix
+  # (/Users/.../code_my_spec/.claude/worktrees/...) — the part that tells one
+  # row apart from another is the end, and CSS `truncate` cuts there instead
+  # of at the front. Truncating the string itself, keeping the tail, is what
+  # actually shows the worktree name at a glance.
+  @root_tail_chars 40
+
+  defp tail(root) when byte_size(root) > @root_tail_chars do
+    "…" <> String.slice(root, -@root_tail_chars, @root_tail_chars)
+  end
+
+  defp tail(root), do: root
+
   defp age_seconds(%DateTime{} = started_at) do
     DateTime.diff(DateTime.utc_now(), started_at, :second)
   end
@@ -128,7 +141,7 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
           <tbody>
             <tr :for={row <- @rows} class={row_class(row)} data-test="analysis-run-row">
               <td class="text-sm">{row.project_name}</td>
-              <td class="font-mono text-xs max-w-xs truncate" title={row.root}>{row.root}</td>
+              <td class="font-mono text-xs max-w-xs truncate" title={row.root}>{tail(row.root)}</td>
               <td class="text-xs">
                 <span :if={row.executor.held} class="badge badge-success badge-sm">
                   held
