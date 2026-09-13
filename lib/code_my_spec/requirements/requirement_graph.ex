@@ -475,10 +475,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp verdict(stale, entities, moved, appeared, ctx) do
     all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
 
-    case all? do
-      false -> {:partial, stale}
-      true -> {:all, why_all(stale, entities, moved, appeared, ctx)}
-    end
+    if all?,
+      do: {:all, why_all(stale, entities, moved, appeared, ctx)},
+      else: {:partial, stale}
   end
 
   # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
