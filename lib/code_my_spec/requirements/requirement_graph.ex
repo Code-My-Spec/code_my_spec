@@ -438,7 +438,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> Enum.reject(&(&1.entity_type == "project"))
       |> Enum.group_by(&entity_key/1, & &1.inputs_fingerprint)
 
-    stale =
+    # Kept apart from what expansion then adds, because the two answer different
+    # questions and only together say whether a full recompute was earned. This
+    # is the count of entities whose own inputs actually differ.
+    mismatched =
       recorded
       |> Enum.reject(fn {key, fingerprints} ->
         # Every requirement of an entity is stamped with the same value, so
@@ -447,7 +450,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Enum.uniq(fingerprints) == [Map.get(current, key)]
       end)
       |> MapSet.new(fn {key, _} -> key end)
-      |> expand_component_families(ctx)
+
+    stale = expand_component_families(mismatched, ctx)
 
     # An entity the context has and the rows do not is stale by definition:
     # nothing has ever computed it. Most of them will produce no nodes — a
@@ -464,7 +468,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     stale = MapSet.union(stale, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    verdict(stale, entities, moved, appeared, ctx)
+    verdict(stale, entities, {mismatched, moved}, appeared, ctx)
   end
 
   # `{:partial, set}` or `{:all, why}`, rather than a set or the bare atom the
@@ -483,14 +487,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
   # of an inspected map wraps — `topology_moved` learned that the expensive way.
   #
-  # `appeared` separated from `moved` because they are different faults with
-  # different fixes. `appeared` is an entity the rows have never held, and a
-  # population of those that never shrinks is a guard that can never pass —
-  # which is exactly how `entity_set_moved` died. `moved` is fingerprints
-  # genuinely differing, which is the honest reason to recompute.
-  defp why_all(stale, entities, moved, appeared, ctx) do
+  # Three numbers rather than one, because "everything is stale" has three
+  # causes and they are not the same news:
+  #
+  #   * `mismatched` — entities whose own inputs differ. The honest reason to
+  #     recompute, and the only one that earns a full pass on its own.
+  #   * `+family` — added by `expand_component_families/2` because a relative
+  #     moved. Legitimate per family, but it is the number that can turn a
+  #     handful of real changes into the whole project, and the first run of
+  #     this line could not tell the two apart: `moved=1201` might have been
+  #     1201 real changes or eight changes and 1193 relatives.
+  #   * `appeared` — an entity the rows have never held. A population of those
+  #     that never shrinks is a guard that can never pass, which is exactly how
+  #     `entity_set_moved` died. Measured at 19 here, so not that.
+  defp why_all(stale, entities, {mismatched, moved}, appeared, ctx) do
     "stale=#{MapSet.size(stale)} >= recorded=#{MapSet.size(entities)} " <>
-      "(moved=#{MapSet.size(moved)} appeared=#{MapSet.size(appeared)}) " <>
+      "(mismatched=#{MapSet.size(mismatched)} " <>
+      "+family=#{MapSet.size(moved) - MapSet.size(mismatched)} " <>
+      "appeared=#{MapSet.size(appeared)}) " <>
       "ctx=#{length(ctx.components)}c/#{length(ctx.stories)}s"
   end
 
