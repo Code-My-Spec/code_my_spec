@@ -210,6 +210,64 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Tell the agents whose turn a restart took what happened to it.
+
+  Called when a harness asks what it should be running, which is the only
+  moment this side sees a restart at all — the application going down is not an
+  event the server observes.
+
+  Only an agent with a turn open is told, and that is rule `841a5f79` rather
+  than an optimisation. A harness serves several checkouts and each runs
+  several agents, so announcing a restart to all of them is one message per
+  agent per restart, in runs — and an agent that lost nothing reads it, spends a
+  turn establishing that nothing happened to it, and stops.
+
+  An agent that *was* mid-turn cannot infer any of this. Its thread ends
+  part-way through a tool call and then jumps, and the two readings available
+  to it — "the tool never answered, so wait" and "I already did this" — are
+  both wrong and neither is recoverable from the transcript. Rule `0a06befe`
+  decided the turn is discarded rather than resumed; this is where the agent
+  finds that out.
+
+  Written before the launch request is hydrated, so the notice is part of the
+  history the agent comes back holding rather than something it would have to
+  re-read the page to see. `turn_started_at` is cleared in the same pass, for
+  the reason `restart_agent/2` already clears it: left set, `list_agent_work`
+  and every check-in go on reporting a turn that opened before a process that
+  no longer exists (`4078e7bf`).
+  """
+  @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
+  def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
+    Enum.each(agents, &account_for_interrupted_turn(scope, &1))
+  end
+
+  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil}), do: :ok
+
+  defp account_for_interrupted_turn(scope, %Agent{} = agent) do
+    with {:ok, conversation} <- open_conversation(scope, agent) do
+      Conversations.add_message(conversation, :operator, interrupted_notice(), "operator")
+    end
+
+    AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+    :ok
+  end
+
+  defp interrupted_notice do
+    """
+    The harness restarted while you were part-way through a turn.
+
+    That turn was discarded rather than resumed, so whatever it had in flight
+    did not finish and was not recorded. The last step written to this thread
+    is the last thing that is known to have happened.
+
+    Carry on from the turns already here. Do not assume work you cannot see
+    recorded above was completed — if you are unsure whether something landed,
+    check rather than redo it.
+    """
+  end
+
   # Starting a `main` agent is what the cadence exists to look after, so it is
   # also what should start one. Without this the only triggers were the boot
   # sweep and a continuous-mode flip, so a main agent started on a running node

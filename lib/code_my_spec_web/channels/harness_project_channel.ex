@@ -689,11 +689,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # it built carried neither the credential nor the conversation — so an agent
     # restored after a harness restart came back with nothing to authenticate
     # with and no memory of anything it had been told.
-    agents =
+    running =
       scope
       |> Agents.list_running()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
-      |> Enum.map(&(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
+
+    # Before hydrating, not after. An agent that was mid-turn is told here what
+    # became of that turn, and hydration is what reads the conversation into
+    # the launch request — so writing first is what makes the notice part of
+    # the history the agent comes back holding, rather than a line it would
+    # only find by re-reading the page.
+    :ok = Agents.account_for_interrupted_turns(scope, running)
+
+    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
 
     {:reply, {:ok, %{"agents" => agents}}, socket}
   end
