@@ -35,6 +35,8 @@ defmodule CodeMySpecSpex.Story990.Criterion2980Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
+  alias CodeMySpec.Intake.Shaper
+
   @endpoint CodeMySpecWeb.Endpoint
 
   defmodule NeverConcludes do
@@ -66,7 +68,7 @@ defmodule CodeMySpecSpex.Story990.Criterion2980Spex do
 
         describe_idea(view, "a booking tool for hair salons")
 
-        answers = List.duplicate("Just my business.", CodeMySpec.Intake.Shaper.max_questions())
+        answers = List.duplicate("Just my business.", Shaper.max_questions())
         html = answer_shaping_questions(view, answers)
 
         {:ok, context |> Map.put(:conn, conn) |> Map.put(:view, view) |> Map.put(:html, html)}
