@@ -279,17 +279,21 @@ defmodule CmsHarness.SyncPathTest do
     defp drain_for_manifest(project, path, write_fun, attempts, per_attempt_ms) do
       receive do
         {:observations, _, observations} ->
-          if Enum.any?(observations, &(&1["path"] == path)) do
-            observations
-          else
-            drain_for_manifest(project, path, write_fun, attempts, per_attempt_ms)
-          end
+          observations
+          |> Enum.any?(&(&1["path"] == path))
+          |> manifest_or_retry(observations, project, path, write_fun, attempts, per_attempt_ms)
       after
         per_attempt_ms ->
           write_fun.()
           drain_for_manifest(project, path, write_fun, attempts - 1, per_attempt_ms)
       end
     end
+
+    defp manifest_or_retry(true, observations, _project, _path, _write_fun, _attempts, _ms),
+      do: observations
+
+    defp manifest_or_retry(false, _observations, project, path, write_fun, attempts, ms),
+      do: drain_for_manifest(project, path, write_fun, attempts, ms)
 
     # The property: events it cannot deliver are events it will not remember, so
     # it stops rather than building a backlog whose loss is invisible.
