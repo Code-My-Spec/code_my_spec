@@ -92,24 +92,22 @@ defmodule CodeMySpec.Analysis.Runners do
     files = if args == [], do: nil, else: args
     runner_opts = [files: files] |> maybe_output_file(opts)
 
-    cond do
-      not Analyzers.Credo.available?(scope) ->
-        {:error, "Analyzer credo is not available"}
+    if Analyzers.Credo.available?(scope) do
+      case Analyzers.Credo.run_with_output(scope, runner_opts) do
+        {:ok, problems, output} ->
+          {:ok,
+           summarize(
+             problems,
+             if(problems == [], do: 0, else: 1),
+             %{"issues" => length(problems)},
+             output
+           )}
 
-      true ->
-        case Analyzers.Credo.run_with_output(scope, runner_opts) do
-          {:ok, problems, output} ->
-            {:ok,
-             summarize(
-               problems,
-               if(problems == [], do: 0, else: 1),
-               %{"issues" => length(problems)},
-               output
-             )}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, "Analyzer credo is not available"}
     end
   end
 
