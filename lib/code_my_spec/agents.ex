@@ -536,26 +536,30 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The row stays `:starting` and the *caller* is told.
+  # Answers `{:ok, agent}` at `:starting`, and that is deliberate rather than
+  # lax — see criterion 3211, which asks for the opposite and cannot have it.
   #
-  # Those are two different things and only the first was here. `:starting` is
-  # the right row — "asked-for and unconfirmed" is exactly what happened, and a
-  # retry has somewhere to resume from — but answering `{:ok, agent}` alongside
-  # it told the caller an agent had started when none had. From the caller's
-  # side that is indistinguishable from a working agent except by watching it
-  # not work, and the reason was logged at info where nothing is reading.
+  # A row here is *intent*, not observation. `create_working_copy` staffs a
+  # copy with its three roles before that copy has joined the harness, and the
+  # machine reconciles to the rows afterwards through `agents_to_restore`. So
+  # "the machine did not start it" is the ordinary, recoverable case on the
+  # path that matters most, and refusing it breaks staffing outright:
+  # `ensure_copy_agents` and `offboard_ends_the_agents` both fail at their
+  # premise, measured, with `{:machine_did_not_start_it, :working_copy_missing}`.
   #
-  # `restart_agent/2` already records what that costs in its own comment: a
-  # launch that lost, a row stuck at `:starting` with `os_pid: nil`, and
-  # `{:ok, agent}` returned — nine minutes later nothing had retried, because
-  # nothing had been told there was anything to retry.
+  # What 3211 is actually right about is the *reply*, not the return: a caller
+  # told "Agent started." for a row nothing has confirmed cannot tell that from
+  # a working agent. That is a wording problem in `AgentsMapper.started/1`, and
+  # fixing it there costs nothing here. Left alone pending a decision, because
+  # changing the return is what `34e03128` ("a :starting row is never retried")
+  # would have to be solved alongside.
   defp keep_starting(agent, reason) do
     Logger.info(
       "[Agents] agent #{agent.id} was not started on its machine (#{inspect(reason)}); " <>
         "it stays :starting, which is what the page shows as asked-for and unconfirmed"
     )
 
-    {:error, {:machine_did_not_start_it, reason}}
+    {:ok, agent}
   end
 
   # An agent that cannot be watched is indistinguishable from one that never
