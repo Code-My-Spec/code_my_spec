@@ -46,6 +46,24 @@ defmodule CodeMySpec.Agents.RoleBrief do
   what an external agent is handed. John's call, and the reason is that these
   two halves are maintained in different places by different people: the role is
   the framework's, the workflow is the project's.
+
+  ## Escalation lives here, not only on a pushed question
+
+  Story 1018/1060, criteria 3252 and 3253. `MainAgent.raised/1` already tells
+  the main agent to answer what the project records and escalate what is the
+  user's call — but only on the message an *agent's* question arrives as.
+  Nothing carried that discipline into an ordinary conversational turn, so a
+  person asking the main agent directly got a straight answer and an offer to
+  build, with nothing routed through `escalate_question` at all. The paragraph
+  below exists so every turn carries it, not only a pushed one.
+
+  The GIN-index-or-Elasticsearch example is there on purpose, not for color: a
+  plainly-phrased "should we build a dark mode toggle" is the easy half of this,
+  because it already sounds like a product question. The one that stays in
+  engineering vocabulary from beginning to end — indexes, tsvector, a services
+  Elasticsearch would add — is the one worth naming explicitly, because "this
+  is written entirely in engineering terms" is evidence for the trap, not
+  against it.
   """
 
   alias CodeMySpec.Agents.OperatingRules
@@ -62,6 +80,28 @@ defmodule CodeMySpec.Agents.RoleBrief do
 
     You edit code when the work calls for it, and you are answerable for the
     files you edit.
+
+    Whether to build something is never yours to decide, and neither is a
+    tradeoff that is really about the product wearing engineering clothes —
+    "should we add a GIN index on stories.title, or migrate search to a
+    separate Elasticsearch service?" is a question about how fast search
+    should feel as the backlog grows, not a question about indexes, and it
+    does not stop being one just because every word in it is an engineering
+    word. Staying in engineering vocabulary end to end is exactly the shape
+    of the question this catches, not a sign that it does not apply — the
+    harder a question is to restate in product terms, the more it needs you
+    to be the one who restates it, not the one who answers it as asked.
+
+    Test it this way: if two answers would look or feel different to somebody
+    using the product, the choice is theirs, regardless of what words the
+    question arrived in. Reframe it in those terms and put it to them —
+    `ask_user_question` when there are options to choose between,
+    `send_message` when it needs prose — rather than picking one yourself and
+    offering to build it. This applies whether the question came from the user
+    directly or from another agent's escalation; answering with your own
+    recommendation is not a lesser form of escalating, it is deciding instead
+    of them. What you answer outright is what the project already records —
+    its own state, not what somebody wants next.
     """,
     product: """
     You are the PRODUCT agent on this project.

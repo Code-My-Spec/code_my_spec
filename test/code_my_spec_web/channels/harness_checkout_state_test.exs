@@ -117,36 +117,46 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
   # what a *successful* promotion leaves behind, since promotion merges this
   # branch into the running copy and leaves this worktree where it was.
   #
-  # This rendered as "its work is not on the checkout the application runs from
-  # ... Call `promote`" and cost twenty minutes on 2026-09-12: the running copy's
-  # HEAD was literally `Merge branch 'light-harness'`, the promotion's own merge
-  # commit. Following the advice restarts the shared dev server and leaves the
-  # reader exactly as far behind.
+  # Used to render as "its work is not on the checkout the application runs
+  # from ... Call `promote`" and cost twenty minutes on 2026-09-12: the running
+  # copy's HEAD was literally `Merge branch 'light-harness'`, the promotion's
+  # own merge commit. Following the advice restarts the shared dev server and
+  # leaves the reader exactly as far behind. `PromoteWork` grew a hedge for
+  # this shape ("may already be on the running dev copy ... merge main in,
+  # then evaluate again") rather than fixing the gate itself.
   #
-  # Asserted on the prompt rather than only on the reason, because the reason was
-  # never the wrong part — "N commit(s) on main are not here" was true. The
-  # remedy wrapped around it was wrong, and the remedy is what an agent acts on.
-  test "a behind-only checkout is told to merge main in, not to promote",
+  # Issue cf06b908 named the actual defect the hedge was working around: an
+  # unrelated push landing on main after this checkout last synced flips
+  # `commits_behind_main` up and un-satisfies a story whose own commit never
+  # moved — a false negative in steady state, because catching up is a race
+  # against every other agent on a shared box. `ahead == 0` already proved
+  # this checkout's work is an ancestor of main, and ancestry only grows, so
+  # "behind" was never evidence the work is missing. The gate no longer gates
+  # on it (`Promotion.out_of_sync_reasons/1`), so this case now passes outright
+  # — no hedge, no round trip through `git merge --ff-only main` first.
+  test "a behind-only checkout with nothing of its own to send passes outright",
        %{scope: scope, socket: socket} do
     ref = report(socket, %{"ahead" => 0, "behind" => 7, "dirty" => false})
     assert_reply(ref, :ok)
 
-    assert {false, %{behind: 7, ahead: 0, dirty: false}} =
-             Promotion.running_copy_check(scope, %{id: 1}),
-           "the gate stopped carrying the counts the remedy branches on"
+    assert {true, _details} = Promotion.running_copy_check(scope, %{id: 1}),
+           "an unrelated push moving main further ahead un-satisfied a story " <>
+             "whose own commit is still exactly as much an ancestor of main " <>
+             "as it ever was"
 
     story = story_fixture(scope, %{title: "a story whose work already went across"})
     {:ok, prompt} = PromoteWork.command(scope, %{story_id: story.id})
 
-    assert prompt =~ "git merge --ff-only main",
-           "the remedy that actually fixes this is not in the prompt. Got: #{prompt}"
+    assert prompt =~ ~r/already on the running dev\s+copy/,
+           "a behind-only, ahead-0, clean checkout is exactly what a successful " <>
+             "promotion leaves behind, and should read as done rather than as " <>
+             "something to remedy. Got: #{prompt}"
 
     refute prompt =~ ~r/Call `promote`/,
            """
            The prompt still tells the agent to promote. Promotion merges this
            branch into the running copy; it does not bring main into this
-           worktree, so it cannot fix being behind — it restarts the shared dev
-           server and leaves the agent exactly as far behind as before.
+           worktree, and there is nothing left to bring across anyway.
            """
   end
 
