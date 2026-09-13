@@ -228,9 +228,52 @@ defmodule CmsHarness.Agents do
   # there is nowhere to report to.
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
+      warn_on_tool_failure(agent_id, envelope)
       ChannelClient.report_turn_event(working_copy, agent_id, envelope)
     end
   end
+
+  # A tool call that failed, said out loud on the machine.
+  #
+  # Every tool call already ends with an event carrying `error`, populated on
+  # all four failure paths — a returned `{:error, reason}`, a rescued crash, a
+  # blocked call, an unknown tool. It travels to the server too, where
+  # `tool_meta/1` puts it on the wire and the transcript keeps it.
+  #
+  # What it did not do was reach a log. Only Alloy's *crash* branch logs; a
+  # tool that returns an error is handed to the model, stored, and mentioned
+  # nowhere else. So an agent whose every call fails is completely silent here,
+  # which is exactly the shape of the incident story 1051 was written for: four
+  # hours of an agent reporting a full tool list and failing every call, with
+  # nothing in `harness.log` to grep for.
+  #
+  # `:warning` rather than `:error`, deliberately. A tool answering "no such
+  # story" is an ordinary outcome and not a fault, and SexySpex fails any spex
+  # during which anything logs at `:error` — several criteria drive refusals on
+  # purpose (1038's catalogue, 1050's 3202/3203/3226), so erroring here would
+  # turn green specs red for exercising the behaviour they are about. The
+  # documented log recipe greps `level=(warning|error)`, so this is findable
+  # either way.
+  # Read with `Map.get/2` rather than matched as a required key, the same way
+  # `ChannelClient.tool_meta/1` reads it. A pattern demanding `:error` would
+  # never match an event that omits the key, and the symptom of that is
+  # silence — which is the thing this exists to end.
+  defp warn_on_tool_failure(agent_id, %{payload: %{name: name} = payload})
+       when is_binary(name),
+       do: warn_failure(agent_id, name, Map.get(payload, :error))
+
+  defp warn_on_tool_failure(_agent_id, _envelope), do: :ok
+
+  defp warn_failure(_agent_id, _name, nil), do: :ok
+
+  defp warn_failure(agent_id, name, error) do
+    Logger.warning("[CmsHarness] agent #{agent_id} tool #{name} failed: #{failure_text(error)}")
+  end
+
+  # Bounded, because a tool's error can carry a whole response body and this
+  # goes to a file that rotates at 10 MB.
+  defp failure_text(error) when is_binary(error), do: String.slice(error, 0, 500)
+  defp failure_text(error), do: error |> inspect() |> String.slice(0, 500)
 
   # This checkout's id, from the file it keeps it in.
   #
