@@ -984,15 +984,39 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  Get one agent conversation by id, scoped to the account.
+  Get one agent conversation by id, scoped to the account **and the project**.
 
-  The show page takes its id from the URL, so this is the check that one
-  account's transcript is not readable by another.
+  The show page takes its id from the URL, so this is the check that stops one
+  transcript being readable from another's address.
+
+  It used to check the account alone, and that was one axis short. Two projects
+  under one account was the whole precondition: the same conversation id under
+  the second project's URL rendered the first project's agent transcript —
+  messages, restart notices and a `bash mix deps.get` tool call — under the
+  second project's chrome. The page said one project and the content was
+  another's private agent activity. Filed from a source reading as `4a470cc3`
+  and confirmed live as `7dbf9709`.
+
+  `mount_conversation/3` sets `active_project_id` from the URL before calling
+  this, with a comment saying it does so precisely because a downstream read
+  scopes on it. This is that read; it just was not scoping on it.
+
+  Both callers are per-project surfaces, so tightening is what they already
+  assume. `rename_agent_conversation/3` below still describes the check as
+  account-level — it is now narrower than that sentence, and deliberately.
+
+  A scope with no project answers `nil` rather than raising. Ecto refuses to
+  compare a column with `nil` in a `where`, and a scope-narrowing change that
+  turns "no project" into a crash would be the same defect `b27c54f1` reports
+  against `check_machinery` — introduced while fixing its neighbour.
   """
   @spec get_agent_conversation_by_id(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
+  def get_agent_conversation_by_id(%Scope{active_project_id: nil}, _conversation_id), do: nil
+
   def get_agent_conversation_by_id(%Scope{} = scope, conversation_id) do
     Conversation
     |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
+    |> where([c], c.project_id == ^scope.active_project_id)
     |> where([c], c.type == :agent)
     |> Repo.one()
   end
