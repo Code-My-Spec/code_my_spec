@@ -231,10 +231,11 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   # --- Internals ---
 
-  # Strips the live `Task` struct (a pid/ref, not meaningful off-process) and
-  # names how many requests are riding on this one execution — `tied_run_ids`
-  # itself plus the primary — which is the number a dashboard actually wants,
-  # not a list to re-count in every caller.
+  # Strips the live `Task` struct (a pid/ref, not meaningful off-process).
+  # Carries the actual `tied_run_ids`, not just their count — a dashboard
+  # correlating this against the server's own `analysis_runs` rows needs
+  # every id riding on this one execution, not a number to re-derive nothing
+  # from.
   defp entry_summary(nil), do: nil
 
   defp entry_summary(entry) do
@@ -242,7 +243,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       source: entry.source,
       run_id: entry.run_id,
       args: Map.get(entry, :args, []),
-      tied_count: length(Map.get(entry, :tied_run_ids, []))
+      tied_run_ids: Map.get(entry, :tied_run_ids, [])
     }
   end
 

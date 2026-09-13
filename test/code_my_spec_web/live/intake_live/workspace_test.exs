@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
   import CodeMySpecSpex.IntakeSteps
 
+  import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures
 
@@ -164,6 +165,90 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       # paid onboarding actually is (9cd0103b).
       assert has_element?(view, "[data-test='open-project-dashboard']")
       assert html =~ ~r{/app/projects/[^/"]+/agent-conversation}
+    end
+  end
+
+  describe "starting the project's agent (issue 9bef58fb)" do
+    # ExUnit.CaptureLog's own `:level` option does not lower the primary
+    # `:logger` level below the test env's default `:warning` (config/test.exs)
+    # -- it only restricts what a capture already receiving messages keeps, so
+    # an `:info` call is gated out before any handler sees it unless the
+    # primary level itself is lowered around the call. Confirmed empirically
+    # (an isolated `capture_log([level: :info], ...)` call for a plain
+    # `Logger.info/1` came back empty; wrapping the same call in
+    # `Logger.configure(level: :info)` did not).
+    setup do
+      previous = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: previous) end)
+    end
+
+    # A fresh test project has no working copy fixture of its own, so the real
+    # attempt to launch always fails (in test env, with `:not_connected`) --
+    # what these tests prove is *when* the attempt happens, via the one
+    # observable side effect of that failure, not whether it succeeds. A real
+    # cloud copy's harness has, by `BootSteps`' own ordering (`starting_harness`
+    # precedes `starting_app`), very likely already joined by the time
+    # `:running` is reached.
+    test "is not asked for while the workspace is still coming up", %{conn: conn} do
+      fake(healthy?: false, alive?: true, logs: "\e[1;36m==> Fetching dependencies\e[0m")
+      never_times_out()
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+
+      log =
+        capture_log(fn ->
+          pay(view)
+          render_async_progress(view)
+        end)
+
+      refute log =~ "[Intake] no agent started",
+             "the container's own harness cannot possibly have joined yet at " <>
+               "the instant the boot is merely kicked off -- asking for the " <>
+               "agent this early is what left every fresh cloud onboarding's " <>
+               "main agent stuck reading :starting forever, since nothing ever " <>
+               "retries a row that already exists"
+
+      finish_boot()
+    end
+
+    test "is asked for once the workspace is confirmed running", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+
+      log =
+        capture_log(fn ->
+          pay(view)
+          eventually(view, "It&#39;s running.")
+        end)
+
+      assert log =~ "[Intake] no agent started",
+             "the agent must be asked for once the workspace is actually up, " <>
+               "not left waiting on a call that only ever happened too early"
+    end
+
+    test "a reload of an already-running workspace asks again", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+      eventually(view, "It&#39;s running.")
+
+      # A fresh mount of the same already-running project -- a reload, or a
+      # LiveView reconnect -- used to assign the row without ever attempting
+      # to start the agent at all (only `boot_workspace/2`'s own fresh-boot
+      # path did). If the very first attempt happened too early and got
+      # stuck, this was the only other chance to self-heal it, and nothing
+      # took it.
+      log = capture_log(fn -> {:ok, _view2, _html} = live(conn, ~p"/build/workspace") end)
+
+      assert log =~ "[Intake] no agent started",
+             "a later mount of an already-running project must retry the " <>
+               "agent start, not only the mount that first kicked off the boot"
     end
   end
 

@@ -125,8 +125,10 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
 
   # For the dev dashboard's DashboardStatusController: the one place that
   # knows a running entry and its ties are one execution, not four separate
-  # things happening — the `analysis_runs` ledger cannot draw that line.
-  test "status/2 reports the running entry's tie count and every queued source" do
+  # things happening — the `analysis_runs` ledger cannot draw that line, and
+  # correlating the ledger's own rows against this needs every tied run_id,
+  # not just how many there are.
+  test "status/2 reports the running entry's tied run_ids and every queued source" do
     running_state = %{
       project: %{root: "/tmp/a-checkout"},
       running: %{run_id: 1, source: "exunit", tied_run_ids: [2], task: nil},
@@ -139,7 +141,7 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
 
     {:reply, status, _state} = AnalysisServer.handle_call(:status, self(), running_state)
 
-    assert %{run_id: 1, source: "exunit", tied_count: 1} = status.running
+    assert %{run_id: 1, source: "exunit", tied_run_ids: [2]} = status.running
     assert Enum.map(status.queued, & &1.source) |> Enum.sort() == ["credo", "spex"]
     assert Enum.find(status.queued, &(&1.source == "spex")).args == ["test/a_spex.exs"]
   end
