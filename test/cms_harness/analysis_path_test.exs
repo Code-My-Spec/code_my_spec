@@ -222,26 +222,37 @@ defmodule CmsHarness.AnalysisPathTest do
              "was duplicated and discarded"
   end
 
-  test "a second run of a source already queued is superseded, not failed", ctx do
+  # Superseded twice over now (story 839, criterion 3439). This test used to
+  # assert the run's answer that "superseded" run_id 22 got a synthetic status
+  # carrying no data — the queued run answered for it, but "answered" meant
+  # nothing about what actually happened to *its* request. Now it is tied, not
+  # superseded: run_id 22 gets the exact same real result run_id 21 does,
+  # because one execution genuinely answers for both.
+  test "a second run of a source already queued is tied to it, not answered with an empty status",
+       ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
     assert await_connected(ctx.project.root)
 
     # Both in one push, so the second lands while the first is still queued.
     # Two `mix test` processes in one `_build` corrupt it, which is the reason
-    # the queue exists at all, and a second *pending* run for one source can
-    # only ever deliver the same answer twice.
+    # the queue exists at all, and a second *pending* run for one source would
+    # only ever deliver the same answer twice — so it is tied to the one
+    # execution that will, rather than superseded with nothing.
     FakeServer.request_analysis([
       %{"run_id" => 21, "source" => "sobelow", "args" => []},
       %{"run_id" => 22, "source" => "sobelow", "args" => []}
     ])
 
-    # `superseded`, not `error`. The run never ran and nothing went wrong — the
-    # queued one answers for both. Reported as a failure it made its source read
-    # `failed` when nothing had failed, and could unseat a good result: 14 such
-    # rows in half an hour on one harness.
-    assert %{"status" => "superseded", "error" => "already queued"} = await_result(22)
-    assert %{"status" => "error"} = await_result(21)
+    result_21 = await_result(21)
+    result_22 = await_result(22)
+
+    assert %{"status" => "error", "error" => error} = result_21
+    assert error =~ "unknown analyzer source"
+
+    assert %{"status" => "error", "error" => ^error} = result_22,
+           "the tied request should get sobelow's real answer, not a synthetic " <>
+             "'superseded' status carrying no data. Got: #{inspect(result_22)}"
 
     assert AnalysisServer.idle?(ctx.project.root)
   end

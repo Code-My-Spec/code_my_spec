@@ -157,6 +157,120 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # different question from whether an answer is current. A graph that is
   # slower than it needs to be costs time; a graph that is wrong is an agent
   # doing work that does not exist.
+  @doc """
+  Apply analysis freshness to computed or stored requirements, on the way out.
+
+  The half of a `:tests_passing` verdict that is not durable. The row holds the
+  component's own problem count; whether the run behind that count still
+  describes the current code is a project-wide fact that changes on its own
+  schedule, and baking it into rows made an analyzer finishing recompute 1116 of
+  1347 requirements to correct one term. Criterion 3448.
+
+  **Downgrades only.** A stored `false` is never turned into a pass, so this
+  cannot manufacture the false positive the asymmetry exists to prevent — it can
+  only withhold a clean verdict whose evidence has gone stale. That also makes
+  it idempotent, which is why applying it on both the cached and the computed
+  path is safe.
+
+  Keyed off `details.analysis_source`, written by `problem_verdict/5`, so a
+  requirement says for itself which analyzer it leans on rather than this
+  needing a table of names.
+  """
+  @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
+  def serve(nodes, ctx) do
+    fresh = Map.get(ctx, :analysis_fresh, %{})
+
+    Enum.map(nodes, fn node ->
+      case analysis_source(node) do
+        source when is_binary(source) ->
+          if Map.get(fresh, source, false), do: node, else: stale(node, source)
+
+        nil ->
+          node
+      end
+    end)
+  end
+
+  # Both directions of the asymmetry, applied at serve time rather than baked
+  # into the row. `StaleAnalysisTest` is what this has to keep true, and it was
+  # bought by a drill: an agent re-fixed four credo findings it had already
+  # corrected, because a stale list is indistinguishable from a current one when
+  # nothing says so.
+  #
+  # A stale **zero** refuses. Clean from a run that never saw this code is a
+  # false pass, and that is the direction that costs correctness.
+  #
+  # A stale **count** is still served, with its vintage named. Withholding it
+  # instead left any source slower than the edit cadence permanently "pending",
+  # never answering at all (issue 7a7eed33) — absent information rendered as a
+  # blocked requirement.
+  defp stale(%{satisfied: true} = node, source) do
+    %{
+      node
+      | satisfied: false,
+        details:
+          node.details
+          |> put_detail(
+            :reason,
+            "#{source} results not current — the last completed run " <>
+              "predates your changes, so a clean result from it proves nothing"
+          )
+          |> put_detail(:stale, true)
+    }
+  end
+
+  defp stale(node, source) do
+    case read_detail(node.details, :reason) do
+      reason when is_binary(reason) and reason != "" ->
+        %{
+          node
+          | details:
+              node.details
+              |> put_detail(:reason, "#{reason}, from the last completed #{source} run")
+              |> put_detail(:stale, true)
+        }
+
+      _ ->
+        %{node | details: put_detail(node.details, :stale, true)}
+    end
+  end
+
+  # Written back in the key style the map already uses.
+  #
+  # `problem_verdict/5` builds atom-keyed details and a rehydrated row carries
+  # string-keyed ones, and both reach here. Normalising to strings on the way
+  # out broke `details.reason` for every caller holding a freshly computed
+  # requirement — `StaleAnalysisTest` caught it — so the overlay preserves
+  # whichever style it was handed rather than imposing one.
+  defp put_detail(details, key, value) when is_map(details) do
+    if atom_keyed?(details),
+      do: Map.put(details, key, value),
+      else: Map.put(details, to_string(key), value)
+  end
+
+  defp put_detail(_details, key, value), do: %{key => value}
+
+  defp read_detail(details, key) when is_map(details),
+    do: Map.get(details, key) || Map.get(details, to_string(key))
+
+  defp read_detail(_details, _key), do: nil
+
+  defp atom_keyed?(details) do
+    case Map.keys(details) do
+      [] -> true
+      keys -> Enum.any?(keys, &is_atom/1)
+    end
+  end
+
+  defp analysis_source(%{details: details}) when is_map(details) do
+    case Requirement.normalize_details(details) do
+      %{"analysis_source" => source} when is_binary(source) -> source
+      _ -> nil
+    end
+  end
+
+  defp analysis_source(_node), do: nil
+
   defp recompute_stale(scope, ctx, config) do
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
@@ -221,7 +335,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       )
       |> persist_projection(scope, reduced, fresh, stored_edges)
 
-      {nodes, stored_edges}
+      {serve(nodes, ctx), stored_edges}
     else
       # Which guard sent it to the whole computation, because without this the
       # only observable difference between "reuse is working" and "reuse never
@@ -415,7 +529,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     )
     |> persist_projection(scope, enriched_ctx, nodes, edges)
 
-    {nodes, edges}
+    # Persisted durable, returned overlaid — in that order. The rows must hold
+    # the component's own answer so a freshness flip does not invalidate them;
+    # the caller must see the qualified one so it never acts on a clean verdict
+    # whose run has gone stale.
+    {serve(nodes, ctx), edges}
   end
 
   # What the graph costs, split the way the work splits.
@@ -524,8 +642,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         :no_rows
 
-      projected ->
-        {:ok, projected}
+      {nodes, edges} ->
+        # The cached path's overlay. `compute_and_publish/4` and
+        # `recompute_stale/3` each apply it to what they return; this is the
+        # third way nodes reach a reader, and criterion 3358 requires a cached
+        # answer and a fresh one to describe the same graph — which they would
+        # not if freshness were applied on one path and not the other.
+        {:ok, {serve(nodes, ctx), edges}}
     end
   end
 
