@@ -86,6 +86,31 @@ defmodule CodeMySpecWeb.ANamedConversationIsNotSubstitutedTest do
     conversation
   end
 
+  # Confirmed live before this existed: the same conversation id under a second
+  # project's URL rendered the first project's full agent transcript — messages,
+  # restart notices and a shell command — under the second project's chrome
+  # (`7dbf9709`, confirming `4a470cc3`). Two projects in one account is the
+  # whole precondition; no cross-account step is involved.
+  test "and one project's transcript does not render under another's URL", %{
+    conn: conn,
+    scope: scope,
+    account: account
+  } do
+    here = a_project(scope, account, "the-project-in-the-url")
+    elsewhere = a_project(scope, account, "somewhere-else")
+
+    theirs = with_a_main_agent(scope, elsewhere, "another project's agent speaking")
+    _mine = with_a_main_agent(scope, here, "this project's agent speaking")
+
+    {:ok, _view, html} = live(conn, cockpit(here, theirs.id))
+
+    refute html =~ "another project's agent speaking", """
+    The page chrome says one project and the content is another's private agent
+    activity. `get_agent_conversation_by_id/2` checked the account and not the
+    project, which is one axis short of what its callers assume.
+    """
+  end
+
   test "an id that names nothing at all is not swapped either", %{
     conn: conn,
     scope: scope,
