@@ -37,52 +37,46 @@ defmodule CodeMySpecSpex.Story1064.Criterion3375Spex do
 
   ## Standing the model down
 
-  Through the shaper, which is the seam the application offers and the one the
-  existing `ShaperFailureTest` uses. The model being unreachable is external
-  system state with no surface that produces it, which is the case the
-  no-fixtures rule exempts.
+  Through the dev fault routes, which is what somebody testing this live has to
+  use and therefore what this had better prove works. The model being
+  unreachable is external system state with no surface that produces it, which
+  is the case the no-fixtures rule exempts.
+
+  It used to swap `CodeMySpec.Intake[:shaper]` for a stub, which is fine inside
+  a test node and is exactly what nobody could do on the shared dev box: the
+  config is node-global, so breaking the shaper to check this broke intake for
+  every visitor on the machine. Issue `0fb7bf03`. The fault is keyed on the
+  visitor's own session token, and the token comes back from `/dev/intake/plans`
+  because `Plugs.IntakeSession` signs it into the session where no browser can
+  read it.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpec.Intake
-
   @endpoint CodeMySpecWeb.Endpoint
 
-  defmodule UnreachableShaper do
-    @moduledoc false
-    @behaviour CodeMySpec.Intake.Shaper
-
-    @impl true
-    def shape(_plan, _turns), do: {:error, :unreachable}
-
-    @impl true
-    def conclude(_plan, _turns), do: {:error, :unreachable}
-  end
-
   setup :register_and_log_in_user
-
-  setup do
-    previous = Application.get_env(:code_my_spec, Intake, [])
-
-    Application.put_env(
-      :code_my_spec,
-      Intake,
-      Keyword.put(previous, :shaper, UnreachableShaper)
-    )
-
-    on_exit(fn -> Application.put_env(:code_my_spec, Intake, previous) end)
-
-    :ok
-  end
 
   spex "the agent cannot be reached" do
     scenario "The agent cannot be reached" do
       given_ "the agent cannot be reached", context do
         conn = get(context.conn, "/build")
         {:ok, live, _html} = live(conn)
+
+        # The plan this visitor is holding, found the way anybody outside the
+        # application has to find it. `get/2` rather than a repository read, so
+        # a route that stopped answering would fail this rather than be skipped.
+        %{"plans" => [%{"session_token" => token} | _]} =
+          conn |> get("/dev/intake/plans") |> json_response(200)
+
+        %{"status" => "injected"} =
+          conn
+          |> post("/dev/faults", %{"key" => token, "fault" => "intake_shaper_fails"})
+          |> json_response(200)
+
+        on_exit(fn -> CodeMySpec.Faults.clear(token, :intake_shaper_fails) end)
 
         {:ok, context |> Map.put(:conn, conn) |> Map.put(:live, live)}
       end

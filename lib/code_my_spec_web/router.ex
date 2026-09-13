@@ -442,6 +442,27 @@ defmodule CodeMySpecWeb.Router do
       # and staffing again.
       post "/copies/:working_copy_id/continuous", DevAgentController, :continuous
 
+      # What a checkout can drive, written by hand. The harness records this on
+      # every join and nothing else could, so the only way to see a toolless
+      # copy was to break a real machine's MCP client — which four other
+      # projects' checkouts share. A copy with an empty tool list and an agent
+      # on it is what `Machinery.tool_fault/1` reads, and on a project of your
+      # own it is visible to nobody else. The next harness join overwrites it.
+      post "/copies/:working_copy_id/machine_tools", DevAgentController, :machine_tools
+
+      # Make one caller's world fail without breaking everybody's. Issue
+      # 0fb7bf03 — the criteria about failure handling were the ones QA could
+      # never finish, because every seam was node-global on a shared box.
+      get "/faults", DevFaultController, :index
+      post "/faults", DevFaultController, :create
+      delete "/faults", DevFaultController, :delete
+
+      # The key for an intake fault. A visitor's session token is signed into
+      # the Phoenix session, so nobody driving a browser can read the one they
+      # are holding — which is what made every per-session intake seam
+      # unreachable from outside the application.
+      get "/intake/plans", DevFaultController, :plans
+
       # What the database believes against what the runtime is doing, and the
       # disagreements between them. Same compile-time gating and the same
       # reason: it reads across every project.

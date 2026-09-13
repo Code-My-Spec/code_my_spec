@@ -33,6 +33,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.Users.Scope
@@ -246,16 +247,14 @@ defmodule CodeMySpec.MainAgent.Cadence do
   """
   @spec digest(Scope.t()) :: Digest.t()
   def digest(%Scope{} = scope) do
-    case Application.get_env(:code_my_spec, :main_agent_digest_source) do
-      :unavailable ->
-        Digest.failed("the analyzer ledger did not answer")
-
-      _ ->
-        %Digest{
-          work: MainAgent.list_agent_work(scope),
-          machinery: MainAgent.check_machinery(scope),
-          questions: MainAgent.list_open_questions(scope)
-        }
+    if Faults.active?(scope.active_project_id, :digest_unavailable) do
+      Digest.failed("the analyzer ledger did not answer")
+    else
+      %Digest{
+        work: MainAgent.list_agent_work(scope),
+        machinery: MainAgent.check_machinery(scope),
+        questions: MainAgent.list_open_questions(scope)
+      }
     end
   end
 end
