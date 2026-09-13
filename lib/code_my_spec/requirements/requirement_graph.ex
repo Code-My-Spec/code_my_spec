@@ -335,7 +335,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         {nodes, stored_edges},
         topology
       )
-      |> persist_projection(scope, reduced, fresh, stored_edges)
+      |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
       {serve(nodes, ctx), stored_edges}
     else
@@ -677,7 +677,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
   # page view is exactly what `publish/3` already refuses to do for one row.
-  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
+  defp persist_projection(publish, scope, ctx, nodes, edges, verify \\ nil)
+
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges, _verify), do: :ok
 
   # Writes the read model. Atomically, and loudly.
   #
@@ -711,7 +713,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The transaction stays for the reason it was added: `upsert_all/2` and
   # `replace_edges/3` were two independent statements, so a failure between them
   # left nodes without their edges and the next read served that as the graph.
-  defp persist_projection(:published, scope, ctx, nodes, edges) do
+  defp persist_projection(:published, scope, ctx, nodes, edges, verify) do
     {:ok, _} =
       Repo.transaction(fn ->
         ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
@@ -721,7 +723,25 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # Outside the transaction on purpose. Verification is a check *about* the
     # write, not part of it — running it inside would let a failed check roll
     # back rows that are correct, which is the opposite of what it is for.
-    verify_round_trip(scope, ctx, nodes, edges)
+    #
+    # `verify` carries the *whole* graph when the write was a partial one. A
+    # partial write is given the reduced context and the fresh nodes, which is
+    # right for writing — `visited/1` must not reap the rows being kept — and
+    # wrong for checking, because `Projection.load/2` rehydrates against the
+    # context it is handed and so reads back only the stale entities' rows.
+    # Comparing that against a full payload reports thousands of edges missing
+    # that were never read.
+    #
+    # It did: 70 warnings from the first partial recompute onward, on a check
+    # whose own comment recorded that it had never fired in 828 computations.
+    # Nothing was actually lost — `replace_edges/3` deletes only among the node
+    # ids it is given, so edges touching kept nodes are left alone — but a
+    # warning that cries wolf 70 times is worse than no warning at all, because
+    # the next real one is invisible.
+    case verify do
+      {verify_ctx, verify_nodes} -> verify_round_trip(scope, verify_ctx, verify_nodes, edges)
+      nil -> verify_round_trip(scope, ctx, nodes, edges)
+    end
 
     :ok
   end
