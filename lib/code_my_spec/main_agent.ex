@@ -336,9 +336,9 @@ defmodule CodeMySpec.MainAgent do
         #{reason}
 
       It was refused. If the remedy is a harness restart it is not the main \
-      agent's to perform — the harness serves every working copy on that \
-      machine, other projects included, and restarting it takes their in-flight \
-      work with it. Somebody who can weigh that needs to decide.
+      agent's to perform — it is a shared harness, serving every working copy on \
+      that machine and other projects with it, so restarting it takes their \
+      in-flight work too. Somebody who can weigh that needs to decide.
       """
     })
 
