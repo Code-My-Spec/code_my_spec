@@ -222,11 +222,35 @@ defmodule CodeMySpec.Agents do
   avoid. This re-runs only the launch half: fetch a credential, hydrate the
   existing history (same lookup, same id, same transcript), ask the
   machine to run it. The row that comes back is the same row, running again.
+
+  ## It stops the process first, and that is the whole of it working
+
+  Without the stop this was a restart only of an agent that was already dead.
+  `Engine.start/1` answers `{:error, {:already_started, pid}}` with `{:ok,
+  %{pid: pid}}` — correct idempotence for a re-delivered *start*, and wrong for
+  a restart: the live process was handed straight back, so whatever turn it was
+  in carried on and the only thing that reached it was the `Restarted: <reason>`
+  message sent afterwards.
+
+  Which made the remedy a no-op against the one agent worth applying it to. An
+  agent hung mid-turn has a live process, and story 1059's whole premise is the
+  main agent acting on an agent that cannot report its own trouble. Every
+  restart reported success while changing nothing (`e9f9a5ab`).
+
+  So a restart now discards the turn in flight, which is a real cost and is the
+  point: criterion 3321 asks for exactly that, and an agent that has to be
+  restarted is one whose current turn is the problem.
+
+  `end_process/2` rather than a second stop path — the same call `stop_agent/2`
+  makes, so "already not running" stays a satisfied stop and an unreachable
+  machine stays an error. A machine that could not be asked refuses the restart
+  rather than reporting one it did not perform.
   """
   @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
   def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, credential} <- Credential.fetch(scope, agent.provider),
+         :ok <- end_process(scope, agent),
          {:ok, starting} <-
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,
