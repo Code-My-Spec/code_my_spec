@@ -17,27 +17,9 @@ defmodule CodeMySpecSpex.Story839.Criterion3446Spex do
 
   import CmsHarnessTest.AnalysisResults
 
-  alias CmsHarness.AnalysisSlots
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
-
-  defp occupy_the_only_slot(context) do
-    test = self()
-
-    pid =
-      spawn(fn ->
-        send(test, {:took, AnalysisSlots.acquire()})
-
-        receive do
-          :release -> :ok
-        end
-      end)
-
-    assert_receive {:took, :ok}, 1_000
-
-    on_exit(fn -> Process.exit(pid, :kill) end)
-    {:ok, Map.put(context, :slot_holder, pid)}
-  end
+  alias CmsHarnessTest.SlotHolder
 
   spex "A request waits for a machine-wide slot and completes normally once one frees" do
     scenario "both machine-wide slots are held by other working copies" do
@@ -61,7 +43,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3446Spex do
       end
 
       given_ "the machine's only slot is held by another working copy's run", context do
-        occupy_the_only_slot(context)
+        {:ok, Map.put(context, :slot_holder, SlotHolder.occupy())}
       end
 
       when_ "a new analyzer request arrives", context do
@@ -72,7 +54,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3446Spex do
       end
 
       then_ "once a slot frees it runs and completes cleanly", context do
-        send(context.slot_holder, :release)
+        SlotHolder.release(context.slot_holder)
 
         result = await_result(1)
 

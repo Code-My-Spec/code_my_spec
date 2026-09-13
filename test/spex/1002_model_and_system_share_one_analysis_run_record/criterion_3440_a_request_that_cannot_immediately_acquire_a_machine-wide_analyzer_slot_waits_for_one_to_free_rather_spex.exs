@@ -27,30 +27,9 @@ defmodule CodeMySpecSpex.Story839.Criterion3440Spex do
 
   import CmsHarnessTest.AnalysisResults
 
-  alias CmsHarness.AnalysisSlots
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
-
-  # Held for the caller's lifetime, matching `analysis_slots_test.exs`'s own
-  # helper — a slot taken by a process that goes on existing, not one that
-  # returns immediately.
-  defp occupy_the_only_slot(context) do
-    test = self()
-
-    pid =
-      spawn(fn ->
-        send(test, {:took, AnalysisSlots.acquire()})
-
-        receive do
-          :release -> :ok
-        end
-      end)
-
-    assert_receive {:took, :ok}, 1_000
-
-    on_exit(fn -> Process.exit(pid, :kill) end)
-    {:ok, Map.put(context, :slot_holder, pid)}
-  end
+  alias CmsHarnessTest.SlotHolder
 
   spex "A request that cannot immediately get a machine-wide slot waits for one" do
     scenario "the machine's one slot is already held when a run is dispatched" do
@@ -74,7 +53,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3440Spex do
       end
 
       given_ "the machine's one slot is already held by something else", context do
-        occupy_the_only_slot(context)
+        {:ok, Map.put(context, :slot_holder, SlotHolder.occupy())}
       end
 
       when_ "the harness is asked to run an analyzer", context do
@@ -90,7 +69,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3440Spex do
       end
 
       then_ "it runs and completes once the slot frees", context do
-        send(context.slot_holder, :release)
+        SlotHolder.release(context.slot_holder)
 
         result = await_result(1)
 
