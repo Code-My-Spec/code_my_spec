@@ -98,7 +98,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
   # Walks the visitor through the pre-gate flow so a confirmed plan exists on
   # this session, which is what the workspace screen converts.
-  defp with_confirmed_plan(conn) do
+  defp with_confirmed_plan(conn, plan \\ %{}) do
     conn = get(conn, ~p"/build")
     {:ok, view, _html} = live(conn)
 
@@ -111,7 +111,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
     view
     |> form("form[phx-submit=confirm_names]", %{
-      plan: %{account_name: "Acme", project_name: "Widget Tracker"}
+      plan: Map.merge(%{account_name: "Acme", project_name: "Widget Tracker"}, plan)
     })
     |> render_submit()
 
@@ -227,6 +227,41 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       assert_receive {:DOWN, ^ref, :process, _, _}, 1_000
 
       assert eventually_recorded("workspace_running")
+      refute Events.exists?("workspace_abandoned")
+    end
+  end
+
+  # Two mount paths put a workspace-shaped map on the socket rather than a row,
+  # and leaving on either of them used to crash terminate/2 (f96f17a0). Nothing
+  # the visitor sees — the socket has already gone — but it is reachable by
+  # anybody who closes the tab during the payment window, and the crash report
+  # buried a real boot failure in the same log.
+  describe "leaving before a workspace exists" do
+    test "during the payment step is not a crash", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Pay",
+             "the premise failed: this test needs the socket parked on the payment step, " <>
+               "with no workspace row yet"
+
+      assert :ok = GenServer.stop(view.pid, :normal)
+      refute Events.exists?("workspace_abandoned")
+    end
+
+    test "on the local path is not a crash either", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "mix cms.new",
+             "the premise failed: this test needs the local branch, which provisions " <>
+               "nothing and so never has a workspace row"
+
+      assert :ok = GenServer.stop(view.pid, :normal)
       refute Events.exists?("workspace_abandoned")
     end
   end
