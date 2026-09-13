@@ -55,8 +55,20 @@ config :code_my_spec, CodeMySpec.Repo,
 # Disable the main web endpoint
 config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
-# Local web endpoint — runs on 4004 in dev_cli so an in-repo CLI build
-# can coexist with the published `cms` binary on 4003.
+# The harness's own endpoint (`just harness`, port 4004 by default — see
+# CodeMySpecLocalWeb.Application.start_harness/0, which is what this build
+# actually boots; CodeMySpecLocalWeb.Endpoint below is compiled in but never
+# started from here). `code_reloader: true` recompiles changed modules,
+# including a changed router, on the next request — without this, every
+# code change to lib/cms_harness/** needed `just refresh-harness` to show up.
+config :code_my_spec, CmsHarness.Web.Endpoint,
+  code_reloader: true,
+  debug_errors: true
+
+# Local web endpoint — compiled for this env but not started by
+# `start_harness/0`; kept configured so `mix cms.new`/tests that reach it
+# directly still work. Runs on 4004 only when something explicitly starts
+# it, which in dev_cli practice is nothing.
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4004],
   code_reloader: true,
