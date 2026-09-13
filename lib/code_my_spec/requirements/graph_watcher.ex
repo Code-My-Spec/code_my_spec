@@ -286,6 +286,30 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   def handle_info(_other, state), do: {:noreply, state}
 
+  # Every observation this watcher received gets named in a line, even when the
+  # graph emitted none of its own.
+  #
+  # Stamping `obs=` as metadata covers the case where the watcher's own pass
+  # does the recomputing, and misses the one the architecture says is normal:
+  # "every graph computation in this application is triggered by a reader"
+  # (`GraphInputs`). A reader that arrives first recomputes in its own process,
+  # carrying no metadata, and leaves nothing stale — so the watcher's pass logs
+  # nothing, clears its pending list, and the ids vanish.
+  #
+  # Measured the first time the report ran against live traffic: `dc63ca83`
+  # announced at 16:31:01, applied by a reader's recompute nine seconds later,
+  # and named by nothing. Reported as dropped, which was the right answer to
+  # the question asked — unaccounted-for and ignored are the same thing to
+  # anyone reading the log afterwards.
+  #
+  # So this closes the books rather than describing the work: it says which
+  # observations this pass answered for, whatever did the computing.
+  defp account_for([]), do: :ok
+
+  defp account_for(consumed) do
+    Logger.info("[GraphWatcher] accounted for #{length(consumed)} observation(s)")
+  end
+
   defp add_observation(obs, %{pending_observations: pending}) do
     [obs || "unnamed" | pending]
   end
@@ -318,6 +342,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
     {_graph, actionable, _computed_at} =
       RequirementGraph.cached_graph_with_actionable(state.scope)
+
+    account_for(consumed)
 
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,

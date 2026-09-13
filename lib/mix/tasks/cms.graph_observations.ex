@@ -122,10 +122,23 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     end)
   end
 
+  # Two kinds of line name an observation, and both must count.
+  #
+  # `[Requirements] recomputed` is the watcher's own pass doing the work. But
+  # the architecture's normal case is a *reader* triggering the computation in
+  # its own process, which carries no metadata — so the watcher also writes
+  # `[GraphWatcher] accounted for`, saying which observations its pass answered
+  # for whatever did the computing. Counting only the first reported an
+  # observation as dropped that had in fact been applied nine seconds earlier.
   defp recomputes(lines, since) do
     lines
-    |> Enum.filter(&(String.contains?(&1, "[Requirements] recomputed") and after?(&1, since)))
+    |> Enum.filter(&(naming_line?(&1) and after?(&1, since)))
     |> Enum.map(&%{at: timestamp(&1), obs: obs_ids(&1), line: &1})
+  end
+
+  defp naming_line?(line) do
+    String.contains?(line, "[Requirements] recomputed") or
+      String.contains?(line, "[GraphWatcher] accounted for")
   end
 
   # `obs=none` is a recompute that named nothing, which is a real answer rather
