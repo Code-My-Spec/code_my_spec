@@ -381,6 +381,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         scripts_section,
         plan_section(),
         single_use_repro_section(),
+        interrupted_session_section(),
         playbook_section(),
         document_specs_section(brief_spec, story_id),
         done_signal_section(story_id)
@@ -460,6 +461,30 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     you used, so the next pass knows what is spent. Where you inherit a repro
     from a previous attempt, check it is still unused before trusting the
     result.\
+    """
+  end
+
+  defp interrupted_session_section do
+    """
+    ## If your tools stop answering, say so before you stop
+
+    The dev server and the harness both restart under you without warning. The
+    box is shared, several sessions ship fixes to it, and a plain deploy takes
+    the harness serving every checkout on the machine with it. You will see
+    `:econnrefused`, `:harness_not_connected`, or "No session_id and no agent id
+    on this call".
+
+    None of that is your story failing. Retry — the session's enrichment comes
+    back within a call or two once the harness rejoins — and carry on.
+
+    What matters is the case where you cannot carry on. Submit what you have
+    with the interruption named as the reason, rather than going quiet. Nobody
+    can tell a subagent that died from one that is mid-browser-check: both
+    produce no brief, no attempt and no notification. A pass that ended at
+    05:22 was reported as "still running" for three hours on exactly that
+    evidence (733ac788).
+
+    An interruption is also a finding about the QA loop, so file it.\
     """
   end
 
