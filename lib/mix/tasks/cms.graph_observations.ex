@@ -84,7 +84,16 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     {consumed, dropped} = Enum.split_with(settled, &MapSet.member?(named, &1.id))
     unprompted = Enum.filter(recomputes, &(&1.obs == []))
 
-    report(logs, announced, recomputes, consumed, dropped, pending, unprompted, opts[:verbose])
+    report(
+      logs,
+      announced,
+      recomputes,
+      consumed,
+      dropped,
+      pending,
+      unprompted,
+      opts[:verbose] == true
+    )
 
     if dropped != [], do: exit({:shutdown, 1})
   end
