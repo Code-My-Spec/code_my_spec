@@ -101,9 +101,10 @@ defmodule CodeMySpecSpex.Story990.Criterion2978Spex do
   defp find_new_project_id(conn) do
     html = conn |> get("/app/projects") |> html_response(200)
 
-    case Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) do
-      [_, id] -> id
-      nil -> flunk("could not find any project link on /app/projects, got: #{html}")
-    end
+    [_, id] =
+      Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) ||
+        raise("could not find any project link on /app/projects, got: #{html}")
+
+    id
   end
 end

@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Intake
@@ -63,6 +64,29 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         <.signup_card :if={@awaiting_signup?} plan={@plan} />
         <.plan_card :if={not @awaiting_signup?} plan={@plan} form={@names_form} />
       </.conversation>
+
+      <%!--
+        The cockpit's own panel component (story 1033/3425) — extracted from
+        `AgentConversationLive.Show` so pre-signup renders the same markup and
+        behavior post-signup does, given different (here: empty) backing data.
+        Nothing is open by default, so `panel_body/1` never runs — there is no
+        project yet to show a preview, stories or team activity for.
+      --%>
+      <.panels
+        screen={:narrow}
+        open={[]}
+        dynamic_view=""
+        dynamic_stories={[]}
+        dynamic_story={nil}
+        dynamic_epics={[]}
+        offer={nil}
+        activity={[]}
+        waiting={[]}
+        copies={[]}
+        project_id=""
+        conversation_id={nil}
+        preview_state={:absent}
+      />
 
       <.composer
         :if={@plan.status in [:describing, :answering]}

@@ -10,12 +10,17 @@ defmodule CmsHarness.Project.AnalysisServer do
   exactly this reason; this is the same rule on the machine that now does the
   running.
 
-  **Every request is answered.** A run the server started is a `:running` row in
-  its ledger, and a row nobody finishes makes the stop hook report analysis
-  pending forever — which allows every stop with a note that results will apply
-  next time, on a next time that never comes. So a crash, a timeout, a tool that
-  will not start and a queue that is already busy all push a result saying so.
-  Silence is the one answer this must never give.
+  **Every request is answered, with a real result.** A run the server started
+  is a `:running` row in its ledger, and a row nobody finishes makes the stop
+  hook report analysis pending forever — which allows every stop with a note
+  that results will apply next time, on a next time that never comes. So a
+  crash, a timeout, and a tool that will not start all push a result saying
+  so. A duplicate request for a source already queued is never dropped
+  either: it ties onto the entry already waiting and receives that entry's
+  real result when it lands, story 839 (`CodeMySpec.Analysis`'s own
+  moduledoc: "the single execution path shared by the stop hook and
+  model-invoked test runs"). Silence, and an answer with no data in it, are
+  the two things this must never give.
 
   Runs execute in a task under the project's `Task.Supervisor`, so a wedged
   `mix` cannot take the queue with it when it is killed.
@@ -166,6 +171,19 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
+  # Arms the kill timer the moment the analyzer actually starts, not the
+  # moment it was dispatched — the seam that lets `AnalysisSlots.acquire/0`
+  # wait for a machine-wide slot without spending the run's own budget
+  # waiting for one (story 839, criterion 3440). Guarded on `run_id` so a
+  # message from a run this server has already moved past (superseded by a
+  # kill, or already delivered) cannot arm a timer for whatever runs next.
+  def handle_info({:slot_acquired, run_id}, %{running: %{run_id: run_id}} = state) do
+    timer = Process.send_after(self(), {:timeout, run_id}, timeout())
+    {:noreply, %{state | timer: timer}}
+  end
+
+  def handle_info({:slot_acquired, _run_id}, state), do: {:noreply, state}
+
   def handle_info(_message, state), do: {:noreply, state}
 
   # --- Internals ---
@@ -183,29 +201,61 @@ defmodule CmsHarness.Project.AnalysisServer do
   # that was already fixed, and no rerun could replace them. Five stops in a
   # row, escapable only by clearing the stored problems by hand.
   #
-  # A queued run answers "still running" instead, which the stop hook allows —
-  # results apply next stop. Still refused is a *second* pending run for one
-  # source, which would only deliver the same answer twice.
+  # A request for a source already queued is never a second queue entry — it
+  # ties onto the one already waiting, so N duplicate requests for one source
+  # cost one execution instead of N (or, before this, N empty "superseded"
+  # answers: 397 against 25 completed in ninety minutes on Broken Oaths
+  # 2026-09-08, and no spex sweep finishing for thirty-four minutes on a suite
+  # that takes under three — John: "We can't be superseding runs like that. We
+  # have to let it finish."). When the tied entry finally runs, every run_id
+  # tied to it receives the same real result `deliver/3` sends the primary
+  # one — never a synthetic status carrying no data.
+  #
+  # A request for a source that is merely *running*, with nothing yet queued
+  # behind it, needs no separate case: falling through to the plain "insert a
+  # new entry" branch below both starts it once the current run finishes
+  # (`maybe_start_next/1`'s ordinary behaviour) and gives every *further*
+  # duplicate something to tie onto — this new entry, not the run already in
+  # flight, because that run may be answering input now stale relative to
+  # what prompted these requests.
   defp accept(request, state) do
     case parse(request) do
       {:ok, run_id, source, args} ->
-        if queued?(state, source) do
-          Logger.info(
-            "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
-              "run #{run_id} is superseded by it"
-          )
+        case queued_entry_for(state, source) do
+          %{} ->
+            tie_to_queued(state, source, run_id)
 
-          push_result(state.project.root, run_id, source, {:superseded, "already queued"})
-          state
-        else
-          entry = %{run_id: run_id, source: source, args: args, settled: false}
-          %{state | queue: insert_by_cost(state.queue, entry)}
+          nil ->
+            entry = %{
+              run_id: run_id,
+              tied_run_ids: [],
+              source: source,
+              args: args,
+              settled: false
+            }
+
+            %{state | queue: insert_by_cost(state.queue, entry)}
         end
 
       {:error, request} ->
         Logger.error("[CmsHarness] unreadable run_analysis entry: #{inspect(request)}")
         state
     end
+  end
+
+  defp tie_to_queued(state, source, run_id) do
+    Logger.info(
+      "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
+        "run #{run_id} is tied to it and will get its result"
+    )
+
+    queue =
+      Enum.map(state.queue, fn
+        %{source: ^source} = entry -> %{entry | tied_run_ids: [run_id | entry.tied_run_ids]}
+        entry -> entry
+      end)
+
+    %{state | queue: queue}
   end
 
   defp parse(%{"run_id" => run_id, "source" => source} = request)
@@ -215,28 +265,13 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp parse(request), do: {:error, request}
 
-  # In flight means queued *or* running, and it did not mean running.
-  #
-  # The clause above already refuses a second pending run for one source,
-  # because it "would only deliver the same answer twice". A run that has been
-  # dequeued and is executing is not in the queue, so a request arriving while
-  # spex was mid-sweep was accepted and stacked behind it — and with a
-  # continuous agent stopping every ten seconds, the next one stacked behind
-  # that.
-  #
-  # Measured on Broken Oaths 2026-09-08: 397 superseded runs against 25
-  # completed in ninety minutes, and no spex sweep finishing for thirty-four
-  # minutes on a suite that takes under three. `bdd_specs_passing` needs a fresh
-  # spex run to latch, so the agent holding that requirement waited on a sweep
-  # that could not land, said so in as many words — "purely waiting on the
-  # background spex sweep" — and stopped, which queued another one.
-  #
-  # The running sweep answers for the request that arrives during it. That is
-  # the same sentence as the queued case, one state later.
-  defp queued?(state, source) do
-    Enum.any?(state.queue, &(&1.source == source)) or
-      match?(%{source: ^source}, state.running)
-  end
+  # Only the queue, deliberately not `state.running` too. A source that is
+  # merely running has nothing queued to tie onto yet — the first duplicate
+  # request for it falls through `accept/2` to the plain insert branch, which
+  # both starts it once the current run finishes and becomes what any
+  # *further* duplicate ties onto. Checking `running` here as well would make
+  # this true too early and change nothing about what gets created.
+  defp queued_entry_for(state, source), do: Enum.find(state.queue, &(&1.source == source))
 
   # Cheapest first. Measured on this harness: compiler ~9s, credo ~10s,
   # exunit ~2m10s, spex ~2m35s — more than an order of magnitude between the
@@ -297,17 +332,22 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp settle(%{queue: queue} = state),
     do: %{state | queue: Enum.map(queue, &Map.put(&1, :settled, true))}
 
+  # No timer armed here any more — `run_with_slot/3` reports back once it
+  # actually has a slot, and `handle_info({:slot_acquired, _}, _)` arms it
+  # then. Arming at dispatch was what forced `AnalysisSlots.acquire/0` to
+  # refuse instantly rather than wait: a run queued behind others would have
+  # spent the kill budget waiting and been killed for being slow (story 839,
+  # criterion 3440).
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
+    parent = self()
 
     task =
       Task.Supervisor.async_nolink(Sync.task_supervisor(project.root), fn ->
-        run_with_slot(project, entry)
+        run_with_slot(project, entry, parent)
       end)
 
-    timer = Process.send_after(self(), {:timeout, entry.run_id}, timeout())
-
-    %{state | running: Map.put(entry, :task, task), queue: rest, timer: timer}
+    %{state | running: Map.put(entry, :task, task), queue: rest, timer: nil}
   end
 
   defp maybe_start_next(state), do: state
@@ -315,26 +355,29 @@ defmodule CmsHarness.Project.AnalysisServer do
   # Inside the task, so the slot is held by the process doing the work and comes
   # back when it exits — including when the thirty-minute timer kills it.
   #
-  # Refused rather than queued. The kill timer is armed at dispatch, above, so a
-  # run that waited its turn would spend that budget waiting and then be killed
-  # for being slow — reported as a hung tool, which is the misattribution the
-  # limit exists to prevent. `:busy` is answered at once and the next stop
-  # re-enqueues whatever is stale, so nothing is lost but a few minutes.
+  # `acquire/0` now waits for a slot rather than refusing instantly (story 839,
+  # criterion 3440) — the timer moved to `parent`'s own arming, above, so
+  # waiting here spends none of the run's kill budget. `:slot_acquired` is
+  # what tells `parent` the wait is over and the clock should start; sent only
+  # on `:ok`, because a `:busy` past `AnalysisSlots.wait_ceiling/0` never
+  # actually ran and has nothing for a kill timer to bound.
   #
-  # An error tuple rather than a silent skip, because this module's own rule is
-  # that every request is answered: a run the server started is a `:running` row
-  # in its ledger, and one nobody finishes makes the stop hook report analysis
-  # pending forever.
-  defp run_with_slot(project, entry) do
+  # An error tuple rather than a silent skip either way, because this
+  # module's own rule is that every request is answered: a run the server
+  # started is a `:running` row in its ledger, and one nobody finishes makes
+  # the stop hook report analysis pending forever.
+  defp run_with_slot(project, entry, parent) do
     case AnalysisSlots.acquire() do
       :ok ->
+        send(parent, {:slot_acquired, entry.run_id})
         Analysis.run(project, entry.source, entry.args)
 
       :busy ->
         {:error,
-         "this machine is already running #{AnalysisSlots.limit()} analyzer suites, which is " <>
-           "its limit — more at once makes every one of them report failures that are the " <>
-           "load rather than the code. Nothing ran. The next stop re-enqueues this."}
+         "this machine could not free one of its #{AnalysisSlots.limit()} analyzer " <>
+           "slots within #{AnalysisSlots.wait_ceiling()}ms — more running at once makes " <>
+           "every one of them report failures that are the load rather than the code. " <>
+           "Nothing ran. The next stop re-enqueues this."}
     end
   end
 
@@ -343,8 +386,13 @@ defmodule CmsHarness.Project.AnalysisServer do
     %{state | running: nil, timer: nil}
   end
 
+  # Every run_id tied to this entry gets the same real result the primary
+  # one does — the whole point of tying rather than superseding. `deliver/3`
+  # is the only place a tied request's answer is ever actually resolved.
   defp deliver(state, running, result) do
-    push_result(state.project.root, running.run_id, running.source, result)
+    for run_id <- [running.run_id | Map.get(running, :tied_run_ids, [])] do
+      push_result(state.project.root, run_id, running.source, result)
+    end
   end
 
   # The result carries whether the build that produced it is behind the tree it
@@ -366,21 +414,6 @@ defmodule CmsHarness.Project.AnalysisServer do
       "status" => "ok",
       "result" => result,
       "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness()
-    })
-  end
-
-  # Not an error, and said so on the wire: a run for this source was already
-  # queued and will answer for both. Reported as a failure, it made its source
-  # read `failed` when nothing had failed, and could unseat a good result.
-  #
-  # A server that predates this status treats it as unreadable and fails the
-  # run, which is the behaviour it had anyway.
-  defp push_result(root, run_id, source, {:superseded, reason}) do
-    ChannelClient.deliver_analysis_result(root, %{
-      "run_id" => run_id,
-      "source" => source,
-      "status" => "superseded",
-      "error" => to_string(reason)
     })
   end
 

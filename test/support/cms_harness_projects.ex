@@ -7,6 +7,46 @@ defmodule CmsHarnessTest.Projects do
   """
 
   @doc """
+  Start `CmsHarness.Supervisor` if nothing has yet, tolerating a second call.
+
+  `mix test`'s own `test_helper.exs` starts this once for the whole run —
+  "started here rather than from `CodeMySpecWeb.Application`'s test children,
+  so the cloud application does not gain a compile-time reference to
+  `CmsHarness` that only the test suite ever wanted." `mix spex` loads no test
+  helper at all (a deliberate choice, so a spex run boots however this
+  project's own alias says to), so a spex file that drives real
+  `CmsHarness` processes — a real websocket, a real analyzer queue — has to
+  start the tree itself rather than assume it is already running.
+
+  Idempotent because more than one spex file in one `mix spex` run would
+  otherwise raise on the second call: the tree's own processes are globally
+  named (`CmsHarness.Registry`, `CmsHarness.ProjectSupervisor`,
+  `CmsHarness.AnalysisSlots`), so only the first caller in a BEAM actually
+  starts anything.
+
+  Unlinked from whichever process starts it, deliberately. `start_link/1`
+  links by default, and the caller here is one spex's own test process —
+  gone at the end of that one test, same as any other. Left linked, the
+  first spex to call this takes the whole tree down when its own test exits,
+  and every later one (in the same `mix spex` run, still needing the
+  registry this call just tore down) either crashes outright or pays to
+  restart it, an `on_exit` callback deep in a later, unrelated file's
+  teardown. `Process.unlink/1` is what makes this a once-per-run cost rather
+  than a once-per-test one.
+  """
+  @spec ensure_harness_supervisor_started() :: :ok
+  def ensure_harness_supervisor_started do
+    case CmsHarness.Supervisor.start_link([]) do
+      {:ok, pid} ->
+        Process.unlink(pid)
+        :ok
+
+      {:error, {:already_started, _pid}} ->
+        :ok
+    end
+  end
+
+  @doc """
   Run a command in `root`, failing with its output rather than a `MatchError`.
 
   `{_, 0} = System.cmd("mix", ["deps.get"], …)` raises

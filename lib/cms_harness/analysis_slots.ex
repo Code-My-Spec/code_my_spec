@@ -34,21 +34,28 @@ defmodule CmsHarness.AnalysisSlots do
   costs *confidence*, and the natural response to a phantom — retry — is what
   produces the next one.
 
-  ## Refuses rather than queues, and that is the design
+  ## Waits rather than refusing, now — the timer moved instead
 
-  A run that cannot get a slot is answered `:busy` at once. It does **not** wait
-  in line.
+  A run that cannot get a slot waits for one, up to a generous ceiling
+  (`wait_ceiling/0`, the same order of magnitude as an analyzer's own
+  thirty-minute kill timeout). It used to be answered `:busy` at once, on the
+  reasoning that `AnalysisServer` arms its kill timer at dispatch — before the
+  run reaches here — so a run that waited behind four others would burn its
+  budget waiting and be killed for being slow, misattributed as a hung tool.
 
-  Queueing was the obvious shape and it is wrong here. `AnalysisServer` arms a
-  thirty-minute kill timer when it dispatches, before the run reaches this — so
-  a run that waited behind four others would burn its budget waiting and be
-  killed for being slow. Worse, it would be killed *as though the tool hung*,
-  which is the exact misattribution this module exists to stop.
+  That reasoning was right about the misattribution and wrong about the fix.
+  The kill timer has moved instead: `AnalysisServer` now arms it only once
+  `acquire/0` actually returns `:ok` (story 839, criterion 3440), so waiting
+  here costs nothing from that budget — the clock does not start until the
+  analyzer is actually running. Refusing instantly was curing the symptom;
+  the actual disease was where the timer started.
 
-  `:busy` costs nothing: the stop hook re-enqueues what is stale, so a refused
-  run is retried on the next stop, by which time the machine may be free. And it
-  keeps the rule `AnalysisServer` states in its own moduledoc — "every request
-  is answered; silence is the one answer this must never give."
+  Past the ceiling, `acquire/0` still answers `:busy` rather than waiting
+  forever — the same reason `AnalysisServer`'s own moduledoc gives: "every
+  request is answered; silence is the one answer this must never give." A
+  machine still saturated after thirty-odd minutes has a real problem this
+  module cannot solve by waiting longer, and the stop hook re-enqueues what is
+  stale on the next pass regardless.
 
   ## Released by death, not by discipline
 
@@ -63,14 +70,31 @@ defmodule CmsHarness.AnalysisSlots do
 
   require Logger
 
+  # Same order of magnitude as `AnalysisServer`'s own kill timeout — long
+  # enough that a genuinely busy machine gets a real chance to drain, short
+  # enough that a caller is never left believing this waits forever. Past it,
+  # `acquire/0` still answers, just with `:busy` instead of `:ok`.
+  @wait_ceiling :timer.minutes(30)
+
   @doc """
-  Take a slot, or `:busy` if the machine is already running its limit.
+  Take a slot, waiting for one to free if the machine is already at its
+  limit. Answers `:busy` only if none frees within `wait_ceiling/0`.
 
   Call from the process that will do the work — the slot is held for that
   process's lifetime.
   """
   @spec acquire() :: :ok | :busy
-  def acquire, do: GenServer.call(__MODULE__, :acquire)
+  def acquire, do: GenServer.call(__MODULE__, :acquire, wait_ceiling() + 5_000)
+
+  @doc """
+  How long `acquire/0` waits for a slot before giving up and answering
+  `:busy`. Configurable as `:analysis_slot_wait_ceiling` for the same reason
+  `:analysis_slots` is — a test, or a machine whose analyzers run far longer
+  or shorter than thirty minutes.
+  """
+  @spec wait_ceiling() :: pos_integer()
+  def wait_ceiling,
+    do: Application.get_env(:code_my_spec, :analysis_slot_wait_ceiling, @wait_ceiling)
 
   @doc """
   How many runs may execute at once on this machine.
@@ -93,32 +117,79 @@ defmodule CmsHarness.AnalysisSlots do
   @spec in_use() :: non_neg_integer()
   def in_use, do: GenServer.call(__MODULE__, :in_use)
 
+  @doc "How many callers are waiting for a slot right now. For diagnostics and tests."
+  @spec waiting() :: non_neg_integer()
+  def waiting, do: GenServer.call(__MODULE__, :waiting)
+
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @impl true
-  def init(_opts), do: {:ok, %{held: %{}}}
+  def init(_opts), do: {:ok, %{held: %{}, waiting: :queue.new()}}
 
   @impl true
-  def handle_call(:acquire, {pid, _tag}, %{held: held} = state) do
+  def handle_call(:acquire, {pid, _tag} = from, %{held: held} = state) do
     if map_size(held) >= limit() do
       Logger.info(
-        "[CmsHarness] refusing an analyzer run: #{map_size(held)} already running on this " <>
-          "machine (limit #{limit()}). It will be re-enqueued by the next stop."
+        "[CmsHarness] an analyzer run is waiting for a machine-wide slot: " <>
+          "#{map_size(held)} already running (limit #{limit()}), waiting up to " <>
+          "#{wait_ceiling()}ms."
       )
 
-      {:reply, :busy, state}
+      timer_ref = Process.send_after(self(), {:wait_timeout, from}, wait_ceiling())
+      {:noreply, %{state | waiting: :queue.in({from, pid, timer_ref}, state.waiting)}}
     else
-      ref = Process.monitor(pid)
-      {:reply, :ok, %{state | held: Map.put(held, ref, pid)}}
+      {:reply, :ok, grant(state, pid)}
     end
   end
 
   def handle_call(:in_use, _from, state), do: {:reply, map_size(state.held), state}
+  def handle_call(:waiting, _from, state), do: {:reply, :queue.len(state.waiting), state}
 
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{held: held} = state) do
-    {:noreply, %{state | held: Map.delete(held, ref)}}
+    state = %{state | held: Map.delete(held, ref)}
+    {:noreply, maybe_grant_next(state)}
+  end
+
+  # The waiter may already have been granted a slot (raced `maybe_grant_next/1`
+  # between the timer firing and this message being processed) — in which case
+  # it is no longer in `waiting` and there is nothing to time out.
+  def handle_info({:wait_timeout, from}, state) do
+    case take_waiting(state.waiting, from) do
+      {:ok, waiting} ->
+        GenServer.reply(from, :busy)
+        {:noreply, %{state | waiting: waiting}}
+
+      :not_found ->
+        {:noreply, state}
+    end
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp grant(state, pid) do
+    ref = Process.monitor(pid)
+    %{state | held: Map.put(state.held, ref, pid)}
+  end
+
+  defp maybe_grant_next(%{held: held, waiting: waiting} = state) do
+    with true <- map_size(held) < limit(),
+         {{:value, {from, pid, timer_ref}}, rest} <- :queue.out(waiting) do
+      Process.cancel_timer(timer_ref)
+      GenServer.reply(from, :ok)
+      grant(%{state | waiting: rest}, pid)
+    else
+      _ -> state
+    end
+  end
+
+  defp take_waiting(waiting, target_from) do
+    list = :queue.to_list(waiting)
+
+    if Enum.any?(list, &match?({^target_from, _pid, _ref}, &1)) do
+      {:ok, list |> Enum.reject(&match?({^target_from, _pid, _ref}, &1)) |> :queue.from_list()}
+    else
+      :not_found
+    end
+  end
 end

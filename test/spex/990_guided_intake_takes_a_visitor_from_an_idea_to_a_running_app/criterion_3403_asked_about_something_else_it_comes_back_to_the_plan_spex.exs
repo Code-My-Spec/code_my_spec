@@ -105,29 +105,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3403Spex do
   defp anthropic_key(:replay), do: "replayed-key"
 
   defp anthropic_key(:record) do
-    System.get_env("ANTHROPIC_API_KEY") || key_from_env_file() ||
-      flunk("no Anthropic key. Set ANTHROPIC_API_KEY, or put one in envs/dev.env.")
-  end
-
-  defp key_from_env_file do
-    with {:ok, contents} <- File.read("envs/dev.env") do
-      contents
-      |> String.split("\n")
-      |> Enum.find_value(fn line ->
-        case String.split(line, "=", parts: 2) do
-          ["ANTHROPIC_API_KEY", value] ->
-            case value |> String.trim() |> String.trim("\"") do
-              "" -> nil
-              key -> key
-            end
-
-          _ ->
-            nil
-        end
-      end)
-    else
-      _ -> nil
-    end
+    System.get_env("ANTHROPIC_API_KEY") ||
+      flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
 
   spex "An answer that is not about the application does not move the plan forward" do

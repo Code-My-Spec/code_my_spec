@@ -55,12 +55,9 @@ defmodule CodeMySpecSpex.Story990.Criterion3399Spex do
           })
           |> render_submit()
 
-        unless is_binary(result) do
-          flunk(
-            "expected confirming the plan to show the sign-up card in the same " <>
-              "conversation; the visitor was sent elsewhere instead: #{inspect(result)}"
-          )
-        end
+        assert is_binary(result),
+               "expected confirming the plan to show the sign-up card in the same " <>
+                 "conversation; the visitor was sent elsewhere instead: #{inspect(result)}"
 
         {:ok, context |> Map.put(:conn, conn) |> Map.put(:view, view)}
       end

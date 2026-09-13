@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @mode :record
+  @mode :replay
   @cassette_dir "test/cassettes/intake"
   @cassette_name "interview_recalls_intake_answers"
   @model "anthropic:claude-sonnet-5"
@@ -65,8 +65,14 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
     previous_intake = Application.get_env(:code_my_spec, CodeMySpec.Intake, [])
     previous_key = Application.get_env(:req_llm, :anthropic_api_key)
 
+    # Shared (Agent-based), not local/process-dict: the shaper's calls run
+    # inside the /build LiveView's process and the interview's inside
+    # /build/workspace's — two different processes, so a process-dict
+    # session (each starting its own count at 0) served the interview call
+    # the shaper's first cassette interaction back.
     cassette_path = Path.join(@cassette_dir, @cassette_name <> ".json")
-    session_id = ReqCassette.Session.start_session(cassette_path, nil)
+    shared_session = ReqCassette.Session.start_shared_session()
+    session_id = ReqCassette.Session.start_session(cassette_path, shared_session)
 
     plug =
       {ReqCassette.Plug,
@@ -74,6 +80,7 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
          cassette_name: @cassette_name,
          cassette_dir: @cassette_dir,
          mode: @mode,
+         sequential: true,
          match_requests_on: [:method, :uri],
          filter_sensitive_data: [],
          filter_request_headers: ["authorization", "x-api-key"],
@@ -98,6 +105,7 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
 
     on_exit(fn ->
       ReqCassette.Session.end_session(cassette_path, session_id)
+      ReqCassette.Session.end_shared_session(shared_session)
       Application.put_env(:code_my_spec, CodeMySpec.Intake, previous_intake)
       restore_anthropic_key(previous_key)
     end)
@@ -111,29 +119,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
   defp anthropic_key(:replay), do: "replayed-key"
 
   defp anthropic_key(:record) do
-    System.get_env("ANTHROPIC_API_KEY") || key_from_env_file() ||
-      flunk("no Anthropic key. Set ANTHROPIC_API_KEY, or put one in envs/dev.env.")
-  end
-
-  defp key_from_env_file do
-    with {:ok, contents} <- File.read("envs/dev.env") do
-      contents
-      |> String.split("\n")
-      |> Enum.find_value(fn line ->
-        case String.split(line, "=", parts: 2) do
-          ["ANTHROPIC_API_KEY", value] ->
-            case value |> String.trim() |> String.trim("\"") do
-              "" -> nil
-              key -> key
-            end
-
-          _ ->
-            nil
-        end
-      end)
-    else
-      _ -> nil
-    end
+    System.get_env("ANTHROPIC_API_KEY") ||
+      flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
 
   spex "The interview's first question is written with the shaping answers already in hand" do
@@ -155,7 +142,12 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
         assert to == "/build/workspace",
                "expected a signed-in visitor to be sent to their workspace, got #{inspect(to)}"
 
-        {:ok, workspace_view, html} = live(context.conn, to)
+        {:ok, workspace_view, _html} = live(context.conn, to)
+
+        # Cloud now pays before it provisions (990/3400) — not this
+        # criterion's subject, so cleared the way the browser's own Stripe
+        # hook would, to reach the interview this scenario is about.
+        html = render_hook(workspace_view, "payment_confirmed", %{})
 
         {:ok, context |> Map.put(:workspace_view, workspace_view) |> Map.put(:html, html)}
       end
