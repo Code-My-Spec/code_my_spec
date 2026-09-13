@@ -306,7 +306,7 @@ defmodule CodeMySpec.Intake do
        })
        when not is_nil(location) and is_binary(account) and is_binary(project) do
     transcript
-    |> said("#{account}, #{project}")
+    |> said("Call it #{account} — the project is #{project}.")
     |> said("Got it — #{account}'s #{project} it is.", :agent)
   end
 

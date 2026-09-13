@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Accounts.Account
@@ -51,6 +52,28 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       <.conversation transcript={@transcript}>
         <.derived_rules :if={@rules} rules={@rules} />
       </.conversation>
+
+      <%!--
+        The cockpit's own panel component (story 1033/3425), same as the
+        pre-signup screen — the criterion names both `Plan` and `Workspace`
+        in scope, and it went missing here for the entire sales+payment
+        window, reappearing only once a real project boots.
+      --%>
+      <.panels
+        screen={:narrow}
+        open={[]}
+        dynamic_view=""
+        dynamic_stories={[]}
+        dynamic_story={nil}
+        dynamic_epics={[]}
+        offer={nil}
+        activity={[]}
+        waiting={[]}
+        copies={[]}
+        project_id=""
+        conversation_id={nil}
+        preview_state={:absent}
+      />
 
       <%!--
         How far through, kept from the card this replaced. Not decoration: the
@@ -402,11 +425,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # Everything said across both pages, rebuilt from the plan row. The shaping
   # turns before signup and the interview turns after it are the same shape,
   # because to the visitor they are the same conversation — the split exists
-  # because signup is between them, not because the questions differ.
+  # because signup is between them, not because the questions differ. Reading
+  # `answered` (interview turns) alone here dropped the whole shaping
+  # half — the description, the pre-signup Q&A, the name confirmation — the
+  # moment a visitor reached this page (990/3431).
   defp assign_transcript(socket) do
     %{plan: plan, answered: answered, turn: turn} = socket.assigns
 
-    turns = Enum.map(answered, &%{question: &1.question, answer: &1.answer})
+    turns = Intake.turns(plan) ++ Enum.map(answered, &%{question: &1.question, answer: &1.answer})
 
     assign(socket, :transcript, Intake.transcript(plan, turns, turn && turn.question))
   end
