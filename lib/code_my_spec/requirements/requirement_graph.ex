@@ -273,6 +273,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp analysis_source(_node), do: nil
 
   defp recompute_stale(scope, ctx, config) do
+    stamp_project(scope)
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
     topology = Freshness.topology(ctx, config)
@@ -368,6 +369,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         compute_and_publish(scope, ctx, config)
     end
   end
+
+  # Whose graph this is, on every line the read emits.
+  #
+  # These lines carried `ts`, `level`, `src`, `inst` and `mfa` and no project,
+  # so a count of full computes or analyzer-driven recomputes was a count across
+  # every project this server handles — `broken_oaths`, `math_test_project` and
+  # the qa sandboxes among them. I reported "no full computes since the backfill"
+  # from exactly that measurement, and only caught it because the topology
+  # digest happens to include the config, which is per project and gave three
+  # of them away as somebody else's.
+  #
+  # `cms_project`, matching the `cms_session` / `cms_hook` convention the stop
+  # hook already uses. Process metadata, so every subsequent line in the same
+  # read inherits it.
+  defp stamp_project(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: Logger.metadata(cms_project: project_id)
+
+  defp stamp_project(_scope), do: :ok
 
   # Which entities' answers no longer match what their inputs say now.
   #
@@ -512,6 +531,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
+    stamp_project(scope)
+
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
 
