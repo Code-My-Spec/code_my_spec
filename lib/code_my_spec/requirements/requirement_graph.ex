@@ -319,6 +319,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
+          "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
 
@@ -384,6 +385,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Logger.info("[Requirements] full recompute — #{why}")
         compute_and_publish(scope, ctx, config)
     end
+  end
+
+  # The shared inputs, each digested on its own, so two consecutive recompute
+  # lines name the mover by the digest that differs between them.
+  #
+  # Without it the line reports how much was recomputed and nothing about what
+  # asked for it, which is unanswerable in exactly the way `topology_moved` was
+  # before it printed its parts. Measured while looking for this: of eight
+  # recomputes in half an hour, three landed within ten seconds of an issue
+  # being touched — `issues` is a project-wide stamp, so one issue moves every
+  # story — and the other five had no visible cause at all. The five are the
+  # reason this exists; the three only became legible by cross-referencing the
+  # database by hand.
+  #
+  # Flat and short: a logfmt value is truncated at 500 bytes, ten tables at
+  # eight hex characters is well inside it, and an `inspect/1` of the map would
+  # wrap and lose the tail — the mistake `topology_moved` already made once.
+  defp shared_parts(ctx) do
+    ctx
+    |> Freshness.delegated_parts()
+    |> Enum.sort()
+    |> Enum.map_join(" ", fn {table, digest} ->
+      "#{table}=#{binary_part(digest, 0, 8)}"
+    end)
   end
 
   # Whose graph this is, on every line the read emits.

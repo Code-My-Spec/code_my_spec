@@ -52,6 +52,25 @@ defmodule CmsHarness.Mcp.Transport do
   @callback list_tools(client()) :: {:ok, [map()]} | {:error, term()}
 
   @doc """
+  Close a session this harness opened.
+
+  The counterpart to `connect/2`, and the reason it exists is that there was
+  none. `connect/2` unlinks the client's supervisor on purpose — an agent whose
+  browser died should not die with it — and nothing then took it down, so a
+  stopped agent left its client registered under a name the next launch needs.
+  `Engine.terminate/2` logged the agent stopping and touched none of this
+  (`4078e7bf`, `dfa1ee9e`, `68e535fd`).
+
+  Recovering from the leak afterwards is what `replace_leaked/4` is for. Not
+  leaking is cheaper, and does not depend on the recovery being reachable.
+
+  Idempotent, and quiet about a name nothing holds: a stop runs on paths where
+  the session was never opened — a machine that could not authenticate gets
+  `nil` from `mcp_session/1` and an agent that still works.
+  """
+  @callback disconnect(client()) :: :ok
+
+  @doc """
   The configured transport.
 
   Defaults to the real one; tests set `:harness_mcp_transport`. Read at call
