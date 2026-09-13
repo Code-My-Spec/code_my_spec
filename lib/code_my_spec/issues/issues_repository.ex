@@ -18,6 +18,46 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.all()
   end
 
+  @doc """
+  Whether this project already has an unfinished issue with exactly this title.
+
+  For the fault paths in `MainAgent`, which file by a title built from the fault
+  itself. A machine-wide tool fault or a restart that changed nothing persists
+  while somebody works out what to do about it, and the cadence keeps calling
+  the thing that reports it — so without this the first, real issue is buried
+  under copies of itself. Measured: six identical issues from one QA measurement,
+  and two from a single `check_machinery` followed by one `restart_agent`
+  (`57ba014e`).
+
+  Answered means anything but `:resolved`, and the asymmetry is the point.
+
+  `:incoming` and `:accepted` are obvious — the fault is already on somebody's
+  list. `:dismissed` counts too, because dismissal is a judgement that *this
+  report* was not worth acting on, and the identical fault recurring is still
+  not worth acting on. Filing it again overrules the person who dismissed it,
+  once per call, forever.
+
+  `:resolved` does not count. That says the fault was fixed, so a recurrence is
+  a regression and is exactly the thing worth hearing about again.
+
+  I had these the same way round at first — only `:incoming` and `:accepted` —
+  having reasoned about the resolved case and not the dismissed one. A synthetic
+  fault whose five copies had all been dismissed promptly filed a sixth.
+
+  The title carries the fault's own reason, so a genuinely different fault still
+  gets a different title and still files. Only the identical one is suppressed.
+  """
+  @spec open_issue_titled?(Scope.t(), String.t()) :: boolean()
+  def open_issue_titled?(%Scope{active_project_id: project_id}, title)
+      when is_binary(project_id) and is_binary(title) do
+    Issue
+    |> where([i], i.project_id == ^project_id and i.title == ^title)
+    |> where([i], i.status != :resolved)
+    |> Repo.exists?()
+  end
+
+  def open_issue_titled?(%Scope{}, _title), do: false
+
   def list_by_status(%Scope{} = scope, status) do
     Issue
     |> by_project(scope.active_project.id)

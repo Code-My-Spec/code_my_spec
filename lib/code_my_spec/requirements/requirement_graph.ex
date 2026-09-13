@@ -273,13 +273,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp analysis_source(_node), do: nil
 
   defp recompute_stale(scope, ctx, config) do
+    stamp_project(scope)
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
     topology = Freshness.topology(ctx, config)
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
-         {_, stale} when stale != :all <-
+         {_, {:partial, stale}} <-
            {:everything_stale, stale_entities(stored_nodes, ctx)} do
       reduced = reduce_to(ctx, stale)
 
@@ -334,7 +335,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         {nodes, stored_edges},
         topology
       )
-      |> persist_projection(scope, reduced, fresh, stored_edges)
+      |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
       {serve(nodes, ctx), stored_edges}
     else
@@ -363,11 +364,45 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         compute_and_publish(scope, ctx, config)
 
+      # The counts that decided it, for the same reason `topology_moved` prints
+      # its parts one clause up: `everything_stale` on its own says a full
+      # recompute happened and nothing about why, and "why" here is a
+      # comparison between two numbers that are not otherwise recoverable.
+      #
+      # Cost of not having them: three wrong hypotheses in one sitting, each
+      # plausible and each taking a database query to rule out — entities that
+      # never produce rows counting as new forever, a component family
+      # expanding to the whole project, a vantage small enough that an ordinary
+      # stale set clears its bar. The line below distinguishes all three, and
+      # the last one is not a fault at all: a copy holding twenty entities has
+      # nothing to reuse, and recomputing it whole is both correct and cheap.
+      {:everything_stale, {:all, why}} ->
+        Logger.info("[Requirements] full recompute — everything_stale #{why}")
+        compute_and_publish(scope, ctx, config)
+
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
         compute_and_publish(scope, ctx, config)
     end
   end
+
+  # Whose graph this is, on every line the read emits.
+  #
+  # These lines carried `ts`, `level`, `src`, `inst` and `mfa` and no project,
+  # so a count of full computes or analyzer-driven recomputes was a count across
+  # every project this server handles — `broken_oaths`, `math_test_project` and
+  # the qa sandboxes among them. I reported "no full computes since the backfill"
+  # from exactly that measurement, and only caught it because the topology
+  # digest happens to include the config, which is per project and gave three
+  # of them away as somebody else's.
+  #
+  # `cms_project`, matching the `cms_session` / `cms_hook` convention the stop
+  # hook already uses. Process metadata, so every subsequent line in the same
+  # read inherits it.
+  defp stamp_project(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: Logger.metadata(cms_project: project_id)
+
+  defp stamp_project(_scope), do: :ok
 
   # Which entities' answers no longer match what their inputs say now.
   #
@@ -403,7 +438,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> Enum.reject(&(&1.entity_type == "project"))
       |> Enum.group_by(&entity_key/1, & &1.inputs_fingerprint)
 
-    stale =
+    # Kept apart from what expansion then adds, because the two answer different
+    # questions and only together say whether a full recompute was earned. This
+    # is the count of entities whose own inputs actually differ.
+    mismatched =
       recorded
       |> Enum.reject(fn {key, fingerprints} ->
         # Every requirement of an entity is stamped with the same value, so
@@ -412,7 +450,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Enum.uniq(fingerprints) == [Map.get(current, key)]
       end)
       |> MapSet.new(fn {key, _} -> key end)
-      |> expand_component_families(ctx)
+
+    stale = expand_component_families(mismatched, ctx)
 
     # An entity the context has and the rows do not is stale by definition:
     # nothing has ever computed it. Most of them will produce no nodes — a
@@ -425,12 +464,48 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       )
       |> MapSet.reject(&Map.has_key?(recorded, &1))
 
+    moved = stale
     stale = MapSet.union(stale, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    if MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0,
-      do: :all,
-      else: stale
+    verdict(stale, entities, {mismatched, moved}, appeared, ctx)
+  end
+
+  # `{:partial, set}` or `{:all, why}`, rather than a set or the bare atom the
+  # guard used to compare against. The reason travels with the verdict because
+  # the caller logs it and cannot reconstruct it: by then `recorded` and
+  # `appeared` are out of scope, and the two numbers being compared are the
+  # whole of the decision.
+  defp verdict(stale, entities, moved, appeared, ctx) do
+    all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
+
+    if all?,
+      do: {:all, why_all(stale, entities, moved, appeared, ctx)},
+      else: {:partial, stale}
+  end
+
+  # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
+  # of an inspected map wraps — `topology_moved` learned that the expensive way.
+  #
+  # Three numbers rather than one, because "everything is stale" has three
+  # causes and they are not the same news:
+  #
+  #   * `mismatched` — entities whose own inputs differ. The honest reason to
+  #     recompute, and the only one that earns a full pass on its own.
+  #   * `+family` — added by `expand_component_families/2` because a relative
+  #     moved. Legitimate per family, but it is the number that can turn a
+  #     handful of real changes into the whole project, and the first run of
+  #     this line could not tell the two apart: `moved=1201` might have been
+  #     1201 real changes or eight changes and 1193 relatives.
+  #   * `appeared` — an entity the rows have never held. A population of those
+  #     that never shrinks is a guard that can never pass, which is exactly how
+  #     `entity_set_moved` died. Measured at 19 here, so not that.
+  defp why_all(stale, entities, {mismatched, moved}, appeared, ctx) do
+    "stale=#{MapSet.size(stale)} >= recorded=#{MapSet.size(entities)} " <>
+      "(mismatched=#{MapSet.size(mismatched)} " <>
+      "+family=#{MapSet.size(moved) - MapSet.size(mismatched)} " <>
+      "appeared=#{MapSet.size(appeared)}) " <>
+      "ctx=#{length(ctx.components)}c/#{length(ctx.stories)}s"
   end
 
   # What each entity's inputs say right now.
@@ -512,6 +587,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
+    stamp_project(scope)
+
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
 
@@ -656,7 +733,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
   # page view is exactly what `publish/3` already refuses to do for one row.
-  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
+  defp persist_projection(publish, scope, ctx, nodes, edges, verify \\ nil)
+
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges, _verify), do: :ok
 
   # Writes the read model. Atomically, and loudly.
   #
@@ -690,7 +769,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The transaction stays for the reason it was added: `upsert_all/2` and
   # `replace_edges/3` were two independent statements, so a failure between them
   # left nodes without their edges and the next read served that as the graph.
-  defp persist_projection(:published, scope, ctx, nodes, edges) do
+  defp persist_projection(:published, scope, ctx, nodes, edges, verify) do
     {:ok, _} =
       Repo.transaction(fn ->
         ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
@@ -700,7 +779,25 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # Outside the transaction on purpose. Verification is a check *about* the
     # write, not part of it — running it inside would let a failed check roll
     # back rows that are correct, which is the opposite of what it is for.
-    verify_round_trip(scope, ctx, nodes, edges)
+    #
+    # `verify` carries the *whole* graph when the write was a partial one. A
+    # partial write is given the reduced context and the fresh nodes, which is
+    # right for writing — `visited/1` must not reap the rows being kept — and
+    # wrong for checking, because `Projection.load/2` rehydrates against the
+    # context it is handed and so reads back only the stale entities' rows.
+    # Comparing that against a full payload reports thousands of edges missing
+    # that were never read.
+    #
+    # It did: 70 warnings from the first partial recompute onward, on a check
+    # whose own comment recorded that it had never fired in 828 computations.
+    # Nothing was actually lost — `replace_edges/3` deletes only among the node
+    # ids it is given, so edges touching kept nodes are left alone — but a
+    # warning that cries wolf 70 times is worse than no warning at all, because
+    # the next real one is invisible.
+    case verify do
+      {verify_ctx, verify_nodes} -> verify_round_trip(scope, verify_ctx, verify_nodes, edges)
+      nil -> verify_round_trip(scope, ctx, nodes, edges)
+    end
 
     :ok
   end

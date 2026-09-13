@@ -424,12 +424,10 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
-    |> assign(:turns, Intake.turns(plan))
-    |> assign(:question, plan.pending_question)
     |> assign(:thinking, plan.shaping_status == :thinking)
     |> assign(:trouble, trouble_for(plan))
     |> assign_new(:draft, fn -> "" end)
-    |> assign_new(:awaiting_signup?, fn -> false end)
+    |> assign_new(:awaiting_signup?, fn -> Intake.names_confirmed?(plan) end)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
     |> assign_transcript()
@@ -437,9 +435,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   # Derived in `Intake`, not here, so the workspace page can rebuild the same
   # conversation from the same row after the signup gate has navigated away.
+  # This page is entirely pre-interview, so the shaping half `Intake.transcript/3`
+  # derives internally from `plan` is the whole story here.
   defp assign_transcript(socket) do
-    %{plan: plan, turns: turns, question: question} = socket.assigns
-
-    assign(socket, :transcript, Intake.transcript(plan, turns, question))
+    assign(socket, :transcript, Intake.transcript(socket.assigns.plan))
   end
 end

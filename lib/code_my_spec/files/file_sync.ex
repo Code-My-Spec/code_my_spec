@@ -454,8 +454,14 @@ defmodule CodeMySpec.Files.FileSync do
   # tree is every file every time — 4969 observations changing three rows and
   # 4969 changing eight hundred are the same line without this, and they predict
   # completely different graph work.
-  defp moved_summary(%{upserted: upserted, removed: removed} = result) do
-    changed = result |> Map.get(:changed_entries, []) |> length()
+  # `:changed`, which `reconcile_and_project/2` already reduced to a count.
+  #
+  # The first version read `:changed_entries` — the key `reconcile/2` uses one
+  # level down — got `nil`, defaulted to `[]`, and printed `0 changed` beside
+  # `21 upserted` on every line. Two counts that cannot both be true is worse
+  # than one count, because it invites the reader to distrust the pair rather
+  # than the field.
+  defp moved_summary(%{upserted: upserted, removed: removed, changed: changed}) do
     " — #{changed} changed, #{upserted} upserted, #{removed} removed"
   end
 

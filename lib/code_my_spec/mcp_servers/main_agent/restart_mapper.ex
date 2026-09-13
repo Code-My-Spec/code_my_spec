@@ -33,10 +33,10 @@ defmodule CodeMySpec.McpServers.MainAgent.RestartMapper do
     That is not one of your agents, so it was not restarted.
 
     You act on the agents of your own project. If what needs restarting is the \
-    harness, it is not yours to restart either: it serves every working copy on \
-    that machine, other projects included, and restarting it kills their \
-    in-flight work too. Raise it with `create_issue` and let somebody who can \
-    weigh that decide.
+    harness, it is not yours to restart either: it is a shared harness, serving \
+    every working copy on that machine and other projects with it, so restarting \
+    it kills their in-flight work too. Raise it with `create_issue` and let \
+    somebody who can weigh that decide.
 
     `list_agent_work` has the ids you can use.\
     """)

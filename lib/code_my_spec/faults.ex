@@ -29,6 +29,21 @@ defmodule CodeMySpec.Faults do
   nothing reads would be injected happily, never fire, and read as "the product
   handled it" — a false pass, which is worse than no seam at all.
 
+  ## Clear it when you are done, because you are not the only caller
+
+  A fault is scoped to a key, not to your request, so everything else that
+  carries that key sees it too — including work nobody started by hand. Both
+  times `digest_unavailable` was injected to exercise criterion 3333, the
+  project's own cadence came round while it was in force and raised "the
+  check-in could not be assembled" against a ledger that was fine. Two issues
+  filed, both dismissed.
+
+  That is the seam working rather than a flaw in it — a fault a scheduled tick
+  cannot see would not be testing the thing the criterion is about. It is a
+  reason to clear promptly, and a reason the dismissal is worth writing out: the
+  next reader of that issue would otherwise go looking for an outage that did
+  not happen.
+
   ## It cannot outlive a boot, and nothing in the release writes to it
 
   ETS, owned by this process, gone on restart. The only writer is
@@ -44,7 +59,12 @@ defmodule CodeMySpec.Faults do
 
   @faults %{
     digest_unavailable: "the main agent's digest cannot be assembled (criterion 3333)",
-    intake_shaper_fails: "the intake shaper errors instead of answering (criterion 3375)"
+    intake_shaper_fails: "the intake shaper errors instead of answering (criterion 3375)",
+    graph_recompute_fails:
+      "this project's graph watcher raises instead of recomputing (criterion 3248)",
+    agent_stays_silent:
+      "this agent (key is its id) counts as never having spoken, so a restart " <>
+        "does not resolve itself (criteria 3292, 3293, 3308)"
   }
 
   @doc "What can be injected, and what each one does."

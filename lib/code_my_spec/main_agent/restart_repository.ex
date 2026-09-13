@@ -30,6 +30,7 @@ defmodule CodeMySpec.MainAgent.RestartRepository do
 
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent.Restart
   alias CodeMySpec.Repo
 
@@ -116,8 +117,31 @@ defmodule CodeMySpec.MainAgent.RestartRepository do
   # and the restart itself, which would resolve every restart the moment it was
   # performed.
   defp spoke_at(agent) do
-    agent_id = id_of(agent)
+    agent |> id_of() |> last_assistant_message()
+  end
 
+  # An agent that does not recover, which is the state every "a restart changed
+  # nothing" criterion is about and the one black-box QA could never produce. A
+  # healthy agent starts streaming within seconds of the restart's own injected
+  # message, so it speaks, every restart resolves itself, and the three-strike
+  # refusal never accumulates — the system settles the state faster than it can
+  # be observed (`4b248103`).
+  #
+  # Keyed on the agent's own id, so it reaches that agent and no other. Only
+  # `/dev/faults` writes to `Faults`, and that route is compile-time absent from
+  # the release, so in production this is one lookup that finds nothing.
+  #
+  # `nil` rather than a fabricated old timestamp: "never spoken" is a state the
+  # rest of this module already handles — `worked?/2` and `settle_before/2` both
+  # have a clause for it — so the fault produces a real shape rather than a
+  # plausible-looking one.
+  defp last_assistant_message(agent_id) do
+    silent_or(Faults.active?(agent_id, :agent_stays_silent), agent_id)
+  end
+
+  defp silent_or(true, _agent_id), do: nil
+
+  defp silent_or(false, agent_id) do
     from(m in Message,
       join: c in Conversation,
       on: c.id == m.conversation_id,

@@ -222,22 +222,85 @@ defmodule CodeMySpec.Agents do
   avoid. This re-runs only the launch half: fetch a credential, hydrate the
   existing history (same lookup, same id, same transcript), ask the
   machine to run it. The row that comes back is the same row, running again.
+
+  ## It stops the process first, and that is the whole of it working
+
+  Without the stop this was a restart only of an agent that was already dead.
+  `Engine.start/1` answers `{:error, {:already_started, pid}}` with `{:ok,
+  %{pid: pid}}` — correct idempotence for a re-delivered *start*, and wrong for
+  a restart: the live process was handed straight back, so whatever turn it was
+  in carried on and the only thing that reached it was the `Restarted: <reason>`
+  message sent afterwards.
+
+  Which made the remedy a no-op against the one agent worth applying it to. An
+  agent hung mid-turn has a live process, and story 1059's whole premise is the
+  main agent acting on an agent that cannot report its own trouble. Every
+  restart reported success while changing nothing (`e9f9a5ab`).
+
+  So a restart now discards the turn in flight, which is a real cost and is the
+  point: criterion 3321 asks for exactly that, and an agent that has to be
+  restarted is one whose current turn is the problem.
+
+  `end_process/2` rather than a second stop path — the same call `stop_agent/2`
+  makes, so "already not running" stays a satisfied stop and an unreachable
+  machine stays an error. A machine that could not be asked refuses the restart
+  rather than reporting one it did not perform.
   """
   @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
   def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, credential} <- Credential.fetch(scope, agent.provider),
+         :ok <- halt_for_restart(agent),
          {:ok, starting} <-
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,
              os_pid: nil,
              os_boot_id: nil,
+             # The turn the restart is discarding. Left set, `list_agent_work`
+             # and every check-in go on reporting "a turn opened at <then> and
+             # has not finished" for an agent that has been restarted and whose
+             # process is gone — measured at two minutes past the restart and
+             # still climbing, against a row nothing would ever clear
+             # (`4078e7bf`).
+             turn_started_at: nil,
              tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
            }) do
       agent = launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential}))
       broadcast(scope, {:agent_started, agent})
       {:ok, agent}
     end
+  end
+
+  # Ask the machine to end it, whatever the row says.
+  #
+  # Deliberately not `end_process/2`, which skips the ask for an agent whose row
+  # reads `:starting`, on the reasoning that such an agent "never came up, so
+  # there is no process to end". True for a *stop* and false here, and
+  # `working_copy_connected?/1`'s own moduledoc says why: "status is written on
+  # a clean stop or a clean start; nothing writes it when a shared harness
+  # restart or a crashed machine takes the process with it."
+  #
+  # Measured rather than supposed. An agent that had started, worked a turn end
+  # to end and replied still read `:starting`, because the machine's
+  # confirmation never landed. The stop was skipped on that guard, `launch/2`
+  # then collided — `{:shutdown, {:failed_to_start_child, Anubis.Client,
+  # {:already_started, …}}}` — the new process lost, and the row stuck at
+  # `:starting` with `os_pid: nil` indefinitely while `restart_agent/2` answered
+  # `{:ok, agent}`. Nine minutes later nothing had retried (`4078e7bf`).
+  #
+  # Worth being plain that this is a defect `e9f9a5ab` introduced: before it,
+  # the collision was survivable because the machine handed the live process
+  # back. Adding the stop without noticing that its guard trusts `status` as
+  # evidence of a process turned a no-op into a way to lose the agent.
+  #
+  # So a restart asks unconditionally. The transport answers `{:error,
+  # :not_running}` for an agent the machine is not running, and `stopped?/1`
+  # already reads that as a satisfied stop — which is what makes asking safe for
+  # the case the guard was there to protect.
+  defp halt_for_restart(%Agent{} = agent) do
+    agent.working_copy_id
+    |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
+    |> stopped?()
   end
 
   @doc """

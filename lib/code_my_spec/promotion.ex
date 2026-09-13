@@ -814,6 +814,7 @@ defmodule CodeMySpec.Promotion do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         scope
         |> Runner.restart(root, working_copy_id, refresh_harness?)
+        |> classify_restart()
         |> log_restart_outcome(root)
         |> correct_the_agent(scope, root, Keyword.get(opts, :notify))
       end)
@@ -821,28 +822,71 @@ defmodule CodeMySpec.Promotion do
     :ok
   end
 
-  defp log_restart_outcome({:ok, %{revision: revision}} = result, root) do
+  # One reading of the outcome, made once and consulted twice, rather than two
+  # readings that can disagree.
+  #
+  # They did disagree, and the shape of it is the reason this function exists
+  # rather than a comment: `correct_the_agent/4` consulted
+  # `restart_acknowledgement_lost?/1` and correctly said nothing, while
+  # `log_restart_outcome/2` consulted nothing and wrote `restart FAILED` at
+  # error level for that same restart. Both halves were right on their own
+  # terms, so neither looked wrong, and the only witness was a log line
+  # contradicting a decision made three lines below it.
+  #
+  # Only the log has a reader who was not present for the decision, which is
+  # what made the disagreement expensive: six error-level lines claiming the
+  # application was not up, while :4000 answered 200 and served the new
+  # revision, and a quarter of an hour spent believing them.
+  #
+  # A third consumer is now free. It reads the verdict; it cannot re-derive a
+  # different one.
+  defp classify_restart({:ok, %{revision: revision}}), do: {:confirmed, revision}
+
+  defp classify_restart({:error, %{reason: reason} = error}) do
+    if restart_acknowledgement_lost?(error),
+      do: {:unconfirmed, reason},
+      else: {:failed, reason}
+  end
+
+  defp classify_restart(other), do: {:unexpected, other}
+
+  defp log_restart_outcome({:confirmed, revision} = outcome, root) do
     Logger.info(
       "[Promotion] restart confirmed for #{root}, now serving #{revision || "unknown revision"}"
     )
 
-    result
+    outcome
   end
 
-  defp log_restart_outcome({:error, %{reason: reason}} = result, root) do
+  # `info`, not `error`, and the distinction is the whole point. A lost
+  # acknowledgement is not confirmation — the line says so rather than
+  # claiming the restart succeeded — but neither is it a failure, and it was
+  # published as one. What this stops asserting is the opposite of the truth.
+  defp log_restart_outcome({:unconfirmed, reason} = outcome, root) do
+    Logger.info(
+      "[Promotion] restart dispatched for #{root}, acknowledgement lost on the way back — " <>
+        "the restart takes down the connection the reply was coming on, so this is the " <>
+        "shape of one that worked rather than evidence of one that did not. Unconfirmed " <>
+        "either way; ask the application what it is serving. #{reason}"
+    )
+
+    outcome
+  end
+
+  defp log_restart_outcome({:failed, reason} = outcome, root) do
     Logger.error(
       "[Promotion] restart FAILED for #{root}, application not confirmed up: #{reason}"
     )
 
-    result
+    outcome
   end
 
-  defp log_restart_outcome(other, root) do
+  defp log_restart_outcome({:unexpected, other} = outcome, root) do
     Logger.error(
       "[Promotion] restart for #{root} returned something unexpected: #{inspect(other)}"
     )
 
-    other
+    outcome
   end
 
   # Story 1046, criterion 3437 — "a failed deployment is not silence" (0060d67d).
@@ -864,8 +908,10 @@ defmodule CodeMySpec.Promotion do
   # there. Only `promote_async/2` knows who received the optimistic message,
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
-  defp correct_the_agent(result, _scope, _root, nil), do: result
+  defp correct_the_agent(outcome, _scope, _root, nil), do: outcome
 
+  # `:failed` only, and every other verdict falls through to the clause below.
+  #
   # A lost acknowledgement is not a failure — see `restart_acknowledgement_lost?/1`
   # above and `merged/5`'s use of it. The agent's first message already said
   # "merged, QA can start" and that is still true; correcting it here would
@@ -873,35 +919,35 @@ defmodule CodeMySpec.Promotion do
   # restart that most likely already succeeded, which is exactly the retry
   # this check exists to prevent — each unnecessary retry restarts the shared
   # dev server every other working copy on the box is using.
-  defp correct_the_agent({:error, %{reason: reason} = error} = result, scope, root, agent_id) do
-    if restart_acknowledgement_lost?(error) do
-      result
-    else
-      text =
-        "Correction on the promotion I just reported. The merge landed, but the " <>
-          "deployment that followed it failed, so the application at #{root} is NOT " <>
-          "serving your work — disregard the part of that message saying QA can " <>
-          "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
-          "is still on the running copy. Fix what broke the restart and promote again."
+  #
+  # That rule is now applied by `classify_restart/1`, before this runs, so the
+  # discrimination happens in one place and the log cannot reach a different
+  # answer than the agent does.
+  defp correct_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
+    text =
+      "Correction on the promotion I just reported. The merge landed, but the " <>
+        "deployment that followed it failed, so the application at #{root} is NOT " <>
+        "serving your work — disregard the part of that message saying QA can " <>
+        "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
+        "is still on the running copy. Fix what broke the restart and promote again."
 
-      case Agents.dispatch_message(scope, agent_id, text) do
-        {:ok, disposition, _message} ->
-          Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
+    case Agents.dispatch_message(scope, agent_id, text) do
+      {:ok, disposition, _message} ->
+        Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
 
-        # Logged rather than retried, matching `report_to/3`: the agent may already
-        # be acting on the wrong message, and a delivery loop does not fix that.
-        {:error, deliver_error} ->
-          Logger.warning(
-            "[Promotion] restart failed for #{root} and the agent could not be told: " <>
-              inspect(deliver_error)
-          )
-      end
-
-      result
+      # Logged rather than retried, matching `report_to/3`: the agent may already
+      # be acting on the wrong message, and a delivery loop does not fix that.
+      {:error, deliver_error} ->
+        Logger.warning(
+          "[Promotion] restart failed for #{root} and the agent could not be told: " <>
+            inspect(deliver_error)
+        )
     end
+
+    outcome
   end
 
-  defp correct_the_agent(result, _scope, _root, _agent_id), do: result
+  defp correct_the_agent(outcome, _scope, _root, _agent_id), do: outcome
 
   defp deployment_dispatched_reason do
     "the restart is dispatched, not awaited: promote answers as soon as the " <>

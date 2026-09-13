@@ -169,11 +169,32 @@ config :logger, :default_formatter,
     :cms_agent,
     :cms_decision,
     :cms_blocking,
-    :cms_why
+    :cms_why,
+    # Whose graph a `[Requirements]` line is about. This server handles several
+    # projects at once — broken_oaths and the qa sandboxes among them — and
+    # without it a count of recomputes is a count across all of them. I reported
+    # one as this project's and was wrong.
+    :cms_project
   ]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+
+# Phoenix logs a socket's connect parameters verbatim, and the user socket
+# authenticates with a token in exactly those parameters — so every successful
+# connection was writing a live 128-character deploy key into `web.log`, in the
+# clear, next to a refusal line that carefully logs only a SHA-256 prefix
+# (`d96809d4`). Logs get tailed, pasted into issues and shipped around; a key
+# that reaches one is a key that has to be rotated.
+#
+# `Phoenix.Logger.filter_values/2` defaults to `[]` when nothing is configured
+# — not to the `["password"]` the docs quote, which the generator writes into a
+# new app's config and this one never had. So nothing was filtered at all.
+#
+# Substring match on the parameter name, case sensitive, so `key` also covers
+# `deploy_key`, `api_key` and `public_key`. Over-filtering a log is free;
+# under-filtering one is not.
+config :phoenix, :filter_parameters, ["password", "token", "secret", "key"]
 
 config :paper_trail, repo: CodeMySpec.Repo, strict_mode: true
 

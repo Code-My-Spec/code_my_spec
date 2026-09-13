@@ -106,6 +106,24 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
     end
   end
 
+  # A caller that named a project and no checkout has no analyzer state to
+  # report, and says so rather than crashing.
+  #
+  # Ecto refuses to compare a column with `nil` in a `where`, so without this
+  # `check_machinery` raised — "comparing `r.working_copy_id` with `nil` is
+  # forbidden as it is unsafe" — for any caller authenticating by project rather
+  # than by a specific harness. `Plugs.ProjectScopeOverride` documents
+  # `X-Project-ID` alone as a supported way in ("still accepted, for callers
+  # that only have one"), which is exactly what leaves `active_working_copy_id`
+  # nil. Issue `b27c54f1`.
+  #
+  # `:never_run` is the honest answer and the one `state_of/2` already gives for
+  # a missing run. The other sections of the report — harness, tools, preview,
+  # machine — do not depend on a checkout and still answer, which is the point:
+  # the tool whose job is "is it the agent or the machine" should degrade rather
+  # than take the whole answer down with one absent field.
+  defp latest_run(%Scope{active_working_copy_id: nil}, _source), do: nil
+
   defp latest_run(%Scope{active_project_id: project_id} = scope, source) do
     from(r in Run,
       where: r.project_id == ^project_id and r.source == ^source and r.kind == :full,

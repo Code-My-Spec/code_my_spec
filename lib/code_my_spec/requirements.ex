@@ -19,6 +19,7 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Configurations,
       CodeMySpec.Deploys,
       CodeMySpec.EpicDispatch,
+      CodeMySpec.Faults,
       CodeMySpec.Files,
       CodeMySpec.Issues,
       CodeMySpec.Paths,

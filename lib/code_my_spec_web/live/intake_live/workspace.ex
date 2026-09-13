@@ -423,16 +423,18 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   end
 
   # Everything said across both pages, rebuilt from the plan row. The shaping
-  # turns before signup and the interview turns after it are the same shape,
-  # because to the visitor they are the same conversation — the split exists
-  # because signup is between them, not because the questions differ. Reading
-  # `answered` (interview turns) alone here dropped the whole shaping
-  # half — the description, the pre-signup Q&A, the name confirmation — the
-  # moment a visitor reached this page (990/3431).
+  # half (description, pre-signup Q&A, name confirmation) is derived inside
+  # `Intake.transcript/3` from `plan` alone, in its real chronological place
+  # before the interview — this page only supplies the interview half, which
+  # happened after signup and lives on `answered`/`turn` instead of on `plan`.
+  # Passing shaping turns through here too used to duplicate the split
+  # `Intake.transcript/3` now owns, and once ordering it internally, letting
+  # this page pass its own pending question is what put an interview question
+  # ahead of the confirmation turn that preceded it (990/3431 follow-up).
   defp assign_transcript(socket) do
     %{plan: plan, answered: answered, turn: turn} = socket.assigns
 
-    turns = Intake.turns(plan) ++ Enum.map(answered, &%{question: &1.question, answer: &1.answer})
+    turns = Enum.map(answered, &%{question: &1.question, answer: &1.answer})
 
     assign(socket, :transcript, Intake.transcript(plan, turns, turn && turn.question))
   end
@@ -549,7 +551,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     |> assign(:app_state, Workspaces.state(workspace))
   end
 
-  def terminate(_reason, %{assigns: %{workspace: workspace}}) do
+  # `@workspace` is a real `%Workspace{}` once one has been provisioned, but
+  # before that — awaiting payment, or the local path, which has no row at
+  # all — it's a status-shaped placeholder map so the rest of the template
+  # has something to read. `abandoned/1` only knows what to do with a real
+  # row, so a visitor who leaves before either happens must not reach it.
+  def terminate(_reason, %{assigns: %{workspace: %Workspace{} = workspace}}) do
     Workspaces.abandoned(workspace)
   end
 
