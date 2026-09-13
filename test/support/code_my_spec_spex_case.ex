@@ -2276,7 +2276,7 @@ defmodule CodeMySpecSpex.Case do
   defp generate_application(project) do
     case persistent_application_dir() do
       nil ->
-        {:ok, parent} = Briefly.create(directory: true)
+        parent = temp_dir("generated_app")
         build_application(Path.join(parent, generated_app_name(project)))
 
       dir ->
@@ -6021,5 +6021,24 @@ defmodule CodeMySpecSpex.Case do
   def wait_for_channel(%Phoenix.Socket{channel_pid: pid} = socket) do
     :sys.get_state(pid)
     socket
+  end
+
+  # A temp directory, without `Briefly`.
+  #
+  # `Briefly.Entry.ensure_tmp/0` asks one GenServer for the calling process's
+  # temp root with a hardcoded 5-second `GenServer.call` and no option to raise
+  # it, so on a box running several suites at once it times out and the test
+  # exits — `** (exit) exited in: GenServer.call(_, {:monitor, _}, 5000)`,
+  # recorded as a failure and blocking every promotion until somebody re-ran the
+  # suite while the machine was quiet. `TempFile.dir/1` touches no process.
+  #
+  # Cleanup is ours now rather than Briefly's process-exit hook. Registered at
+  # the point the directory is made, and `on_exit` is LIFO, so it runs after
+  # anything the caller registers afterwards.
+  defp temp_dir(prefix) do
+    dir = CodeMySpec.TempFile.dir(prefix)
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
+    dir
   end
 end

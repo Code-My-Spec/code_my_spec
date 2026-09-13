@@ -116,9 +116,24 @@ defmodule CodeMySpec.UsersFixtures do
     # test that writes through scope.environment leaks files into the live
     # tree (e.g. SpecStub.write_for_scope creating
     # .code_my_spec/spec/my_app/... which ComponentSync then re-projects
-    # into the DB on the next sync). Briefly cleans up the dir when the
-    # test process exits.
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    # into the DB on the next sync).
+    #
+    # `TempFile` rather than `Briefly`, which every call to this fixture used
+    # to go through. `Briefly.Entry.ensure_tmp/0` asks one GenServer for the
+    # process's temp root with a hardcoded 5-second `GenServer.call` — no
+    # option to raise it — so the most-used fixture in the suite was a
+    # five-second bet on a single mailbox. On a box running three suites at
+    # once it loses: `** (exit) exited in: GenServer.call(_, {:monitor, _},
+    # 5000)` out of `full_scope_fixture`, recorded as a failure and blocking
+    # every promotion until something re-ran the suite when the machine was
+    # quieter. `TempFile.dir/1` touches no process at all.
+    #
+    # Cleanup registered here so it runs last — `on_exit` is LIFO, and this is
+    # the first callback any test using this fixture registers, so anything
+    # else tearing down still has its directory.
+    tmp_dir = CodeMySpec.TempFile.dir("full_scope")
+    File.mkdir_p!(tmp_dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(tmp_dir) end)
 
     user_scope_fixture(user, account, project)
     |> Map.put(:environment, Environment.new(:local, tmp_dir))
