@@ -310,17 +310,56 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body == %{}
     end
 
-    test "does not rewrite non-test bash commands", %{scope: scope} do
+    # `mix compile` used to be the example here, on the reasoning that only
+    # `test` and `spex` were routed. `ba538fda4` added `compile` and `credo` to
+    # the set and left this asserting the opposite, so it has been red on main
+    # since — and a red test blocks every promotion on the machine, not just
+    # its own author's.
+    #
+    # `mix deps.get` instead: outside the routed set, and no more likely to
+    # join it than any other mix task, so this keeps testing what it was
+    # written to test.
+    test "does not rewrite a mix task outside the analyzed set", %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
-          "tool_input" => %{"command" => "mix compile"}
+          "tool_input" => %{"command" => "mix deps.get"}
         })
 
       conn = PreToolUseController.handle(conn, conn.body_params)
 
       body = Jason.decode!(conn.resp_body)
       assert body == %{}
+    end
+
+    # The other half, which nothing asserted: `compile` and `credo` are routed
+    # now. Without this the set is only pinned for `test` and `spex`, and
+    # dropping one of the newer two would look exactly like the test above
+    # passing.
+    for {task, source} <- [{"compile", "compiler"}, {"credo", "credo"}] do
+      test "rewrites mix #{task} to the #{source} source", %{scope: scope} do
+        task = unquote(task)
+        source = unquote(source)
+
+        conn =
+          build_post(scope, %{
+            "tool_name" => "Bash",
+            "tool_input" => %{"command" => "mix " <> task}
+          })
+
+        conn = PreToolUseController.handle(conn, conn.body_params)
+
+        command =
+          conn.resp_body
+          |> Jason.decode!()
+          |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+        assert command =~ ~s("source":") <> source <> ~s("),
+               "mix " <>
+                 task <>
+                 " was left to run itself, so its findings never " <>
+                 "reach the shared run record and the stop hook cannot see them"
+      end
     end
   end
 
