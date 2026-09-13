@@ -387,8 +387,19 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # before this gate existed.
   defp start_cloud_or_gate_on_payment(socket, scope, _plan) do
     case Workspaces.get_workspace(scope) do
-      nil -> gate_new_cloud_workspace(socket, scope)
-      workspace -> assign_workspace(socket, workspace)
+      nil ->
+        gate_new_cloud_workspace(socket, scope)
+
+      workspace ->
+        # `boot_workspace/2` only subscribes the mount that actually starts
+        # the boot. Every later mount of the same project — a manual refresh,
+        # or a LiveView reconnect after a network blip, both of which land
+        # here — used to assign a static snapshot and then never hear
+        # another :progress/:running broadcast, freezing the bar on whatever
+        # phase was true at that instant. `PreviewLive.Show` already gets
+        # this right by subscribing unconditionally; matching it here.
+        Workspaces.subscribe_workspace(workspace.project_id)
+        assign_workspace(socket, workspace)
     end
   end
 
@@ -438,7 +449,6 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     case Workspaces.boot(scope) do
       {:ok, workspace} ->
         Workspaces.subscribe_workspace(workspace.project_id)
-        start_the_conversation(scope)
 
         # Subscribe, then re-read. The watcher starts inside boot/1 and can
         # record a phase before this process is subscribed; since an
@@ -629,6 +639,23 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # The stored row and what the app is doing right now are two different
   # facts, and the row cannot answer the second — so they travel together.
   defp assign_workspace(socket, workspace) do
+    # Asked for here, not the instant the container is told to boot (issue
+    # 9bef58fb). `Workspaces.boot/1` only kicks the container off — at that
+    # exact moment the harness inside it cannot possibly have joined
+    # `harness_project:<id>` yet, so an agent asked for then failed with
+    # `:harness_not_connected` on every fresh cloud onboarding, wrote a
+    # `:starting` row, and nothing ever retried it: `list_running/1` treats
+    # `:starting` as already handled, and the only path back to `:running`
+    # is the harness reporting a launch it was never asked to make. By the
+    # time a workspace reaches `:running`, `BootSteps`' own ordering has
+    # already run `starting_harness` before `starting_app`, so the harness
+    # has very likely joined — and `ensure_main_agent/1` is idempotent, so
+    # calling it on every later re-assignment (a reconnect, a reload) costs
+    # nothing when an agent already exists.
+    if match?(%Workspace{status: :running}, workspace) do
+      start_the_conversation(socket.assigns.scope)
+    end
+
     socket
     |> assign(:workspace, workspace)
     |> assign(:app_state, Workspaces.state(workspace))
