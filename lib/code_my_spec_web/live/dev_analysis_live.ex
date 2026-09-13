@@ -192,7 +192,7 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
   defp age_seconds(nil), do: nil
 
   defp status_badge(:running), do: {"running", "badge-success"}
-  defp status_badge(:queued), do: {"queued (next)", "badge-warning"}
+  defp status_badge(:queued), do: {"queued", "badge-warning"}
   defp status_badge(:unknown), do: {"unconfirmed", "badge-ghost"}
 
   # More than one *execution* (a row) for the same source on the same
@@ -246,7 +246,6 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
             <tr>
               <th>Project</th>
               <th>Working copy</th>
-              <th>Executor</th>
               <th>Source</th>
               <th>Status</th>
               <th>Primary run</th>
@@ -257,10 +256,6 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
             <tr :for={row <- @rows} class={row_class(@rows, row)} data-test="analysis-run-row">
               <td class="text-sm">{row.project_name}</td>
               <td class="font-mono text-xs max-w-xs truncate" title={row.root}>{tail(row.root)}</td>
-              <td class="text-xs">
-                <span :if={row.executor.held} class="badge badge-success badge-sm">held</span>
-                <span :if={!row.executor.held} class="badge badge-error badge-sm">unheld</span>
-              </td>
               <td class="font-mono text-xs">{row.source}</td>
               <td>
                 <% {label, class} = status_badge(row.status) %>
@@ -270,16 +265,16 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
               </td>
               <td class="font-mono text-xs">{row.primary_id || "—"}</td>
               <td class="font-mono text-xs opacity-80">
-                <span :for={r <- row.requesters} class="mr-2 whitespace-nowrap">
+                <div :for={r <- row.requesters} class="whitespace-nowrap">
                   {r.id}{if r.id in row.no_db_row_ids, do: " (no db row)"}
                   <span :if={r.started_at} class="opacity-60">
                     @ {age_seconds(r.started_at)}s ago
                   </span>
-                </span>
+                </div>
               </td>
             </tr>
             <tr :if={@rows == []}>
-              <td colspan="7" class="text-center opacity-60 py-8" data-test="analysis-runs-empty">
+              <td colspan="6" class="text-center opacity-60 py-8" data-test="analysis-runs-empty">
                 Nothing running or queued anywhere right now.
               </td>
             </tr>
