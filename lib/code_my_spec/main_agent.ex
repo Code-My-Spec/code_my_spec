@@ -50,6 +50,8 @@ defmodule CodeMySpec.MainAgent do
     ],
     exports: :all
 
+  require Logger
+
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Issues
@@ -367,7 +369,33 @@ defmodule CodeMySpec.MainAgent do
   # for which agent is stuck — and the fault is the only part that differs.
   defp titled(what, reason), do: "#{what}: #{String.slice(reason, 0, 120)}"
 
+  # Once per fault, not once per call that notices it.
+  #
+  # A fault these raise — the machinery serving no tools, a restart that changed
+  # nothing — lasts until a person deals with it, and the cadence keeps calling
+  # `check_machinery` and `restart_agent` in the meantime. Every one of those
+  # calls used to file another copy: two from a single `check_machinery`
+  # followed by one `restart_agent`, and six identical issues from one QA
+  # measurement. That buries the first, real issue under repeats of itself at
+  # exactly the moment somebody is scanning the list for what is wrong — which
+  # defeats criterion 3312, the thing this path exists to satisfy (`57ba014e`).
+  #
+  # Keyed on the title, which is what `titled/2` already builds from the fault
+  # itself, so two different faults still file separately and the same fault
+  # does not.
+  #
+  # Open only. A dismissed or resolved issue is finished with, so the same fault
+  # recurring after that is news rather than a repeat.
   defp raise_fault(scope, working_copy, title, description) do
+    file_fault(Issues.open_issue_titled?(scope, title), scope, working_copy, title, description)
+  end
+
+  defp file_fault(true, _scope, _working_copy, title, _description) do
+    Logger.info("[MainAgent] fault already raised, not filing again: #{title}")
+    {:ok, :already_raised}
+  end
+
+  defp file_fault(false, scope, working_copy, title, description) do
     Issues.create_issue(scope, %{
       title: title,
       severity: :high,
