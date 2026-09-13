@@ -77,6 +77,13 @@ defmodule CmsHarness.Web.Router do
     # `4396345b`: the surface every `skills/*/skill.md` posts to. Addressed the
     # same way analysis and hooks are — see `SkillsController`.
     post("/skills/start", SkillsController, :start)
+
+    # Drop this copy's channel and take it up again — the reconnect a harness
+    # restart performs, for one root rather than all of them. `handle_join/3` is
+    # where the `agents_to_restore` handshake runs, and one process serving
+    # every checkout meant observing it cost four other projects their in-flight
+    # work (`0fb7bf03`). See `RejoinController`.
+    post("/rejoin", RejoinController, :run)
   end
 
   # Skills, unaddressed.
