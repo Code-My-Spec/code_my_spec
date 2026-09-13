@@ -67,15 +67,15 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
         executor: copy.executor,
         source: source,
         count: length(runs),
-        oldest_started_at: runs |> Enum.map(& &1.started_at) |> Enum.min(NaiveDateTime),
+        oldest_started_at: runs |> Enum.map(& &1.started_at) |> Enum.min(DateTime),
         run_ids: Enum.map(runs, & &1.id) |> Enum.sort()
       }
     end
     |> Enum.sort_by(&{&1.count, &1.project_name, &1.root, &1.source}, :desc)
   end
 
-  defp age_seconds(%NaiveDateTime{} = started_at) do
-    NaiveDateTime.diff(NaiveDateTime.utc_now(), started_at, :second)
+  defp age_seconds(%DateTime{} = started_at) do
+    DateTime.diff(DateTime.utc_now(), started_at, :second)
   end
 
   defp row_class(%{count: count}) when count > @max_healthy_per_source, do: "bg-error/10"
