@@ -79,6 +79,13 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         How far through, kept from the card this replaced. Not decoration: the
         interview promises to pay out within four questions, and a visitor who
         cannot see the end of a conversation does not know it has one.
+
+        Deliberately not gated on payment — criterion 3404 answers this all
+        the way to its derived rules on this same page with nothing ever
+        paid, and that is intentional: the interview is real, independent
+        work a visitor can do while they decide whether to pay, not something
+        unlocked by paying. What was actually confusing (66272b59) is that
+        nothing on screen said so — see the note above the payment card.
       --%>
       <p
         :if={@workspace.status != :failed and @turn}
@@ -115,7 +122,55 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       >
         <p class="text-sm font-medium mb-2">Run it on your machine</p>
         <p class="text-sm opacity-70 mb-3">
-          Your project is ready. Bring it up wherever you keep your code:
+          Your project is ready. This runs on your own computer rather than
+          ours, so it assumes a terminal and a few developer tools are already
+          there. If that's not you, the cloud option above needs nothing
+          installed.
+        </p>
+
+        <%!--
+          Named and linked, not assumed. A visitor with none of this installed
+          used to get three shell commands and no way to know why the first
+          one failed — no mention of what a terminal even is, nothing to click
+          (e2a1d37b). This doesn't detect what's actually on their machine —
+          a server-rendered page can't reach into their terminal — so it's
+          guidance, not a guarantee; a real prerequisite-check flow is a
+          bigger, separate piece of work.
+        --%>
+        <p class="text-xs font-medium uppercase tracking-[0.14em] text-base-content/50 mb-1">
+          You'll need
+        </p>
+        <ul class="text-sm list-disc pl-5 mb-3 space-y-1">
+          <li>
+            <a
+              href="https://elixir-lang.org/install.html"
+              target="_blank"
+              rel="noopener"
+              class="link"
+            >
+              Elixir and Erlang/OTP
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://www.postgresql.org/download/"
+              target="_blank"
+              rel="noopener"
+              class="link"
+            >
+              PostgreSQL
+            </a>, running locally
+          </li>
+          <li>
+            <a href="https://git-scm.com/downloads" target="_blank" rel="noopener" class="link">
+              git
+            </a>
+          </li>
+        </ul>
+
+        <p class="text-sm opacity-70 mb-3">
+          Once those are installed, open a terminal in the folder where you
+          keep your code and run:
         </p>
         <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{local_commands(@plan)}</code></pre>
       </div>
@@ -131,6 +186,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         :if={@workspace.status not in [:failed, :local, :awaiting_payment]}
         workspace={@workspace}
         app_state={@app_state}
+        project_id={@scope.active_project_id}
       />
     </div>
     """
@@ -148,6 +204,17 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       <p class="text-sm opacity-70 mb-3">
         Pay to bring your working copy up — nothing is provisioned on our servers
         until this goes through.
+      </p>
+
+      <%!--
+        Both the conversation above and this card are live and interactive
+        at once with nothing saying they're two independent things rather
+        than one confusing sequence (66272b59) — the interview keeps going
+        whether or not this gets paid (criterion 3404), and this line is the
+        whole fix: say that, rather than gate either one on the other.
+      --%>
+      <p class="text-xs opacity-60 mb-3">
+        No rush — you can keep answering above while you decide.
       </p>
 
       <div
@@ -199,14 +266,30 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         class="flex items-center justify-between gap-3"
       >
         <span class="text-sm font-medium">It's running.</span>
-        <a
-          href={Workspaces.url(@workspace)}
-          target="_blank"
-          rel="noopener"
-          class="btn btn-sm btn-primary"
-        >
-          Open your application
-        </a>
+        <div class="flex gap-2">
+          <a
+            href={Workspaces.url(@workspace)}
+            target="_blank"
+            rel="noopener"
+            class="btn btn-sm"
+          >
+            Open your application
+          </a>
+          <%!--
+            The only way onboarding itself pointed at the real project dashboard
+            and agent conversation used to be back through the marketing
+            homepage's own nav — never surfaced here, where a visitor coming
+            straight out of paid onboarding actually is. "Open your application"
+            opens the *generated app*, which is a different destination.
+          --%>
+          <.link
+            navigate={~p"/app/projects/#{@project_id}/agent-conversation"}
+            data-test="open-project-dashboard"
+            class="btn btn-sm btn-primary"
+          >
+            Talk to your agent
+          </.link>
+        </div>
       </div>
 
       <div
