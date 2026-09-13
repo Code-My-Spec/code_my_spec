@@ -14,10 +14,16 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
   issue under repeats of itself is the opposite — at exactly the moment somebody
   is scanning the list for what is wrong.
 
-  Open means unfinished. A dismissed or resolved issue is dealt with, so the
-  same fault recurring afterwards is news and files again. That is the half
-  worth testing: a dedupe keyed on "has ever existed" silently stops reporting a
-  fault that came back, which is worse than the duplication it replaces.
+  The asymmetry between dismissed and resolved is the part worth testing, and it
+  is the part I got wrong first. `:dismissed` says the report was not worth
+  acting on, so the identical fault recurring is still not worth acting on —
+  filing it again overrules whoever dismissed it, once per call, forever.
+  `:resolved` says it was fixed, so a recurrence is a regression and is exactly
+  what should be heard again.
+
+  My first version counted only `:incoming` and `:accepted` as answered, having
+  reasoned about the resolved case and not the dismissed one. A synthetic fault
+  whose five copies had all been dismissed promptly filed a sixth.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -81,18 +87,36 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
     """
   end
 
-  test "and a fault that comes back after being dealt with is news again", %{scope: scope} do
+  test "a dismissed fault stays dismissed when it recurs", %{scope: scope} do
     MainAgent.check_machinery(scope)
 
     [issue] = scope |> Issues.list_issues() |> Enum.filter(&(&1.title == @fault))
-    {:ok, _} = Issues.dismiss_issue(scope, issue, "dealt with")
+    {:ok, _} = Issues.dismiss_issue(scope, issue, "not worth acting on")
+
+    MainAgent.check_machinery(scope)
+
+    assert raised(scope) == 1, """
+    Somebody judged this report not worth acting on and it filed again anyway.
+    That overrules them once per call, forever — and the calls are a cadence
+    loop, so "forever" is the operative word.
+    """
+  end
+
+  test "but a resolved fault coming back is a regression and is heard again", %{scope: scope} do
+    MainAgent.check_machinery(scope)
+
+    [issue] = scope |> Issues.list_issues() |> Enum.filter(&(&1.title == @fault))
+    # Accepted first: an issue cannot go straight from incoming to resolved, and
+    # that is the real path anyway — somebody triages it before fixing it.
+    {:ok, accepted} = Issues.accept_issue(scope, issue)
+    {:ok, _} = Issues.resolve_issue(scope, accepted, "fixed")
 
     MainAgent.check_machinery(scope)
 
     assert raised(scope) == 2, """
-    The fault recurred after somebody finished with the last one, and nothing
-    was filed. A dedupe keyed on "has ever existed" stops reporting a fault that
-    came back — worse than the duplication it replaces.
+    The fault was fixed and came back, and nothing said so. A dedupe that treats
+    "was fixed once" as "never mention again" silently stops reporting
+    regressions, which is worse than the duplication it replaces.
     """
   end
 end

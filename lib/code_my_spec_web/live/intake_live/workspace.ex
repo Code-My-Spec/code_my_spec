@@ -551,7 +551,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     |> assign(:app_state, Workspaces.state(workspace))
   end
 
-  def terminate(_reason, %{assigns: %{workspace: workspace}}) do
+  # `@workspace` is a real `%Workspace{}` once one has been provisioned, but
+  # before that — awaiting payment, or the local path, which has no row at
+  # all — it's a status-shaped placeholder map so the rest of the template
+  # has something to read. `abandoned/1` only knows what to do with a real
+  # row, so a visitor who leaves before either happens must not reach it.
+  def terminate(_reason, %{assigns: %{workspace: %Workspace{} = workspace}}) do
     Workspaces.abandoned(workspace)
   end
 
