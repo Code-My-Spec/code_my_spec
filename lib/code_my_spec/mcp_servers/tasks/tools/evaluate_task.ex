@@ -128,6 +128,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
           {:reply, TasksMapper.evaluate_passed_response(task, info), frame}
 
+        # The third outcome, and the one this surface was missing. `QaStory`
+        # answers it for a task a sub-agent owns and has not submitted for yet.
+        # `TaskEvaluator` has had a clause for it since it was introduced; here
+        # it fell through the `case` and raised, so the caller got a bare
+        # "Internal error" and retried it (`229a42e7`).
+        {:ok, :skip, why} ->
+          Logger.info(
+            "[EvaluateTask] #{type_name(task_module)} left task #{task.id} active: #{why}"
+          )
+
+          {:reply, TasksMapper.evaluate_skipped_response(task, why), frame}
+
         {:ok, :invalid, feedback} ->
           # R8: hash the feedback and bump (or reset) the session-level
           # repeat counter so the stop hook can detect a stuck loop —
