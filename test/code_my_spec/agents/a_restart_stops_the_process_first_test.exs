@@ -86,6 +86,58 @@ defmodule CodeMySpec.Agents.ARestartStopsTheProcessFirstTest do
                     "stopping is not restarting — it has to come back up"
   end
 
+  # The row said `:starting` while a real process was running — the machine's
+  # confirmation never landed, and `end_process/2` reads that status as "nothing
+  # to stop". Skipping the stop then let `launch/2` collide with the live
+  # process, the new one lost, and the agent stuck at `:starting` for good while
+  # the call still answered `{:ok, agent}` (`4078e7bf`).
+  #
+  # A defect the first version of this fix introduced, so it is asserted rather
+  # than left to the comment.
+  test "even when the row still says :starting under a live process", %{scope: scope} do
+    {:ok, unconfirmed} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        status: :starting,
+        working_copy: "/tmp/unconfirmed-#{System.unique_integer([:positive])}",
+        working_copy_id: scope.active_working_copy_id
+      })
+
+    {:ok, _restarted} = Agents.restart_agent(scope, unconfirmed.id)
+
+    agent_id = unconfirmed.id
+
+    assert_received {:machine, :stop, ^agent_id}, """
+    The stop was skipped because the row read `:starting`. Status is not
+    evidence of a process — `working_copy_connected?/1` says so in as many
+    words — and trusting it here is how a restart collides with the process it
+    was supposed to replace.
+    """
+  end
+
+  test "the turn it discards is cleared, so nothing keeps reporting it", %{
+    scope: scope,
+    agent: agent
+  } do
+    {:ok, working} =
+      AgentsRepository.update_agent(scope, agent, %{turn_started_at: DateTime.utc_now()})
+
+    assert working.turn_started_at
+
+    {:ok, _restarted} = Agents.restart_agent(scope, working.id)
+
+    {:ok, reread} = AgentsRepository.fetch_agent(scope, working.id)
+
+    refute reread.turn_started_at, """
+    `list_agent_work` and every check-in read this, so a turn left set reports
+    "opened at <then> and has not finished" forever — for an agent that was
+    restarted and whose process is gone. Measured at two minutes past the
+    restart and still climbing (4078e7bf).
+    """
+  end
+
   test "and in that order", %{scope: scope, agent: agent} do
     {:ok, _restarted} = Agents.restart_agent(scope, agent.id)
 
