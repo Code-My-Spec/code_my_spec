@@ -169,7 +169,12 @@ config :logger, :default_formatter,
     :cms_agent,
     :cms_decision,
     :cms_blocking,
-    :cms_why
+    :cms_why,
+    # Whose graph a `[Requirements]` line is about. This server handles several
+    # projects at once — broken_oaths and the qa sandboxes among them — and
+    # without it a count of recomputes is a count across all of them. I reported
+    # one as this project's and was wrong.
+    :cms_project
   ]
 
 # Use Jason for JSON parsing in Phoenix
