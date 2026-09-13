@@ -71,6 +71,20 @@ defmodule CodeMySpec.SpexGivensTest do
   # agent whose tools do not resolve must fail loudly — has no legal way to be
   # written at all.
   #
+  # Story 1052's two. `main_answers` calls `AnswerQuestion.execute/2`, the main
+  # agent's own tool, and `user_answers` goes through
+  # `Notifications.answer_question_request/2` via the `Fixtures` bridge — what
+  # the inbox form calls, and the only thing that marks a request answered and
+  # releases whoever was waiting on it. Both are a listed form of drive one
+  # call down; they are named here because this check reads the block's text,
+  # so a wrapped call is invisible to it.
+  #
+  # `ask(` was here for one commit and is deliberately not: these are
+  # substrings, and `ask(` matches `start_specs_passing_task(`. It silently
+  # un-flagged an unrelated baselined file, which the baseline test caught —
+  # a token has to be long enough that it cannot land inside an unrelated
+  # identifier.
+  #
   # `System.cmd`, `System.put_env` and `System.delete_env` were removed from this
   # list, because `SpexDeniedCalls` (CMS0002) forbids all three inside a
   # `_spex.exs`. Listing them here told an author to establish a precondition by
@@ -198,6 +212,7 @@ defmodule CodeMySpec.SpexGivensTest do
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     machine_out_of_reach
+    main_answers user_answers
     Req.Test.stub
     a_promotable_project report_git_state analyzers_are_current
     this_copy_is_the_running_one write( git(
