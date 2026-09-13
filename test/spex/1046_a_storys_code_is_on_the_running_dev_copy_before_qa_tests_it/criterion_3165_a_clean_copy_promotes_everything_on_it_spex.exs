@@ -41,15 +41,26 @@ defmodule CodeMySpecSpex.Story1046.Criterion3165Spex do
       given_ "three stories finished on the coding agent's copy", context do
         context = a_promotable_project(context)
 
-        for {file, body} <- [
-              {"war.ex", ":declared"},
-              {"peace.ex", ":sued"},
-              {"oath.ex", ":broken"}
+        # A module name per file, not one name three times.
+        #
+        # These three all defined `BrokenOaths.Diplomacy.X`, which made the
+        # running checkout uncompilable — the restart recipe builds
+        # `diplomacy/*.ex` in one pass and duplicate definitions are a compile
+        # error. That was survivable while the restart was synchronous and this
+        # scenario never looked at it. It stopped being survivable when the
+        # restart became detached (54aa534c): the compile error now lands after
+        # this test has finished, and a logged error fails whichever test is
+        # running when it arrives — which is how criterion 3167 started failing
+        # in-suite while passing alone, for a fixture defect in this file.
+        for {file, mod, body} <- [
+              {"war.ex", "War", ":declared"},
+              {"peace.ex", "Peace", ":sued"},
+              {"oath.ex", "Oath", ":broken"}
             ] do
           write(
             context.agent_root,
             "lib/broken_oaths/diplomacy/#{file}",
-            "defmodule BrokenOaths.Diplomacy.X do\n  def act, do: #{body}\nend\n"
+            "defmodule BrokenOaths.Diplomacy.#{mod} do\n  def act, do: #{body}\nend\n"
           )
         end
 
