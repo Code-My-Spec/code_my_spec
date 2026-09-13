@@ -241,7 +241,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       {:ok, run_id, source, args} ->
         case queued_entry_for(state, source) do
           %{} ->
-            tie_to_queued(state, source, run_id)
+            tie_to_queued(state, source, run_id, args)
 
           nil ->
             entry = %{
@@ -261,7 +261,16 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  defp tie_to_queued(state, source, run_id) do
+  # One queued "next" entry per source, ever — its arg set grows to cover
+  # every tied request, its identity does not. Without this, a second
+  # request naming files the first queued request never named got answered
+  # with the first request's result and its own files were never actually
+  # analyzed — silently, since `tied_run_ids` alone gave every tied run_id
+  # the same real (but incomplete) result, and "real, not synthetic" was the
+  # only thing being checked for. Story 839, John 2026-09-13: one source
+  # never needs more than two entries — current run, next run — and the
+  # next run's scope is the union of everyone tied to it.
+  defp tie_to_queued(state, source, run_id, args) do
     Logger.info(
       "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
         "run #{run_id} is tied to it and will get its result"
@@ -269,12 +278,23 @@ defmodule CmsHarness.Project.AnalysisServer do
 
     queue =
       Enum.map(state.queue, fn
-        %{source: ^source} = entry -> %{entry | tied_run_ids: [run_id | entry.tied_run_ids]}
-        entry -> entry
+        %{source: ^source} = entry ->
+          %{entry | tied_run_ids: [run_id | entry.tied_run_ids], args: merge_args(entry.args, args)}
+
+        entry ->
+          entry
       end)
 
     %{state | queue: queue}
   end
+
+  # Empty args mean "the whole suite" — a superset of any file list, so it
+  # wins the merge rather than being unioned away. Two non-empty lists merge
+  # to their union: the next run has to cover every file anyone tied to it
+  # actually asked about.
+  defp merge_args([], _other), do: []
+  defp merge_args(_args, []), do: []
+  defp merge_args(args, other), do: Enum.uniq(args ++ other)
 
   defp parse(%{"run_id" => run_id, "source" => source} = request)
        when is_integer(run_id) and is_binary(source) do

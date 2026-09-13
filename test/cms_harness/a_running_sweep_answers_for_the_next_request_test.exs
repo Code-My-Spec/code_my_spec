@@ -53,6 +53,16 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
     next
   end
 
+  defp enqueue_with_args(state, run_id, source, args) do
+    {:noreply, next} =
+      AnalysisServer.handle_cast(
+        {:enqueue, [%{"run_id" => run_id, "source" => source, "args" => args}]},
+        state
+      )
+
+    next
+  end
+
   test "a second request for a running source schedules the next run rather than dying silently" do
     after_state = state("spex", []) |> enqueue("spex")
 
@@ -79,6 +89,38 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
     after_state = state("spex", []) |> enqueue("spex") |> enqueue_run_id(3, "spex")
 
     assert [%{source: "spex", run_id: 2, tied_run_ids: [3]}] = after_state.queue
+  end
+
+  # Story 839, John 2026-09-13: "an agent requests test A, it starts running.
+  # Another agent requests test A — that queues the next run testing test A.
+  # Another agent requests test B — that just adds to the requested tests in
+  # the next run." One queued entry per source, ever; its args grow to cover
+  # everyone tied to it. Before this, a tie only recorded the run_id — the
+  # second requester's own files were silently never analyzed, answered
+  # instead with whatever the first queued request happened to name.
+  test "a request naming different files ties on and merges into the queued run's args" do
+    running = state("exunit", []) |> enqueue_with_args(2, "exunit", ["test/a_test.exs"])
+
+    after_state = enqueue_with_args(running, 3, "exunit", ["test/b_test.exs"])
+
+    assert [%{source: "exunit", run_id: 2, tied_run_ids: [3], args: args}] = after_state.queue
+    assert Enum.sort(args) == ["test/a_test.exs", "test/b_test.exs"]
+  end
+
+  test "a bare (whole-suite) request tied onto a targeted queued run widens it to the whole suite" do
+    running = state("exunit", []) |> enqueue_with_args(2, "exunit", ["test/a_test.exs"])
+
+    after_state = enqueue_with_args(running, 3, "exunit", [])
+
+    assert [%{source: "exunit", run_id: 2, tied_run_ids: [3], args: []}] = after_state.queue
+  end
+
+  test "a targeted request tied onto a queued whole-suite run stays a whole suite" do
+    running = state("exunit", []) |> enqueue_with_args(2, "exunit", [])
+
+    after_state = enqueue_with_args(running, 3, "exunit", ["test/a_test.exs"])
+
+    assert [%{source: "exunit", run_id: 2, tied_run_ids: [3], args: []}] = after_state.queue
   end
 
   defp enqueue_run_id(state, run_id, source) do
