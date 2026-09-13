@@ -78,11 +78,31 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
   # --- Fetching the harness's own view ---
 
   defp fetch_harness_status do
-    case Req.get(@harness_base_url <> "/dashboard-status", receive_timeout: @harness_fetch_timeout) do
+    case Req.get(@harness_base_url <> "/dashboard-status", request_options()) do
       {:ok, %{status: 200, body: body}} -> {:ok, index_by_root(body)}
       {:ok, %{status: status}} -> {:error, "harness answered #{status}"}
       {:error, reason} -> {:error, "harness_unreachable: #{inspect(reason)}"}
     end
+  end
+
+  # The timeout, plus whatever the environment pins in front of the client.
+  #
+  # `:dev_routes` is true in `config/test.exs`, so this LiveView's route exists
+  # in the test router and a test that mounts it would really call :4004 — the
+  # live harness on the developer's own box, not a fake the test started. That
+  # is the whole of what `http_clients_are_stubbable_test` guards against, and
+  # the reason it refused this module: a bare `Req.get/2` has nowhere for
+  # `{Req.Test, __MODULE__}` to attach.
+  #
+  # Merging config rather than adding to `@allowed` because this genuinely can
+  # be pinned, and the `:loopback` entries there mean something narrower — a
+  # FakeUpstream or a container the test starts itself, where there is no real
+  # service to reach by accident.
+  defp request_options do
+    Keyword.merge(
+      [receive_timeout: @harness_fetch_timeout],
+      Application.get_env(:code_my_spec, __MODULE__, [])
+    )
   end
 
   defp index_by_root(%{"projects" => projects}) do
@@ -188,7 +208,9 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
 
   defp tail(root), do: root
 
-  defp age_seconds(%DateTime{} = started_at), do: DateTime.diff(DateTime.utc_now(), started_at, :second)
+  defp age_seconds(%DateTime{} = started_at),
+    do: DateTime.diff(DateTime.utc_now(), started_at, :second)
+
   defp age_seconds(nil), do: nil
 
   defp status_badge(:running), do: {"running", "badge-success"}
