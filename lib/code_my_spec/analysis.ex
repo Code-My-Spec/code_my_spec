@@ -632,15 +632,25 @@ defmodule CodeMySpec.Analysis do
       harness has not joined since this server started; restarting it rejoins.
     * `:harness_timeout` — it *is* registered, accepted the request, and did
       not answer. Not a connection problem. Carries `elapsed_ms` and `limit_ms`.
+    * `:harness_gone` — registered, took the request, and the process serving
+      it died before answering. Carries `elapsed_ms` and `down`, the exit
+      reason. Distinct from a timeout because the fixes are opposite — wait
+      longer versus find out what took the process down — and because for an
+      op that restarts the application it is not a failure at all. The restart
+      drains the endpoint the reply was coming back on, so
+      `{:shutdown, :draining}` a second in is what one that worked looks like;
+      `Promotion.restart_acknowledgement_lost?/1` is where that is decided.
     * `:harness_self_call` — the caller *is* the channel process. A wiring bug
       in this server; the harness is fine.
     * `:harness_registry_down` — the registry itself is not running, which is
       this server's problem rather than any harness's.
 
-  All three used to be `:harness_unreachable`. That reads as "no harness", so a
-  timeout sent a reader after a registration problem that was not there, and
+  All of them used to be `:harness_unreachable`. That reads as "no harness", so
+  a timeout sent a reader after a registration problem that was not there, and
   the details — working copy, op, elapsed — existed at the point of failure and
-  were dropped on the floor.
+  were dropped on the floor. Splitting `:harness_gone` back out of
+  `:harness_timeout` is the same correction one level finer: a tag that answers
+  "did it hang or did it die" for a caller who cannot tell from the outside.
   """
   @impl CodeMySpec.Environments.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
@@ -694,7 +704,7 @@ defmodule CodeMySpec.Analysis do
 
         {:error, {:harness_self_call, %{working_copy_id: working_copy_id, op: op}}}
 
-      :exit, reason ->
+      :exit, {:timeout, _} = reason ->
         elapsed = System.monotonic_time(:millisecond) - started
         limit = timeout + 5_000
 
@@ -708,6 +718,43 @@ defmodule CodeMySpec.Analysis do
         {:error,
          {:harness_timeout,
           %{working_copy_id: working_copy_id, op: op, elapsed_ms: elapsed, limit_ms: limit}}}
+
+      # A callee that died is not a callee that hung, and the two want opposite
+      # things from the reader: wait longer, versus find out what took the
+      # process down. `GenServer.call/3` tells them apart for us — it exits
+      # `{:timeout, …}` when the limit is genuinely reached, and with the
+      # callee's own exit reason when it dies first — and this clause used to
+      # be folded into the one above, so every death was published as a
+      # timeout.
+      #
+      # What that cost: a `promotion_restart` that worked. The restart drains
+      # the endpoint, which takes down the channel the reply was coming back
+      # on, so the call exits `{:shutdown, :draining}` after about a second. It
+      # was reported as a timeout "after 3019ms (limit 605000ms)" — a pair of
+      # numbers that cannot describe a timeout — under a sentence insisting
+      # this is not a connection problem, when the connection going away is
+      # precisely what it was. Six of those in one deploy, at error level,
+      # while :4000 was up and serving the new revision.
+      #
+      # `elapsed_ms` without `limit_ms`, deliberately: the limit is what you
+      # compare against when something ran out of time, and printing it beside
+      # a death is what made the original line read as a timeout that had not
+      # happened.
+      :exit, reason ->
+        elapsed = System.monotonic_time(:millisecond) - started
+        down = if is_tuple(reason) and tuple_size(reason) > 0, do: elem(reason, 0), else: reason
+
+        Logger.warning(
+          "[Analysis] #{op} for harness #{working_copy_id}: the channel went down after " <>
+            "#{elapsed}ms with #{inspect(down, limit: 5)}. It was registered and took the " <>
+            "request, so this is not a registration problem either — the process serving it " <>
+            "died before answering. If the op was one that restarts the application, this is " <>
+            "what success looks like from here."
+        )
+
+        {:error,
+         {:harness_gone,
+          %{working_copy_id: working_copy_id, op: op, elapsed_ms: elapsed, down: down}}}
     end
   end
 
