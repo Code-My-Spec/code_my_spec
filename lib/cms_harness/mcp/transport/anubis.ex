@@ -118,6 +118,16 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     client_link(name, opts, headers)
   end
 
+  @impl true
+  def disconnect(name) do
+    case GenServer.whereis(name) do
+      pid when is_pid(pid) -> stop_leaked(pid)
+      _ -> :ok
+    end
+
+    :ok
+  end
+
   @doc """
   Take down the process tree holding a leaked client's name.
 

@@ -25,6 +25,7 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
 
   use ExUnit.Case, async: false
 
+  alias CmsHarness.Agents.Engine
   alias CmsHarness.Mcp.Transport.Anubis
 
   defmodule Holder do
@@ -113,6 +114,74 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
     assert await_released(name) == nil,
            "an unsupervised holder has no parent to stop instead, so it is the thing to stop"
   end
+
+  # `disconnect/1` is the prevention; everything above is the recovery.
+  #
+  # Criterion 3449 on story 1008: a stopped agent leaves no MCP session behind.
+  # `Engine.terminate/2` calls this, so the name is free before the next launch
+  # asks for it and `replace_leaked/4` has nothing to recover from.
+  describe "closing a session the agent opened" do
+    test "frees the name", %{name: name, client: client} do
+      assert is_pid(client), "the premise failed: nothing holds the name"
+
+      :ok = Anubis.disconnect(name)
+
+      assert await_released(name) == nil, """
+      A stopped agent left its client registered, so the next launch under the
+      same name collides — which is how a restart left an agent worse off than
+      before it (4078e7bf, dfa1ee9e).
+      """
+    end
+
+    test "and a name nothing holds is not an error", %{tree: tree, name: name} do
+      :ok = Supervisor.stop(tree, :normal, 1_000)
+      assert await_released(name) == nil
+
+      assert :ok = Anubis.disconnect(name), """
+      A stop runs on paths where the session was never opened — a machine that
+      could not authenticate gets nil from mcp_session/1 and an agent that still
+      works. Raising there turns a working agent's stop into a crash.
+      """
+    end
+  end
+
+  # The wiring, not the function. `disconnect/1` being correct and
+  # `Engine.terminate/2` calling it are two claims, and blinding the call site
+  # left every test above green — so without this the thing that actually has to
+  # happen is unasserted.
+  #
+  # `terminate/2` is a GenServer callback taking a plain map, so it can be driven
+  # with the three keys it reads rather than by standing up an agent.
+  describe "when the agent that opened it stops" do
+    setup do
+      previous = Application.get_env(:code_my_spec, :harness_mcp_transport)
+      Application.put_env(:code_my_spec, :harness_mcp_transport, Anubis)
+      on_exit(fn -> restore_transport(previous) end)
+      :ok
+    end
+
+    test "the session goes with it", %{name: name, client: client} do
+      assert is_pid(client), "the premise failed: nothing holds the name"
+
+      :ok = Engine.terminate(:shutdown, %{mcp_client: name, on_stop: nil, agent_id: "a"})
+
+      assert await_released(name) == nil, """
+      Stopping the agent left its MCP session registered. The next launch under
+      the same name is then refused, which is criterion 3449 on story 1008 and
+      the mechanism behind 4078e7bf.
+      """
+    end
+
+    test "and an agent that never opened one still stops", %{name: name} do
+      assert :ok = Engine.terminate(:shutdown, %{mcp_client: nil, on_stop: nil, agent_id: "a"})
+
+      assert GenServer.whereis(name) != nil,
+             "a stop with no session of its own took down somebody else's"
+    end
+  end
+
+  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_mcp_transport)
+  defp restore_transport(mod), do: Application.put_env(:code_my_spec, :harness_mcp_transport, mod)
 
   # The `Registry` drops its entry when it sees the exit, one message after the
   # process is gone — the same wait `replace_leaked/4` does before linking.

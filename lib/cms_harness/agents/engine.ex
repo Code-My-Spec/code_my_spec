@@ -470,10 +470,28 @@ defmodule CmsHarness.Agents.Engine do
   # than being lost with the process.
   @impl true
   def terminate(_reason, state) do
+    # The session goes with the agent that opened it.
+    #
+    # `connect/2` unlinks the client's supervisor deliberately, so nothing here
+    # took it down and a stopped agent left its client registered under a name
+    # the next launch needs — which is how a restart could leave an agent worse
+    # off than before it (`4078e7bf`, `dfa1ee9e`).
+    #
+    # The machine's browser is not this and must not be stopped here: it is
+    # shared, `CmsHarness.Browser` owns it under its own name, and a second
+    # agent on this machine is still using it.
+    disconnect_mcp(state.mcp_client)
+
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     :ok
   end
+
+  # `nil` on every path where the session was never opened — a machine that
+  # could not authenticate gets one from `mcp_session/1`, and the agent still
+  # works without it.
+  defp disconnect_mcp(nil), do: :ok
+  defp disconnect_mcp(client), do: CmsHarness.Mcp.Transport.impl().disconnect(client)
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok

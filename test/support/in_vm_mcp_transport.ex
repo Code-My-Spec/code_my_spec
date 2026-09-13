@@ -37,6 +37,10 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
 
+  # Nothing to close: this transport dispatches in-process and holds no client.
+  @impl true
+  def disconnect(_client), do: :ok
+
   @impl true
   def connect(_name, opts) do
     case Keyword.get(opts, :command) do
