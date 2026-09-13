@@ -429,10 +429,63 @@ defmodule CodeMySpec.Files.ComponentSync do
         Components.upsert_component(scope, attrs)
 
       existing ->
-        {:ok, updated} = Components.update_component(scope, existing, attrs)
-        updated
+        write_if_changed(scope, existing, attrs)
     end
   end
+
+  # A component whose content is identical is left alone, and the reason is
+  # three layers away from here.
+  #
+  # `synced_at` is set to `DateTime.utc_now()` for every component on every
+  # run, so the changeset always carried a change, so Ecto always wrote, so
+  # `updated_at` moved on every row. `Requirements.Freshness.component/2`
+  # hashes `row_key(component)`, which is `{id, updated_at}` — so one full sync
+  # moved every component's fingerprint at once, and the next read in every
+  # working copy found the whole graph stale and recomputed all of it.
+  #
+  # Measured on this project: `1102 components synced in 30627ms (1102
+  # changed)` at 07:35, then `everything_stale mismatched=1124` — every
+  # component of 1124 — on each vantage's next read. The "1102 changed" was
+  # itself the artefact: `component_changed?/2` compares `updated_at` before
+  # and after, so it was reporting whether the write had bumped the clock, not
+  # whether anything about the component differed. It always had.
+  #
+  # `synced_at` is safe to leave behind, checked: nothing reads it.
+  # `cleanup_removed/3` and `cleanup_orphaned/3` both decide by module-name set
+  # difference, and no other module in the app consults the column. So it now
+  # records when a component's content last changed rather than when a sync
+  # last ran, which is the more useful of the two readings and the only one
+  # that does not cost a graph rebuild.
+  defp write_if_changed(scope, existing, attrs) do
+    if content_matches?(existing, attrs) do
+      existing
+    else
+      {:ok, updated} = Components.update_component(scope, existing, attrs)
+      updated
+    end
+  end
+
+  # Only the keys this sync actually derived, and never `synced_at` — it
+  # differs by construction on every run, which is the whole defect. `type` is
+  # absent when no spec named one (`maybe_put/3` above), and an absent key must
+  # read as "nothing to say about it" rather than as a difference.
+  defp content_matches?(existing, attrs) do
+    attrs
+    |> Map.delete(:synced_at)
+    |> Enum.all?(fn {key, value} -> same_value?(Map.get(existing, key), value) end)
+  end
+
+  # The stored value has been through the changeset and the parsed one has not,
+  # so `type` arrives here as the string `"context"` against a stored
+  # `:context` — `Ecto.Enum` casts on write. Compared raw, nothing ever matched
+  # and this whole check was an expensive no-op that still wrote every row.
+  #
+  # Found only because the regression test was run against the unfixed code and
+  # then against the fixed one: it was red both times, which is the shape of a
+  # fix that does not fix anything.
+  defp same_value?(nil, value), do: is_nil(value)
+  defp same_value?(stored, value) when is_atom(stored), do: to_string(stored) == to_string(value)
+  defp same_value?(stored, value), do: stored == value
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

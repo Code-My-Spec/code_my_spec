@@ -83,12 +83,11 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   defp host_repository do
     case Process.get(__MODULE__) do
       nil ->
-        # Briefly rather than `CodeMySpec.TempFile`: Boundary refuses a
-        # reference from `CodeMySpecTest` to `CodeMySpec`, and correctly — the
-        # doubles are not allowed to reach into the app they stand in for.
-        {:ok, root} = Briefly.create(directory: true)
+        root = CodeMySpec.TempFile.owned_dir("host_repository")
 
-        {_, 0} = System.cmd("git", ["init", "--initial-branch=main", root], stderr_to_stdout: true)
+        {_, 0} =
+          System.cmd("git", ["init", "--initial-branch=main", root], stderr_to_stdout: true)
+
         File.write!(Path.join(root, "README.md"), "host\n")
         {_, 0} = System.cmd("git", ["add", "."], cd: root, stderr_to_stdout: true)
 

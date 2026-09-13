@@ -7,7 +7,8 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   alias Anubis.Server.Response
 
   def prompt_response(prompt, task) do
-    footer = "\n\n---\nTask ID: `#{task.id}` — when done, stop the session so the hook can validate."
+    footer =
+      "\n\n---\nTask ID: `#{task.id}` — when done, stop the session so the hook can validate."
 
     text_response(prompt <> footer)
   end
@@ -17,7 +18,9 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   def evaluate_passed_response(task, nil) do
     task_name = task_type_name(task)
 
-    text_response("# #{task_name}: Passed\n\nTask completed successfully.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin.")
+    text_response(
+      "# #{task_name}: Passed\n\nTask completed successfully.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin."
+    )
   end
 
   def evaluate_passed_response(task, info) when is_binary(info) and info != "" do
@@ -36,6 +39,31 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
     text_response("# #{task_name}: Needs work\n\n#{feedback}")
   end
 
+  @doc """
+  The evaluator declined to judge this task, and left it active.
+
+  `QaStory` answers this for a task a sub-agent owns and has not submitted for
+  yet — the third outcome beside pass and needs-work, added because returning
+  `:valid` there completed the sub-agent's task out from under it (`7f79b855`).
+  The stop hook already had a clause for it; this surface did not, so an
+  explicit `evaluate_task` on such a task raised a `CaseClauseError` and the
+  caller got a bare "Internal error" with nothing to act on (`229a42e7`).
+
+  Not an error response. Nothing went wrong, and the caller's next move is to
+  wait rather than to retry — which the text says, because "Internal error" got
+  retried three times.
+  """
+  def evaluate_skipped_response(task, why) do
+    task_name = task_type_name(task)
+
+    text_response(
+      "# #{task_name}: Left active\n\nNot yours to close: #{why}\n\n" <>
+        "Nothing went wrong and nothing changed. The task stays open for whoever " <>
+        "owns it, so retrying this call will answer the same thing — wait for " <>
+        "them to submit instead."
+    )
+  end
+
   def evaluate_error_response(task, reason) do
     task_name = task_type_name(task)
 
@@ -51,7 +79,9 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   end
 
   def task_already_terminal(status) do
-    text_response("# Task already #{status}\n\nThis task is no longer active.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin.")
+    text_response(
+      "# Task already #{status}\n\nThis task is no longer active.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin."
+    )
   end
 
   def error(reason) when is_atom(reason), do: reason |> to_string() |> error()

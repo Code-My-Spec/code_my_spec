@@ -139,9 +139,20 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
         "#{script_path} > #{log_file} 2>&1 < /dev/null & disown; echo $!"
       end
 
+    # `merge_clean_env/1`, not `clean_otp_env/0` alone: the script runs `mix
+    # cms.new` inside a brand-new project directory pinning its own Elixir
+    # (`~> 1.20`), and `clean_otp_env/0` only scrubs the release's own PATH
+    # entries — it does not put an asdf/mise shim ahead of this BEAM's
+    # already-resolved Elixir the way `merge_clean_env/1` does. Without that,
+    # the spawned `mix` inherited our resolved toolchain and `mix cms.new`
+    # failed with "The task \"cms.new\" could not be found" whenever the
+    # pinned version's `cms_new` archive wasn't installed under the parent's
+    # own Elixir (114843ff).
+    env = Environments.merge_clean_env(env: [])[:env]
+
     case System.cmd("bash", ["-c", shell],
            stderr_to_stdout: true,
-           env: Environments.clean_otp_env()
+           env: env
          ) do
       {out, 0} ->
         case out |> String.trim() |> Integer.parse() do
