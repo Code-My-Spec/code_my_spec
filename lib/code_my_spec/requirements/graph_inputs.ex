@@ -56,15 +56,47 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   no active project is a no-op rather than an error: plenty of writes happen
   outside a project, and a writer should not have to ask.
   """
-  @spec changed(Scope.t() | Ecto.UUID.t() | nil) :: :ok
-  def changed(%Scope{active_project_id: project_id}), do: changed(project_id)
+  @spec changed(Scope.t() | Ecto.UUID.t() | nil, String.t() | nil) :: :ok
+  def changed(scope_or_project_id, observation_id \\ nil)
 
-  def changed(project_id) when is_binary(project_id) do
-    Phoenix.PubSub.broadcast(@pubsub, topic(project_id), {:graph_inputs_changed, project_id})
+  def changed(%Scope{active_project_id: project_id}, obs), do: changed(project_id, obs)
+
+  def changed(project_id, obs) when is_binary(project_id) do
+    Phoenix.PubSub.broadcast(
+      @pubsub,
+      topic(project_id),
+      {:graph_inputs_changed, project_id, obs}
+    )
+
     :ok
   end
 
-  def changed(_no_project), do: :ok
+  def changed(_no_project, _obs), do: :ok
+
+  @doc """
+  An id for one observation, so the recompute that consumes it can name it.
+
+  Not a payload, and the distinction is the whole reason this does not
+  contradict "Why it carries nothing" above. That paragraph refuses to say
+  *which* input moved, because the fingerprint already answers that over every
+  input at once and a second answer would drift from the first. This says only
+  *that this particular publish* happened, which the fingerprint cannot answer
+  at all and never will: it compares states, so it is silent about how many
+  observations were folded into the state it is looking at.
+
+  What that silence cost, measured: of eight recomputes in half an hour, three
+  could be tied to an issue by hand-comparing timestamps against the database,
+  and five had no identifiable cause. Neither the fingerprint nor the counts
+  can close that gap — "67 entities stale" is equally consistent with one
+  observation and with twenty, and with an observation that arrived and was
+  dropped on the floor.
+
+  Short rather than a UUID because it is read in a log line beside nine other
+  digests, and four bytes is already more than enough to tell one burst from
+  the next.
+  """
+  @spec observation_id() :: String.t()
+  def observation_id, do: Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
 
   @doc "Listen for one project's graph-input changes."
   @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term()}
