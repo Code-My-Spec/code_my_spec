@@ -9,7 +9,6 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   use CodeMySpecWeb, :live_view
 
-  import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Accounts.Account
@@ -25,101 +24,121 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   require Logger
   alias CodeMySpecWeb.Plugs.IntakeSession
 
+  # Full height, chat and its dynamic companion side by side. Neither is new
+  # content — this is the same conversation and the same four cards
+  # (local-instructions, cloud-payment, boot-status, failed) the single-column
+  # version showed — but two defects in how they used to be arranged are gone:
+  #
+  # 1. The page was plain document flow with no bounded-height flex ancestor,
+  #    so `.conversation`'s own `min-h-0 flex-1 overflow-y-auto` and
+  #    `.composer`'s own `shrink-0` (both already written for exactly this
+  #    shape) did nothing — the whole page scrolled instead of just the
+  #    transcript, and the composer scrolled away with everything else rather
+  #    than staying anchored.
+  # 2. The cockpit's `Preview`/`Project`/`Activity` tab strip was reused here
+  #    with `open={[]}` hardcoded and no `toggle_panel` handler on this
+  #    LiveView — the tabs rendered but could never open, and clicking one
+  #    would have hit no matching `handle_event` clause. Replaced with
+  #    `dynamic_panel/1`, which renders exactly the one card the visitor's
+  #    current step actually needs, nothing else.
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-2xl px-4 py-12">
-      <div class="text-xs uppercase tracking-[0.22em] text-primary mb-4">
-        // your workspace
-      </div>
-
+    <div class="flex h-dvh min-h-0 flex-col">
       <.failed :if={@workspace.status == :failed} workspace={@workspace} />
 
-      <%!--
-        The same conversation, continued. It used to open with its own heading —
-        "Now let's decide what it actually does" — over a card-based interview,
-        so a visitor who had just confirmed a plan arrived somewhere that looked
-        like a different product. Signup sits between the two pages and a
-        LiveView cannot survive that navigation, so continuity has to be rebuilt
-        rather than kept: both pages derive the same transcript from the same
-        plan row.
-      --%>
-      <%!--
-        Shown on a failed workspace too. The failure screen tells the visitor
-        "the conversation below is still yours" and this is that conversation —
-        gating it on a healthy workspace made the sentence a lie and threw away
-        on screen exactly what the answers are written down to preserve.
-      --%>
-      <.conversation transcript={@transcript}>
-        <.derived_rules :if={@rules} rules={@rules} />
-      </.conversation>
+      <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 lg:py-12">
+          <div class="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
+            <div class="mb-4 shrink-0 text-xs uppercase tracking-[0.22em] text-primary">
+              // your workspace
+            </div>
 
-      <%!--
-        The cockpit's own panel component (story 1033/3425), same as the
-        pre-signup screen — the criterion names both `Plan` and `Workspace`
-        in scope, and it went missing here for the entire sales+payment
-        window, reappearing only once a real project boots.
-      --%>
-      <.panels
-        screen={:narrow}
-        open={[]}
-        dynamic_view=""
-        dynamic_stories={[]}
-        dynamic_story={nil}
-        dynamic_epics={[]}
-        offer={nil}
-        activity={[]}
-        waiting={[]}
-        copies={[]}
-        project_id=""
-        conversation_id={nil}
-        preview_state={:absent}
-      />
+            <%!--
+              The same conversation, continued. It used to open with its own
+              heading — "Now let's decide what it actually does" — over a
+              card-based interview, so a visitor who had just confirmed a plan
+              arrived somewhere that looked like a different product. Signup
+              sits between the two pages and a LiveView cannot survive that
+              navigation, so continuity has to be rebuilt rather than kept:
+              both pages derive the same transcript from the same plan row.
 
-      <%!--
-        How far through, kept from the card this replaced. Not decoration: the
-        interview promises to pay out within four questions, and a visitor who
-        cannot see the end of a conversation does not know it has one.
+              Shown on a failed workspace too. The failure screen tells the
+              visitor "the conversation below is still yours" and this is that
+              conversation — gating it on a healthy workspace made the
+              sentence a lie and threw away on screen exactly what the
+              answers are written down to preserve.
+            --%>
+            <.conversation transcript={@transcript}>
+              <.derived_rules :if={@rules} rules={@rules} />
+            </.conversation>
 
-        Deliberately not gated on payment — criterion 3404 answers this all
-        the way to its derived rules on this same page with nothing ever
-        paid, and that is intentional: the interview is real, independent
-        work a visitor can do while they decide whether to pay, not something
-        unlocked by paying. What was actually confusing (66272b59) is that
-        nothing on screen said so — see the note above the payment card.
-      --%>
-      <p
-        :if={@workspace.status != :failed and @turn}
-        data-test="interview-progress"
-        class="mt-4 text-xs uppercase tracking-[0.18em] text-base-content/50"
-      >
-        question {length(@answered) + 1} of {Interview.question_cap()}
-      </p>
+            <%!--
+              How far through. Not decoration: the interview promises to pay
+              out within four questions, and a visitor who cannot see the end
+              of a conversation does not know it has one.
 
-      <.composer
-        :if={@workspace.status != :failed and @turn}
-        event="answer"
-        field="answer"
-        rows="2"
-        placeholder="In your own words."
-        change="draft"
-        draft={@draft}
-      >
-        <input type="hidden" name="turn_id" value={@turn && @turn.id} />
-      </.composer>
+              Deliberately not gated on payment — criterion 3404 answers this
+              all the way to its derived rules on this same page with nothing
+              ever paid, and that is intentional: the interview is real,
+              independent work a visitor can do while they decide whether to
+              pay, not something unlocked by paying. What was actually
+              confusing (66272b59) is that nothing on screen said so — see the
+              note above the payment card.
+            --%>
+            <p
+              :if={@workspace.status != :failed and @turn}
+              data-test="interview-progress"
+              class="mt-4 shrink-0 text-xs uppercase tracking-[0.18em] text-base-content/50"
+            >
+              question {length(@answered) + 1} of {Interview.question_cap()}
+            </p>
 
-      <p :if={@interview_error} class="text-error text-sm mt-3">{@interview_error}</p>
+            <.composer
+              :if={@workspace.status != :failed and @turn}
+              event="answer"
+              field="answer"
+              rows="2"
+              placeholder="In your own words."
+              change="draft"
+              draft={@draft}
+            >
+              <input type="hidden" name="turn_id" value={@turn && @turn.id} />
+            </.composer>
 
+            <p :if={@interview_error} class="mt-3 shrink-0 text-sm text-error">
+              {@interview_error}
+            </p>
+          </div>
+        </div>
+
+        <.dynamic_panel
+          :if={@workspace.status != :failed}
+          workspace={@workspace}
+          plan={@plan}
+          app_state={@app_state}
+          project_id={@scope.active_project_id}
+          client_secret={@client_secret}
+          publishable_key={@publishable_key}
+          payment_error={@payment_error}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  # Exactly one card, chosen by where the visitor is — never a tab strip with
+  # nothing behind it. `@workspace.status` is already the single source of
+  # truth every other conditional on this page reads from.
+  defp dynamic_panel(assigns) do
+    ~H"""
+    <div class="shrink-0 overflow-y-auto border-t border-base-300 p-4 lg:w-96 lg:border-t-0 lg:border-l">
       <%!--
         What to run, for a visitor who chose their own machine. There is no
         container to watch, so the ambient strip is replaced by the one thing
-        they need — and it is the same command a generated application onboards
-        itself with, not a special path for this case.
+        they need — and it is the same command a generated application
+        onboards itself with, not a special path for this case.
       --%>
-      <div
-        :if={@workspace.status == :local}
-        data-test="local-instructions"
-        class="border border-base-300 rounded p-4"
-      >
+      <div :if={@workspace.status == :local} data-test="local-instructions">
         <p class="text-sm font-medium mb-2">Run it on your machine</p>
         <p class="text-sm opacity-70 mb-3">
           Your project is ready. This runs on your own computer rather than
@@ -186,7 +205,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         :if={@workspace.status not in [:failed, :local, :awaiting_payment]}
         workspace={@workspace}
         app_state={@app_state}
-        project_id={@scope.active_project_id}
+        project_id={@project_id}
       />
     </div>
     """
@@ -335,6 +354,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   def mount(_params, session, socket) do
     scope = socket.assigns.current_scope
     plan = session |> Map.fetch!(IntakeSession.session_key()) |> Intake.get_plan()
+
+    # Only the awaiting-payment path ever has a real value for these — every
+    # other path (local, booting, running, failed) still renders
+    # `dynamic_panel/1`, which now always receives them as attrs regardless of
+    # which card inside it actually uses them.
+    socket = assign(socket, client_secret: nil, publishable_key: nil, payment_error: nil)
 
     {:ok, mount_workspace(socket, scope, plan)}
   end
