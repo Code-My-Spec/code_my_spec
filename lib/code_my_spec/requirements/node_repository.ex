@@ -402,11 +402,16 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   #
   # Which made it a livelock rather than a failed write. The recompute that
   # produced those rows stores nothing, so the next read finds the graph stale
-  # and computes it again, and fails again, forever. Measured on one project:
-  # thirty failures in twenty-five minutes, a full recompute every forty
-  # seconds, and not one partial recompute possible the whole time — a partial
-  # reuses stored rows, and there were never any stored rows to reuse. The
-  # 71982 in the message is this graph exactly: 23,994 edges at three columns.
+  # and computes it again, and fails again, forever: 44 failures and 54 full
+  # recomputes in 45 minutes.
+  #
+  # Per vantage rather than per project, which is what hid it. Rows are scoped
+  # to a working copy, so a project holds one graph per checkout and only the
+  # widest crosses the limit — four checkouts of the project this was found on
+  # sat at 9,346 to 14,571 edges and reused their rows normally, while the
+  # fifth at 23,994 had never once managed to write any. Both were logged side
+  # by side, so the partial-recompute count looked healthy the whole time.
+  # 71982 is that fifth graph exactly: 23,994 edges at three columns.
   #
   # Chunked on the row's own width rather than a fixed row count, so a column
   # added to either table cannot quietly walk the limit back under us. The

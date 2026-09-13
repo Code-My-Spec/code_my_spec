@@ -10,14 +10,22 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
 
   What made that expensive is that the *write* is what failed. The recompute
   that produced the rows stored nothing, so the next read found the graph stale
-  and computed it again, and failed again. Measured on one project in web.log:
-  thirty failures in twenty-five minutes, a full recompute every forty seconds,
-  and in that whole window not one partial recompute — a partial reuses stored
-  rows, and there were never any stored rows to reuse. The incremental
-  recompute was not broken; it was starved.
+  and computed it again, and failed again — 44 failures and 54 full recomputes
+  in 45 minutes, measured in web.log.
 
-  71982 is three columns times 23,994 edges, which is that project's graph
-  exactly.
+  It is per **vantage**, not per project, and that is what made it hard to see
+  from the outside. Rows are scoped to a working copy, so one project holds one
+  graph per checkout, and only the widest crosses the limit. On the project
+  this was found on, at three columns an edge:
+
+      9,346 · 9,364 · 9,981 · 14,571 edges  →  28k–43.7k params  →  fits
+                          23,994 edges      →  71,982 params     →  refuses
+
+  So the same project logged 34 healthy partial recomputes and 54 full ones
+  side by side in the same window, and reading either number alone tells you
+  the wrong thing. The four narrow checkouts reused their stored rows exactly
+  as intended; the wide one had no stored rows to reuse, because it had never
+  once succeeded in writing any.
 
   The assertion here is not "the rows land" — they land either way at this
   size, and a test that only checks the count passes on the code that broke.
