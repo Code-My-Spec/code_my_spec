@@ -483,12 +483,15 @@ defmodule CodeMySpec.Files.FileSync do
   # with eight hundred read identically, and they predict completely different
   # graph work.
   defp announce_graph_change(scope, changed, upserted, removed) do
+    obs = GraphInputs.observation_id()
+
     Logger.info(
       "[FileSync] announcing a graph change for #{working_copy(scope)} — " <>
-        "#{changed} changed, #{upserted} upserted, #{removed} removed"
+        "#{changed} changed, #{upserted} upserted, #{removed} removed",
+      obs: obs
     )
 
-    GraphInputs.changed(scope)
+    GraphInputs.changed(scope, obs)
   end
 
   defp log_duration(scope, observations, ms, result) do
