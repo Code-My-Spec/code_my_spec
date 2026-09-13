@@ -286,7 +286,31 @@ defmodule CodeMySpec.Intake do
       end)
     end)
     |> said(question, :agent)
+    |> confirmed_names(plan)
   end
+
+  # An action taken in the panel is a turn in the conversation, not a silent
+  # write (990/3417) — `confirm_names` used to update the row and say nothing,
+  # so the agent's last line kept referring to its own superseded guess.
+  #
+  # `location` is the signal a confirmation actually happened rather than the
+  # plan merely having been generated: `plan_changeset` (the planner's own
+  # write) never touches it, and `names_changeset` (only reachable from
+  # `confirm_names`) always sets it, defaulting it when the visitor didn't
+  # choose one. So a plan sitting on its freshly-generated guesses, not yet
+  # confirmed, has `location: nil` and gets no turn here.
+  defp confirmed_names(transcript, %Plan{
+         location: location,
+         account_name: account,
+         project_name: project
+       })
+       when not is_nil(location) and is_binary(account) and is_binary(project) do
+    transcript
+    |> said("#{account}, #{project}")
+    |> said("Got it — #{account}'s #{project} it is.", :agent)
+  end
+
+  defp confirmed_names(transcript, %Plan{}), do: transcript
 
   defp said(transcript, text, from \\ :visitor)
 
