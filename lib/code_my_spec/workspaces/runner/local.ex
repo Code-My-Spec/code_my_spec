@@ -51,11 +51,36 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   require Logger
 
   @impl true
-  def start(container_name, app_name, port, _env \\ []) do
+  def start(container_name, app_name, port, env \\ []) do
     stop(container_name)
 
+    %{dir: dir, script_path: script_path, log_file: log_file, harness_port: harness_port} =
+      prepare(container_name, app_name, port, env)
+
+    case launch(script_path, log_file) do
+      {:ok, pid} ->
+        write_state(dir, %{pid: pid, port: port, harness_port: harness_port})
+        :ok
+
+      {:error, reason} ->
+        {:error, "could not launch #{script_path}: #{inspect(reason)}"}
+    end
+  end
+
+  @doc """
+  Everything a workspace needs on disk before anything is launched.
+
+  Split out so it can be asserted on. Driving `start/4` in a test spawns a real
+  `mix cms.new`; what can regress here is whether the identity is written at
+  all and what the script does with it — and blinding showed that testing
+  `write_identity/2` alone leaves the call site uncovered, which is the half
+  that was missing in `ac7a510b`.
+  """
+  @spec prepare(String.t(), String.t(), integer(), term()) :: map()
+  def prepare(container_name, app_name, port, env \\ []) do
     dir = workspace_dir(container_name)
     File.mkdir_p!(dir)
+    write_identity(dir, env)
 
     app_dir = Path.join(dir, app_name)
     log_file = log_path(dir)
@@ -67,14 +92,13 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     File.write!(script_path, script)
     File.chmod!(script_path, 0o755)
 
-    case launch(script_path, log_file) do
-      {:ok, pid} ->
-        write_state(dir, %{pid: pid, port: port, harness_port: harness_port})
-        :ok
-
-      {:error, reason} ->
-        {:error, "could not launch #{script_path}: #{inspect(reason)}"}
-    end
+    %{
+      dir: dir,
+      app_dir: app_dir,
+      script_path: script_path,
+      log_file: log_file,
+      harness_port: harness_port
+    }
   end
 
   # The whole boot as one script, not a series of `System.cmd/3` calls from
@@ -121,6 +145,34 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     mix ecto.create
     mix ecto.migrate || exit 1
 
+    # The copy claims its identity from a file, never from the environment.
+    #
+    # `HarnessConfig.read/1` says why in its own words: "The file is the answer,
+    # and the only one — no environment fallback, not even when there is no file
+    # at all", because the env used to win and collapsed every root onto one id.
+    # So the host writes `.cms_harness.json` beside the workspace before this
+    # script runs, and the only thing left to do is put it where the generated
+    # application's root is — `HarnessConfig.path/1` looks exactly there and
+    # does not walk up.
+    #
+    # Without this the workspace comes up holding an application and nothing
+    # else: no identity, the copy is never served, and the agent asked for on it
+    # is never confirmed. That is what a paying customer got — "Not being
+    # served", "1 agent asked for, none confirmed yet", and a message to the
+    # agent refused with "a copy on a new project usually has no deploy key of
+    # its own yet" (`ac7a510b`). `docker/devbox/entrypoint.sh` has done the
+    # equivalent all along; this runner had no step for it.
+    #
+    # Absent, skipped rather than failed, for the same reason the container path
+    # skips: a workspace started by hand has no host to have told it anything
+    # and should still come up.
+    if [ -f "#{dir}/.cms_harness.json" ]; then
+      log "Claiming this workspace's identity"
+      mv "#{dir}/.cms_harness.json" "#{app_dir}/.cms_harness.json"
+    else
+      log "No identity written for this workspace; starting un-onboarded"
+    fi
+
     log "Starting the cms harness server on :#{harness_port}"
     CMS_HARNESS_PORT=#{harness_port} cms start &
 
@@ -159,6 +211,64 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   """
   @spec launch_env() :: keyword()
   def launch_env, do: Environments.merge_clean_env(stderr_to_stdout: true)
+
+  # What the host knows about this copy, written where the copy will look.
+  #
+  # `Workspaces.instance_env/1` already mints the id and assembles the deploy
+  # key and server url; they were handed to `start/4` and this runner dropped
+  # them, which is `ac7a510b`. They are written to a file rather than exported,
+  # because identity is read from `.cms_harness.json` and from nowhere else.
+  #
+  # Beside the workspace rather than inside the application, because the
+  # application does not exist yet — `mix cms.new` creates it, and a generator
+  # will not run into a directory somebody has already put files in. The script
+  # moves it in once the tree is there.
+  #
+  # 0600, and never into the script text: it carries a deploy key, and a script
+  # on disk is readable by anyone on the machine.
+  @doc """
+  Write what the host knows about this copy, where the copy will read it.
+
+  Public because it is the part worth asserting on: driving `start/4` launches a
+  real workspace, and what can regress here is which fields land and who can
+  read them.
+  """
+  @spec write_identity(String.t(), term()) :: :ok
+  def write_identity(dir, env) do
+    # `instance_env/1` hands back string-keyed 2-tuples, not a keyword list, so
+    # `env[:KEY]` finds nothing and finds it silently.
+    fields = %{
+      "working_copy_id" => value(env, "CMS_WORKING_COPY_ID"),
+      "project_id" => value(env, "CMS_PROJECT_ID"),
+      "deploy_key" => value(env, "CMS_DEPLOY_KEY"),
+      "server_url" => value(env, "CMS_SERVER_URL")
+    }
+
+    fields
+    |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+    |> Map.new()
+    |> put_identity(dir)
+  end
+
+  defp value(env, key) when is_list(env) do
+    case List.keyfind(env, key, 0) do
+      {^key, v} -> v
+      _ -> nil
+    end
+  end
+
+  defp value(_env, _key), do: nil
+
+  # No id, nothing to claim. A workspace started by hand comes up un-onboarded
+  # rather than failing, which is what the container path does too.
+  defp put_identity(fields, _dir) when map_size(fields) == 0, do: :ok
+
+  defp put_identity(fields, dir) do
+    file = Path.join(dir, ".cms_harness.json")
+    File.write!(file, Jason.encode_to_iodata!(fields))
+    File.chmod!(file, 0o600)
+    :ok
+  end
 
   defp launch(script_path, log_file) do
     setsid = System.find_executable("setsid")
