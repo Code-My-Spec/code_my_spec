@@ -40,6 +40,28 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   @impl true
   @spec run(Scope.t(), keyword()) :: {:ok, [Problems.Problem.t()]} | {:error, String.t()}
   def run(%Scope{} = scope, opts \\ []) do
+    case run_with_output(scope, opts) do
+      {:ok, problems, _output} -> {:ok, problems}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Same as `run/2`, and also the raw text Credo printed (JSON, per
+  `build_credo_args/2`'s fixed output flags).
+
+  Not part of `AnalyzerBehaviour` — that contract is shared with Sobelow and
+  SpecAlignment, and changing it to carry raw output would mean every
+  implementer answers a question only this one currently has an answer for.
+  This exists instead for the one caller that needs the tool's own output
+  rather than a summary reformatted from `problems`
+  (`CodeMySpec.Analysis.Runners.run/4`), so a `mix credo` routed through the
+  shared analysis service can hand it back. See
+  `.code_my_spec/rules/analysis_output_fidelity.md`.
+  """
+  @spec run_with_output(Scope.t(), keyword()) ::
+          {:ok, [Problems.Problem.t()], String.t()} | {:error, String.t()}
+  def run_with_output(%Scope{} = scope, opts \\ []) do
     cwd = opts[:cwd] || scope.cwd
 
     cond do
@@ -70,7 +92,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   defp read_from_output_file(path, scope) do
     with {:ok, raw} <- File.read(path),
          {:ok, issues} <- parse_json_output(raw) do
-      {:ok, convert_to_problems(issues, scope)}
+      {:ok, convert_to_problems(issues, scope), raw}
     else
       {:error, %File.Error{} = err} ->
         {:error, "Failed to read credo output file #{path}: #{Exception.message(err)}"}
@@ -89,7 +111,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     with {:ok, json_output} <- execute_credo(code_repo, temp_file, opts, scope),
          {:ok, issues} <- parse_json_output(json_output),
          problems <- convert_to_problems(issues, scope) do
-      {:ok, problems}
+      {:ok, problems, json_output}
     else
       {:error, _reason} = error ->
         error
