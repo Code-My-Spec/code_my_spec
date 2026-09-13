@@ -179,18 +179,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
   def serve(nodes, ctx) do
     fresh = Map.get(ctx, :analysis_fresh, %{})
-    Enum.map(nodes, &serve_one(&1, fresh))
+    Enum.map(nodes, &apply_freshness(&1, fresh))
   end
 
-  defp serve_one(node, fresh) do
-    source = analysis_source(node)
-
-    cond do
-      is_nil(source) -> node
-      Map.get(fresh, source, false) -> node
-      true -> stale(node, source)
+  defp apply_freshness(node, fresh) do
+    case analysis_source(node) do
+      source when is_binary(source) -> freshen(node, source, Map.get(fresh, source, false))
+      nil -> node
     end
   end
+
+  defp freshen(node, _source, true), do: node
+  defp freshen(node, source, false), do: stale(node, source)
 
   # Both directions of the asymmetry, applied at serve time rather than baked
   # into the row. `StaleAnalysisTest` is what this has to keep true, and it was
