@@ -205,42 +205,6 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ "--stale"
     end
 
-    # Same treatment for all four analyzers, not just test/spex — the
-    # analysis service already accepted compiler/credo as sources
-    # (`@valid_sources` on both controllers); this locks in that the rewrite
-    # actually offers them.
-    test "rewrites mix compile to the compiler source", %{scope: scope} do
-      conn =
-        build_post(scope, %{
-          "tool_name" => "Bash",
-          "tool_input" => %{"command" => "mix compile --warnings-as-errors"}
-        })
-
-      conn = PreToolUseController.handle(conn, conn.body_params)
-
-      body = Jason.decode!(conn.resp_body)
-      command = body["hookSpecificOutput"]["updatedInput"]["command"]
-
-      assert command =~ ~s("source":"compiler")
-      assert command =~ "--warnings-as-errors"
-    end
-
-    test "rewrites mix credo to the credo source", %{scope: scope} do
-      conn =
-        build_post(scope, %{
-          "tool_name" => "Bash",
-          "tool_input" => %{"command" => "mix credo --strict"}
-        })
-
-      conn = PreToolUseController.handle(conn, conn.body_params)
-
-      body = Jason.decode!(conn.resp_body)
-      command = body["hookSpecificOutput"]["updatedInput"]["command"]
-
-      assert command =~ ~s("source":"credo")
-      assert command =~ "--strict"
-    end
-
     # The whole point of routing a command through the shared ledger is that
     # the agent cannot tell — no footer, no run id, nothing this rewrite
     # added. Pass/fail has to travel some other way; see both
@@ -377,10 +341,16 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body == %{}
     end
 
-    # `mix compile`/`mix credo` are analyzer commands too now — see the test
-    # below this one — so a real negative case has to be something none of
-    # the four sources answer to.
-    test "does not rewrite non-analyzer bash commands", %{scope: scope} do
+    # `mix compile` used to be the example here, on the reasoning that only
+    # `test` and `spex` were routed. `ba538fda4` added `compile` and `credo` to
+    # the set and left this asserting the opposite, so it has been red on main
+    # since — and a red test blocks every promotion on the machine, not just
+    # its own author's.
+    #
+    # `mix deps.get` instead: outside the routed set, and no more likely to
+    # join it than any other mix task, so this keeps testing what it was
+    # written to test.
+    test "does not rewrite a mix task outside the analyzed set", %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
@@ -391,6 +361,36 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
 
       body = Jason.decode!(conn.resp_body)
       assert body == %{}
+    end
+
+    # The other half, which nothing asserted: `compile` and `credo` are routed
+    # now. Without this the set is only pinned for `test` and `spex`, and
+    # dropping one of the newer two would look exactly like the test above
+    # passing.
+    for {task, source} <- [{"compile", "compiler"}, {"credo", "credo"}] do
+      test "rewrites mix #{task} to the #{source} source", %{scope: scope} do
+        task = unquote(task)
+        source = unquote(source)
+
+        conn =
+          build_post(scope, %{
+            "tool_name" => "Bash",
+            "tool_input" => %{"command" => "mix " <> task}
+          })
+
+        conn = PreToolUseController.handle(conn, conn.body_params)
+
+        command =
+          conn.resp_body
+          |> Jason.decode!()
+          |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+        assert command =~ ~s("source":") <> source <> ~s("),
+               "mix " <>
+                 task <>
+                 " was left to run itself, so its findings never " <>
+                 "reach the shared run record and the stop hook cannot see them"
+      end
     end
   end
 
