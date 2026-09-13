@@ -1041,4 +1041,82 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       refute html =~ "super-secret-value"
     end
   end
+
+  # A `:pro` account's agent already runs on our own infrastructure — nothing
+  # here is theirs to provision on their own GitHub/Hetzner/Cloudflare/Resend
+  # accounts. A fresh onboarding smoke test found a paying customer landing
+  # on the credential checklist ("Still needed: ...") and reading it as the
+  # flow being stuck (ac7a510b). `:light` (self-hosted) keeps seeing the page
+  # exactly as before — deliberately not testing `:paid` here, since account.ex
+  # says a gating story has to decide what that legacy value means first.
+  describe "a :pro account's agent runs on our own infrastructure, not theirs to provision" do
+    setup %{user: user} do
+      account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user, %{plan: :pro})
+      scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
+      CodeMySpec.UserPreferences.select_active_account(scope, account.id)
+
+      project = CodeMySpec.ProjectsFixtures.project_fixture(scope, account_id: account.id)
+      scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account, project)
+      CodeMySpec.UserPreferences.select_active_project(scope, project.id)
+
+      %{account: account, project: project, scope: scope}
+    end
+
+    test "the index route shows the managed-cloud notice, not the credential checklist", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='managed-cloud-notice']")
+      refute html =~ "Still needed:"
+      refute has_element?(view, "[data-test='manage-credentials']")
+    end
+
+    test "the credentials/environments/secrets routes all show the same notice", %{
+      conn: conn,
+      project: project
+    } do
+      for path <- [credentials_path(project), environments_path(project), secrets_path(project)] do
+        {:ok, view, _html} = live(conn, path)
+        assert has_element?(view, "[data-test='managed-cloud-notice']")
+      end
+    end
+
+    test "the nav no longer offers Provisioning", %{conn: conn, project: project} do
+      {:ok, _view, html} =
+        conn |> get(~p"/app/projects/#{project.id}/agent-conversation") |> live()
+
+      refute html =~ ~s(href="/app/projects/#{project.id}/provisioning")
+    end
+  end
+
+  describe "a :light (self-hosted) account still sees the full provisioning page" do
+    setup %{user: user} do
+      account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user, %{plan: :light})
+      scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
+      CodeMySpec.UserPreferences.select_active_account(scope, account.id)
+
+      project = CodeMySpec.ProjectsFixtures.project_fixture(scope, account_id: account.id)
+      scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account, project)
+      CodeMySpec.UserPreferences.select_active_project(scope, project.id)
+
+      %{account: account, project: project, scope: scope}
+    end
+
+    test "the index route is unchanged", %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='managed-cloud-notice']")
+      assert html =~ "Still needed:"
+      assert has_element?(view, "[data-test='manage-credentials']")
+    end
+
+    test "the nav still offers Provisioning", %{conn: conn, project: project} do
+      {:ok, _view, html} =
+        conn |> get(~p"/app/projects/#{project.id}/agent-conversation") |> live()
+
+      assert html =~ ~s(href="/app/projects/#{project.id}/provisioning")
+    end
+  end
 end
