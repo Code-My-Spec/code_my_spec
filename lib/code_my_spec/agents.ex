@@ -241,10 +241,14 @@ defmodule CodeMySpec.Agents do
   point: criterion 3321 asks for exactly that, and an agent that has to be
   restarted is one whose current turn is the problem.
 
-  `end_process/2` rather than a second stop path — the same call `stop_agent/2`
-  makes, so "already not running" stays a satisfied stop and an unreachable
-  machine stays an error. A machine that could not be asked refuses the restart
-  rather than reporting one it did not perform.
+  The stop goes through `halt_for_restart/1`, not `end_process/2` — see the
+  comment on it. `end_process/2` skips the ask for an agent whose row reads
+  `:starting`, which is right for a stop and wrong here, and trusting that guard
+  is how a survivable collision became a permanently stuck agent.
+
+  Either way a machine that could not be asked refuses the restart rather than
+  reporting one it did not perform, and "already not running" stays a satisfied
+  stop.
   """
   @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
   def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
