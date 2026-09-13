@@ -50,6 +50,10 @@ defmodule CodeMySpec.Issues do
   See `IssuesRepository.open_issue_titled?/2`. Exposed because the fault paths
   in `MainAgent` file by a title built from the fault, and a fault that persists
   is reported by every call that notices it.
+
+  Unfinished means anything but `:resolved` — a dismissed fault recurring is
+  still not worth acting on, a resolved one recurring is a regression. The
+  repository's doc has the reasoning.
   """
   @spec open_issue_titled?(Scope.t(), String.t()) :: boolean()
   def open_issue_titled?(%Scope{} = scope, title),
