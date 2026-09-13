@@ -241,6 +241,37 @@ config :code_my_spec,
   graph_debounce_ms: 25,
   remote_await_timeout: 500
 
+# A port nothing serves, so a harness started without a fake server in front of
+# it fails locally instead of dialling whatever is running on :4000.
+#
+# `CmsHarness.Config.server_url/0` falls through to a compile-time default of
+# `http://localhost:4000` when nothing names a server, and test named nothing.
+# So a test that starts a project subtree outside `FakeServer`'s window opens a
+# real websocket to the dev server on this machine.
+#
+# Proven rather than supposed. `web.log` carries `[UserSocket] connect refused —
+# token not found key=len<N>:<sha256 prefix>`, and every distinct key observed
+# hashes to a literal in this suite:
+#
+#     len10:c29d9689a7ee  "stub-token"       device_test.exs
+#     len14:a3ff3ea2f77e  "this-copys-key"   credentials_test.exs
+#     len10:4c5dc9b77089  "test-token"       FakeServer's own
+#     len12:b058b0225f91  "a-deploy-key"     mcp_controller_test.exs
+#     len15:2d238f2acc96  "from-app-config"  credentials_test.exs
+#
+# Refused is the lucky case: those tokens are fixtures, so the join failed. A
+# test holding a *real* key would have joined the running server's channel — and
+# `CMS_DEPLOY_KEY` is exported in this project's own environment.
+#
+# Why an earlier attempt at this looked like it did nothing: it was applied in
+# one worktree, and the connections come from whichever of the fifteen checkouts
+# on this box is running tests. Pinning one of them moves nothing measurable.
+# It has to be committed to move at all (`d96809d4`).
+#
+# `FakeServer.start/1` sets this to its own port and restores it, so a test that
+# wants a server still gets one — this is only the fallback, which is the leak.
+config :code_my_spec, :harness_server_url, "http://127.0.0.1:1"
+
 # A harness announcing its machine reaches `CodeMySpecWeb.Endpoint` in-process
 # rather than over the network — the real router, plug pipeline, controller and
 # sandbox, with only the socket removed.

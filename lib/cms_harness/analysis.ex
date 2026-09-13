@@ -27,7 +27,7 @@ defmodule CmsHarness.Analysis do
         "source" => "compiler" | "credo" | "exunit" | "spex",
         "exit_status" => integer() | nil,
         "diagnostics" => [map()],       # raw, source-specific
-        "output" => String.t() | nil,   # raw stdout; exunit only
+        "output" => String.t() | nil,   # raw stdout, all four sources
         "stats" => map() | nil,         # exunit only
         "partition" => String.t()       # exunit and spex: which database answered
       }
