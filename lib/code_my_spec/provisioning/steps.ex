@@ -962,7 +962,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       case Storage.credentials(scope, env_opts) do
         :none ->
-          {:halt, {:paused, Storage.credentials_instructions()}}
+          {:halt, {:paused, Storage.credentials_instructions(scope.active_project_id)}}
 
         {:ok, credentials} ->
           # The key travels with the work, the way the deploy step carries it.
@@ -1015,7 +1015,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         # Hetzner issues object-storage keys in the console and nowhere else,
         # so there is no call to make here. Pausing states the real limit and
         # re-checks on resume rather than pretending it can be automated.
-        {:halt, {:paused, Storage.credentials_instructions()}}
+        {:halt, {:paused, Storage.credentials_instructions(scope.active_project_id)}}
 
       {:ok, credentials} ->
         ensure_bucket_for(environment, {:ok, acc}, project, credentials, env_opts)
@@ -4091,7 +4091,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Nothing here needs the box, so it can all be answered first.
   #
   # Paused, not errored: a console-only credential that has not been pasted yet
-  # is a step waiting on Sam, not a broken one — and `credentials_instructions/0`
+  # is a step waiting on Sam, not a broken one — and `credentials_instructions/1`
   # is already what the storage step says in the same situation, so he reads one
   # answer rather than two that disagree.
   #
@@ -4099,7 +4099,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # that supplies its own pair is not asked to have stored one.
   defp storage_credentials_ready(%Scope{} = scope, opts) do
     case Keyword.get(opts, :credentials) || Storage.credentials(scope, opts) do
-      :none -> {:paused, Storage.credentials_instructions()}
+      :none -> {:paused, Storage.credentials_instructions(scope.active_project_id)}
       _credentials -> :ok
     end
   end

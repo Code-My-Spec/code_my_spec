@@ -62,6 +62,41 @@ defmodule CodeMySpec.TempFile do
   end
 
   @doc """
+  A temp directory that is removed when the process that asked for it exits.
+
+  The replacement for `Briefly.create(directory: true)`, whose single `Entry`
+  GenServer every caller went through with a hardcoded 5-second
+  `GenServer.call` — so on a loaded machine the most-used test fixture in the
+  suite failed on a timeout that had nothing to do with the code under test.
+
+  Cleanup is keyed on the *caller's* exit rather than on an `ExUnit` callback,
+  which is the part that matters and the part I got wrong first. `on_exit/1`
+  raises "callback can only be invoked from the test process", and several
+  callers here are not it — `InProcessAgentTransport.host_repository/0` runs
+  inside a LiveView channel, reached from application code under test. Briefly
+  worked there because a process monitor does not care who is asking.
+
+  A monitor per directory rather than one process for all of them, deliberately:
+  a shared owner is a shared mailbox, and a shared mailbox is what this replaced.
+  """
+  @spec owned_dir(String.t()) :: String.t()
+  def owned_dir(prefix) do
+    dir = dir(prefix)
+    File.mkdir_p!(dir)
+    owner = self()
+
+    spawn(fn ->
+      ref = Process.monitor(owner)
+
+      receive do
+        {:DOWN, ^ref, :process, ^owner, _reason} -> File.rm_rf(dir)
+      end
+    end)
+
+    dir
+  end
+
+  @doc """
   Remove a temp file, quietly, if it exists.
 
   Was two copies (`CodeMySpec.StaticAnalysis.Analyzers.Credo` and `.Sobelow`),

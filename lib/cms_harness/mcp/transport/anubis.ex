@@ -113,9 +113,65 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   defp replace_leaked(pid, name, opts, headers) do
     Logger.info("[CmsHarness] replacing a leaked MCP client for #{inspect(name)}")
 
-    stop_client(pid)
+    stop_leaked(pid)
+    await_released(name)
     client_link(name, opts, headers)
   end
+
+  @doc """
+  Take down the process tree holding a leaked client's name.
+
+  `{:already_started, pid}` names the *client*, and stopping that alone does not
+  free the name. `anubis_mcp` starts the client under a supervisor whose
+  strategy is `:one_for_all` and whose children take the default `:permanent`
+  restart, so the supervisor puts a fresh client straight back under the same
+  name — racing the `client_link/3` that follows. `start_client/3` only matches
+  the collision on its first attempt, so the second one surfaced uncaught and
+  `Engine.init/1` read it as a start failure.
+
+  Measured, on a restart whose relaunch lost that race: the agent was left at
+  `:starting` with `os_pid: nil` and nothing retrying, twelve minutes after
+  `restart_agent/2` had answered `{:ok, agent}` (`dfa1ee9e`). Non-deterministic,
+  and likelier under load, which is what a race between two processes claiming
+  one registered name looks like from outside.
+
+  The supervisor is anonymous here — `derive_supervisor_name/1` only names one
+  for an atom client name, and ours is a `:via` tuple — so it is found through
+  the child rather than by name.
+
+  Public because it is the part worth testing on its own. What fails is an OTP
+  restart strategy, and reproducing that needs a supervisor of the same shape,
+  not a live MCP server.
+  """
+  @spec stop_leaked(pid()) :: :ok
+  def stop_leaked(pid) do
+    pid
+    |> owner()
+    |> stop_client()
+  end
+
+  # The supervisor holding this client, or the client itself when nothing
+  # supervises it.
+  #
+  # `:parent` alone is not the answer and getting that wrong is worse than the
+  # bug: `Process.info/2` reports the process that *spawned* it, which is the
+  # supervisor only for a supervised child and is the plain caller for anything
+  # else. A first version of this stopped that caller, and since `stop_client/1`
+  # escalates to `Process.exit(pid, :kill)` when the stop is refused, it killed
+  # the process that had asked for the client.
+  #
+  # So the parent has to say it is a supervisor. `:proc_lib.initial_call/1`
+  # answers `{:supervisor, module, _}` for one and `false` for everything else.
+  defp owner(pid), do: pid |> Process.info(:parent) |> supervisor_of(pid)
+
+  defp supervisor_of({:parent, parent}, pid) when is_pid(parent) do
+    parent |> :proc_lib.initial_call() |> holder(parent, pid)
+  end
+
+  defp supervisor_of(_info, pid), do: pid
+
+  defp holder({:supervisor, _module, _args}, parent, _pid), do: parent
+  defp holder(_initial_call, _parent, pid), do: pid
 
   # `:normal` first, because a supervisor that exits normally takes its children
   # with it in order. Brutal kill only if it will not, and never a bare
@@ -127,6 +183,29 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     :exit, _ ->
       Process.exit(pid, :kill)
       :ok
+  end
+
+  # `Supervisor.stop/3` returns once the processes are gone, but the name is
+  # held in a `Registry`, which drops its entry when it sees the exit — one
+  # message later. Linking against a name that is free everywhere except the
+  # registry's table fails with the collision this just cleared.
+  #
+  # Waits on the condition rather than on a duration, the same way `ready/2`
+  # waits for the handshake. If the name is somehow still held at the end, the
+  # link is attempted anyway and fails as it did before — no worse, and loudly.
+  defp await_released(name, attempts \\ 50)
+
+  defp await_released(_name, 0), do: :ok
+
+  defp await_released(name, attempts) do
+    case GenServer.whereis(name) do
+      nil ->
+        :ok
+
+      _pid ->
+        Process.sleep(10)
+        await_released(name, attempts - 1)
+    end
   end
 
   defp client_link(name, opts, headers) do

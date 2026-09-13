@@ -2276,7 +2276,7 @@ defmodule CodeMySpecSpex.Case do
   defp generate_application(project) do
     case persistent_application_dir() do
       nil ->
-        {:ok, parent} = Briefly.create(directory: true)
+        parent = CodeMySpec.TempFile.owned_dir("generated_app")
         build_application(Path.join(parent, generated_app_name(project)))
 
       dir ->
