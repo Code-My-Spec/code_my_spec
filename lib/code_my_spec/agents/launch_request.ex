@@ -29,7 +29,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential, RoleBrief}
+  alias CodeMySpec.Agents.{Agent, Credential, RoleBrief, ToolIndex}
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -73,6 +73,16 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # set that enforces them, and the harness has no opinion about what a QA
       # agent may do.
       "role_brief" => RoleBrief.for(agent.role),
+      # Every tool it can reach, by name and nothing else.
+      #
+      # It already has schemas for what it carries and `tool_docs` answers for
+      # the rest, so what was missing was never the arguments — it was knowing
+      # the rest exist. A QA agent was primed to call `list_user_questions`, got
+      # "Unknown tool", reported it and stopped; an earlier one spent a session
+      # concluding story 895's epic tools were unreachable on this box when they
+      # were available through `run_script` the whole time. Both could see what
+      # they held and not what they could reach. See `Agents.ToolIndex`.
+      "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
       # Where the application it is working on is actually running.
       #
       # An agent that cannot answer this cannot open it. The QA agent on the
@@ -108,6 +118,22 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   end
 
   defp app_url(_agent), do: nil
+
+  # The browser this machine offers, read from the copy the agent runs on.
+  #
+  # `[]` for a machine with no browser, which `ToolIndex` renders as no section
+  # at all rather than an empty one — a machine without a browser and one whose
+  # browser will not answer are different states, and only the second is a
+  # fault. `CmsHarness.Browser` keeps that distinction and `browser_status`
+  # carries it.
+  defp machine_tools(%Agent{working_copy_id: id}) when is_binary(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{machine_tools: tools}} when is_list(tools) -> tools
+      _ -> []
+    end
+  end
+
+  defp machine_tools(_agent), do: []
 
   # Where the agent picks up. `resume_messages/1` answers with the whole
   # conversation while it is short enough to hand a model, and from the last

@@ -43,6 +43,7 @@ defmodule CmsHarness.Agents do
       # Half of the system prompt; the engine composes it with the
       # project's own guide, which only this side can read.
       role_brief: request["role_brief"],
+      tool_index: request["tool_index"],
       # Where the application is running, off the project's main working
       # copy. Only the server knows it — it is a column there — and an
       # agent that cannot answer it cannot open the thing it is testing.
