@@ -178,5 +178,11 @@ defmodule CmsHarness.Web.Router do
     # Says whether the harness is up *and* what it can reach, because "up" on
     # its own is the answer that misled people last time.
     get("/health", HealthController, :index)
+
+    # What every project's analyzer queue actually believes right now, plus
+    # machine-wide slot usage and load — for the dev dashboard. Unaddressed
+    # for the same reason `/health` is: it reports on everything this
+    # harness holds, not one working copy.
+    get("/dashboard-status", DashboardStatusController, :index)
   end
 end

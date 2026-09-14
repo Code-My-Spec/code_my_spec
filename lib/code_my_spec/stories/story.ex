@@ -15,6 +15,7 @@ defmodule CodeMySpec.Stories.Story do
           ready_for_dev: boolean(),
           specs_ready: boolean(),
           three_amigos_sealed: boolean(),
+          promoted_version: String.t() | nil,
           epic_id: Ecto.UUID.t() | nil,
           working_copy_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
@@ -84,6 +85,22 @@ defmodule CodeMySpec.Stories.Story do
     # story quietly un-shipped it; a seal is a statement about a conversation
     # that happened, and a later question does not unhappen it.
     field :three_amigos_sealed, :boolean, default: false
+
+    # The version a promotion stamped this story with, or nil.
+    #
+    # Set once, by `CodeMySpec.Promotion` alone, from the version that
+    # promotion originated — never by an ordinary edit, and never read back
+    # from the working copy's live git state. `commits_ahead_of_main`/
+    # `tree_dirty` answer "is this checkout in sync with main right now,"
+    # which is a question about the checkout — restart work on the same
+    # checkout for a *different* story and the answer flips for every story
+    # that checkout ever touched, promoted or not. This answers "did this
+    # story's code reach main," which a later edit to the same checkout
+    # cannot unmake, because it already did.
+    #
+    # Nil is also the invalidation switch: clearing it is how a story gets
+    # sent back through `code_on_running_copy` after its work is revised.
+    field :promoted_version, :string
 
     # The id this story had on the harness it was migrated from. Story ids are
     # per-deployment sequences and the ranges overlap, so without this the same
@@ -171,6 +188,7 @@ defmodule CodeMySpec.Stories.Story do
       :ready_for_dev,
       :specs_ready,
       :three_amigos_sealed,
+      :promoted_version,
       :priority,
       :locked_at,
       :lock_expires_at,

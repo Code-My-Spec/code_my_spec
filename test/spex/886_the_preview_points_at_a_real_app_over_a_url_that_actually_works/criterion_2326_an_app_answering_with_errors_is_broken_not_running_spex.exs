@@ -60,10 +60,17 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
         # criterion's subject, so cleared the way the browser's own Stripe
         # hook would, to reach the running workspace this scenario needs
         # as its starting point.
-        html = render_hook(view, "payment_confirmed", %{})
+        render_hook(view, "payment_confirmed", %{})
 
-        assert html =~ "It&#39;s running.",
-               "a serving app should say so before we break it"
+        # The fake runner's own poll (poll_interval) can still be mid-cycle
+        # the instant payment_confirmed returns -- boot_workspace/2 kicking
+        # off the container is not the same moment as the watcher's first
+        # broadcast landing. eventually/1 (not a fixed sleep) absorbs that
+        # without hardcoding how long it takes.
+        eventually(fn ->
+          assert render(view) =~ "It&#39;s running.",
+                 "a serving app should say so before we break it"
+        end)
 
         {:ok, Map.put(context, :conn, conn)}
       end

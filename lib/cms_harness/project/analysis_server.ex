@@ -111,6 +111,27 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
+  @doc """
+  A snapshot of what this project's queue actually believes right now: the
+  one entry executing (or waiting for a machine-wide slot) and everything
+  tied to it, plus every other source still queued behind it.
+
+  For the dev dashboard. The server's own `analysis_runs` ledger cannot
+  answer this — every entry tied to a source reads as its own `:running`
+  row, so four ties on one execution look like four things happening at
+  once. This is the one place that actually knows there is one.
+
+  `nil` when nothing is queued for this root, which reads as "asked and
+  there is nothing to say" rather than an error.
+  """
+  @spec status(String.t()) :: %{running: map() | nil, queued: [map()]} | nil
+  def status(root) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.call(pid, :status, 5_000)
+      [] -> nil
+    end
+  end
+
   # --- Server ---
 
   @impl true
@@ -140,6 +161,10 @@ defmodule CmsHarness.Project.AnalysisServer do
   def handle_call(:in_flight, _from, state) do
     running = if state.running, do: [state.running.run_id], else: []
     {:reply, running ++ Enum.map(state.queue, & &1.run_id), state}
+  end
+
+  def handle_call(:status, _from, state) do
+    {:reply, %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)}, state}
   end
 
   @impl true
@@ -206,6 +231,22 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   # --- Internals ---
 
+  # Strips the live `Task` struct (a pid/ref, not meaningful off-process).
+  # Carries the actual `tied_run_ids`, not just their count — a dashboard
+  # correlating this against the server's own `analysis_runs` rows needs
+  # every id riding on this one execution, not a number to re-derive nothing
+  # from.
+  defp entry_summary(nil), do: nil
+
+  defp entry_summary(entry) do
+    %{
+      source: entry.source,
+      run_id: entry.run_id,
+      args: Map.get(entry, :args, []),
+      tied_run_ids: Map.get(entry, :tied_run_ids, [])
+    }
+  end
+
   # Two `mix test` processes in one `_build` is the corruption this server
   # exists to prevent, and the queue is what prevents it: `maybe_start_next/1`
   # only starts when nothing is running. So a request for a source that is
@@ -241,7 +282,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       {:ok, run_id, source, args} ->
         case queued_entry_for(state, source) do
           %{} ->
-            tie_to_queued(state, source, run_id)
+            tie_to_queued(state, source, run_id, args)
 
           nil ->
             entry = %{
@@ -261,7 +302,16 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  defp tie_to_queued(state, source, run_id) do
+  # One queued "next" entry per source, ever — its arg set grows to cover
+  # every tied request, its identity does not. Without this, a second
+  # request naming files the first queued request never named got answered
+  # with the first request's result and its own files were never actually
+  # analyzed — silently, since `tied_run_ids` alone gave every tied run_id
+  # the same real (but incomplete) result, and "real, not synthetic" was the
+  # only thing being checked for. Story 839, John 2026-09-13: one source
+  # never needs more than two entries — current run, next run — and the
+  # next run's scope is the union of everyone tied to it.
+  defp tie_to_queued(state, source, run_id, args) do
     Logger.info(
       "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
         "run #{run_id} is tied to it and will get its result"
@@ -269,12 +319,23 @@ defmodule CmsHarness.Project.AnalysisServer do
 
     queue =
       Enum.map(state.queue, fn
-        %{source: ^source} = entry -> %{entry | tied_run_ids: [run_id | entry.tied_run_ids]}
-        entry -> entry
+        %{source: ^source} = entry ->
+          %{entry | tied_run_ids: [run_id | entry.tied_run_ids], args: merge_args(entry.args, args)}
+
+        entry ->
+          entry
       end)
 
     %{state | queue: queue}
   end
+
+  # Empty args mean "the whole suite" — a superset of any file list, so it
+  # wins the merge rather than being unioned away. Two non-empty lists merge
+  # to their union: the next run has to cover every file anyone tied to it
+  # actually asked about.
+  defp merge_args([], _other), do: []
+  defp merge_args(_args, []), do: []
+  defp merge_args(args, other), do: Enum.uniq(args ++ other)
 
   defp parse(%{"run_id" => run_id, "source" => source} = request)
        when is_integer(run_id) and is_binary(source) do

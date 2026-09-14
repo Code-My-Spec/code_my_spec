@@ -436,6 +436,13 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 
+# `:dev_routes` is true here, so this LiveView's route exists in the test
+# router — and its one request goes to the harness on :4004, which on a
+# developer's box is the real one. Pinned so a test that mounts it reaches
+# `Req.Test` instead of the machine.
+config :code_my_spec, CodeMySpecWeb.DevAnalysisLive,
+  plug: {Req.Test, CodeMySpecWeb.DevAnalysisLive}
+
 # Loopback health probe. Unpinned, a test that passes a real port — 4000 is
 # the obvious one — probes the running dev server and reads its answer as a
 # workspace's health.

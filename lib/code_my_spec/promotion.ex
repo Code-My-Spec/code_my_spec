@@ -61,6 +61,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Environments,
       CodeMySpec.Problems,
       CodeMySpec.Requirements,
+      CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
@@ -78,6 +79,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
@@ -98,44 +100,47 @@ defmodule CodeMySpec.Promotion do
   linkage, and on roles being classified right — three ways to answer "yes" for
   a checkout that is behind.
 
-  Two conditions, both the checkout's own report, and both about ancestry
-  rather than sync:
+  That version read the checkout's own git state instead — nothing on it main
+  did not have (`commits_ahead_of_main`), no uncommitted changes (`tree_dirty`)
+  — deliberately not a third condition, whether main had commits the checkout
+  did not (`commits_behind_main`): that was gated once and produced a
+  demonstrable false negative. A promotion lands, the story is satisfied, an
+  unrelated push by somebody else on the shared box moves main forward, and
+  the story un-satisfies even though its own commit is still exactly as much
+  an ancestor of main as it ever was. Git history only grows, so once
+  `commits_ahead_of_main` reads 0 for a checkout it should stay true forever
+  after. See issue `cf06b908`.
 
-    * nothing on this checkout that main does not have (`commits_ahead_of_main`)
-    * no uncommitted changes (`tree_dirty`)
+  It didn't, though — not for the checkout the answer actually came from. That
+  answer was read live off the *checkout*, and a checkout is shared by every
+  story an agent ever works on it: promote story A, then start story B on the
+  same checkout, and the first new commit or edit re-dirties the very row
+  story A's satisfied answer was being read from. Nothing about story A's
+  promotion changed; the checkout it happened to land from moved on, and the
+  gate could not tell those apart because it was never asking about the
+  story, only about the checkout.
 
-  Deliberately not a third: whether main has commits this checkout does not
-  (`commits_behind_main`). That was gated once and it produced a demonstrable
-  false negative — a promotion lands, the story is satisfied, and an unrelated
-  push by somebody else on the shared box moves main forward and un-satisfies
-  it, even though the story's own commit is still exactly as much an ancestor
-  of main as it ever was. Git history only grows, so once
-  `commits_ahead_of_main` reads 0 for a checkout it stays true forever after —
-  the honest question is "is this checkout's work an ancestor of what main is
-  now", not "is this checkout caught up with everything else that has since
-  landed on main", and those two came apart the moment two agents shared a
-  box. See issue `cf06b908`.
-
-  A worktree shares an object store with the checkout it was made from, so
-  both are answerable from the copy alone. The machine that holds the disk
-  measures them on every sync — the server has no `git` to run, and a graph
-  computed inside the channel process cannot ask the channel.
-
-  Per copy rather than per story. Every story on a checkout gets the same
-  answer, because the checkout is what is or is not in sync — which is also why
-  this costs one column read rather than a walk.
+  So the answer now lives on the story: `promoted_version`, a stamp
+  `Promotion.promote/1` writes once, permanently, the moment a merge actually
+  lands that story's code on main. Ancestry only ever grows — once a
+  promotion happens it stays true forever, and now nothing but a deliberate
+  invalidation (clearing the field to send the story back through this gate)
+  can make it stop being true. The checkout's live `commits_ahead_of_main`
+  and `tree_dirty` still answer a real question — is *this checkout*, right
+  now, in sync with main — just not this one; `not_yet_promoted/1` reports
+  them as diagnostic detail on a refusal, never as the reason for it.
   """
   @spec running_copy_check(Scope.t(), term()) :: {boolean(), map()}
-  def running_copy_check(%Scope{} = scope, _entity) do
+  def running_copy_check(%Scope{} = scope, entity) do
     scope
     |> WorkingCopies.main()
-    |> verdict(scope)
+    |> verdict(scope, entity)
   end
 
   # No copy is designated, so nothing is running and nothing can be behind it.
   # Holding every story until somebody designates one would be a wall with no
   # agent able to clear it.
-  defp verdict(nil, _scope), do: {true, %{status: "No running copy designated"}}
+  defp verdict(nil, _scope, _entity), do: {true, %{status: "No running copy designated"}}
 
   # Working directly on the running copy. There is no branch to merge and
   # nothing an agent could do to a gate that asked for one — John: "it is
@@ -143,16 +148,59 @@ defmodule CodeMySpec.Promotion do
   #
   # Still has to be serving. The code is here by definition; whether anything
   # is answering is a separate question and QA needs both.
-  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}),
+  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}, _entity),
     do: serving(running, %{status: "Working on the running copy"})
 
-  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}),
+  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity),
     do: {true, %{status: "No checkout on this scope"}}
 
-  defp verdict(%WorkingCopy{} = running, %Scope{active_working_copy_id: here}) do
+  defp verdict(%WorkingCopy{} = running, %Scope{active_working_copy_id: here}, entity) do
     case WorkingCopies.fetch(here) do
-      {:ok, copy} -> copy |> in_sync() |> and_serving(running)
+      {:ok, copy} -> entity |> promoted(copy) |> and_serving(running)
       _ -> {true, %{status: "This checkout is not on file"}}
+    end
+  end
+
+  # The story's own stamp, not a read of the checkout it happened to be
+  # promoted from. Once a promotion sets this, nothing the checkout does
+  # afterward — more commits, a dirty tree, work for an unrelated story — can
+  # make it stop being true, because it already happened.
+  defp promoted(entity, copy) do
+    case Map.get(entity, :promoted_version) do
+      version when is_binary(version) ->
+        {true, %{status: "Promoted at version #{version}"}}
+
+      _ ->
+        not_yet_promoted(copy)
+    end
+  end
+
+  defp not_yet_promoted(%WorkingCopy{} = copy) do
+    {false,
+     %{
+       reason:
+         "this story has not been promoted yet" <>
+           live_diagnostic(copy) <>
+           ". `promote` " <>
+           "merges this checkout's branch into main and stamps every story still on " <>
+           "it with the version that lands.",
+       promoted: false,
+       behind: copy.commits_behind_main || 0,
+       ahead: copy.commits_ahead_of_main || 0,
+       dirty: copy.tree_dirty == true
+     }}
+  end
+
+  # Informational only now — none of this gates. Kept because "not promoted
+  # yet, and here is why a promotion would fail right now" is a more useful
+  # refusal than "not promoted yet" alone.
+  defp live_diagnostic(%WorkingCopy{git_state_at: nil}),
+    do: " (this checkout has not reported its git state yet)"
+
+  defp live_diagnostic(%WorkingCopy{} = copy) do
+    case out_of_sync_reasons(copy) do
+      [] -> " (this checkout looks in sync with main — promoting now should land it)"
+      reasons -> " — this checkout currently has " <> Enum.join(Enum.reverse(reasons), "; ")
     end
   end
 
@@ -197,28 +245,13 @@ defmodule CodeMySpec.Promotion do
      }}
   end
 
-  # Never reported is not the same as in sync, and saying so is the difference
-  # between a gate an agent can clear and one it cannot see.
-  defp in_sync(%WorkingCopy{git_state_at: nil}) do
-    {false,
-     %{
-       reason:
-         "this checkout has not reported whether its work is on main. Its " <>
-           "harness reports that on every sync; if this persists, the harness " <>
-           "is not serving this copy."
-     }}
-  end
-
-  defp in_sync(%WorkingCopy{} = copy) do
-    copy
-    |> out_of_sync_reasons()
-    |> sync_verdict(copy)
-  end
-
   # `commits_behind_main` is deliberately not one of these — see the moduledoc
   # on `running_copy_check/2`. Being behind main says somebody else's work has
   # landed since; it says nothing about whether *this checkout's* work is
   # still there, and it always still is once `ahead` has ever read 0.
+  #
+  # Diagnostic only now, folded into `not_yet_promoted/1`'s reason — neither
+  # this nor `tree_dirty` gates `code_on_running_copy` any more.
   defp out_of_sync_reasons(%WorkingCopy{} = copy) do
     []
     |> ahead_reason(copy.commits_ahead_of_main)
@@ -232,26 +265,6 @@ defmodule CodeMySpec.Promotion do
 
   defp dirty_reason(reasons, true), do: ["uncommitted changes — commit them" | reasons]
   defp dirty_reason(reasons, _), do: reasons
-
-  defp sync_verdict([], _copy), do: {true, %{status: "Story's work is on main, tree clean"}}
-
-  # `behind` still travels in the details even though it no longer gates —
-  # it is real information about the checkout ("merge main in before your next
-  # promotion") and dropping it from the report would make it harder to notice
-  # a checkout drifting far behind, even though it correctly stopped being a
-  # reason to fail *this* check.
-  defp sync_verdict(reasons, %WorkingCopy{} = copy) do
-    {false,
-     %{
-       reason:
-         "this checkout has work main does not: " <>
-           Enum.join(Enum.reverse(reasons), "; ") <> ".",
-       out_of_sync: reasons,
-       behind: copy.commits_behind_main || 0,
-       ahead: copy.commits_ahead_of_main || 0,
-       dirty: copy.tree_dirty == true
-     }}
-  end
 
   # -------------------------------------------------------------- the promotion
 
@@ -364,15 +377,19 @@ defmodule CodeMySpec.Promotion do
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
          {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id) do
+      version = Map.get(merge_result, :version)
+
       Logger.info(
         "[Promotion] merged #{branch} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
-          "dispatching restart"
+          "version #{version || "none"}, dispatching restart"
       )
+
+      stamp_promoted_stories(scope, version)
 
       scope
       |> restart(running, refresh_harness?(scope, merge_result), opts)
-      |> merged(branch, running, swept, Map.get(pre, :untracked, []))
+      |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
     else
       {:error, reason} = error ->
         Logger.warning(
@@ -431,24 +448,54 @@ defmodule CodeMySpec.Promotion do
   # not merely confusing, it is false about the part that matters: an agent
   # told its promotion failed promotes again, and each retry restarts the
   # shared dev server every other working copy on the box is using.
-  defp merged({:error, reason}, branch, running, swept, untracked) do
+  defp merged({:error, reason}, branch, running, swept, untracked, version) do
     reason
     |> restart_acknowledgement_lost?()
-    |> unconfirmed(reason, branch, running, swept, untracked)
+    |> unconfirmed(reason, branch, running, swept, untracked, version)
   end
 
-  defp unconfirmed(true, reason, branch, running, swept, untracked) do
+  defp unconfirmed(true, reason, branch, running, swept, untracked, version) do
     {:ok,
      %{
        merged: branch,
        into: running.root,
+       version: version,
        serving: %{revision: nil, unconfirmed: reason},
        swept: swept,
        untracked: untracked
      }}
   end
 
-  defp unconfirmed(false, reason, _branch, _running, _swept, _untracked), do: {:error, reason}
+  defp unconfirmed(false, reason, _branch, _running, _swept, _untracked, _version),
+    do: {:error, reason}
+
+  # The version this merge originated, stamped permanently on every story in
+  # this project that had reached `code_on_running_copy` and had no stamp
+  # yet. `nil` (a checkout with no `mix.exs` to bump) stamps nothing, the
+  # same as before this existed — the merge already landed and a promotion
+  # does not go back on that because it could not also mint a version for it.
+  #
+  # A stamping failure is logged and swallowed rather than turned into a
+  # promotion failure: the merge is real and already on disk by the time this
+  # runs, and reporting it as a failed promotion would send an agent to
+  # promote again, restarting the shared dev server every other working copy
+  # on the box is using, over a write that touched no code at all.
+  defp stamp_promoted_stories(_scope, nil), do: :ok
+
+  defp stamp_promoted_stories(scope, version) do
+    case Stories.mark_ready_stories_promoted(scope, version) do
+      {:ok, _stories} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Promotion] merged and originated version #{version}, but could not " <>
+            "stamp stories: #{inspect(reason)}"
+        )
+
+        :ok
+    end
+  end
 
   # `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as
   # "the server went away — someone restarted :4000". For every other operation

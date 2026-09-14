@@ -328,6 +328,35 @@ defmodule CodeMySpec.Stories do
   end
 
   @doc """
+  Stamps every story in this project that has reached `code_on_running_copy`
+  but has not yet been promoted, with the version a promotion just
+  originated.
+
+  "Reached" means `specs_ready`: `code_on_running_copy`'s own prerequisite is
+  `bdd_specs_passing`, so a story with specs not yet green cannot be the
+  subject of the question this stamp answers. Not scoped to a working copy —
+  `stories.working_copy_id` is set only by epic dispatch and is nil for
+  ordinary work, and `code_on_running_copy` never checked it either: the
+  check it replaces answered from whichever copy asked, the same answer for
+  every qualifying story in the project. This keeps that shape and only
+  changes when the answer is taken — once, at promotion, instead of live on
+  every read — which is what stops a checkout dirtied afterward for
+  unrelated work from un-answering a question that already had its answer.
+
+  The only writer of `promoted_version`. Called once, from
+  `CodeMySpec.Promotion`, after a merge into main has already landed. Already
+  a `nil` promoted_version is required — a promoted story keeps the version
+  it was actually promoted at rather than being bumped to whatever a later,
+  unrelated promotion happens to originate.
+  """
+  def mark_ready_stories_promoted(%Scope{} = scope, version) when is_binary(version) do
+    with {:ok, stories} <- impl().mark_ready_stories_promoted(scope, version) do
+      Enum.each(stories, &broadcast(scope, {:updated, &1}))
+      {:ok, stories}
+    end
+  end
+
+  @doc """
   Clears the component assignment from a story.
 
   ## Examples

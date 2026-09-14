@@ -161,6 +161,7 @@ defmodule CodeMySpec.Agents do
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
          {:ok, attrs} <- put_destination(scope, attrs),
          :ok <- main_copy_is_free(scope, attrs),
+         :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
@@ -172,11 +173,99 @@ defmodule CodeMySpec.Agents do
       # history is read from — an agent that has spoken before is being resumed
       # here even on a call named `start`, which is the whole of "it picks up
       # the same conversation every time".
-      agent = launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential}))
-      watch_over(scope, agent)
-      broadcast(scope, {:agent_started, agent})
-      {:ok, agent}
+      with {:ok, agent} <-
+             launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential})) do
+        watch_over(scope, agent)
+        broadcast(scope, {:agent_started, agent})
+        {:ok, agent}
+      end
     end
+  end
+
+  # A machine that answered, and answered with nothing.
+  #
+  # Distinct from a machine that has not answered yet, which is `nil` and is
+  # legitimate: `create_working_copy` staffs a copy before it has joined the
+  # harness (`34e03128`), and refusing there would break provisioning for a
+  # copy that is merely early. An empty *list* is a report, and what it reports
+  # is a machine serving nothing.
+  #
+  # Worth refusing rather than folding in, because `machine_tools/3` adds
+  # whatever the copy offers to the role's granted set — so nothing offered
+  # produces a shorter list rather than an error, and the agent starts. It then
+  # comes up, reports a tool list, and fails every call it makes. That is this
+  # story's note measured at four hours, and nothing anywhere treated "no tools
+  # offered" as a fault.
+  defp machine_serves_tools(attrs) do
+    case Map.get(attrs, :working_copy_id) do
+      nil -> :ok
+      id -> refuse_if_serving_nothing(id)
+    end
+  end
+
+  defp refuse_if_serving_nothing(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{machine_tools: []}} -> {:error, {:machine_serves_no_tools, id}}
+      _ -> :ok
+    end
+  end
+
+  @doc """
+  Tell the agents whose turn a restart took what happened to it.
+
+  Called when a harness asks what it should be running, which is the only
+  moment this side sees a restart at all — the application going down is not an
+  event the server observes.
+
+  Only an agent with a turn open is told, and that is rule `841a5f79` rather
+  than an optimisation. A harness serves several checkouts and each runs
+  several agents, so announcing a restart to all of them is one message per
+  agent per restart, in runs — and an agent that lost nothing reads it, spends a
+  turn establishing that nothing happened to it, and stops.
+
+  An agent that *was* mid-turn cannot infer any of this. Its thread ends
+  part-way through a tool call and then jumps, and the two readings available
+  to it — "the tool never answered, so wait" and "I already did this" — are
+  both wrong and neither is recoverable from the transcript. Rule `0a06befe`
+  decided the turn is discarded rather than resumed; this is where the agent
+  finds that out.
+
+  Written before the launch request is hydrated, so the notice is part of the
+  history the agent comes back holding rather than something it would have to
+  re-read the page to see. `turn_started_at` is cleared in the same pass, for
+  the reason `restart_agent/2` already clears it: left set, `list_agent_work`
+  and every check-in go on reporting a turn that opened before a process that
+  no longer exists (`4078e7bf`).
+  """
+  @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
+  def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
+    Enum.each(agents, &account_for_interrupted_turn(scope, &1))
+  end
+
+  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil}), do: :ok
+
+  defp account_for_interrupted_turn(scope, %Agent{} = agent) do
+    with {:ok, conversation} <- open_conversation(scope, agent) do
+      Conversations.add_message(conversation, :operator, interrupted_notice(), "operator")
+    end
+
+    AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+    :ok
+  end
+
+  defp interrupted_notice do
+    """
+    The harness restarted while you were part-way through a turn.
+
+    That turn was discarded rather than resumed, so whatever it had in flight
+    did not finish and was not recorded. The last step written to this thread
+    is the last thing that is known to have happened.
+
+    Carry on from the turns already here. Do not assume work you cannot see
+    recorded above was completed — if you are unsure whether something landed,
+    check rather than redo it.
+    """
   end
 
   # Starting a `main` agent is what the cadence exists to look after, so it is
@@ -269,9 +358,11 @@ defmodule CodeMySpec.Agents do
              turn_started_at: nil,
              tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
            }) do
-      agent = launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential}))
-      broadcast(scope, {:agent_started, agent})
-      {:ok, agent}
+      with {:ok, agent} <-
+             launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
+        broadcast(scope, {:agent_started, agent})
+        {:ok, agent}
+      end
     end
   end
 
@@ -491,7 +582,7 @@ defmodule CodeMySpec.Agents do
   # the config directory that was just minted for it.
   defp launch(scope, %Agent{} = agent) do
     case Transport.impl().start_agent(agent.working_copy_id, agent, @start_timeout_ms) do
-      {:ok, report} -> record_or_keep(scope, agent, report)
+      {:ok, report} -> {:ok, record_or_keep(scope, agent, report)}
       {:error, reason} -> keep_starting(agent, reason)
     end
   end
@@ -503,13 +594,30 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # Answers `{:ok, agent}` at `:starting`, and that is deliberate rather than
+  # lax — see criterion 3211, which asks for the opposite and cannot have it.
+  #
+  # A row here is *intent*, not observation. `create_working_copy` staffs a
+  # copy with its three roles before that copy has joined the harness, and the
+  # machine reconciles to the rows afterwards through `agents_to_restore`. So
+  # "the machine did not start it" is the ordinary, recoverable case on the
+  # path that matters most, and refusing it breaks staffing outright:
+  # `ensure_copy_agents` and `offboard_ends_the_agents` both fail at their
+  # premise, measured, with `{:machine_did_not_start_it, :working_copy_missing}`.
+  #
+  # What 3211 is actually right about is the *reply*, not the return: a caller
+  # told "Agent started." for a row nothing has confirmed cannot tell that from
+  # a working agent. That is a wording problem in `AgentsMapper.started/1`, and
+  # fixing it there costs nothing here. Left alone pending a decision, because
+  # changing the return is what `34e03128` ("a :starting row is never retried")
+  # would have to be solved alongside.
   defp keep_starting(agent, reason) do
     Logger.info(
       "[Agents] agent #{agent.id} was not started on its machine (#{inspect(reason)}); " <>
         "it stays :starting, which is what the page shows as asked-for and unconfirmed"
     )
 
-    agent
+    {:ok, agent}
   end
 
   # An agent that cannot be watched is indistinguishable from one that never

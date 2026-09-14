@@ -82,7 +82,15 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/code_my_spec_web/(controllers|live|components)/.*(ex|heex)$"
+      ~r"lib/code_my_spec_web/(controllers|live|components)/.*(ex|heex)$",
+      # The contexts, so changing behaviour reloads the page showing it.
+      #
+      # Paired with `lib/code_my_spec` in `:dirs` below and worth nothing
+      # without it: `:dirs` decides what is *watched* and this decides what a
+      # watched change *does*, so a directory with no matching pattern is
+      # events delivered and discarded, and a pattern with no matching
+      # directory never fires at all.
+      ~r"lib/code_my_spec/.*\.ex$"
     ]
   ]
 
@@ -103,6 +111,32 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
       ~r"lib/code_my_spec_local_web/(controllers|live|components)/.*(ex|heex)$"
     ]
   ]
+
+# Watch the source live reload actually reloads from, and nothing else.
+#
+# `:dirs` defaults to `[""]`, which `Path.absname/1` turns into the project
+# root — watched recursively, by one `mac_listener` per endpoint. That is fine
+# in a normal checkout and ruinous in this one, because `.claude/worktrees/`
+# lives *inside* the root: ten worktrees, each with its own `_build` and
+# `deps`, so every `mix compile`, `mix test` and `mix spex` on the box fires
+# thousands of events that `fseventsd` has to queue and deliver here.
+#
+# `:patterns` does not help — it filters in Elixir, after delivery, so the
+# daemon has already done all the work by the time a path is discarded.
+#
+# Measured before this landed: `fseventsd` at a full core and 2.9 GB resident,
+# growing ~250 MB/hour, 20 hours of CPU across 44 days of uptime — and
+# delivering nothing to anyone, three runs in six, in any directory, which is
+# `e285546d`'s "one run in five" flake and every other watcher on the machine.
+#
+# The same nesting is behind the harness-id leak: a worktree under the main
+# checkout inherits main's `.claude/settings.local.json` too.
+config :phoenix_live_reload, :dirs, [
+  "priv/static",
+  "priv/gettext",
+  "lib/code_my_spec",
+  "lib/code_my_spec_web"
+]
 
 # Enable dev routes for dashboard and mailbox
 config :code_my_spec, dev_routes: true

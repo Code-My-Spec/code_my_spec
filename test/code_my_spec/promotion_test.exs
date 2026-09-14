@@ -22,10 +22,13 @@ defmodule CodeMySpec.PromotionTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import CodeMySpec.StoriesFixtures
+  import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
+  alias CodeMySpec.WorkingCopies
 
   describe "a runner with nowhere to run" do
     test "a harness environment with no working copy id says so" do
@@ -280,6 +283,157 @@ defmodule CodeMySpec.PromotionTest do
 
       assert {:ok, %{output: output}} = Steps.merge(env, root, "side")
       assert output =~ "Fast-forward" or output =~ "up to date"
+    end
+  end
+
+  describe "a promotion originates a version" do
+    setup do
+      {:ok, root} = Briefly.create(directory: true)
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+
+      %{root: root, git: git, env: Environment.new(:local, root)}
+    end
+
+    test "bumps mix.exs's patch version, tags the commit, and reports it",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: "1.2.4"}} = Steps.merge(env, root, "side")
+
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.2.4")
+
+      {tags, 0} = git.(["tag", "--list"])
+      assert tags =~ "v1.2.4"
+
+      {status, 0} = git.(["status", "--porcelain"])
+      assert status == "", "the version bump has to land as a commit, not sit uncommitted"
+    end
+
+    test "a checkout with no mix.exs merges anyway and originates no version",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil}} = Steps.merge(env, root, "side"),
+             "a merge does not fail because the checkout it landed on has " <>
+               "nothing to bump — that is the merge succeeding without also " <>
+               "minting a version, not the merge failing"
+    end
+
+    test "an already-up-to-date merge originates no version",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.0.0",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, output: output}} = Steps.merge(env, root, "side")
+      assert output =~ "up to date"
+
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.0.0"),
+             "nothing was actually promoted, so nothing should have bumped"
+
+      {tags, 0} = git.(["tag", "--list"])
+      assert tags == "", "a no-op promote must not mint a tag for nothing"
+    end
+  end
+
+  describe "code_on_running_copy reads the story's stamp, not the checkout's live state" do
+    setup do
+      scope = full_scope_fixture()
+      device = device_fixture(scope)
+
+      {:ok, running} =
+        WorkingCopies.issue(scope, nil,
+          root: "/tmp/running-#{System.unique_integer([:positive])}",
+          label: "running",
+          device: device
+        )
+
+      {:ok, _} = WorkingCopies.designate_main(scope, running.id)
+
+      {:ok, agent} =
+        WorkingCopies.issue(scope, nil,
+          root: "/tmp/agent-#{System.unique_integer([:positive])}",
+          label: "agent",
+          device: device
+        )
+
+      scope = %{scope | active_working_copy_id: agent.id}
+      story = story_fixture(scope, %{working_copy_id: agent.id})
+
+      %{scope: scope, agent: agent, story: story}
+    end
+
+    test "a story stamped with a version is satisfied even while its checkout is ahead and dirty",
+         %{scope: scope, agent: agent, story: story} do
+      {:ok, _} =
+        WorkingCopies.record_git_state(agent, %{
+          ahead: 3,
+          behind: 0,
+          dirty: true
+        })
+
+      story = %{story | promoted_version: "2.0.11"}
+
+      assert {true, %{status: status}} = Promotion.running_copy_check(scope, story)
+      assert status =~ "2.0.11"
+    end
+
+    test "a story never promoted is refused even while its checkout looks in sync",
+         %{scope: scope, agent: agent, story: story} do
+      {:ok, _} =
+        WorkingCopies.record_git_state(agent, %{
+          ahead: 0,
+          behind: 0,
+          dirty: false
+        })
+
+      assert {false, %{reason: reason, promoted: false}} =
+               Promotion.running_copy_check(scope, story)
+
+      assert reason =~ "has not been promoted yet",
+             "an in-sync checkout is not the same claim as a promoted story — " <>
+               "the checkout can look clean for a reason that has nothing to do " <>
+               "with this story ever having promoted. Got: #{reason}"
+    end
+
+    test "reusing the same checkout for a second story does not un-satisfy the first",
+         %{scope: scope, agent: agent, story: story} do
+      story = %{story | promoted_version: "2.0.11"}
+
+      # The exact failure this stamp exists to stop: new work for a different
+      # story lands on the same checkout after story's own promotion, dirtying
+      # it and moving it ahead of main again.
+      {:ok, _} =
+        WorkingCopies.record_git_state(agent, %{
+          ahead: 1,
+          behind: 0,
+          dirty: true
+        })
+
+      assert {true, _} = Promotion.running_copy_check(scope, story)
     end
   end
 

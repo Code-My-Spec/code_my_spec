@@ -78,6 +78,42 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # grouping and the storage step cannot disagree about what exists.
 
   @impl true
+  def render(%{managed_cloud?: true} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
+      <%!--
+        A `:pro` account's agent already runs on our own infrastructure —
+        `mount/3` never loaded a credential checklist for this case, so this
+        is the whole template rather than a section of the self-hosted one
+        below, which depends on assigns (@options, @missing_credentials, ...)
+        that were never populated here.
+      --%>
+      <.header>
+        Setup
+        <:subtitle>
+          Your cloud plan handles this for you — nothing to provision.
+        </:subtitle>
+      </.header>
+
+      <p data-test="managed-cloud-notice" class="opacity-70 my-6">
+        Deploying to your own GitHub, Hetzner, Cloudflare or Resend accounts is
+        for projects hosted on your own infrastructure. Your project already
+        runs on ours.
+      </p>
+
+      <.link navigate={~p"/app/projects/#{@current_scope.active_project_id}/agent-conversation"} class="btn btn-primary">
+        Back to your agent
+      </.link>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -1428,8 +1464,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # address. Criterion 8051 is precisely that one project's credentials are
     # not reachable from another's.
     case scope_for(socket.assigns.current_scope, params["project_id"]) do
+      {:ok, %{active_account: %{plan: :pro}} = scope} ->
+        # A `:pro` account's agent already runs on our own infrastructure —
+        # there is nothing here for them to provision on their own GitHub,
+        # Hetzner, Cloudflare or Resend accounts. Reachable directly by URL
+        # even with the nav link hidden (Layouts.managed_cloud?/1), so this
+        # has to hold regardless of how someone got here. Skips
+        # `Provisioning.setup_options/1`/`reverify/3` entirely rather than
+        # loading the credential checklist and hiding it — a paying customer
+        # should never see "Still needed: ..." at all.
+        {:ok,
+         socket
+         |> assign(:current_scope, scope)
+         |> assign(:managed_cloud?, true)}
+
       {:ok, scope} ->
-        socket = assign(socket, :current_scope, scope)
+        socket = assign(socket, :current_scope, scope) |> assign(:managed_cloud?, false)
 
         # Read from the project, not from the defaults. These used to live in
         # this socket alone, so every mount reset them — Sam turned object

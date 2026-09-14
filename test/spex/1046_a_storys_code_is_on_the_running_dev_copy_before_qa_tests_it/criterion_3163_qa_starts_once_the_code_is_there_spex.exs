@@ -10,8 +10,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion3163Spex do
   wall. A gate nothing satisfies stops the pipeline as surely as one that never
   closes — four of those were removed from this graph on 2026-09-08.
 
-  Differs from 3162 by one thing: the work has been merged to main, so the
-  checkout is neither ahead nor behind.
+  Differs from 3162 by one thing: the work has been actually promoted — through
+  the real `promote` tool, not a fixture writing "in sync" onto the working
+  copy row directly. `code_on_running_copy` no longer reads that row at all
+  (see `CodeMySpec.Promotion.running_copy_check/2`): it reads a stamp only a
+  real promotion writes, so this criterion has to run one to be honest about
+  what it is proving.
   """
 
   use CodeMySpecSpex.Case
@@ -22,6 +26,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3163Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -47,10 +52,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3163Spex do
       end
 
       given_ "whose work has reached main", context do
-        {_, 0} =
-          git(context, context.running_root, ["merge", "-q", "--no-edit", "story/war"])
-
-        {:ok, report_git_state(context, context.agent_root, context.agent.working_copy_id)}
+        {:ok, Map.put(context, :response, promote(context))}
       end
 
       when_ "the QA agent asks for its next work", context do
@@ -69,24 +71,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion3163Spex do
     end
   end
 
-  # Measure this checkout's git state and record it the way its harness would.
-  #
-  # The three numbers the gate reads: commits here that main lacks, commits on
-  # main that this lacks, and whether the tree is dirty. Taken from a real
-  # repository with real commits — only the delivery over the channel is
-  # short-circuited, because a spec has no harness.
-  defp report_git_state(context, root, copy_id) do
-    {ahead, 0} = git(context, root, ["rev-list", "--count", "main..HEAD"])
-    {behind, 0} = git(context, root, ["rev-list", "--count", "HEAD..main"])
-    {status, 0} = git(context, root, ["status", "--porcelain", "--untracked-files=no"])
-
-    CodeMySpecSpex.Fixtures.record_git_state(copy_id, %{
-      ahead: String.to_integer(String.trim(ahead)),
-      behind: String.to_integer(String.trim(behind)),
-      dirty: String.trim(status) != ""
-    })
-
-    context
+  # Through `PromoteSync` rather than driving `Promotion.promote/1` directly:
+  # both doors run the same function, and this is the one an agent's own
+  # promotion actually calls.
+  defp promote(context) do
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    response
   end
 
   defp ask_for_next_work(context) do
@@ -115,6 +106,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion3163Spex do
     {_, 0} = git(context, running_root, ["config", "user.name", "Spex"])
 
     write(running_root, "lib/broken_oaths/diplomacy/war.ex", war(":base"))
+
+    # A promotion originates a version by bumping this — the one thing a
+    # promotion cannot do without it. This criterion needs a real promotion
+    # to have actually happened, so the fake checkout needs the one file that
+    # makes that possible.
+    write(running_root, "mix.exs", ~s([\n  version: "0.0.1",\n]\n))
 
     # The project's own restart recipe, which is the seam a promotion uses
     # instead of knowing how to bring a Phoenix app up.

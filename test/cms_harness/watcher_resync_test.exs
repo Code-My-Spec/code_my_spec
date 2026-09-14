@@ -51,4 +51,77 @@ defmodule CmsHarness.WatcherResyncTest do
              "nothing changed, which is exactly how this went unnoticed — and " <>
              "with the floor removed, this is the only thing that would show it"
   end
+
+  describe "the liveness check (aac6356e)" do
+    test "a stream that has delivered nothing since it started watching is reported" do
+      state = %Watcher{
+        project: %{id: "p", root: "/tmp/x"},
+        watching?: true,
+        last_activity_at: System.monotonic_time(:millisecond) - :timer.minutes(10),
+        quiet_logged?: false
+      }
+
+      log =
+        capture_log(fn ->
+          assert {:noreply, new_state} = Watcher.handle_info(:liveness_check, state)
+          assert new_state.quiet_logged?
+          assert new_state.liveness_timer
+        end)
+
+      assert log =~ "no filesystem events delivered",
+             "watching? staying true while nothing arrives is exactly the state " <>
+               "aac6356e found invisible — this is the only thing that says so"
+    end
+
+    test "does not re-log every tick once a quiet stretch has already been reported" do
+      state = %Watcher{
+        project: %{id: "p", root: "/tmp/x"},
+        watching?: true,
+        last_activity_at: System.monotonic_time(:millisecond) - :timer.minutes(10),
+        quiet_logged?: true
+      }
+
+      log = capture_log(fn -> Watcher.handle_info(:liveness_check, state) end)
+
+      refute log =~ "no filesystem events delivered",
+             "a project that stays quiet for hours should log once, not on every " <>
+               "5-minute tick — the point is a grep-able line, not a firehose"
+    end
+
+    test "a recent event means nothing is logged" do
+      state = %Watcher{
+        project: %{id: "p", root: "/tmp/x"},
+        watching?: true,
+        last_activity_at: System.monotonic_time(:millisecond),
+        quiet_logged?: false
+      }
+
+      log = capture_log(fn -> Watcher.handle_info(:liveness_check, state) end)
+
+      refute log =~ "no filesystem events delivered",
+             "a project that just delivered an event is not the failure this guards against"
+    end
+
+    test "a real event arriving after a reported quiet stretch resets it" do
+      state = %Watcher{
+        project: %{id: "p", root: "/tmp/x"},
+        fs_pid: self(),
+        watching?: true,
+        last_activity_at: System.monotonic_time(:millisecond) - :timer.minutes(10),
+        quiet_logged?: true
+      }
+
+      assert {:noreply, new_state} =
+               Watcher.handle_info({:file_event, self(), {"/tmp/x/a.ex", [:removed]}}, state)
+
+      refute new_state.quiet_logged?,
+             "the stream proved itself alive; the next quiet stretch deserves its own report"
+    end
+
+    test "a watcher that is not watching does not reschedule itself" do
+      state = %Watcher{project: %{id: "p", root: "/tmp/x"}, watching?: false}
+
+      assert {:noreply, ^state} = Watcher.handle_info(:liveness_check, state)
+    end
+  end
 end

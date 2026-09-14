@@ -37,21 +37,52 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   defp recorded_against(%Agent{working_copy_id: id, working_copy: root})
        when is_binary(id) and is_binary(root) do
     case WorkingCopies.fetch(id) do
-      {:ok, %{root: ^root}} -> ""
-      {:ok, %{root: recorded}} -> "\n    Recorded against: #{recorded} — analysis and stop " <>
-        "decisions for this agent are computed from that copy, not the root above. The root you " <>
-        "named has not joined this project from this machine."
-      _ -> ""
+      {:ok, %{root: ^root}} ->
+        ""
+
+      {:ok, %{root: recorded}} ->
+        "\n    Recorded against: #{recorded} — analysis and stop " <>
+          "decisions for this agent are computed from that copy, not the root above. The root you " <>
+          "named has not joined this project from this machine."
+
+      _ ->
+        ""
     end
   end
 
   defp recorded_against(_agent), do: ""
 
   @spec started(Agent.t()) :: Response.t()
+  # A row at `:starting` has not been confirmed by any machine, and saying
+  # "Agent started." for one is the whole of criterion 3211's complaint: the
+  # caller cannot tell it from a working agent except by watching it not work.
+  #
+  # `Agents.start_agent/2` still answers `{:ok, agent}` here, and that is not
+  # laxness — a row is intent, and `create_working_copy` staffs a copy with its
+  # three roles *before* that copy has joined, with the machine reconciling
+  # afterwards through `agents_to_restore`. Refusing instead was measured at 16
+  # broken tests across `agents_destination`, `agents_ensure_copy_agents` and
+  # `offboard_ends_the_agents`, all failing at their premise.
+  #
+  # So the honesty belongs in the reply rather than the contract. What is still
+  # owed is the retry — `34e03128`, "a :starting row is never retried" — and
+  # until that lands this line is what stops an unconfirmed row reading as a
+  # running agent.
+  defp headline(%Agent{status: :starting}),
+    do: """
+    Agent recorded, not yet confirmed by the machine.
+
+    Nothing is taking turns for it yet. The machine picks it up when it next
+    joins; if it never does, this row stays as it is and `check_machinery` is
+    what says why.
+    """
+
+  defp headline(%Agent{}), do: "Agent started."
+
   def started(%Agent{} = agent) do
     Response.tool()
     |> Response.text("""
-    Agent started.
+    #{headline(agent)}
 
     Agent: #{agent.id}
     Type: #{agent.role}
@@ -193,6 +224,35 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     against this project's own list_working_copies, or name the checkout by
     its root instead; a root that has never joined this project is still a
     valid destination.
+    """)
+  end
+
+  # Both of these name the machine, and that is the whole of their job.
+  #
+  # An operator told "could not start the agent" restarts the agent, and
+  # restarting the agent is what made the four-hour incident in story 1051
+  # worse rather than better. `CheckMachinery` exists for the same reason, in
+  # its own words: "a fault every agent shares is one fault underneath them and
+  # restarting them will not reach it."
+  def error({:machine_serves_no_tools, copy_id}, _provider) do
+    refuse("""
+    That working copy's machine is offering no tools, so an agent started on it
+    would fail every tool call it made.
+
+    Nothing is wrong with the agent — this is the machinery underneath it.
+    Check the harness on working copy #{copy_id} is running and has reported
+    what it can do, with `check_machinery`. Starting the agent again will reach
+    the same machine and get the same result.
+    """)
+  end
+
+  def error({:machine_did_not_start_it, reason}, _provider) do
+    refuse("""
+    The machine did not start the agent: #{inspect(reason)}
+
+    The agent is recorded as asked-for and unconfirmed rather than running, so
+    nothing is taking turns. This is the machine rather than the agent — check
+    the harness on that working copy is connected, with `check_machinery`.
     """)
   end
 

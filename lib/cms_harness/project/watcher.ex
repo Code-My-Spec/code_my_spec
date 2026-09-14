@@ -57,6 +57,20 @@ defmodule CmsHarness.Project.Watcher do
   # stream is visible rather than silent. If freezing shows up again, the fix
   # to reach for is a floor that scans but sends nothing when the manifest
   # digest is unchanged — the safety without the writes — not this one back.
+  #
+  # ## The liveness check is not that floor
+  #
+  # `issue aac6356e` found a case the guard above cannot catch: a stream that
+  # delivers nothing at all, ever, while `watching?` stays true — traced to
+  # `fseventsd` itself degrading machine-wide, not to anything in this process.
+  # Restarting the subscription does not recover it, so there is nothing to
+  # repair from in here. What was missing was purely that nobody could tell —
+  # `/health` said `watching: true` for the lifetime of a session with zero
+  # events delivered. The liveness timer below only logs; it does not scan or
+  # sync, on purpose, so it cannot reintroduce the cost the floor above was
+  # removed for. A quiet project and a dead stream look identical from a
+  # timer's perspective — the log line is a prompt for a human to check, not a
+  # verdict.
 
   # A single edit rarely arrives as a single event, and the only thing the
   # harness can send is a whole manifest, so events are coalesced into one
@@ -67,7 +81,25 @@ defmodule CmsHarness.Project.Watcher do
   defp debounce_ms,
     do: Application.get_env(:code_my_spec, :harness_watch_debounce_ms, @default_debounce_ms)
 
-  defstruct [:project, :fs_pid, :timer, watching?: false]
+  # How long a stream can deliver nothing before it is worth a log line. Long
+  # enough that an idle project (nobody editing it right now) does not fire
+  # this every cycle — most working copies are quiet most of the time, and
+  # that is not the failure this guards against.
+  @default_liveness_check_ms :timer.minutes(5)
+
+  defp liveness_check_ms,
+    do:
+      Application.get_env(:code_my_spec, :harness_watch_liveness_ms, @default_liveness_check_ms)
+
+  defstruct [
+    :project,
+    :fs_pid,
+    :timer,
+    :liveness_timer,
+    :last_activity_at,
+    watching?: false,
+    quiet_logged?: false
+  ]
 
   # --- Client API ---
 
@@ -161,6 +193,11 @@ defmodule CmsHarness.Project.Watcher do
 
   @impl true
   def handle_info({:file_event, pid, {path, events}}, %{fs_pid: pid} = state) do
+    # Any event from the stream we're following proves it is alive, whether or
+    # not it is one we act on — that is the liveness signal the check below
+    # reads, kept separate from whether it is worth a sync.
+    state = mark_alive(state)
+
     if relevant?(events) and not ignored?(state.project.root, path) do
       {:noreply, schedule_sync(state)}
     else
@@ -185,6 +222,28 @@ defmodule CmsHarness.Project.Watcher do
   # than crashed on, because the message can outlive the code that sent it.
   def handle_info(:resync, state) do
     {:noreply, state}
+  end
+
+  def handle_info(:liveness_check, %{watching?: false} = state), do: {:noreply, state}
+
+  def handle_info(:liveness_check, state) do
+    quiet_ms = System.monotonic_time(:millisecond) - state.last_activity_at
+
+    state =
+      if quiet_ms >= liveness_check_ms() and not state.quiet_logged? do
+        Logger.warning(
+          "[CmsHarness] #{state.project.root} has been watching? for #{div(quiet_ms, 1000)}s " <>
+            "with no filesystem events delivered — the stream may be silently dead rather " <>
+            "than the project being quiet. Restarting it does not reliably help (see issue " <>
+            "aac6356e); check whether fseventsd (or the platform equivalent) is degraded."
+        )
+
+        %{state | quiet_logged?: true}
+      else
+        state
+      end
+
+    {:noreply, schedule_liveness_check(state)}
   end
 
   # A file event from a pid this process is not tracking used to fall into the
@@ -224,7 +283,10 @@ defmodule CmsHarness.Project.Watcher do
         {:ok, pid} = FileSystem.start_link(dirs: dirs)
         FileSystem.subscribe(pid)
         Logger.info("[CmsHarness] watching #{state.project.root}: #{Enum.join(dirs, ", ")}")
+
         %{state | fs_pid: pid, watching?: true}
+        |> mark_alive()
+        |> schedule_liveness_check()
     end
   end
 
@@ -232,11 +294,24 @@ defmodule CmsHarness.Project.Watcher do
 
   defp stop_watching(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
+    if state.liveness_timer, do: Process.cancel_timer(state.liveness_timer)
     # Unlinked before stopping so a normal shutdown of the watcher is not an
     # exit signal to this process.
     Process.unlink(state.fs_pid)
     GenServer.stop(state.fs_pid, :normal)
-    %{state | fs_pid: nil, timer: nil, watching?: false}
+    %{state | fs_pid: nil, timer: nil, liveness_timer: nil, watching?: false}
+  end
+
+  # Any real event proves the stream is alive, whatever it is proves the point
+  # of the check below — separate from `quiet_logged?`, which tracks whether
+  # this particular quiet stretch has already been reported.
+  defp mark_alive(state) do
+    %{state | last_activity_at: System.monotonic_time(:millisecond), quiet_logged?: false}
+  end
+
+  defp schedule_liveness_check(state) do
+    if state.liveness_timer, do: Process.cancel_timer(state.liveness_timer)
+    %{state | liveness_timer: Process.send_after(self(), :liveness_check, liveness_check_ms())}
   end
 
   defp schedule_sync(state) do

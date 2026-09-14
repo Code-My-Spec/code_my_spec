@@ -83,7 +83,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop do
 
   defp said(count, false, copy) do
     "#{count} #{agents(count)} on #{label(copy)} will stop after the turn #{they(count)} " <>
-      "on. #{subject(count)} stay on the copy and can be put back to work."
+      "on. #{pronoun(count)} stay on the copy and can be put back to work."
   end
 
   defp agents(1), do: "agent"
@@ -92,8 +92,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop do
   defp are(_), do: "are"
   defp they(1), do: "it is"
   defp they(_), do: "they are"
-  defp subject(1), do: "It"
-  defp subject(_), do: "They"
+  # Named apart from `Anubis.Server.Frame.subject/1`, which `use
+  # Anubis.Server.Component` imports — anubis_mcp 1.6.2 added it and it
+  # collided with this grammar helper under the old name.
+  defp pronoun(1), do: "It"
+  defp pronoun(_), do: "They"
 
   defp label(%{label: label}) when is_binary(label) and label != "", do: label
   defp label(%{root: root}) when is_binary(root) and root != "", do: root

@@ -55,6 +55,36 @@ defmodule CodeMySpec.SpexGivensTest do
   # to `Req.Test` precisely so a suite cannot ask the real one. Without this,
   # a criterion about what a provider answers has no legal way to be written.
   #
+  # `given_a_staffed_checkout` is listed by `given_a_main_checkout`'s own
+  # precedent, and for a stronger reason than inheritance: its body *is* that
+  # helper, plus connecting a provider. It joins a real checkout over the
+  # socket, mounts the working-copies page, designates the copy, and resolves a
+  # credential — four drives, none of which the block naming it could perform
+  # any other way.
+  #
+  # `machine_out_of_reach` is a transport seam, listed by the same precedent as
+  # `Req.Test.stub` and `stage_`. A block saying "this agent's tools cannot be
+  # resolved at launch" has made its precondition true in the only way
+  # available: resolution happens on the machine, so an unreachable machine is
+  # the fact, and `config/test.exs` pins `:agent_transport` precisely so a suite
+  # can say that without owning a second box. Without it, criterion 3211 — an
+  # agent whose tools do not resolve must fail loudly — has no legal way to be
+  # written at all.
+  #
+  # Story 1052's two. `main_answers` calls `AnswerQuestion.execute/2`, the main
+  # agent's own tool, and `user_answers` goes through
+  # `Notifications.answer_question_request/2` via the `Fixtures` bridge — what
+  # the inbox form calls, and the only thing that marks a request answered and
+  # releases whoever was waiting on it. Both are a listed form of drive one
+  # call down; they are named here because this check reads the block's text,
+  # so a wrapped call is invisible to it.
+  #
+  # `ask(` was here for one commit and is deliberately not: these are
+  # substrings, and `ask(` matches `start_specs_passing_task(`. It silently
+  # un-flagged an unrelated baselined file, which the baseline test caught —
+  # a token has to be long enough that it cannot land inside an unrelated
+  # identifier.
+  #
   # `System.cmd`, `System.put_env` and `System.delete_env` were removed from this
   # list, because `SpexDeniedCalls` (CMS0002) forbids all three inside a
   # `_spex.exs`. Listing them here told an author to establish a precondition by
@@ -180,7 +210,9 @@ defmodule CodeMySpec.SpexGivensTest do
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
     join_working_copy report_agents
-    EpicHelpers. given_a_main_checkout say_to_main_agent
+    EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
+    machine_out_of_reach
+    main_answers user_answers
     Req.Test.stub
     a_promotable_project report_git_state analyzers_are_current
     this_copy_is_the_running_one write( git(

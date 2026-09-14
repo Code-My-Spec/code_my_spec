@@ -585,6 +585,36 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
+  # Every story in this project with specs already green and no promotion
+  # stamp yet, stamped with the version this promotion just originated.
+  # All-or-nothing for the same reason `bulk_set_story_component` is: a
+  # promotion that stamped half its stories and rolled back the other half on
+  # a changeset error would leave the graph reading some of this promotion's
+  # stories as done and some as not, with nothing to tell them apart.
+  def mark_ready_stories_promoted(%Scope{} = scope, version) do
+    project_id = scope.active_project_id
+
+    Repo.transaction(fn ->
+      Story
+      |> where(
+        [s],
+        s.project_id == ^project_id and s.specs_ready == true and is_nil(s.promoted_version)
+      )
+      |> Repo.all()
+      |> Enum.map(&stamp_promoted(&1, version, scope))
+    end)
+  end
+
+  defp stamp_promoted(story, version, scope) do
+    story
+    |> Story.changeset(%{promoted_version: version})
+    |> PaperTrail.update(originator: originator(scope))
+    |> case do
+      {:ok, %{model: updated}} -> updated
+      {:error, changeset} -> Repo.rollback({:invalid, story.id, changeset})
+    end
+  end
+
   defp scope_account_id(%Scope{active_account: %{id: id}}), do: id
   defp scope_account_id(%Scope{active_account_id: id}), do: id
 
