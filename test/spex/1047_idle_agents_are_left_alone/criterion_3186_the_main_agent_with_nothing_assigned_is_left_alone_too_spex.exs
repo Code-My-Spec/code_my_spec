@@ -36,7 +36,27 @@ defmodule CodeMySpecSpex.Story1047.Criterion3186Spex do
   spex "An agent with nothing to do is sent nothing, the main agent included" do
     scenario "The main agent with nothing assigned is left alone too" do
       given_ "the project chain is past kickoff", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+        context = ProjectStateFixtures.apply_project_kickoff(context)
+
+        # The story is the premise, not scenery. Kickoff stops short of one —
+        # "the caller is responsible for `stories_exist`" — and that
+        # requirement belongs to `:main`, so a project without a story leaves
+        # the main agent holding the initial story interview. This scenario is
+        # about a main agent with *nothing* assigned, and without this it has
+        # exactly one thing.
+        #
+        # Which is 3185, on the same premise, asserting the opposite. Both were
+        # green only because the first switch-on of a never-synced copy wakes
+        # against a cold graph and says nothing (`a0780389`) — 3186 was passing
+        # on that silence and 3185 sidesteps it with a prior sync. A criterion
+        # that holds because of a filed bug is not held at all.
+        #
+        # Parked rather than released: `project_has_stories?` counts every
+        # story, while only released ones project their own requirements, so
+        # this satisfies `stories_exist` without putting work in anyone's lane.
+        _ = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
+
+        {:ok, context}
       end
 
       given_ "a main agent with no assigned work available", context do
