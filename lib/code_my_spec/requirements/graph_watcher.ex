@@ -305,6 +305,14 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         Process.cancel_timer(state.timer)
         settle_reply(recompute(%{state | timer: nil}))
 
+      # Observations in hand with no timer behind them. A pass that failed
+      # keeps its pending list — correctly, it never applied them — but clears
+      # the timer, so nothing was left to fire and the queue sat there until
+      # some unrelated write happened along. A reader asking to settle is
+      # exactly the moment to try again.
+      state.pending_observations != [] ->
+        settle_reply(recompute(state))
+
       # Nothing queued, and this reader is asking from a vantage no pass has
       # ever computed. Its row-space is empty and would stay empty, because
       # only a pass writes rows and only an observation schedules a pass.
@@ -655,7 +663,18 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         "[GraphWatcher] recompute failed for #{state.project_id}: " <> Exception.message(error)
       )
 
-      {:ok, %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}}
+      # And try again, because the observations this pass did not apply are
+      # still in hand and nothing else will fire for them. Without this a
+      # single transient failure — a connection checkout losing a race for the
+      # pool, which is what this looks like under load — strands every pending
+      # observation until the next unrelated write, and the graph stops moving
+      # while looking perfectly healthy.
+      #
+      # Through `schedule/1`, so the retry coalesces with anything that arrives
+      # meanwhile and a project failing repeatedly costs one pass per window
+      # rather than a spin.
+      {:ok,
+       schedule(%{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}})}
     else
       Logger.info("[GraphWatcher] stopping: project #{state.project_id} no longer exists")
 
@@ -663,12 +682,36 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     end
   end
 
-  # Answers false when the question cannot be asked either — a connection that
-  # has gone with the project is the same answer for this purpose, and raising
-  # here would replace the error being classified with a less useful one.
+  # Gone means the query answered, and answered no.
+  #
+  # This rescued every exception to `false`, on the reasoning that a connection
+  # which has gone with the project is the same answer. It is not, and the
+  # difference is the worst kind: `false` here stops the watcher, `:transient`
+  # means a `:normal` stop is not restarted, and `settle/1` answers `:ok` when
+  # nothing is watching. So one `DBConnection` queue timeout under load — a
+  # checkout timeout, an ownership error, the pool briefly full — retires the
+  # project's watcher permanently and every read from then on is served a
+  # frozen graph, silently, because the one thing that would recompute it is
+  # gone.
+  #
+  # That is the failure this module's own docs call the worst shape available:
+  # correct-looking and not moving. It presented as flakiness — criterion 5901
+  # picking the wrong wave, roughly one run in eight on a box at load 17-20,
+  # and never once in 200 executions on a quiet checkout without this code.
+  #
+  # So an exception means "could not tell", and could-not-tell keeps the
+  # watcher alive. The next pass asks again, and a project that really is gone
+  # answers plainly then.
   defp project_exists?(project_id) do
     Repo.exists?(from(p in "projects", where: p.id == type(^project_id, :binary_id)))
   rescue
-    _ -> false
+    error ->
+      Logger.warning(
+        "[GraphWatcher] could not tell whether project #{project_id} still exists " <>
+          "(#{Exception.message(error)}); staying alive rather than retiring on a " <>
+          "question that was never answered"
+      )
+
+      true
   end
 end
