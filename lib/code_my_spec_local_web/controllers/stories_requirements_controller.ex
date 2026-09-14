@@ -4,12 +4,17 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
   """
   use CodeMySpecLocalWeb, :controller
 
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     case Stories.list_project_stories(scope) do
       {:ok, stories} ->
@@ -37,7 +42,12 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
     # node read `deploy (actionable)` while its `qa_complete` prerequisite was
     # still open — the real loop never offered it, but anything reading this
     # listing was told otherwise.
-    {nodes, _edges, actionable} = RequirementGraph.compute_graph_with_actionable(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {{nodes, _edges}, actionable, _computed_at} =
+      RequirementGraph.cached_graph_with_actionable(scope)
 
     case Stories.get_story(scope, story_id) do
       story when not is_nil(story) ->
@@ -79,7 +89,11 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
 
   def show_requirement(conn, %{"story_id" => story_id, "name" => name}) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     story_id_int = String.to_integer(story_id)
 

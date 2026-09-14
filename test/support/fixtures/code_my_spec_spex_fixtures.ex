@@ -4287,7 +4287,24 @@ defmodule CodeMySpecSpex.Fixtures do
   against the synthetic project.
   """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
-    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
+    # A full sync, not an incremental one, and that is the whole of it.
+    #
+    # The fingerprint an analysis run is stamped with is content-based over the
+    # files the source's roles cover — `{path, fingerprint}`, sorted — so it
+    # moves when the *file set* changes, not when a sync merely runs. Stamping
+    # after `sync_changed/2` recorded the set that incremental pass knew about,
+    # and `GetNextRequirement` then does a full `FileSync.sync/2` on its way to
+    # the graph, discovering whatever the incremental one had not. Different
+    # set, different fingerprint, `analysis_fresh` false — so `bdd_specs_passing`
+    # dropped and `FixBddSpecs` outranked the work the scenario was about.
+    #
+    # Criteria 6529, 6532 and 6533 at 10 pass / 5 fail each over fifteen runs,
+    # with the graph itself answering `[coding: "bdd_specs_passing"]` where the
+    # passing runs answer `[qa: "qa_complete"]`.
+    #
+    # Stamping over the set the reader will see is the fix: the fixture syncs
+    # the way the thing that reads it syncs.
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
     result = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
 
     # And say so. Analysis freshness is a graph input — `Preloader` feeds it to

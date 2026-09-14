@@ -5,12 +5,16 @@ defmodule CodeMySpecLocalWeb.ComponentsRequirementsController do
   use CodeMySpecLocalWeb, :controller
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope
     components = Components.list_components(scope)
-    nodes = RequirementGraph.compute_all(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     lines =
       Enum.map_join(components, "\n", fn component ->
@@ -27,7 +31,11 @@ defmodule CodeMySpecLocalWeb.ComponentsRequirementsController do
   def show(conn, %{"component_id" => component_id}) do
     scope = conn.assigns.current_scope
     component = Components.get_component!(scope, component_id)
-    nodes = RequirementGraph.compute_all(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component" and &1.entity_id == component.id))
     total = length(comp_nodes)
@@ -46,7 +54,11 @@ defmodule CodeMySpecLocalWeb.ComponentsRequirementsController do
 
   def show_requirement(conn, %{"component_id" => component_id, "name" => name}) do
     scope = conn.assigns.current_scope
-    nodes = RequirementGraph.compute_all(scope)
+    # The rows. These are read surfaces — a markdown listing for a person or an
+    # agent — and recomputing the whole project to render one is the behaviour
+    # this whole change removes: it hides a writer that announced nothing by
+    # repairing the graph on the way past, and costs seconds on the way.
+    {nodes, _computed_at} = Requirements.cached_all(scope)
 
     node = Enum.find(nodes, fn n ->
       n.entity_type == "component" and n.entity_id == component_id and n.name == name

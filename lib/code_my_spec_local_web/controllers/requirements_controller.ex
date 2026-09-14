@@ -15,8 +15,9 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   @doc """
   The **cached** graph, with what is needed to tell whether it moved.
 
-  `index/2` answers from `compute_all/1` — it recomputes on every request and
-  so can never show cache behaviour. That is right for an agent asking what to
+  `index/2` answers from the rows like everything else now, so it cannot show
+  cache behaviour either — it has no way to distinguish a graph that is current
+  from one nobody has recomputed. That is right for an agent asking what to
   work on and useless for anyone asking whether the cache is being served, which
   is a question the system otherwise answers nowhere: `RequirementsLive`
   discards `computed_at`, and the only surface carrying watcher state is
