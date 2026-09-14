@@ -2370,7 +2370,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp priority_sort_key(%{entity_type: "project", name: name}, _story_by_id, _comp, def_order) do
     tier = if MapSet.member?(@late_project_reqs, name), do: 2, else: 0
-    {tier, 0, Map.get(def_order, name, 999)}
+    {tier, {0, 0}, Map.get(def_order, name, 999)}
   end
 
   # The third term is how far down its own chain the node sits, so a story
@@ -2391,7 +2391,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
          _def_order
        ) do
     story = Map.get(story_by_id, id)
-    {1, (story && story.priority) || 999, story_req_depth(name)}
+    rank = if story, do: story_rank(story), else: {999, 0}
+    {1, rank, story_req_depth(name)}
   end
 
   defp priority_sort_key(
@@ -2401,8 +2402,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
          _order
        ) do
     case Map.fetch(comp_priority, id) do
-      {:ok, priority} -> {1, priority, 0}
-      :error -> {1, 999, 1}
+      {:ok, rank} -> {1, rank, 0}
+      :error -> {1, {999, 0}, 1}
     end
   end
 
@@ -2419,14 +2420,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #    rooted at a context with no priority (orphan contexts) yield
   #    no inheritance, and the untethered filter drops their
   #    descendants from the wave on that basis.
+  # A story's rank: its priority, then its age. Two stories at the same
+  # priority are not tied — the older one leads — and `min/2` over this pair
+  # gives exactly that, since a lower priority wins and an equal priority falls
+  # through to the smaller timestamp.
+  #
+  # The age used to be missing entirely, so two components inheriting the same
+  # priority produced identical sort keys. `Enum.sort_by/2` is stable, so the
+  # winner was whatever order the nodes arrived in — and that order is
+  # `kept ++ fresh` from `recompute_stale/3`, which depends on which entities
+  # happened to be stale on that pass. The answer to "which story leads" was
+  # therefore decided by recompute bookkeeping, and changed run to run.
+  #
+  # Criterion 5901 is named for the rule this implements: same priority, oldest
+  # created_at wins.
+  defp story_rank(story) do
+    {story.priority || 999, story_age(story)}
+  end
+
+  defp story_age(%{inserted_at: %DateTime{} = at}), do: DateTime.to_unix(at, :microsecond)
+
+  defp story_age(%{inserted_at: %NaiveDateTime{} = at}),
+    do: at |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+
+  defp story_age(_story), do: 0
+
   defp build_component_priority_map(ctx) do
     # Direct: story.component_id → component
     direct =
       ctx.stories
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(%{}, fn story, acc ->
-        priority = story.priority || 999
-        Map.update(acc, story.component_id, priority, &min(&1, priority))
+        rank = story_rank(story)
+        Map.update(acc, story.component_id, rank, &min(&1, rank))
       end)
 
     # Spread priority to dependencies of surface components
@@ -2435,7 +2461,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(direct, fn story, acc ->
         surface = Map.get(ctx.components_by_id, story.component_id)
-        priority = story.priority || 999
+        rank = story_rank(story)
 
         deps =
           case surface && surface.dependencies do
@@ -2445,7 +2471,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           end
 
         Enum.reduce(deps, acc, fn dep, inner_acc ->
-          Map.update(inner_acc, dep.id, priority, &min(&1, priority))
+          Map.update(inner_acc, dep.id, rank, &min(&1, rank))
         end)
       end)
 
