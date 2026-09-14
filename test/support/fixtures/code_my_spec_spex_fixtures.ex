@@ -906,6 +906,34 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Everything actionable right now, as `{role, requirement_name}`, sorted.
+
+  `role_queue_size/2` answers "does this agent have work" and nothing else, and
+  a premise that reads zero could be wrong in any of a dozen places up the
+  chain. Every criterion about routing needs the same thing when it fails —
+  what is on the graph at all — and finding it out meant adding a prerequisite,
+  running, reading a number, and guessing again.
+
+  Worth knowing what a zero usually means here. The project chain is one line —
+  `stories_exist` gates `technical_strategy` gates everything after it — so a
+  project with no story has exactly one actionable node no matter what else the
+  fixtures wrote, and every role but product reads empty.
+  """
+  @spec actionable_work(Scope.t()) :: [{atom(), String.t()}]
+  def actionable_work(%Scope{} = scope) do
+    # The same path `actionable_count/2` and the stop menu read, so what this
+    # lists is what an agent would be counted as having. `compute_all/1` looks
+    # like the obvious call and is not: its structs carry `satisfied` and no
+    # notion of actionable at all, because actionability is a property of the
+    # graph rather than of a node.
+    %{actionable: actionable} = CodeMySpec.Requirements.cached_graph_with_actionable(scope)
+
+    actionable
+    |> Enum.map(&{&1.role, &1.name})
+    |> Enum.sort()
+  end
+
+  @doc """
   The conversation an agent's turns land in.
 
   Keyed on the agent, which is what a conversation belongs to. It used to be
@@ -3252,11 +3280,20 @@ defmodule CodeMySpecSpex.Fixtures do
   story calls. `epic_id` is a column on the story — one story belongs to at most
   one epic — so there is no join table to write.
   """
-  @spec put_story_in_epic(Scope.t(), map(), map()) :: :ok
-  def put_story_in_epic(%Scope{} = scope, story, epic) do
+  @spec put_story_in_epic(Scope.t(), map() | integer(), map()) :: :ok
+  def put_story_in_epic(%Scope{} = scope, %CodeMySpec.Stories.Story{} = story, epic) do
     {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{epic_id: epic.id})
     :ok
   end
+
+  # Same reason as `mark_story_ready/2`: a criterion that got its story from
+  # `CreateStory` holds the tool's parsed reply, which is a map with an id on
+  # it and not a row.
+  def put_story_in_epic(%Scope{} = scope, %{id: story_id}, epic),
+    do: put_story_in_epic(scope, story_id, epic)
+
+  def put_story_in_epic(%Scope{} = scope, story_id, epic) when is_integer(story_id),
+    do: put_story_in_epic(scope, CodeMySpec.Stories.get_story!(scope, story_id), epic)
 
   @doc """
   Mark a story ready for development, the way the epics page does.

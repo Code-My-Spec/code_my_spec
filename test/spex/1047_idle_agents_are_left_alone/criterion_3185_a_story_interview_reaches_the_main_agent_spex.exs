@@ -22,10 +22,9 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -38,8 +37,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
 
   spex "Shaping work reaches the main agent and nobody else" do
     scenario "A story interview reaches the main agent" do
-      given_ "the project chain is past kickoff", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      given_ "a project with nothing left for anybody to do", context do
+        {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
       end
 
       given_ "a main agent and a coding agent on a working copy", context do
@@ -55,7 +54,20 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
       end
 
       given_ "a story that needs its initial interview and no other work available", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
+        # Released and linked, with no interview. `Preloader` filters to
+        # `ready_for_dev == true` — "only released stories project into the
+        # graph" — so the parked story this used to create held no requirement
+        # for anybody and the stop came back `%{}`: no classes, stop allowed,
+        # nothing to route. Released, the first thing it projects is
+        # `three_amigos_complete`, which is the interview.
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Shaping work, and nothing a working copy can pick up",
+            acceptance_criteria: ["A refund lands on the ledger"]
+          )
+
+        :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :story, story)}
       end

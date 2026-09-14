@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3187Spex do
   import CodeMySpecSpex.AgentProcessHelpers, only: [running?: 1]
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent

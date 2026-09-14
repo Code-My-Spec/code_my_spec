@@ -42,14 +42,20 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   criteria for a reason that has nothing to do with them. Without a
   `get_next_requirement` the graph has never been computed, so every role reads
   zero and every wake is silent.
+
+  Takes a copy id for the scenarios that staff more than one.
+  `wake_project_roles/2` only wakes agents whose own row says `continuous`, and
+  the loop is set per copy — so a scenario with two checkouts that switches on
+  one of them has silenced the other by construction, and its "and the other
+  agent was told nothing" then holds for the wrong reason.
   """
-  @spec put_to_work(map()) :: map()
-  def put_to_work(context) do
+  @spec put_to_work(map(), Ecto.UUID.t() | nil) :: map()
+  def put_to_work(context, copy_id \\ nil) do
     frame = frame(context)
 
     {:reply, _response, _frame} =
       SetWorkingCopyLoop.execute(
-        %{working_copy_id: context.scope.active_working_copy_id, working: true},
+        %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
         frame
       )
 
