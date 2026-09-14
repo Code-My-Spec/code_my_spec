@@ -43,7 +43,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # `latest_full_run/2` filters `kind == :full`, so it never satisfies
   # freshness either. The stop hook's full run stays the authoritative sweep.
   def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
-    Logger.info("[Analysis] #{run.source} targeted run — output only, Problems untouched")
+    Logger.info("[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched")
 
     RunsRepository.finish_run(run, :completed, %{
       output: result.output,
@@ -96,14 +96,15 @@ defmodule CodeMySpec.Analysis.Reconciler do
         AgentReport.deliver(scope, run.source, problems)
 
         Logger.info(
-          "[Analysis] #{run.source} reconciled: #{length(problems)} problem(s) (#{run.kind})" <>
-            Signatures.delta_suffix(previous, signatures)
+          "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
+            "(#{run.kind})" <> Signatures.delta_suffix(previous, signatures) <>
+            requested_by_suffix(run)
         )
 
         {:ok, finished}
 
       {:error, reason} ->
-        Logger.error("[Analysis] #{run.source} reconcile failed: #{inspect(reason)}")
+        Logger.error("[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}")
         RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
         {:error, reason}
     end
@@ -112,7 +113,10 @@ defmodule CodeMySpec.Analysis.Reconciler do
   @doc "Mark a run failed (tool crash, skip, or task death) — no problem changes."
   @spec fail(Run.t(), term()) :: {:ok, Run.t()} | {:error, term()}
   def fail(%Run{} = run, reason) do
-    Logger.warning("[Analysis] #{run.source} failed: #{inspect(reason)}")
+    Logger.warning(
+      "[Analysis] run #{run.id} (#{run.source}) failed: #{inspect(reason)}" <>
+        requested_by_suffix(run)
+    )
 
     RunsRepository.finish_run(run, :failed, %{
       stats: %{"error" => error_text(reason)}
@@ -137,6 +141,14 @@ defmodule CodeMySpec.Analysis.Reconciler do
   defp error_text(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
   defp error_text(reason), do: String.slice(inspect(reason), 0, 500)
 
+  # The other half of a run's id being in these lines at all: knowing which
+  # row this was still leaves "who asked for it" as a separate lookup unless
+  # the line says that too. Blank unless `build_job/4` was given one — most
+  # runs still won't be until more callers are taught to pass it.
+  defp requested_by_suffix(%Run{requested_by: nil}), do: ""
+  defp requested_by_suffix(%Run{requested_by: by}) when by == %{}, do: ""
+  defp requested_by_suffix(%Run{requested_by: by}), do: " — requested by #{inspect(by)}"
+
   @doc """
   Close a run that never ran because one for the same source was already
   queued.
@@ -148,7 +160,10 @@ defmodule CodeMySpec.Analysis.Reconciler do
   """
   @spec supersede(Run.t(), term()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
   def supersede(%Run{} = run, reason) do
-    Logger.info("[Analysis] #{run.source} superseded: #{inspect(reason)}")
+    Logger.info(
+      "[Analysis] run #{run.id} (#{run.source}) superseded: #{inspect(reason)}" <>
+        requested_by_suffix(run)
+    )
 
     RunsRepository.finish_run(run, :superseded, %{
       stats: %{"superseded" => String.slice(inspect(reason), 0, 500)}

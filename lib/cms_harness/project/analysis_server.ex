@@ -452,7 +452,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       :ok ->
         waited_ms = System.monotonic_time(:millisecond) - requested_at
         send(parent, {:slot_acquired, entry.run_id, waited_ms})
-        Analysis.run(project, entry.source, entry.args)
+        Analysis.run(project, entry.source, entry.args, entry.run_id)
 
       :busy ->
         {:error,

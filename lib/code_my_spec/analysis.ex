@@ -1140,6 +1140,13 @@ defmodule CodeMySpec.Analysis do
       args: args,
       kind: kind_for(args),
       fingerprint: fingerprint,
+      # Who asked, carried as a plain value from here rather than read back
+      # off `Logger.metadata()` at the point a Run row gets written: that
+      # metadata is per-process, and `StartAnalysis` (among others) hands this
+      # job to an unlinked `Task` that starts with none of it. A caller that
+      # knows who's asking says so in `opts[:requested_by]`; one that doesn't
+      # leaves this `nil`, same as an unset `args`/`stats`.
+      requested_by: Keyword.get(opts, :requested_by),
       opts: runner_opt_passthrough(opts) ++ [notify: Keyword.get(opts, :notify, true)]
     }
   end
@@ -1223,7 +1230,8 @@ defmodule CodeMySpec.Analysis do
            source: job.source,
            kind: job.kind,
            args: %{"args" => job.args},
-           input_fingerprint: job.fingerprint
+           input_fingerprint: job.fingerprint,
+           requested_by: job.requested_by
          }) do
       {:ok, run} -> send_or_skip(scope, job, channel, run)
       {:error, reason} -> {:error, reason}
@@ -1255,7 +1263,8 @@ defmodule CodeMySpec.Analysis do
         source: job.source,
         kind: job.kind,
         args: %{"args" => job.args},
-        input_fingerprint: job.fingerprint
+        input_fingerprint: job.fingerprint,
+        requested_by: job.requested_by
       })
 
     Execution.execute(scope, run, job.opts)
