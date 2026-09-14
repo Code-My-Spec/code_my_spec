@@ -93,14 +93,15 @@ defmodule CodeMySpec.Agents.ToolIndex do
   defp carried(%Agent{tools: tools}) when is_list(tools), do: Enum.sort(tools)
   defp carried(%Agent{}), do: []
 
+  # `Catalog.from/3` maps, rejects and filters a list into a map, and
+  # `Catalog.names/1` sorts its keys — both total over a well-formed component
+  # list, which `__components__/0` is by construction. This was wrapped in a
+  # rescue answering `[]`, on the reasoning that an index is a convenience and
+  # must never stop an agent starting. That guarded nothing reachable and hid
+  # the one thing worth seeing: a malformed registration, which should be loud.
   defp scriptable(%Agent{tools: allowed}) do
     ScriptableTools.__components__()
     |> Catalog.from(fn _tool -> fn _args -> {:error, :index_only} end end, allowed)
     |> Catalog.names()
-  rescue
-    # An index is a convenience and must never be the reason an agent fails to
-    # start. A catalog that cannot be built answers with no section, and the
-    # agent is exactly as it was before this existed.
-    _ -> []
   end
 end
