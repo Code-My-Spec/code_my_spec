@@ -258,6 +258,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       )
       when is_binary(source) and is_list(problems) do
     Repo.transaction(fn ->
+      lock_source(scope, source)
       clear_problems_for_source(scope, [source: source], file_scope)
 
       case insert_all_problems(problems, scope) do
@@ -266,6 +267,41 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       end
     end)
   end
+
+  # Two reconciles for the same working copy and source both clear then insert
+  # their own full set, and nothing before this made that pair mutually
+  # exclusive. `ProjectServer` never lets it happen for a local run — one task
+  # at a time per working copy — but a remote harness reports each finished
+  # run on its own `Task.Supervisor` process (`HarnessProjectChannel`'s
+  # `reply_async`, not the channel process), and `dispatch_remote/3`
+  # deliberately lets a second run for a busy source queue up behind the
+  # first rather than drop it (cc1016a8: dropping it lost a commit's worth of
+  # spex results). The harness runs both, one after another, and reports each
+  # as it finishes — two results for the same source, seconds apart, with no
+  # ordering guarantee between the transactions that reconcile them. Reported
+  # 2026-09-14: every problem for a source present exactly twice, 42 rows
+  # where 21 existed.
+  #
+  # `pg_advisory_xact_lock/1` makes the two transactions take turns instead of
+  # racing: the second blocks until the first commits its clear-then-insert,
+  # then runs its own — the later run's results stand, the same "latest sweep
+  # wins" outcome `ProjectServer`'s serialization already gives locally.
+  # Transaction-scoped, so it releases on commit or rollback with nothing to
+  # clean up if either side crashes — no registry, no process to leak a lock
+  # a dead holder never freed.
+  defp lock_source(scope, source) do
+    key = :erlang.phash2({lock_scope_key(scope), source})
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [key])
+  end
+
+  defp lock_scope_key(%Scope{active_working_copy_id: working_copy_id})
+       when not is_nil(working_copy_id),
+       do: working_copy_id
+
+  defp lock_scope_key(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: WorkingCopies.default_id(project_id)
+
+  defp lock_scope_key(_scope), do: :no_working_copy
 
   @doc """
   Atomically replaces problems for specific file paths within a project.

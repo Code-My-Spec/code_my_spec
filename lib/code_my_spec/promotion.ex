@@ -382,7 +382,8 @@ defmodule CodeMySpec.Promotion do
       Logger.info(
         "[Promotion] merged #{branch} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
-          "version #{version || "none"}, dispatching restart"
+          "version #{version || "none"}, certified by #{describe_certifications(swept)}, " <>
+          "dispatching restart"
       )
 
       stamp_promoted_stories(scope, version)
@@ -733,11 +734,41 @@ defmodule CodeMySpec.Promotion do
   # recorded" and "no problems" are different claims, and closing that gap
   # used to mean waiting for a fresh run — it now means reading whether one
   # already exists.
-  defp gate_known([], scope), do: gate_freshness(stale_sources(scope))
+  defp gate_known([], scope), do: gate_freshness(scope, stale_sources(scope))
   defp gate_known(problems, _scope), do: gate_result(problems)
 
-  defp gate_freshness([]), do: {:ok, []}
-  defp gate_freshness(stale), do: {:error, not_certified(stale)}
+  defp gate_freshness(scope, []), do: {:ok, certified_by(scope)}
+  defp gate_freshness(_scope, stale), do: {:error, not_certified(stale)}
+
+  # What this promote actually leaned on to call the copy clean. `gate/1`
+  # never runs a check of its own — see the moduledoc above it — it reads
+  # whichever runs are already on file, so two promotes seconds apart with
+  # nothing re-run in between read the exact same rows and both say "clean"
+  # with nothing in the response to tell them apart. Carried on `swept` so
+  # reuse is visible instead of silent: two promotes citing the same
+  # `finished_at` for every source verified nothing new between them, and a
+  # caller that cares (or is debugging why a second promote answered
+  # instantly) can tell.
+  defp certified_by(scope) do
+    for source <- Run.sources() do
+      case Analysis.latest_answer(scope, source) do
+        %Run{finished_at: finished_at} -> %{source: source, finished_at: finished_at}
+        nil -> %{source: source, finished_at: nil}
+      end
+    end
+  end
+
+  # The log line's rendering of `certified_by/1` — a timestamp per source, so
+  # the same finished_at showing up across two consecutive promotions' logs
+  # is the evidence that the second one reused the first's verdict rather
+  # than seeing anything new.
+  defp describe_certifications(certifications) do
+    certifications
+    |> Enum.map_join(", ", fn
+      %{source: source, finished_at: nil} -> "#{source} (no run on file)"
+      %{source: source, finished_at: finished_at} -> "#{source} @ #{DateTime.to_iso8601(finished_at)}"
+    end)
+  end
 
   defp stale_sources(%Scope{} = scope) do
     fresh = Analysis.fresh_sources(scope, Run.sources())
