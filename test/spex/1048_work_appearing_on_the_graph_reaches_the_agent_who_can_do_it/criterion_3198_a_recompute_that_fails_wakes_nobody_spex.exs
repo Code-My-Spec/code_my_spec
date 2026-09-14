@@ -28,11 +28,11 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
   import CodeMySpecSpex.GraphReadHelpers, only: [warm_graph: 1]
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -51,24 +51,48 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
 
       given_ :synced_context_component
 
-      given_ "work becoming available on an agent's working copy", context do
+      given_ "a coding agent running and idle on its working copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
+        main = Fixtures.running_agent(context.scope, role: "main")
         context = context |> start_session() |> put_to_work() |> warm_graph()
         :ok = Fixtures.watch_graph(context.scope)
-
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.mark_story_ready(context.scope, story)
 
         {:ok,
          context
          |> Map.put(:coding, coding.id)
-         |> Map.put(:story, story)
+         |> Map.put(:main, main.id)
          |> Map.put(:before, heard_count(context, coding.id))}
       end
 
+      given_ "work waiting on that working copy", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        :ok = Fixtures.mark_story_ready(context.scope, story)
+
+        {:ok, Map.put(context, :story, story)}
+      end
+
       when_ "the graph fails to recompute and makes no announcement", context do
-        :ok = Fixtures.break_digest_source(context.scope)
+        :ok = Fixtures.break_graph_recompute(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
+
+        # Expected: `GraphWatcher.recompute/1` logs this failure at `:error`
+        # by design (see its own moduledoc), and `SexySpex.ErrorCapture`
+        # fails any spex running when an `:error` lands — including this
+        # one's own deliberately injected fault. Cleared rather than left,
+        # since it is this scenario's premise and not a straggler.
+        SexySpex.ErrorCapture.clear()
 
         {:ok, context}
       end
@@ -90,17 +114,17 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
       end
 
       then_ "and the agent stays idle with work outstanding", context do
-        assert Fixtures.role_queue_size(context.scope, context.coding) >= 0,
+        assert Fixtures.role_queue_size(context.scope, context.coding) > 0,
                "the premise is an agent with work waiting that it has not been told about"
 
         {:ok, context}
       end
 
       then_ "and the main agent's cadence check is what surfaces it", context do
-        {:reply, reply, _frame} = CheckIn.execute(%{}, frame(context))
-        report = response_text(reply)
+        {:reply, _reply, _frame} = CheckIn.execute(%{}, frame(context))
+        report = context |> heard(context.main) |> List.last()
 
-        assert report =~ ~r/(idle|waiting|outstanding|nothing in flight|no turn)/i,
+        assert report =~ ~r/(no task claimed|does hold work|nothing to do)/i,
                """
                The cadence check does not surface a project that has quietly
                stopped.
@@ -113,7 +137,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
                The cadence is the second mechanism, and the reason it is not
                event-driven is exactly this case.
 
-               #{report}
+               #{inspect(report)}
                """
 
         {:ok, context}

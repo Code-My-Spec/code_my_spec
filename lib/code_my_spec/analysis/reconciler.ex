@@ -18,6 +18,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.TaskEvaluator
@@ -84,6 +85,18 @@ defmodule CodeMySpec.Analysis.Reconciler do
         RunsRepository.prune(scope, run.source)
         evaluate_sessions(scope)
         maybe_notify(scope, finished, problems, opts)
+
+        # A run finishing is what can newly satisfy `bdd_specs_passing` /
+        # `tests_passing` — nothing else does, since those gates read the run
+        # ledger rather than a file. Without this, GraphWatcher never learns
+        # a story became testable: it only reschedules on `GraphInputs`
+        # events, so its debounce timer stays unset and `settle/1` (a nil
+        # timer is a no-op) waits forever for a wake that a direct, on-demand
+        # read would already see via the fingerprint. Same placement as
+        # `QaAttempts.announce_graph_change/2` — after the row commits, only
+        # on this success path, so a recompute never reads a run that might
+        # still roll back.
+        GraphInputs.announce(scope, "Analysis")
 
         # The internal half of story 1042. `maybe_notify/4` above is the push to
         # the *person*; this is the push to the agents running in our own BEAM,

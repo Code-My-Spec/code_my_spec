@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -38,12 +39,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
 
   spex "Work appearing inside an agent's role and copy reaches that agent" do
     scenario "A story ready to test wakes the QA agent" do
-      given_ "the project chain is past kickoff", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
-      end
-
-      given_ :synced_context_component
-
+      # No kickoff and no separately synced component. `apply_without_qa_story/1`
+      # in the `when_` builds the whole project itself — setup steps, strategy,
+      # architecture, its own component subgraph and its own story — and a
+      # component this scenario synced beforehand is not in that subgraph, so it
+      # lands as an orphan and reopens `architecture_designed` for `:main`.
+      # Measured: the graph after the `when_` held exactly
+      # `[main: "architecture_designed"]` and QA's queue was empty, so the
+      # criterion failed on scenery rather than on routing.
       given_ "a QA agent running and idle on its working copy", context do
         qa = Fixtures.running_agent(context.scope, role: "qa")
         context = context |> start_session() |> put_to_work()
@@ -55,14 +58,21 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
          |> Map.put(:before, heard_count(context, qa.id))}
       end
 
-      given_ "a story whose code is on the running dev copy", context do
-        story = Fixtures.released_story(context.scope, "Refunds reach the ledger")
-
-        {:ok, Map.put(context, :story, story)}
-      end
-
-      when_ "that story becomes ready for QA", context do
-        Fixtures.record_deploy(context.scope, context.story.id, "dev")
+      when_ "a story reaches the point where it is ready to test", context do
+        # The chain completing is what puts work in QA's lane, and
+        # `apply_without_qa_story/1` is that state by name: "the chain prepared
+        # so a `qa_complete` task can be STARTED". Its last step stamps a fresh
+        # green analysis run, which satisfies `bdd_specs_passing` and so makes
+        # `qa_complete` actionable.
+        #
+        # It used to release a story and record a deploy to dev. Neither gates
+        # `qa_complete`: its prerequisite is `code_on_running_copy`, and
+        # `Promotion.running_copy_check/2` answers {true, "No running copy
+        # designated"} on a project with no designated main copy — so it was
+        # already satisfied and the deploy moved nothing. QA's lane stayed
+        # empty, and "the agent that tests it was told nothing" was the correct
+        # answer to a scenario that had made nothing testable.
+        context = FullSatisfactionFixtures.apply_without_qa_story(context)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, context}
@@ -83,7 +93,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
 
         assert Enum.any?(
                  said,
-                 &(&1 =~ ~r/(get_next_requirement|qa|#{Regex.escape(context.story.title)})/i)
+                 &(&1 =~ ~r/(get_next_requirement|qa|qa_complete)/i)
                ),
                """
                The QA agent was woken without being told what for.
@@ -95,12 +105,35 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
       end
 
       then_ "and it begins a turn without a person routing it", context do
-        refute Enum.any?(context.said, &(&1 =~ ~r/(ask|waiting for|approval|confirm)/i)),
+        # `Validation.Menu` ends every message it renders with three standing
+        # offers, none of them conditional (story 896), and one of them names
+        # `ask_user_question` while `tap_out_offer/1` ends "once a human
+        # approves". So the whole message matches this pattern on every
+        # implementation there will ever be, including one that routes nobody
+        # — the assertion could not have passed, and was reading boilerplate
+        # that is correct and by design.
+        #
+        # The routing lives in what precedes them. `Menu.offers/1` always
+        # opens with `answer_offer/1`, whose three clauses are the boundary —
+        # every one of them mentions a question having been asked or being
+        # "waiting on the user", so the offer block cannot be matched on
+        # without matching this pattern. If Menu's offers change, this changes
+        # with them; there is no way to ask about the work half without
+        # knowing where it ends.
+        offer_block = ~r/\n\n(If a question you asked|\d+ questions? (is|are) open and waiting)/
+
+        work =
+          Enum.map(
+            context.said,
+            &(&1 |> String.split(offer_block, parts: 2) |> hd())
+          )
+
+        refute Enum.any?(work, &(&1 =~ ~r/(ask|waiting for|approval|confirm)/i)),
                """
                The wake asks somebody before QA may act on it, which puts a
                person back in the loop this story exists to remove.
 
-               #{Enum.join(context.said, "\n---\n")}
+               #{Enum.join(work, "\n---\n")}
                """
 
         {:ok, context}

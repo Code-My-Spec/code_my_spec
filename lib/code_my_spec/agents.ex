@@ -1357,9 +1357,33 @@ defmodule CodeMySpec.Agents do
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(&project_wakeable?(&1, except_agent_id))
+    |> dedupe_same_role_per_copy()
     |> Enum.each(fn agent -> StopDecision.wake(at_agents_vantage(scope, agent), agent) end)
 
     :ok
+  end
+
+  # Story 1023 allows several agents of one role on one copy, and a
+  # project-wide wake has no other way to tell them apart: both render the
+  # same menu from the same graph, so both would be told the same work is
+  # available — which is two agents about to edit one tree, the failure the
+  # working-copy grain exists to prevent.
+  #
+  # Lowest id wins. Arbitrary, and deliberately so — nothing about the work
+  # itself picks a rightful owner, and choosing on some other basis (oldest,
+  # least recently active, ...) is a real design question with more shape to
+  # it than a tiebreaker needs. What matters here is that it is stable: the
+  # same pair resolves the same way on every recompute, rather than one
+  # agent winning one pass and the other winning the next.
+  #
+  # This decides only who is *told*. It writes no claim anywhere, so nothing
+  # here lets `list_agent_work` say which of the two now holds the story —
+  # that is durable state a dedup rule cannot provide on its own, and is
+  # tracked apart from this fix rather than invented alongside it.
+  defp dedupe_same_role_per_copy(agents) do
+    agents
+    |> Enum.group_by(&{&1.working_copy_id, &1.role})
+    |> Enum.map(fn {_copy_and_role, group} -> Enum.min_by(group, & &1.id) end)
   end
 
   # Each agent's menu is computed from its own checkout, not from whoever's

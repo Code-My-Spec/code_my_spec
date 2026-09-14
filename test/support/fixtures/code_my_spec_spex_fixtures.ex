@@ -3318,6 +3318,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Make this project's graph watcher raise instead of recomputing.
+
+  A different fault from `break_digest_source/1`: that one leaves the graph
+  itself fine and breaks only what the main agent's digest reads. This is the
+  recompute failing outright, so no `{:graph_updated, _}` is ever announced.
+  """
+  @spec break_graph_recompute(Scope.t()) :: :ok
+  def break_graph_recompute(%Scope{active_project_id: project_id}) do
+    :ok = Faults.inject(project_id, :graph_recompute_fails)
+    ExUnit.Callbacks.on_exit(fn -> Faults.clear(project_id, :graph_recompute_fails) end)
+    :ok
+  end
+
+  @doc """
   An epic on this project.
 
   Through `Epics.create_epic/2`, the same call the product agent's `create_epic`
@@ -3424,6 +3438,23 @@ defmodule CodeMySpecSpex.Fixtures do
   connection open to a model with a response coming back, which from every
   other angle is indistinguishable from an agent that has stopped.
   """
+  @doc """
+  Put this session into continuous mode, the way `start_implementation` does.
+
+  The stop hook's menu-on-turn-end path is gated on the *session's* own
+  `continuous` flag (`Hooks.Stop.continuous_mode?/1`) — a different switch
+  from the working copy's loop that `put_to_work/2` turns on. A session made
+  through `start_session/1` alone is correctly, silently allowed to stop
+  with no menu: continuous mode is what turns a stop into a continuation,
+  and nothing about posting session-start opts a session into it.
+  """
+  @spec make_session_continuous(Scope.t(), String.t()) :: :ok
+  def make_session_continuous(%Scope{} = scope, session_id) do
+    session = CodeMySpec.Sessions.get_by_external_id(scope, session_id)
+    {:ok, _session} = CodeMySpec.Sessions.update_session(scope, session, %{continuous: true})
+    :ok
+  end
+
   @spec start_turn(Scope.t(), String.t(), keyword()) :: :ok
   def start_turn(%Scope{} = scope, agent_id, opts \\ []) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
@@ -3465,6 +3496,45 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _message} =
       Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
 
+    :ok
+  end
+
+  @doc """
+  A tool call on this agent's own conversation, the way `Agents.Engine` records one.
+
+  Same conversation `agent_said/3` writes to — keyed on the agent, not on a
+  session — so a scenario about one agent's turns can mix plain messages and
+  tool calls in the order they actually happened.
+  """
+  @spec agent_tool_call(Scope.t(), map(), String.t(), String.t(), map()) :: :ok
+  def agent_tool_call(%Scope{} = scope, %{id: agent_id}, call_id, name, arguments) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _} = Conversations.add_tool_call(conversation, call_id, name, arguments)
+    :ok
+  end
+
+  @doc """
+  What that call returned, on the same agent-keyed conversation.
+
+  `opts` takes `:failed?` (default `false`) so a scenario can state a call
+  that came back an error without paraphrasing it into a plain message.
+  """
+  @spec agent_tool_result(Scope.t(), map(), String.t(), String.t(), String.t(), keyword()) :: :ok
+  def agent_tool_result(%Scope{} = scope, %{id: agent_id}, call_id, name, text, opts \\ []) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _} = Conversations.add_tool_result(conversation, call_id, name, text, opts)
     :ok
   end
 

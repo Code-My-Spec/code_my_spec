@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -50,6 +51,23 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
 
       given_ :synced_context_component
 
+      given_ "a story interviewed and linked, but not yet released", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, Map.put(context, :story, story)}
+      end
+
       given_ "a coding agent and a QA agent on different working copies", context do
         coding_copy = join_working_copy(context, "/tmp/spex-3189-code", "the coding checkout")
         qa_copy = join_working_copy(context, "/tmp/spex-3189-qa", "the QA checkout")
@@ -65,7 +83,9 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
         qa_scope = %{context.scope | active_working_copy_id: qa_copy.working_copy_id}
         qa = Fixtures.running_agent(qa_scope, role: "qa", working_copy: "/tmp/spex-3189-qa")
 
-        context = context |> start_session() |> put_to_work() |> warm_graph()
+        context =
+          context |> start_session() |> put_to_work(coding_copy.working_copy_id) |> warm_graph()
+
         :ok = Fixtures.watch_graph(context.scope)
 
         {:ok,
@@ -77,8 +97,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
       end
 
       when_ "the graph recomputes and changes", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.mark_story_ready(context.scope, story)
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :announcements, drain_announcements(context))}

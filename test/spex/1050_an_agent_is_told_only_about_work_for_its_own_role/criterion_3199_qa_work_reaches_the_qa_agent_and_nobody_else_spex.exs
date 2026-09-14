@@ -17,6 +17,16 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
   Both agents on one working copy, because that is where a role filter is
   actually load-bearing. Split across copies, a checkout filter alone would
   pass this and the role filter would never be exercised.
+
+  ## The premise, borrowed rather than reinvented
+
+  `qa_complete`'s real gate is `bdd_specs_passing`, not a release-and-deploy —
+  1048's criterion 3192 already found that the hard way: releasing a story and
+  recording a deploy to dev satisfies nothing, because `code_on_running_copy`
+  was already trivially true with no main copy designated. So this uses the
+  same `FullSatisfactionFixtures.apply_without_qa_story/1` chain 3192 validated,
+  rather than reintroducing the deploy-based premise that never produced
+  actionable QA work in the first place.
   """
 
   use CodeMySpecSpex.Case
@@ -25,7 +35,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -38,12 +48,6 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
 
   spex "Work is told to the role that can act on it, and to no other" do
     scenario "QA work reaches the QA agent and nobody else" do
-      given_ "the project chain is past kickoff", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
-      end
-
-      given_ :synced_context_component
-
       given_ "a coding agent and a QA agent running on one working copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         qa = Fixtures.running_agent(context.scope, role: "qa")
@@ -59,11 +63,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
       end
 
       when_ "a story becomes ready for QA", context do
-        story = Fixtures.released_story(context.scope, "Refunds reach the ledger")
-        Fixtures.record_deploy(context.scope, story.id, "dev")
+        context = FullSatisfactionFixtures.apply_without_qa_story(context)
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story, story)}
+        {:ok, context}
       end
 
       then_ "the QA agent is told about it", context do
