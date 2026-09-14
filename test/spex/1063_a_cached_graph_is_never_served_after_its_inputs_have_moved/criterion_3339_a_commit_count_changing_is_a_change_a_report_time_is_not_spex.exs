@@ -86,8 +86,13 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
 
       then_ "the heartbeat left the answer alone and the commit count did not",
             context do
+        # The reason, not the verdict. `code_on_running_copy` also requires the
+        # story to have been promoted, so a commit count moving cannot flip it
+        # on its own — what changes is the obstacle the checker names, and the
+        # whole point here is that a heartbeat changes nothing and a real
+        # change does.
         verdict = fn graph ->
-          satisfaction_of(graph, "code_on_running_copy", :story, context.new_story.id)
+          reason_for(graph, "code_on_running_copy", :story, context.new_story.id)
         end
 
         assert verdict.(context.after_heartbeat) == verdict.(context.before),

@@ -86,21 +86,27 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
             context do
         after_merge = read_graph(context, context.working_copy_id)
 
-        assert satisfaction_of(context.before, "code_on_running_copy", :story, context.new_story.id) ==
-                 false,
+        before_reason =
+          reason_for(context.before, "code_on_running_copy", :story, context.new_story.id)
+
+        reason = reason_for(after_merge, "code_on_running_copy", :story, context.new_story.id)
+
+        assert before_reason =~ "not on main",
                """
                The premise did not hold: a checkout one commit ahead of main
-               must leave `code_on_running_copy` open, or the merge has nowhere
-               to show up.
+               must say so, or the merge has nowhere to show up.
 
-               before: #{inspect(reason_for(context.before, "code_on_running_copy", :story, context.new_story.id))}
+               before: #{inspect(before_reason)}
                """
 
-        assert satisfaction_of(after_merge, "code_on_running_copy", :story, context.new_story.id) ==
-                 true,
+        # The reason, not the verdict. `code_on_running_copy` also requires the
+        # story to have been promoted, so landing the work on main cannot flip
+        # it to satisfied on its own — what the merge changes is the obstacle
+        # the checker names, and that is the effect this criterion is about.
+        refute reason =~ "not on main",
                """
-               The work landed on main and the graph still says this story's
-               code is not on the running copy.
+               The work landed on main and the graph still says this checkout
+               has commits that are not on it.
 
                No file changed here — only the commit count ahead of main — so a
                files digest cannot see this. If the fingerprint does not cover
@@ -112,8 +118,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
                second-resolution, so a write and the recompute answering it
                read as the same instant.
 
-               before: #{inspect(reason_for(context.before, "code_on_running_copy", :story, context.new_story.id))}
-               after:  #{inspect(reason_for(after_merge, "code_on_running_copy", :story, context.new_story.id))}
+               before: #{inspect(before_reason)}
+               after:  #{inspect(reason)}
                """
 
         {:ok, context}
