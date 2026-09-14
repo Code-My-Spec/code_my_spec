@@ -139,7 +139,8 @@ defmodule CodeMySpecWeb.Layouts do
               </ul>
             </div>
           </div>
-          <div class="flex-none shrink-0">
+          <div class="flex-none shrink-0 flex items-center gap-2">
+            <div class="hidden sm:block"><.theme_toggle /></div>
             <.live_component
               :if={@current_scope}
               module={CodeMySpecWeb.NotificationLive.Components.Dropdown}

@@ -139,12 +139,18 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
     ref = report(socket, %{"ahead" => 0, "behind" => 7, "dirty" => false})
     assert_reply(ref, :ok)
 
-    assert {true, _details} = Promotion.running_copy_check(scope, %{id: 1}),
-           "an unrelated push moving main further ahead un-satisfied a story " <>
-             "whose own commit is still exactly as much an ancestor of main " <>
-             "as it ever was"
+    story =
+      story_fixture(scope, %{
+        title: "a story whose work already went across",
+        promoted_version: "2.0.11"
+      })
 
-    story = story_fixture(scope, %{title: "a story whose work already went across"})
+    assert {true, _details} = Promotion.running_copy_check(scope, story),
+           "an unrelated push moving main further ahead did not un-satisfy a " <>
+             "story already stamped promoted — its own code reaching main " <>
+             "does not depend on what the checkout it was promoted from does " <>
+             "afterward"
+
     {:ok, prompt} = PromoteWork.command(scope, %{story_id: story.id})
 
     assert prompt =~ ~r/already on the running dev\s+copy/,
@@ -160,11 +166,14 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
            """
   end
 
-  test "a clean, in-sync checkout passes", %{scope: scope, socket: socket} do
+  test "a promoted story passes regardless of the checkout's current git state",
+       %{scope: scope, socket: socket} do
     ref = report(socket, %{"ahead" => 0, "behind" => 0, "dirty" => false})
     assert_reply(ref, :ok)
 
-    assert {true, _} = Promotion.running_copy_check(scope, %{id: 1})
+    story = story_fixture(scope, %{promoted_version: "2.0.11"})
+
+    assert {true, _} = Promotion.running_copy_check(scope, story)
   end
 
   # Untracked files are excluded where this is measured, so `dirty` arriving
@@ -213,7 +222,9 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
       ref = report(socket, %{"ahead" => 0, "behind" => 0, "dirty" => false})
       assert_reply(ref, :ok)
 
-      assert {false, %{preview_status: "down"}} = Promotion.running_copy_check(scope, %{id: 1})
+      story = story_fixture(scope, %{promoted_version: "2.0.11"})
+
+      assert {false, %{preview_status: "down"}} = Promotion.running_copy_check(scope, story)
     end
 
     # A 500 is the application answering, which is the thing QA exists to find.
@@ -226,7 +237,9 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
       ref = report(socket, %{"ahead" => 0, "behind" => 0, "dirty" => false})
       assert_reply(ref, :ok)
 
-      assert {true, _} = Promotion.running_copy_check(scope, %{id: 1})
+      story = story_fixture(scope, %{promoted_version: "2.0.11"})
+
+      assert {true, _} = Promotion.running_copy_check(scope, story)
     end
 
     test "a status the handler does not recognise changes nothing", %{

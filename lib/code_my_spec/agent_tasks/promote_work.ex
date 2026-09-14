@@ -27,6 +27,13 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   nobody here wrote. A behind-only checkout now reaches `verdict/2` and
   `prompt_for/2` as `{true, _}`, the same as any other satisfied checkout, so
   the hedge had nothing left to catch and was removed with it.
+
+  `running_copy_check/2` has since moved past ancestry too: it reads the
+  story's own `promoted_version` stamp rather than any live column on the
+  checkout. The reasoning here still holds — a behind-only checkout's work
+  was never actually missing — it is just answered a different way now,
+  permanently, by a promotion having actually stamped this story rather than
+  by the checkout's ancestry happening to read clean at query time.
   """
 
   alias CodeMySpec.Promotion

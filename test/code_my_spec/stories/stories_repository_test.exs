@@ -434,4 +434,45 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert length(versions) >= 2
     end
   end
+
+  describe "mark_ready_stories_promoted/2" do
+    import CodeMySpec.UsersFixtures
+    import CodeMySpec.StoriesFixtures
+
+    test "stamps every specs-ready story in the project that has no stamp yet" do
+      scope = full_scope_fixture()
+      ready = story_fixture(scope, %{specs_ready: true})
+      not_ready = story_fixture(scope, %{specs_ready: false})
+
+      assert {:ok, [stamped]} = StoriesRepository.mark_ready_stories_promoted(scope, "2.0.11")
+
+      assert stamped.id == ready.id
+      assert stamped.promoted_version == "2.0.11"
+
+      assert StoriesRepository.get_story(scope, not_ready.id).promoted_version == nil,
+             "a story whose specs are not ready has not reached code_on_running_copy " <>
+               "and should not read as promoted"
+    end
+
+    test "does not re-stamp a story already promoted" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{specs_ready: true, promoted_version: "2.0.10"})
+
+      assert {:ok, []} = StoriesRepository.mark_ready_stories_promoted(scope, "2.0.11")
+
+      assert StoriesRepository.get_story(scope, story.id).promoted_version == "2.0.10",
+             "an already-promoted story keeps the version it was actually promoted " <>
+               "at rather than being bumped by an unrelated later promotion"
+    end
+
+    test "leaves another project's stories alone" do
+      scope = full_scope_fixture()
+      other_scope = full_scope_fixture()
+      other_story = story_fixture(other_scope, %{specs_ready: true})
+
+      assert {:ok, []} = StoriesRepository.mark_ready_stories_promoted(scope, "2.0.11")
+
+      assert StoriesRepository.get_story(other_scope, other_story.id).promoted_version == nil
+    end
+  end
 end

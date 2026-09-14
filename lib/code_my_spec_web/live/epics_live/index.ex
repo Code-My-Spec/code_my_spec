@@ -248,6 +248,17 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
       :unassigned,
       stories |> Enum.filter(&is_nil(&1.epic_id)) |> Enum.sort_by(& &1.title)
     )
+    |> assign(:working_copy_names, working_copy_names(scope))
+  end
+
+  # One query for every working copy this project has, instead of the
+  # `WorkingCopies.fetch/1` per unique id per epic this replaced — each of
+  # those was its own `Repo.get` + `Repo.preload(:project)` round trip, run
+  # again on every render of a board that can hold a few hundred stories.
+  defp working_copy_names(scope) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Map.new(&{&1.id, WorkingCopies.display_name(&1)})
   end
 
   defp epic_stories(epic) do
@@ -265,10 +276,16 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
 
   # The checkouts its stories are on, named rather than numbered — a uuid tells
   # a reader nothing.
-  defp copy_names(epic) do
+  #
+  # Takes the id->name map `load_board/2` built in one query, rather than
+  # calling `WorkingCopies.fetch/1` per id here: this runs once per epic on
+  # every render, and a fetch-per-call was a `Repo.get` + `Repo.preload` round
+  # trip each time — the board's actual slow part on a project with a few
+  # hundred stories.
+  defp copy_names(epic, names) do
     epic
     |> epic_working_copy_ids()
-    |> Enum.map(&copy_name/1)
+    |> Enum.map(&copy_name(&1, names))
     |> case do
       [] -> "no checkout"
       [one] -> one
@@ -276,15 +293,7 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
     end
   end
 
-  # `WorkingCopies.display_name/1` owns the rule: an unnamed copy's generated
-  # label is the sentence "the harness at <root> on <host>", which is a path in
-  # a badge, and this used to print it whole.
-  defp copy_name(id) do
-    case WorkingCopies.fetch(id) do
-      {:ok, harness} -> WorkingCopies.display_name(harness)
-      _error -> "a checkout"
-    end
-  end
+  defp copy_name(id, names), do: Map.get(names, id, "a checkout")
 
   # Which checkout an epic is being built on, read off its stories.
   #
@@ -426,14 +435,14 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                           class="badge badge-info badge-outline badge-sm"
                           title={"All #{n} stories are offered only to this checkout"}
                         >
-                          {copy_names(epic)}
+                          {copy_names(epic, @working_copy_names)}
                         </span>
                       <% {n, total} -> %>
                         <span
                           class="badge badge-info badge-outline badge-sm"
                           title="Offered only to this checkout"
                         >
-                          {copy_names(epic)}
+                          {copy_names(epic, @working_copy_names)}
                         </span>
                         <span
                           class="badge badge-ghost badge-sm"
