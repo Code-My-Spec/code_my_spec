@@ -426,22 +426,29 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     actionable
   rescue
     error in Postgrex.Error ->
-      # A checkout that went away while this pass was computing for it.
+      # Something this pass was computing for went away while it computed.
       #
-      # `Projection.live_vantages/2` filters the ones already gone, and cannot
-      # win the race: the filter runs, the graph takes its time, and the
-      # offboard lands in between — then `GraphCache.publish/4` writes a
-      # `requirement_graphs` row keyed on a copy the foreign key no longer
-      # knows. Criterion 2867 does exactly this and hit it after the filter
-      # went in.
+      # A pass reads a context, spends real time building a graph from it, and
+      # then writes — so anything in that snapshot can be deleted underneath
+      # it. Two seen: a checkout offboarded mid-pass, and a component replaced
+      # by a sync (renaming a spec's module deletes the old component and
+      # creates a new one, which is criterion 5931). Both land as a foreign key
+      # refusing a row whose owner no longer exists.
       #
-      # Not a fault, so it must not be logged as one: the watcher reports
-      # `last_error` on `/dev/state` and `SexySpex.ErrorCapture` fails a run on
-      # any logged `:error`. There is nothing to serve for a checkout that does
-      # not exist, so this vantage contributes nothing and the others carry on.
-      if vantage_gone?(error) do
+      # `Projection.live_vantages/2` filters the checkouts already gone and
+      # cannot win this race; nothing could, because the gap is the computation
+      # itself.
+      #
+      # Not a fault, and it must not be logged as one: the watcher reports
+      # `last_error` on `/dev/state`, and a recompute that reports a fault
+      # every time somebody renames a module is a diagnostic nobody reads. The
+      # delete that caused this announced, so a pass is already queued behind
+      # this one and it will compute from a context that has the news.
+      if entity_gone?(error) do
         Logger.info(
-          "[GraphWatcher] skipping vantage #{inspect(vantage)}: the checkout is gone"
+          "[GraphWatcher] skipping vantage #{inspect(vantage)}: " <>
+            "something it was computing for was deleted mid-pass " <>
+            "(#{constraint_of(error)}); the pass behind this one has the news"
         )
 
         []
@@ -450,11 +457,17 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
       end
   end
 
-  defp vantage_gone?(%Postgrex.Error{postgres: %{constraint: constraint}})
-       when is_binary(constraint),
-       do: String.contains?(constraint, "working_copy_id_fkey")
+  # The owner columns, and only those. Any other constraint is a real defect
+  # and must still be reported.
+  @owner_constraints ~w(working_copy_id_fkey component_id_fkey story_id_fkey project_id_fkey)
 
-  defp vantage_gone?(_error), do: false
+  defp entity_gone?(error) do
+    constraint = constraint_of(error)
+    is_binary(constraint) and Enum.any?(@owner_constraints, &String.contains?(constraint, &1))
+  end
+
+  defp constraint_of(%Postgrex.Error{postgres: %{constraint: constraint}}), do: constraint
+  defp constraint_of(_error), do: nil
 
   # Waking says "work appeared". The bootstrap pass has not learned that: it is
   # the first computation this watcher has done, answering no observation, and
