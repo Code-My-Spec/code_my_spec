@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3193Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -93,12 +92,20 @@ defmodule CodeMySpecSpex.Story1048.Criterion3193Spex do
       end
 
       then_ "and it begins a turn without a person routing it", context do
-        refute Enum.any?(context.said, &(&1 =~ ~r/(ask|waiting for|approval|confirm)/i)),
-               """
-               The wake asks somebody before the agent may fix its own
-               checkout's build.
+        # The directive line, not the whole message. Every menu ends with the
+        # same three standing offers and the tap-out, and two of them say
+        # `ask_user_question` and "once a human approves" — always, to every
+        # agent, as things it *may* do. Matching those as gatekeeping makes the
+        # criterion unsatisfiable by any menu at all, which is a claim about
+        # the boilerplate rather than about this wake.
+        directives = Enum.map(context.said, &(&1 |> String.split("\n\n") |> Enum.at(1, "")))
 
-               #{Enum.join(context.said, "\n---\n")}
+        refute Enum.any?(directives, &(&1 =~ ~r/(waiting for|approval|sign.?off|permission)/i)),
+               """
+               The wake makes the agent wait on somebody before it may fix its
+               own checkout's build.
+
+               #{Enum.join(directives, "\n---\n")}
                """
 
         {:ok, context}

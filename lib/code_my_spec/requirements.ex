@@ -29,7 +29,6 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.Users,
@@ -40,6 +39,7 @@ defmodule CodeMySpec.Requirements do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
@@ -76,18 +76,36 @@ defmodule CodeMySpec.Requirements do
   @spec actionable_count(Scope.t(), atom() | nil) :: non_neg_integer()
   def actionable_count(%Scope{active_project_id: nil}, _role), do: 0
 
-  def actionable_count(%Scope{} = scope, role) do
-    # Settling used to happen here and nowhere else, which was the right
-    # instinct applied to one reader: a pending recompute means a write has
-    # landed that this count has not seen, and this count is what decides
-    # whether an agent is told to stop. Every other reader had the same problem
-    # and no answer to it, so the settle moved into the read itself.
+  def actionable_count(%Scope{} = scope, role),
+    do: scope |> actionable_for_role(role) |> length()
+
+  @doc """
+  The actionable requirements this role can act on, in graph order.
+
+  The list `actionable_count/2` counts, so a caller that wants to *say* what
+  the work is reads the same answer the count came from rather than asking a
+  second question that can disagree with it — the failure this module's own
+  comments record twice over.
+
+  `nil` role answers the project's, which is what every caller outside the loop
+  wants.
+  """
+  @spec actionable_for_role(Scope.t(), atom() | nil) :: [map()]
+  def actionable_for_role(%Scope{active_project_id: nil}, _role), do: []
+
+  def actionable_for_role(%Scope{} = scope, role) do
+    # Settle first. A pending recompute means a write has landed that this count
+    # has not seen, and this count is what decides whether an agent is told to
+    # stop — deciding a beat before the recompute means deciding from the older
+    # answer. `:ok` when nothing is pending and when nobody is watching.
+    GraphWatcher.settle(scope)
+
     {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
 
     case role && RequirementsRegistry.requirement_names_for_role(role) do
-      nil -> length(actionable)
-      [] -> 0
-      names -> Enum.count(actionable, &(&1.name in names))
+      nil -> actionable
+      [] -> []
+      names -> Enum.filter(actionable, &(&1.name in names))
     end
   end
 

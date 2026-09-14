@@ -35,7 +35,7 @@ defmodule CodeMySpec.WorkingCopies do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -781,9 +781,7 @@ defmodule CodeMySpec.WorkingCopies do
   # one would charge a preload per heartbeat per copy to discover that nothing
   # moved.
   defp announce_graph_change({:ok, copy} = result, %WorkingCopy{project_id: project_id}) do
-    obs = GraphInputs.observation_id()
-    Logger.info("[WorkingCopies] announcing a graph change for #{copy.id}", obs: obs)
-    GraphInputs.changed(project_id, obs)
+    GraphInputs.announce(project_id, "WorkingCopies")
     result
   end
 

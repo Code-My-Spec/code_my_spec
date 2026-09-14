@@ -47,7 +47,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
@@ -392,9 +392,7 @@ defmodule CodeMySpec.Analysis do
     #
     # Reads serve rows and derive nothing now, so a writer that says nothing
     # leaves every reader on the old answer. See `Requirements.GraphInputs`.
-    obs = GraphInputs.observation_id()
-    Logger.info("[Analysis] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
+    GraphInputs.announce(scope, "Analysis")
   end
 
   @doc """

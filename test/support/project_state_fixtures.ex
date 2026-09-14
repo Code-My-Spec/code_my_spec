@@ -78,6 +78,19 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   (creating stories) and component artifacts.
 
   Produces `context.persona_slug` and `context.persona_id`.
+
+  ## `qa_setup: false`
+
+  Leaves `.code_my_spec/qa/plan.md` unwritten, so `qa_setup` stays open and the
+  QA role has exactly one thing waiting.
+
+  Here because "the graph holds work for one role and not another" is a premise
+  several criteria need and none could state. Reaching for QA's other
+  requirement, `qa_complete`, means standing up the whole story chain — three
+  amigos, specs green on a fresh run, code on the running copy — and a scenario
+  that has to build all of that to say "QA has work" is testing the chain
+  rather than the routing. `qa_setup` is a `path_exists` check on a project
+  node, so not writing one file says the same thing about the graph.
   """
   @spec apply_project_kickoff(map(), keyword()) :: map()
   def apply_project_kickoff(context, opts \\ []) do
@@ -88,10 +101,13 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     |> apply_qa_integration_plan()
     |> apply_architecture(opts)
     |> apply_spex_boundary_ready()
-    |> apply_qa_setup()
+    |> maybe_apply_qa_setup(Keyword.get(opts, :qa_setup, true))
     |> apply_journey_artifacts()
     |> apply_persona()
   end
+
+  defp maybe_apply_qa_setup(context, false), do: context
+  defp maybe_apply_qa_setup(context, _), do: apply_qa_setup(context)
 
   @doc """
   Satisfies `project_setup` by writing every setup-step artifact via

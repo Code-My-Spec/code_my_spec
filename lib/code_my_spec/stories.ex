@@ -17,18 +17,16 @@ defmodule CodeMySpec.Stories do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements,
       CodeMySpec.Tags,
       CodeMySpec.Users,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
-  require Logger
-
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -60,14 +58,7 @@ defmodule CodeMySpec.Stories do
       message
     )
 
-    # And to the graph's own topic. A story is a graph input, and releasing one brings its whole
-    # requirement chain into existence.
-    #
-    # Reads serve rows and derive nothing now, so a writer that says nothing
-    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
-    obs = GraphInputs.observation_id()
-    Logger.info("[Stories] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
+    GraphInputs.announce(scope, "Stories")
   end
 
   @doc """

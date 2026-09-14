@@ -21,10 +21,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3179Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -37,16 +35,24 @@ defmodule CodeMySpecSpex.Story1047.Criterion3179Spex do
 
   spex "An agent is woken for its own role's queue and no other" do
     scenario "QA work waiting does not wake the coding agent" do
-      given_ "the project chain is past kickoff, so role work is the frontier", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      given_ "the graph holds QA work and no coding work", context do
+        # Everything satisfied except the story's own QA, which is what
+        # `apply_without_qa_story/1` exists for — "the chain prepared so a
+        # `qa_complete` task can be STARTED".
+        #
+        # The criterion was reaching for that state with a released story and a
+        # deploy record, and `qa_complete` sits behind the whole chain (three
+        # amigos, specs green on a fresh run, code on the running copy), so it
+        # never became actionable. Both lanes read zero and the scenario proved
+        # nothing about either role: it could not say the coding agent was left
+        # alone because its role's queue was empty, only that nothing at all
+        # was going on.
+        {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)}
       end
-
-      given_ :synced_context_component
 
       given_ "a coding agent and a QA agent both running on one copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         qa = Fixtures.running_agent(context.scope, role: "qa")
-        context = put_to_work(context)
 
         {:ok,
          context
@@ -56,14 +62,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3179Spex do
          |> Map.put(:qa_before, heard_count(context, qa.id))}
       end
 
-      given_ "the graph holds QA work and no coding work", context do
-        story = Fixtures.released_story(context.scope, "Refunds reach the ledger")
-        Fixtures.record_deploy(context.scope, story.id, "dev")
-
-        {:ok, Map.put(context, :story, story)}
-      end
-
-      when_ "the graph is evaluated", context do
+      when_ "the copy is switched on and the graph is evaluated", context do
         {:ok, put_to_work(context)}
       end
 

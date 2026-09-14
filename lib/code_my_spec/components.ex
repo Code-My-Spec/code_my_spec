@@ -12,7 +12,6 @@ defmodule CodeMySpec.Components do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -24,10 +23,8 @@ defmodule CodeMySpec.Components do
     DependencyRepository
   }
 
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
-  require Logger
-
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -51,20 +48,7 @@ defmodule CodeMySpec.Components do
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    # And to the graph's own topic. A component is a graph entity — it carries
-    # `spec_file`, `implementation_file`, `test_file` and the rest of the
-    # coding chain — so creating or changing one moves the graph.
-    #
-    # `ComponentSync` announces for the sync path. This is the direct one, and
-    # it was silent: a component created through the context existed in the
-    # database and not in the graph, so `start_task` answered "Requirement
-    # test_file not found" for a component that was plainly there.
-    #
-    # Reads serve rows and derive nothing now, so a writer that says nothing
-    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
-    obs = GraphInputs.observation_id()
-    Logger.info("[Components] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
+    GraphInputs.announce(scope, "Components")
   end
 
   defdelegate list_components(scope), to: ComponentRepository

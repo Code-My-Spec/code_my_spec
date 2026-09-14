@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Phoenix.ConnTest
 
@@ -41,18 +42,56 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   criteria for a reason that has nothing to do with them. Without a
   `get_next_requirement` the graph has never been computed, so every role reads
   zero and every wake is silent.
+
+  Takes a copy id for the scenarios that staff more than one.
+  `wake_project_roles/2` only wakes agents whose own row says `continuous`, and
+  the loop is set per copy — so a scenario with two checkouts that switches on
+  one of them has silenced the other by construction, and its "and the other
+  agent was told nothing" then holds for the wrong reason.
   """
-  @spec put_to_work(map()) :: map()
-  def put_to_work(context) do
+  @spec put_to_work(map(), Ecto.UUID.t() | nil) :: map()
+  def put_to_work(context, copy_id \\ nil) do
     frame = frame(context)
 
+    # Switch first, then compute, and it has to be this way round even though
+    # the switch-on wake renders against whatever the graph already holds.
+    # `GetNextRequirement` syncs the working copy on its way to the graph, and
+    # the sync clears problems whose file is not on disk — which is every
+    # problem `Fixtures.record_problem/3` writes, since its path is a name
+    # rather than a file. Computing first swept them before the menu could
+    # count them, and criteria 3183 and 3196 went silent for it.
     {:reply, _response, _frame} =
       SetWorkingCopyLoop.execute(
-        %{working_copy_id: context.scope.active_working_copy_id, working: true},
+        %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
         frame
       )
 
     {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    context
+  end
+
+  @doc """
+  Claim a task the way an agent we run claims one — owned by the agent.
+
+  `:context_spec_task_started` is the wrong premise for a criterion about what
+  an *agent* holds. It posts `session-start` and passes a `session_id`, so the
+  task lands on a `Session`, and `TaskOwner` is explicit that ownership is the
+  list a task is stored in rather than a field on it. The agent then holds
+  nothing, its menu counts zero open tasks, and it is correctly told to
+  `get_next_requirement` — which is the very advice the criterion exists to
+  rule out, arrived at honestly.
+
+  `StartTask` reads `frame.assigns[:agent_id]` for exactly this, and the
+  moduledoc on `TaskOwner` says why it has to: an agent we run fires no hooks,
+  so nothing injects a session id and `register_session` is not a tool it
+  carries.
+  """
+  @spec start_agent_task(map(), String.t(), map()) :: map()
+  def start_agent_task(context, agent_id, attrs) do
+    frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent_id}}
+
+    {:reply, _response, _frame} = StartTask.execute(attrs, frame)
 
     context
   end

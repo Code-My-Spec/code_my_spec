@@ -41,10 +41,16 @@ defmodule CodeMySpecSpex.Story1047.Criterion3182Spex do
 
       given_ :synced_context_component
       given_ :story_linked_to_component
-      given_ :context_spec_task_started
 
       given_ "a coding agent with that task open", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
+
+        context =
+          start_agent_task(context, coding.id, %{
+            requirement_name: "spec_file",
+            entity_type: "component",
+            entity_id: to_string(context.component.id)
+          })
 
         {:ok,
          context

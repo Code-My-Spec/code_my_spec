@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3187Spex do
   import CodeMySpecSpex.AgentProcessHelpers, only: [running?: 1]
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
@@ -49,6 +48,18 @@ defmodule CodeMySpecSpex.Story1047.Criterion3187Spex do
       given_ "a coding agent really running on a checkout with no coding work", context do
         context = given_a_staffed_checkout(context, "spex_3187")
 
+        # Whoever was already up, so the one this scenario starts can be told
+        # apart from them.
+        #
+        # `Machine.running/0` is `CmsHarness.Agents.running/0` — every agent
+        # alive in the harness supervisor on this machine, not this scenario's.
+        # Run alone it answers with exactly the agent just started and
+        # `[agent_id] =` reads as if it were scoped; run in the suite the
+        # analyzer runs, it answered with nineteen and the match blew up. Green
+        # in isolation, red in every sweep, which is the shape that makes a
+        # story look finished and keeps refusing to flip.
+        already_running = Machine.running()
+
         {:reply, reply, _frame} =
           StartAgent.execute(
             %{role: "coding", working_copy_id: context.copy_id},
@@ -58,7 +69,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3187Spex do
         refute reply.isError,
                "the premise is an agent that is really running, and none started"
 
-        [agent_id] = Machine.running()
+        [agent_id] = Machine.running() -- already_running
         context = context |> start_session() |> put_to_work()
 
         {:ok,

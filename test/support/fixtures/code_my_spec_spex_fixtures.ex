@@ -883,6 +883,23 @@ defmodule CodeMySpecSpex.Fixtures do
   defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
 
   @doc """
+  Put an agent mid-turn, the way a turn actually starts.
+
+  Through `record_turn_event/3`, which is what the harness sends when an agent
+  begins responding — it stamps `turn_started_at`, and `StopDecision.wake/2`
+  reads that to answer "is this agent working". Writing the column here would
+  set the same field by a route the product never takes.
+
+  `:running` is the wrong field for this and is the reason the distinction
+  needs a fixture at all: it is written on a clean start and survives until a
+  clean stop, so it is true of an idle agent all day.
+  """
+  @spec put_agent_mid_turn(Scope.t(), String.t()) :: :ok
+  def put_agent_mid_turn(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_started"})
+  end
+
+  @doc """
   Every agent recorded on this project, read back from the database.
 
   Read back rather than taken from the struct a call returned: `credential` is a
@@ -904,6 +921,34 @@ defmodule CodeMySpecSpex.Fixtures do
       {:ok, %{role: role}} -> CodeMySpec.Requirements.actionable_count(scope, role)
       _ -> 0
     end
+  end
+
+  @doc """
+  Everything actionable right now, as `{role, requirement_name}`, sorted.
+
+  `role_queue_size/2` answers "does this agent have work" and nothing else, and
+  a premise that reads zero could be wrong in any of a dozen places up the
+  chain. Every criterion about routing needs the same thing when it fails —
+  what is on the graph at all — and finding it out meant adding a prerequisite,
+  running, reading a number, and guessing again.
+
+  Worth knowing what a zero usually means here. The project chain is one line —
+  `stories_exist` gates `technical_strategy` gates everything after it — so a
+  project with no story has exactly one actionable node no matter what else the
+  fixtures wrote, and every role but product reads empty.
+  """
+  @spec actionable_work(Scope.t()) :: [{atom(), String.t()}]
+  def actionable_work(%Scope{} = scope) do
+    # The same path `actionable_count/2` and the stop menu read, so what this
+    # lists is what an agent would be counted as having. `compute_all/1` looks
+    # like the obvious call and is not: its structs carry `satisfied` and no
+    # notion of actionable at all, because actionability is a property of the
+    # graph rather than of a node.
+    %{actionable: actionable} = CodeMySpec.Requirements.cached_graph_with_actionable(scope)
+
+    actionable
+    |> Enum.map(&{&1.role, &1.name})
+    |> Enum.sort()
   end
 
   @doc """
@@ -1363,15 +1408,107 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Do the watcher's pending pass now instead of when the debounce expires.
+  Do the watcher's pending pass now instead of when the debounce expires, and
+  wait for what it set in motion.
 
   A spec that slept would be asserting the timer rather than the mechanism, and
   would be flaky on a loaded box — which is where the analyzer runs. Answers
   `:ok` when no watcher is running, so it is safe to call unconditionally.
+
+  ## Why the pass alone is not enough
+
+  A recompute that finds work wakes the project's agents *off* this process —
+  it has to, because rendering a role's menu counts requirements and counting
+  them can call `settle/1`, so a watcher waking inside its own recompute would
+  be calling itself. So `GraphWatcher.settle/1` correctly answers as soon as
+  the graph is current, which is a beat before anybody has been told.
+
+  For a criterion asserting that an agent was told, that beat is the whole
+  assertion. Worse than flaky: the wake outlives the test, the sandbox owner
+  is already gone, and it dies with `cannot find ownership process ... using
+  mode :manual` — which reads as a wake that crashed rather than one that
+  arrived late.
+
+  Draining rather than awaiting one task, because a pass can wake several
+  agents and the spawn order is not ours to know. Bounded, so a spex that has
+  some other long-running task under the same supervisor fails its own
+  assertion rather than hanging here.
   """
   @spec settle_graph(Scope.t()) :: :ok
-  def settle_graph(%Scope{} = scope),
-    do: GraphWatcher.settle(scope)
+  def settle_graph(%Scope{} = scope) do
+    :ok = GraphWatcher.settle(scope)
+    drain_background_work()
+  end
+
+  @doc """
+  Wait for the background work this project started to finish.
+
+  Public because teardown needs it as much as a scenario does, and for a
+  sharper reason. A wake runs in a task off `CodeMySpec.TaskSupervisor`; if it
+  is still running when the test's sandbox owner stops, it dies on a connection
+  that is no longer there and the supervisor logs the crash at `:error` — and
+  `SexySpex.ErrorCapture` fails whichever spex happens to be running when that
+  lands. So the straggler does not fail its own test, it fails somebody else's,
+  intermittently, and the failure text is a `Task.Supervisor` report with
+  nothing in it about either scenario.
+
+  Bounded, so a spex with some other long-running task under the same
+  supervisor fails its own assertion rather than hanging here.
+  """
+  @doc """
+  Stop every graph watcher, so nothing new starts during teardown.
+
+  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
+  project-scoped GenServer under a dynamic supervisor and outlives the scenario
+  that started it, so its debounce timer can fire *after* the drain and spawn
+  another wake into a sandbox that is about to go away. Stopping the watchers
+  first closes that window.
+
+  Every one rather than this scope's, because teardown runs before the scope is
+  in hand and because a spex run gives each scenario its own project — so the
+  watchers alive at the end of one are that one's, and a watcher belonging to
+  nothing is what a straggler is.
+  """
+  @spec stop_graph_watchers() :: :ok
+  def stop_graph_watchers do
+    CodeMySpec.Requirements.WatcherSupervisor
+    |> DynamicSupervisor.which_children()
+    |> Enum.each(fn {_, pid, _, _} ->
+      DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+    end)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @spec drain_background_work() :: :ok
+  def drain_background_work do
+    drain_background_work(System.monotonic_time(:millisecond) + 5_000)
+  end
+
+  defp drain_background_work(deadline) do
+    case Task.Supervisor.children(CodeMySpec.TaskSupervisor) do
+      [] ->
+        :ok
+
+      [pid | _] ->
+        await_exit(pid, deadline)
+
+        if System.monotonic_time(:millisecond) < deadline,
+          do: drain_background_work(deadline),
+          else: :ok
+    end
+  end
+
+  defp await_exit(pid, deadline) do
+    ref = Process.monitor(pid)
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      remaining -> Process.demonitor(ref, [:flush])
+    end
+  end
 
   @doc """
   Stop watching this project, so the watcher does not outlive the test.
@@ -3260,17 +3397,42 @@ defmodule CodeMySpecSpex.Fixtures do
   story calls. `epic_id` is a column on the story — one story belongs to at most
   one epic — so there is no join table to write.
   """
-  @spec put_story_in_epic(Scope.t(), map(), map()) :: :ok
-  def put_story_in_epic(%Scope{} = scope, story, epic) do
+  @spec put_story_in_epic(Scope.t(), map() | integer(), map()) :: :ok
+  def put_story_in_epic(%Scope{} = scope, %CodeMySpec.Stories.Story{} = story, epic) do
     {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{epic_id: epic.id})
     :ok
   end
 
-  @doc "Mark a story ready for development, the way the epics page does."
-  @spec mark_story_ready(Scope.t(), map()) :: :ok
-  def mark_story_ready(%Scope{} = scope, story) do
+  # Same reason as `mark_story_ready/2`: a criterion that got its story from
+  # `CreateStory` holds the tool's parsed reply, which is a map with an id on
+  # it and not a row.
+  def put_story_in_epic(%Scope{} = scope, %{id: story_id}, epic),
+    do: put_story_in_epic(scope, story_id, epic)
+
+  def put_story_in_epic(%Scope{} = scope, story_id, epic) when is_integer(story_id),
+    do: put_story_in_epic(scope, CodeMySpec.Stories.get_story!(scope, story_id), epic)
+
+  @doc """
+  Mark a story ready for development, the way the epics page does.
+
+  Takes an id as readily as a struct, because the two ways a criterion comes by
+  a story answer differently: `authored_story/3` hands back the row, while
+  `:story_linked_to_component` drives `CreateStory` and parses the tool's reply,
+  so all it has is a map with an id on it. Both are "the story", and a bridge
+  that only accepted one of them made which given ran earlier a thing the
+  criterion had to know.
+  """
+  @spec mark_story_ready(Scope.t(), map() | integer()) :: :ok
+  def mark_story_ready(%Scope{} = scope, %CodeMySpec.Stories.Story{} = story) do
     {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: true})
     :ok
+  end
+
+  def mark_story_ready(%Scope{} = scope, %{id: story_id}),
+    do: mark_story_ready(scope, story_id)
+
+  def mark_story_ready(%Scope{} = scope, story_id) when is_integer(story_id) do
+    mark_story_ready(scope, CodeMySpec.Stories.get_story!(scope, story_id))
   end
 
   @doc """

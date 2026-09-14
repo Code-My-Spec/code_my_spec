@@ -20,7 +20,7 @@ defmodule CodeMySpec.Deploys do
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -31,10 +31,8 @@ defmodule CodeMySpec.Deploys do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Repo
-  alias CodeMySpec.Stories.Story
-  require Logger
-
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -88,24 +86,21 @@ defmodule CodeMySpec.Deploys do
     end
   end
 
-  # A deploy is what the story graph's `deploy` requirement is computed from,
-  # and this context had no broadcast of any kind — deploys are recorded by
-  # devops machinery rather than by an agent working a story, which is how the
-  # input got missed.
+  # `16a24105`: "a cached graph can tell an agent work is finished that a deploy
+  # has just reopened". `deploy` asks `uat_check/3`, so a deploy landing moves
+  # the graph, and until the fingerprint covered deploys it moved nothing the
+  # cache could see. Announcing closes the other half — the fingerprint notices
+  # once somebody reads, and this is what makes somebody read.
   #
-  # Only on success, and after the write: a recompute that read the row before
-  # it committed would decide from one that might roll back.
-  #
-  # `record_environment_deploy/3` announces once per story it recorded, which
-  # the watcher's window folds into one pass.
-  defp announce({:ok, deploy}, %Scope{} = scope) do
-    obs = GraphInputs.observation_id()
-    Logger.info("[Deploys] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
-    {:ok, deploy}
+  # Per row rather than once per `record_environment_deploy/3`: the debounce
+  # collapses a deploy's whole batch into one pass anyway, and `record/4` has
+  # callers of its own that would otherwise be silent.
+  defp announce({:ok, _deploy} = result, scope) do
+    GraphInputs.announce(scope, "Deploys")
+    result
   end
 
-  defp announce(other, _scope), do: other
+  defp announce(result, _scope), do: result
 
   @doc """
   Record the stories a successful deploy carried.

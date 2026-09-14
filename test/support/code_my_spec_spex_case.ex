@@ -210,7 +210,32 @@ defmodule CodeMySpecSpex.Case do
         )
 
       on_exit(fn -> Sandbox.stop_owner(pid) end)
+
+      # Registered after the one above so it runs before it — `on_exit`
+      # callbacks run in reverse order of registration — which is the whole
+      # point: the draining has to happen while the connection is still there.
+      #
+      # A wake runs in a task off `CodeMySpec.TaskSupervisor`, and a graph
+      # change can start one at any moment, including after the last `then_`.
+      # A task still running when the owner stops dies on a connection that is
+      # gone, and the supervisor logs the crash at `:error` — which
+      # `SexySpex.ErrorCapture` fails whichever spex happens to be running when
+      # it lands. So the straggler never fails its own scenario; it fails a
+      # later one, intermittently, with a `Task.Supervisor` report that names
+      # neither.
+      #
+      # That is what criterion 3187 kept refusing a promotion with, twice, on a
+      # green checkout: not its own assertion, a crash report from somebody
+      # else's wake.
+      on_exit(&Fixtures.drain_background_work/0)
     end
+
+    # After the drain, so it runs before it. Draining alone leaves a window: a
+    # `GraphWatcher` outlives the scenario that started it, and its debounce
+    # timer can fire after the supervisor is empty and start another wake into
+    # a sandbox that is on its way out. Stopping the watcher first means
+    # nothing new is started while the drain is clearing what is left.
+    on_exit(&Fixtures.stop_graph_watchers/0)
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
     # syscall, and it has to stay authoritative because a recursive resolver

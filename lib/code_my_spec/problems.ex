@@ -14,6 +14,7 @@ defmodule CodeMySpec.Problems do
       CodeMySpec.Files,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Tests,
       CodeMySpec.Users,
       CodeMySpec.Utils,
@@ -22,27 +23,88 @@ defmodule CodeMySpec.Problems do
     exports: :all
 
   alias CodeMySpec.Problems.{ProblemConverter, ProblemRenderer, ProblemRepository}
+  alias CodeMySpec.Requirements.GraphInputs
 
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
   defdelegate watermark(scope), to: ProblemRepository
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
-  defdelegate create_problems(scope, problems), to: ProblemRepository
-  defdelegate replace_project_problems(scope, problems), to: ProblemRepository
-  defdelegate replace_problems_for_files(scope, file_paths, problems), to: ProblemRepository
-  defdelegate clear_project_problems(scope), to: ProblemRepository
-
-  defdelegate replace_problems_for_components(scope, component_ids, source, problems),
-    to: ProblemRepository
-
-  defdelegate delete_problems_for_components(scope, component_ids), to: ProblemRepository
-  defdelegate clear_problems_for_source(scope, source_filter, file_paths), to: ProblemRepository
-
-  defdelegate reconcile_problems_for_source(scope, source, file_scope, problems),
-    to: ProblemRepository
-
-  defdelegate clear_problems_for_missing_files(scope, current_paths), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
+
+  # Writes. `GraphFingerprint` hashes the problem counts per component, and
+  # `Validation.Menu` counts problems into the nudge, so a problem landing is
+  # work appearing that no reader would notice — the case `Requirements
+  # .GraphInputs` exists for. Wrapped rather than delegated for that one line;
+  # there is no single choke point underneath, and the alternative was a
+  # proxy in whichever caller happened to be looked at first.
+
+  # The deleters count the rows they removed, so `{:ok, 0}` is proof that
+  # nothing moved and announcing it would be a lie the fingerprint then has to
+  # disprove. A clean sync calls `clear_problems_for_missing_files/2` every
+  # time and deletes nothing almost every time.
+
+  def create_problems(scope, problems),
+    do: scope |> ProblemRepository.create_problems(problems) |> announce_if_moved(scope)
+
+  def clear_project_problems(scope),
+    do: scope |> ProblemRepository.clear_project_problems() |> announce_if_moved(scope)
+
+  def delete_problems_for_components(scope, component_ids),
+    do:
+      scope
+      |> ProblemRepository.delete_problems_for_components(component_ids)
+      |> announce_if_moved(scope)
+
+  def clear_problems_for_source(scope, source_filter, file_paths),
+    do:
+      scope
+      |> ProblemRepository.clear_problems_for_source(source_filter, file_paths)
+      |> announce_if_moved(scope)
+
+  def clear_problems_for_missing_files(scope, current_paths),
+    do:
+      scope
+      |> ProblemRepository.clear_problems_for_missing_files(current_paths)
+      |> announce_if_moved(scope)
+
+  # The replacers answer with what they inserted and say nothing about what
+  # they deleted, so an empty answer is not a no-op: an analyzer reporting a
+  # source it has just cleaned drops every row for it and returns `{:ok, []}`,
+  # and that is precisely the change that unblocks somebody. These announce on
+  # any success and let the fingerprint decide, which is the direction
+  # `GraphInputs` picks everywhere — a publish that moved nothing costs a hash.
+
+  def replace_project_problems(scope, problems),
+    do: scope |> ProblemRepository.replace_project_problems(problems) |> announce(scope)
+
+  def replace_problems_for_files(scope, file_paths, problems),
+    do:
+      scope
+      |> ProblemRepository.replace_problems_for_files(file_paths, problems)
+      |> announce(scope)
+
+  def replace_problems_for_components(scope, component_ids, source, problems),
+    do:
+      scope
+      |> ProblemRepository.replace_problems_for_components(component_ids, source, problems)
+      |> announce(scope)
+
+  def reconcile_problems_for_source(scope, source, file_scope, problems),
+    do:
+      scope
+      |> ProblemRepository.reconcile_problems_for_source(source, file_scope, problems)
+      |> announce(scope)
+
+  defp announce_if_moved({:ok, 0} = result, _scope), do: result
+  defp announce_if_moved({:ok, []} = result, _scope), do: result
+  defp announce_if_moved(result, scope), do: announce(result, scope)
+
+  defp announce({:ok, _moved} = result, scope) do
+    GraphInputs.announce(scope, "Problems")
+    result
+  end
+
+  defp announce(result, _scope), do: result
 
   # Converter functions
   defdelegate from_credo(credo_data), to: ProblemConverter

@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3183Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures

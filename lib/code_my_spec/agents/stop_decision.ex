@@ -123,15 +123,45 @@ defmodule CodeMySpec.Agents.StopDecision do
   told "work of your kind is available" on every unrelated change while
   waiting, sometimes under a minute apart on a project several worktrees
   edit at once, and had to spend a turn saying so each time.
+
+  ## A working agent is never woken
+
+  John's rule, and it settles what two criteria had been disagreeing about: "a
+  running agent never gets a wake message. If the agent is running and it
+  completes something and that triggers a wake message to itself — which is a
+  bit dumb anyway — we would not deliver that message to the working agent
+  because it's already working."
+
+  A wake exists to bring an idle agent back. An agent mid-turn is coming back
+  on its own, and the decision at the end of that turn is where it finds out
+  what is next — so a wake landing during the turn is at best a duplicate of
+  the stop reply and at worst an interruption charged as a turn.
+
+  That is exactly what an agent's own completion produced. `TaskEvaluator`
+  wakes the copy's roles from inside the stop hook (`stop.ex:511` →
+  `wake_the_others/2`), so an agent whose own turn completed its own task was
+  woken by itself, in the same request that was about to hand it the menu in
+  its reply. Criteria 3180 and 3196 are that duplicate. Criterion 3108 is the
+  case that must still get through — a *different* agent, idle, unblocked by
+  work somebody else finished.
+
+  `turn_started_at` is the signal rather than `status`, because it answers the
+  question being asked — is this agent mid-response — and `:running` does not:
+  it is written on a clean start and survives until a clean stop, so it is true
+  of an idle agent all day. Story 1054's criterion 3297 put the column there
+  for this shape of question.
   """
   @spec wake(Scope.t(), Agent.t()) :: :ok
   def wake(%Scope{} = scope, %Agent{} = agent) do
-    if Notifications.awaiting_answer?(agent.id) do
-      :ok
-    else
-      do_wake(scope, agent)
+    cond do
+      Notifications.awaiting_answer?(agent.id) -> :ok
+      working?(agent) -> :ok
+      true -> do_wake(scope, agent)
     end
   end
+
+  defp working?(%Agent{turn_started_at: %DateTime{}}), do: true
+  defp working?(%Agent{}), do: false
 
   defp do_wake(scope, agent) do
     case Validation.Menu.render(scope, agent.continuous == true, agent.role, agent) do

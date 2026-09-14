@@ -22,10 +22,10 @@ defmodule CodeMySpecSpex.Story1047.Criterion3178Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -38,11 +38,29 @@ defmodule CodeMySpecSpex.Story1047.Criterion3178Spex do
 
   spex "An agent is told when work it can do appears" do
     scenario "Coding work appears and the coding agent is told" do
-      given_ "the project chain is past kickoff, so role work is the frontier", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      given_ "a project with nothing left for anybody to do", context do
+        {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
       end
 
-      given_ :synced_context_component
+      given_ "a second story interviewed and linked, but not yet released", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            # `create_story` releases by default, and a released story with its
+            # interview sealed is already in the coding lane — so the agent was
+            # nudged during the given and the when_ had nothing left to cause.
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, Map.put(context, :story, story)}
+      end
 
       given_ "a coding agent running and idle", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
@@ -54,11 +72,20 @@ defmodule CodeMySpecSpex.Story1047.Criterion3178Spex do
          |> Map.put(:before, heard_count(context, coding.id))}
       end
 
-      when_ "a story becomes ready for coding work", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        Fixtures.mark_story_ready(context.scope, story)
+      when_ "the story is released, putting its specs in the coding lane", context do
+        # Releasing is what makes a story visible to the graph at all —
+        # `Preloader` filters to `ready_for_dev == true` — and with its
+        # interview already sealed the first thing it projects is
+        # `bdd_specs_exist`, which belongs to coding.
+        #
+        # The criterion released a bare story before, which projects
+        # `component_linked` and `three_amigos_complete`, both product's. The
+        # coding lane never moved, so "the coding agent heard nothing" was the
+        # correct answer to a scenario that had put nothing there.
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
+        :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story, story)}
+        {:ok, context}
       end
 
       then_ "the coding agent is nudged", context do

@@ -25,7 +25,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3195Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures

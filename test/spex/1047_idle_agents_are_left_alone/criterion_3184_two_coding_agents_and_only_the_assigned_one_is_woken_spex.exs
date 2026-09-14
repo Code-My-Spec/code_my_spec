@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3184Spex do
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -44,6 +45,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3184Spex do
       given_ "the project chain is past kickoff, so role work is the frontier", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
+
+      given_ :synced_context_component
 
       given_ "a working copy assigned to one epic, with a coding agent on it", context do
         first = join_working_copy(context, "/tmp/spex-3184-a", "the first checkout")
@@ -89,16 +92,67 @@ defmodule CodeMySpecSpex.Story1047.Criterion3184Spex do
         {:ok,
          context
          |> Map.put(:second_agent, agent.id)
-         |> Map.put(:first_before, heard_count(context, context.first_agent))
-         |> Map.put(:second_before, heard_count(context, agent.id))}
+         |> Map.put(:second_copy_id, second.working_copy_id)}
       end
 
-      when_ "a story in the first epic becomes ready for coding", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.put_story_in_epic(context.scope, story, context.first_epic)
-        :ok = Fixtures.mark_story_ready(context.scope, story)
+      given_ "a story interviewed into the first epic, parked", context do
+        # Parked, linked and interviewed, so that releasing it is the one thing
+        # left and what it puts on the graph is `bdd_specs_exist` — coding's.
+        # A bare story projects `component_linked` and `three_amigos_complete`,
+        # both product's, so the coding lane never moved and neither agent
+        # could have been woken by it.
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Assigned to the first checkout",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
 
-        {:ok, put_to_work(context)}
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        :ok = Fixtures.put_story_in_epic(context.scope, story, context.first_epic)
+
+        # Re-placing the epic is what carries the assignment down to the story:
+        # `EpicDispatch.place/3` stamps `working_copy_id` on every story the
+        # epic holds *at that moment*, and this one joined afterwards. Without
+        # it the story is unassigned, and `assigned_here_or_unassigned/2` offers
+        # an unassigned story to every checkout — so the second agent would be
+        # woken correctly and the criterion would fail for being right.
+        {:reply, reply, _frame} =
+          AssignEpicToWorkingCopy.execute(
+            %{
+              epic_id: to_string(context.first_epic.id),
+              working_copy_id: context.scope.active_working_copy_id
+            },
+            frame(context)
+          )
+
+        refute reply.isError, "the premise is the story assigned to the first checkout"
+
+        {:ok, Map.put(context, :story, story)}
+      end
+
+      given_ "both checkouts switched on", context do
+        context =
+          context
+          |> put_to_work()
+          |> put_to_work(context.second_copy_id)
+
+        {:ok,
+         context
+         |> Map.put(:first_before, heard_count(context, context.first_agent))
+         |> Map.put(:second_before, heard_count(context, context.second_agent))}
+      end
+
+      when_ "the story is released, putting its specs in the first checkout's lane", context do
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
+        :ok = Fixtures.settle_graph(context.scope)
+
+        {:ok, context}
       end
 
       then_ "the coding agent on the first working copy is nudged", context do

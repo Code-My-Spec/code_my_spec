@@ -250,17 +250,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   # cost a preload per scan to discover that.
   defp announce_graph_change(_scope, []), do: :ok
 
-  defp announce_graph_change(scope, changed_component_ids) do
-    obs = GraphInputs.observation_id()
-
-    Logger.info(
-      "[Files.ComponentSync] announcing a graph change — " <>
-        "#{length(changed_component_ids)} component(s) changed",
-      obs: obs
-    )
-
-    GraphInputs.changed(scope, obs)
-  end
+  defp announce_graph_change(scope, _changed_component_ids),
+    do: GraphInputs.announce(scope, "Files.ComponentSync")
 
   defp compute_changed_ids(synced_components, existing_map) do
     synced_components

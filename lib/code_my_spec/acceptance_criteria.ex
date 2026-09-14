@@ -15,7 +15,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
     deps: [
       CodeMySpec.Files,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -23,10 +23,8 @@ defmodule CodeMySpec.AcceptanceCriteria do
 
   alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Stories.Story
-  require Logger
-
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -53,14 +51,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:acceptance_criteria", message)
 
-    # And to the graph's own topic. Criteria carry only a story_id, so they are the input a
-    # hand-maintained list forgets.
-    #
-    # Reads serve rows and derive nothing now, so a writer that says nothing
-    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
-    obs = GraphInputs.observation_id()
-    Logger.info("[AcceptanceCriteria] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
+    GraphInputs.announce(scope, "AcceptanceCriteria")
   end
 
   @doc "Returns the list of acceptance criteria for a story."
