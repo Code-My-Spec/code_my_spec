@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Phoenix.ConnTest
 
@@ -53,6 +54,31 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
       )
 
     {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    context
+  end
+
+  @doc """
+  Claim a task the way an agent we run claims one — owned by the agent.
+
+  `:context_spec_task_started` is the wrong premise for a criterion about what
+  an *agent* holds. It posts `session-start` and passes a `session_id`, so the
+  task lands on a `Session`, and `TaskOwner` is explicit that ownership is the
+  list a task is stored in rather than a field on it. The agent then holds
+  nothing, its menu counts zero open tasks, and it is correctly told to
+  `get_next_requirement` — which is the very advice the criterion exists to
+  rule out, arrived at honestly.
+
+  `StartTask` reads `frame.assigns[:agent_id]` for exactly this, and the
+  moduledoc on `TaskOwner` says why it has to: an agent we run fires no hooks,
+  so nothing injects a session id and `register_session` is not a tool it
+  carries.
+  """
+  @spec start_agent_task(map(), String.t(), map()) :: map()
+  def start_agent_task(context, agent_id, attrs) do
+    frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent_id}}
+
+    {:reply, _response, _frame} = StartTask.execute(attrs, frame)
 
     context
   end
