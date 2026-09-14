@@ -20,9 +20,11 @@ defmodule CodeMySpecSpex.Story1047.Criterion3186Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -36,7 +38,47 @@ defmodule CodeMySpecSpex.Story1047.Criterion3186Spex do
   spex "An agent with nothing to do is sent nothing, the main agent included" do
     scenario "The main agent with nothing assigned is left alone too" do
       given_ "the project chain is past kickoff", context do
-        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+        context = ProjectStateFixtures.apply_project_kickoff(context)
+
+        # The story is the premise, not scenery. Kickoff stops short of one —
+        # "the caller is responsible for `stories_exist`" — and that
+        # requirement belongs to `:main`, so a project without a story leaves
+        # the main agent holding the initial story interview. This scenario is
+        # about a main agent with *nothing* assigned, and without this it has
+        # exactly one thing.
+        #
+        # Which is 3185, on the same premise, asserting the opposite. Both were
+        # green only because the first switch-on of a never-synced copy wakes
+        # against a cold graph and says nothing (`a0780389`) — 3186 was passing
+        # on that silence and 3185 sidesteps it with a prior sync. A criterion
+        # that holds because of a filed bug is not held at all.
+        #
+        # Parked rather than released: `project_has_stories?` counts every
+        # story, while only released ones project their own requirements, so
+        # this satisfies `stories_exist` without putting work in anyone's lane.
+        #
+        # Linked, and that is the second half of the same lesson. A bare story
+        # satisfies `stories_exist` and immediately reopens
+        # `architecture_designed`, which is also `:main`'s:
+        # `ArchitectureChecker.unlinked_stories/1` lists *every* story with no
+        # `component_id`, parked included. So the first version of this fix
+        # traded one open requirement for another and the main agent still had
+        # exactly one thing.
+        {:ok, context}
+      end
+
+      given_ :synced_context_component
+
+      given_ "the story linked to a surface, so the architecture is covered", context do
+        _ =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Linked so the architecture has no unlinked story",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        {:ok, context}
       end
 
       given_ "a main agent with no assigned work available", context do

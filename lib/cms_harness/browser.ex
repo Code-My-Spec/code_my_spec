@@ -79,13 +79,42 @@ defmodule CmsHarness.Browser do
         {:ok, @session}
 
       {path, nil} ->
-        Transport.impl().connect(@session,
+        @session
+        |> Transport.impl().connect(
           command: path,
           args: ["mcp"],
           protocol_version: @protocol_version
         )
+        |> already_up()
     end
   end
+
+  # `connect` can still lose to `already_started` even though `whereis/0` just
+  # said nothing was up, because the two ask about different names: the guard
+  # above looks for *this module's* session, and the collision is on
+  # `Anubis.Client`'s own registered name underneath it. Two roots joining at
+  # the same moment both see nil, both connect, and one of them loses.
+  #
+  # The loser used to answer `{:error, ...}`, which `ask/0` turns into
+  # `unreachable` — and `ask/0` memoises into `:persistent_term`, so one lost
+  # race poisoned every root that harness instance served for its whole life.
+  # Measured: three harness instances live after a promote, and the one that
+  # lost reported `browser_status: unreachable` with zero tools while its
+  # siblings reported 85. An agent started on such a copy is refused outright
+  # by `machine_serves_tools/1`, so QA could not start on the copy that had
+  # just promoted.
+  #
+  # The error carries the winner's pid, and that process is the browser. Using
+  # it is what `ensure_started/0` already claims to do — the clause above fixed
+  # this once for the case where the session name *is* registered, and this is
+  # the same bug one name down.
+  defp already_up(
+         {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, pid}}}}
+       ),
+       do: {:ok, pid}
+
+  defp already_up({:error, {:already_started, pid}}), do: {:ok, pid}
+  defp already_up(result), do: result
 
   defp whereis, do: GenServer.whereis(@session)
 
