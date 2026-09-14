@@ -227,18 +227,31 @@ defmodule CodeMySpec.Promotion.Steps do
   defp do_merge(env, root, branch, before) do
     case git(env, root, ["merge", "--ff-only", branch]) do
       {out, 0} ->
+        after_sha = head(env, root)
+
         {:ok,
          %{
            output: String.trim(out),
            before: before,
-           after: head(env, root),
-           version: bump_version(env, root)
+           after: after_sha,
+           version: version_if_moved(env, root, before, after_sha)
          }}
 
       {out, _} ->
         not_fast_forward(root, branch, out)
     end
   end
+
+  # `git merge --ff-only` exits 0 for "Already up to date." too — the branch
+  # named nothing this checkout did not already have, and `before == after`
+  # says so directly. A promotion that landed nothing does not get to
+  # originate a version for it: a version is supposed to answer "which
+  # promotion put this on main," and one with no commits behind it answers
+  # that question about nothing. Confirmed empirically before this guard
+  # existed: a repeated or racing `promote` call minted a fresh tag and
+  # patch bump on every call, with no corresponding change to anything.
+  defp version_if_moved(_env, _root, same, same), do: nil
+  defp version_if_moved(env, root, _before, _after), do: bump_version(env, root)
 
   # The version this promotion originates, or nil.
   #

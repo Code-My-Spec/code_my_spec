@@ -308,6 +308,7 @@ defmodule CodeMySpec.PromotionTest do
       File.write!(Path.join(root, "g.txt"), "the story's work\n")
       {_, 0} = git.(["add", "g.txt"])
       {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
 
       assert {:ok, %{version: "1.2.4"}} = Steps.merge(env, root, "side")
 
@@ -330,11 +331,31 @@ defmodule CodeMySpec.PromotionTest do
       File.write!(Path.join(root, "g.txt"), "the story's work\n")
       {_, 0} = git.(["add", "g.txt"])
       {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
 
       assert {:ok, %{version: nil}} = Steps.merge(env, root, "side"),
              "a merge does not fail because the checkout it landed on has " <>
                "nothing to bump — that is the merge succeeding without also " <>
                "minting a version, not the merge failing"
+    end
+
+    test "an already-up-to-date merge originates no version",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.0.0",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, output: output}} = Steps.merge(env, root, "side")
+      assert output =~ "up to date"
+
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.0.0"),
+             "nothing was actually promoted, so nothing should have bumped"
+
+      {tags, 0} = git.(["tag", "--list"])
+      assert tags == "", "a no-op promote must not mint a tag for nothing"
     end
   end
 
