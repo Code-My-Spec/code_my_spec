@@ -49,6 +49,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3180Spex do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         context = put_to_work(context)
 
+        # Mid-turn, which is the premise rather than a detail: this criterion is
+        # about what an agent gets when *its own* turn ends, and a wake is never
+        # delivered to an agent that is working. Without the turn in flight the
+        # scenario describes an idle agent being told about somebody else's
+        # completion, which is criterion 3108 of story 538 and the opposite
+        # claim.
+        :ok = Fixtures.put_agent_mid_turn(context.scope, coding.id)
+
         {:ok,
          context
          |> Map.put(:coding, coding.id)

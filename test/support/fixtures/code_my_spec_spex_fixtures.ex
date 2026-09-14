@@ -882,6 +882,23 @@ defmodule CodeMySpecSpex.Fixtures do
   defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
 
   @doc """
+  Put an agent mid-turn, the way a turn actually starts.
+
+  Through `record_turn_event/3`, which is what the harness sends when an agent
+  begins responding — it stamps `turn_started_at`, and `StopDecision.wake/2`
+  reads that to answer "is this agent working". Writing the column here would
+  set the same field by a route the product never takes.
+
+  `:running` is the wrong field for this and is the reason the distinction
+  needs a fixture at all: it is written on a clean start and survives until a
+  clean stop, so it is true of an idle agent all day.
+  """
+  @spec put_agent_mid_turn(Scope.t(), String.t()) :: :ok
+  def put_agent_mid_turn(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_started"})
+  end
+
+  @doc """
   Every agent recorded on this project, read back from the database.
 
   Read back rather than taken from the struct a call returned: `credential` is a

@@ -123,15 +123,45 @@ defmodule CodeMySpec.Agents.StopDecision do
   told "work of your kind is available" on every unrelated change while
   waiting, sometimes under a minute apart on a project several worktrees
   edit at once, and had to spend a turn saying so each time.
+
+  ## A working agent is never woken
+
+  John's rule, and it settles what two criteria had been disagreeing about: "a
+  running agent never gets a wake message. If the agent is running and it
+  completes something and that triggers a wake message to itself — which is a
+  bit dumb anyway — we would not deliver that message to the working agent
+  because it's already working."
+
+  A wake exists to bring an idle agent back. An agent mid-turn is coming back
+  on its own, and the decision at the end of that turn is where it finds out
+  what is next — so a wake landing during the turn is at best a duplicate of
+  the stop reply and at worst an interruption charged as a turn.
+
+  That is exactly what an agent's own completion produced. `TaskEvaluator`
+  wakes the copy's roles from inside the stop hook (`stop.ex:511` →
+  `wake_the_others/2`), so an agent whose own turn completed its own task was
+  woken by itself, in the same request that was about to hand it the menu in
+  its reply. Criteria 3180 and 3196 are that duplicate. Criterion 3108 is the
+  case that must still get through — a *different* agent, idle, unblocked by
+  work somebody else finished.
+
+  `turn_started_at` is the signal rather than `status`, because it answers the
+  question being asked — is this agent mid-response — and `:running` does not:
+  it is written on a clean start and survives until a clean stop, so it is true
+  of an idle agent all day. Story 1054's criterion 3297 put the column there
+  for this shape of question.
   """
   @spec wake(Scope.t(), Agent.t()) :: :ok
   def wake(%Scope{} = scope, %Agent{} = agent) do
-    if Notifications.awaiting_answer?(agent.id) do
-      :ok
-    else
-      do_wake(scope, agent)
+    cond do
+      Notifications.awaiting_answer?(agent.id) -> :ok
+      working?(agent) -> :ok
+      true -> do_wake(scope, agent)
     end
   end
+
+  defp working?(%Agent{turn_started_at: %DateTime{}}), do: true
+  defp working?(%Agent{}), do: false
 
   defp do_wake(scope, agent) do
     case Validation.Menu.render(scope, agent.continuous == true, agent.role, agent) do
@@ -141,46 +171,23 @@ defmodule CodeMySpec.Agents.StopDecision do
       menu ->
         message = "Work of your kind is available." <> menu
 
-        {:ok, conversation} =
+        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
+        # every graph change project-wide, and a change unrelated to this
+        # agent's own menu renders the identical text again. Keyed on the
+        # message rather than the event, so a real change to what this agent
+        # can see still gets through.
+        if stuck?(agent, message, :wake) do
+          :ok
+        else
           Conversations.find_or_create_agent_conversation(
             scope.active_account_id,
             scope.active_project_id,
             agent.id
           )
 
-        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
-        # every graph change project-wide, and a change unrelated to this
-        # agent's own menu renders the identical text again. Keyed on the
-        # message rather than the event, so a real change to what this agent
-        # can see still gets through.
-        cond do
-          already_holding?(conversation, message) -> :ok
-          stuck?(agent, message, :wake) -> :ok
-          true -> send_to(scope, agent, message)
+          send_to(scope, agent, message)
         end
     end
-  end
-
-  # Never tell an agent what it is already looking at.
-  #
-  # `stuck?/3` is the wrong dial for this on its own: it allows
-  # `@stuck_threshold` repeats before it suppresses, which is right for a stop
-  # decision — an agent told the same thing after its own turn genuinely has
-  # not acted on it — and wrong here, where a repeat means only that a second
-  # graph change rendered the same menu.
-  #
-  # And two passes for one burst is not a bug to fix upstream. The debounce
-  # coalesces rather than throttles, deliberately, so an observation landing
-  # just after a pass starts gets its own pass — correct, and it rendered this
-  # agent an identical menu 13ms after the first. Two turns charged for one
-  # piece of news.
-  #
-  # Keyed on the conversation rather than a `:persistent_term` slot because it
-  # re-arms on its own: once the agent replies, or a stop decision lands, the
-  # last message differs and the same text is news again. A slot would have to
-  # be cleared by every other writer to mean the same thing.
-  defp already_holding?(conversation, message) do
-    Conversations.last_message_text(conversation, :operator) == message
   end
 
   @doc """
