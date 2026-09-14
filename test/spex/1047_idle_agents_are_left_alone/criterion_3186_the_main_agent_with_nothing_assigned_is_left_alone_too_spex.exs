@@ -20,9 +20,11 @@ defmodule CodeMySpecSpex.Story1047.Criterion3186Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -54,7 +56,27 @@ defmodule CodeMySpecSpex.Story1047.Criterion3186Spex do
         # Parked rather than released: `project_has_stories?` counts every
         # story, while only released ones project their own requirements, so
         # this satisfies `stories_exist` without putting work in anyone's lane.
-        _ = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
+        #
+        # Linked, and that is the second half of the same lesson. A bare story
+        # satisfies `stories_exist` and immediately reopens
+        # `architecture_designed`, which is also `:main`'s:
+        # `ArchitectureChecker.unlinked_stories/1` lists *every* story with no
+        # `component_id`, parked included. So the first version of this fix
+        # traded one open requirement for another and the main agent still had
+        # exactly one thing.
+        {:ok, context}
+      end
+
+      given_ :synced_context_component
+
+      given_ "the story linked to a surface, so the architecture is covered", context do
+        _ =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Linked so the architecture has no unlinked story",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
 
         {:ok, context}
       end
