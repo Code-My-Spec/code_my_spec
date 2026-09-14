@@ -324,8 +324,31 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     end
   end
 
-  defp settle_reply({:ok, state}), do: {:reply, :ok, state}
-  defp settle_reply({:gone, state}), do: {:stop, :normal, :ok, state}
+  defp settle_reply(result, attempts_left \\ 2)
+
+  defp settle_reply({:ok, state}, _attempts_left), do: {:reply, :ok, state}
+  defp settle_reply({:gone, state}, _attempts_left), do: {:stop, :normal, :ok, state}
+
+  # `settle/1` promises the caller that the queue is reconciled before it
+  # answers. A pass that lost a race for a connection has reconciled nothing,
+  # and answering `:ok` anyway hands back a graph that is exactly as stale as
+  # it was — silently, because the caller asked to be current and was told it
+  # is.
+  #
+  # That is not only a test problem, though it showed up as one: three
+  # criteria failing on a graph that had not moved, under contention. In
+  # production it is an agent asking what to work on and being answered from
+  # before the write it is waiting on, whenever the pool happens to be busy.
+  #
+  # Bounded, because the caller is blocked on this and a pool that is down
+  # rather than busy must not hold them forever. When the attempts run out the
+  # pass stays scheduled, so the queue is still reconciled — just not before
+  # this answer.
+  defp settle_reply({:transient, state}, 0), do: {:reply, :ok, state}
+
+  defp settle_reply({:transient, state}, attempts_left) do
+    settle_reply(recompute(state), attempts_left - 1)
+  end
 
   defp remember_vantage(state, vantage),
     do: %{state | requested_vantages: MapSet.put(state.requested_vantages, vantage)}
@@ -362,6 +385,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def handle_info(:recompute, state) do
     case recompute(%{state | timer: nil}) do
       {:ok, state} -> {:noreply, state}
+      {:transient, state} -> {:noreply, state}
       {:gone, state} -> {:stop, :normal, state}
     end
   end
@@ -667,7 +691,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         "(#{Exception.message(error)}); retrying"
     )
 
-    {:ok, schedule(state)}
+    {:transient, schedule(state)}
   end
 
   defp handle_transient(false, state, error), do: real_failure(state, error)
