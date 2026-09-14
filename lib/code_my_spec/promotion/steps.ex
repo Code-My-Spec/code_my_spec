@@ -151,6 +151,13 @@ defmodule CodeMySpec.Promotion.Steps do
   decides whether a harness and a server can talk to each other (376e3356);
   reading it here, where the git access to `root` already is, is cheaper than
   a fourth round trip to ask again.
+
+  It also carries `version` — the version this promotion originated by
+  bumping and tagging `root`'s own `mix.exs`, or `nil` for a checkout that has
+  none. `Promotion` uses it to stamp every story on the promoting copy with a
+  permanent record that its code reached main, in place of asking the
+  promoting copy's live git state the same question again later and getting a
+  different answer once that copy has moved on to something else.
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
@@ -219,10 +226,87 @@ defmodule CodeMySpec.Promotion.Steps do
 
   defp do_merge(env, root, branch, before) do
     case git(env, root, ["merge", "--ff-only", branch]) do
-      {out, 0} -> {:ok, %{output: String.trim(out), before: before, after: head(env, root)}}
-      {out, _} -> not_fast_forward(root, branch, out)
+      {out, 0} ->
+        {:ok,
+         %{
+           output: String.trim(out),
+           before: before,
+           after: head(env, root),
+           version: bump_version(env, root)
+         }}
+
+      {out, _} ->
+        not_fast_forward(root, branch, out)
     end
   end
+
+  # The version this promotion originates, or nil.
+  #
+  # A merge that just landed does not fail because the checkout it landed on
+  # has no `mix.exs` to bump — nil says "this promotion minted no version,"
+  # not "this promotion failed." `Promotion` treats nil exactly that way: no
+  # stories get stamped, same as before this existed.
+  #
+  # Patch only. Every promotion on a shared box bumps this — many a day,
+  # across every working copy on the machine — and a fast-moving patch digit
+  # is what semver's patch digit is for. Committed and tagged straight onto
+  # `root`'s own HEAD, which is `main`'s HEAD the instant the ff-only merge
+  # above lands: no branch, no further merge, one more commit main already
+  # contains.
+  #
+  # Read and written through `git`/a shell, not `Environments.read_file` —
+  # unlike `marked?/3` below, which reads a rare conflict-marker file and
+  # deliberately goes through the environment so a remote harness answers
+  # from its own disk. This does too, on a real environment: `cmd` and
+  # `read_file`/`write_file` agree there. They do not agree on the
+  # `:memory` scope story 1046's own spex build to run promotion's other
+  # steps for real without touching real disk (`cmd` delegates to a real
+  # shell there; `read_file` answers from an in-memory store `git` never
+  # wrote to and never reads from). `git show HEAD:mix.exs` and a shell
+  # redirect stay on `cmd`'s side of that split, which is the side already
+  # proven to agree with what `git commit` is about to see.
+  defp bump_version(env, root) do
+    case git(env, root, ["show", "HEAD:mix.exs"]) do
+      {contents, 0} -> commit_bumped_version(env, root, contents)
+      _ -> nil
+    end
+  end
+
+  defp commit_bumped_version(env, root, contents) do
+    with {:ok, current, next} <- next_version(contents),
+         {_, 0} <- write_file(env, root, "mix.exs", replace_version(contents, current, next)),
+         {_, 0} <- git(env, root, ["commit", "-am", "chore: promote to v#{next}"]),
+         {_, 0} <- git(env, root, ["tag", "v#{next}"]) do
+      next
+    else
+      _ -> nil
+    end
+  end
+
+  # `content` travels as a shell positional parameter (`$1`), never
+  # interpolated into the script string — arbitrary file content (quotes,
+  # `$`, backticks) is data to the shell this way, never a fragment of the
+  # command it runs.
+  defp write_file(env, root, filename, content) do
+    Environments.cmd(env, "sh", ["-c", "printf '%s' \"$1\" > #{filename}", "sh", content],
+      cd: root,
+      stderr_to_stdout: true
+    )
+  end
+
+  defp next_version(contents) do
+    case Regex.run(~r/version:\s*"(\d+\.\d+\.\d+)"/, contents) do
+      [_, current] ->
+        [major, minor, patch] = current |> String.split(".") |> Enum.map(&String.to_integer/1)
+        {:ok, current, "#{major}.#{minor}.#{patch + 1}"}
+
+      nil ->
+        :error
+    end
+  end
+
+  defp replace_version(contents, current, next),
+    do: String.replace(contents, ~s(version: "#{current}"), ~s(version: "#{next}"))
 
   # `--ff-only` refuses before touching the tree — no three-way merge is
   # attempted, so there is nothing to abort and no conflicted file to name.
