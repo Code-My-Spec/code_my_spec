@@ -1157,12 +1157,25 @@ defmodule CodeMySpecSpex.Fixtures do
   Setting the value removes the race rather than widening it.
   """
   @spec age_story(Scope.t(), term(), number()) :: :ok
-  def age_story(%Scope{} = _scope, story_id, seconds) do
+  def age_story(%Scope{} = scope, story_id, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
     naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
 
     from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
     |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
+
+    # And say so, because this is a write to a graph input.
+    #
+    # `Freshness.row_key/1` is `{id, updated_at}`, and this sets `updated_at` —
+    # so backdating a story moves its fingerprint. Going through `update_all`
+    # means `Stories` never hears about it, and a silent write now leaves the
+    # graph stale rather than being repaired by whoever reads next.
+    #
+    # It looked like a flake: criterion 5901 passed alone and failed in a full
+    # run, because whether the older story's work surfaced depended on some
+    # *later* announcement happening to cover this one. A fixture that writes
+    # what the graph is computed from announces like any other writer.
+    GraphInputs.changed(scope, GraphInputs.observation_id())
 
     :ok
   end
