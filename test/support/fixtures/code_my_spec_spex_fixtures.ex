@@ -4127,7 +4127,21 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
     {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
-    CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+    result = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+
+    # And say so. Analysis freshness is a graph input — `Preloader` feeds it to
+    # `analysis_fresh`, and `tests_passing`, `spex_passing` and the latch behind
+    # `bdd_specs_passing` are all computed from it. Stamping runs straight into
+    # the table is a write the graph never hears about, and a silent write now
+    # leaves the graph stale rather than being repaired by whoever reads next.
+    #
+    # Without this, a fixture that advances a project to the `qa_complete`
+    # frontier left the graph believing the specs had never passed, so every
+    # scenario built on that frontier was handed `FixBddSpecs` for the story the
+    # fixture had just prepared — criteria 6529 and 6533, deterministically.
+    GraphInputs.changed(scope, GraphInputs.observation_id())
+
+    result
   end
 
   @doc """
