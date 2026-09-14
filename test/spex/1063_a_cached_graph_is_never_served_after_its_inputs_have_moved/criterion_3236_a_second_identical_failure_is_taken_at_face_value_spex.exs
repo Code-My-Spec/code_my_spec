@@ -49,12 +49,10 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
         {_story, second_task_id, _session} =
           CodeMySpecSpex.Fixtures.qa_story_task_fixture(context.scope, story: context.story)
 
-        _cold = read_graph(context)
-
         {:ok,
          context
          |> Map.put(:second_task_id, second_task_id)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, read_settled_graph(context))}
       end
 
       when_ "a second attempt fails in exactly the same way", context do
@@ -65,7 +63,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
       then_ "the graph does not answer from the computation made before it", context do
         after_second = read_graph(context)
 
-        refute after_second["computed_at"] == context.before["computed_at"],
+        refute last_recompute(after_second) == last_recompute(context.before),
                """
                The second identical failure did not reach the graph.
 
@@ -75,8 +73,14 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
                trusted, and acting on a redundant one costs the requirements
                that attempt bears on rather than a whole-project graph.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_second["computed_at"])}
+               This is the one criterion here that cannot claim a verdict: an
+               identical attempt changes no answer and no `checked_at` by
+               construction — that is what makes it identical. What it must
+               still do is cause a pass, and the watcher's own clock is the
+               only thing that records one at better than second resolution.
+
+               last_recompute before: #{inspect(last_recompute(context.before))}
+               last_recompute after:  #{inspect(last_recompute(after_second))}
                """
 
         {:ok, context}

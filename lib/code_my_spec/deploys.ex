@@ -20,6 +20,7 @@ defmodule CodeMySpec.Deploys do
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -31,6 +32,9 @@ defmodule CodeMySpec.Deploys do
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
+  require Logger
+
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -43,7 +47,7 @@ defmodule CodeMySpec.Deploys do
   """
   @spec record(Scope.t(), integer(), String.t(), keyword()) ::
           {:ok, Deploy.t()} | {:error, Ecto.Changeset.t()}
-  def record(%Scope{active_project_id: project_id}, story_id, environment, opts \\ []) do
+  def record(%Scope{active_project_id: project_id} = scope, story_id, environment, opts \\ []) do
     attrs = %{
       project_id: project_id,
       story_id: story_id,
@@ -59,6 +63,7 @@ defmodule CodeMySpec.Deploys do
     end
     |> Deploy.changeset(attrs)
     |> Repo.insert_or_update()
+    |> announce(scope)
   end
 
   @doc """
@@ -70,7 +75,7 @@ defmodule CodeMySpec.Deploys do
   """
   @spec verify(Scope.t(), integer(), String.t(), DateTime.t()) ::
           {:ok, Deploy.t()} | {:error, :not_found | Ecto.Changeset.t()}
-  def verify(%Scope{active_project_id: project_id}, story_id, environment, at \\ nil) do
+  def verify(%Scope{active_project_id: project_id} = scope, story_id, environment, at \\ nil) do
     case get(project_id, story_id, environment) do
       nil ->
         {:error, :not_found}
@@ -79,8 +84,28 @@ defmodule CodeMySpec.Deploys do
         deploy
         |> Deploy.changeset(%{health_verified_at: at || DateTime.utc_now()})
         |> Repo.update()
+        |> announce(scope)
     end
   end
+
+  # A deploy is what the story graph's `deploy` requirement is computed from,
+  # and this context had no broadcast of any kind — deploys are recorded by
+  # devops machinery rather than by an agent working a story, which is how the
+  # input got missed.
+  #
+  # Only on success, and after the write: a recompute that read the row before
+  # it committed would decide from one that might roll back.
+  #
+  # `record_environment_deploy/3` announces once per story it recorded, which
+  # the watcher's window folds into one pass.
+  defp announce({:ok, deploy}, %Scope{} = scope) do
+    obs = GraphInputs.observation_id()
+    Logger.info("[Deploys] announcing a graph change", obs: obs)
+    GraphInputs.changed(scope, obs)
+    {:ok, deploy}
+  end
+
+  defp announce(other, _scope), do: other
 
   @doc """
   Record the stories a successful deploy carried.

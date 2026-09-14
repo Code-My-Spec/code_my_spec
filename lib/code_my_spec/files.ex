@@ -18,6 +18,7 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.Users,

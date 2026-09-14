@@ -19,6 +19,7 @@ defmodule CodeMySpec.Questions do
       CodeMySpec.Accounts,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -27,6 +28,9 @@ defmodule CodeMySpec.Questions do
 
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Questions.QuestionsRepository
+  require Logger
+
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -51,6 +55,15 @@ defmodule CodeMySpec.Questions do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:questions", message)
+
+    # And to the graph's own topic. Questions are one of the ten inputs the graph is computed
+    # from.
+    #
+    # Reads serve rows and derive nothing now, so a writer that says nothing
+    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
+    obs = GraphInputs.observation_id()
+    Logger.info("[Questions] announcing a graph change", obs: obs)
+    GraphInputs.changed(scope, obs)
   end
 
   def create_question(scope, story_id, attrs) do

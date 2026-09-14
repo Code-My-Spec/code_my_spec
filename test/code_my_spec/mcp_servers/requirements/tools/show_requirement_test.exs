@@ -21,6 +21,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
 
       requirement_fixture(scope, component, %{name: "spec_file", satisfied: false})
 
+      # Reads serve rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
@@ -39,6 +42,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
       component = component_fixture(scope)
 
       requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})
+
+      # Reads serve rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
 
       frame = %Frame{assigns: %{current_scope: scope}}
 

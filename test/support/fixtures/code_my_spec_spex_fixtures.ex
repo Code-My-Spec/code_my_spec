@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
@@ -1335,7 +1336,17 @@ defmodule CodeMySpecSpex.Fixtures do
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
     :ok = GraphInputs.subscribe(project_id)
-    :ok
+
+    # The watcher computes on arrival and announces it, so subscribing leaves a
+    # `{:graph_updated, _}` in the caller's mailbox for a scenario that has not
+    # touched anything. Settle the bootstrap pass and drain what it said.
+    GraphWatcher.settle(project_id)
+
+    receive do
+      {:graph_updated, ^project_id} -> :ok
+    after
+      0 -> :ok
+    end
   end
 
   @doc """
@@ -1348,6 +1359,37 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec settle_graph(Scope.t()) :: :ok
   def settle_graph(%Scope{} = scope),
     do: GraphWatcher.settle(scope)
+
+  @doc """
+  Stop watching this project, so the watcher does not outlive the test.
+
+  A watcher is a process and the sandbox transaction is not. Left running, it
+  takes its next pass after the test that started it has gone, finds the
+  connection it was using checked back in, and logs at `:error` —
+  `SexySpex.ErrorCapture` then fails whichever spex happens to be running when
+  that lands. Observed on criterion 3339, failed by a straggler from an earlier
+  scenario: "could not checkout the connection owned by #PID<...>".
+
+  `GraphWatcher` already handles the *project* disappearing underneath it
+  (`:gone`, stop, no noise). It cannot handle the connection disappearing,
+  because that is indistinguishable from a real database fault — which is
+  exactly what a reader needs it to shout about.
+  """
+  @spec stop_watching(Scope.t()) :: :ok
+  def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+        :ok
+
+      [] ->
+        :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
+
+  def stop_watching(%Scope{}), do: :ok
 
   @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
   def record_git_state(working_copy_id, %{} = state) do

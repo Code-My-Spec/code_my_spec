@@ -45,10 +45,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3354Spex do
       end
 
       then_ "both reads answer from the same computation", context do
-        refute context.first["computed_at"] == context.before["computed_at"],
+        refute last_recompute(context.first) == last_recompute(context.before),
                "the first read must fold the write in, or this criterion is about nothing"
 
-        assert context.first["computed_at"] == context.second["computed_at"],
+        assert last_recompute(context.first) == last_recompute(context.second),
                """
                Two reads after one write produced two computations.
 
@@ -57,8 +57,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3354Spex do
                each read recomputes, "settle before answering" has become
                "recompute per read" — which is what this story replaced.
 
-               first:  #{inspect(context.first["computed_at"])}
-               second: #{inspect(context.second["computed_at"])}
+               first:  #{inspect(last_recompute(context.first))}
+               second: #{inspect(last_recompute(context.second))}
                """
 
         {:ok, context}

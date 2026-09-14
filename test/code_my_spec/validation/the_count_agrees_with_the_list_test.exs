@@ -59,6 +59,9 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   defp actionable_for(scope, role) do
     names = Registry.requirement_names_for_role(role)
 
+    # Reads serve rows; the write path computes them.
+    CodeMySpec.Requirements.recompute(scope)
+
     scope
     |> RequirementGraph.next_actionable()
     |> Enum.filter(&(&1.name in names))

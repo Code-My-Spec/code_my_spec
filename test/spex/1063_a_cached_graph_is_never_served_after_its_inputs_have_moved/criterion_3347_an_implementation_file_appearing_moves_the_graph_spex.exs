@@ -35,8 +35,18 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
 
         sync(context)
 
-        _cold = read_graph(context)
-        {:ok, Map.put(context, :before, read_graph(context))}
+        before = read_settled_graph(context)
+
+        assert satisfaction_on(before, "implementation_file", "MyApp.Accounts") == false,
+               """
+               The premise did not hold: `MyApp.Accounts` is supposed to have a
+               spec and no implementation yet, so one appearing has nowhere to
+               show up.
+
+               implementation_file nodes: #{inspect(all_named(before, "implementation_file"))}
+               """
+
+        {:ok, Map.put(context, :before, before)}
       end
 
       when_ "the implementation file appears and the engineer syncs", context do
@@ -49,20 +59,23 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph says that component has an implementation", context do
         after_sync = read_graph(context)
 
-        refute after_sync["computed_at"] == context.before["computed_at"],
+        assert satisfaction_on(after_sync, "implementation_file", "MyApp.Accounts") == true,
                """
-               An implementation file appeared and the graph went on answering
-               from the computation it made before.
+               An implementation file appeared and the graph still says the
+               component has none.
 
                A coding agent's turn is implementation files appearing. If the
                graph does not learn of them, the agent is handed back work it
                has already done.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_sync["computed_at"])}
+               The claim is the verdict, not a clock: a pass that ran and
+               applied nothing moves `computed_at` exactly as far as one that
+               worked, and `checked_at` is second-resolution besides.
+
+               implementation_file nodes: #{inspect(all_named(after_sync, "implementation_file"))}
                """
 
         {:ok, context}

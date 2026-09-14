@@ -49,6 +49,14 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   defp scope_with_waiting_requirements do
     scope = full_scope_fixture()
     _component = component_fixture(scope)
+
+    # The menu counts what the graph says is actionable, and the graph is rows
+    # now — a read builds nothing. In production `GraphWatcher` computes this
+    # when the component sync announces; here it is said out loud, or the
+    # "waiting requirements" in the name are not waiting because they do not
+    # exist.
+    CodeMySpec.Requirements.recompute(scope)
+
     scope
   end
 

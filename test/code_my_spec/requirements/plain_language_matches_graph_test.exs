@@ -47,6 +47,12 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every step the timeline can draw is a node the graph produces", %{scope: scope} do
+
+    # Reads serve rows and compute nothing. Something has to have computed them,
+    # and in production that is `GraphWatcher` reacting to a writer's
+    # announcement — said out loud here, because a test that reads a graph
+    # nobody built is asserting against an empty one.
+    Requirements.recompute(scope)
     {nodes, _computed_at} = Requirements.cached_all(scope)
 
     graph_names = nodes |> Enum.map(& &1.name) |> MapSet.new()
@@ -62,6 +68,12 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every node the graph produces has words the timeline can draw", %{scope: scope} do
+
+    # Reads serve rows and compute nothing. Something has to have computed them,
+    # and in production that is `GraphWatcher` reacting to a writer's
+    # announcement — said out loud here, because a test that reads a graph
+    # nobody built is asserting against an empty one.
+    Requirements.recompute(scope)
     {nodes, _computed_at} = Requirements.cached_all(scope)
 
     graph_names = nodes |> Enum.map(& &1.name) |> MapSet.new()

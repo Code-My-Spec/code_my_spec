@@ -4,6 +4,9 @@ defmodule CodeMySpecSpex do
     top_level?: true,
     deps: [
       CodeMySpec.Environments,
+      # `Fixtures.watch_graph/1` and `settle_graph/1` publish and subscribe on
+      # the graph's own topic. A zero-dep leaf, so this costs no coupling.
+      CodeMySpec.Requirements.GraphInputs,
       # "The agent cannot be reached" is external system state, and the shaper
       # behaviour is the only seam the application offers for standing the
       # model down. A spec about what onboarding does when the model is

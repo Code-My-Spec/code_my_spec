@@ -1,13 +1,14 @@
 defmodule CodeMySpec.Requirements.GraphInputs do
   @moduledoc """
-  One event, published by everything the requirement graph is computed from.
+  The door a writer knocks on when it has changed something the graph is
+  computed from. Knocking recomputes, then announces.
 
   ## Why this exists
 
-  Every graph computation in this application is triggered by a *reader* — a
-  LiveView rendering, `get_next_requirement`, the stop menu. Nothing computes on
-  a write and nothing computes on a schedule, so an agent that is not reading
-  never learns that work appeared.
+  Every graph computation in this application used to be triggered by a
+  *reader* — a LiveView rendering, `get_next_requirement`, the stop menu.
+  Nothing computed on a write, so an agent that was not reading never learned
+  that work had appeared.
 
   Watched on 2026-09-07: a product agent stopped correctly with an empty queue —
   "No product work is currently available; I'll stop and wait to be woken when a
@@ -19,29 +20,66 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   proxies for ten inputs is a hand-maintained list, and the eight it misses look
   exactly like those ninety minutes.
 
-  ## Why a new topic rather than the ones that exist
+  ## Announcing is the writer's whole job, and it is not optional
+
+  This publishes. `GraphWatcher` queues what it hears and recomputes, and a
+  reader calls `GraphWatcher.settle/1` before it answers so the queue is
+  reconciled into the rows first.
+
+  What changed, and why it matters to a writer: reads used to recompute too.
+  `RequirementGraph` compared every fingerprint on the way past and repaired
+  whatever had moved, so a writer that published nothing was indistinguishable
+  from one that worked — whoever read next fixed the graph and the answer came
+  out right either way. All eighteen criteria on story 1063 passed against
+  seven writers that announce nothing.
+
+  Reads now serve the rows and derive nothing. So a write that does not reach
+  this function is a write the graph never hears about, and it stays wrong
+  until something else happens to announce.
+
+  ## Why a topic of its own rather than the ones that exist
 
   The contexts already broadcast, and they are keyed for the reader they were
   written for: `user:<user_id>:components`, `user:<account_id>:issues`,
   `project:<id>:personas`. A per-project watcher cannot subscribe to a
   user-keyed topic — it does not know which users are going to write.
 
-  So this is one topic per project, published to by every writer whose table the
-  fingerprint hashes. Readers keep their own topics; this one exists for the
-  watcher and says only "something the graph is computed from moved", never what.
+  So this is one topic per project, published to by every writer whose table
+  the fingerprint hashes. Readers keep their own topics; this one exists for
+  the watcher and says only "something the graph is computed from moved".
 
   ## Why it carries nothing
 
   Deliberately no payload. The fingerprint already answers "did anything
   actually change", and it answers it over every input at once — a payload
   saying *which* would be a second, worse copy of that, and the first thing to
-  drift. `GraphWatcher` debounces these and asks the fingerprint.
+  drift. `GraphWatcher` queues these and asks the fingerprint.
 
   So a writer that publishes when nothing really changed costs one hash, and a
   writer that is unsure should publish.
+
+  ## Why this is its own boundary
+
+  Every writer whose table the fingerprint hashes has to be able to call this,
+  and those writers are the contexts `Requirements` itself depends on —
+  `Stories`, `BddRules`, `AcceptanceCriteria`, `Personas`, `Questions`,
+  `Issues`, `Qa`, `Files`. Announcing through the `Requirements` boundary makes
+  every one of them a cycle, and `Issues` and `Qa` are already exactly that:
+  `CodeMySpec.Qa -> CodeMySpec.Requirements -> CodeMySpec.Qa`, warned on every
+  compile.
+
+  Publishing an event is not a dependency on the graph. This knows a topic, a
+  project id and PubSub, and nothing about requirements at all — so it stands
+  on its own and everybody, `Requirements` included, depends on it.
+
+  It depends on nothing in turn, which is why the scope clause below matches a
+  plain map rather than `%Scope{}`: naming the struct means depending on
+  `CodeMySpec.Users`, and `Users` reaches the root boundary, which reaches
+  every context that publishes here — the cycle back again by a longer route.
+  A caller still passes its scope; only the pattern is looser.
   """
 
-  alias CodeMySpec.Users.Scope
+  use Boundary, top_level?: true, deps: [], exports: :all
 
   @pubsub CodeMySpec.PubSub
 
@@ -56,10 +94,11 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   no active project is a no-op rather than an error: plenty of writes happen
   outside a project, and a writer should not have to ask.
   """
-  @spec changed(Scope.t() | Ecto.UUID.t() | nil, String.t() | nil) :: :ok
+  @spec changed(%{optional(:active_project_id) => Ecto.UUID.t() | nil} | Ecto.UUID.t() | nil, String.t() | nil) ::
+          :ok
   def changed(scope_or_project_id, observation_id \\ nil)
 
-  def changed(%Scope{active_project_id: project_id}, obs), do: changed(project_id, obs)
+  def changed(%{active_project_id: project_id}, obs), do: changed(project_id, obs)
 
   def changed(project_id, obs) when is_binary(project_id) do
     Phoenix.PubSub.broadcast(

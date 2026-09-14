@@ -27,9 +27,19 @@ defmodule CodeMySpecSpex.Story1063.Criterion3346Spex do
 
   spex "A spec file written into the checkout moves the graph" do
     scenario "a component's spec appears" do
-      given_ "a project whose graph has been served", context do
-        _cold = read_graph(context)
-        {:ok, Map.put(context, :before, read_graph(context))}
+      given_ "a project whose graph carries no spec_file requirement", context do
+        before = read_settled_graph(context)
+
+        refute requirement(before, "spec_file"),
+               """
+               The premise did not hold: this project's graph already carries a
+               `spec_file` requirement, so a spec appearing has nowhere to show
+               up.
+
+               requirements present: #{inspect(requirement_names(before))}
+               """
+
+        {:ok, Map.put(context, :before, before)}
       end
 
       when_ "a context's spec file appears in the checkout and the engineer syncs",
@@ -43,20 +53,23 @@ defmodule CodeMySpecSpex.Story1063.Criterion3346Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph says that component's spec exists", context do
         after_sync = read_graph(context)
 
-        refute after_sync["computed_at"] == context.before["computed_at"],
+        assert any_satisfied?(after_sync, "spec_file"),
                """
-               A spec file appeared in the checkout and the graph went on
-               answering from the computation it made before.
+               A spec file appeared in the checkout and the graph does not say
+               the component has one.
 
                Nothing announces a file, so the fingerprint is the only way the
                graph learns a spec exists — and the rest of a component's chain
                gates on it.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_sync["computed_at"])}
+               The claim is the verdict, not a clock: a pass that ran and
+               applied nothing moves `computed_at` exactly as far as one that
+               worked, and `checked_at` is second-resolution besides.
+
+               spec_file nodes after the sync: #{inspect(all_named(after_sync, "spec_file"))}
                """
 
         {:ok, context}

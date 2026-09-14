@@ -102,10 +102,14 @@ defmodule CodeMySpecTest.GraphHelpersTest do
   end
 
   test "assert_woken fails, and says why, when nothing was woken at all", context do
-    agent = agent_with_role(context.scope, context.copy, "product")
     _ = watch_graph(context)
 
-    error = assert_raise ExUnit.AssertionError, fn -> assert_woken(agent.id) end
+    # An id nothing could have delivered to, because the subject here is the
+    # failure *message* and a real agent is no longer reliably un-woken: the
+    # watcher computes on arrival and wakes whatever that first pass makes
+    # actionable, which for a product agent on a fresh project is the normal
+    # case rather than an edge one.
+    error = assert_raise ExUnit.AssertionError, fn -> assert_woken(Ecto.UUID.generate()) end
 
     assert error.message =~ "was not woken",
            "The failure should say the agent was not woken."

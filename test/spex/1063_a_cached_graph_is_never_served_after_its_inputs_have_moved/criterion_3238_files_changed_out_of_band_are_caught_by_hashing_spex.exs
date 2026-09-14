@@ -29,9 +29,16 @@ defmodule CodeMySpecSpex.Story1063.Criterion3238Spex do
 
   spex "A file written with no event behind it still reaches the graph" do
     scenario "a file appears in the working copy" do
-      given_ "a project whose graph has been served", context do
-        _cold = read_graph(context)
-        {:ok, Map.put(context, :before, read_graph(context))}
+      given_ "a project whose graph does not know this module", context do
+        before = read_settled_graph(context)
+
+        refute requirement_on(before, "implementation_file", "OutOfBand"),
+               """
+               The premise did not hold: the graph already carries `OutOfBand`,
+               so the file appearing has nowhere to show up.
+               """
+
+        {:ok, Map.put(context, :before, before)}
       end
 
       when_ "a file appears in the working copy and the engineer syncs", context do
@@ -56,17 +63,21 @@ defmodule CodeMySpecSpex.Story1063.Criterion3238Spex do
       then_ "the graph no longer answers from the computation made before it", context do
         after_sync = read_graph(context)
 
-        refute after_sync["computed_at"] == context.before["computed_at"],
+        assert satisfaction_on(after_sync, "implementation_file", "OutOfBand") == true,
                """
-               A file appeared in the checkout and the graph went on answering
-               from the computation it made before.
+               A file appeared in the checkout and the graph does not carry the
+               component it defines.
 
                Nothing published this write — it is exactly the case the
                fingerprint exists for. If a files digest does not catch it, the
                graph has no other way to learn the file is there.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_sync["computed_at"])}
+               The claim is the verdict, not a clock: `checked_at` is
+               second-resolution, so a write and the recompute answering it
+               read as the same instant.
+
+               OutOfBand implementation_file: #{inspect(satisfaction_on(after_sync, "implementation_file", "OutOfBand"))}
+               components in the graph: #{inspect(after_sync["nodes"] |> Enum.map(& &1["entity_name"]) |> Enum.uniq())}
                """
 
         {:ok, context}

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Personas do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -22,6 +23,9 @@ defmodule CodeMySpec.Personas do
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory
+  require Logger
+
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -48,6 +52,15 @@ defmodule CodeMySpec.Personas do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_project_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
+
+    # And to the graph's own topic. Personas hang off a join table rather than carrying a
+    # project_id, so they need their own query — and their own announcement.
+    #
+    # Reads serve rows and derive nothing now, so a writer that says nothing
+    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
+    obs = GraphInputs.observation_id()
+    Logger.info("[Personas] announcing a graph change", obs: obs)
+    GraphInputs.changed(scope, obs)
   end
 
   def create_persona(scope, attrs) do

@@ -62,6 +62,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
 
@@ -154,18 +155,35 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   a reader must not fail for wanting to be current.
   """
   @spec settle(Scope.t() | Ecto.UUID.t() | nil) :: :ok
-  def settle(%Scope{active_project_id: project_id}), do: settle(project_id)
+  def settle(%Scope{active_project_id: project_id} = scope),
+    do: settle(project_id, scope.active_working_copy_id)
 
-  def settle(project_id) when is_binary(project_id) do
+  def settle(project_id) when is_binary(project_id), do: settle(project_id, nil)
+
+  def settle(_no_project), do: :ok
+
+  # The reader's vantage rides along, because rows are keyed per working copy
+  # and a pass computes one vantage at a time.
+  #
+  # `Projection.vantages/1` answers the ones that already have rows, which
+  # covers every checkout somebody has read before and cannot cover the first
+  # read from a new one — a fresh worktree would settle, get a pass that
+  # maintains everyone else, and still find nothing of its own. So a reader
+  # names the vantage it is about to read and the next pass includes it. After
+  # that it has rows and `vantages/1` keeps it.
+  #
+  # This is not a read computing the graph. The reader asks for nothing to be
+  # derived; it says which row-space it cares about, and the watcher decides
+  # what to do about it.
+  @spec settle(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
+  def settle(project_id, vantage) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
-      [{pid, _}] -> GenServer.call(pid, :settle, 30_000)
+      [{pid, _}] -> GenServer.call(pid, {:settle, vantage}, 30_000)
       [] -> :ok
     end
   catch
     :exit, _ -> :ok
   end
-
-  def settle(_no_project), do: :ok
 
   @doc """
   What this project's watcher is doing, or `nil` when nothing is watching it.
@@ -226,7 +244,24 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   @impl true
   def init({project_id, scope}) do
+    # So `terminate/2` runs and can take this watcher's in-flight wake with it.
+    Process.flag(:trap_exit, true)
+
     GraphInputs.subscribe(project_id)
+
+    # Compute once on arrival, then maintain from events.
+    #
+    # Reads used to do this implicitly: the first render of a project with no
+    # rows found a cache miss and built the whole graph as a side effect of
+    # somebody looking. With reads answering from the rows, nothing else ever
+    # would — a project that has had no events since it was created would have
+    # no graph, and every reader would be handed an empty answer rather than a
+    # stale one.
+    #
+    # Sent rather than done here, because `init/1` blocks the supervisor and
+    # this is a whole-project compute on a cold project. Timer nil, so the
+    # first real observation still schedules its own pass.
+    send(self(), :recompute)
 
     {:ok,
      %{
@@ -234,6 +269,18 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
        scope: scope,
        timer: nil,
        pending_observations: [],
+       # Vantages a reader has named that may not have rows yet. Seeded with
+       # the one this watcher was started with, which is the checkout of
+       # whoever asked for it — an agent's worktree, usually.
+       requested_vantages: MapSet.new([scope.active_working_copy_id]),
+       # Which vantages this watcher has actually computed. Held in memory so
+       # `settle/2` can answer "is this reader's row-space new" without asking
+       # the database — that question is on the path of every read, which is
+       # before every tool call an agent makes.
+       known_vantages: MapSet.new(),
+       # The wake this watcher currently has in flight, so stopping the watcher
+       # stops it too.
+       waking: nil,
        last_recompute: nil,
        last_error: nil
      }}
@@ -250,16 +297,43 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     {:reply, report, state}
   end
 
-  def handle_call(:settle, _from, %{timer: nil} = state), do: {:reply, :ok, state}
+  def handle_call({:settle, vantage}, _from, state) do
+    state = remember_vantage(state, vantage)
 
-  def handle_call(:settle, _from, %{timer: timer} = state) do
-    Process.cancel_timer(timer)
+    cond do
+      state.timer != nil ->
+        Process.cancel_timer(state.timer)
+        settle_reply(recompute(%{state | timer: nil}))
 
-    case recompute(%{state | timer: nil}) do
-      {:ok, state} -> {:reply, :ok, state}
-      {:gone, state} -> {:stop, :normal, :ok, state}
+      # Nothing queued, and this reader is asking from a vantage no pass has
+      # ever computed. Its row-space is empty and would stay empty, because
+      # only a pass writes rows and only an observation schedules a pass.
+      new_vantage?(state, vantage) ->
+        settle_reply(recompute(state))
+
+      true ->
+        {:reply, :ok, state}
     end
   end
+
+  defp settle_reply({:ok, state}), do: {:reply, :ok, state}
+  defp settle_reply({:gone, state}), do: {:stop, :normal, :ok, state}
+
+  defp remember_vantage(state, vantage),
+    do: %{state | requested_vantages: MapSet.put(state.requested_vantages, vantage)}
+
+  # From memory, not from a query.
+  #
+  # This asked `Projection.vantages/1` — one query for the stored vantages plus
+  # an existence check per vantage — on every settle, which is every read. A
+  # read happens before every Read, Grep and Bash an agent runs, and criterion
+  # 2347 measures exactly that budget: it caught this at 2.3 extra queries per
+  # tool call.
+  #
+  # A watcher knows what it has computed, so the common case — a reader whose
+  # row-space this watcher already maintains — costs a set lookup and nothing
+  # else. A vantage genuinely new still triggers the pass that adds it.
+  defp new_vantage?(state, vantage), do: not MapSet.member?(state.known_vantages, vantage)
 
   @impl true
   # The observation id rides along so the recompute can name what it consumed.
@@ -330,6 +404,106 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   defp schedule(state), do: state
 
+  # The row-spaces this pass is responsible for: the ones that already have
+  # rows, plus any a reader has named since the last pass. `nil` is always in
+  # the first set — `Projection.vantages/1` puts it there — because it is what
+  # every reader that is not an agent resolves to.
+  # Filtered through `live_vantages/2` rather than merely unioned, because a
+  # reader can name a checkout that is offboarded before the next pass runs.
+  # Computing for a copy that no longer exists raises on the `requirement_graphs`
+  # foreign key, and the watcher reports that as a fault forever after.
+  defp vantages(state) do
+    Projection.live_vantages(
+      state.scope,
+      Enum.concat(Projection.vantages(state.scope), state.requested_vantages)
+    )
+  end
+
+  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage) do
+    {_graph, actionable, _computed_at} =
+      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
+
+    actionable
+  rescue
+    error in Postgrex.Error ->
+      # A checkout that went away while this pass was computing for it.
+      #
+      # `Projection.live_vantages/2` filters the ones already gone, and cannot
+      # win the race: the filter runs, the graph takes its time, and the
+      # offboard lands in between — then `GraphCache.publish/4` writes a
+      # `requirement_graphs` row keyed on a copy the foreign key no longer
+      # knows. Criterion 2867 does exactly this and hit it after the filter
+      # went in.
+      #
+      # Not a fault, so it must not be logged as one: the watcher reports
+      # `last_error` on `/dev/state` and `SexySpex.ErrorCapture` fails a run on
+      # any logged `:error`. There is nothing to serve for a checkout that does
+      # not exist, so this vantage contributes nothing and the others carry on.
+      if vantage_gone?(error) do
+        Logger.info(
+          "[GraphWatcher] skipping vantage #{inspect(vantage)}: the checkout is gone"
+        )
+
+        []
+      else
+        reraise error, __STACKTRACE__
+      end
+  end
+
+  defp vantage_gone?(%Postgrex.Error{postgres: %{constraint: constraint}})
+       when is_binary(constraint),
+       do: String.contains?(constraint, "working_copy_id_fkey")
+
+  defp vantage_gone?(_error), do: false
+
+  # Waking says "work appeared". The bootstrap pass has not learned that: it is
+  # the first computation this watcher has done, answering no observation, and
+  # everything it finds actionable was already actionable before it started. A
+  # watcher arriving is not news, and treating it as news wakes every role of
+  # every project the moment anything starts watching it — including, at boot,
+  # all of them at once.
+  #
+  # Measured as test noise first: with a watcher started for every spex, the
+  # bootstrap wake put agent dispatches into scenarios that had asked for
+  # nothing, and three criteria failed in a full run while passing alone.
+  #
+  # A pass that consumed observations always wakes, first or not — that is the
+  # case this whole mechanism exists for.
+  defp maybe_wake(_state, [], _consumed), do: nil
+
+  defp maybe_wake(%{last_recompute: nil}, _actionable, []), do: nil
+
+  defp maybe_wake(state, _actionable, _consumed) do
+    scope = state.scope
+
+    case Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+           CodeMySpec.Agents.wake_project_roles(scope)
+         end) do
+      {:ok, pid} -> pid
+      _ -> nil
+    end
+  end
+
+  # A wake outliving the watcher that asked for it.
+  #
+  # Waking renders each role's menu and dispatches to agents, and it runs on the
+  # shared task supervisor — so it survives the watcher being stopped and lands
+  # in whatever is happening next. Under test that is another scenario's agent
+  # registry: story 810's dispatch criteria failed in full runs and passed
+  # alone, three times in six runs, because a stray wake from an unrelated spex
+  # arrived mid-scenario.
+  #
+  # Not linked, because a wake that crashes must not take the watcher with it.
+  # Killed on the way out instead, which is the same guarantee without the
+  # coupling.
+  @impl true
+  def terminate(_reason, %{waking: pid}) when is_pid(pid) do
+    Process.exit(pid, :kill)
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   defp recompute(state) do
     refuse_if_faulted(state.project_id)
 
@@ -340,8 +514,24 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     consumed = Enum.reverse(state.pending_observations)
     Logger.metadata(obs: observation_tag(consumed))
 
-    {_graph, actionable, _computed_at} =
-      RequirementGraph.cached_graph_with_actionable(state.scope)
+    # Recompute, then read. These were one call until the read stopped
+    # recomputing — a reader repairing the graph is what made a silent writer
+    # indistinguishable from a working one. The watcher is the write path, so
+    # it asks for the work explicitly.
+    #
+    # Once per vantage, because rows are keyed per working copy and a pass
+    # computes exactly one row-space. This process is per *project* and held a
+    # single scope, so it maintained whichever checkout started it and left
+    # every other one frozen — including `nil`, which is what every reader that
+    # is not an agent resolves to. Reads used to cover for that by rebuilding
+    # their own row-space on the way past; they no longer do, so the write path
+    # has to maintain all of them.
+    # Flattened, so waking asks "did any vantage produce work" rather than
+    # "did mine". `wake_project_roles/2` is menu-gated, so a role with nothing
+    # to do is not charged a turn — over-waking costs a rendered menu and
+    # under-waking is the ninety minutes of silence this exists to end.
+    computed = vantages(state)
+    actionable = Enum.flat_map(computed, &recompute_vantage(state, &1))
 
     account_for(consumed)
 
@@ -360,20 +550,20 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # `settle/1` — which is a call to this process. A watcher waking inside its
     # own recompute would be calling itself, and the agent that had been waiting
     # would be waiting on a deadlock.
-    case actionable do
-      [] ->
-        :ok
-
-      _ ->
-        scope = state.scope
-
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          CodeMySpec.Agents.wake_project_roles(scope)
-        end)
-    end
+    waking = maybe_wake(state, actionable, consumed)
 
     {:ok,
-     %{state | last_recompute: DateTime.utc_now(), last_error: nil, pending_observations: []}}
+     %{
+       state
+       | last_recompute: DateTime.utc_now(),
+         last_error: nil,
+         pending_observations: [],
+         # Every requested vantage has rows now, so `Projection.vantages/1`
+         # keeps them from here without this list growing forever.
+         requested_vantages: MapSet.new(),
+         known_vantages: MapSet.union(state.known_vantages, MapSet.new(computed)),
+         waking: waking
+     }}
   rescue
     error ->
       recompute_failure(state, error)

@@ -35,6 +35,7 @@ defmodule CodeMySpec.WorkingCopies do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -52,6 +53,7 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -446,7 +448,9 @@ defmodule CodeMySpec.WorkingCopies do
           {:ok, WorkingCopy.t()} | {:error, term()}
   def record_preview_status(%WorkingCopy{} = harness, status)
       when status in ~w(serving erroring down) do
-    save(harness, %{preview_status: status, preview_checked_at: DateTime.utc_now()})
+    harness
+    |> save(%{preview_status: status, preview_checked_at: DateTime.utc_now()})
+    |> announce_graph_change(harness)
   end
 
   @doc """
@@ -467,12 +471,14 @@ defmodule CodeMySpec.WorkingCopies do
   def record_git_state(%WorkingCopy{} = harness, %{} = state) do
     state = Map.new(state, fn {k, v} -> {to_string(k), v} end)
 
-    save(harness, %{
+    harness
+    |> save(%{
       commits_ahead_of_main: state["ahead"],
       commits_behind_main: state["behind"],
       tree_dirty: state["dirty"],
       git_state_at: DateTime.utc_now()
     })
+    |> announce_graph_change(harness)
   end
 
   @doc """
@@ -501,10 +507,12 @@ defmodule CodeMySpec.WorkingCopies do
     # `harness.main or …` rather than the check alone: a copy that already holds
     # the designation makes `first_copy?/1` false, so writing the bare result
     # back would clear the main copy on its own reconnect.
-    save(harness, %{
+    harness
+    |> save(%{
       root: Path.expand(root),
       main: harness.main or only_checkout?(harness.project_id, harness.id)
     })
+    |> announce_graph_change(harness)
   end
 
   @doc """
@@ -522,7 +530,7 @@ defmodule CodeMySpec.WorkingCopies do
   @spec record_preview_url(WorkingCopy.t(), String.t() | nil) ::
           {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
   def record_preview_url(%WorkingCopy{main: true} = harness, url) do
-    save(harness, %{preview_url: url})
+    harness |> save(%{preview_url: url}) |> announce_graph_change(harness)
   end
 
   def record_preview_url(%WorkingCopy{}, _url), do: {:error, :not_the_main_copy}
@@ -544,7 +552,9 @@ defmodule CodeMySpec.WorkingCopies do
   @spec record_preview_tunnel(WorkingCopy.t(), map()) ::
           {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
   def record_preview_tunnel(%WorkingCopy{main: true} = harness, attrs) do
-    save(harness, Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
+    harness
+    |> save(Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
+    |> announce_graph_change(harness)
   end
 
   def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
@@ -759,6 +769,25 @@ defmodule CodeMySpec.WorkingCopies do
     do: Regex.match?(@auto_label_pattern, label)
 
   defp auto_label?(_label), do: true
+
+  # The working-copy fields the requirement graph reads — `preview_status`,
+  # `preview_url`, the commit counts, `tree_dirty`, whether `git_state_at` is
+  # set, and which copy is `main`. `Preloader.working_copy_gate_inputs/2` is
+  # the list, and `code_on_running_copy` is the gate that turns on them.
+  #
+  # Not from `save/2`, which every `last_seen_at` heartbeat also goes through.
+  # A heartbeat is not a graph input — `git_state_at` enters the fingerprint
+  # only as `is_nil/1`, which is criterion 3339's whole point — and announcing
+  # one would charge a preload per heartbeat per copy to discover that nothing
+  # moved.
+  defp announce_graph_change({:ok, copy} = result, %WorkingCopy{project_id: project_id}) do
+    obs = GraphInputs.observation_id()
+    Logger.info("[WorkingCopies] announcing a graph change for #{copy.id}", obs: obs)
+    GraphInputs.changed(project_id, obs)
+    result
+  end
+
+  defp announce_graph_change(other, _harness), do: other
 
   defp save(harness, attrs) do
     harness

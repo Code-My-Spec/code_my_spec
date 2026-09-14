@@ -38,6 +38,7 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.Users,

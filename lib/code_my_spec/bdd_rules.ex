@@ -26,6 +26,7 @@ defmodule CodeMySpec.BddRules do
       CodeMySpec.Personas,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -33,6 +34,9 @@ defmodule CodeMySpec.BddRules do
     exports: :all
 
   alias CodeMySpec.BddRules.BddRulesRepository
+  require Logger
+
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -57,6 +61,15 @@ defmodule CodeMySpec.BddRules do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:bdd_rules", message)
+
+    # And to the graph's own topic. Rules and their scenarios are what `three_amigos_complete`
+    # is computed from.
+    #
+    # Reads serve rows and derive nothing now, so a writer that says nothing
+    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
+    obs = GraphInputs.observation_id()
+    Logger.info("[BddRules] announcing a graph change", obs: obs)
+    GraphInputs.changed(scope, obs)
   end
 
   @doc """

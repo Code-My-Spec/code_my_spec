@@ -63,8 +63,29 @@ defmodule CodeMySpecTest.GraphHelpers do
     scope = scope_of(context)
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
     :ok = GraphInputs.subscribe(scope.active_project_id)
+    drain_bootstrap_announcement(scope.active_project_id)
     context
   end
+
+  # Starting a watcher computes the graph on arrival and announces it, so the
+  # act of subscribing leaves a `{:graph_updated, _}` sitting in the caller's
+  # mailbox. That is a real announcement — the graph went from nothing to
+  # something — but it is not an *input* changing, which is what every caller
+  # of these helpers is asking about. Left in place it fails
+  # `refute_graph_announced/2` for a scenario that touched nothing.
+  #
+  # So the slate is clean by the time this returns: settle the bootstrap pass,
+  # then drain what it announced.
+  defp drain_bootstrap_announcement(project_id) do
+    GraphWatcher.settle(project_id)
+
+    receive do
+      {:graph_updated, ^project_id} -> :ok
+    after
+      0 -> :ok
+    end
+  end
+
 
   @doc """
   Do the watcher's pending pass now rather than when the debounce expires.

@@ -214,3 +214,29 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # So dev previews are opened from dev.codemyspec.com. `PreviewSameSiteTest`
 # fails if this list ever gains an origin that cannot hold a session.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://dev.codemyspec.com"
+
+# Report what reads are serving stale, rather than repairing it on the way past.
+#
+# Reads used to recompute: every entity's fingerprint rebuilt and diffed, and
+# anything that had moved silently fixed. That is why a writer which announced
+# nothing looked exactly like one that worked — whoever read next covered for
+# it, and all eighteen of story 1063's criteria passed against seven writers
+# that said nothing.
+#
+# Reads serve rows now, so a silent writer leaves the graph wrong instead of
+# invisibly right. This turns the old comparison back on as a *diagnostic*: the
+# same full diff, on every read, naming the entities whose inputs have moved
+# past their rows and changing nothing.
+#
+#     [Requirements] STALE READ — served 3 entity(ies) whose inputs have moved
+#     past their rows (2/41 stories, 1/1102 components); stale=story:2497 …
+#
+# Every line names a write that reached the database without reaching
+# `GraphInputs.changed/2`. On here rather than in prod because this is where we
+# find the ones still missing; it costs the expensive half of a recompute per
+# read, so it comes off once the log goes quiet.
+#
+# Blind spots worth knowing before reading silence as health: it sees stories
+# and components but not project-level requirements, and a writer that skips
+# changesets leaves `updated_at` untouched and so moves no fingerprint.
+config :code_my_spec, graph_stale_read_log: true

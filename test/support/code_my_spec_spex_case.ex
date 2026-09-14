@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Case do
   alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
+  alias ExUnit.Callbacks
   alias Phoenix.ConnTest
   alias Phoenix.LiveViewTest
   alias Plug.Conn
@@ -173,7 +174,7 @@ defmodule CodeMySpecSpex.Case do
 
   defp restore_env_on_exit(name) do
     previous = System.get_env(name)
-    ExUnit.Callbacks.on_exit(fn -> restore_env(name, previous) end)
+    Callbacks.on_exit(fn -> restore_env(name, previous) end)
   end
 
   # Two heads, so "there was nothing there before" is a value rather than a
@@ -1180,7 +1181,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, push_remote: false)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
   end
@@ -1469,7 +1470,7 @@ defmodule CodeMySpecSpex.Case do
       )
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -1551,7 +1552,7 @@ defmodule CodeMySpecSpex.Case do
     previous = Application.get_env(:code_my_spec, :provisioning_run_async, true)
     Application.put_env(:code_my_spec, :provisioning_run_async, true)
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_run_async, previous)
     end)
 
@@ -1579,7 +1580,7 @@ defmodule CodeMySpecSpex.Case do
     previous = Application.get_env(:code_my_spec, :graph_debounce_ms)
     Application.put_env(:code_my_spec, :graph_debounce_ms, 10_000)
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :graph_debounce_ms, previous)
     end)
 
@@ -1770,7 +1771,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.put(previous, :now, fn -> DateTime.add(DateTime.utc_now(), 5, :day) end)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -1788,7 +1789,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.put(previous, :database_url, url)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -1804,7 +1805,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.put(previous, :probe, fn _host, _opts -> :ok end)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -1843,7 +1844,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.put(previous, :probe, probe)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -2010,7 +2011,7 @@ defmodule CodeMySpecSpex.Case do
       )
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -2128,7 +2129,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, ssh_key_path: key, ssh_port: 2223)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -2591,7 +2592,7 @@ defmodule CodeMySpecSpex.Case do
     # The generator writes into the checkout. Recording leaves it dirty, and
     # the next recording would then hit the overwrite prompt and hang on
     # stdin — which looks like the suite freezing, not like residue.
-    recording? && ExUnit.Callbacks.on_exit(fn -> reset_site_checkout(path) end)
+    recording? && Callbacks.on_exit(fn -> reset_site_checkout(path) end)
 
     {:ok, project} = Fixtures.set_project_local_path(project, path)
 
@@ -2603,7 +2604,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, site_url: "http://127.0.0.1:4100", deploy_key: "dk_fleet_spex")
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -2640,7 +2641,7 @@ defmodule CodeMySpecSpex.Case do
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
-    ExUnit.Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
 
     context
     |> Map.put(:environment, env)
@@ -2686,7 +2687,7 @@ defmodule CodeMySpecSpex.Case do
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :memory_shell, previous)
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
       Fixtures.unregister_environment(project.id)
@@ -2872,7 +2873,7 @@ defmodule CodeMySpecSpex.Case do
   def tear_down_repository(project) do
     name = Fixtures.repository_name(project)
 
-    ExUnit.Callbacks.on_exit(fn -> delete_repository_unless_faked(name) end)
+    Callbacks.on_exit(fn -> delete_repository_unless_faked(name) end)
 
     project
   end
@@ -3221,7 +3222,7 @@ defmodule CodeMySpecSpex.Case do
   network. Naming it once says that in one place.
   """
   def teardown_later(label, cassette, fun) do
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       safe_teardown(label, fn -> with_provider_cassette(cassette, fun) end)
     end)
   end
@@ -3628,7 +3629,7 @@ defmodule CodeMySpecSpex.Case do
       )
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -3813,7 +3814,7 @@ defmodule CodeMySpecSpex.Case do
       )
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -3911,7 +3912,7 @@ defmodule CodeMySpecSpex.Case do
       )
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -3998,7 +3999,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, staged)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, CodeMySpec.Servers, previous)
     end)
 
@@ -4093,7 +4094,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, list: fn _scope -> staged end)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, CodeMySpec.Resources.Inventory, previous)
     end)
 
@@ -4138,7 +4139,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, trim: fn _scope, resource -> fun.(resource) && {:ok, resource} end)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, CodeMySpec.Resources, previous)
     end)
 
@@ -4165,7 +4166,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous, list: fn _scope, _server -> normalise_reported(reported) end)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, CodeMySpec.Servers.Containers, previous)
     end)
 
@@ -4216,7 +4217,7 @@ defmodule CodeMySpecSpex.Case do
       Keyword.put(previous, :monitors, monitors)
     )
 
-    ExUnit.Callbacks.on_exit(fn ->
+    Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
 
@@ -5048,7 +5049,7 @@ defmodule CodeMySpecSpex.Case do
     session = ReqCassette.start_shared_session()
     Process.put(:cms_cassette_session, session)
 
-    ExUnit.Callbacks.on_exit(fn -> ReqCassette.end_shared_session(session) end)
+    Callbacks.on_exit(fn -> ReqCassette.end_shared_session(session) end)
 
     :ok
   end
@@ -5869,7 +5870,7 @@ defmodule CodeMySpecSpex.Case do
     File.mkdir_p!(Path.join(stub_dir, "lib"))
     File.mkdir_p!(Path.join(stub_dir, "test"))
     File.mkdir_p!(Path.join(stub_dir, ".code_my_spec/spec"))
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(stub_dir) end)
+    Callbacks.on_exit(fn -> File.rm_rf(stub_dir) end)
 
     env = Fixtures.memory_environment_fixture(working_dir: stub_dir)
 
@@ -5891,7 +5892,7 @@ defmodule CodeMySpecSpex.Case do
     # :local env. Registration is monitored — when the test process exits
     # the entry is cleaned up automatically.
     Fixtures.register_environment(project.id, env)
-    ExUnit.Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
 
     updated_scope =
       user
@@ -5913,6 +5914,22 @@ defmodule CodeMySpecSpex.Case do
     # toggles themselves and drive the configuration LiveView explicitly, so
     # they override this and keep testing what they always tested.
     Fixtures.require_all!(updated_scope)
+
+    # A project being worked is a project being watched, and that is now the
+    # only thing that computes its graph. Reads stopped recomputing — they
+    # settle the watcher's queue and serve the rows — so without a watcher a
+    # spex reads an empty graph forever, and a write that should have moved it
+    # looks identical to one that did.
+    #
+    # After `require_all!/1` because the configuration is a topology input and
+    # the watcher computes once on arrival; started before it would compute
+    # against the wrong shape and then have to redo it.
+    Fixtures.watch_graph(updated_scope)
+
+    # And stopped when the test ends. A watcher outliving its sandbox
+    # transaction takes its next pass against a connection that has gone and
+    # logs at `:error`, which fails whichever spex is running when it lands.
+    Callbacks.on_exit(fn -> Fixtures.stop_watching(updated_scope) end)
 
     Map.merge(context, %{project: project, scope: updated_scope, environment: env})
   end

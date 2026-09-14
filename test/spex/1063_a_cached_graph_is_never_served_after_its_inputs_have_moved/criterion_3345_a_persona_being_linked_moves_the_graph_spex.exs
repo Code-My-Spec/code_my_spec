@@ -36,12 +36,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3345Spex do
         story = create_story(context.scope, title: "Unpersonaed", description: "no persona yet")
         context = ProjectStateFixtures.apply_persona(context)
 
-        _cold = read_graph(context)
+        before = read_settled_graph(context)
 
         {:ok,
          context
          |> Map.put(:new_story, story)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, before)}
       end
 
       when_ "the persona is linked to the story", context do
@@ -59,21 +59,39 @@ defmodule CodeMySpecSpex.Story1063.Criterion3345Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph no longer says the story has no persona", context do
         after_link = read_graph(context)
 
-        refute after_link["computed_at"] == context.before["computed_at"],
+        before_reason =
+          reason_for(context.before, "three_amigos_complete", :story, context.new_story.id)
+
+        reason = reason_for(after_link, "three_amigos_complete", :story, context.new_story.id)
+
+        assert before_reason =~ "No personas linked",
                """
-               A persona was linked and the graph went on answering from the
-               computation it made before.
+               The premise did not hold: this story is supposed to start with
+               no persona, and `three_amigos_complete` does not say so.
+
+               reason before: #{inspect(before_reason)}
+               """
+
+        refute reason =~ "No personas linked",
+               """
+               A persona was linked and the graph still says the story has
+               none.
 
                Personas hang off a join table rather than carrying a project_id
                or a story_id, so finding them needs its own query. An input that
                needs its own query shape is the one a hand-maintained list of
                inputs omits.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_link["computed_at"])}
+               The verdict cannot carry this claim: `three_amigos_complete`
+               stays false until the story is sealed, so it reads the same
+               either way. What moves is the reason — it is computed from the
+               records attached to the story, and the persona is one of them.
+
+               reason before: #{inspect(before_reason)}
+               reason after:  #{inspect(reason)}
                """
 
         {:ok, context}

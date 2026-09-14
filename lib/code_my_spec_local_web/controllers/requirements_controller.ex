@@ -52,24 +52,22 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     })
   end
 
-  # `cached_all/1` answers `computed_at: nil` on a miss — it computes, stores,
-  # and reports nil for the answer it has just produced. That is ambiguous in
-  # the worst way for a diagnostic surface: nil reads as "no answer" while
-  # meaning "this read *is* the answer", so two reads around a write compare a
-  # timestamp against nil and look like two computations when there was one.
+  # `nil` here means "no rows at this vantage", and it is answered rather than
+  # papered over.
   #
-  # So a miss reads again. The second read hits the store the first one filled,
-  # and `computed_at` then always means "when the computation serving this
-  # answer was made". `served_from` keeps the distinction that was being carried
-  # by nil, without overloading a timestamp to carry it.
+  # This used to read a second time when the first came back nil, because a
+  # miss computed its own answer and reported nil while doing it — so the
+  # second read hit the store the first had just filled. Reads compute nothing
+  # now, so a second one returns exactly what the first did and the only thing
+  # it adds is another preload.
+  #
+  # `"empty"` rather than `"computed"` for the same reason: nothing computed
+  # anything. A vantage with no rows has not been computed *by anybody yet*,
+  # which is a different and more alarming answer than "this read built it".
   defp cached_with_provenance(scope) do
     case Requirements.cached_all(scope) do
-      {_nodes, nil} ->
-        {nodes, computed_at} = Requirements.cached_all(scope)
-        {nodes, computed_at, "computed"}
-
-      {nodes, computed_at} ->
-        {nodes, computed_at, "cache"}
+      {nodes, nil} -> {nodes, nil, "empty"}
+      {nodes, computed_at} -> {nodes, computed_at, "cache"}
     end
   end
 
@@ -110,12 +108,24 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   # requirements actually cost something.
   #
   # `nil` means the node was computed on this request rather than read back.
+  # `entity_name` because an id cannot be recognised. This is the diagnostic
+  # surface for "is the graph current", and answering that means saying which
+  # requirement moved on which thing — `MyApp.Accounts`, not
+  # `fdc9c205-f9b7-596c-bcf1-8373b01b6059`. A reader holding only ids has to
+  # resolve every one against the database to find out whether the row it cares
+  # about is in the list.
   defp node_report(node) do
     %{
       name: node.name,
       entity_type: node.entity_type,
       entity_id: node.entity_id,
+      entity_name: Map.get(node, :entity_name),
       satisfied: node.satisfied,
+      # Why it is open, in the checker's own words. A verdict alone cannot
+      # distinguish "nothing happened" from "something happened and this
+      # requirement needs one more thing" — `three_amigos_complete` stays false
+      # whether a story has no scenarios at all or is one seal away.
+      details: node.details,
       checked_at: Map.get(node, :checked_at)
     }
   end

@@ -44,12 +44,19 @@ defmodule CodeMySpecSpex.Story1063.Criterion3340Spex do
             ready_for_dev: false
           )
 
-        _cold = read_graph(context)
+        before = read_settled_graph(context)
+
+        refute requirement(before, "component_linked", :story, story.id),
+               """
+               The premise did not hold: this story is parked and the graph
+               already carries requirements for it, so releasing it cannot be
+               the change under test.
+               """
 
         {:ok,
          context
          |> Map.put(:new_story, story)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, before)}
       end
 
       when_ "the story is released for development", context do
@@ -68,20 +75,25 @@ defmodule CodeMySpecSpex.Story1063.Criterion3340Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph carries the released story's requirements", context do
         after_release = read_graph(context)
 
-        refute after_release["computed_at"] == context.before["computed_at"],
+        assert requirement(after_release, "component_linked", :story, context.new_story.id),
                """
-               A story was released and the graph went on answering from the
-               computation it made before.
+               A story was released and the graph does not carry its
+               requirements.
 
                A released story brings a whole chain of requirements into
                existence. If the graph does not hear about it, an agent asking
                what to do next is told there is nothing while the story waits.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_release["computed_at"])}
+               The claim is that the requirement exists, not that a clock
+               moved: a pass that ran and applied nothing moves `computed_at`
+               exactly as far as one that worked, and `checked_at` is
+               second-resolution besides.
+
+               story #{context.new_story.id} requirements after release:
+                 #{inspect(Enum.filter(after_release["nodes"] || [], &(to_string(&1["entity_id"]) == to_string(context.new_story.id))))}
                """
 
         {:ok, context}
