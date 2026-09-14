@@ -1039,6 +1039,35 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   @doc """
+  Which entities are stale right now, computed and reported rather than fixed.
+
+  The same comparison `graph_stale_read_log` makes, exposed so a reader can ask
+  for it deliberately instead of enabling it on every read and reading a log.
+  `/dev/graph` runs it on demand and again whenever a pass lands, which is the
+  useful shape: watch the set empty as the recompute consumes what was
+  announced, and watch it fail to empty when something wrote without saying so.
+
+  Expensive on purpose — it rebuilds every entity's fingerprint — and changes
+  nothing. Returns `{:all, why}` when everything reads stale, which is its own
+  answer and usually means a shared input moved rather than that every entity
+  did.
+  """
+  @spec stale_entities_report(Scope.t()) ::
+          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
+  def stale_entities_report(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
+
+    with {:ok, ctx} <- Preloader.load(scope) do
+      {stored, _edges} = Projection.load(scope, ctx)
+
+      case stale_entities(stored, ctx) do
+        {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
+        {:all, why} -> {:all, why}
+      end
+    end
+  end
+
+  @doc """
   Whether reads should report what they are serving stale.
 
   Off by default, because it is the whole comparison a read used to do before

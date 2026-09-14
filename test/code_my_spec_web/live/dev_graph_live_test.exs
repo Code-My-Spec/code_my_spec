@@ -80,6 +80,45 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
            """
   end
 
+  test "the stale panel names an entity a silent writer moved", %{conn: conn, scope: scope} do
+    # Two, so "stale" can be a subset. With a single entity every stale set is
+    # also the whole set, and the report answers `{:all, why}` — a true answer
+    # that names nothing, and not the one this page is for.
+    story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
+    _other = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
+    :ok = GraphWatcher.settle(scope)
+    Requirements.recompute(scope)
+
+    {:ok, view, html} = live(conn, ~p"/dev/graph")
+
+    assert html =~ "Every entity&#39;s inputs agree" or html =~ "Every entity's inputs agree",
+           "the premise did not hold: something was already stale before the write"
+
+    # A write that reaches the database and announces nothing — the defect this
+    # page exists to find. `updated_at` is bumped because `Freshness.row_key/1`
+    # is `{id, updated_at}`, which is what a real writer moves.
+    Repo.update_all(
+      from(s in "stories", where: s.id == ^story.id),
+      set: [
+        description: "changed with nothing announcing it",
+        updated_at: DateTime.utc_now() |> DateTime.add(60, :second) |> DateTime.to_naive()
+      ]
+    )
+
+    html = view |> element("button[phx-click='recheck']") |> render_click()
+
+    assert html =~ "story:#{story.id}",
+           """
+           A silent write moved a story's inputs and the page did not name it.
+
+           This is the page's reason to exist. A stale set that does not empty
+           after a pass is how a writer that announced nothing gets found, and
+           it has to say which entity or there is nothing to trace back.
+
+           #{html}
+           """
+  end
+
   test "opening the page does not recompute the graph", %{conn: conn, scope: _scope} do
     before_stamps =
       from(n in Node, select: n.checked_at) |> Repo.all() |> Enum.uniq() |> Enum.sort()

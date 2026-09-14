@@ -111,6 +111,15 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
+  Which entities read stale right now — the expensive diff, run deliberately.
+
+  See `RequirementGraph.stale_entities_report/1`. Reports; changes nothing.
+  """
+  @spec stale_entities_report(Scope.t()) ::
+          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
+  def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
+
+  @doc """
   What the rows say about whether the graph recomputes incrementally.
 
   Read-only, and from the rows rather than from a log: every pass stamps
