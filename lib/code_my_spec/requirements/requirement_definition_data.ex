@@ -990,7 +990,22 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 15,
         name: "stories_exist",
-        role: :product,
+        # The main agent's, and the line it draws is between the two
+        # conversations this project has about a story. John: "the main agent
+        # does the initial story interview that gets the initial stories up,
+        # and then the product agent in the assigned working copy does the
+        # three amigos".
+        #
+        # So `stories_exist` is main's and `three_amigos_complete` stays
+        # product's. They read alike — both are multi-turn intake, both are
+        # `validation_type: :manual` — and they are not the same work: the
+        # first is project-scoped and happens before there is a checkout to
+        # assign, and the second is per story on the copy that will build it.
+        #
+        # Tagged `:product` before, which left a project with no stories and no
+        # product agent holding work that reached nobody. The main agent has
+        # the conversation the person is actually in.
+        role: :main,
         node_scope: :self,
         check_type: :delegate,
         config: %{module: CodeMySpec.Requirements.StoriesChecker, function: :exist?},

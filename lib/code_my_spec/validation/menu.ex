@@ -98,7 +98,8 @@ defmodule CodeMySpec.Validation.Menu do
         ""
 
       [top | rest] ->
-        directive(scope, top, owner) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
+        directive(scope, top, role, owner) <>
+          tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
     end
   end
 
@@ -287,7 +288,7 @@ defmodule CodeMySpec.Validation.Menu do
   # The open task names itself, because "1 open task" is not actionable and the
   # id is not something the agent can look up from here. `evaluate_task` takes
   # the id, so the directive carries the id.
-  defp directive(scope, {:task, count}, owner) do
+  defp directive(scope, {:task, count}, _role, owner) do
     task = newest_active_task(owner)
 
     "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}." <>
@@ -307,8 +308,42 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # An agent that holds the tool calls it; one that does not looks it up with
   # `tool_docs` and calls it in a script. Naming it is true for both.
-  defp directive(_scope, {class, count}, _owner) do
-    "\n\nNext: #{label(class, count)} — `#{@tools[class]}`."
+  # The count, then what the first of them is.
+  #
+  # A second sentence rather than a rewrite of the first, so "1 requirement —
+  # `get_next_requirement`" still reads exactly as it did. The whole menu is
+  # still one directive: this names the item the agent is about to be handed,
+  # not the list.
+  #
+  # Criterion 3185 is what asks for it, and from the position that matters: the
+  # only work on that project is a story interview, and an agent told "1
+  # requirement" cannot tell whether it is the one thing it can do or the one
+  # thing it cannot. It spends a turn on `get_next_requirement` finding out.
+  # `directive/3`'s `:task` clause has named its subject since it was written,
+  # for the same reason.
+  defp directive(scope, {:requirements, _count} = class_count, role, _owner) do
+    plain(class_count) <> next_requirement_note(scope, role)
+  end
+
+  defp directive(_scope, class_count, _role, _owner), do: plain(class_count)
+
+  defp plain({class, count}), do: "\n\nNext: #{label(class, count)} — `#{@tools[class]}`."
+
+  # Reads the role the count was taken with, not the owner's own. They are the
+  # same for every caller today, and a caller that passed one and owned the
+  # other would otherwise get a sentence naming work its count never included.
+  #
+  # Silent when there is nothing to name — a class that is not live never
+  # reaches here, but an actionable set that emptied underneath this render
+  # does.
+  defp next_requirement_note(scope, role) do
+    case Requirements.actionable_for_role(scope, role) do
+      [%{description: description} | _] when is_binary(description) ->
+        " The first is: #{description}"
+
+      _ ->
+        ""
+    end
   end
 
   # Why the requirement is still open, from the checker that refused it.

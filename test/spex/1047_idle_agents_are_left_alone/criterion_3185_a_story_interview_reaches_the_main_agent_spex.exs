@@ -5,8 +5,9 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
 
   The third separation this story makes. 3179 separates roles, 3184 separates
   checkouts, and this separates the main agent from the copies: shaping work —
-  a story that needs its interview — belongs to the main agent, and the agents
-  on the working copies cannot do it at all.
+  a project with no stories yet, needing the interview that produces them —
+  belongs to the main agent, and the agents on the working copies cannot do it
+  at all.
 
   It matters more than the other two because of who is left holding it. A
   shaping item that wakes the copies wakes agents that will read it, find no
@@ -14,17 +15,28 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
   could have done it, is told nothing and stays quiet. The work is reachable by
   exactly one agent and gets offered to every other one.
 
-  Asserted on the main agent's own stop reply, because that is the menu it
-  reads.
+  ## Which interview
+
+  There are two, and they belong to different agents. John: "the main agent
+  does the initial story interview that gets the initial stories up, and then
+  the product agent in the assigned working copy does the three amigos". So
+  this is `stories_exist` — project-scoped, before there is a checkout to
+  assign — and not `three_amigos_complete`, which is per story and product's.
+
+  Read on the main agent's transcript, because that is where its menu arrives.
+  An agent we run fires no hooks: `Agents.StopDecision` sends it the same menu
+  `Hooks.Stop` would have put in a reply. This used to post `/api/hooks/stop`
+  and read the response, which is the external agent's path — and the reply was
+  `%{}` every time, because a session that is not in continuous mode is simply
+  allowed to stop.
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -37,67 +49,61 @@ defmodule CodeMySpecSpex.Story1047.Criterion3185Spex do
 
   spex "Shaping work reaches the main agent and nobody else" do
     scenario "A story interview reaches the main agent" do
-      given_ "a project with nothing left for anybody to do", context do
-        {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
+      given_ "a project past kickoff whose only outstanding work is shaping", context do
+        # Kickoff satisfies the project artifacts and stops short of stories —
+        # "the caller is responsible for `stories_exist`" — so leaving it
+        # alone is what puts the interview on the graph, and nothing else with
+        # it. No component is synced, so the coding lane is empty.
+        {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      end
+
+      given_ "the copy already synced once, so the graph knows what is outstanding",
+             context do
+        # A premise rather than a convenience, and it costs a wake to nobody
+        # because no agent exists yet.
+        #
+        # Two things only a sync settles. `personas_complete` reads the
+        # persona's `summary.md` and `sources.md` off the projection, so until
+        # something scans the checkout it is unsatisfied — and it gates
+        # `stories_exist`, so the interview is not on the graph at all. And
+        # switching a copy on rings the bell itself (`set_copy_continuous/3`
+        # calls `wake_roles/3`), rendering each role's menu from whatever the
+        # graph holds at that instant.
+        #
+        # Together those mean the first switch-on of a never-synced project is
+        # silent for every role, including the one whose work was waiting.
+        # Filed as `a0780389`; it is not what this criterion is about, and a
+        # scenario that left it implicit would be asserting routing against an
+        # empty graph.
+        {:ok, put_to_work(context)}
       end
 
       given_ "a main agent and a coding agent on a working copy", context do
         main = Fixtures.running_agent(context.scope, role: "main")
         coding = Fixtures.running_agent(context.scope, role: "coding")
-        context = context |> start_session() |> put_to_work()
 
         {:ok,
          context
          |> Map.put(:main, main.id)
          |> Map.put(:coding, coding.id)
+         |> Map.put(:main_before, heard_count(context, main.id))
          |> Map.put(:coding_before, heard_count(context, coding.id))}
       end
 
-      given_ "a story that needs its initial interview and no other work available", context do
-        # Released and linked, with no interview. `Preloader` filters to
-        # `ready_for_dev == true` — "only released stories project into the
-        # graph" — so the parked story this used to create held no requirement
-        # for anybody and the stop came back `%{}`: no classes, stop allowed,
-        # nothing to route. Released, the first thing it projects is
-        # `three_amigos_complete`, which is the interview.
-        story =
-          StoryHelpers.create_and_link(context.scope, context.component.module_name,
-            title: "Refunds reach the ledger",
-            description: "Shaping work, and nothing a working copy can pick up",
-            acceptance_criteria: ["A refund lands on the ledger"]
-          )
-
-        :ok = Fixtures.settle_graph(context.scope)
-
-        {:ok, Map.put(context, :story, story)}
+      when_ "the copy is switched on and the work is routed", context do
+        {:ok, put_to_work(context)}
       end
 
-      when_ "the main agent ends a turn", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            context.conn
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => clean_analysis()
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+      then_ "the main agent's menu names the story interview", context do
+        said = latest(context, context.main)
 
-        {:ok, Map.put(context, :response, response)}
-      end
-
-      then_ "its stop hook menu names the story interview", context do
-        body = inspect(context.response)
-
-        assert body =~ ~r/(interview|shape|story)/i,
+        assert said =~ ~r/(interview|shape|story)/i,
                """
                The only work available is shaping work, and the main agent's
                menu does not mention it — so the one agent that can do it is
                not told it exists.
 
-               #{body}
+               got: #{inspect(said)}
                """
 
         {:ok, context}

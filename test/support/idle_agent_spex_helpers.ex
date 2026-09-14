@@ -53,6 +53,13 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   def put_to_work(context, copy_id \\ nil) do
     frame = frame(context)
 
+    # Switch first, then compute, and it has to be this way round even though
+    # the switch-on wake renders against whatever the graph already holds.
+    # `GetNextRequirement` syncs the working copy on its way to the graph, and
+    # the sync clears problems whose file is not on disk — which is every
+    # problem `Fixtures.record_problem/3` writes, since its path is a name
+    # rather than a file. Computing first swept them before the menu could
+    # count them, and criteria 3183 and 3196 went silent for it.
     {:reply, _response, _frame} =
       SetWorkingCopyLoop.execute(
         %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
