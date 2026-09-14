@@ -472,16 +472,23 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   # A pass that found nothing actionable wakes nobody: `wake/2` would render an
   # empty menu and stay silent for every role, so this only saves asking.
-  #
-  # The first pass wakes like any other, and briefly did not. Suppressing it
-  # looked reasonable — a watcher arriving is not news — and is wrong on the
-  # case waking exists for: `watch_active_projects/0` starts watchers at boot,
-  # which is exactly when agents have gone idle across a deploy with work
-  # waiting, and a bootstrap that stays quiet leaves every one of them asleep.
-  # It was introduced to quiet cross-scenario noise whose real cause turned out
-  # to be a contention error logged at `:error`, and that is fixed where it
-  # belongs.
   defp maybe_wake(_state, [], _consumed), do: nil
+
+  # Nor does the first pass, which answers no observation. Everything it finds
+  # actionable was already actionable before this watcher existed, so telling
+  # an agent "work of your kind is available" about it is not news — it is the
+  # watcher's own arrival, reported as though something had happened.
+  #
+  # I took this out once, reasoning that `watch_active_projects/0` runs at boot
+  # and that is exactly when agents have gone idle across a deploy with work
+  # waiting. Criterion 3186 says otherwise and is right: the main agent, with
+  # nothing assigned, was sent "Next: 1 requirement" about a `stories_exist`
+  # that had been sitting there all along. An agent coming back after a deploy
+  # reads its menu; it does not need to be pushed about work that predates it.
+  #
+  # A pass that consumed observations always wakes, first or not. That is the
+  # case this whole mechanism exists for.
+  defp maybe_wake(%{last_recompute: nil}, _actionable, []), do: nil
 
 
   defp maybe_wake(state, _actionable, _consumed) do

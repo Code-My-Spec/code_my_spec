@@ -47,7 +47,6 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
@@ -74,7 +73,6 @@ defmodule CodeMySpec.Analysis do
     RunsRepository
   }
 
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   # `:async` (default) runs jobs through the per-project ProjectServer —
@@ -384,15 +382,6 @@ defmodule CodeMySpec.Analysis do
       "analysis:#{scope.active_project_id}",
       {:analysis, %{source: run.source, status: status, run_id: run.id}}
     )
-
-    # And to the graph's own topic. An analyzer run is a graph input —
-    # `Preloader.analysis_freshness/2` feeds `analysis_fresh`, and
-    # `tests_passing` and the review gates are computed from what it found. A
-    # run finishing is the moment those answers change.
-    #
-    # Reads serve rows and derive nothing now, so a writer that says nothing
-    # leaves every reader on the old answer. See `Requirements.GraphInputs`.
-    GraphInputs.announce(scope, "Analysis")
   end
 
   @doc """
