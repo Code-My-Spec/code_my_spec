@@ -432,37 +432,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
       RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
 
     actionable
-  rescue
-    error in Postgrex.Error ->
-      # Something this pass was computing for went away while it computed.
-      #
-      # A pass reads a context, spends real time building a graph from it, and
-      # then writes — so anything in that snapshot can be deleted underneath
-      # it. Two seen: a checkout offboarded mid-pass, and a component replaced
-      # by a sync (renaming a spec's module deletes the old component and
-      # creates a new one, which is criterion 5931). Both land as a foreign key
-      # refusing a row whose owner no longer exists.
-      #
-      # `Projection.live_vantages/2` filters the checkouts already gone and
-      # cannot win this race; nothing could, because the gap is the computation
-      # itself.
-      #
-      # Not a fault, and it must not be logged as one: the watcher reports
-      # `last_error` on `/dev/state`, and a recompute that reports a fault
-      # every time somebody renames a module is a diagnostic nobody reads. The
-      # delete that caused this announced, so a pass is already queued behind
-      # this one and it will compute from a context that has the news.
-      if entity_gone?(error) do
-        Logger.info(
-          "[GraphWatcher] skipping vantage #{inspect(vantage)}: " <>
-            "something it was computing for was deleted mid-pass " <>
-            "(#{constraint_of(error)}); the pass behind this one has the news"
-        )
-
-        []
-      else
-        reraise error, __STACKTRACE__
-      end
   end
 
   # The owner columns, and only those. Any other constraint is a real defect
@@ -645,7 +614,37 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   #
   # Stopping is right for both: there is no project, so there is nothing to
   # recompute, and a `:transient` child that stops `:normal` is not restarted.
+  # Something this pass was computing for went away while it computed.
+  #
+  # A pass reads a context, spends real time building a graph from it, and then
+  # writes — so anything in that snapshot can be deleted underneath it. Two
+  # seen: a checkout offboarded mid-pass, and a component replaced by a sync
+  # (renaming a spec's module deletes the old component and creates a new one,
+  # which is criterion 5931). Both land as a foreign key refusing a row whose
+  # owner no longer exists, and neither is a fault — `last_error` shows on
+  # `/dev/state`, and a watcher reporting a fault every time somebody renames a
+  # module is a diagnostic nobody reads.
+  #
+  # The delete announced, so another pass is already queued; this one schedules
+  # anyway, because the announcement may have landed while this pass was in
+  # flight and been folded into the list it is about to retry.
   defp recompute_failure(state, error) do
+    entity_gone?(error)
+    |> handle_failure(state, error)
+  end
+
+  defp handle_failure(true, state, error) do
+    Logger.info(
+      "[GraphWatcher] a pass for #{state.project_id} raced a delete " <>
+        "(#{constraint_of(error)}); retrying with a context that has the news"
+    )
+
+    {:ok, schedule(state)}
+  end
+
+  defp handle_failure(false, state, error), do: real_failure(state, error)
+
+  defp real_failure(state, error) do
     if project_exists?(state.project_id) do
       # Loud, and still alive.
       #
@@ -682,36 +681,20 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     end
   end
 
-  # Gone means the query answered, and answered no.
+  # Gone means the query answered, and answered no. There is no third answer
+  # here, and there used to be: this rescued every exception to `false`, so a
+  # DBConnection queue timeout read as "the project is gone". That retires the
+  # watcher, `:transient` means a `:normal` stop is never restarted, and
+  # `settle/1` answers `:ok` when nothing is watching — one transient blip
+  # retired a project's watcher permanently and every read after it was served
+  # a frozen graph, silently.
   #
-  # This rescued every exception to `false`, on the reasoning that a connection
-  # which has gone with the project is the same answer. It is not, and the
-  # difference is the worst kind: `false` here stops the watcher, `:transient`
-  # means a `:normal` stop is not restarted, and `settle/1` answers `:ok` when
-  # nothing is watching. So one `DBConnection` queue timeout under load — a
-  # checkout timeout, an ownership error, the pool briefly full — retires the
-  # project's watcher permanently and every read from then on is served a
-  # frozen graph, silently, because the one thing that would recompute it is
-  # gone.
-  #
-  # That is the failure this module's own docs call the worst shape available:
-  # correct-looking and not moving. It presented as flakiness — criterion 5901
-  # picking the wrong wave, roughly one run in eight on a box at load 17-20,
-  # and never once in 200 executions on a quiet checkout without this code.
-  #
-  # So an exception means "could not tell", and could-not-tell keeps the
-  # watcher alive. The next pass asks again, and a project that really is gone
-  # answers plainly then.
+  # No rescue at all now. If the question cannot be asked, this raises, the
+  # watcher dies abnormally, and `:transient` restarts it — which is the
+  # recovery we actually want: a fresh watcher computes on arrival, so the
+  # graph is rebuilt rather than frozen. Deciding on a guess was the only thing
+  # that could lose work here.
   defp project_exists?(project_id) do
     Repo.exists?(from(p in "projects", where: p.id == type(^project_id, :binary_id)))
-  rescue
-    error ->
-      Logger.warning(
-        "[GraphWatcher] could not tell whether project #{project_id} still exists " <>
-          "(#{Exception.message(error)}); staying alive rather than retiring on a " <>
-          "question that was never answered"
-      )
-
-      true
   end
 end
