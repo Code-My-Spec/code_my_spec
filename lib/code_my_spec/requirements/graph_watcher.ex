@@ -642,7 +642,41 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     {:ok, schedule(state)}
   end
 
-  defp handle_failure(false, state, error), do: real_failure(state, error)
+  defp handle_failure(false, state, error) do
+    transient?(error)
+    |> handle_transient(state, error)
+  end
+
+  # The pool was busy. That is not "the graph has stopped being able to
+  # compute", which is what this watcher's `:error` means and what
+  # `/dev/state` renders it as — and under contention it is common: a pass
+  # losing a race for a connection for 360ms.
+  #
+  # Logging it as a fault had a second cost that took a while to see.
+  # `SexySpex.ErrorCapture` fails a run on any logged `:error`, so a watcher
+  # saying this during somebody else's scenario failed that scenario. Every
+  # analyzer sweep on a loaded box came back with exactly three casualties,
+  # different ones each time, which reads as three flaky spex and is one
+  # watcher shouting.
+  #
+  # Rescheduled like any other failure, so the observations it did not apply
+  # are retried rather than stranded.
+  defp handle_transient(true, state, error) do
+    Logger.warning(
+      "[GraphWatcher] a pass for #{state.project_id} could not get what it needed " <>
+        "(#{Exception.message(error)}); retrying"
+    )
+
+    {:ok, schedule(state)}
+  end
+
+  defp handle_transient(false, state, error), do: real_failure(state, error)
+
+  # Contention, not a defect: the pool refusing a checkout, or a query giving
+  # up waiting for one.
+  defp transient?(%DBConnection.ConnectionError{}), do: true
+  defp transient?(%DBConnection.OwnershipError{}), do: true
+  defp transient?(_error), do: false
 
   defp real_failure(state, error) do
     if project_exists?(state.project_id) do
