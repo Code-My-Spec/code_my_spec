@@ -4302,6 +4302,17 @@ defmodule CodeMySpecSpex.Fixtures do
     # fixture had just prepared — criteria 6529 and 6533, deterministically.
     GraphInputs.changed(scope, GraphInputs.observation_id())
 
+    # And settled before returning, so the graph agrees with the world this
+    # fixture has just finished building.
+    #
+    # Announcing alone leaves a window: the pass is scheduled, the fixture
+    # returns, and whether the scenario's first read sees the finished setup
+    # depends on which lands first. That is not a wait — `settle/1` does the
+    # pending pass synchronously — and it is the difference between criteria
+    # 6529/6533 passing and 6532 failing about one run in four on the same
+    # fixture.
+    GraphWatcher.settle(scope)
+
     result
   end
 
