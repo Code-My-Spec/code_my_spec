@@ -780,7 +780,7 @@ defmodule CodeMySpec.WorkingCopies do
   # only as `is_nil/1`, which is criterion 3339's whole point — and announcing
   # one would charge a preload per heartbeat per copy to discover that nothing
   # moved.
-  defp announce_graph_change({:ok, copy} = result, %WorkingCopy{project_id: project_id}) do
+  defp announce_graph_change({:ok, _copy} = result, %WorkingCopy{project_id: project_id}) do
     GraphInputs.announce(project_id, "WorkingCopies")
     result
   end
