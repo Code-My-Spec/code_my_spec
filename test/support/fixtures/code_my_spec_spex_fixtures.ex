@@ -1339,15 +1339,62 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Do the watcher's pending pass now instead of when the debounce expires.
+  Do the watcher's pending pass now instead of when the debounce expires, and
+  wait for what it set in motion.
 
   A spec that slept would be asserting the timer rather than the mechanism, and
   would be flaky on a loaded box — which is where the analyzer runs. Answers
   `:ok` when no watcher is running, so it is safe to call unconditionally.
+
+  ## Why the pass alone is not enough
+
+  A recompute that finds work wakes the project's agents *off* this process —
+  it has to, because rendering a role's menu counts requirements and counting
+  them can call `settle/1`, so a watcher waking inside its own recompute would
+  be calling itself. So `GraphWatcher.settle/1` correctly answers as soon as
+  the graph is current, which is a beat before anybody has been told.
+
+  For a criterion asserting that an agent was told, that beat is the whole
+  assertion. Worse than flaky: the wake outlives the test, the sandbox owner
+  is already gone, and it dies with `cannot find ownership process ... using
+  mode :manual` — which reads as a wake that crashed rather than one that
+  arrived late.
+
+  Draining rather than awaiting one task, because a pass can wake several
+  agents and the spawn order is not ours to know. Bounded, so a spex that has
+  some other long-running task under the same supervisor fails its own
+  assertion rather than hanging here.
   """
   @spec settle_graph(Scope.t()) :: :ok
-  def settle_graph(%Scope{} = scope),
-    do: GraphWatcher.settle(scope)
+  def settle_graph(%Scope{} = scope) do
+    :ok = GraphWatcher.settle(scope)
+    drain_background_work(System.monotonic_time(:millisecond) + 5_000)
+  end
+
+  defp drain_background_work(deadline) do
+    case Task.Supervisor.children(CodeMySpec.TaskSupervisor) do
+      [] ->
+        :ok
+
+      [pid | _] ->
+        await_exit(pid, deadline)
+
+        if System.monotonic_time(:millisecond) < deadline,
+          do: drain_background_work(deadline),
+          else: :ok
+    end
+  end
+
+  defp await_exit(pid, deadline) do
+    ref = Process.monitor(pid)
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      remaining -> Process.demonitor(ref, [:flush])
+    end
+  end
 
   @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
   def record_git_state(working_copy_id, %{} = state) do
@@ -3211,11 +3258,27 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc "Mark a story ready for development, the way the epics page does."
-  @spec mark_story_ready(Scope.t(), map()) :: :ok
-  def mark_story_ready(%Scope{} = scope, story) do
+  @doc """
+  Mark a story ready for development, the way the epics page does.
+
+  Takes an id as readily as a struct, because the two ways a criterion comes by
+  a story answer differently: `authored_story/3` hands back the row, while
+  `:story_linked_to_component` drives `CreateStory` and parses the tool's reply,
+  so all it has is a map with an id on it. Both are "the story", and a bridge
+  that only accepted one of them made which given ran earlier a thing the
+  criterion had to know.
+  """
+  @spec mark_story_ready(Scope.t(), map() | integer()) :: :ok
+  def mark_story_ready(%Scope{} = scope, %CodeMySpec.Stories.Story{} = story) do
     {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: true})
     :ok
+  end
+
+  def mark_story_ready(%Scope{} = scope, %{id: story_id}),
+    do: mark_story_ready(scope, story_id)
+
+  def mark_story_ready(%Scope{} = scope, story_id) when is_integer(story_id) do
+    mark_story_ready(scope, CodeMySpec.Stories.get_story!(scope, story_id))
   end
 
   @doc """

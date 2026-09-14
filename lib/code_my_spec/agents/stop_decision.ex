@@ -141,23 +141,46 @@ defmodule CodeMySpec.Agents.StopDecision do
       menu ->
         message = "Work of your kind is available." <> menu
 
-        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
-        # every graph change project-wide, and a change unrelated to this
-        # agent's own menu renders the identical text again. Keyed on the
-        # message rather than the event, so a real change to what this agent
-        # can see still gets through.
-        if stuck?(agent, message, :wake) do
-          :ok
-        else
+        {:ok, conversation} =
           Conversations.find_or_create_agent_conversation(
             scope.active_account_id,
             scope.active_project_id,
             agent.id
           )
 
-          send_to(scope, agent, message)
+        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
+        # every graph change project-wide, and a change unrelated to this
+        # agent's own menu renders the identical text again. Keyed on the
+        # message rather than the event, so a real change to what this agent
+        # can see still gets through.
+        cond do
+          already_holding?(conversation, message) -> :ok
+          stuck?(agent, message, :wake) -> :ok
+          true -> send_to(scope, agent, message)
         end
     end
+  end
+
+  # Never tell an agent what it is already looking at.
+  #
+  # `stuck?/3` is the wrong dial for this on its own: it allows
+  # `@stuck_threshold` repeats before it suppresses, which is right for a stop
+  # decision — an agent told the same thing after its own turn genuinely has
+  # not acted on it — and wrong here, where a repeat means only that a second
+  # graph change rendered the same menu.
+  #
+  # And two passes for one burst is not a bug to fix upstream. The debounce
+  # coalesces rather than throttles, deliberately, so an observation landing
+  # just after a pass starts gets its own pass — correct, and it rendered this
+  # agent an identical menu 13ms after the first. Two turns charged for one
+  # piece of news.
+  #
+  # Keyed on the conversation rather than a `:persistent_term` slot because it
+  # re-arms on its own: once the agent replies, or a stop decision lands, the
+  # last message differs and the same text is news again. A slot would have to
+  # be cleared by every other writer to mean the same thing.
+  defp already_holding?(conversation, message) do
+    Conversations.last_message_text(conversation, :operator) == message
   end
 
   @doc """

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Personas do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils
@@ -22,6 +23,7 @@ defmodule CodeMySpec.Personas do
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   defp impl do
@@ -48,6 +50,8 @@ defmodule CodeMySpec.Personas do
   defp broadcast(%Scope{} = scope, message) do
     key = scope.active_project_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
+
+    GraphInputs.announce(scope, "Personas")
   end
 
   def create_persona(scope, attrs) do

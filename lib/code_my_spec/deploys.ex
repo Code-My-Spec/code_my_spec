@@ -20,6 +20,7 @@ defmodule CodeMySpec.Deploys do
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Users
     ],
@@ -30,6 +31,7 @@ defmodule CodeMySpec.Deploys do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -43,7 +45,7 @@ defmodule CodeMySpec.Deploys do
   """
   @spec record(Scope.t(), integer(), String.t(), keyword()) ::
           {:ok, Deploy.t()} | {:error, Ecto.Changeset.t()}
-  def record(%Scope{active_project_id: project_id}, story_id, environment, opts \\ []) do
+  def record(%Scope{active_project_id: project_id} = scope, story_id, environment, opts \\ []) do
     attrs = %{
       project_id: project_id,
       story_id: story_id,
@@ -59,6 +61,7 @@ defmodule CodeMySpec.Deploys do
     end
     |> Deploy.changeset(attrs)
     |> Repo.insert_or_update()
+    |> announce(scope)
   end
 
   @doc """
@@ -70,7 +73,7 @@ defmodule CodeMySpec.Deploys do
   """
   @spec verify(Scope.t(), integer(), String.t(), DateTime.t()) ::
           {:ok, Deploy.t()} | {:error, :not_found | Ecto.Changeset.t()}
-  def verify(%Scope{active_project_id: project_id}, story_id, environment, at \\ nil) do
+  def verify(%Scope{active_project_id: project_id} = scope, story_id, environment, at \\ nil) do
     case get(project_id, story_id, environment) do
       nil ->
         {:error, :not_found}
@@ -79,8 +82,25 @@ defmodule CodeMySpec.Deploys do
         deploy
         |> Deploy.changeset(%{health_verified_at: at || DateTime.utc_now()})
         |> Repo.update()
+        |> announce(scope)
     end
   end
+
+  # `16a24105`: "a cached graph can tell an agent work is finished that a deploy
+  # has just reopened". `deploy` asks `uat_check/3`, so a deploy landing moves
+  # the graph, and until the fingerprint covered deploys it moved nothing the
+  # cache could see. Announcing closes the other half — the fingerprint notices
+  # once somebody reads, and this is what makes somebody read.
+  #
+  # Per row rather than once per `record_environment_deploy/3`: the debounce
+  # collapses a deploy's whole batch into one pass anyway, and `record/4` has
+  # callers of its own that would otherwise be silent.
+  defp announce({:ok, _deploy} = result, scope) do
+    GraphInputs.announce(scope, "Deploys")
+    result
+  end
+
+  defp announce(result, _scope), do: result
 
   @doc """
   Record the stories a successful deploy carried.

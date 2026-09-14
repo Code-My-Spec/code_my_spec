@@ -11,11 +11,12 @@ defmodule CodeMySpec.Configurations do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec, CodeMySpec.Repo, CodeMySpec.Requirements, CodeMySpec.Users],
     exports: :all
 
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -55,10 +56,22 @@ defmodule CodeMySpec.Configurations do
           {:ok, ProjectConfiguration.t()} | {:error, Ecto.Changeset.t()}
   def update(%Scope{active_project_id: project_id} = scope, attrs)
       when not is_nil(project_id) do
-    scope
-    |> get_or_create()
-    |> ProjectConfiguration.changeset(attrs)
-    |> Repo.update()
+    result =
+      scope
+      |> get_or_create()
+      |> ProjectConfiguration.changeset(attrs)
+      |> Repo.update()
+
+    # `GraphFingerprint` hashes the configuration, and it decides real gates —
+    # `require_specs?` alone adds or removes a requirement on every component
+    # in the project. Turning it on is work appearing for a role that has
+    # nothing to read that would tell it so.
+    case result do
+      {:ok, _config} -> GraphInputs.announce(scope, "Configurations")
+      {:error, _changeset} -> :ok
+    end
+
+    result
   end
 
   @doc """

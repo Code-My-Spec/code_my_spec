@@ -41,6 +41,8 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   writer that is unsure should publish.
   """
 
+  require Logger
+
   alias CodeMySpec.Users.Scope
 
   @pubsub CodeMySpec.PubSub
@@ -72,6 +74,24 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   end
 
   def changed(_no_project, _obs), do: :ok
+
+  @doc """
+  Mint an observation, say so in the log, and publish it.
+
+  The three lines every writer needs, in one place. `Issues` carried them
+  inline and was the only writer that did; copying that block to each of the
+  remaining fingerprint inputs would have been eight copies of a log format
+  and an argument order, which is the shape that drifts.
+
+  `source` names the context in the log line — the same `[Issues]` prefix that
+  block already wrote — so a burst in the log still says who moved.
+  """
+  @spec announce(Scope.t() | Ecto.UUID.t() | nil, String.t()) :: :ok
+  def announce(scope_or_project_id, source) when is_binary(source) do
+    obs = observation_id()
+    Logger.info("[#{source}] announcing a graph change", obs: obs)
+    changed(scope_or_project_id, obs)
+  end
 
   @doc """
   An id for one observation, so the recompute that consumes it can name it.

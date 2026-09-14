@@ -69,9 +69,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # this, and a recompute that read the attempt before it committed would decide
   # from a row that might roll back. Only on success for the same reason.
   defp announce_graph_change(scope, {:ok, _attempt}) do
-    obs = GraphInputs.observation_id()
-    Logger.info("[Qa] announcing a graph change", obs: obs)
-    GraphInputs.changed(scope, obs)
+    GraphInputs.announce(scope, "Qa")
   end
 
   defp announce_graph_change(_scope, _other), do: :ok

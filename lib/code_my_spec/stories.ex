@@ -17,12 +17,14 @@ defmodule CodeMySpec.Stories do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements,
       CodeMySpec.Tags,
       CodeMySpec.Users,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -55,6 +57,8 @@ defmodule CodeMySpec.Stories do
       "user:#{scope.active_account_id}:stories",
       message
     )
+
+    GraphInputs.announce(scope, "Stories")
   end
 
   @doc """

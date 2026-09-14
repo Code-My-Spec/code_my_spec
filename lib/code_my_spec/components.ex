@@ -23,6 +23,7 @@ defmodule CodeMySpec.Components do
     DependencyRepository
   }
 
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
@@ -46,6 +47,8 @@ defmodule CodeMySpec.Components do
     key = scope.user.id
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
+
+    GraphInputs.announce(scope, "Components")
   end
 
   defdelegate list_components(scope), to: ComponentRepository
