@@ -257,17 +257,25 @@ defmodule CodeMySpec.Problems.ProblemRepository do
         problems
       )
       when is_binary(source) and is_list(problems) do
-    lock_key = {__MODULE__, lock_scope_key(scope), source}
+    # `:global.trans/2`'s id is `{ResourceId, LockRequesterId}` specifically —
+    # not an arbitrary term. A bare compound key here crashed every call with
+    # a FunctionClauseError inside `:global.set_lock/4` — caught by the
+    # pre-promote sweep before it reached the running copy, but a much louder
+    # failure than the pool-exhaustion bug it was meant to replace.
+    resource_id = {__MODULE__, lock_scope_key(scope), source}
+    :global.trans({resource_id, self()}, fn ->
+      do_reconcile_problems_for_source(scope, source, file_scope, problems)
+    end)
+  end
 
-    :global.trans(lock_key, fn ->
-      Repo.transaction(fn ->
-        clear_problems_for_source(scope, [source: source], file_scope)
+  defp do_reconcile_problems_for_source(scope, source, file_scope, problems) do
+    Repo.transaction(fn ->
+      clear_problems_for_source(scope, [source: source], file_scope)
 
-        case insert_all_problems(problems, scope) do
-          {:error, changeset} -> Repo.rollback(changeset)
-          {:ok, inserted_problems} -> inserted_problems
-        end
-      end)
+      case insert_all_problems(problems, scope) do
+        {:error, changeset} -> Repo.rollback(changeset)
+        {:ok, inserted_problems} -> inserted_problems
+      end
     end)
   end
 
