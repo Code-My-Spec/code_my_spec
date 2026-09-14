@@ -1413,6 +1413,51 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec settle_graph(Scope.t()) :: :ok
   def settle_graph(%Scope{} = scope) do
     :ok = GraphWatcher.settle(scope)
+    drain_background_work()
+  end
+
+  @doc """
+  Wait for the background work this project started to finish.
+
+  Public because teardown needs it as much as a scenario does, and for a
+  sharper reason. A wake runs in a task off `CodeMySpec.TaskSupervisor`; if it
+  is still running when the test's sandbox owner stops, it dies on a connection
+  that is no longer there and the supervisor logs the crash at `:error` — and
+  `SexySpex.ErrorCapture` fails whichever spex happens to be running when that
+  lands. So the straggler does not fail its own test, it fails somebody else's,
+  intermittently, and the failure text is a `Task.Supervisor` report with
+  nothing in it about either scenario.
+
+  Bounded, so a spex with some other long-running task under the same
+  supervisor fails its own assertion rather than hanging here.
+  """
+  @doc """
+  Stop every graph watcher, so nothing new starts during teardown.
+
+  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
+  project-scoped GenServer under a dynamic supervisor and outlives the scenario
+  that started it, so its debounce timer can fire *after* the drain and spawn
+  another wake into a sandbox that is about to go away. Stopping the watchers
+  first closes that window.
+
+  Every one rather than this scope's, because teardown runs before the scope is
+  in hand and because a spex run gives each scenario its own project — so the
+  watchers alive at the end of one are that one's, and a watcher belonging to
+  nothing is what a straggler is.
+  """
+  @spec stop_graph_watchers() :: :ok
+  def stop_graph_watchers do
+    CodeMySpec.Requirements.WatcherSupervisor
+    |> DynamicSupervisor.which_children()
+    |> Enum.each(fn {_, pid, _, _} ->
+      DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+    end)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @spec drain_background_work() :: :ok
+  def drain_background_work do
     drain_background_work(System.monotonic_time(:millisecond) + 5_000)
   end
 
