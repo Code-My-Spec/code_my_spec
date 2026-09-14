@@ -257,14 +257,17 @@ defmodule CodeMySpec.Problems.ProblemRepository do
         problems
       )
       when is_binary(source) and is_list(problems) do
-    Repo.transaction(fn ->
-      lock_source(scope, source)
-      clear_problems_for_source(scope, [source: source], file_scope)
+    lock_key = {__MODULE__, lock_scope_key(scope), source}
 
-      case insert_all_problems(problems, scope) do
-        {:error, changeset} -> Repo.rollback(changeset)
-        {:ok, inserted_problems} -> inserted_problems
-      end
+    :global.trans(lock_key, fn ->
+      Repo.transaction(fn ->
+        clear_problems_for_source(scope, [source: source], file_scope)
+
+        case insert_all_problems(problems, scope) do
+          {:error, changeset} -> Repo.rollback(changeset)
+          {:ok, inserted_problems} -> inserted_problems
+        end
+      end)
     end)
   end
 
@@ -282,18 +285,26 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # 2026-09-14: every problem for a source present exactly twice, 42 rows
   # where 21 existed.
   #
-  # `pg_advisory_xact_lock/1` makes the two transactions take turns instead of
-  # racing: the second blocks until the first commits its clear-then-insert,
-  # then runs its own — the later run's results stand, the same "latest sweep
-  # wins" outcome `ProjectServer`'s serialization already gives locally.
-  # Transaction-scoped, so it releases on commit or rollback with nothing to
-  # clean up if either side crashes — no registry, no process to leak a lock
-  # a dead holder never freed.
-  defp lock_source(scope, source) do
-    key = :erlang.phash2({lock_scope_key(scope), source})
-    Repo.query!("SELECT pg_advisory_xact_lock($1)", [key])
-  end
-
+  # `:global.trans/2` makes the two calls take turns instead of racing: the
+  # second blocks until the first's whole transaction commits, then runs its
+  # own — the later run's results stand, the same "latest sweep wins" outcome
+  # `ProjectServer`'s serialization already gives locally. Tied to the calling
+  # process, so it releases if that process dies — no registry, no process to
+  # leak a lock a dead holder never freed.
+  #
+  # This was a `pg_advisory_xact_lock` held for the length of the transaction
+  # first, and that was the wrong resource to block on: a waiter parked on a
+  # `SELECT pg_advisory_xact_lock(...)` keeps its connection checked out from
+  # Ecto's pool for however long it waits, and on a box running six-plus
+  # harnesses that all hit the busy-source-sent-anyway path regularly, enough
+  # simultaneous waiters exhausted the whole pool — reported 2026-09-14,
+  # twenty minutes after the lock shipped: connections dying for being
+  # checked out >15s, then a cascade of "connection not available" across
+  # unrelated channels and projects, six unrelated gen_servers terminating,
+  # and this function's own transaction rolling back with no reason attached.
+  # `:global.trans/2` blocks the calling *Elixir process*, not a database
+  # connection — a waiter here costs an idle process, nothing Ecto's pool can
+  # run out of.
   defp lock_scope_key(%Scope{active_working_copy_id: working_copy_id})
        when not is_nil(working_copy_id),
        do: working_copy_id
