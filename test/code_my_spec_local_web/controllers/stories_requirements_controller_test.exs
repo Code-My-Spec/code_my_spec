@@ -80,6 +80,9 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsControllerTest do
       scope: scope,
       story: story
     } do
+      # The controller serves rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
+
       conn = show(scope, story)
       body = conn.resp_body
 

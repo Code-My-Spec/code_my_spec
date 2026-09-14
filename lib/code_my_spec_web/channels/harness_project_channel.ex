@@ -44,7 +44,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -101,20 +100,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # the stop while saying results will apply next time, on a next time that
       # never arrives. This is the one moment it is provably safe to close them.
       Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
-
-      # And make sure something is maintaining this project's graph, because a
-      # checkout coming online is the moment its answer is most likely to be
-      # wrong. Between one connection and the next a tree can be pulled, a
-      # branch switched, files written by hand — none of which announces
-      # anything, because nothing was running to announce it.
-      #
-      # `ensure_watching/1` is idempotent and computes once on arrival, so a
-      # project already being watched costs a registry lookup and one that is
-      # not gets the full pass this moment calls for. Reads serve rows and
-      # compute nothing, so without this a checkout whose watcher died — or
-      # which nobody has worked since a deploy — serves whatever its rows last
-      # said, indefinitely.
-      GraphWatcher.ensure_watching(scope)
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
