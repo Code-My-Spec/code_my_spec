@@ -86,7 +86,6 @@ defmodule CodeMySpecTest.GraphHelpers do
     end
   end
 
-
   @doc """
   Do the watcher's pending pass now rather than when the debounce expires.
 
