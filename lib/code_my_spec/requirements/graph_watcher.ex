@@ -470,22 +470,19 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   defp constraint_of(%Postgrex.Error{postgres: %{constraint: constraint}}), do: constraint
   defp constraint_of(_error), do: nil
 
-  # Waking says "work appeared". The bootstrap pass has not learned that: it is
-  # the first computation this watcher has done, answering no observation, and
-  # everything it finds actionable was already actionable before it started. A
-  # watcher arriving is not news, and treating it as news wakes every role of
-  # every project the moment anything starts watching it — including, at boot,
-  # all of them at once.
+  # A pass that found nothing actionable wakes nobody: `wake/2` would render an
+  # empty menu and stay silent for every role, so this only saves asking.
   #
-  # Measured as test noise first: with a watcher started for every spex, the
-  # bootstrap wake put agent dispatches into scenarios that had asked for
-  # nothing, and three criteria failed in a full run while passing alone.
-  #
-  # A pass that consumed observations always wakes, first or not — that is the
-  # case this whole mechanism exists for.
+  # The first pass wakes like any other, and briefly did not. Suppressing it
+  # looked reasonable — a watcher arriving is not news — and is wrong on the
+  # case waking exists for: `watch_active_projects/0` starts watchers at boot,
+  # which is exactly when agents have gone idle across a deploy with work
+  # waiting, and a bootstrap that stays quiet leaves every one of them asleep.
+  # It was introduced to quiet cross-scenario noise whose real cause turned out
+  # to be a contention error logged at `:error`, and that is fixed where it
+  # belongs.
   defp maybe_wake(_state, [], _consumed), do: nil
 
-  defp maybe_wake(%{last_recompute: nil}, _actionable, []), do: nil
 
   defp maybe_wake(state, _actionable, _consumed) do
     scope = state.scope
