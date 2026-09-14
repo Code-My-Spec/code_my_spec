@@ -46,6 +46,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.DevState
+  alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
@@ -69,6 +70,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
      socket
      |> assign(projects: projects, selected: selected, feed: [], checking?: false)
      |> assign_report()
+     |> assign_watched()
      |> assign_stale()}
   end
 
@@ -79,7 +81,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
     subscribe(selected)
 
     {:noreply,
-     socket |> assign(selected: selected, feed: []) |> assign_report() |> assign_stale()}
+     socket
+     |> assign(selected: selected, feed: [])
+     |> assign_report()
+     |> assign_watched()
+     |> assign_stale()}
   end
 
   def handle_event("recheck", _params, socket), do: {:noreply, assign_stale(socket)}
@@ -103,7 +109,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   def handle_info(:tick, socket) do
     schedule_tick()
-    {:noreply, assign_report(socket)}
+    {:noreply, socket |> assign_report() |> assign_watched()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -135,6 +141,40 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   defp assign_report(%{assigns: %{selected: project}} = socket),
     do: assign(socket, report: Requirements.incremental_report(scope_of(project)))
+
+  # Whether this project's checkouts are on the file watcher at all.
+  #
+  # The end state this design is aimed at is "scan the filesystem at boot, let
+  # events carry it after" — which is only true while the events are arriving.
+  # A watcher that is not watching a root, or a stream that has gone quiet,
+  # turns into a project that stops moving and says nothing, which is the exact
+  # failure `GraphWatcher` exists to end arriving through a different door.
+  #
+  # Server-side this can only answer "is the root registered". Whether the OS
+  # is still delivering events is known to the harness process and not here —
+  # `CmsHarness.Project.Watcher` is what notices a stream going silent. So this
+  # is the cheaper half of the question, and it is worth having because the
+  # expensive half is invisible from this side and the cheap half is often the
+  # answer.
+  defp assign_watched(%{assigns: %{selected: nil}} = socket), do: assign(socket, watched: [])
+
+  defp assign_watched(%{assigns: %{selected: project}} = socket) do
+    roots = CodeMySpec.WorkingCopies.list_harnesses(scope_of(project)) |> Enum.map(& &1.root)
+    watched = safe_watched_dirs()
+
+    assign(socket,
+      watched:
+        Enum.map(roots, fn root ->
+          %{root: root, watched?: root != nil and Enum.any?(watched, &(&1 == root))}
+        end)
+    )
+  end
+
+  defp safe_watched_dirs do
+    FileWatcherServer.watched_dirs()
+  catch
+    :exit, _ -> []
+  end
 
   defp assign_stale(%{assigns: %{selected: nil}} = socket), do: assign(socket, stale: nil)
 
@@ -238,6 +278,27 @@ defmodule CodeMySpecWeb.DevGraphLive do
               </dd>
             </div>
           </dl>
+        </section>
+
+        <section class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            File watcher
+          </h2>
+          <p class="text-xs opacity-60">
+            Events are what carry filesystem changes after boot. A root that is not
+            watched cannot announce, and this page would then show a quiet feed and a
+            stale set that never empties. Whether the OS is still delivering events is
+            known to the harness, not here.
+          </p>
+          <ul class="text-xs font-mono space-y-0.5">
+            <li :for={w <- @watched} class="flex gap-3">
+              <span class={if w.watched?, do: "text-success", else: "text-error"}>
+                {if w.watched?, do: "watched", else: "NOT watched"}
+              </span>
+              <span class="opacity-70">{w.root || "(no root reported)"}</span>
+            </li>
+            <li :if={@watched == []} class="opacity-70">No checkouts on this project.</li>
+          </ul>
         </section>
 
         <section class="space-y-2">
