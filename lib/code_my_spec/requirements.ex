@@ -110,6 +110,17 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
+  What the rows say about whether the graph recomputes incrementally.
+
+  Read-only, and from the rows rather than from a log: every pass stamps
+  `checked_at` on exactly the entities it recomputed, so the size of each
+  distinct stamp is the size of a pass. See `Requirements.IncrementalReport`.
+  """
+  @spec incremental_report(Scope.t(), keyword()) :: map()
+  def incremental_report(%Scope{} = scope, opts \\ []),
+    do: CodeMySpec.Requirements.IncrementalReport.build(scope, opts)
+
+  @doc """
   Bring this project's rows up to date, and answer from the work just done.
 
   The write path's entry point, and the only thing that writes requirement
