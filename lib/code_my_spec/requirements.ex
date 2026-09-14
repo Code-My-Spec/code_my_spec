@@ -40,6 +40,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
@@ -118,7 +119,7 @@ defmodule CodeMySpec.Requirements do
   """
   @spec incremental_report(Scope.t(), keyword()) :: map()
   def incremental_report(%Scope{} = scope, opts \\ []),
-    do: CodeMySpec.Requirements.IncrementalReport.build(scope, opts)
+    do: IncrementalReport.build(scope, opts)
 
   @doc """
   Bring this project's rows up to date, and answer from the work just done.

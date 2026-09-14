@@ -490,7 +490,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # case this whole mechanism exists for.
   defp maybe_wake(%{last_recompute: nil}, _actionable, []), do: nil
 
-
   defp maybe_wake(state, _actionable, _consumed) do
     scope = state.scope
 
