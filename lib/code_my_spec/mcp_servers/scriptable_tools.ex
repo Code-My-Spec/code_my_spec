@@ -166,4 +166,5 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
+  component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
 end

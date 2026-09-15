@@ -53,6 +53,21 @@ defmodule CodeMySpecSpex.GraphGivens do
     Produces `context.users_context`, `context.users_child`,
     `context.stories_context`, `context.stories_child`.
 
+  - `:context_with_infrastructure_sibling` — a `Reservations` context
+    beside a `Plumbing` infrastructure component. Produces
+    `context.ordinary` and `context.infrastructure`.
+
+  - `:live_context_under_a_config_that_empties_it` — a live context
+    and one LiveView beneath it, on a project with `require_specs`
+    and `require_reviews` off, which leaves the container nothing of
+    its own and the child its implementation. Produces
+    `context.ordinary`, `context.live_context`, `context.child_liveview`.
+
+  - `:one_component_of_every_type` — one component per registered
+    component type, plus `module` and `infrastructure`, at flat
+    top-level module names. Produces `context.swept_types` and
+    `context.swept_components` (a map from type atom to component).
+
   - `:orphan_component` — a component with no parent context and no
     story link. Created via `CreateComponent` (sync won't manufacture
     an orphan from nothing). Produces `context.orphan`.
@@ -125,6 +140,128 @@ defmodule CodeMySpecSpex.GraphGivens do
        child_repository: repo,
        child_service: service
      })}
+  end
+
+  # -- Topology: an ordinary context beside an exempt one --
+  #
+  # Both halves, because "infrastructure carries no requirements" is satisfied
+  # by an empty graph. The ordinary component is the control that says the graph
+  # computed anything at all.
+
+  register_given :context_with_infrastructure_sibling, context do
+    write_specs(context.environment, [
+      {"Reservations", :context, []},
+      {"Plumbing", :infrastructure, []}
+    ])
+
+    sync_project(context)
+
+    {:ok,
+     Map.merge(context, %{
+       ordinary: Fixtures.get_component_by_module_name(context.scope, "Reservations"),
+       infrastructure: Fixtures.get_component_by_module_name(context.scope, "Plumbing")
+     })}
+  end
+
+  # -- Topology: a live context the project's own config has emptied --
+  #
+  # `live_context_graph/0` is specification and review nodes plus one
+  # `:child`-scoped `implementation_file`, so with specs and reviews off the
+  # live context holds nothing of its own while every LiveView beneath it still
+  # holds its implementation. An empty namespace over a working subtree, which
+  # is the only shape in the system where those two sit side by side. Seven of
+  # these on this project.
+
+  register_given :live_context_under_a_config_that_empties_it, context do
+    {:ok, _config} =
+      Fixtures.update_project_configuration(context.scope, %{
+        require_specs: false,
+        require_reviews: false
+      })
+
+    write_specs(context.environment, [
+      {"Reservations", :context, []},
+      {"MyAppWeb.BookingLive", :live_context, []},
+      {"MyAppWeb.BookingLive.Index", :liveview, []}
+    ])
+
+    sync_project(context)
+
+    {:ok,
+     Map.merge(context, %{
+       ordinary: Fixtures.get_component_by_module_name(context.scope, "Reservations"),
+       live_context: Fixtures.get_component_by_module_name(context.scope, "MyAppWeb.BookingLive"),
+       child_liveview:
+         Fixtures.get_component_by_module_name(context.scope, "MyAppWeb.BookingLive.Index")
+     })}
+  end
+
+  # -- Topology: one component of every registered type --
+  #
+  # The exemption lives in a single `graph_for_type("infrastructure"), do: []`
+  # clause, and `infrastructure` is not in `Components.Registry` at all — so no
+  # amount of reading the type table tells you which types are exempt. A sweep
+  # is the only way to ask.
+  #
+  # Flat top-level module names on purpose: sync derives parent/child from
+  # nesting, and a shared prefix would quietly make fifteen of these children of
+  # a sixteenth.
+
+  @swept_types [
+    :genserver,
+    :context,
+    :coordination_context,
+    :schema,
+    :repository,
+    :service,
+    :task,
+    :registry,
+    :behaviour,
+    :controller,
+    :json,
+    :live_context,
+    :liveview,
+    :liveview_component,
+    :skill,
+    :other,
+    :module,
+    :infrastructure
+  ]
+
+  register_given :one_component_of_every_type, context do
+    write_specs(context.environment, Enum.map(@swept_types, &{swept_module(&1), &1, []}))
+
+    sync_project(context)
+
+    components =
+      Map.new(@swept_types, fn type ->
+        {type, Fixtures.get_component_by_module_name(context.scope, swept_module(type))}
+      end)
+
+    assert_types_stuck(components)
+
+    {:ok, Map.merge(context, %{swept_types: @swept_types, swept_components: components})}
+  end
+
+  defp swept_module(type), do: "Sweep#{Macro.camelize(Atom.to_string(type))}"
+
+  # Everything the sweep claims rests on sync honouring the `## Type` section.
+  # If it re-typed all eighteen to `module` the sweep would still be green and
+  # would be asserting one template eighteen times.
+  defp assert_types_stuck(components) do
+    mistyped =
+      Enum.reject(components, fn {declared, component} ->
+        component.type == Atom.to_string(declared)
+      end)
+
+    ExUnit.Assertions.assert(mistyped == [],
+      message: """
+      Sync did not preserve the declared type for #{length(mistyped)} component(s),
+      so a per-type sweep would be asserting the same template repeatedly.
+
+      #{Enum.map_join(mistyped, "\n", fn {declared, c} -> "  #{c.module_name}: declared #{declared}, stored #{c.type}" end)}
+      """
+    )
   end
 
   # -- Topology: one context, three children, in a satisfied project --
@@ -341,6 +478,24 @@ defmodule CodeMySpecSpex.GraphGivens do
   end
 
   # -- Helpers --
+
+  @doc """
+  Write `{module_name, type, deps}` triples into this context's environment.
+
+  Public because a `when_` sometimes needs a component to arrive *after* the
+  topology is established — criterion 3490 turns on exactly that, since the
+  question it asks can only be asked of a component the rows have never held.
+  """
+  def write_component_specs(context, specs) do
+    write_specs(context.environment, specs)
+    context
+  end
+
+  @doc "Sync the project through the `/files` page, the way a person does."
+  def sync(context) do
+    sync_project(context)
+    context
+  end
 
   # Write a list of {module_name, type, deps} tuples as spec + impl
   # files into the environment. Each spec lives at the canonical path
