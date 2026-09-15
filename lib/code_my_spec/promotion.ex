@@ -781,6 +781,18 @@ defmodule CodeMySpec.Promotion do
     end)
   end
 
+  # `c6f54b90`: a project with `require_unit_tests: false` still refused on a
+  # stale `exunit`, and it looked like a bug — the requirement graph had
+  # already stopped asking for `tests_passing` under the same setting
+  # (`RequirementGraph.maybe_filter_tests/2`), so the graph and the gate
+  # disagreed about the same config. Tried narrowing this to match; reverted.
+  # Every project-level config in this system — `require_unit_tests`, and
+  # `spex`/`exunit`/`credo`'s own off|block_changed|block_all — decides what
+  # the *automatic stop-hook sweep* asks for, never what *promote* demands
+  # before it will ship. The graph is allowed to stop asking an agent to
+  # write tests for a story; the gate is not thereby excused from checking
+  # the ones that already exist still pass. Narrowing this would let a
+  # project promote a commit `exunit` had never once run against.
   defp stale_sources(%Scope{} = scope) do
     fresh = Analysis.fresh_sources(scope, Run.sources())
     Enum.reject(Run.sources(), &(&1 in fresh))
