@@ -4,13 +4,16 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.17",
+      version: "2.0.18",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
       aliases: aliases(),
       deps: deps(),
       compilers: compilers(Mix.env()),
+      # sexy_spex's own docs require this: without it, a bare `mix spex`
+      # compiles under :dev instead of :test, missing test/support paths.
+      preferred_cli_env: [spex: :test],
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       # _spex.exs files are a separate suite run by `mix spex` (which loads
       # them via Path.wildcard, not these filters). Declare them ignored so

@@ -912,14 +912,18 @@ defmodule CodeMySpec.Validation do
   # `only_failed`.
   defp run_pipeline(scope, task, [], config, opts) do
     excluded = StaticAnalysis.task_excluded_analyzers(task)
+    declared = StaticAnalysis.task_analyzers(task)
 
-    # `:spex_stale` runs whatever its mode: the specs-passing gate depends
-    # on a current spex run existing, and the mode only governs blocking.
-    # See the note on `@config_gated_analyzers` in StaticAnalysis.Pipeline.
+    # Config gates a source here the same way `resolve_analyzers/3` gates
+    # role-derived inclusion — but a source the active task declared via
+    # `analyzers/0` bypasses it, same reasoning as there: `FixBddSpecs`
+    # naming `spex_stale` has to survive `spex: :off` on a quiet stop too,
+    # or the re-enqueue this branch exists for stops happening for the one
+    # task that needed it.
     enabled =
       for {analyzer, source} <- @subprocess_analyzers,
           analyzer not in excluded,
-          analyzer == :spex_stale or mode_for(config, config_field(analyzer)) != :off,
+          analyzer in declared or mode_for(config, config_field(analyzer)) != :off,
           do: source
 
     Analysis.ensure_stale_runs(

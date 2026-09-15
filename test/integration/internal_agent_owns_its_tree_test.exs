@@ -39,12 +39,12 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
   @broken_qa_brief_path ".code_my_spec/qa/9999/brief.md"
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
 
-  # `spex: :off` above does not stop `spex_stale` from being requested —
-  # it is deliberately absent from `@config_gated_analyzers`, since the
-  # specs-passing gate needs a fresh run to exist regardless of whether
-  # a failure blocks. Every `validate_stop` here is otherwise about
-  # qa_validation attribution, so it has nothing to say about a real
-  # (and here, doomed) `mix spex` run.
+  # `spex: :off` above now stops `spex_stale` from being requested at all
+  # (`@config_gated_analyzers`), so this fixture is never actually consumed
+  # in this file — kept passed through anyway, harmlessly, rather than
+  # stripped from seven call sites for a test file that has nothing to say
+  # about spex either way; every `validate_stop` here is about
+  # qa_validation attribution.
   @spex_output_file Path.expand("test/fixtures/validation/spex_green.jsonl")
 
   setup do
