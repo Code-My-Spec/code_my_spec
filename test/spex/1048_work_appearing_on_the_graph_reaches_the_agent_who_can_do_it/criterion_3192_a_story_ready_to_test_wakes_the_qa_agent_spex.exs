@@ -84,8 +84,12 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
         # Instrumentation for issue b789ed99: four delivery hypotheses have
         # been measured and rejected without moving this criterion's failure
         # rate. The open question is whether the premise is even reached —
-        # captured here, before the assertion, so a red run says which.
+        # captured here, before the assertion, so a red run says which. Paired
+        # with the story's unsatisfied requirements: something there means the
+        # fixture chain is incomplete; nothing there while actionable is still
+        # empty means the chain finished and the graph has not caught up.
         actionable = Fixtures.actionable_names(context.scope, :qa)
+        unsatisfied = Fixtures.unsatisfied_reasons(context.scope, context.story.id)
 
         refute said == [],
                """
@@ -97,6 +101,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
                nobody satisfies that criterion perfectly.
 
                QA-actionable requirements at this moment: #{inspect(actionable)}
+               This story's unsatisfied requirements at this moment: #{inspect(unsatisfied)}
                """
 
         assert Enum.any?(

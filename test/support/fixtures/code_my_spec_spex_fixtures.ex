@@ -149,6 +149,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1429,6 +1430,60 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec actionable_names(Scope.t(), atom() | nil) :: [String.t()]
   def actionable_names(%Scope{} = scope, role \\ nil) do
     scope |> Requirements.actionable_for_role(role) |> Enum.map(& &1.name)
+  end
+
+  @doc """
+  Which of one entity's requirements the graph currently reads as unsatisfied.
+
+  Pairs with `actionable_names/2` to tell two shapes of race apart on a red
+  run: something here means the fixture chain that was meant to satisfy this
+  entity's requirements is genuinely incomplete; nothing here while the role's
+  actionable set is still empty means the chain finished and the published
+  graph has not caught up with it.
+
+  Settles first, same as `actionable_for_role/2` does internally — a pending
+  recompute means a write has landed that this has not seen, and "unsatisfied"
+  is exactly the answer that write would change.
+  """
+  @spec unsatisfied_names(Scope.t(), term()) :: [String.t()]
+  def unsatisfied_names(%Scope{} = scope, entity_id) do
+    scope |> unsatisfied_for(entity_id) |> Enum.map(& &1.name)
+  end
+
+  @doc """
+  Same as `unsatisfied_names/2`, but `{name, reason}` pairs.
+
+  A name alone says a requirement is not satisfied; it does not say why, and
+  `RequirementCalculator`'s delegate checks already compute a `reason` for
+  exactly this purpose — carried on the node as `details`. Reading it back
+  here is cheaper than a second theory.
+  """
+  @spec unsatisfied_reasons(Scope.t(), term()) :: [{String.t(), term()}]
+  def unsatisfied_reasons(%Scope{} = scope, entity_id) do
+    scope
+    |> unsatisfied_for(entity_id)
+    |> Enum.map(&{&1.name, reason_of(&1)})
+  end
+
+  # String keys, because that is the canonical shape and there is already a
+  # function that says so. `Requirement.normalize_details/1` exists precisely
+  # for this: `details` is written to a `jsonb` column, which has no atoms, so a
+  # freshly computed requirement can carry atom keys where a stored one never
+  # does. Normalising once is the difference between reading one shape and
+  # guessing between two.
+  defp reason_of(node) do
+    node.details
+    |> Requirement.normalize_details()
+    |> Map.get("reason")
+  end
+
+  defp unsatisfied_for(%Scope{} = scope, entity_id) do
+    :ok = GraphWatcher.settle(scope)
+
+    scope
+    |> Requirements.cached_graph_with_actionable()
+    |> Map.fetch!(:nodes)
+    |> Enum.filter(&(&1.entity_id == entity_id and not &1.satisfied))
   end
 
   @doc """
@@ -4319,7 +4374,19 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
     {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
-    CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+    runs = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+
+    # This calls `RunsRepository.finish_run/3` directly rather than going
+    # through `Analysis.Reconciler.reconcile/4`, which is the only production
+    # path that announces a finished run to `GraphInputs`. Without this, the
+    # watcher's debounce timer reflects whatever earlier writes set it — not
+    # this one — so `settle_graph/1` recomputes against a graph that may or
+    # may not have caught up with these rows, depending on whether that
+    # earlier timer had already fired. Same placement as `Reconciler`: after
+    # the rows commit.
+    :ok = GraphInputs.announce(scope, "Analysis")
+
+    runs
   end
 
   @doc """
