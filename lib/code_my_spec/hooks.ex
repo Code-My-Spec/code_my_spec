@@ -32,7 +32,6 @@ defmodule CodeMySpec.Hooks do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec,
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.Configurations,

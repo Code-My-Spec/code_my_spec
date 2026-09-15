@@ -6,7 +6,6 @@ defmodule CodeMySpec.Users do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec,
       CodeMySpec.Analytics,
       CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
