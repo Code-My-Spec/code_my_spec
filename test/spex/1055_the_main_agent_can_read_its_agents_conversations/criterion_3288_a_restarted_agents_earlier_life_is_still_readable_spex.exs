@@ -21,6 +21,12 @@ defmodule CodeMySpecSpex.Story1055.Criterion3288Spex do
   spex "A restarted agent's earlier life is still readable" do
     scenario "A restarted agent's earlier life is still readable" do
       given_ "an agent has been restarted several times", context do
+        # A real restart picks a connected provider to relaunch under
+        # (`Agents.restart_agent/2` refuses `:not_connected` otherwise) —
+        # this criterion is about the conversation surviving the restart, not
+        # about provider selection, so the connection is just setup.
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :zai)
+
         agent = Fixtures.running_agent(context.scope, role: "coding")
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
