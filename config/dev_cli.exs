@@ -34,6 +34,24 @@ config :code_my_spec,
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 
+# `AnalysisSlots.limit/0` defaults to a fourth of the cores -- 2 on this
+# box's 10 schedulers. Its own moduledoc already names the risk: each `mix
+# test`/`mix spex` sets `max_cases` to twice the scheduler count on its
+# own, so two concurrent slots alone can want up to 40 concurrent
+# OS-thread-equivalents on 10 cores. Measured live, 2026-09-15: spex runs
+# executing alone finished in 400-500s; two running at once (both slots
+# held) took 650-990s each -- worse than serializing them would have, and
+# exactly the "manufactured failures" the moduledoc warns oversubscription
+# causes (a heavy test dies mid-run, passes clean in isolation).
+#
+# This box runs the one shared dev_cli harness for every worktree
+# checkout of this repo, so it is the one machine where multiple full
+# suites are ever actually concurrent. Scoped here rather than changed as
+# the general default: a typical `cms harness` install serves one
+# project, with no sibling suite to contend with, so the tradeoff this
+# box needs does not apply there.
+config :code_my_spec, analysis_slots: 1
+
 # Embedding pipeline lives in CLI builds (Ortex + sqlite_vec).
 config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
 
