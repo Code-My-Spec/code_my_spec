@@ -85,6 +85,27 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   def open_questions(context),
     do: ListOpenQuestions |> call(%{}, context) |> response_text()
 
+  @doc """
+  Only the part of the listing that is the main agent's to act on.
+
+  `MainAgentMapper` renders two sections on purpose, and its own moduledoc says
+  why: an escalated question "is still open and still listed — it has not been
+  handled and it has not gone away — but it is not work the main agent can do
+  anything about". So the whole listing contains questions that have already
+  gone up, and asking whether an id appears in it cannot distinguish "the main
+  agent still holds this" from "the main agent handed it up and the listing
+  says so".
+
+  A criterion about where a question went has to read the section, not the page.
+  """
+  @spec mine_to_answer(map()) :: String.t()
+  def mine_to_answer(context) do
+    context
+    |> open_questions()
+    |> String.split("Waiting on the user")
+    |> hd()
+  end
+
   @doc "The main agent answers from what the project records."
   @spec main_answers(map(), String.t(), String.t()) :: struct()
   def main_answers(context, question_id, answer) do

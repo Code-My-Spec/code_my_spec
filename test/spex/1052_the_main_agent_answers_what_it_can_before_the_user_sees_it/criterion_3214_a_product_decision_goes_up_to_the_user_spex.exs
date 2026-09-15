@@ -76,14 +76,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion3214Spex do
       end
 
       then_ "and it is put in terms the user can decide on without reading code", context do
-        waiting = open_questions(context)
+        # The main agent's own section, not the whole listing. An escalated
+        # question stays listed under "Waiting on the user" by design — that is
+        # `MainAgentMapper`'s whole reason for having two sections — so reading
+        # the page cannot tell "still mine" from "handed up and shown as such".
+        mine = mine_to_answer(context)
 
-        refute waiting =~ context.question_id,
+        refute mine =~ context.question_id,
                """
                The escalated question is still sitting in the main agent's own
                queue, so "reaches the user" is true of nothing.
 
-               #{waiting}
+               #{mine}
                """
 
         refute context.text =~ "CodeMySpec.Billing.Dunning",
