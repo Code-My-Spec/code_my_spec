@@ -1027,7 +1027,8 @@ defmodule CodeMySpec.MainAgent do
   defp settle(scope, question, answer, opts) do
     answers = Map.new(question.questions, fn q -> {MapAccess.get(q, :question), answer} end)
 
-    with {:ok, answered} <- Notifications.answer_question_request(question.id, answers) do
+    with {:ok, answered} <-
+           Notifications.answer_question_request(question.id, answers, answered_by: "main_agent") do
       note_gap(scope, question, Keyword.get(opts, :worked_around))
       {:ok, answered}
     end

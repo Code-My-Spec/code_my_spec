@@ -503,6 +503,9 @@ defmodule CodeMySpecWeb.ChatComponents do
           <div class="alert alert-success">
             <.icon name="hero-check-circle" class="size-5" /> Answer sent.
           </div>
+          <p :if={main_agent_answered?(@request)} class="mt-2 text-sm opacity-70">
+            The main agent answered this from project records. Correct it below if that's wrong.
+          </p>
           <dl class="mt-4 space-y-2">
             <div :for={{q, a} <- @request.answers} class="text-sm">
               <dt class="font-semibold opacity-70">{q}</dt>
@@ -512,7 +515,7 @@ defmodule CodeMySpecWeb.ChatComponents do
         </div>
 
         <form
-          :if={@request.status == "pending"}
+          :if={@request.status == "pending" or main_agent_answered?(@request)}
           phx-submit={@on_submit}
           phx-target={@target}
           data-test="question-form"
@@ -614,6 +617,13 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   defp format_answer(a) when is_list(a), do: Enum.join(a, ", ")
   defp format_answer(a), do: to_string(a)
+
+  # A main agent's answer is provisional until a person confirms or corrects
+  # it — criterion 3222. A user's own answer is not: `answer_question_request/3`
+  # never lets a second one through, and offering a form here that would only
+  # be refused is worse than no form at all.
+  defp main_agent_answered?(%{status: "answered", answered_by: "main_agent"}), do: true
+  defp main_agent_answered?(_request), do: false
 
   # The same string the recorder stores, built from the array shape instead.
   #

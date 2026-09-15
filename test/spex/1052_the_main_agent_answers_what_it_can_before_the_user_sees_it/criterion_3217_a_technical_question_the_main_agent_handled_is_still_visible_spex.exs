@@ -20,6 +20,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
   The answer has to be shown beside the question, not just the question:
   knowing something was asked and answered, without knowing what was said, is
   the same as not seeing it for every purpose except counting.
+
+  ## Surface
+
+  "The user looks at their questions" is the user's own inbox —
+  `NotificationLive.Index` at `/app/notifications` — not `list_user_questions`,
+  which is documented as "the agent's own view of what it is waiting on" and
+  deliberately drops answered questions (896's decision, for a different
+  reader with a different question). Driving the agent tool here would test
+  whether an agent can see its own answered question, which is not this
+  criterion; a person's inbox is. The answer text itself is read from the
+  question's own page (`QuestionLive.Show`), which is where a real user would
+  find it after opening the notification.
   """
 
   use CodeMySpecSpex.Case
@@ -28,8 +40,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias Ecto.Adapters.SQL.Sandbox
+
+  @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -58,13 +71,16 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
       end
 
       when_ "the user looks at their questions", context do
-        {:reply, listed, _frame} = ListUserQuestions.execute(%{}, frame(context))
+        {:ok, view, _html} = live(context.conn, "/app/notifications")
 
-        {:ok, Map.put(context, :inbox, response_text(listed))}
+        {:ok, Map.put(context, :inbox_view, view)}
       end
 
       then_ "that question is listed", context do
-        assert context.inbox =~ "refunds epic",
+        assert has_element?(
+                 context.inbox_view,
+                 "[data-test='notification'][data-id='#{context.question_id}'][data-status='answered']"
+               ),
                """
                A question the main agent fielded is invisible to the user.
 
@@ -77,14 +93,17 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
                project's own records are thin — the things agents keep having
                to ask about.
 
-               #{context.inbox}
+               #{render(context.inbox_view)}
                """
 
         {:ok, context}
       end
 
       then_ "and the answer is shown beside it", context do
-        assert context.inbox =~ context.answer,
+        {:ok, question_view, _html} = live(context.conn, "/app/questions/#{context.question_id}")
+        rendered = render(question_view)
+
+        assert rendered =~ context.answer,
                """
                The question is listed and what was said is not.
 
@@ -92,7 +111,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
                the answer was, is the same as not seeing it for every purpose
                except counting — and it is not enough to disagree with.
 
-               #{context.inbox}
+               #{rendered}
                """
 
         {:ok, context}

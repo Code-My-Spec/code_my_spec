@@ -17,12 +17,29 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
   "And by whom" is not decoration. 3219 establishes that a user's answer
   outranks a main agent's; without the attribution the supersession is just a
   second opinion, and the agent has no basis for preferring it.
+
+  ## The wrong answer has to be realistic, not unsupportable
+
+  The premise used to be `"Allow — nothing in the records sets a window"`,
+  which asserts the *absence* of a record. No reading can support an absence,
+  so `answer_question(basis: "record")` refused it as an unsupported guess
+  before the scenario ever reached the thing this criterion tests. That check
+  existing is correct — it is what stops the main agent guessing — so the fix
+  is the premise, not the check.
+
+  A main agent is wrong in the field by citing something real and drawing the
+  wrong conclusion from it, not by citing nothing at all. So the premise here
+  names a real checkout (the same `checkout_of/2` reading 3217 and 3219 use)
+  and draws a policy conclusion from it that does not follow — a checkout says
+  nothing about a refund window, which is exactly the kind of answer that
+  passes the basis check while still being wrong.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.QuestionRoutingHelpers
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -40,11 +57,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
         id =
           ask(context, "Should refunds older than ninety days be allowed?", ["Allow", "Refuse"])
 
-        reply = main_answers(context, id, "Allow — nothing in the records sets a window.")
+        wrong_answer = "Allow — refunds already run without a window on #{checkout_of(context, id)}"
+        reply = main_answers(context, id, wrong_answer)
 
-        refute reply.isError, "the premise is a question the main agent answered"
+        refute reply.isError,
+               "the premise is a question the main agent answered:\n#{response_text(reply)}"
 
-        {:ok, Map.put(context, :question_id, id)}
+        {:ok, context |> Map.put(:question_id, id) |> Map.put(:wrong_answer, wrong_answer)}
       end
 
       given_ "the user then answers the same question differently", context do
@@ -69,7 +88,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
                #{context.answer}
                """
 
-        refute context.answer =~ "nothing in the records sets a window",
+        refute context.answer =~ context.wrong_answer,
                """
                The superseded answer is still what the agent reads as current.
 
