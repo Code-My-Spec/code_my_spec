@@ -220,8 +220,9 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   defp unlinked_stories(%Scope{} = scope) do
     scope
     |> Stories.list_stories()
-    |> Enum.filter(fn s -> Map.get(s, :ready_for_dev) == true end)
-    |> Enum.filter(fn s -> Map.get(s, :component_id) == nil end)
+    |> Enum.filter(fn s ->
+      Map.get(s, :ready_for_dev) == true and Map.get(s, :component_id) == nil
+    end)
     |> Enum.sort_by(& &1.id)
   end
 
