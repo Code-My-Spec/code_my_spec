@@ -31,8 +31,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias Ecto.Adapters.SQL.Sandbox
 
-  @answer "the refunds epic is built on /tmp/refunds-copy"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -50,12 +48,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
       end
 
       given_ "the main agent answers it", context do
-        reply = main_answers(context, context.question_id, @answer)
+        answer = "the refunds epic is built on #{checkout_of(context, context.question_id)}"
+        reply = main_answers(context, context.question_id, answer)
 
         refute reply.isError,
                "the premise is a question the main agent handled:\n#{response_text(reply)}"
 
-        {:ok, context}
+        {:ok, Map.put(context, :answer, answer)}
       end
 
       when_ "the user looks at their questions", context do
@@ -85,7 +84,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
       end
 
       then_ "and the answer is shown beside it", context do
-        assert context.inbox =~ @answer,
+        assert context.inbox =~ context.answer,
                """
                The question is listed and what was said is not.
 

@@ -106,6 +106,41 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
     |> hd()
   end
 
+  @doc """
+  The checkout an agent asked from, read the way the main agent reads it.
+
+  `answer_question` verifies a `record` basis against the project, so an answer
+  naming a checkout that does not exist is refused as a guess — correctly. A
+  premise that wants "the main agent answered this" therefore has to name a
+  real one, and the place the main agent gets it is the open-questions listing,
+  which renders `checkout: <id> <root>` for exactly this purpose — and drops
+  the root when the copy has never reported one, so the id is the fallback and
+  is just as real.
+
+  So this is not a fixture reaching round the back. It is the lookup the main
+  agent performs before it answers, and the answer is grounded in it.
+  """
+  @spec checkout_of(map(), String.t()) :: String.t()
+  def checkout_of(context, question_id) do
+    listing = open_questions(context)
+
+    case Regex.run(~r/question: #{Regex.escape(question_id)}\n.*?\n\s*checkout: (\S+)(?: (\S+))?/s, listing) do
+      [_, _id, root] ->
+        root
+
+      [_, id] ->
+        id
+
+      nil ->
+        flunk("""
+        No checkout is listed for question #{question_id}, so there is nothing
+        real for the main agent to name in its answer.
+
+        #{listing}
+        """)
+    end
+  end
+
   @doc "The main agent answers from what the project records."
   @spec main_answers(map(), String.t(), String.t()) :: struct()
   def main_answers(context, question_id, answer) do

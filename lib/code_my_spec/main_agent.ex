@@ -71,6 +71,7 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   Everything this project's agents are waiting on, wherever they are running.
@@ -878,17 +879,80 @@ defmodule CodeMySpec.MainAgent do
 
   # The project has to actually contain the answer.
   #
-  # Today the readings the main agent has are epic membership and the fleet, so
-  # this checks the one the criteria exercise. The shape is the durable part: a
-  # basis of `record` is a claim about the project, and a claim about the
-  # project is checkable. A reading added later joins the list; an answer that
-  # matches none of them is a guess, which is the right default.
+  # A basis of `record` is a claim about the project, and a claim about the
+  # project is checkable. Each reading is one thing the main agent can read;
+  # an answer that names something in any of them is supported, and one that
+  # names nothing in any of them is a guess, which is the right default.
+  #
+  # `24823f81` is why this is a list rather than a single call. It checked epic
+  # membership alone — the one reading the criteria exercised — so a correct,
+  # evidence-backed answer was refused as a guess whenever its evidence was
+  # anything else. The fleet and the issues are the two the main agent actually
+  # answers this class of question from, and both were unsupported.
+  #
+  # What this proves is that the answer names a real thing, not that it draws
+  # the right conclusion from it. That is the honest limit, and it is the same
+  # limit the single reading had: the check keeps out answers with nothing
+  # behind them, and 3220 and 3222 exist because a cited record can still be
+  # the wrong one.
   defp recorded?(scope, question, answer) do
-    scope
-    |> Stories.ready_stories_without_epic()
-    |> Enum.any?(fn story -> String.contains?(answer, story.title) end)
+    [&epic_membership/2, &fleet/2, &filed_issues/2]
+    |> Enum.any?(fn reading -> reading.(scope, answer) end)
     |> supported(question)
   end
+
+  defp epic_membership(scope, answer) do
+    scope
+    |> Stories.ready_stories_without_epic()
+    |> Enum.map(& &1.title)
+    |> names?(answer)
+  end
+
+  # `list_working_copies`, `list_agents` and `list_agent_work` are already how
+  # the main agent answers "which checkout is this on" — the reading existed
+  # everywhere except in the check that decides whether it counts.
+  #
+  # Root *or* id, because both are how a checkout gets named and the main agent
+  # does not choose which it is handed. `list_open_questions` renders
+  # `checkout: <id> <root>` and drops the root when there is none — a copy that
+  # has never reported one is still a real copy, and an answer naming it by id
+  # is grounded in exactly the same reading.
+  defp fleet(scope, answer) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.flat_map(&[&1.root, &1.id])
+    |> names?(answer)
+  end
+
+  # An accepted issue is about as recorded as an answer gets: it has a body, a
+  # status, and somebody already agreed it is real. 24823f81 left this open and
+  # the live case that reopened it was an answer whose whole content was "this
+  # is issue f9cdb0b0, and here is its mechanism".
+  defp filed_issues(scope, answer) do
+    scope
+    |> Issues.list_issues()
+    |> Enum.flat_map(&[&1.title, short_id(&1.id)])
+    |> names?(answer)
+  end
+
+  defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
+  defp short_id(_id), do: nil
+
+  # A needle short enough to appear by accident makes every answer recorded,
+  # which is the failure the basis exists to prevent. A copy rooted at `/`, or
+  # an issue titled `bug`, would support anything at all.
+  @shortest_needle 8
+
+  defp names?(needles, answer) do
+    needles
+    |> Enum.filter(&long_enough?/1)
+    |> Enum.any?(&String.contains?(answer, &1))
+  end
+
+  defp long_enough?(needle) when is_binary(needle),
+    do: String.length(needle) >= @shortest_needle
+
+  defp long_enough?(_needle), do: false
 
   defp supported(true, _question), do: {:ok, :record}
   defp supported(false, _question), do: {:error, :not_recorded}
