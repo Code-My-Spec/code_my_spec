@@ -51,6 +51,13 @@ defmodule CodeMySpecTest.GraphHelpers do
   alias CodeMySpecTest.RecordingAgentTransport
 
   @default_within 300
+
+  # Absence needs a window; presence needs patience. `refute_woken/2` keeps the
+  # short one — it is answering "did nothing arrive", and waiting longer only
+  # makes a passing suite slower. `assert_woken/2` waits far longer because it
+  # returns the moment its message lands, so the number is a ceiling on failure
+  # rather than a cost on success.
+  @assert_within 5_000
   @default_timeout 2_000
 
   @doc """
@@ -131,7 +138,9 @@ defmodule CodeMySpecTest.GraphHelpers do
 
     receive do
       {:graph_updated, ^project_id} ->
-        flunk("The graph announced a change for #{project_id}, and this scenario says it should not have.")
+        flunk(
+          "The graph announced a change for #{project_id}, and this scenario says it should not have."
+        )
     after
       within -> context
     end
@@ -148,27 +157,62 @@ defmodule CodeMySpecTest.GraphHelpers do
   Assert this agent was woken, optionally that the message contained `:saying`.
   """
   def assert_woken(agent_id, opts \\ []) do
-    delivered = woken(opts)
     saying = Keyword.get(opts, :saying)
+    deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :within, @assert_within)
 
-    matching =
-      Enum.filter(delivered, fn {id, message} ->
-        id == agent_id and (is_nil(saying) or message =~ saying)
-      end)
+    await_woken(agent_id, saying, deadline, [])
+  end
 
-    if matching == [] do
-      flunk("""
-      Agent #{agent_id} was not woken#{if saying, do: " with a message containing #{inspect(saying)}", else: ""}.
+  # Waits for the message it is about, rather than draining a window and
+  # inspecting what happened to arrive.
+  #
+  # The old shape asserted the machine's speed. `settle_graph/1` answers as soon
+  # as the graph is current, and the wake is published from a Task off the
+  # watcher — deliberately, so a watcher waking inside its own recompute cannot
+  # call itself — so delivery is *strictly after* the settle returns and how
+  # long after is a property of the box. Draining 300ms and asserting over the
+  # result failed about one run in eight under load, and the failures read as
+  # routing defects rather than as timing.
+  #
+  # Lengthening the window does not fix it, which is the part worth keeping:
+  # 500ms and 3000ms both measured 2-3 red in 10 on the same spec, because the
+  # window was never the variable. Returning the instant the message arrives is,
+  # and it costs the deadline only when the message genuinely never comes.
+  defp await_woken(agent_id, saying, deadline, seen) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
-      Woken during this window: #{describe(delivered)}
-
-      If nothing at all was woken, the likeliest cause is a missing
-      `watch_graph/1` — `settle_graph/1` answers `:ok` when no watcher is
-      running, so a forgotten watcher looks exactly like correct scoping.
-      """)
+    receive do
+      {:agent_dispatch, id, _ref, message} ->
+        keep_or_wait(matches?(id, message, agent_id, saying), {id, message}, %{
+          agent_id: agent_id,
+          saying: saying,
+          deadline: deadline,
+          seen: seen
+        })
+    after
+      remaining -> never_woken(agent_id, saying, seen)
     end
+  end
 
-    matching
+  defp matches?(id, _message, agent_id, nil), do: id == agent_id
+  defp matches?(id, message, agent_id, saying), do: id == agent_id and message =~ saying
+
+  defp keep_or_wait(true, delivered, _ctx), do: [delivered]
+
+  defp keep_or_wait(false, delivered, ctx) do
+    await_woken(ctx.agent_id, ctx.saying, ctx.deadline, [delivered | ctx.seen])
+  end
+
+  defp never_woken(agent_id, saying, seen) do
+    flunk("""
+    Agent #{agent_id} was not woken#{if saying, do: " with a message containing #{inspect(saying)}", else: ""}.
+
+    Woken while waiting: #{describe(Enum.reverse(seen))}
+
+    If nothing at all was woken, the likeliest cause is a missing
+    `watch_graph/1` — `settle_graph/1` answers `:ok` when no watcher is
+    running, so a forgotten watcher looks exactly like correct scoping.
+    """)
   end
 
   @doc """
