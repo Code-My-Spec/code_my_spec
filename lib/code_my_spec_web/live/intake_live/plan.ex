@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.ConversationPanels, only: [single_panel: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Intake
@@ -36,14 +37,17 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   # Full height, chat and its dynamic companion side by side — the same shape
   # `IntakeLive.Workspace` moved to for the identical reason. The cockpit's
-  # `Preview`/`Project`/`Activity` tab strip was reused here with `open={[]}`
-  # hardcoded and no `toggle_panel` handler on this LiveView: the tabs
-  # rendered but could never open, and there is no project yet for any of the
-  # three to show anyway. Replaced with `dynamic_panel/1`, beside the
-  # conversation rather than inline inside its scroll — the plan/signup card
-  # used to render as the last bubble in the transcript, which is what made
-  # it read as one more thing to scroll past rather than the one form that
-  # stays put while the conversation moves.
+  # `Preview`/`Project`/`Activity` tab strip (`ConversationPanels.panels/1`)
+  # was reused here with `open={[]}` hardcoded and no `toggle_panel` handler
+  # on this LiveView: the tabs rendered but could never open, and there is no
+  # project yet for any of the three to show anyway. `single_panel/1` is the
+  # same shared component family (story 1033/3425's "extract, don't
+  # reimplement" — same wrapper identity, `data-test="conversation-panels"`,
+  # given different backing data) with no tab strip standing in for tabs that
+  # had nothing behind them. Beside the conversation rather than inline
+  # inside its scroll, too — the plan/signup card used to render as the last
+  # bubble in the transcript, which read as one more thing to scroll past
+  # rather than the one form that stays put while the conversation moves.
   def render(assigns) do
     ~H"""
     <div class="flex h-dvh min-h-0 flex-col">
@@ -91,10 +95,10 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
           the same question. Once names are confirmed by a stranger, the
           sign-up card replaces it — the panel holds one thing at a time.
         --%>
-        <div class="max-h-[45dvh] overflow-y-auto border-t border-base-300 p-4 lg:max-h-none lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l">
+        <.single_panel>
           <.signup_card :if={@awaiting_signup?} plan={@plan} />
           <.plan_card :if={not @awaiting_signup?} plan={@plan} form={@names_form} />
-        </div>
+        </.single_panel>
       </div>
     </div>
     """
