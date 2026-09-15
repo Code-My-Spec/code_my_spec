@@ -214,7 +214,7 @@ defmodule CodeMySpec.SpexGivensTest do
     machine_out_of_reach
     main_answers user_answers
     Req.Test.stub
-    a_promotable_project report_git_state analyzers_are_current
+    a_promotable_project analyzers_are_current
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
     ensure_harness_supervisor_started FakeServer. BlockingProject.

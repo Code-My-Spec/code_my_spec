@@ -44,7 +44,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        {:ok, report_git_state(context, context.agent_root, context.agent.working_copy_id)}
+        # No git state to report any more, and that is the point rather than a
+        # simplification. The gate used to read this checkout's commit counts;
+        # it reads the story's own `promoted_version` stamp now, and the
+        # columns behind those counts are gone — nothing decided on them and
+        # they cost a whole-project recompute per keystroke. An unpromoted
+        # story is refused whatever this checkout looks like, which is a
+        # stronger version of the same premise.
+        {:ok, context}
       end
 
       when_ "the QA agent asks what to do about that story", context do
@@ -64,26 +71,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
         {:ok, context}
       end
     end
-  end
-
-  # Measure this checkout's git state and record it the way its harness would.
-  #
-  # The three numbers the gate reads: commits here that main lacks, commits on
-  # main that this lacks, and whether the tree is dirty. Taken from a real
-  # repository with real commits — only the delivery over the channel is
-  # short-circuited, because a spec has no harness.
-  defp report_git_state(context, root, copy_id) do
-    {ahead, 0} = git(context, root, ["rev-list", "--count", "main..HEAD"])
-    {behind, 0} = git(context, root, ["rev-list", "--count", "HEAD..main"])
-    {status, 0} = git(context, root, ["status", "--porcelain", "--untracked-files=no"])
-
-    CodeMySpecSpex.Fixtures.record_git_state(copy_id, %{
-      ahead: String.to_integer(String.trim(ahead)),
-      behind: String.to_integer(String.trim(behind)),
-      dirty: String.trim(status) != ""
-    })
-
-    context
   end
 
   defp ask_for_next_work(context) do

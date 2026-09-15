@@ -428,6 +428,15 @@ defmodule CodeMySpec.PromotionTest do
     end
   end
 
+  # This is where the submodule concern lives now, and it is the only place it
+  # can. `CmsHarness.SyncGitStateTest` covered the same failure (c97bb142) by
+  # driving `Sync.measure_checkout/1` against a real checkout with a real
+  # submodule, and it went with `report_git_state/2` — the harness no longer
+  # reports git state at all, because nothing decided on what it reported.
+  #
+  # `precheck/2` still measures a dirty tree, live, by running git, and it is
+  # what actually refuses a promotion. So the concern did not move; the second,
+  # mirrored copy of it did.
   describe "a submodule dirtied by an in-progress QA session" do
     # A QA agent writes into `.code_my_spec` continuously for the one-to-two
     # hours it works — a brief drafted, `prompt.md` regenerated on every task
