@@ -92,7 +92,7 @@ defmodule CodeMySpec.Issues.Issue do
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
     field :attachments, {:array, :map}, default: []
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @castable_fields [

@@ -44,7 +44,7 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
 
     belongs_to :story, CodeMySpec.Stories.Story
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Returns the list of valid scenario kinds."

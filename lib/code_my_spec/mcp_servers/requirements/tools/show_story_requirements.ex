@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
 
   schema do
@@ -33,7 +33,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
         {:reply, RequirementsMapper.error("Story '#{story_ref}' not found"), frame}
 
       story ->
-        nodes = RequirementGraph.compute_all(scope)
+        # The rows, not a fresh computation of the whole project to show one
+        # story's requirements.
+        {nodes, _computed_at} = Requirements.cached_all(scope)
         reqs = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
 
         {:reply, story_response(story, reqs, scope), frame}

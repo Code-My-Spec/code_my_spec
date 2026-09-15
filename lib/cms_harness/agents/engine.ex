@@ -179,7 +179,7 @@ defmodule CmsHarness.Agents.Engine do
           {:ok, term()} | {:ok, {:queued, String.t()}} | {:error, term()}
   def chat(agent_id, message, timeout \\ 180_000) do
     with {:ok, pid} <- whereis(agent_id) do
-      GenServer.call(pid, {:chat, message, timeout}, timeout + 5_000)
+      GenServer.call(pid, {:chat, message, timeout}, timeout + call_grace_ms())
     end
   end
 
@@ -1052,4 +1052,10 @@ defmodule CmsHarness.Agents.Engine do
   defp working_copy_exists(path) do
     if File.dir?(path), do: :ok, else: {:error, :working_copy_missing}
   end
+
+  # Same floor used throughout: a bit past the caller's own timeout before
+  # concluding the agent is gone rather than merely still working. 5s in
+  # every real environment; configurable so a test proving the timeout path
+  # fires doesn't have to pay the real grace period to do it.
+  defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 end

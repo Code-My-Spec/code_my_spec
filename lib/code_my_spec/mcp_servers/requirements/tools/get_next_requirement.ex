@@ -19,6 +19,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Registry
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
@@ -159,9 +160,17 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # So: nothing actionable for anyone is "all satisfied"; work that exists and
   # belongs to somebody else says whose it is. An agent that knows it is waiting
   # on product can say so instead of reporting completion.
+  # Read, not recompute. This asked `compute_all/1` — a full graph, 4.4 seconds
+  # on a 3,200-component project — to answer nothing more than "are there any
+  # nodes at all", and it did it on the path an agent takes every time it asks
+  # what to work on.
+  #
+  # The rows answer it. `cached_all/1` settles the watcher's queue first, so it
+  # is current in the sense that matters, and a project with no rows is exactly
+  # the "nothing has ever computed this" case the sync-required response is for.
   defp empty_response(scope, [], _role) do
-    case RequirementGraph.compute_all(scope) do
-      [] -> RequirementsMapper.sync_required_response()
+    case Requirements.cached_all(scope) do
+      {[], _computed_at} -> RequirementsMapper.sync_required_response()
       _ -> RequirementsMapper.all_satisfied_response()
     end
   end

@@ -99,7 +99,7 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     # the only reason the instrument was checked rather than trusted.
     Repo.update_all(
       from(c in CodeMySpec.Components.Component, where: c.id == ^first.id),
-      set: [updated_at: ~U[2020-01-01 00:00:00Z], synced_at: ~U[2020-01-01 00:00:00Z]]
+      set: [updated_at: ~U[2020-01-01 00:00:00.000000Z], synced_at: ~U[2020-01-01 00:00:00.000000Z]]
     )
 
     {:ok, result} = ComponentSync.sync_from_files(scope)
@@ -107,7 +107,7 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     again =
       Components.list_components(scope) |> Enum.find(&(&1.module_name == @module_name))
 
-    assert again.updated_at == ~U[2020-01-01 00:00:00Z], """
+    assert again.updated_at == ~U[2020-01-01 00:00:00.000000Z], """
     The second sync rewrote a component nothing had changed, moving its
     `updated_at`. `Freshness.component/2` hashes `{id, updated_at}`, so that
     single write invalidates this component's fingerprint in every working
@@ -133,7 +133,7 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     # plainly happened, the description beside it having changed.
     Repo.update_all(
       from(c in CodeMySpec.Components.Component, where: c.id == ^first.id),
-      set: [updated_at: ~U[2020-01-01 00:00:00Z], synced_at: ~U[2020-01-01 00:00:00Z]]
+      set: [updated_at: ~U[2020-01-01 00:00:00.000000Z], synced_at: ~U[2020-01-01 00:00:00.000000Z]]
     )
 
     Repo.update_all(
@@ -158,7 +158,7 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     assert again.description == "Widgets, reconsidered",
            "skipping the write when content matches must not skip it when content differs"
 
-    assert DateTime.compare(again.updated_at, ~U[2020-01-01 00:00:00Z]) == :gt,
+    assert DateTime.compare(again.updated_at, ~U[2020-01-01 00:00:00.000000Z]) == :gt,
            "the backdated stamp must have moved forward, i.e. the row was written"
 
     assert again.id in result.changed_component_ids

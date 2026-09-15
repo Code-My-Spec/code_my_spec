@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3242Spex do
       then_ "the graph already reflects them when somebody finally looks", context do
         after_writes = read_graph(context)
 
-        refute after_writes["computed_at"] == context.before["computed_at"],
+        refute last_recompute(after_writes) == last_recompute(context.before),
                """
                Four issues were filed and the graph went on answering from the
                computation it made before them.
@@ -67,8 +67,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3242Spex do
                computes when something reads it, an agent that is not reading
                never learns that work appeared.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_writes["computed_at"])}
+               before: #{inspect(last_recompute(context.before))}
+               after:  #{inspect(last_recompute(after_writes))}
                """
 
         {:ok, context}

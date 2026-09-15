@@ -597,6 +597,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       sync!(scope, tmp_dir)
 
+      RequirementGraph.recompute(scope)
       actionable = RequirementGraph.next_actionable(scope)
 
       qa_complete =
@@ -795,6 +796,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   # -- Helpers --
 
   defp actionable_component_names(scope) do
+    RequirementGraph.recompute(scope)
     RequirementGraph.next_actionable(scope)
     |> Enum.filter(fn n -> n.entity_type == "component" end)
     |> Enum.map(fn n -> {n.entity_name, n.name} end)

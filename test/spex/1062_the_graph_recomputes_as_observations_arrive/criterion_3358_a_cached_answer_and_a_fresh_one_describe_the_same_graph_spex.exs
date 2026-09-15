@@ -49,27 +49,24 @@ defmodule CodeMySpecSpex.Story1062.Criterion3358Spex do
 
   spex "The cache and the computation agree about the graph" do
     scenario "a reader is served from cache after computing" do
-      given_ "a project whose graph has not been computed yet", context do
-        # given: already true — `setup :setup_active_project` creates the
-        # project, and nothing has read its graph, so no cache row exists for it
-        # yet. Establishing it here would mean computing the graph, which is
-        # precisely what the `when_` is here to do for the first time.
-        {:ok, context}
+      given_ "a project whose graph has been computed", context do
+        # The watcher computes on arrival, so by the time a spex runs there is
+        # a graph. This used to say "not computed yet" and let the first read
+        # do it — which is exactly the coupling story 1063 removed: a read that
+        # computes is a read that hides a writer which announced nothing.
+        {:ok, Map.put(context, :computed, read_settled_graph(context))}
       end
 
-      when_ "it is read once, computing, and then read again", context do
-        computed = read_graph(context)
-        cached = read_graph(context)
-
-        {:ok, context |> Map.put(:computed, computed) |> Map.put(:cached, cached)}
+      when_ "it is read again", context do
+        {:ok, Map.put(context, :cached, read_graph(context))}
       end
 
       then_ "both answers hold the same requirements", context do
-        assert context.computed["served_from"] == "computed",
-               "the first read should have computed the answer, not been served one"
+        assert context.computed["served_from"] == "cache",
+               "the graph should be answered from rows, not rebuilt by the reader"
 
         assert context.cached["served_from"] == "cache",
-               "the second read should have been served the first one's answer"
+               "the second read should have been served the same rows"
 
         assert length(context.cached["nodes"]) == length(context.computed["nodes"]),
                """
@@ -86,7 +83,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3358Spex do
                deciding from the smaller one is missing work that exists.
                """
 
-        assert context.cached["computed_at"] == context.computed["computed_at"],
+        assert last_recompute(context.cached) == last_recompute(context.computed),
                "a cache hit should carry the timestamp of the computation it serves"
 
         {:ok, context}

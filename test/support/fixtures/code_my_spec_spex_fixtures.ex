@@ -1203,12 +1203,25 @@ defmodule CodeMySpecSpex.Fixtures do
   Setting the value removes the race rather than widening it.
   """
   @spec age_story(Scope.t(), term(), number()) :: :ok
-  def age_story(%Scope{} = _scope, story_id, seconds) do
+  def age_story(%Scope{} = scope, story_id, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
     naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
 
     from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
     |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
+
+    # And say so, because this is a write to a graph input.
+    #
+    # `Freshness.row_key/1` is `{id, updated_at}`, and this sets `updated_at` —
+    # so backdating a story moves its fingerprint. Going through `update_all`
+    # means `Stories` never hears about it, and a silent write now leaves the
+    # graph stale rather than being repaired by whoever reads next.
+    #
+    # It looked like a flake: criterion 5901 passed alone and failed in a full
+    # run, because whether the older story's work surfaced depended on some
+    # *later* announcement happening to cover this one. A fixture that writes
+    # what the graph is computed from announces like any other writer.
+    GraphInputs.changed(scope, GraphInputs.observation_id())
 
     :ok
   end
@@ -1382,7 +1395,17 @@ defmodule CodeMySpecSpex.Fixtures do
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
     :ok = GraphInputs.subscribe(project_id)
-    :ok
+
+    # The watcher computes on arrival and announces it, so subscribing leaves a
+    # `{:graph_updated, _}` in the caller's mailbox for a scenario that has not
+    # touched anything. Settle the bootstrap pass and drain what it said.
+    GraphWatcher.settle(project_id)
+
+    receive do
+      {:graph_updated, ^project_id} -> :ok
+    after
+      0 -> :ok
+    end
   end
 
   @doc """
@@ -1555,6 +1578,37 @@ defmodule CodeMySpecSpex.Fixtures do
       remaining -> Process.demonitor(ref, [:flush])
     end
   end
+
+  @doc """
+  Stop watching this project, so the watcher does not outlive the test.
+
+  A watcher is a process and the sandbox transaction is not. Left running, it
+  takes its next pass after the test that started it has gone, finds the
+  connection it was using checked back in, and logs at `:error` —
+  `SexySpex.ErrorCapture` then fails whichever spex happens to be running when
+  that lands. Observed on criterion 3339, failed by a straggler from an earlier
+  scenario: "could not checkout the connection owned by #PID<...>".
+
+  `GraphWatcher` already handles the *project* disappearing underneath it
+  (`:gone`, stop, no noise). It cannot handle the connection disappearing,
+  because that is indistinguishable from a real database fault — which is
+  exactly what a reader needs it to shout about.
+  """
+  @spec stop_watching(Scope.t()) :: :ok
+  def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+        :ok
+
+      [] ->
+        :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
+
+  def stop_watching(%Scope{}), do: :ok
 
   @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
   def record_git_state(working_copy_id, %{} = state) do
@@ -4373,18 +4427,54 @@ defmodule CodeMySpecSpex.Fixtures do
   against the synthetic project.
   """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
-    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
-    runs = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+    # A full sync, not an incremental one, and that is the whole of it.
+    #
+    # The fingerprint an analysis run is stamped with is content-based over the
+    # files the source's roles cover — `{path, fingerprint}`, sorted — so it
+    # moves when the *file set* changes, not when a sync merely runs. Stamping
+    # after `sync_changed/2` recorded the set that incremental pass knew about,
+    # and `GetNextRequirement` then does a full `FileSync.sync/2` on its way to
+    # the graph, discovering whatever the incremental one had not. Different
+    # set, different fingerprint, `analysis_fresh` false — so `bdd_specs_passing`
+    # dropped and `FixBddSpecs` outranked the work the scenario was about.
+    #
+    # Criteria 6529, 6532 and 6533 at 10 pass / 5 fail each over fifteen runs,
+    # with the graph itself answering `[coding: "bdd_specs_passing"]` where the
+    # passing runs answer `[qa: "qa_complete"]`.
+    #
+    # Stamping over the set the reader will see is the fix: the fixture syncs
+    # the way the thing that reads it syncs.
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    result = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
 
-    # This calls `RunsRepository.finish_run/3` directly rather than going
-    # through `Analysis.Reconciler.reconcile/4`, which is the only production
-    # path that announces a finished run to `GraphInputs`. Without this, the
-    # watcher's debounce timer reflects whatever earlier writes set it — not
-    # this one — so `settle_graph/1` recomputes against a graph that may or
-    # may not have caught up with these rows, depending on whether that
-    # earlier timer had already fired. Same placement as `Reconciler`: after
-    # the rows commit.
-    runs
+    # And say so. Analysis freshness is a graph input — `Preloader` feeds it to
+    # `analysis_fresh`, and `tests_passing`, `spex_passing` and the latch behind
+    # `bdd_specs_passing` are all computed from it.
+    #
+    # `fresh_analysis_runs_fixture/2` calls `RunsRepository.finish_run/3`
+    # directly rather than going through `Analysis.Reconciler.reconcile/4`,
+    # which is the only production path that announces a finished run. So the
+    # rows land and the graph never hears, and a silent write now leaves the
+    # graph stale rather than being repaired by whoever reads next.
+    #
+    # Without this, a fixture that advances a project to the `qa_complete`
+    # frontier left the graph believing the specs had never passed, so every
+    # scenario built on that frontier was handed `FixBddSpecs` for the story the
+    # fixture had just prepared — criteria 6529 and 6533, deterministically.
+    :ok = GraphInputs.announce(scope, "Analysis")
+
+    # And settled before returning, so the graph agrees with the world this
+    # fixture has just finished building.
+    #
+    # Announcing alone leaves a window: the pass is scheduled, the fixture
+    # returns, and whether the scenario's first read sees the finished setup
+    # depends on which lands first. That is not a wait — `settle/1` does the
+    # pending pass synchronously — and it is the difference between criteria
+    # 6529/6533 passing and 6532 failing about one run in four on the same
+    # fixture.
+    GraphWatcher.settle(scope)
+
+    result
   end
 
   @doc """

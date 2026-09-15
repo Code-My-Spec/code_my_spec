@@ -146,6 +146,8 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
     test "next_actionable_project returns only unsatisfied nodes with met prerequisites" do
       {scope, _tmp_dir} = setup_full_project()
 
+      # Reads serve rows; the write path computes them.
+      Requirements.recompute(scope)
       actionable = Requirements.next_actionable_project(scope)
 
       Enum.each(actionable, fn node ->
@@ -158,6 +160,8 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
     test "bdd_specs_passing is NOT actionable when component tree is unsatisfied" do
       {scope, _tmp_dir} = setup_full_project()
 
+      # Reads serve rows; the write path computes them.
+      Requirements.recompute(scope)
       actionable = Requirements.next_actionable_project(scope)
       actionable_keys = MapSet.new(actionable, fn n -> {n.entity_type, n.name} end)
 
@@ -168,6 +172,8 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
     test "personas_complete surfaces when project_setup is satisfied and no personas exist" do
       {scope, _tmp_dir} = setup_project_with_setup_only()
 
+      # Reads serve rows; the write path computes them.
+      Requirements.recompute(scope)
       actionable = Requirements.next_actionable_project(scope)
       names = MapSet.new(actionable, & &1.name)
 
@@ -186,6 +192,8 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
     test "stories_exist drops out of actionable once a story is created" do
       {scope, _tmp_dir} = setup_full_project()
 
+      # Reads serve rows; the write path computes them.
+      Requirements.recompute(scope)
       actionable = Requirements.next_actionable_project(scope)
       names = MapSet.new(actionable, & &1.name)
 

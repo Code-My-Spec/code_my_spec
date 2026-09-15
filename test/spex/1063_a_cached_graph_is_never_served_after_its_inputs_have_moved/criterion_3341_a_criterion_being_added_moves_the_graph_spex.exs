@@ -58,12 +58,21 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
 
         refute rule_response.isError, inspect(rule_response)
 
-        _cold = read_graph(context)
+        before = read_settled_graph(context)
+
+        assert satisfaction_of(before, "three_amigos_complete", :story, story.id) == false,
+               """
+               The premise did not hold: a rule with no scenario under it must
+               leave `three_amigos_complete` open, or adding the scenario has
+               nowhere to show up.
+
+               three_amigos_complete: #{inspect(satisfaction_of(before, "three_amigos_complete", :story, story.id))}
+               """
 
         {:ok,
          context
          |> Map.put(:new_story, story)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, before)}
       end
 
       when_ "a scenario is added under that rule", context do
@@ -88,21 +97,32 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph no longer says that rule has no scenarios", context do
         after_add = read_graph(context)
 
-        refute after_add["computed_at"] == context.before["computed_at"],
+        reason = reason_for(after_add, "three_amigos_complete", :story, context.new_story.id)
+
+        refute reason =~ "has no scenarios",
                """
-               A criterion was added and the graph went on answering from the
-               computation it made before.
+               A criterion was added and the graph still says the rule it was
+               added to has no scenarios.
 
                Criteria carry only a story_id, so the query that finds them is
                shaped differently from the one that finds stories or issues.
                An input whose linkage is irregular is the one a hand-maintained
                list forgets.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_add["computed_at"])}
+               The claim is the verdict, not a clock: a pass that ran and
+               applied nothing moves `computed_at` exactly as far as one that
+               worked, and `checked_at` is second-resolution besides.
+
+               The verdict cannot carry this claim: `three_amigos_complete`
+               stays false until the story is explicitly sealed, so it reads
+               the same whether the scenario was added or not. What moves is
+               the reason, and that is the effect the write had.
+
+               reason before: #{inspect(reason_for(context.before, "three_amigos_complete", :story, context.new_story.id))}
+               reason after:  #{inspect(reason)}
                """
 
         {:ok, context}

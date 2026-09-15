@@ -241,15 +241,29 @@ defmodule CmsHarnessTest.Machine do
     end)
   end
 
+  # `whereis` then `start` is a check-then-act, and two callers can both pass
+  # the check. That is not hypothetical here: waking is dispatched from tasks,
+  # so two wakes landing together both find `nil` and both start — the loser
+  # got `{:error, {:already_started, _}}` against a bare `{:ok, pid}` match and
+  # brought its task down with a `MatchError`, logged at `:error`, which
+  # `SexySpex.ErrorCapture` turns into a failure of whichever spex was running.
+  #
+  # Losing the race is the normal outcome of an idempotent start, so it is
+  # treated as one.
   defp ensure(name, start) do
     case Process.whereis(name) do
       nil ->
-        {:ok, pid} = start.()
-        # Unlinked on purpose: linked, it dies with whichever scenario happened
-        # to start it, and the next one either raises `unknown registry` or
-        # starts a second tree while agents live in the first.
-        Process.unlink(pid)
-        :ok
+        case start.() do
+          {:ok, pid} ->
+            # Unlinked on purpose: linked, it dies with whichever scenario
+            # happened to start it, and the next one either raises `unknown
+            # registry` or starts a second tree while agents live in the first.
+            Process.unlink(pid)
+            :ok
+
+          {:error, {:already_started, _pid}} ->
+            :ok
+        end
 
       _pid ->
         :ok

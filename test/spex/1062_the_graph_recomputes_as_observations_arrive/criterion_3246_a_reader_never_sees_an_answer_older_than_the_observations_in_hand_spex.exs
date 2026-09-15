@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3246Spex do
       end
 
       then_ "the answer accounts for the write rather than predating it", context do
-        refute context.immediate["computed_at"] == context.before["computed_at"],
+        refute last_recompute(context.immediate) == last_recompute(context.before),
                """
                A read taken immediately after a write answered from the
                computation made before it.
@@ -60,8 +60,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3246Spex do
                from that gap, or an agent decides what to work on from the older
                picture and is handed the same work again when the timer fires.
 
-               before:    #{inspect(context.before["computed_at"])}
-               immediate: #{inspect(context.immediate["computed_at"])}
+               before:    #{inspect(last_recompute(context.before))}
+               immediate: #{inspect(last_recompute(context.immediate))}
                """
 
         {:ok, context}

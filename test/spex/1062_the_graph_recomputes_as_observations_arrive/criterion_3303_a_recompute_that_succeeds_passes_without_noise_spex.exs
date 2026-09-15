@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3303Spex do
       then_ "the recompute happened and said nothing about itself", context do
         after_write = read_settled_graph(context)
 
-        refute after_write["computed_at"] == context.before["computed_at"],
+        refute last_recompute(after_write) == last_recompute(context.before),
                "the recompute must really have happened for its silence to mean anything"
 
         refute context.logged =~ "[GraphWatcher]",

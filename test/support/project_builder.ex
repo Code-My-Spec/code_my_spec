@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
   | Piece | Path | Classified as |
   |---|---|---|
   | `new/2` | `mix.exs` | `:mix_exs` |
-  | `context/3` | `.code_my_spec/spec/<name>.spec.md` + `lib/<app>/<name>.ex` | spec + implementation |
+  | `context/3` | `.code_my_spec/spec/<app>/<name>.spec.md` + `lib/<app>/<name>.ex` | spec + implementation |
   | `component/3` | `lib/<app>/<parent>/<name>.ex` | implementation |
   | `unit_test/2` | `test/<app>/<name>_test.exs` | test |
   | `spex/3` | `test/spex/<story>/<criterion>_spex.exs` | spex |
@@ -56,6 +56,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
+  alias CodeMySpec.Utils.Paths, as: UtilPaths
 
   defstruct env: nil, app: "my_app", pending: [], paths: [], modules: []
 
@@ -89,7 +90,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
     module = context_module(b, name)
 
     b
-    |> put(spec_path(name), spec_source(module, Keyword.get(opts, :functions, ["noop/0"])))
+    |> put(spec_path(b, name), spec_source(module, Keyword.get(opts, :functions, ["noop/0"])))
     |> put(impl_path(b, name), module_source(module, "#{name} context."))
     |> record_module(module)
   end
@@ -99,7 +100,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
     module = context_module(b, name)
 
     b
-    |> put(spec_path(name), spec_source(module, Keyword.get(opts, :functions, ["noop/0"])))
+    |> put(spec_path(b, name), spec_source(module, Keyword.get(opts, :functions, ["noop/0"])))
     |> record_module(module)
   end
 
@@ -161,7 +162,23 @@ defmodule CodeMySpecSpex.ProjectBuilder do
   defp record_module(%__MODULE__{} = b, module), do: %{b | modules: [module | b.modules]}
 
   defp context_module(%__MODULE__{app: app}, name), do: "#{camelize(app)}.#{camelize(name)}"
-  defp spec_path(name), do: Path.join(Paths.spec_dir(), "#{underscore(name)}.spec.md")
+
+  # Off the module, not off the bare name, because that is where the checker
+  # looks: `spec_file` is `:file_exists` against the path
+  # `Utils.component_files/2` derives, which nests under the app —
+  # `.code_my_spec/spec/my_app/accounts.spec.md`.
+  #
+  # This wrote `.code_my_spec/spec/accounts.spec.md`, one segment short, so a
+  # builder that says it is writing a context's spec produced a file no
+  # requirement ever matched. Invisible for as long as the criteria using it
+  # asserted that `computed_at` had moved: the spec synced, the component
+  # appeared, the clock advanced, and `spec_file` sat false underneath.
+  #
+  # `impl_path/2` was already right — `lib/my_app/accounts.ex` is exactly
+  # `code_file` — which is why only the spec side drifted.
+  defp spec_path(%__MODULE__{} = b, name),
+    do: Paths.spec_file(UtilPaths.module_to_path(context_module(b, name)))
+
   defp impl_path(%__MODULE__{app: app}, name), do: "lib/#{app}/#{underscore(name)}.ex"
 
   # Dots separate modules; underscores inside a segment are word breaks. Split

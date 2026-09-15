@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3247Spex do
             context do
         answer = read_graph(context)
 
-        refute answer["computed_at"] == context.before["computed_at"],
+        refute last_recompute(answer) == last_recompute(context.before),
                """
                A reader that arrived inside the collection window was answered
                from the computation made before the observation.
@@ -84,8 +84,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3247Spex do
                which is the stale verdict of story 1063, reached by waiting
                instead of by caching.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(answer["computed_at"])}
+               before: #{inspect(last_recompute(context.before))}
+               after:  #{inspect(last_recompute(answer))}
                """
 
         {:ok, context}

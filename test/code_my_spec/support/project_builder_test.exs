@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
 
     paths = synced_paths(scope)
 
-    assert ".code_my_spec/spec/accounts.spec.md" in paths,
+    assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths,
            "The spec did not sync. Check it lands under Paths.spec_dir() and ends in .spec.md."
 
     assert "lib/my_app/accounts.ex" in paths
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
 
     paths = synced_paths(scope)
 
-    assert ".code_my_spec/spec/billing.spec.md" in paths
+    assert ".code_my_spec/spec/my_app/billing.spec.md" in paths
     refute "lib/my_app/billing.ex" in paths
 
     assert "lib/my_app/shipping.ex" in paths

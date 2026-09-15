@@ -42,7 +42,4 @@ defmodule CodeMySpec.Documents.QaIssue do
     |> validate_inclusion(:severity, @severities)
     |> validate_inclusion(:scope, @scopes)
   end
-
-  def fileable?(%__MODULE__{severity: s}) when s in @severities, do: true
-  def fileable?(_), do: false
 end

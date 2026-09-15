@@ -27,15 +27,16 @@ defmodule CodeMySpecTest do
     # `GraphWatcher`, `GraphInputs` and the recording transport separately,
     # which is where it lived before and why nobody used it.
     deps: [
+      CmsHarness,
+      CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents,
       CodeMySpec.McpServers,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
-      CodeMySpec.Workspaces,
-      CmsHarness,
-      CmsHarnessTest
+      CodeMySpec.Workspaces
     ],
     exports: [FakeWorkspaceRunner, WorkspaceWatchers]
 end

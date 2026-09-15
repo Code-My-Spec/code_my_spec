@@ -69,9 +69,12 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # `Preloader.load/1` now refuses with `{:error, :no_working_copy}`.
     graph_frame = %Frame{assigns: %{working_dir: tmp_dir, current_scope: scope}}
 
-    # Step 5: get_next_requirement computes the graph directly. Setup used to
-    # head this list and no longer does — `cms new` covers it, so a generated
-    # project has nothing to do there.
+    # Step 5: get_next_requirement reads the graph. It does not compute one —
+    # reads serve rows, and in production `GraphWatcher` fills them when a
+    # writer announces. Setup used to head this list and no longer does —
+    # `cms new` covers it, so a generated project has nothing to do there.
+    CodeMySpec.Requirements.recompute(scope)
+
     {:reply, graph_resp, ^graph_frame} = GetNextRequirement.execute(%{}, graph_frame)
     refute graph_resp.isError
     graph_text = response_text(graph_resp)

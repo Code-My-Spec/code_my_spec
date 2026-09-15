@@ -1037,6 +1037,7 @@ defmodule CodeMySpec.Files.FileSync do
         Files.delete_by_paths(scope, [path])
         removed_records = if existing, do: [existing], else: []
         sync_embeddings(scope, env, [], removed_records)
+        announce_watched_change(scope, existing != nil)
         {:ok, %{changed_path: path}}
 
       entry ->
@@ -1083,9 +1084,32 @@ defmodule CodeMySpec.Files.FileSync do
 
         Files.upsert_file_metadata(scope, entry)
         sync_embeddings(scope, env, embedding_changed_entries, [])
+        announce_watched_change(scope, embedding_changed_entries != [])
         {:ok, %{changed_path: path}}
     end
   end
+
+  # The watcher's path announces too, and this is the one that makes the whole
+  # arrangement event-driven rather than polled.
+  #
+  # `sync_path/3` is what a file event fires — an agent writing a spec, a git
+  # checkout landing, an editor saving. It updates the file's fingerprint
+  # eagerly, and the comment above says why: "so out-of-band consumers can react
+  # to content change in real time". The requirement graph is that consumer, and
+  # it was not being told. A file's fingerprint is a graph input; moving one
+  # without announcing is the same silence every other writer here was fixed for.
+  #
+  # That silence is why reads kept re-scanning the filesystem. If the live path
+  # says nothing, something has to go looking, so `get_next_requirement` and the
+  # stop hook each ran a full `sync/2` to find out what the watcher already
+  # knew. With this, the boot scan catches what happened while we were down and
+  # events carry it from then on.
+  #
+  # Only on a real change — a fingerprint that moved, or a file that went away.
+  # A watcher fires on writes that change nothing (a save with no edit, a
+  # touch), and announcing those would cost a preload each to discover it.
+  defp announce_watched_change(_scope, false), do: :ok
+  defp announce_watched_change(scope, true), do: GraphInputs.announce(scope, "FileSync.watched")
 
   # Roles that have a meaningful component or story owner. Other
   # roles (hex_doc, project_knowledge, rule, architecture, etc.) are

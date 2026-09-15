@@ -117,6 +117,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         tmp_dir: tmp_dir
       } = setup_workflow_scenario()
 
+      # The requirement has to be in the graph before a task can start on it.
+      CodeMySpec.Requirements.recompute(scope)
+
       # Start task for project_setup
       {:reply, resp, ^frame} =
         StartTask.execute(Map.put(req1, :session_id, session_id), frame)
@@ -171,6 +174,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         entity_type: "project",
         entity_id: to_string(scope.active_project_id)
       }
+
+      # The requirement has to be in the graph before a task can start on it.
+      CodeMySpec.Requirements.recompute(scope)
 
       # Start task for this requirement
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}

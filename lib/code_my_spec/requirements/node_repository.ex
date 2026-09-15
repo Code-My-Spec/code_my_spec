@@ -36,6 +36,8 @@ defmodule CodeMySpec.Requirements.NodeRepository do
               :description,
               :checked_at,
               :inputs_fingerprint,
+              :owner_component_type,
+              :node_scope,
               :updated_at
             ]}
 
@@ -478,6 +480,12 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     |> Enum.each(fn ids -> Repo.delete_all(from(e in Edge, where: e.id in ^ids)) end)
   end
 
+  # Stored as a string because the column is one. `nil` stays nil, which
+  # `Projection` reads as "written before this existed" and infers for.
+  defp scope_string(nil), do: nil
+  defp scope_string(scope) when is_atom(scope), do: Atom.to_string(scope)
+  defp scope_string(scope) when is_binary(scope), do: scope
+
   defp upsert_group(entity_type, nodes, working_copy_id, now) do
     {owner_field, conflict_target} = owner(entity_type)
 
@@ -490,6 +498,8 @@ defmodule CodeMySpec.Requirements.NodeRepository do
           details: node.details || %{},
           checked_at: now,
           inputs_fingerprint: Map.get(node, :inputs_fingerprint),
+          owner_component_type: Map.get(node, :owner_component_type),
+          node_scope: node |> Map.get(:node_scope) |> scope_string(),
           inserted_at: now,
           updated_at: now,
           working_copy_id: working_copy_id

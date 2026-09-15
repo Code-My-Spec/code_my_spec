@@ -37,6 +37,104 @@ defmodule CodeMySpec.Requirements.Projection do
   alias CodeMySpec.Users.Scope
 
   @doc """
+  Every vantage this project already has rows in, `nil` among them.
+
+  What a write path needs in order to maintain what the read paths ask for.
+  Rows are keyed per working copy, so a pass that computes one vantage leaves
+  every other one exactly as it was — and `GraphWatcher` is per *project* and
+  holds a single scope, so it was maintaining whichever checkout happened to
+  start it and no others.
+
+  Measured on story 1063's spex: the watcher wrote 14 rows at
+  `12cb6e42-…` while every HTTP read asked the `nil` row-space and got nothing.
+  Invisible until reads stopped recomputing, because an unscoped reader used to
+  find no rows, rebuild them itself and serve a correct answer — paying a full
+  recompute on every read to cover a write path that was never maintaining its
+  row-space at all.
+
+  `nil` is always included: it is what every reader that is not an agent
+  resolves to, so it is never not wanted.
+
+  Vantages with no rows yet are not invented here. A checkout nobody has
+  computed for has nothing to keep up to date — the reader that cares says so
+  by settling, and `GraphWatcher` folds the vantage it asked from into the
+  pass.
+
+  Asked of the project-owned rows only, which is exact rather than approximate:
+  a row has exactly one owner of the three, and every pass recomputes the
+  project-level nodes unconditionally — `recompute_stale/3` drops
+  `entity_type == "project"` from what it keeps and rebuilds it. So a vantage
+  that has been computed at all has project rows, and a vantage with no project
+  rows has none of any kind.
+  """
+  @spec vantages(Scope.t()) :: [Ecto.UUID.t() | nil]
+  def vantages(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    stored =
+      Node
+      |> where([n], n.project_id == ^project_id)
+      |> distinct(true)
+      |> select([n], n.working_copy_id)
+      |> Repo.all()
+
+    live_vantages(scope, stored)
+  end
+
+  def vantages(%Scope{}), do: [nil]
+
+  @doc """
+  The vantages worth computing, out of `nil`, the stored ones, and any a reader
+  has asked for.
+
+  Filters to checkouts that still exist, which is not tidiness: `GraphCache.publish/4`
+  writes a `requirement_graphs` row keyed on the copy, and the foreign key
+  refuses one that is gone. A watcher holding a since-deleted vantage — from
+  its own rows, or from a reader that named it before the offboard — turns
+  every subsequent pass into a logged fault on a project that is otherwise
+  fine.
+
+  The orphaned rows are left alone. Reaping them is a separate decision with a
+  failure mode of its own — issue `e53fc5ad` is about exactly that cleanup and
+  says not to improvise it — and a vantage nobody computes for costs only disk.
+  """
+  @spec live_vantages(Scope.t(), Enumerable.t()) :: [Ecto.UUID.t() | nil]
+  def live_vantages(%Scope{active_project_id: project_id}, candidates)
+      when is_binary(project_id) do
+    candidates
+    |> Enum.uniq()
+    |> Enum.filter(&live_copy?(project_id, &1))
+    |> then(&Enum.uniq([nil | &1]))
+  end
+
+  def live_vantages(%Scope{}, _candidates), do: [nil]
+
+  # A checkout that has been offboarded leaves its rows behind, and computing
+  # for it raises rather than wasting work: `GraphCache.publish/4` writes a
+  # `requirement_graphs` row keyed on the copy, and the foreign key refuses a
+  # copy that is gone. The watcher logs that at `:error` — so an offboard would
+  # turn every subsequent pass into a reported fault, forever, on a project
+  # that is otherwise fine.
+  #
+  # Caught by criterion 2867, which deletes a copy and then expects the graph
+  # to carry on: `insert or update on table "requirement_graphs" violates
+  # foreign key constraint`.
+  #
+  # The orphaned rows are left alone here. Reaping them is a separate decision
+  # with a real failure mode of its own — issue `e53fc5ad` is about exactly
+  # that cleanup and says not to improvise it — and a vantage nobody computes
+  # for costs nothing but disk.
+  defp live_copy?(_project_id, nil), do: true
+
+  defp live_copy?(project_id, working_copy_id) do
+    Repo.exists?(
+      from(c in "working_copies",
+        where:
+          c.id == type(^working_copy_id, :binary_id) and
+            c.project_id == type(^project_id, :binary_id)
+      )
+    )
+  end
+
+  @doc """
   The graph as `{nodes, edges}`, in the same shape `compute_graph/1` returns.
   """
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
@@ -176,7 +274,7 @@ defmodule CodeMySpec.Requirements.Projection do
 
   defp rehydrate(row, ctx) do
     with {:ok, entity_type, entity} <- entity_for(row, ctx),
-         %{} = definition <- definition_for(entity, row.name) do
+         %{} = definition <- definition_for(row, entity, row.name) do
       %Requirement{
         entity_type: entity_type,
         entity_id: entity_id(row, entity_type),
@@ -196,10 +294,47 @@ defmodule CodeMySpec.Requirements.Projection do
         checked_at: row.checked_at,
         inputs_fingerprint: row.inputs_fingerprint
       }
+      |> with_parent(entity_type, entity, definition, ctx)
     else
       _ -> nil
     end
   end
+
+  # Who orchestrates this node, restored the same way `entity_name` is —
+  # derived from the entity and the context rather than stored.
+  #
+  # It was not restored at all, so a served graph reported every orchestrated
+  # requirement under `## unknown`: `RequirementsMapper` groups a wave by
+  # `parent_entity_name` and falls back to that word when it is nil. Invisible
+  # while reads recomputed, because a computed node carries it — four of story
+  # 561's and 563's criteria are about which context a wave belongs to, and
+  # they read "unknown" for all of them.
+  #
+  # Derived rather than persisted for the reason the moduledoc gives about
+  # definition fields: a stored copy is the stale one the day a context is
+  # renamed.
+  # Mirrors `RequirementGraph.build_node/5` exactly, which is the point: a child
+  # takes its explicit parent, and a parent- or self-scope node *self-parents
+  # when orchestrated*, so it groups under its own context header rather than
+  # floating above the wave it belongs to.
+  #
+  # Getting only the first half right leaves a context's own `review_file`
+  # under `## unknown` while its children sit under the context — which reads
+  # as two waves and is what criteria 5628, 5815, 5903 and 5574 are about.
+  defp with_parent(%Requirement{} = req, "component", component, definition, ctx) do
+    cond do
+      parent = Map.get(ctx.components_by_id, Map.get(component, :parent_component_id)) ->
+        %{req | parent_entity_id: parent.id, parent_entity_name: parent.module_name}
+
+      definition.orchestrated_by ->
+        %{req | parent_entity_id: component.id, parent_entity_name: component.module_name}
+
+      true ->
+        req
+    end
+  end
+
+  defp with_parent(req, _type, _entity, _definition, _ctx), do: req
 
   defp entity_for(%Node{component_id: id}, ctx) when not is_nil(id) do
     case Map.get(ctx.components_by_id, id) do
@@ -220,7 +355,34 @@ defmodule CodeMySpec.Requirements.Projection do
 
   defp entity_for(_row, _ctx), do: :error
 
-  defp definition_for(entity, name) do
+  # The row says which definition produced it, because the name alone does not.
+  #
+  # Six names — `spec_file`, `spec_valid`, `test_file`, `test_spec_alignment`,
+  # `implementation_file`, `tests_passing` — exist as a `:child` def on a parent
+  # template *and* as a `:self` def on the child type's own. They differ in
+  # `orchestrated_by`, which is what groups an orchestrated wave under its
+  # context header, so picking the wrong one renders the wave with no header at
+  # all. Computing instantiates the parent's template; reading used to look up
+  # the child's own and quietly get the other definition.
+  #
+  # `nil` columns mean a row written before they existed. Inferring from the
+  # entity's own type is what that row was already getting, and the next pass
+  # over its vantage rewrites it with the columns set — so the fallback drains
+  # rather than becoming the permanent path.
+  defp definition_for(row, entity, name) do
+    stored_definition(row, name) || own_definition(entity, name)
+  end
+
+  defp stored_definition(%Node{owner_component_type: type, node_scope: scope}, name)
+       when is_binary(type) and is_binary(scope) do
+    type
+    |> Registry.get_requirements_for_type()
+    |> Enum.find(&(&1.name == name and to_string(&1.node_scope) == scope))
+  end
+
+  defp stored_definition(_row, _name), do: nil
+
+  defp own_definition(entity, name) do
     entity
     |> Registry.get_requirements()
     |> Enum.find(&(&1.name == name))

@@ -34,7 +34,7 @@ defmodule CodeMySpec.Personas.Persona do
     belongs_to :project, Project, type: :binary_id
     many_to_many :stories, Story, join_through: PersonaStory
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Returns the list of valid persona types."

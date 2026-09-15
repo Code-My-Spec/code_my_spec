@@ -20,6 +20,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       # required — a fresh project defaults to spex and code only.
       scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
       component = component_fixture(scope)
+      # Reads serve rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       # Seed a spec file to satisfy spec_file for this component
@@ -37,6 +40,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
     test "returns project-level requirements even with no components" do
       scope = full_scope_fixture()
+      # Reads serve rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} = ListRequirements.execute(%{}, frame)

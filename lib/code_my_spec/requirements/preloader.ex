@@ -30,6 +30,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_project: [File.t()],
           files_by_path: %{String.t() => File.t()},
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
+          problem_digests_by_component: %{Ecto.UUID.t() => %{String.t() => String.t()}},
+          issues_by_story: %{integer() => [{integer(), NaiveDateTime.t()}]},
           analysis_fresh: %{String.t() => boolean()},
           components: [Component.t()],
           components_by_id: %{Ecto.UUID.t() => Component.t()},
@@ -158,17 +160,62 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> Enum.filter(& &1.story_id)
       |> Enum.group_by(& &1.story_id)
 
-    # 3. Problem counts by component and source
-    problem_counts =
+    # 3. Problem counts by component and source, and what those problems are
+    #
+    # The count is the verdict's input — `problem_verdict/5` reports "3 credo
+    # problem(s)" and nothing finer. The digest is the *fingerprint's* input,
+    # and it has to be a different thing, because a count cannot tell a fixed
+    # finding from a swapped one: correct one credo violation, introduce
+    # another in the same module, and the count is 1 both times. The component
+    # is then skipped by `recompute_stale/3` and goes on serving the old
+    # finding's verdict until something unrelated moves it.
+    #
+    # Keyed on the findings and not on the rows, which is the whole difficulty.
+    # Every write path here is delete-then-insert —
+    # `reconcile_problems_for_source/4` clears the source and re-inserts — so
+    # ids and `updated_at` move on every analyzer run whether or not the code
+    # changed. Keying on those would make an analyzer finishing restale every
+    # component that has a problem, which is the cost criterion 3448 removed
+    # when it took `analysis_fresh` out of the fingerprint.
+    #
+    # Aggregated in the database so this stays one row per (component, source).
+    # The alternative is loading every problem row — messages included — into
+    # memory on the path of every graph computation.
+    problem_rows =
       Problem
       |> where([p], p.project_id == ^project_id and not is_nil(p.component_id))
       |> group_by([p], [p.component_id, p.source])
-      |> select([p], {p.component_id, p.source, count(p.id)})
+      |> select(
+        [p],
+        {p.component_id, p.source, count(p.id),
+         fragment(
+           "md5(string_agg(?, '|' ORDER BY ?))",
+           fragment(
+             "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
+             p.file_path,
+             p.line,
+             p.rule,
+             p.message
+           ),
+           fragment(
+             "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
+             p.file_path,
+             p.line,
+             p.rule,
+             p.message
+           )
+         )}
+      )
       |> Repo.all()
 
     problems_by_component =
-      Enum.reduce(problem_counts, %{}, fn {comp_id, source, count}, acc ->
+      Enum.reduce(problem_rows, %{}, fn {comp_id, source, count, _digest}, acc ->
         Map.update(acc, comp_id, %{source => count}, &Map.put(&1, source, count))
+      end)
+
+    problem_digests_by_component =
+      Enum.reduce(problem_rows, %{}, fn {comp_id, source, _count, digest}, acc ->
+        Map.update(acc, comp_id, %{source => digest}, &Map.put(&1, source, digest))
       end)
 
     # 4. Stories
@@ -212,6 +259,8 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_project: all_files,
        files_by_path: Map.new(all_files, &{&1.path, &1}),
        problems_by_component: problems_by_component,
+       problem_digests_by_component: problem_digests_by_component,
+       issues_by_story: issue_stamps_by_story(project_id),
        analysis_fresh: analysis_freshness(scope, all_files),
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
@@ -525,6 +574,43 @@ defmodule CodeMySpec.Requirements.Preloader do
         select: {r.id, r.updated_at},
         order_by: r.id
       )
+    )
+  end
+
+  # The issues attributed to each story, so a story's fingerprint carries its
+  # own and not the project's.
+  #
+  # `delegated_inputs/2` keeps collecting `issues` project-wide, and correctly:
+  # `issues_triaged` and `issues_resolved` ask about the queue as a whole. They
+  # are project nodes, which `recompute_stale/3` rebuilds unconditionally every
+  # pass, so they never read a story's fingerprint. Hashing the project's list
+  # into every story's fingerprint therefore bought nothing and cost every
+  # story — one issue, 973 of 2086 requirements and 137 of 137 stories, measured
+  # on dev 2026-09-14.
+  #
+  # The only story-level reader is `IssuesChecker.story_resolved?/2`, and it
+  # already draws this line: "Only issues QA attributed to the story count. An
+  # issue with no `story_id` is the project queue's problem, not this story's."
+  # So an unattributed issue belongs to no group here, which is the same
+  # statement.
+  #
+  # Stamps rather than a filtered count, for the reason the module's header
+  # gives: `story_resolved?/2` reads status and severity, and a key naming the
+  # fields this module happens to know about goes stale the first time that
+  # checker reads one more. `{id, updated_at}` covers a status moving from
+  # incoming to accepted, a severity being raised, and a re-attribution — which
+  # moves both the story that lost it and the story that gained it.
+  defp issue_stamps_by_story(project_id) do
+    Repo.all(
+      from(i in "issues",
+        where: i.project_id == type(^project_id, :binary_id) and not is_nil(i.story_id),
+        select: {i.story_id, i.id, i.updated_at},
+        order_by: i.id
+      )
+    )
+    |> Enum.group_by(
+      fn {story_id, _id, _at} -> story_id end,
+      fn {_story_id, id, at} -> {id, at} end
     )
   end
 
