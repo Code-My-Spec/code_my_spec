@@ -51,13 +51,33 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
       ]
     }
 
-    {:reply, reply, _frame} = AskUserQuestion.execute(params, frame(context))
+    {:reply, reply, _frame} = AskUserQuestion.execute(params, asking_frame(context))
 
     refute reply.isError,
            "the premise is a question that was raised, and this one was refused:\n" <>
              response_text(reply)
 
     Fixtures.question_id_from(response_text(reply))
+  end
+
+  @doc """
+  The frame an *agent* asks from, as opposed to the main agent's own.
+
+  `AskUserQuestion` reads `frame.assigns[:agent_id]`, which `Plugs.AgentScope`
+  sets in production. Without it the request is written with a null `agent_id`,
+  and `QuestionsRepository.list_open_questions/1` inner-joins `agents` — so the
+  question is invisible to the main agent by construction and goes to the user
+  by default, which is the behaviour this story exists to replace.
+
+  A fresh agent per question, because these criteria are about routing between
+  parties, and reusing one asker would let a scenario pass that only works when
+  everything comes from the same place.
+  """
+  @spec asking_frame(map()) :: Frame.t()
+  def asking_frame(context) do
+    agent = Fixtures.running_agent(context.scope, role: "coding")
+
+    %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
   end
 
   @doc "What the main agent sees waiting for it."
