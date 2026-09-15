@@ -122,7 +122,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   Returns a list of `QaAttempt` structs.
   """
   @spec list(Scope.t(), integer()) :: [QaAttempt.t()]
-  def list(%Scope{active_project: nil}, _story_id), do: []
+  def list(%Scope{active_project_id: nil}, _story_id), do: []
 
   def list(%Scope{} = scope, story_id) do
     QaAttempt
@@ -150,7 +150,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   @spec list_project(Scope.t(), keyword()) :: [QaAttempt.t()]
   def list_project(scope, opts \\ [])
 
-  def list_project(%Scope{active_project: nil}, _opts), do: []
+  def list_project(%Scope{active_project_id: nil}, _opts), do: []
 
   def list_project(%Scope{} = scope, opts) do
     include_older = Keyword.get(opts, :include_older, false)
@@ -212,7 +212,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   to prevent cross-project reads).
   """
   @spec complete?(Scope.t(), integer()) :: boolean()
-  def complete?(%Scope{active_project: nil}, _story_id), do: false
+  def complete?(%Scope{active_project_id: nil}, _story_id), do: false
 
   def complete?(%Scope{} = scope, story_id) do
     latest =
@@ -246,10 +246,22 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # Fail-closed when no active project: returning a query that matches
   # nothing prevents cross-project leakage if a caller forgets to set
   # `active_project` on the scope.
-  defp by_project(query, %Scope{active_project: nil}), do: where(query, [_], false)
+  # Keyed on the id, not the loaded struct.
+  #
+  # It guarded on `active_project` and answered "no attempts exist" for any
+  # scope that carried the id without the association loaded — which is every
+  # scope `PortableHost` builds for the local endpoint. `qa_complete` then
+  # reported "No valid QA pass attempt in DB" for a story whose passing attempt
+  # was sitting in the table, and criterion 6491 is what caught it.
+  #
+  # Same shape as the `Stories.broadcast/2` guard fixed alongside it: a
+  # presence check written against the struct while the body only ever needs the
+  # id, so an unloaded association reads as an absence rather than as "not
+  # asked for".
+  defp by_project(query, %Scope{active_project_id: nil}), do: where(query, [_], false)
 
-  defp by_project(query, %Scope{active_project: project}) do
-    join(query, :inner, [a], s in assoc(a, :story), on: s.project_id == ^project.id)
+  defp by_project(query, %Scope{active_project_id: project_id}) do
+    join(query, :inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
   end
 
   defp find_latest_attempt_id(story_id) do
@@ -261,7 +273,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> Repo.one()
   end
 
-  defp resolve_task_info(%Scope{active_project: nil}, _task_id),
+  defp resolve_task_info(%Scope{active_project_id: nil}, _task_id),
     do: {:error, :no_active_project}
 
   defp resolve_task_info(%Scope{} = scope, task_id) when is_binary(task_id) do
