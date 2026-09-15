@@ -1334,7 +1334,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # alternative is a curl that prints nothing and exits 0, which reads as a
   # suite that passed.
   defp run_for_agent(scope, source, args) do
-    case Analysis.await_run(scope, source, args) do
+    case Analysis.await_run(scope, source, args, requested_by: %{kind: "agent_mix_test"}) do
       {:ok, %{} = run} ->
         {:ok,
          %{

@@ -382,7 +382,8 @@ defmodule CodeMySpec.Promotion do
       Logger.info(
         "[Promotion] merged #{branch} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
-          "version #{version || "none"}, dispatching restart"
+          "version #{version || "none"}, certified by #{describe_certifications(swept)}, " <>
+          "dispatching restart"
       )
 
       stamp_promoted_stories(scope, version)
@@ -733,11 +734,41 @@ defmodule CodeMySpec.Promotion do
   # recorded" and "no problems" are different claims, and closing that gap
   # used to mean waiting for a fresh run — it now means reading whether one
   # already exists.
-  defp gate_known([], scope), do: gate_freshness(stale_sources(scope))
+  defp gate_known([], scope), do: gate_freshness(scope, stale_sources(scope))
   defp gate_known(problems, _scope), do: gate_result(problems)
 
-  defp gate_freshness([]), do: {:ok, []}
-  defp gate_freshness(stale), do: {:error, not_certified(stale)}
+  defp gate_freshness(scope, []), do: {:ok, certified_by(scope)}
+  defp gate_freshness(_scope, stale), do: {:error, not_certified(stale)}
+
+  # What this promote actually leaned on to call the copy clean. `gate/1`
+  # never runs a check of its own — see the moduledoc above it — it reads
+  # whichever runs are already on file, so two promotes seconds apart with
+  # nothing re-run in between read the exact same rows and both say "clean"
+  # with nothing in the response to tell them apart. Carried on `swept` so
+  # reuse is visible instead of silent: two promotes citing the same
+  # `finished_at` for every source verified nothing new between them, and a
+  # caller that cares (or is debugging why a second promote answered
+  # instantly) can tell.
+  defp certified_by(scope) do
+    for source <- Run.sources() do
+      case Analysis.latest_answer(scope, source) do
+        %Run{finished_at: finished_at} -> %{source: source, finished_at: finished_at}
+        nil -> %{source: source, finished_at: nil}
+      end
+    end
+  end
+
+  # The log line's rendering of `certified_by/1` — a timestamp per source, so
+  # the same finished_at showing up across two consecutive promotions' logs
+  # is the evidence that the second one reused the first's verdict rather
+  # than seeing anything new.
+  defp describe_certifications(certifications) do
+    certifications
+    |> Enum.map_join(", ", fn
+      %{source: source, finished_at: nil} -> "#{source} (no run on file)"
+      %{source: source, finished_at: finished_at} -> "#{source} @ #{DateTime.to_iso8601(finished_at)}"
+    end)
+  end
 
   defp stale_sources(%Scope{} = scope) do
     fresh = Analysis.fresh_sources(scope, Run.sources())
@@ -761,9 +792,15 @@ defmodule CodeMySpec.Promotion do
       reason:
         "this copy has not been swept clean at its current commit: #{named} " <>
           "need a fresh run before this can promote. Nothing was started for " <>
-          "you — run analysis on #{named} (a stop hook does this on its own; " <>
-          "`start_analysis` runs one directly) and promote again once it " <>
-          "lands.\n\n" <>
+          "you — three ways to get one, and promote again once #{named} lands:\n\n" <>
+          "  - do nothing: the next stop hook enqueues it automatically\n" <>
+          "  - `start_analysis` with the specific source (one call per name in " <>
+          "#{named}) runs it directly, without waiting for a stop\n" <>
+          "  - run `mix test` / `mix spex` / `mix credo` / `mix compile` yourself, " <>
+          "same as you would to check your own work — the PreToolUse hook routes " <>
+          "it through this project's own run ledger, so an ordinary invocation " <>
+          "satisfies this gate exactly like a server-dispatched sweep does; " <>
+          "nothing extra to call\n\n" <>
           "This refuses where the gate used to wait, sometimes indefinitely: " <>
           "promoting while still editing used to hold this project's lock, " <>
           "refusing every other promotion, for as long as each edit re-staled " <>

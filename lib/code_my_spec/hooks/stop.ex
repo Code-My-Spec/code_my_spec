@@ -206,10 +206,18 @@ defmodule CodeMySpec.Hooks.Stop do
   # belongs to which agent. Guessing is worse than the race.
 
   defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
+    agent_id = active_task && active_task.agent_id
+
     opts =
       validation_opts
       |> Keyword.put(:session_id, session_id)
-      |> Keyword.put(:agent_id, active_task && active_task.agent_id)
+      |> Keyword.put(:agent_id, agent_id)
+      |> Keyword.put(:requested_by, %{
+        kind: "hook",
+        hook: "stop",
+        session_id: session_id,
+        agent_id: agent_id
+      })
 
     case Validation.validate_stop(scope, active_task, opts) do
       # Persisted problems already block — no need to wait on anything.

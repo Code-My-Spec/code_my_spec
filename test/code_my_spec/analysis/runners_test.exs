@@ -206,14 +206,11 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw)
     end
 
-    # The same event as `module ... is not available`, seen one level in. A dep
-    # whose beams are being rewritten answers "undefined or private" while the
-    # suite runs — observed as two failures in `Notifications`, a context with
-    # nothing to do with JSON decoding and no edits that day.
-    #
-    # Reported as real, they send whoever reads them into the named file, where
-    # nothing is wrong. That is the expensive kind of wrong answer.
-    test "a dependency function that vanished mid-run fails the run" do
+    # This used to fail the whole run, on the theory that a dependency
+    # function undefined at runtime meant its beams moved mid-run — see
+    # `CodeMySpec.Analysis.LostBuildTest`'s moduledoc for why that heuristic
+    # is gone. Reported now like any other diagnostic.
+    test "a dependency function reported as undefined is a real failure, not a lost build" do
       raw = %{
         "exit_status" => 1,
         "execution_status" => "failure",
@@ -229,12 +226,10 @@ defmodule CodeMySpec.Analysis.RunnersTest do
         ]
       }
 
-      assert {:error, {:build_changed_mid_run, 1, _}} = Runners.from_raw("exunit", raw)
+      assert {:ok, %{problems: [problem]}} = Runners.from_raw("exunit", raw)
+      assert problem.file_path == "test/code_my_spec/notifications/question_request_test.exs"
     end
 
-    # The restriction that makes the above safe. An undefined function in our
-    # own code is a warning at compile time, not an error, so it genuinely can
-    # fail at runtime — and blaming the build would hide a real defect.
     test "one of our own undefined functions is still a real failure" do
       raw = %{
         "exit_status" => 1,

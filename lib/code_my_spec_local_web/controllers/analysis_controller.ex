@@ -120,7 +120,9 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
   defp execute(conn, scope, source, args) do
     Logger.info("[AnalysisAPI] #{source} #{Enum.join(args, " ")}")
 
-    case Analysis.await_run(scope, source, args) do
+    requested_by = %{kind: "agent_mix_test", via: "local_http"}
+
+    case Analysis.await_run(scope, source, args, requested_by: requested_by) do
       {:ok, run} ->
         status = run.exit_status || exit_for(run)
 

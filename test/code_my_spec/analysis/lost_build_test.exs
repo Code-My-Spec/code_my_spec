@@ -1,22 +1,30 @@
 defmodule CodeMySpec.Analysis.LostBuildTest do
   @moduledoc """
-  A test run that lost its build is a failed run, not a set of test failures.
+  Whatever an analyzer reports is what gets recorded — no message-content
+  heuristic decides a diagnostic isn't real and drops the whole run instead.
 
-  The analyzer shares `_build` with the agent, so an agent's own
-  `mix compile --force` wipes and rebuilds it while a suite is running and
-  modules disappear mid-run. What comes back is
-  `module CodeMySpec.Mail.ResendClient is not available` for a module that
-  exists and is untouched — 14 of 46 reported failures, on one occasion, with
-  nothing saying the agent's own build had caused them.
+  This file used to assert the opposite: a diagnostic matching
+  `module ... is not available`, an undefined function on a foreign module,
+  or an undefined dunder callback failed the entire run as
+  `{:build_changed_mid_run, ...}`, on the theory that a genuinely missing
+  module fails compilation, so seeing it among test results could only mean
+  the build moved mid-run.
 
-  It has to be caught rather than reported because it is indistinguishable from
-  a real defect: "module is not available" reads as a missing dependency, and
-  the natural response is to add code that is already there.
+  The theory held for exunit's own test files, which reference modules
+  statically. It does not hold for code that resolves a module by name at
+  runtime — an MCP tool dispatcher looking up `Tools.Whatever.execute/2`,
+  say — where an undefined-function error is a normal, correct runtime
+  failure for a module that never existed for a millisecond, not one that
+  disappeared mid-run. A spec-first spex exercising a not-yet-implemented
+  tool produces exactly that signature. The consequence was not a
+  misclassified line: a failed run never reaches `Reconciler.reconcile/3`,
+  so Problems for that source never clear, and the copy cannot promote —
+  measured on `phx-new-generator`, stuck roughly thirteen hours with a green
+  suite. John: "We should not be dropping any diagnostics."
 
-  The signature is reliable in one direction. A genuinely missing module fails
-  compilation, so the suite never reaches the point of producing test failures
-  — seeing this *among* test results says something about the build, not the
-  code.
+  So every case below that used to expect the run failed and its diagnostics
+  discarded now expects the opposite: reported, as a real result, the same
+  as any other finding.
   """
 
   use ExUnit.Case, async: true
@@ -36,8 +44,8 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
     }
   end
 
-  test "a run reporting an unavailable module fails instead of reporting failures" do
-    assert {:error, {:build_changed_mid_run, 1, _}} =
+  test "a run reporting an unavailable module is reported, not failed" do
+    assert {:ok, %{problems: [_]}} =
              Runners.from_raw(
                "exunit",
                raw([
@@ -51,32 +59,21 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
              Runners.from_raw("exunit", raw(["Assertion with == failed"]))
   end
 
-  test "a mixed run fails, because the real failures will be re-reported" do
-    assert {:error, {:build_changed_mid_run, 1, _}} =
+  test "a mixed run reports every diagnostic, none dropped for another's sake" do
+    assert {:ok, %{problems: [_, _]}} =
              Runners.from_raw(
                "exunit",
                raw([
                  "Assertion with == failed",
                  "(module CodeMySpec.Mail.ResendClient is not available)"
                ])
-             ),
-           "one cycle of delay beats sending an agent after code that is already there"
+             )
   end
 
   test "a clean run is unaffected" do
     assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw([]))
   end
 
-  # 17138bc2: spex never had this guard at all, so a spex run sampling the app
-  # mid-restart — a concurrent session's `just refresh` — reported the sample
-  # as genuine, blocking failures, which then sat unrefreshed at the same
-  # fingerprint and got re-reported turn after turn against a suite that was
-  # already green on direct verification.
-  #
-  # exunit's own build tree is isolated from the agent's (`_build/analyzer`,
-  # `CmsHarness.AnalyzerEnv`) precisely so a concurrent compile can't do this
-  # to it — spex has no equivalent isolation because it has to exercise the
-  # real running app, so this check is the only guard it has.
   defp spex_raw(messages, exit_status \\ 1) do
     %{
       "execution_status" => "failure",
@@ -95,8 +92,8 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
     }
   end
 
-  test "a spex run reporting a foreign unavailable module fails instead of reporting failures" do
-    assert {:error, {:build_changed_mid_run, 1, _}} =
+  test "a spex run reporting a foreign unavailable module is reported, not failed" do
+    assert {:ok, %{problems: [_]}} =
              Runners.from_raw(
                "spex",
                spex_raw([
@@ -105,13 +102,15 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
              )
   end
 
-  # The exact signature 17138bc2 reported. `__live__/0` is generated by
-  # `use Phoenix.LiveView` at compile time — nobody writes it by hand, so
-  # "undefined" on one of our own modules is still always the build moving,
-  # never a real defect, even though `@foreign_undefined` alone would have let
-  # an ordinary own-app undefined function through unflagged.
-  test "a spex run reporting our own module's dunder callback as undefined fails instead of reporting failures" do
-    assert {:error, {:build_changed_mid_run, 1, _}} =
+  # The exact signature 17138bc2 reported — a spex run sampling the app
+  # mid-restart while a concurrent session's `just refresh` recompiled it.
+  # That was a real build race, and it is now reported the same as any other
+  # diagnostic: the fix for a message that guesses wrong in one direction is
+  # not a message that guesses wrong in the other. A build genuinely racing
+  # a spex run is `41753dae`'s and the shared-build-path issue's to fix at
+  # the source, not this module's to paper over by discarding results.
+  test "a spex run reporting our own module's dunder callback as undefined is reported, not failed" do
+    assert {:ok, %{problems: [_]}} =
              Runners.from_raw(
                "spex",
                spex_raw([
@@ -120,9 +119,6 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
              )
   end
 
-  # The regression the dunder-specific pattern has to not cause: a real bug in
-  # our own code, where an ordinary (non-dunder) function is genuinely
-  # undefined, must still be reported rather than swallowed as a build flake.
   test "an ordinary undefined function on one of our own modules is still a genuine failure" do
     assert {:ok, %{problems: [_]}} =
              Runners.from_raw(

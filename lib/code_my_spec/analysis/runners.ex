@@ -257,31 +257,32 @@ defmodule CodeMySpec.Analysis.Runners do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
-  # A run whose failures include "module ... is not available" lost its build
-  # partway through. The analyzer shares `_build` with the agent, so an agent's
-  # own `mix compile --force` wipes and rebuilds it while the suite is running
-  # and modules disappear mid-run.
+  # This used to fail the whole run when a failure's message matched
+  # `module ... is not available`, or another module ever being undefined at
+  # runtime, on the theory that a genuinely missing module fails compilation
+  # — so seeing it among reported results meant the build changed mid-run,
+  # not that the module never existed.
   #
-  # What makes the signature strong rather than ambiguous: a genuinely missing
-  # module fails compilation, so the suite would never have got as far as
-  # producing test failures. Seeing this *among* test results therefore says
-  # something about the build, not about the code.
+  # The theory is wrong for exactly the code this project writes most:
+  # calling a module by name, resolved at runtime, is a compile-time warning
+  # in Elixir, not an error — the suite compiles and runs fine, and the
+  # failure only shows up when that one path executes. A spec-first spex
+  # exercising a tool nobody has implemented yet produces precisely this
+  # signature, on a module that never existed for a millisecond, let alone
+  # disappeared mid-run. Every diagnostic in the same run was then discarded
+  # with it — not just the one message, the whole result — and the run
+  # failed instead of completing, so the source's Problems never cleared and
+  # never reflected the real (correct, expected, "not built yet") failure.
+  # phx-new-generator sat unable to promote for about thirteen hours this way,
+  # green suite and all, and nothing said why: `fb7b1002`.
   #
-  # It has to be caught because it is indistinguishable from a real defect —
-  # `module is not available` reads as a missing dependency, and the natural
-  # response is to add code that is already there. Observed: 14 of 46 reported
-  # failures were this, and nothing in the output said "your own build did it".
-  #
-  # Failed rather than reported, on the same reasoning as the two clauses
-  # above. A failed run is re-enqueued on the next stop and costs one cycle;
-  # phantom failures presented as real cost a turn and invite edits to code
-  # that was never broken. Genuine failures in the same run are re-reported by
-  # the rerun.
+  # No replacement heuristic. Whatever the analyzer reports is what gets
+  # reported — a message that happens to look like a build race is still a
+  # real result from a real run, and guessing which diagnostics to trust
+  # before recording them is the failure mode, not a detail of it. John:
+  # "We should not be dropping any diagnostics."
   def from_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
-    case lost_build_failures(raw) do
-      [] -> exunit_result(raw)
-      lost -> {:error, {:build_changed_mid_run, length(lost), hd(lost)}}
-    end
+    exunit_result(raw)
   end
 
   # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}` for
@@ -298,14 +299,12 @@ defmodule CodeMySpec.Analysis.Runners do
   # carried its excerpt since `runners.ex:214`; this is the same tuple, one
   # analyzer late.
   #
-  # Also carries exunit's `lost_build_failures/1` check, which this never had.
-  # exunit's own build is isolated from the agent's under `_build/analyzer`
-  # (`CmsHarness.AnalyzerEnv`) precisely so a concurrent `mix compile --force`
-  # cannot pull modules out from under it — but spex has to exercise the real
-  # running app (LiveView pages, the actual endpoint), so that isolation does
-  # not apply here and a concurrent session's `just refresh` can catch a spex
-  # run mid-restart. Failing the run, rather than reporting the sample as
-  # three real failures, is the only guard spex has against that. 17138bc2.
+  # Used to also carry exunit's build-changed-mid-run check, on the same
+  # reasoning applied to a source where it holds even less: spex exercises
+  # the real running app, and spec-first spex naming a tool nobody has built
+  # yet is exactly the same "never existed" signature, not a build race.
+  # Removed for the reasons above `from_raw("exunit", ...)` gives in full —
+  # whatever the analyzer reports is what gets recorded.
   def from_raw("spex", raw) do
     exit_code = raw["exit_status"]
 
@@ -314,10 +313,7 @@ defmodule CodeMySpec.Analysis.Runners do
         {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
 
       {failures, code} ->
-        case lost_build_failures(raw) do
-          [] -> {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
-          lost -> {:error, {:build_changed_mid_run, length(lost), hd(lost)}}
-        end
+        {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
     end
   end
 
@@ -394,52 +390,6 @@ defmodule CodeMySpec.Analysis.Runners do
   end
 
   defp with_partition(summary, _raw), do: summary
-
-  # A module that vanished, or a dependency's function that did.
-  #
-  # The first signature was `module ... is not available`. The second is the
-  # same event seen one level in: a dep whose beams are being rewritten answers
-  # `function Jason.Decoder.parse/2 is undefined or private` while the suite is
-  # mid-run. Observed exactly that, as two failures in `Notifications` — a
-  # context that has nothing to do with JSON decoding and was not being edited.
-  #
-  # Restricted to modules outside this application's namespaces, and that
-  # restriction is the whole care in it. A dep function undefined at *runtime*
-  # when the dep compiled means its beams moved underneath the run. One of our
-  # own modules is a different matter: an undefined local function is a warning
-  # rather than a compile error, so it genuinely can fail at runtime, and
-  # swallowing that would hide a real defect behind a build excuse.
-  @foreign_undefined ~r/function (?!CodeMySpec|CmsHarness|CodeMySpecWeb|CodeMySpecSpex)[A-Z][\w.]*\.\w+\/\d+ is undefined/
-
-  # A double-underscore callback — `__live__/0`, `__schema__/1`,
-  # `__struct__/0`, `__changeset__/0`, `__protocol__/1`, `__impl__/1` — is
-  # generated by `use`/`defstruct`/protocol expansion at compile time. Nobody
-  # writes one by hand, on our own modules or anyone else's, so "undefined"
-  # for one is never a real defect the way an ordinary undefined function on
-  # one of our own modules can be (the reason `@foreign_undefined` excludes
-  # our namespaces in the first place) — it is always the module's beam
-  # having moved out from under the run. Checked regardless of namespace,
-  # unlike `@foreign_undefined`, because that is exactly what let 17138bc2
-  # through: `CodeMySpecWeb.AgentConversationLive.Show.__live__/0 is
-  # undefined`, spex sampling the app mid-restart while a concurrent
-  # session's `just refresh` recompiled it, then reported and re-reported as
-  # three genuine failures because nothing here recognized the signature.
-  @dunder_undefined ~r/function [\w.]*\.__\w+__\/\d+ is undefined/
-
-  defp lost_build_failures(raw) do
-    raw
-    |> diagnostics()
-    |> Enum.map(& &1["message"])
-    |> Enum.filter(&lost_build?/1)
-  end
-
-  defp lost_build?(message) when is_binary(message) do
-    message =~ ~r/module .+ is not available/ or
-      message =~ @foreign_undefined or
-      message =~ @dunder_undefined
-  end
-
-  defp lost_build?(_message), do: false
 
   # `output` is the tool's own text — what `mix compile`/`mix credo`/`mix
   # spex` actually printed — not a summary reformatted from `problems`. See

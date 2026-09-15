@@ -179,7 +179,8 @@ defmodule CodeMySpec.Analysis.ProjectServer do
            source: job.source,
            kind: job.kind,
            args: %{"args" => job.args},
-           input_fingerprint: job.fingerprint
+           input_fingerprint: job.fingerprint,
+           requested_by: job.requested_by
          }) do
       {:ok, run} ->
         broadcast(state.project_id, job.source, :running, run.id)
