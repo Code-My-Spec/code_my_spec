@@ -142,7 +142,7 @@ defmodule CmsHarness.Token do
   # supervisor is a trap for exactly the scripts most likely to need it.
   defp call_for_token(root, key) do
     if Process.whereis(__MODULE__) do
-      GenServer.call(__MODULE__, {:access_token, root, key}, @exchange_timeout + 5_000)
+      GenServer.call(__MODULE__, {:access_token, root, key}, @exchange_timeout + call_grace_ms())
     else
       case exchange(key) do
         {:ok, token, _expires_at} -> {:ok, token}
@@ -233,4 +233,10 @@ defmodule CmsHarness.Token do
       end
     end
   end
+
+  # Same floor used throughout: a bit past the caller's own timeout before
+  # concluding the server is gone rather than merely slow. 5s in every real
+  # environment; configurable so a test proving the timeout path fires
+  # doesn't have to pay the real grace period to do it.
+  defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 end
