@@ -11,6 +11,7 @@ defmodule CodeMySpec.QaFixtures do
   """
 
   alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -26,7 +27,7 @@ defmodule CodeMySpec.QaFixtures do
   """
   @spec passed_qa_attempt(Scope.t(), keyword()) ::
           {:ok, QaAttempt.t()} | {:error, Ecto.Changeset.t()}
-  def passed_qa_attempt(%Scope{} = _scope, opts \\ []) do
+  def passed_qa_attempt(%Scope{} = scope, opts \\ []) do
     story_id = Keyword.fetch!(opts, :story_id)
     agent_id = Keyword.get(opts, :agent_id, "fixture-agent")
 
@@ -47,5 +48,25 @@ defmodule CodeMySpec.QaFixtures do
     %QaAttempt{}
     |> QaAttempt.changeset(attrs)
     |> Repo.insert()
+    |> announce(scope)
   end
+
+  # A QA attempt is a graph input — `qa_complete` is computed from it and
+  # `Freshness.story/2` hashes it — so writing one without saying so leaves the
+  # graph holding the verdict it reached before the attempt existed.
+  #
+  # `QaAttempts.submit/2` announces for exactly this reason. This fixture
+  # bypasses it to avoid needing a task and a session, and inherited the silence
+  # along with the shortcut: criterion 6491 asked a fully-satisfied project for
+  # an empty queue and got `qa_complete`, whose stored `false` predated the
+  # attempt sitting in the table.
+  #
+  # Reads used to cover for it by recomputing on the way past. They serve rows
+  # now, so a writer that announces nothing is a writer the graph never hears.
+  defp announce({:ok, _attempt} = result, %Scope{} = scope) do
+    GraphInputs.announce(scope, "Qa")
+    result
+  end
+
+  defp announce(other, _scope), do: other
 end
