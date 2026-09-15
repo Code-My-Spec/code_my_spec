@@ -107,22 +107,35 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
   # machine is quick.
   @wake_timeout_ms 5_000
 
-  defp await_wake(agent_id, deadline \\ nil) do
-    deadline = deadline || System.monotonic_time(:millisecond) + @wake_timeout_ms
-    remaining = deadline - System.monotonic_time(:millisecond)
+  @wake_text "Work of your kind is available"
+
+  defp await_wake(agent_id) do
+    await_wake(agent_id, System.monotonic_time(:millisecond) + @wake_timeout_ms)
+  end
+
+  defp await_wake(agent_id, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
       {:agent_dispatch, ^agent_id, _ref, message} ->
-        if message =~ "Work of your kind is available",
-          do: :woken,
-          else: await_wake(agent_id, deadline)
+        classify(message, agent_id, deadline)
 
       {:agent_dispatch, _other, _ref, _message} ->
         await_wake(agent_id, deadline)
     after
-      max(remaining, 0) -> :never
+      remaining -> :never
     end
   end
+
+  # A dispatch to the right agent that is not the wake — a menu, a nudge — is
+  # not the message this is waiting for, so keep waiting rather than answer with
+  # the first thing that arrived.
+  defp classify(message, agent_id, deadline) do
+    wake_or_wait(String.contains?(message, @wake_text), agent_id, deadline)
+  end
+
+  defp wake_or_wait(true, _agent_id, _deadline), do: :woken
+  defp wake_or_wait(false, agent_id, deadline), do: await_wake(agent_id, deadline)
 
   # Clearing the mailbox, which is a different question and wants no patience.
   defp drain do
