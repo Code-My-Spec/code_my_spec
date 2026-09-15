@@ -229,7 +229,7 @@ defmodule CodeMySpec.WorkingCopies do
   def ensure_default(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     id = default_id(project_id)
 
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     # Through the schema, so Ecto casts the ids — `insert_all` only wants
     # pre-dumped binaries when it is given a raw table name.
