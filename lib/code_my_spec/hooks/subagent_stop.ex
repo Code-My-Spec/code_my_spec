@@ -63,14 +63,14 @@ defmodule CodeMySpec.Hooks.SubagentStop do
         {200, %{"decision" => "block", "reason" => reason}}
 
       {:ok, _result} ->
-        {200, decide_after_validation(scope, session_id, session, req_id)}
+        {200, decide_after_validation(scope, session, task, req_id)}
     end
   end
 
   # Analysis pending → skip evaluation (freshness-gated "not run yet"
   # feedback must not bump R8 counters) and allow — the parent's next stop
   # blocks on any problems that land.
-  defp decide_after_validation(scope, session_id, session, req_id) do
+  defp decide_after_validation(scope, session, task, req_id) do
     if scope.active_project_id && Analysis.runs_in_flight?(scope) do
       sources = scope |> Analysis.in_flight() |> Enum.join(", ")
       Logger.info("[SubagentStopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop",
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Hooks.SubagentStop do
       )
       %{"systemMessage" => "analysis running: #{sources} — results apply next stop"}
     else
-      case maybe_evaluate(scope, session_id, session) do
+      case maybe_evaluate(scope, session, task) do
         {:error, reason} ->
           Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
             cms_decision: "block",
@@ -98,9 +98,29 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     end
   end
 
-  defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
+  # `task` is already scoped to this specific sub-agent, via
+  # `find_task_by_agent/2` above — never re-derived from the session, which
+  # is what `TaskEvaluator.evaluate_sessions/2` did here previously.
+  # `Session.active_task/1` finds the first task on the *session* with
+  # `status: :active`, with no agent scoping of its own, and a session
+  # accumulates tasks across every agent that has ever worked it. One
+  # left `:active` and unfinished — from a different agent, a different
+  # day — was then evaluated against *every* new sub-agent's stop, no
+  # matter what that sub-agent was actually asked to do: an ad-hoc research
+  # fork given a one-off prompt, with no task of its own, got blocked on
+  # "22 unresolved accepted issues" from a `FixIssues` task nothing here
+  # had asked it to work (`8904f4ec`). A sub-agent with no task of its own
+  # is not a sub-agent working the session's task; it allows, the same as
+  # `evaluate_session/3` already does for `nil`.
+  #
+  # The `validation_type: :manual` skip mirrors `evaluate_session/3`'s own
+  # clause — deliberately not shared code, since duplicating one three-line
+  # case is cheaper than threading a shared helper through both callers for
+  # a hook this narrow.
+  defp maybe_evaluate(_scope, _session, nil), do: {:ok, :valid}
+  defp maybe_evaluate(_scope, _session, %{validation_type: :manual}), do: {:ok, :valid}
 
-  defp maybe_evaluate(scope, session_id, _session) do
-    TaskEvaluator.evaluate_sessions(scope, session_id)
+  defp maybe_evaluate(scope, session, task) do
+    TaskEvaluator.evaluate_task(scope, session, task)
   end
 end
