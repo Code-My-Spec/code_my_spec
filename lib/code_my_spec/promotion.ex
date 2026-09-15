@@ -721,7 +721,18 @@ defmodule CodeMySpec.Promotion do
   # refuses immediately, by name, if it does not. Nothing is enqueued, nothing
   # is awaited, and `Lock.with_lock/2` is now held for a ledger read, a merge
   # and a restart — seconds — rather than a wait with no guaranteed end.
-  defp gate(%Scope{} = scope) do
+  # Logged before anything else here runs, so a gate that reads the wrong
+  # copy's problems — `02796b61`: `active_working_copy_id` resolved to a
+  # different harness's id, and the promoting copy got charged for another
+  # checkout's finding — is diagnosable from this log line alone instead of
+  # costing a psql join of `problems` to `working_copies` after the fact. A
+  # nil id never reaches here at all (`promoting_copy/2` refuses first); this
+  # is for the harder case, where a present id turns out to be the wrong one.
+  defp gate(%Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope) do
+    Logger.info(
+      "[Promotion] gate for project #{project_id}: active_working_copy_id=#{working_copy_id}"
+    )
+
     scope
     |> blocking_problems(nil)
     |> gate_known(scope)
