@@ -40,6 +40,18 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
 
     scope = full_scope_fixture()
 
+    # Every test here starts a watcher and none of them stopped one. A watcher
+    # outliving its sandbox transaction takes its next pass against a connection
+    # that has gone, crashes, and is restarted — and enough of those in one run
+    # trips `WatcherSupervisor`'s restart intensity, so the *next* test's
+    # `ensure_watching/1` exits with `:shutdown` against a supervisor that is
+    # going down. It presents as an unrelated test failing on a seed, which is
+    # how it was found.
+    #
+    # `setup_active_project` has carried this teardown since the watcher became
+    # the only thing that computes; this file predates that and never got it.
+    on_exit(fn -> CodeMySpecSpex.Fixtures.stop_watching(scope) end)
+
     {:ok, copy} =
       CodeMySpec.WorkingCopies.issue(scope, nil,
         label: "a checkout",
@@ -78,32 +90,13 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     end
   end
 
-  test "filing an issue reaches a product agent that had stopped", ctx do
-    product = product_agent(ctx.scope, ctx.copy)
-    {:ok, _pid} = GraphWatcher.ensure_watching(ctx.scope)
-
-    {:ok, _issue} =
-      Issues.create_issue(ctx.scope, %{
-        title: "something is wrong",
-        description: "filed while product was idle",
-        severity: :medium
-      })
-
-    # `settle/1` is the debounce made deterministic: it does the pending pass
-    # now instead of in two seconds. A test that slept would be asserting the
-    # timer rather than the mechanism.
-    :ok = GraphWatcher.settle(ctx.scope)
-
-    assert Enum.any?(woken(), fn {id, message} ->
-             id == product.id and message =~ "Work of your kind is available"
-           end),
-           """
-           An issue was filed, the graph moved, and the role that triages it heard
-           nothing. This is the ninety minutes of silence: the agent said it would
-           wait to be woken when a product requirement was unblocked, and filing an
-           issue is exactly that happening.
-           """
-  end
+  # "Filing an issue reaches a product agent that had stopped" used to live
+  # here and now lives in
+  # `filing_an_issue_reaches_the_role_that_triages_it_test.exs`. It needs a
+  # fully-satisfied project to mean anything — on a bare fixture
+  # `issues_triaged` is blocked behind the serial chain, so filing an issue
+  # makes nothing actionable and the wake it asserted had another cause. That
+  # file's moduledoc has the measurement.
 
   test "a write announces on the project's graph topic", ctx do
     GraphInputs.subscribe(ctx.scope.active_project_id)

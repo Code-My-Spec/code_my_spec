@@ -278,6 +278,14 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
        # the database — that question is on the path of every read, which is
        # before every tool call an agent makes.
        known_vantages: MapSet.new(),
+       # What was actionable after the last pass, so the next one can tell what
+       # *appeared* from what was already there. `nil` means no pass yet.
+       last_actionable: nil,
+       # What the last pass found that the one before it had not, and when a
+       # wake last went out for it. Kept only so `status/1` can say so — the
+       # recompute reads neither.
+       last_appeared: nil,
+       last_wake: nil,
        # The wake this watcher currently has in flight, so stopping the watcher
        # stops it too.
        waking: nil,
@@ -291,7 +299,16 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     report = %{
       pending: state.timer != nil,
       last_recompute: state.last_recompute,
-      last_error: state.last_error
+      last_error: state.last_error,
+      # The last link in the chain, and the only one that was invisible.
+      # "The rows are fresh" is where this process's job ends and where the
+      # observable claim does not: an agent is woken because work *appeared*,
+      # and a pass that recomputed correctly and woke nobody is both the normal
+      # case and the failure case. Reported as counts rather than as the sets,
+      # because this is on the path of anything that reads status.
+      actionable: state.last_actionable && MapSet.size(state.last_actionable),
+      appeared: state.last_appeared,
+      last_wake: state.last_wake
     }
 
     {:reply, report, state}
@@ -470,27 +487,40 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   defp constraint_of(%Postgrex.Error{postgres: %{constraint: constraint}}), do: constraint
   defp constraint_of(_error), do: nil
 
-  # A pass that found nothing actionable wakes nobody: `wake/2` would render an
-  # empty menu and stay silent for every role, so this only saves asking.
-  defp maybe_wake(_state, [], _consumed), do: nil
-
-  # Nor does the first pass, which answers no observation. Everything it finds
-  # actionable was already actionable before this watcher existed, so telling
-  # an agent "work of your kind is available" about it is not news — it is the
-  # watcher's own arrival, reported as though something had happened.
+  # Waking is a consequence of the graph moving, not of a pass running.
   #
-  # I took this out once, reasoning that `watch_active_projects/0` runs at boot
-  # and that is exactly when agents have gone idle across a deploy with work
-  # waiting. Criterion 3186 says otherwise and is right: the main agent, with
-  # nothing assigned, was sent "Next: 1 requirement" about a `stories_exist`
-  # that had been sitting there all along. An agent coming back after a deploy
-  # reads its menu; it does not need to be pushed about work that predates it.
+  # These were one thing and that conflation is why the graph could not be told
+  # about an analyzer finishing. Announcing is how a writer says "an input
+  # moved"; every announcement should recompute, because recomputing is cheap
+  # and per-entity and the answer is wrong until it happens. Waking is a far
+  # more expensive act — it renders every role's menu and dispatches to agents
+  # — and it is only warranted when the recompute *produced* something an agent
+  # can act on that it could not before.
   #
-  # A pass that consumed observations always wakes, first or not. That is the
-  # case this whole mechanism exists for.
-  defp maybe_wake(%{last_recompute: nil}, _actionable, []), do: nil
+  # Coupling them meant the cost of waking vetoed recomputing. A stop hook
+  # records an analyzer run on every agent turn, so `Analysis` announcing woke
+  # every role every turn — a real storm, and the reason announcing was dropped.
+  # With the two separated it recomputes every turn, which is correct and
+  # bounded, and wakes nobody unless the run actually unblocked work.
+  #
+  # Two special cases disappear into this rather than being stated. A first
+  # pass wakes nobody because everything it finds was already actionable before
+  # this watcher existed — criterion 3186, previously a clause of its own. And
+  # a pass that changes nothing wakes nobody however many observations it
+  # consumed, which is the common case on a busy project.
+  defp newly_actionable(actionable, nil), do: {keys(actionable), []}
 
-  defp maybe_wake(state, _actionable, _consumed) do
+  defp newly_actionable(actionable, previous) do
+    now = keys(actionable)
+    {now, MapSet.to_list(MapSet.difference(now, previous))}
+  end
+
+  defp keys(actionable),
+    do: MapSet.new(actionable, &{&1.entity_type, &1.entity_id, &1.name})
+
+  defp maybe_wake(_state, []), do: nil
+
+  defp maybe_wake(state, _appeared) do
     scope = state.scope
 
     case Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
@@ -500,26 +530,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
       _ -> nil
     end
   end
-
-  # A wake outliving the watcher that asked for it.
-  #
-  # Waking renders each role's menu and dispatches to agents, and it runs on the
-  # shared task supervisor — so it survives the watcher being stopped and lands
-  # in whatever is happening next. Under test that is another scenario's agent
-  # registry: story 810's dispatch criteria failed in full runs and passed
-  # alone, three times in six runs, because a stray wake from an unrelated spex
-  # arrived mid-scenario.
-  #
-  # Not linked, because a wake that crashes must not take the watcher with it.
-  # Killed on the way out instead, which is the same guarantee without the
-  # coupling.
-  @impl true
-  def terminate(_reason, %{waking: pid}) when is_pid(pid) do
-    Process.exit(pid, :kill)
-    :ok
-  end
-
-  def terminate(_reason, _state), do: :ok
 
   defp recompute(state) do
     refuse_if_faulted(state.project_id)
@@ -567,7 +577,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # `settle/1` — which is a call to this process. A watcher waking inside its
     # own recompute would be calling itself, and the agent that had been waiting
     # would be waiting on a deadlock.
-    waking = maybe_wake(state, actionable, consumed)
+    {now_actionable, appeared} = newly_actionable(actionable, state.last_actionable)
+    waking = maybe_wake(state, appeared)
 
     {:ok,
      %{
@@ -579,6 +590,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
          # keeps them from here without this list growing forever.
          requested_vantages: MapSet.new(),
          known_vantages: MapSet.union(state.known_vantages, MapSet.new(computed)),
+         last_actionable: now_actionable,
+         last_appeared: Enum.map(appeared, fn {type, _id, name} -> "#{type}:#{name}" end),
+         last_wake: if(waking, do: DateTime.utc_now(), else: state.last_wake),
          waking: waking
      }}
   rescue
@@ -734,7 +748,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
       # meanwhile and a project failing repeatedly costs one pass per window
       # rather than a spin.
       {:ok,
-       schedule(%{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}})}
+       schedule(%{
+         state
+         | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}
+       })}
     else
       Logger.info("[GraphWatcher] stopping: project #{state.project_id} no longer exists")
 

@@ -10,38 +10,45 @@ defmodule CodeMySpecTest.GraphHelpersTest do
 
   So these tests exercise the negative path against a genuinely woken agent,
   not just against silence.
-  """
-  use CodeMySpecTest.DataCase, async: false
 
-  import CodeMySpec.UsersFixtures
-  import CodeMySpec.DevicesFixtures
+  ## Why a fully-satisfied project
+
+  Because "a genuinely woken agent" got harder to produce, in the way that
+  matters. A pass wakes for work that *appeared* — the difference between its
+  actionable set and the previous pass's — so a bare fixture project cannot
+  produce one at all: `personas_complete` is actionable from the first pass and
+  stays actionable, and every requirement that could newly appear is blocked
+  behind the serial chain.
+
+  Filing an issue on a bare project used to look like a wake and was one, with
+  the wrong cause: the old rule woke on any actionable work after a non-first
+  pass, and `personas_complete` was always there. Green either way, which is the
+  property that makes a helper test worthless.
+  """
+  use CodeMySpecSpex.Case, async: false
+
   import CodeMySpecTest.GraphHelpers
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
+  alias CodeMySpecSpex.FullSatisfactionFixtures
 
-  setup do
-    context = %{scope: full_scope_fixture()}
-    context = install_recording_transport(context)
+  setup :register_log_in_setup_account
+  setup :setup_active_project
 
-    {:ok, copy} =
-      CodeMySpec.WorkingCopies.issue(context.scope, nil,
-        label: "a checkout",
-        device: device_fixture(context.scope)
-      )
-
-    Map.put(context, :copy, copy)
+  setup context do
+    {:ok, install_recording_transport(context)}
   end
 
-  defp agent_with_role(scope, copy, role) do
+  defp agent_with_role(scope, role) do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: :alloy,
         role: role,
         continuous: true,
-        working_copy: "/tmp/gh-#{System.unique_integer([:positive])}",
-        working_copy_id: copy.id
+        working_copy: scope.cwd,
+        working_copy_id: scope.active_working_copy_id
       })
 
     {:ok, _} =
@@ -54,10 +61,16 @@ defmodule CodeMySpecTest.GraphHelpersTest do
     agent
   end
 
-  test "an issue reaches the role that triages it", context do
-    product = agent_with_role(context.scope, context.copy, "product")
+  # A project with nothing left to do, so the next thing that becomes
+  # actionable is unambiguously the thing this test did.
+  defp quiet_project(context) do
+    context = FullSatisfactionFixtures.apply(context)
     context = watch_graph(context)
+    settle_graph(context)
+    context
+  end
 
+  defp file_an_issue(context) do
     {:ok, _} =
       Issues.create_issue(context.scope, %{
         title: "something is wrong",
@@ -66,6 +79,13 @@ defmodule CodeMySpecTest.GraphHelpersTest do
       })
 
     settle_graph(context)
+  end
+
+  test "an issue reaches the role that triages it", context do
+    context = quiet_project(context)
+    product = agent_with_role(context.scope, "product")
+
+    file_an_issue(context)
 
     assert_woken(product.id)
   end
@@ -86,17 +106,10 @@ defmodule CodeMySpecTest.GraphHelpersTest do
   end
 
   test "refute_woken fails when the agent really was woken", context do
-    product = agent_with_role(context.scope, context.copy, "product")
-    context = watch_graph(context)
+    context = quiet_project(context)
+    product = agent_with_role(context.scope, "product")
 
-    {:ok, _} =
-      Issues.create_issue(context.scope, %{
-        title: "wakes product",
-        description: "d",
-        severity: :medium
-      })
-
-    settle_graph(context)
+    file_an_issue(context)
 
     assert_raise ExUnit.AssertionError, fn -> refute_woken(product.id) end
   end
@@ -105,10 +118,7 @@ defmodule CodeMySpecTest.GraphHelpersTest do
     _ = watch_graph(context)
 
     # An id nothing could have delivered to, because the subject here is the
-    # failure *message* and a real agent is no longer reliably un-woken: the
-    # watcher computes on arrival and wakes whatever that first pass makes
-    # actionable, which for a product agent on a fresh project is the normal
-    # case rather than an edge one.
+    # failure *message* rather than the routing.
     error = assert_raise ExUnit.AssertionError, fn -> assert_woken(Ecto.UUID.generate()) end
 
     assert error.message =~ "was not woken",
