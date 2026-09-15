@@ -125,6 +125,32 @@ defmodule CodeMySpec.Analysis.Coverage do
   end
 
   @doc """
+  The stale set with the evidence, rather than just the files.
+
+  `stale_files/2` answers "is this source current" and is what a gate wants.
+  This answers "why is it not", which is what a person wants: the content the
+  analyzer recorded, the content the file has now, when it read it, and which
+  run did — so a stale file can be traced to the sweep that last covered it
+  instead of being reported as a bare path.
+  """
+  @spec stale_report(Scope.t(), String.t()) :: [map()]
+  def stale_report(%Scope{} = scope, source) do
+    scope
+    |> covered_query(source)
+    |> where([f, a], f.fingerprint != a.fingerprint)
+    |> select([f, a], %{
+      path: f.path,
+      role: f.role,
+      current: f.fingerprint,
+      recorded: a.fingerprint,
+      analyzed_at: a.analyzed_at,
+      run_id: a.run_id
+    })
+    |> order_by([f, _a], f.path)
+    |> Repo.all()
+  end
+
+  @doc """
   Files whose role feeds this source and which it has never read.
 
   No row is not "clean" — it is "nobody looked", and those must not be the same

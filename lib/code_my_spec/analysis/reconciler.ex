@@ -51,7 +51,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # `latest_full_run/2` filters `kind == :full`, so it never satisfies
   # freshness either. The stop hook's full run stays the authoritative sweep.
   def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
-    Logger.info("[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched")
+    Logger.info(
+      "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
+    )
 
     RunsRepository.finish_run(run, :completed, %{
       output: result.output,
@@ -118,14 +120,18 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
-            "(#{run.kind})" <> Signatures.delta_suffix(previous, signatures) <>
+            "(#{run.kind})" <>
+            Signatures.delta_suffix(previous, signatures) <>
             requested_by_suffix(run)
         )
 
         {:ok, finished}
 
       {:error, reason} ->
-        Logger.error("[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}")
+        Logger.error(
+          "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
+        )
+
         RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
         {:error, reason}
     end
@@ -297,6 +303,21 @@ defmodule CodeMySpec.Analysis.Reconciler do
   defp record_coverage(%Scope{} = scope, %Run{started_at: %DateTime{} = started_at} = run) do
     entries = Coverage.seen_entries(scope, run.source, started_at)
     Coverage.record(scope, run.source, entries, run_id: run.id, analyzed_at: started_at)
+
+    # Said out loud, because the alternative is a table nobody can see filling
+    # up. `0 covered` on a source that should read hundreds of files is the
+    # signature of this being wired wrong, and it is invisible otherwise —
+    # exactly the shape of `Coverage` sitting at zero rows in production for as
+    # long as it did while its own moduledoc said "nothing consumes this yet".
+    #
+    # The gap between the run's file set and what it covered is the files that
+    # moved while it ran, which is worth a number: a sweep that covers a
+    # shrinking fraction of the tree is an analyzer losing a race with the
+    # edit rate, and that is the condition the whole per-file design exists for.
+    Logger.info(
+      "[Analysis] #{run.source} covered #{length(entries)} file(s) unchanged since the run began"
+    )
+
     :ok
   end
 

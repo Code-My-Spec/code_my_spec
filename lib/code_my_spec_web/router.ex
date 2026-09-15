@@ -391,6 +391,11 @@ defmodule CodeMySpecWeb.Router do
       # so "incremental sync works" becomes a column of numbers rather than a
       # log grep. Read-only by construction — see `DevGraphLive`.
       live "/graph", CodeMySpecWeb.DevGraphLive
+
+      # Which analyzer has read which files, per working copy. The per-file
+      # answer `Analysis.Coverage` gives, where the project-wide one is
+      # permanently "stale" for any analyzer slower than the edit rate.
+      live "/freshness", CodeMySpecWeb.DevFreshnessLive
     end
 
     # Reaching an agent that is not on your project, from a terminal.
