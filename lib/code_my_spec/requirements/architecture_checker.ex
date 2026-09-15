@@ -198,14 +198,31 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   defp dep_target_ids(%{dependencies: deps}) when is_list(deps), do: Enum.map(deps, & &1.id)
   defp dep_target_ids(_), do: []
 
-  # Returns project stories whose `component_id` is nil. These stories
-  # have nothing to drive BDD spex / implementation against — the
+  # Returns *released* project stories whose `component_id` is nil. These
+  # stories have nothing to drive BDD spex / implementation against — the
   # architecture phase needs to assign them a surface component before
   # downstream work can proceed.
+  #
+  # Released only, which is the same rule `Preloader` states as "only released
+  # stories project into the graph" and applies with
+  # `where: s.ready_for_dev == true`. A parked story produces no requirements
+  # by design, so holding the architecture open for one asks the architecture
+  # phase to link a story nothing will act on.
+  #
+  # It is not a corner. Story 1038 was created during a Three Amigos re-run,
+  # deliberately unlinked and deliberately unreleased pending its own session,
+  # and `architecture_designed` became unsatisfiable the moment it existed.
+  # That requirement is project-scoped and gates the story and component work
+  # beneath it, so one parked story stopped every agent on the project: three
+  # of them found nothing to do, and the only actionable requirement left was
+  # the one that could not be satisfied. Creating a story in the way the
+  # process asks for is what did it.
   defp unlinked_stories(%Scope{} = scope) do
     scope
     |> Stories.list_stories()
-    |> Enum.filter(fn s -> Map.get(s, :component_id) == nil end)
+    |> Enum.filter(fn s ->
+      Map.get(s, :ready_for_dev) == true and Map.get(s, :component_id) == nil
+    end)
     |> Enum.sort_by(& &1.id)
   end
 

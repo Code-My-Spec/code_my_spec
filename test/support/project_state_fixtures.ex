@@ -45,6 +45,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
+  alias CodeMySpec.McpServers.Personas.Tools.GetPersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -331,11 +332,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     {:reply, response, _frame} =
       CreatePersona.execute(%{slug: slug, name: name, headline: headline}, frame)
 
-    persona_id =
-      case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
-        [_, id] -> id
-        _ -> nil
-      end
+    persona_id = created_or_existing_persona_id(context.scope, slug, response)
 
     :ok =
       Environments.write_file(
@@ -352,6 +349,48 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       )
 
     Map.merge(context, %{persona_slug: slug, persona_id: persona_id})
+  end
+
+  # Idempotent, because the chains call it twice.
+  #
+  # `CreatePersona` answers with the id in prose, and this read it out with a
+  # regex — which works exactly once. `apply_project_kickoff/2` applies a
+  # persona, and `FullSatisfactionFixtures.apply_without_qa_story/1` applies one
+  # again; the second call finds the slug taken, answers something the regex
+  # does not match, and `persona_id` comes back `nil`.
+  #
+  # Nothing notices until much later: `apply_three_amigos_for_story/3` passes
+  # that nil to `link_persona_to_story`, and the failure is
+  # `comparing p.id with nil is forbidden` from inside an Ecto query, four
+  # frames down and naming neither the persona nor the fixture that lost it.
+  #
+  # So the id is read back from the project when the reply does not carry one.
+  # A persona that already exists is the same persona; the fixture's job is to
+  # guarantee one is there, not to be the one that made it.
+  defp created_or_existing_persona_id(scope, slug, response) do
+    case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
+      [_, id] -> id
+      _ -> existing_persona_id(scope, slug)
+    end
+  end
+
+  # Through the MCP tool, not `CodeMySpec.Personas` directly. This module's own
+  # rule is bridge fixtures and MCP tools only, and `CodeMySpecSpex` has no
+  # boundary dependency on `Personas` — reaching it raises a forbidden
+  # reference, which is the boundary doing its job rather than an obstacle.
+  defp existing_persona_id(scope, slug) do
+    frame = %Frame{assigns: %{current_scope: scope}}
+
+    case GetPersona.execute(%{slug: slug}, frame) do
+      {:reply, response, _frame} ->
+        case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
+          [_, id] -> id
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
   end
 
   @doc """

@@ -146,8 +146,10 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1437,6 +1439,74 @@ defmodule CodeMySpecSpex.Fixtures do
   def settle_graph(%Scope{} = scope) do
     :ok = GraphWatcher.settle(scope)
     drain_background_work()
+  end
+
+  @doc """
+  What the graph actually holds actionable for a role, right now.
+
+  `CodeMySpec.Requirements` is not a spex dependency, same as `watch_graph/1`
+  and `settle_graph/1` above — this is the same bridge, for a spex that needs
+  to tell a premise failure from a delivery failure. `Requirements.actionable_for_role/2`
+  settles the graph itself before reading, so this reflects whatever the graph
+  holds at the moment it is called, not a snapshot from before.
+  """
+  @spec actionable_names(Scope.t(), atom() | nil) :: [String.t()]
+  def actionable_names(%Scope{} = scope, role \\ nil) do
+    scope |> Requirements.actionable_for_role(role) |> Enum.map(& &1.name)
+  end
+
+  @doc """
+  Which of one entity's requirements the graph currently reads as unsatisfied.
+
+  Pairs with `actionable_names/2` to tell two shapes of race apart on a red
+  run: something here means the fixture chain that was meant to satisfy this
+  entity's requirements is genuinely incomplete; nothing here while the role's
+  actionable set is still empty means the chain finished and the published
+  graph has not caught up with it.
+
+  Settles first, same as `actionable_for_role/2` does internally — a pending
+  recompute means a write has landed that this has not seen, and "unsatisfied"
+  is exactly the answer that write would change.
+  """
+  @spec unsatisfied_names(Scope.t(), term()) :: [String.t()]
+  def unsatisfied_names(%Scope{} = scope, entity_id) do
+    scope |> unsatisfied_for(entity_id) |> Enum.map(& &1.name)
+  end
+
+  @doc """
+  Same as `unsatisfied_names/2`, but `{name, reason}` pairs.
+
+  A name alone says a requirement is not satisfied; it does not say why, and
+  `RequirementCalculator`'s delegate checks already compute a `reason` for
+  exactly this purpose — carried on the node as `details`. Reading it back
+  here is cheaper than a second theory.
+  """
+  @spec unsatisfied_reasons(Scope.t(), term()) :: [{String.t(), term()}]
+  def unsatisfied_reasons(%Scope{} = scope, entity_id) do
+    scope
+    |> unsatisfied_for(entity_id)
+    |> Enum.map(&{&1.name, reason_of(&1)})
+  end
+
+  # String keys, because that is the canonical shape and there is already a
+  # function that says so. `Requirement.normalize_details/1` exists precisely
+  # for this: `details` is written to a `jsonb` column, which has no atoms, so a
+  # freshly computed requirement can carry atom keys where a stored one never
+  # does. Normalising once is the difference between reading one shape and
+  # guessing between two.
+  defp reason_of(node) do
+    node.details
+    |> Requirement.normalize_details()
+    |> Map.get("reason")
+  end
+
+  defp unsatisfied_for(%Scope{} = scope, entity_id) do
+    :ok = GraphWatcher.settle(scope)
+
+    scope
+    |> Requirements.cached_graph_with_actionable()
+    |> Map.fetch!(:nodes)
+    |> Enum.filter(&(&1.entity_id == entity_id and not &1.satisfied))
   end
 
   @doc """
@@ -3372,6 +3442,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Make this project's graph watcher raise instead of recomputing.
+
+  A different fault from `break_digest_source/1`: that one leaves the graph
+  itself fine and breaks only what the main agent's digest reads. This is the
+  recompute failing outright, so no `{:graph_updated, _}` is ever announced.
+  """
+  @spec break_graph_recompute(Scope.t()) :: :ok
+  def break_graph_recompute(%Scope{active_project_id: project_id}) do
+    :ok = Faults.inject(project_id, :graph_recompute_fails)
+    ExUnit.Callbacks.on_exit(fn -> Faults.clear(project_id, :graph_recompute_fails) end)
+    :ok
+  end
+
+  @doc """
   An epic on this project.
 
   Through `Epics.create_epic/2`, the same call the product agent's `create_epic`
@@ -3478,6 +3562,23 @@ defmodule CodeMySpecSpex.Fixtures do
   connection open to a model with a response coming back, which from every
   other angle is indistinguishable from an agent that has stopped.
   """
+  @doc """
+  Put this session into continuous mode, the way `start_implementation` does.
+
+  The stop hook's menu-on-turn-end path is gated on the *session's* own
+  `continuous` flag (`Hooks.Stop.continuous_mode?/1`) — a different switch
+  from the working copy's loop that `put_to_work/2` turns on. A session made
+  through `start_session/1` alone is correctly, silently allowed to stop
+  with no menu: continuous mode is what turns a stop into a continuation,
+  and nothing about posting session-start opts a session into it.
+  """
+  @spec make_session_continuous(Scope.t(), String.t()) :: :ok
+  def make_session_continuous(%Scope{} = scope, session_id) do
+    session = CodeMySpec.Sessions.get_by_external_id(scope, session_id)
+    {:ok, _session} = CodeMySpec.Sessions.update_session(scope, session, %{continuous: true})
+    :ok
+  end
+
   @spec start_turn(Scope.t(), String.t(), keyword()) :: :ok
   def start_turn(%Scope{} = scope, agent_id, opts \\ []) do
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
@@ -3519,6 +3620,45 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _message} =
       Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
 
+    :ok
+  end
+
+  @doc """
+  A tool call on this agent's own conversation, the way `Agents.Engine` records one.
+
+  Same conversation `agent_said/3` writes to — keyed on the agent, not on a
+  session — so a scenario about one agent's turns can mix plain messages and
+  tool calls in the order they actually happened.
+  """
+  @spec agent_tool_call(Scope.t(), map(), String.t(), String.t(), map()) :: :ok
+  def agent_tool_call(%Scope{} = scope, %{id: agent_id}, call_id, name, arguments) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _} = Conversations.add_tool_call(conversation, call_id, name, arguments)
+    :ok
+  end
+
+  @doc """
+  What that call returned, on the same agent-keyed conversation.
+
+  `opts` takes `:failed?` (default `false`) so a scenario can state a call
+  that came back an error without paraphrasing it into a plain message.
+  """
+  @spec agent_tool_result(Scope.t(), map(), String.t(), String.t(), String.t(), keyword()) :: :ok
+  def agent_tool_result(%Scope{} = scope, %{id: agent_id}, call_id, name, text, opts \\ []) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _} = Conversations.add_tool_result(conversation, call_id, name, text, opts)
     :ok
   end
 
@@ -4309,15 +4449,19 @@ defmodule CodeMySpecSpex.Fixtures do
 
     # And say so. Analysis freshness is a graph input — `Preloader` feeds it to
     # `analysis_fresh`, and `tests_passing`, `spex_passing` and the latch behind
-    # `bdd_specs_passing` are all computed from it. Stamping runs straight into
-    # the table is a write the graph never hears about, and a silent write now
-    # leaves the graph stale rather than being repaired by whoever reads next.
+    # `bdd_specs_passing` are all computed from it.
+    #
+    # `fresh_analysis_runs_fixture/2` calls `RunsRepository.finish_run/3`
+    # directly rather than going through `Analysis.Reconciler.reconcile/4`,
+    # which is the only production path that announces a finished run. So the
+    # rows land and the graph never hears, and a silent write now leaves the
+    # graph stale rather than being repaired by whoever reads next.
     #
     # Without this, a fixture that advances a project to the `qa_complete`
     # frontier left the graph believing the specs had never passed, so every
     # scenario built on that frontier was handed `FixBddSpecs` for the story the
     # fixture had just prepared — criteria 6529 and 6533, deterministically.
-    GraphInputs.changed(scope, GraphInputs.observation_id())
+    :ok = GraphInputs.announce(scope, "Analysis")
 
     # And settled before returning, so the graph agrees with the world this
     # fixture has just finished building.

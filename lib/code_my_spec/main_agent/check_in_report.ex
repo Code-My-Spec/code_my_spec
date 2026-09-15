@@ -71,7 +71,7 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
     cond do
       AgentWork.toolless?(entry) -> "cannot work, its machine reports no tools"
       entry.idle? -> "nothing to do"
-      true -> "no task claimed"
+      true -> "no task claimed, and the graph does hold work for its role"
     end
   end
 

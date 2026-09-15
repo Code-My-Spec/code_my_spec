@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3188Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -43,6 +44,31 @@ defmodule CodeMySpecSpex.Story1048.Criterion3188Spex do
 
       given_ :synced_context_component
 
+      given_ "a story interviewed and linked, but not yet released", context do
+        # Parked, linked and interviewed, so releasing it is the one thing left
+        # and what it puts on the graph is `bdd_specs_exist` — coding's.
+        #
+        # A bare released story projects `component_linked` and
+        # `three_amigos_complete`, both product's, so the coding lane never
+        # moved and "the agent was told nothing" was the right answer to a
+        # scenario that had put nothing there. `create_story` also releases by
+        # default, which is why this says otherwise explicitly.
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, Map.put(context, :story, story)}
+      end
+
       given_ "a coding agent running and idle on its working copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         context = context |> start_session() |> put_to_work()
@@ -56,11 +82,10 @@ defmodule CodeMySpecSpex.Story1048.Criterion3188Spex do
       end
 
       when_ "a story on that working copy becomes ready for coding", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.mark_story_ready(context.scope, story)
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story, story)}
+        {:ok, context}
       end
 
       then_ "the agent receives a message naming that work", context do
@@ -92,15 +117,23 @@ defmodule CodeMySpecSpex.Story1048.Criterion3188Spex do
       end
 
       then_ "and it begins a turn without a person routing it", context do
-        refute Enum.any?(context.said, &(&1 =~ ~r/(ask|waiting for|approval|confirm)/i)),
+        # The directive line, not the whole message. Every menu ends with the
+        # same standing offers, two of which say `ask_user_question` and "once
+        # a human approves" — offered to every agent on every turn as things it
+        # *may* do. Matching those as gatekeeping makes the criterion
+        # unsatisfiable by any menu at all, which is a claim about the
+        # boilerplate rather than about this wake. Same correction as 3193.
+        directives = Enum.map(context.said, &(&1 |> String.split("\n\n") |> Enum.at(1, "")))
+
+        refute Enum.any?(directives, &(&1 =~ ~r/(waiting for|approval|sign.?off|permission)/i)),
                """
-               The wake asks somebody before the agent may act on it.
+               The wake makes the agent wait on somebody before it may act.
 
                "Without a person routing it" is the clause that makes this a
                product rather than a queue: an agent that needs a human in the
                loop to start is exactly as fast as the human.
 
-               #{Enum.join(context.said, "\n---\n")}
+               #{Enum.join(directives, "\n---\n")}
                """
 
         {:ok, context}

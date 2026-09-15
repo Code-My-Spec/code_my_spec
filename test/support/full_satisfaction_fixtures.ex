@@ -120,6 +120,29 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   @spec apply_without_qa_story(map()) :: map()
   def apply_without_qa_story(context) do
     context
+    |> apply_up_to_analysis()
+    |> apply_fresh_analysis_runs()
+  end
+
+  @doc """
+  The same chain, stopping one step short of the green analysis run.
+
+  Everything `apply_without_qa_story/1` does except the last thing that makes
+  `qa_complete` actionable, so a scenario can settle the whole project first
+  and then make only the QA-readiness transition happen inside its `when_`.
+
+  Criterion 3199 is why this is split out. It asserts that QA work reaches the
+  QA agent and reaches no other, by comparing what each agent heard across the
+  `when_` block. With the whole chain in there, a coding agent that has been
+  running since the `given_` legitimately hears about its own work — the chain
+  builds a project, and building a project is coding-role work — and a
+  before/after comparison across the entire block cannot tell that from a role
+  leak. The criterion failed on a correctly routed wake exactly as it would on
+  a misrouted one.
+  """
+  @spec apply_up_to_analysis(map()) :: map()
+  def apply_up_to_analysis(context) do
+    context
     |> ProjectStateFixtures.apply_project_setup_steps()
     |> ProjectStateFixtures.apply_technical_strategy()
     |> ProjectStateFixtures.apply_code_generation()
@@ -135,7 +158,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_bdd_spec_file()
     |> apply_specs_enforced()
     |> ProjectStateFixtures.apply_journey_artifacts()
-    |> apply_fresh_analysis_runs()
   end
 
   # `bdd_specs_passing` checks the story's `specs_ready` latch, and writing the

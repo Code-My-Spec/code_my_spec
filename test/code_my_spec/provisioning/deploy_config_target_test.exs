@@ -44,7 +44,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       it explicitly. Install them (brew install sops age) or drop the tag.
       """
 
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("deploy_config_target")
     scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
 
     {:ok, project} =

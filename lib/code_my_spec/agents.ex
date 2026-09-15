@@ -79,6 +79,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
+  alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
 
   # The roster a working copy does its work with. Not `:main` — that one is the
@@ -211,38 +212,51 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Tell the agents whose turn a restart took what happened to it.
+  Tell every agent a restart touched what happened to it.
 
   Called when a harness asks what it should be running, which is the only
   moment this side sees a restart at all — the application going down is not an
   event the server observes.
 
-  Only an agent with a turn open is told, and that is rule `841a5f79` rather
-  than an optimisation. A harness serves several checkouts and each runs
-  several agents, so announcing a restart to all of them is one message per
-  agent per restart, in runs — and an agent that lost nothing reads it, spends a
-  turn establishing that nothing happened to it, and stops.
+  Every agent is told now, but the two halves of what it is told differ —
+  rule `841a5f79`. An agent that *was* mid-turn cannot infer any of this on its
+  own. Its thread ends part-way through a tool call and then jumps, and the
+  two readings available to it — "the tool never answered, so wait" and "I
+  already did this" — are both wrong and neither is recoverable from the
+  transcript. Rule `0a06befe` decided the turn is discarded rather than
+  resumed; this is where the agent finds that out.
 
-  An agent that *was* mid-turn cannot infer any of this. Its thread ends
-  part-way through a tool call and then jumps, and the two readings available
-  to it — "the tool never answered, so wait" and "I already did this" — are
-  both wrong and neither is recoverable from the transcript. Rule `0a06befe`
-  decided the turn is discarded rather than resumed; this is where the agent
-  finds that out.
+  An idle agent lost nothing, so `interrupted_notice/0`'s wording would be
+  actively wrong for it — there is no in-flight work to carry on from or
+  double-check. It gets a shorter notice instead, plus its own menu: startup
+  hands an agent its system prompt and its stop-hook menu together, and a
+  restart is a message to an agent that already exists, so it gets the same
+  menu rather than silence until its next natural turn.
 
   Written before the launch request is hydrated, so the notice is part of the
   history the agent comes back holding rather than something it would have to
-  re-read the page to see. `turn_started_at` is cleared in the same pass, for
-  the reason `restart_agent/2` already clears it: left set, `list_agent_work`
-  and every check-in go on reporting a turn that opened before a process that
-  no longer exists (`4078e7bf`).
+  re-read the page to see. `turn_started_at` is cleared in the same pass for
+  the interrupted case, for the reason `restart_agent/2` already clears it:
+  left set, `list_agent_work` and every check-in go on reporting a turn that
+  opened before a process that no longer exists (`4078e7bf`).
   """
   @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
   def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
     Enum.each(agents, &account_for_interrupted_turn(scope, &1))
   end
 
-  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil}), do: :ok
+  defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent) do
+    with {:ok, conversation} <- open_conversation(scope, agent) do
+      Conversations.add_message(
+        conversation,
+        :operator,
+        idle_restart_notice(scope, agent),
+        "operator"
+      )
+    end
+
+    :ok
+  end
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
     with {:ok, conversation} <- open_conversation(scope, agent) do
@@ -266,6 +280,16 @@ defmodule CodeMySpec.Agents do
     recorded above was completed — if you are unsure whether something landed,
     check rather than redo it.
     """
+  end
+
+  # Nothing of the agent's own was lost, so the notice says only that
+  # machinery it does not own cycled. `Menu.render/4` answers "" when nothing
+  # is live for this agent, which is the right shape here too — a restart with
+  # no work behind it should read as one short line, not one short line plus
+  # an empty section.
+  defp idle_restart_notice(scope, agent) do
+    "The harness restarted. Nothing of your own was in flight, so nothing was lost.\n" <>
+      Validation.Menu.render(scope, agent.continuous == true, agent.role, agent)
   end
 
   # Starting a `main` agent is what the cadence exists to look after, so it is

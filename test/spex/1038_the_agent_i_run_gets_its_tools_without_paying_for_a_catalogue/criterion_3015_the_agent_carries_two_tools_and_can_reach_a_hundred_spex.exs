@@ -80,11 +80,20 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # for exactly this check — the spex boundary cannot reach `CodeMySpec`.
         # So this list is a copy and can go stale; what it must always equal is
         # the set of carried tools a script may not call.
+        # `check_answer` and `list_user_questions` joined on 2026-09-15, the
+        # same shape a third time. Both are refused to scripts by
+        # `Catalog.excluded/0` ("it belongs with the asking tools, which a
+        # script cannot call") and were carried by nothing — so `Validation.Menu`
+        # naming them on every refusal it renders ("`list_user_questions` shows
+        # them, `check_answer` collects a reply once one lands") pointed at
+        # tools the agent did not have. A QA agent followed that sentence, got
+        # "Unknown tool", reported the gap rather than working around it, and
+        # stopped. Issue `3bc106f6`.
         unscriptable = ~w(
           start_agent stop_agent assign_subagent
           get_next_requirement sync_project start_task evaluate_task
           ask_user_question send_message tap_out show_in_panel start_analysis
-          promote
+          promote check_answer list_user_questions
         )
 
         scriptable = project_tools -- unscriptable

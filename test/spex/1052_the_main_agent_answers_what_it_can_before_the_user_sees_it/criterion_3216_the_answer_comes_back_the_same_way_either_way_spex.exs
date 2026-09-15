@@ -47,14 +47,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
       end
 
       given_ "the main agent answered one and the user answered the other", context do
-        reply = main_answers(context, context.first, "the refunds epic is on /tmp/refunds-copy")
+        root = checkout_of(context, context.first)
+        reply = main_answers(context, context.first, "the refunds epic is on #{root}")
 
         refute reply.isError,
                "the premise needs one question answered by the main agent"
 
         :ok = user_answers(context, context.second, "Refuse")
 
-        {:ok, context}
+        {:ok, Map.put(context, :root, root)}
       end
 
       when_ "each answer is delivered", context do
@@ -65,7 +66,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
       end
 
       then_ "each agent receives the answer to its own question", context do
-        assert context.first_answer =~ "refunds epic is on /tmp/refunds-copy",
+        assert context.first_answer =~ "refunds epic is on #{context.root}",
                """
                The agent that asked about the checkout did not get the main
                agent's answer to it.

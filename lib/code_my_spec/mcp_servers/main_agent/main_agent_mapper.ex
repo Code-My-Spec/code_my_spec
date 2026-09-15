@@ -16,6 +16,7 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.OpenQuestion
 
   @doc "Everything waiting, grouped by who is holding it."
@@ -51,6 +52,40 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     """)
   end
 
+  @doc """
+  An agent's turns, oldest first, and whether anything was cut.
+
+  The truncation notice goes at the top rather than the bottom. A caller that
+  reads far enough to reach a footer has already formed a view of what the agent
+  did; the one fact that changes how to read the rest belongs before it.
+  """
+  @spec conversation(%{turns: [map()], truncated?: boolean()}) :: Response.t()
+  def conversation(%{turns: [], truncated?: _}) do
+    Response.tool()
+    |> Response.text("""
+    This agent has said nothing yet.
+
+    It exists and its conversation is empty — it has not taken a turn, rather \
+    than having taken one that produced no output.\
+    """)
+  end
+
+  def conversation(%{turns: turns, truncated?: truncated?}) do
+    Response.tool()
+    |> Response.text(notice(truncated?) <> Enum.map_join(turns, "\n", &MainAgent.turn_line/1))
+  end
+
+  defp notice(false), do: ""
+
+  defp notice(true) do
+    """
+    This conversation was truncated — the oldest turns are not shown, and what \
+    follows is the recent end of a longer conversation. Ask for a smaller \
+    `limit` to read further back in pages.
+
+    """
+  end
+
   @doc "Why a question could not be escalated, in terms that say what to do."
   @spec error(term()) :: Response.t()
   def error(:not_found) do
@@ -61,6 +96,14 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     Either it has already been answered, or it belongs to another project's \
     agents — you can only act on your own. Call `list_open_questions` for what \
     is actually waiting.\
+    """)
+  end
+
+  def error(:no_agent_named) do
+    Response.tool()
+    |> Response.error("""
+    Name an agent to read. Pass `agent_id` for one, or `agent_ids` for several \
+    on one timeline. `list_agent_work` shows which agents this project has.\
     """)
   end
 

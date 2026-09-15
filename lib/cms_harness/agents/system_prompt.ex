@@ -15,6 +15,13 @@ defmodule CmsHarness.Agents.SystemPrompt do
   `0f022a10`.
   """
 
+  # The tool index goes second, right after the role brief and before the
+  # project guide. It is a fact about what this agent can reach, which is part
+  # of what it is, rather than part of how this project works — and an agent
+  # reads the top of a prompt hardest. `CodeMySpec.Agents.ToolIndex` builds it
+  # server-side for the same reason `RoleBrief` lives there: the harness has no
+  # opinion about what a QA agent may call, and no database to ask.
+
   @guide_path ".code_my_spec/AGENTS.md"
 
   # A guide is a page of workflow, not a codebase. This is generous for the
@@ -30,9 +37,10 @@ defmodule CmsHarness.Agents.SystemPrompt do
   than an empty string: it is what `Alloy.Agent.Config` already defaults to, so
   an agent we have nothing to tell is exactly as it was before this existed.
   """
-  @spec compose(String.t() | nil, String.t() | nil, String.t() | nil) :: String.t() | nil
-  def compose(role_brief, working_copy, app_url \\ nil) do
-    [role_brief, running_app(app_url), guide(working_copy)]
+  @spec compose(String.t() | nil, String.t() | nil, String.t() | nil, String.t() | nil) ::
+          String.t() | nil
+  def compose(role_brief, working_copy, app_url \\ nil, tool_index \\ nil) do
+    [role_brief, tool_index, running_app(app_url), guide(working_copy)]
     |> Enum.reject(&(is_nil(&1) or &1 == ""))
     |> case do
       [] -> nil

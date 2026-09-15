@@ -23,7 +23,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
     # that returns an unconditional allow — no analysis, no blocking check. A
     # test built on `full_scope_fixture/0` alone asserts against that clause and
     # never reaches the decision it means to exercise.
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("blocking_on_recorded_findings")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)

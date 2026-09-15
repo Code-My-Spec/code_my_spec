@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3191Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -44,9 +45,27 @@ defmodule CodeMySpecSpex.Story1048.Criterion3191Spex do
 
       given_ :synced_context_component
 
+      given_ "a story interviewed and linked, but not yet released", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, Map.put(context, :story, story)}
+      end
+
       given_ "a coding agent part way through a turn", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         context = context |> start_session() |> put_to_work()
+        :ok = Fixtures.make_session_continuous(context.scope, context.session_id)
 
         :ok = Fixtures.start_turn(context.scope, coding.id)
         :ok = Fixtures.watch_graph(context.scope)
@@ -58,11 +77,10 @@ defmodule CodeMySpecSpex.Story1048.Criterion3191Spex do
       end
 
       when_ "new coding work appears on its working copy", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.mark_story_ready(context.scope, story)
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story, story)}
+        {:ok, context}
       end
 
       then_ "the agent is not interrupted", context do

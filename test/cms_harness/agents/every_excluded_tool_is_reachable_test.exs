@@ -35,12 +35,19 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
   # Excluded from scripts *and* deliberately not carried, each for a reason that
   # is about this agent rather than about scripts.
   @unreachable_on_purpose %{
-    # An agent that asks is allowed to stop and the answer is dispatched to it
-    # as a message. Polling needs a running agent, so it cannot be combined with
-    # going quiet — the push replaces both of these rather than supplementing
-    # them.
-    "check_answer" => "answers are pushed to this agent, so there is nothing to poll for",
-    "list_user_questions" => "same: its own questions come back to it without being listed",
+    # `check_answer` and `list_user_questions` were excused here on the
+    # reasoning that answers are pushed to this agent, so it has nothing to poll
+    # for. Both are now carried by `Engine.tools/1` and the excuses are gone,
+    # because the reasoning did not survive contact with `Validation.Menu`: it
+    # names both on every refusal it renders — "`list_user_questions` shows
+    # them, `check_answer` collects a reply once one lands" — so an agent primed
+    # by that sentence called `list_user_questions`, got "Unknown tool",
+    # correctly reported the gap rather than working around it, and stopped.
+    # Issue `3bc106f6`.
+    #
+    # The push is still real. What was wrong was concluding the agent therefore
+    # needs no route, while the thing it reads on every stop tells it to take
+    # one.
 
     # The external door. An agent here has an identity on its connection and a
     # conversation to be told in, so `promote` — which it does carry — answers
