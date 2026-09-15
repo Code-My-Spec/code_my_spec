@@ -7,7 +7,7 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
   alias CodeMySpec.Users.Scope
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("widget")
     %{env: Environment.new(:local, tmp), scope: %Scope{}}
   end
 

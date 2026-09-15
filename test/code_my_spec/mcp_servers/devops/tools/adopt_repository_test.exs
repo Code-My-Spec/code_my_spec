@@ -13,10 +13,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
   alias CodeMySpec.Provisioning.RunLock
 
   setup do
-    {:ok, working_dir} = Briefly.create(directory: true)
+    working_dir = CodeMySpec.TempFile.owned_dir("adopt_repository_working")
     File.write!(Path.join(working_dir, "README.md"), "# market_my_spec\n")
 
-    {:ok, bare_dir} = Briefly.create(directory: true)
+    bare_dir = CodeMySpec.TempFile.owned_dir("adopt_repository_bare")
     {_, 0} = System.cmd("git", ["init", "--bare", "-b", "main", bare_dir])
 
     scope = full_scope_fixture()
