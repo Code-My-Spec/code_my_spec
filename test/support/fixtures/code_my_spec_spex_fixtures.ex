@@ -4384,8 +4384,6 @@ defmodule CodeMySpecSpex.Fixtures do
     # may not have caught up with these rows, depending on whether that
     # earlier timer had already fired. Same placement as `Reconciler`: after
     # the rows commit.
-    :ok = GraphInputs.announce(scope, "Analysis")
-
     runs
   end
 
