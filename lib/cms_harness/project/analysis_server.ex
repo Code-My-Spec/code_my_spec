@@ -471,9 +471,19 @@ defmodule CmsHarness.Project.AnalysisServer do
   # Every run_id tied to this entry gets the same real result the primary
   # one does — the whole point of tying rather than superseding. `deliver/3`
   # is the only place a tied request's answer is ever actually resolved.
+  #
+  # `push_result/5`'s last argument names which run_id actually owns this
+  # result: `nil` for the primary, `running.run_id` for every tied one. Two
+  # (or more) `analysis_result` messages carrying the identical Problems for
+  # one real execution used to reconcile them independently — 42 rows where
+  # 21 existed, exactly twice (`57333540`). This is the fix at its source
+  # rather than a lock on the write: one execution has one owner, and only
+  # the owner's message tells the server to touch Problems at all.
   defp deliver(state, running, result) do
-    for run_id <- [running.run_id | Map.get(running, :tied_run_ids, [])] do
-      push_result(state.project.root, run_id, running.source, result)
+    push_result(state.project.root, running.run_id, running.source, result, nil)
+
+    for run_id <- Map.get(running, :tied_run_ids, []) do
+      push_result(state.project.root, run_id, running.source, result, running.run_id)
     end
   end
 
@@ -489,17 +499,21 @@ defmodule CmsHarness.Project.AnalysisServer do
   #
   # Sent rather than logged, because the reader is the agent being told to stop
   # again, and the harness log is the one place it is not looking.
-  defp push_result(root, run_id, source, {:ok, result}) do
+  defp push_result(root, run_id, source, {:ok, result}, tied_to) do
     ChannelClient.deliver_analysis_result(root, %{
       "run_id" => run_id,
       "source" => source,
       "status" => "ok",
       "result" => result,
-      "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness()
+      "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness(),
+      "tied_to" => tied_to
     })
   end
 
-  defp push_result(root, run_id, source, {:error, reason}) do
+  # A failure never reconciles Problems either way (`Reconciler.fail/2` only
+  # ever stamps the row), so tying carries nothing useful here — every tied
+  # run_id still needs its own row closed, on the same terms as the primary.
+  defp push_result(root, run_id, source, {:error, reason}, _tied_to) do
     Logger.error("[CmsHarness] #{source} run #{run_id} did not produce a result: #{reason}")
 
     ChannelClient.deliver_analysis_result(root, %{
@@ -510,12 +524,13 @@ defmodule CmsHarness.Project.AnalysisServer do
     })
   end
 
-  defp push_result(root, run_id, source, other) do
+  defp push_result(root, run_id, source, other, tied_to) do
     push_result(
       root,
       run_id,
       source,
-      {:error, "unreadable analyzer result: #{inspect(other)}"}
+      {:error, "unreadable analyzer result: #{inspect(other)}"},
+      tied_to
     )
   end
 

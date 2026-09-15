@@ -257,18 +257,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
         problems
       )
       when is_binary(source) and is_list(problems) do
-    # `:global.trans/2`'s id is `{ResourceId, LockRequesterId}` specifically —
-    # not an arbitrary term. A bare compound key here crashed every call with
-    # a FunctionClauseError inside `:global.set_lock/4` — caught by the
-    # pre-promote sweep before it reached the running copy, but a much louder
-    # failure than the pool-exhaustion bug it was meant to replace.
-    resource_id = {__MODULE__, lock_scope_key(scope), source}
-    :global.trans({resource_id, self()}, fn ->
-      do_reconcile_problems_for_source(scope, source, file_scope, problems)
-    end)
-  end
-
-  defp do_reconcile_problems_for_source(scope, source, file_scope, problems) do
     Repo.transaction(fn ->
       clear_problems_for_source(scope, [source: source], file_scope)
 
@@ -281,46 +269,27 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   # Two reconciles for the same working copy and source both clear then insert
   # their own full set, and nothing before this made that pair mutually
-  # exclusive. `ProjectServer` never lets it happen for a local run — one task
-  # at a time per working copy — but a remote harness reports each finished
-  # run on its own `Task.Supervisor` process (`HarnessProjectChannel`'s
-  # `reply_async`, not the channel process), and `dispatch_remote/3`
-  # deliberately lets a second run for a busy source queue up behind the
-  # first rather than drop it (cc1016a8: dropping it lost a commit's worth of
-  # spex results). The harness runs both, one after another, and reports each
-  # as it finishes — two results for the same source, seconds apart, with no
-  # ordering guarantee between the transactions that reconcile them. Reported
-  # 2026-09-14: every problem for a source present exactly twice, 42 rows
-  # where 21 existed.
+  # exclusive — reported 2026-09-14 as every problem for a source present
+  # exactly twice, 42 rows where 21 existed. Traced to its actual source
+  # rather than locked at the write: a remote harness ties a request for a
+  # busy source onto the one already running instead of starting a second
+  # execution (story 839, `CmsHarness.Project.AnalysisServer.tie_to_queued/4`)
+  # — one real execution, but `deliver/3` reported it once per tied run_id,
+  # and every one of those independently reconciled the identical Problems.
+  # `Analysis.reconcile_or_finish_tied/4` now reconciles only the primary;
+  # every tied run_id gets `Reconciler.finish_tied/3` instead, which closes
+  # its own row without touching Problems at all. With that in place, this
+  # function is never called twice for the same source and working copy at
+  # once — nothing here needs to take turns with anything else, so nothing
+  # here locks.
   #
-  # `:global.trans/2` makes the two calls take turns instead of racing: the
-  # second blocks until the first's whole transaction commits, then runs its
-  # own — the later run's results stand, the same "latest sweep wins" outcome
-  # `ProjectServer`'s serialization already gives locally. Tied to the calling
-  # process, so it releases if that process dies — no registry, no process to
-  # leak a lock a dead holder never freed.
-  #
-  # This was a `pg_advisory_xact_lock` held for the length of the transaction
-  # first, and that was the wrong resource to block on: a waiter parked on a
-  # `SELECT pg_advisory_xact_lock(...)` keeps its connection checked out from
-  # Ecto's pool for however long it waits, and on a box running six-plus
-  # harnesses that all hit the busy-source-sent-anyway path regularly, enough
-  # simultaneous waiters exhausted the whole pool — reported 2026-09-14,
-  # twenty minutes after the lock shipped: connections dying for being
-  # checked out >15s, then a cascade of "connection not available" across
-  # unrelated channels and projects, six unrelated gen_servers terminating,
-  # and this function's own transaction rolling back with no reason attached.
-  # `:global.trans/2` blocks the calling *Elixir process*, not a database
-  # connection — a waiter here costs an idle process, nothing Ecto's pool can
-  # run out of.
-  defp lock_scope_key(%Scope{active_working_copy_id: working_copy_id})
-       when not is_nil(working_copy_id),
-       do: working_copy_id
-
-  defp lock_scope_key(%Scope{active_project_id: project_id}) when is_binary(project_id),
-    do: WorkingCopies.default_id(project_id)
-
-  defp lock_scope_key(_scope), do: :no_working_copy
+  # A lock was tried twice and cost more than it fixed: a `pg_advisory_xact_lock`
+  # held a database connection for however long a waiter blocked, and on a
+  # box running six-plus harnesses that exhausted Ecto's whole pool; an
+  # in-process `:global.trans/2` replacement shipped with the wrong argument
+  # shape and crashed every call. Both were solving the symptom (two writes
+  # racing) rather than the cause (two writes existing at all for one
+  # execution) — removed once the cause was.
 
   @doc """
   Atomically replaces problems for specific file paths within a project.

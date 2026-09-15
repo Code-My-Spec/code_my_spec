@@ -110,6 +110,36 @@ defmodule CodeMySpec.Analysis.Reconciler do
     end
   end
 
+  @doc """
+  Finish a run whose analyzer output was already reconciled under a
+  different run_id.
+
+  The harness ties a request for a busy source onto the one already
+  queued rather than running the analyzer twice (story 839,
+  `CmsHarness.Project.AnalysisServer.tie_to_queued/4`) — every tied
+  run_id gets the identical result the primary one does. The primary's
+  own `reconcile/4` call already cleared and re-inserted Problems for
+  this exact output; doing that again here would double every row
+  (`57333540` — 42 rows where 21 existed, each exactly twice). This
+  closes the tied run's own ledger entry — whoever is waiting on that
+  specific run_id still needs a real, `:completed` answer — without a
+  second write over data the primary already got right.
+  """
+  @spec finish_tied(Scope.t(), Run.t(), map()) :: {:ok, Run.t()} | {:error, term()}
+  def finish_tied(%Scope{} = scope, %Run{} = run, result) do
+    Logger.info(
+      "[Analysis] run #{run.id} (#{run.source}) tied — output only, Problems untouched" <>
+        requested_by_suffix(run)
+    )
+
+    RunsRepository.finish_run(run, :completed, %{
+      output: result.output,
+      exit_status: result.exit_status,
+      stats: result.stats,
+      completed_fingerprint: Fingerprint.current(scope, run.source)
+    })
+  end
+
   @doc "Mark a run failed (tool crash, skip, or task death) — no problem changes."
   @spec fail(Run.t(), term()) :: {:ok, Run.t()} | {:error, term()}
   def fail(%Run{} = run, reason) do

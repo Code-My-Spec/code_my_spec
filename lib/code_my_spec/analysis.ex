@@ -424,7 +424,7 @@ defmodule CodeMySpec.Analysis do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
         result = note_analyzer_staleness(result, payload)
-        Reconciler.reconcile(scope, run, result, notify: true)
+        reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
         Reconciler.fail(run, reason)
@@ -460,6 +460,21 @@ defmodule CodeMySpec.Analysis do
     Reconciler.fail(run, reason)
     {:error, reason}
   end
+
+  # `tied_to` names the run_id that actually owns this result — `nil` for the
+  # one the harness dispatched, the primary run's id for every request that
+  # got tied onto it instead of starting a second execution
+  # (`CmsHarness.Project.AnalysisServer.tie_to_queued/4`, story 839). Both
+  # carry the identical Problems, because there was only ever one execution;
+  # reconciling both wrote every problem twice (`57333540`). Only the primary
+  # reconciles. A tied run still gets its own row closed — whoever is
+  # waiting on that specific run_id needs a real, completed answer — just
+  # without a second pass over data the primary already wrote.
+  defp reconcile_or_finish_tied(scope, run, result, nil),
+    do: Reconciler.reconcile(scope, run, result, notify: true)
+
+  defp reconcile_or_finish_tied(scope, run, result, tied_to) when is_integer(tied_to),
+    do: Reconciler.finish_tied(scope, run, result)
 
   # Whether the harness that produced this was running analyzer code older than
   # the tree it decided about — computed there, because only the harness can see
