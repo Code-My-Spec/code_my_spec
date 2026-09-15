@@ -26,9 +26,20 @@ defmodule CodeMySpecSpex.Story1063.Criterion3343Spex do
 
   spex "Filing an issue moves the graph" do
     scenario "an issue is filed against the project" do
-      given_ "a project whose graph has been served", context do
-        _cold = read_graph(context)
-        {:ok, Map.put(context, :before, read_graph(context))}
+      given_ "a project whose graph says every issue is triaged", context do
+        before = read_settled_graph(context)
+
+        assert satisfaction_of(before, "issues_triaged") == true,
+               """
+               The premise did not hold: this project's graph does not start
+               with `issues_triaged` satisfied, so the change under test has
+               nowhere to show up.
+
+               issues_triaged: #{inspect(satisfaction_of(before, "issues_triaged"))}
+               requirements present: #{inspect(requirement_names(before))}
+               """
+
+        {:ok, Map.put(context, :before, before)}
       end
 
       when_ "an issue is filed against the project", context do
@@ -42,20 +53,26 @@ defmodule CodeMySpecSpex.Story1063.Criterion3343Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph says there is an issue to triage", context do
         after_filing = read_graph(context)
 
-        refute after_filing["computed_at"] == context.before["computed_at"],
+        assert satisfaction_of(after_filing, "issues_triaged") == false,
                """
-               An issue was filed and the graph went on answering from the
-               computation it made before.
+               An issue was filed and the graph went on saying every issue is
+               triaged.
 
                This is the ninety minutes of silence: the agent that triages
                issues was waiting to be woken when a product requirement was
                unblocked, and filing an issue is exactly that happening.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_filing["computed_at"])}
+               The claim is about the verdict, not about a clock. A pass that
+               ran and applied nothing moves `computed_at` exactly as far as
+               one that worked, and `checked_at` is second-resolution besides —
+               so the only thing that distinguishes a writer that announces
+               from one that does not is the answer itself changing.
+
+               issues_triaged before: #{inspect(satisfaction_of(context.before, "issues_triaged"))}
+               issues_triaged after:  #{inspect(satisfaction_of(after_filing, "issues_triaged"))}
                """
 
         {:ok, context}

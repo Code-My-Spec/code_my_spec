@@ -34,6 +34,10 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLiveTest do
     test "renders next requirements for an unbootstrapped project" do
       {project, scope} = setup_local_project()
 
+      # The page reads; something has to have computed. In production that is
+      # `GraphWatcher` reacting to a writer's announcement.
+      CodeMySpec.Requirements.recompute(scope)
+
       socket = build_socket(project, scope)
       {:noreply, socket} = NextTaskLive.handle_params(%{}, "/", socket)
 

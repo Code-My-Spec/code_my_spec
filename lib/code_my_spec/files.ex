@@ -18,6 +18,7 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.Users,
@@ -436,7 +437,7 @@ defmodule CodeMySpec.Files do
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
   def upsert_files(%Scope{active_project_id: project_id} = scope, file_attrs_list)
       when is_list(file_attrs_list) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     # A writer that named its working copy gets that one; one that did not gets
     # the project's nil-object harness. `working_copy_id` is NOT NULL because
@@ -497,7 +498,7 @@ defmodule CodeMySpec.Files do
   """
   @spec upsert_file_metadata(Scope.t(), map()) :: {:ok, File.t()} | {:error, term()}
   def upsert_file_metadata(%Scope{active_project_id: project_id} = scope, attrs) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     entry =
       attrs

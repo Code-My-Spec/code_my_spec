@@ -517,35 +517,69 @@ defmodule CodeMySpec.Notifications do
   @doc """
   Record answers to a question request and broadcast them so the waiting hook
   receives them. `answers` maps each question's text to the chosen label(s).
+
+  `answered_by` defaults to `"user"` — every existing caller (`QuestionLive`,
+  the conversation page, `QuestionController`) is a person answering, and
+  `MainAgent.settle/4` is the one caller that overrides it.
+
+  ## Overruling, and only in this one direction
+
+  A request the main agent already answered can be answered again by the
+  user — that is criterion 3220's whole point, and without it a main agent's
+  wrong answer buries the question forever: `%{status: "answered"}` reads as
+  finished by every ordinary rule, and the user has no route back to it. The
+  new answer replaces the old outright rather than merging with it, and
+  `overruled` is set so the collecting agent is told an earlier answer
+  existed rather than reading this as an ordinary first answer.
+
+  Every other repeat is still refused. A user's answer is the one that
+  stands (3219), so a main agent may never overwrite it, and a user
+  correcting their own answer a second time is not a case any surface
+  offers — `ChatComponents.question/1` drops the form once a user has
+  answered.
   """
-  def answer_question_request(id, %{} = answers) do
+  def answer_question_request(id, %{} = answers, opts \\ []) do
+    answered_by = Keyword.get(opts, :answered_by, "user")
+
     case Repo.get(QuestionRequest, id) do
       nil ->
         {:error, :not_found}
 
       %{status: "pending"} = request ->
-        request
-        |> QuestionRequest.changeset(%{status: "answered", answers: answers})
-        |> Repo.update()
-        |> case do
-          {:ok, updated} ->
-            Phoenix.PubSub.broadcast(
-              CodeMySpec.PubSub,
-              "question_request:#{id}",
-              {:question_answered, %{id: id, answers: answers}}
-            )
+        finish(request, answers, answered_by, false)
 
-            broadcast_notifications_changed(updated.user_id)
-            deliver_to_agent(updated)
-
-            {:ok, updated}
-
-          error ->
-            error
-        end
+      %{status: "answered", answered_by: "main_agent"} = request when answered_by == "user" ->
+        finish(request, answers, answered_by, true)
 
       %{status: status} ->
         {:error, {:already_resolved, status}}
+    end
+  end
+
+  defp finish(request, answers, answered_by, overruled) do
+    request
+    |> QuestionRequest.changeset(%{
+      status: "answered",
+      answers: answers,
+      answered_by: answered_by,
+      overruled: overruled
+    })
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        Phoenix.PubSub.broadcast(
+          CodeMySpec.PubSub,
+          "question_request:#{updated.id}",
+          {:question_answered, %{id: updated.id, answers: answers}}
+        )
+
+        broadcast_notifications_changed(updated.user_id)
+        deliver_to_agent(updated)
+
+        {:ok, updated}
+
+      error ->
+        error
     end
   end
 

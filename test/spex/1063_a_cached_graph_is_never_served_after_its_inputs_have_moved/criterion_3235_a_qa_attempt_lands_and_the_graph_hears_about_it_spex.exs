@@ -29,13 +29,19 @@ defmodule CodeMySpecSpex.Story1063.Criterion3235Spex do
 
   spex "Recording a QA attempt moves the graph" do
     scenario "an attempt is submitted against a story" do
-      given_ "a started qa_complete task and a graph that has been served", context do
-        # Warm the cache first. A cold read computes, stores, and answers
-        # `computed_at: nil` while doing it, so measuring from that one compares
-        # "no cached graph" against "a cached graph" rather than two answers.
-        _cold = read_graph(context)
+      given_ "a started qa_complete task and a graph that says QA is not done", context do
+        before = read_settled_graph(context)
 
-        {:ok, Map.put(context, :before, read_graph(context))}
+        assert satisfaction_of(before, "qa_complete", :story, context.story.id) == false,
+               """
+               The premise did not hold: this story's `qa_complete` is not
+               already open, so submitting a passing attempt has nowhere to
+               show up.
+
+               qa_complete: #{inspect(satisfaction_of(before, "qa_complete", :story, context.story.id))}
+               """
+
+        {:ok, Map.put(context, :before, before)}
       end
 
       when_ "the agent submits the QA result", context do
@@ -55,21 +61,21 @@ defmodule CodeMySpecSpex.Story1063.Criterion3235Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph says QA is complete for that story", context do
         after_attempt = read_graph(context)
 
-        refute after_attempt["computed_at"] == context.before["computed_at"],
+        assert satisfaction_of(after_attempt, "qa_complete", :story, context.story.id) == true,
                """
-               The graph answered from the computation it made before the QA
-               attempt was recorded.
+               A passing QA attempt was recorded and the graph still says this
+               story's QA is not complete.
 
                A QA attempt is a domain object we own — we wrote it, so the
-               graph should have been told. If the answer is unchanged, the
+               graph should have been told. If the verdict is unchanged, the
                write published nothing and the graph is left to discover its own
                data by hashing a table.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_attempt["computed_at"])}
+               qa_complete before: #{inspect(satisfaction_of(context.before, "qa_complete", :story, context.story.id))}
+               qa_complete after:  #{inspect(satisfaction_of(after_attempt, "qa_complete", :story, context.story.id))}
                """
 
         {:ok, context}

@@ -14,10 +14,19 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{AgentReport, Fingerprint, Run, RunsRepository, Signatures}
+  alias CodeMySpec.Analysis.{
+    AgentReport,
+    Coverage,
+    Fingerprint,
+    Run,
+    RunsRepository,
+    Signatures
+  }
+
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.TaskEvaluator
@@ -43,7 +52,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # `latest_full_run/2` filters `kind == :full`, so it never satisfies
   # freshness either. The stop hook's full run stays the authoritative sweep.
   def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
-    Logger.info("[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched")
+    Logger.info(
+      "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
+    )
 
     RunsRepository.finish_run(run, :completed, %{
       output: result.output,
@@ -62,6 +73,19 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
     case Problems.reconcile_problems_for_source(scope, run.source, file_scope, problems) do
       {:ok, _inserted} ->
+        # What this run read, per file, at the content it read.
+        #
+        # `problems` already says "this file had this finding at this content".
+        # Nothing said "this file was clean at this content", so a file with no
+        # findings and a file nobody analysed were the same shape — no rows —
+        # and `count == 0` read *clean* out of an *absence*.
+        #
+        # Recorded here rather than at run start, because only this branch means
+        # the run produced results. A run that fails or is superseded records no
+        # coverage, so its files stay unread rather than claiming a verdict
+        # nothing produced.
+        record_coverage(scope, run)
+
         # Read before finishing: this run is still `:running`, so
         # `latest_completed_run/2` returns the sweep before it. After
         # `finish_run` it would return this one and the delta would be empty.
@@ -85,6 +109,18 @@ defmodule CodeMySpec.Analysis.Reconciler do
         evaluate_sessions(scope)
         maybe_notify(scope, finished, problems, opts)
 
+        # A run finishing is what can newly satisfy `bdd_specs_passing` /
+        # `tests_passing` — nothing else does, since those gates read the run
+        # ledger rather than a file. Without this, GraphWatcher never learns
+        # a story became testable: it only reschedules on `GraphInputs`
+        # events, so its debounce timer stays unset and `settle/1` (a nil
+        # timer is a no-op) waits forever for a wake that a direct, on-demand
+        # read would already see via the fingerprint. Same placement as
+        # `QaAttempts.announce_graph_change/2` — after the row commits, only
+        # on this success path, so a recompute never reads a run that might
+        # still roll back.
+        GraphInputs.announce(scope, "Analysis")
+
         # The internal half of story 1042. `maybe_notify/4` above is the push to
         # the *person*; this is the push to the agents running in our own BEAM,
         # which have a process to reach and should not have to wait on one.
@@ -97,14 +133,18 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
-            "(#{run.kind})" <> Signatures.delta_suffix(previous, signatures) <>
+            "(#{run.kind})" <>
+            Signatures.delta_suffix(previous, signatures) <>
             requested_by_suffix(run)
         )
 
         {:ok, finished}
 
       {:error, reason} ->
-        Logger.error("[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}")
+        Logger.error(
+          "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
+        )
+
         RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
         {:error, reason}
     end
@@ -257,6 +297,42 @@ defmodule CodeMySpec.Analysis.Reconciler do
   end
 
   defp stamp_component_ids(problems, _scope, _source), do: problems
+
+  # No rescue. The first version had one — "best effort, a coverage failure must
+  # not fail a reconcile that already landed its Problems" — and it earned its
+  # keep immediately, in the worst way: a missing alias made this raise
+  # `module Coverage is not available`, and the rescue turned that into a
+  # warning in a log nobody reads while the tests failed for no stated reason.
+  #
+  # A coverage write that cannot happen is a defect. A reconcile that silently
+  # records nothing is the absence-reading-as-success this table exists to end,
+  # arriving through the door built to protect it.
+  #
+  # No working copy records nothing, and that is an answer rather than a
+  # swallowed failure: coverage is keyed per checkout, so there is no row to
+  # write and nothing being claimed.
+  defp record_coverage(%Scope{active_working_copy_id: nil}, _run), do: :ok
+
+  defp record_coverage(%Scope{} = scope, %Run{started_at: %DateTime{} = started_at} = run) do
+    entries = Coverage.seen_entries(scope, run.source, started_at)
+    Coverage.record(scope, run.source, entries, run_id: run.id, analyzed_at: started_at)
+
+    # Said out loud, because the alternative is a table nobody can see filling
+    # up. `0 covered` on a source that should read hundreds of files is the
+    # signature of this being wired wrong, and it is invisible otherwise —
+    # exactly the shape of `Coverage` sitting at zero rows in production for as
+    # long as it did while its own moduledoc said "nothing consumes this yet".
+    #
+    # The gap between the run's file set and what it covered is the files that
+    # moved while it ran, which is worth a number: a sweep that covers a
+    # shrinking fraction of the tree is an analyzer losing a race with the
+    # edit rate, and that is the condition the whole per-file design exists for.
+    Logger.info(
+      "[Analysis] #{run.source} covered #{length(entries)} file(s) unchanged since the run began"
+    )
+
+    :ok
+  end
 
   # -- Clear scope --
 

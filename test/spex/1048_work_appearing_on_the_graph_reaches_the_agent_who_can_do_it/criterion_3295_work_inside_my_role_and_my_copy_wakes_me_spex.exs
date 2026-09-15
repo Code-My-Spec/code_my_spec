@@ -25,10 +25,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3295Spex do
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import Phoenix.ConnTest
+  import Phoenix.LiveViewTest
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -45,8 +50,102 @@ defmodule CodeMySpecSpex.Story1048.Criterion3295Spex do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
 
-      given_ :synced_context_component
-      given_ :story_linked_to_component
+      given_ "a context component with no children, spec through review already done",
+            context do
+        module_name = "WorkRoutingContext"
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            Content.spec_path(module_name),
+            Content.context_spec(module_name, type: "context", dependencies: [])
+          )
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            Content.impl_path(module_name),
+            Content.impl_file(module_name)
+          )
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/spec/#{Macro.underscore(module_name)}/design_review.md",
+            """
+            # #{module_name} Design Review
+
+            ## Overview
+
+            Reviewed #{module_name} with no children. Sound architecture for a
+            placeholder bounded context.
+
+            ## Architecture
+
+            - Separation of concerns is appropriate for a single-component context.
+
+            ## Integration
+
+            - No integration points with other contexts.
+
+            ## Conclusion
+
+            Ready for implementation. No outstanding action items.
+            """
+          )
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "test/#{Macro.underscore(module_name)}_test.exs",
+            """
+            defmodule #{module_name}Test do
+              use ExUnit.Case, async: true
+
+              test "placeholder" do
+                assert true
+              end
+            end
+            """
+          )
+
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
+        # "Already done" has to include the suites having run. `tests_passing`
+        # reads the run ledger rather than the test file — "zero problems
+        # because the suites never ran" stopped being satisfiable at v1.5.36 —
+        # so writing a test file leaves this component's own work open, and
+        # component work outranks the story's. The wake then arrived correctly
+        # and `get_next_requirement` answered with a `ComponentCode` task for
+        # this component instead of the released story, which reads exactly
+        # like the routing defect this criterion exists to catch.
+        #
+        # Stamped after the last file lands, matching
+        # `FullSatisfactionFixtures.apply_fresh_analysis_runs/1`. Releasing the
+        # story later moves no file, so the fingerprint stays current.
+        Fixtures.fresh_analysis_runs(context.scope)
+
+        component = Fixtures.get_component_by_module_name(context.scope, module_name)
+        {:ok, Map.put(context, :component, component)}
+      end
+
+      given_ "a story interviewed and linked, but not yet released", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Refunds reach the ledger",
+            description: "Interviewed and waiting to be released",
+            acceptance_criteria: ["A refund lands on the ledger"],
+            ready_for_dev: false
+          )
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, Map.put(context, :story, story)}
+      end
 
       given_ "a coding agent idle on its assigned working copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
@@ -60,14 +159,10 @@ defmodule CodeMySpecSpex.Story1048.Criterion3295Spex do
       end
 
       when_ "a story on that copy becomes ready for coding", context do
-        story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
-        :ok = Fixtures.mark_story_ready(context.scope, story)
+        :ok = Fixtures.mark_story_ready(context.scope, context.story)
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok,
-         context
-         |> Map.put(:story, story)
-         |> Map.put(:said, said_since(context, context.coding, context.before))}
+        {:ok, Map.put(context, :said, said_since(context, context.coding, context.before))}
       end
 
       then_ "the coding agent is woken", context do
@@ -88,7 +183,13 @@ defmodule CodeMySpecSpex.Story1048.Criterion3295Spex do
         {:reply, reply, _frame} = GetNextRequirement.execute(%{}, frame(context))
         offered = response_text(reply)
 
-        assert offered =~ Regex.escape(context.story.title),
+        # By id, because that is the identity the menu actually carries. Every
+        # offer names `entity_type` and `entity_id` and no offer has ever
+        # carried a story title, so matching on the title asserted against
+        # text the surface does not emit — it failed on a correctly routed
+        # wake exactly as it would on a misrouted one. The id is also the
+        # stricter check: two stories can share a title.
+        assert offered =~ "entity_type=`story`, entity_id=`#{context.story.id}`",
                """
                The agent was woken by one story and offered different work.
 
@@ -98,7 +199,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3295Spex do
                the model". The graph holds the ordering; the wake is a
                doorbell, and it has to open onto the thing that rang it.
 
-               woken by: #{context.story.title}
+               woken by: #{context.story.title} (story #{context.story.id})
                offered:
                #{offered}
                """

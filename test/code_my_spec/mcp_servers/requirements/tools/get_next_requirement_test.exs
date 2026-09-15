@@ -15,6 +15,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   describe "execute/2" do
     test "returns the next actionable requirement" do
       scope = full_scope_fixture()
+      # Reads serve rows; the write path computes them.
+      CodeMySpec.Requirements.recompute(scope)
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)

@@ -17,17 +17,27 @@ defmodule CodeMySpecSpex.Story1052.Criterion3221Spex do
   sees it but cannot act: a listing is not a route. And the asking agent is
   blocked: one absent agent stops unrelated work on every other checkout, which
   is the failure that turns a degraded component into a stopped project.
+
+  ## Surface
+
+  "The question is still visible to the user" means visible on the user's own
+  surface — `NotificationLive.Index` at `/app/notifications` — not
+  `list_user_questions`, which is the *agent's* view of what it is waiting on
+  and requires a harness session that nothing in this premise registers. A
+  question with nobody to route it to still has to reach the person regardless
+  of whether any agent happens to have a session open, which is exactly the
+  case this criterion is about.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.QuestionRoutingHelpers
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
+
+  @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -52,16 +62,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion3221Spex do
         id =
           ask(context, "Should refunds older than ninety days be allowed?", ["Allow", "Refuse"])
 
-        {:reply, listed, _frame} = ListUserQuestions.execute(%{}, frame(context))
-
-        {:ok,
-         context
-         |> Map.put(:question_id, id)
-         |> Map.put(:inbox, response_text(listed))}
+        {:ok, Map.put(context, :question_id, id)}
       end
 
       then_ "the question is still visible to the user", context do
-        assert context.inbox =~ "refunds older than ninety days",
+        {:ok, view, _html} = live(context.conn, "/app/notifications")
+
+        assert has_element?(view, "[data-test='notification'][data-id='#{context.question_id}']"),
                """
                With the main agent down the question reaches nobody.
 
@@ -71,7 +78,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3221Spex do
                ordinary state, not an edge case, and routing through something
                that is regularly absent cannot mean stopping when it is.
 
-               #{context.inbox}
+               #{render(view)}
                """
 
         {:ok, context}

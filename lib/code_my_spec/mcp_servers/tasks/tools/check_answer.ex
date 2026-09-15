@@ -48,9 +48,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   @impl true
   def execute(%{question_id: id}, frame) when is_binary(id) and id != "" do
     case await_answer(id) do
-      {:ok, answers} ->
-        reply = answers |> Map.values() |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("\n")
-        {:reply, Response.tool() |> Response.text("The user replied:\n#{reply}"), frame}
+      {:ok, request} ->
+        reply =
+          request.answers |> Map.values() |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("\n")
+
+        {:reply, Response.tool() |> Response.text(labeled(request, reply)), frame}
 
       {:error, {:pending, holder}} ->
         {:reply, Response.tool() |> Response.text(still_open(holder)), frame}
@@ -105,6 +107,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
     """
   end
 
+  # Who actually answered, said precisely enough to weigh. Criterion 3219: a
+  # main agent's answer is a reading of the project's records and can be
+  # wrong about intent, where the user's is the intent itself — an agent that
+  # cannot tell them apart argues with the user on the strength of something
+  # a peer told it earlier.
+  #
+  # `overruled` first and separately from `answered_by`, because after an
+  # override `answered_by` correctly reads "user" — the same as an ordinary
+  # first answer — and the fact that an earlier, different answer existed is
+  # exactly what a question the main agent answered wrongly needs to say
+  # (3220).
+  defp labeled(%{overruled: true}, reply),
+    do: "The user replied, overruling the main agent's earlier answer:\n#{reply}"
+
+  defp labeled(%{answered_by: "main_agent"}, reply),
+    do: "The main agent replied, from project records:\n#{reply}"
+
+  defp labeled(_request, reply), do: "The user replied:\n#{reply}"
+
   # Same contract `QuestionClient.await_answer/2` had — `{:ok, answers}` and
   # `{:error, reason}` — except that a pending question now carries who it is
   # pending on, because "still waiting" without a holder is not enough for the
@@ -125,8 +146,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
       nil ->
         {:error, :not_found}
 
-      %{status: "answered", answers: answers} when is_map(answers) ->
-        {:ok, answers}
+      %{status: "answered", answers: answers} = request when is_map(answers) ->
+        {:ok, request}
 
       %{holder: holder} ->
         if System.monotonic_time(:millisecond) >= deadline do

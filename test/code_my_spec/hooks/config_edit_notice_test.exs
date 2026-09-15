@@ -26,7 +26,7 @@ defmodule CodeMySpec.Hooks.ConfigEditNoticeTest do
   alias CodeMySpec.Hooks.Stop
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("config_edit_notice")
     scope = %{full_scope_fixture() | cwd: tmp}
 
     # Nothing here is about compiler/credo/exunit/spex content — only

@@ -35,9 +35,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3353Spex do
       end
 
       then_ "every read answers from the same computation", context do
-        stamps = context.reads |> Enum.map(& &1["computed_at"]) |> Enum.uniq()
+        stamps = context.reads |> Enum.map(&last_recompute/1) |> Enum.uniq()
 
-        assert stamps == [context.before["computed_at"]],
+        assert stamps == [last_recompute(context.before)],
                """
                Reading the graph recomputed it.
 
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3353Spex do
                being pending, or it becomes "recompute on every read" — which
                is the behaviour this story replaced. Reads are reads.
 
-               expected every read to answer: #{inspect(context.before["computed_at"])}
+               expected every read to answer: #{inspect(last_recompute(context.before))}
                got: #{inspect(stamps)}
                """
 

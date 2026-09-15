@@ -174,7 +174,7 @@ defmodule CodeMySpec.Stories.Story do
     # lets the column sit empty and change nothing.
     belongs_to :working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Casts and validates a story's own fields — does not touch locking."

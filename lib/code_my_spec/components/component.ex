@@ -68,7 +68,7 @@ defmodule CodeMySpec.Components.Component do
 
     embeds_one :component_status, ComponentStatus
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   def changeset(component, attrs, %CodeMySpec.Users.Scope{} = scope) do

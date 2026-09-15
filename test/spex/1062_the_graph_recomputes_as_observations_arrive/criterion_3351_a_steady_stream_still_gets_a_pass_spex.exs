@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3351Spex do
       then_ "the graph has been recomputed rather than waiting for a lull", context do
         after_stream = read_graph(context)
 
-        refute after_stream["computed_at"] == context.before["computed_at"],
+        refute last_recompute(after_stream) == last_recompute(context.before),
                """
                A continuous stream of writes left the graph answering from the
                computation it made before any of them.
@@ -61,8 +61,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3351Spex do
                story exists to end, arriving through the mechanism meant to
                prevent it.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_stream["computed_at"])}
+               before: #{inspect(last_recompute(context.before))}
+               after:  #{inspect(last_recompute(after_stream))}
                """
 
         {:ok, context}

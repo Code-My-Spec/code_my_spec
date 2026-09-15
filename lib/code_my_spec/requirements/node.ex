@@ -59,6 +59,16 @@ defmodule CodeMySpec.Requirements.Node do
     # "no basis to skip it" rather than as "unchanged".
     field :inputs_fingerprint, :string
 
+    # Which definition produced this node. The name alone is ambiguous: six of
+    # them exist both as a parent template's `:child` def and as the child
+    # type's own `:self` def, and the two differ in `orchestrated_by` — which is
+    # what groups an orchestrated wave under its context header.
+    #
+    # `nil` on a row written before these columns existed; `Projection` infers
+    # for those and the next pass rewrites them.
+    field :owner_component_type, :string
+    field :node_scope, :string
+
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
@@ -87,6 +97,8 @@ defmodule CodeMySpec.Requirements.Node do
     :details,
     :checked_at,
     :inputs_fingerprint,
+    :owner_component_type,
+    :node_scope,
     :component_id,
     :story_id,
     :project_id,

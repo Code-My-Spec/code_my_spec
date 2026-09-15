@@ -49,7 +49,17 @@ defmodule CodeMySpec.Stories do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:stories")
   end
 
-  defp broadcast(%Scope{active_account: nil} = _scope, _message), do: :ok
+  # Guarded on the id, not the loaded struct, because the id is the only thing
+  # below that is read — the topic is built from `active_account_id` and
+  # `GraphInputs.announce/2` wants `active_project_id`.
+  #
+  # It guarded on `active_account` and cost criterion 7942. `PortableHost`
+  # rebuilds the scope for the local endpoint with both ids set and the account
+  # struct unloaded, so every write through a story LiveView there took this
+  # clause: the row changed, the graph was never told, and nothing said so.
+  # Invisible until reads stopped recomputing, because until then the next read
+  # rebuilt the graph anyway and covered for it.
+  defp broadcast(%Scope{active_account_id: nil} = _scope, _message), do: :ok
 
   defp broadcast(%Scope{} = scope, message) do
     Phoenix.PubSub.broadcast(

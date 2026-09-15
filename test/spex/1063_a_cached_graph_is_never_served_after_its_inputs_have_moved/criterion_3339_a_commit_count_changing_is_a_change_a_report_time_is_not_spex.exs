@@ -49,6 +49,16 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
     scenario "one checkout sends a heartbeat and then a real change" do
       given_ "a checkout that has reported, and a graph served from its vantage",
              context do
+        story =
+          CodeMySpecSpex.StoryHelpers.create_story(context.scope,
+            title: "Reported on",
+            description: "by a checkout that is not the running one"
+          )
+
+        # A second checkout, because `running_copy_check/2` short-circuits when
+        # the asking copy is main — satisfied whatever the commit counts say —
+        # and then neither half of this scenario is about the commit count.
+        _running = join_working_copy(context, "/tmp/spex-3339-main", "the running copy")
         reply = join_working_copy(context, "/tmp/spex-3339", "the checkout")
         :ok = CodeMySpecSpex.Fixtures.record_git_state(reply.working_copy_id, @clean)
 
@@ -60,6 +70,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
         {:ok,
          context
          |> Map.put(:working_copy_id, reply.working_copy_id)
+         |> Map.put(:new_story, story)
          |> Map.put(:before, read_graph(context, reply.working_copy_id))}
       end
 
@@ -75,25 +86,34 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
 
       then_ "the heartbeat left the answer alone and the commit count did not",
             context do
-        assert context.after_heartbeat["computed_at"] == context.before["computed_at"],
+        # The reason, not the verdict. `code_on_running_copy` also requires the
+        # story to have been promoted, so a commit count moving cannot flip it
+        # on its own — what changes is the obstacle the checker names, and the
+        # whole point here is that a heartbeat changes nothing and a real
+        # change does.
+        verdict = fn graph ->
+          reason_for(graph, "code_on_running_copy", :story, context.new_story.id)
+        end
+
+        assert verdict.(context.after_heartbeat) == verdict.(context.before),
                """
-               The graph was recomputed after a report that carried no change.
+               The answer moved after a report that carried no change.
 
                The checkout said "still here, still clean" and the graph threw
                away an answer that was still correct. Every harness sends that
                report on a timer, so this is not one wasted recompute — it is a
                4.4-second recompute per checkout per sync, forever.
 
-               before:          #{inspect(context.before["computed_at"])}
-               after heartbeat: #{inspect(context.after_heartbeat["computed_at"])}
+               before:          #{inspect(verdict.(context.before))}
+               after heartbeat: #{inspect(verdict.(context.after_heartbeat))}
                """
 
         after_change = read_graph(context, context.working_copy_id)
 
-        refute after_change["computed_at"] == context.after_heartbeat["computed_at"],
+        refute verdict.(after_change) == verdict.(context.after_heartbeat),
                """
-               The graph answered from the computation it made before the
-               checkout reported work ahead of main.
+               The graph answers the same way it did before the checkout
+               reported work ahead of main.
 
                The same column the heartbeat left alone has now changed by
                value, and that is the whole distinction: `git_state_at` moved
@@ -103,8 +123,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
                agent has already cleared — or blind to nothing, and recomputes
                on every heartbeat.
 
-               after heartbeat: #{inspect(context.after_heartbeat["computed_at"])}
-               after change:    #{inspect(after_change["computed_at"])}
+               after heartbeat: #{inspect(verdict.(context.after_heartbeat))}
+               after change:    #{inspect(verdict.(after_change))}
                """
 
         {:ok, context}

@@ -40,6 +40,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
@@ -108,6 +109,43 @@ defmodule CodeMySpec.Requirements do
       names -> Enum.filter(actionable, &(&1.name in names))
     end
   end
+
+  @doc """
+  Which entities read stale right now — the expensive diff, run deliberately.
+
+  See `RequirementGraph.stale_entities_report/1`. Reports; changes nothing.
+  """
+  @spec stale_entities_report(Scope.t()) ::
+          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
+  def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
+
+  @doc """
+  What the rows say about whether the graph recomputes incrementally.
+
+  Read-only, and from the rows rather than from a log: every pass stamps
+  `checked_at` on exactly the entities it recomputed, so the size of each
+  distinct stamp is the size of a pass. See `Requirements.IncrementalReport`.
+  """
+  @spec incremental_report(Scope.t(), keyword()) :: map()
+  def incremental_report(%Scope{} = scope, opts \\ []),
+    do: IncrementalReport.build(scope, opts)
+
+  @doc """
+  Bring this project's rows up to date, and answer from the work just done.
+
+  The write path's entry point, and the only thing that writes requirement
+  rows. `GraphWatcher` calls it when observations land; everything else reads.
+
+  Public because "recompute now" is a real operation a caller outside the
+  watcher sometimes needs — a test establishing a graph to read, a backfill, an
+  operator on a project whose watcher died. It is not a repair a reader should
+  reach for: a read that recomputes is what made a writer that announces
+  nothing indistinguishable from one that works.
+  """
+  @spec recompute(Scope.t()) ::
+          {{[Requirement.t()], [map()]}, [Requirement.t()], NaiveDateTime.t() | nil}
+          | {:error, term()}
+  def recompute(%Scope{} = scope), do: RequirementGraph.recompute(scope)
 
   @doc """
   Returns the next actionable requirements across the entire project,

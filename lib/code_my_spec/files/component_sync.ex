@@ -24,6 +24,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File}
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @type sync_result :: %{
@@ -218,12 +219,39 @@ defmodule CodeMySpec.Files.ComponentSync do
         "(#{length(changed_component_ids)} changed)"
     )
 
+    announce_graph_change(scope, changed_component_ids)
+
     {:ok,
      %{
        all_components: synced_components,
        changed_component_ids: changed_component_ids
      }}
   end
+
+  # Components are the entities that carry `spec_file`, `implementation_file`,
+  # `test_file` and the rest of the coding chain, so creating or changing one
+  # moves the graph — and this said nothing.
+  #
+  # `FileSync` announcing was not cover for it, and the order is why:
+  # `FilesLive.do_sync/2` runs `FileSync.sync/2` and *then*
+  # `ComponentSync.sync_from_files/2`, and `FileSync` announces at the end of
+  # its own pass. So the announcement goes out while the files exist and the
+  # components they belong to do not. A recompute that lands in that window
+  # answers from a half-applied sync, clears the queue, and nothing tells the
+  # graph the components arrived.
+  #
+  # Reproduced on criterion 3346 at a 25ms debounce: 2 failures in 5 runs, with
+  # `spec_file` false against a spec file that was plainly a row with the right
+  # role and the right component. Invisible before reads stopped recomputing,
+  # because the next reader rebuilt the graph and got it right.
+  #
+  # Nothing changed means nothing to say: a scan that re-reads 5,000 files and
+  # finds every component identical is the common case, and announcing it would
+  # cost a preload per scan to discover that.
+  defp announce_graph_change(_scope, []), do: :ok
+
+  defp announce_graph_change(scope, _changed_component_ids),
+    do: GraphInputs.announce(scope, "Files.ComponentSync")
 
   defp compute_changed_ids(synced_components, existing_map) do
     synced_components

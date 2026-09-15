@@ -385,6 +385,17 @@ defmodule CodeMySpecWeb.Router do
       # to watch the queue-accumulation investigation live instead of
       # polling `/dev/state` by hand.
       live "/analysis", CodeMySpecWeb.DevAnalysisLive
+
+      # Whether the requirement graph is recomputing incrementally, read off the
+      # rows. A distinct `checked_at` is a pass and its size is the pass's size,
+      # so "incremental sync works" becomes a column of numbers rather than a
+      # log grep. Read-only by construction — see `DevGraphLive`.
+      live "/graph", CodeMySpecWeb.DevGraphLive
+
+      # Which analyzer has read which files, per working copy. The per-file
+      # answer `Analysis.Coverage` gives, where the project-wide one is
+      # permanently "stale" for any analyzer slower than the edit rate.
+      live "/freshness", CodeMySpecWeb.DevFreshnessLive
     end
 
     # Reaching an agent that is not on your project, from a terminal.

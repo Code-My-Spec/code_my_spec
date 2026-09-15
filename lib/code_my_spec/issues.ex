@@ -21,6 +21,7 @@ defmodule CodeMySpec.Issues do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Utils

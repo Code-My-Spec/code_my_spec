@@ -28,6 +28,12 @@ defmodule CodeMySpecSpex.SharedGivens do
   - `:synced_context_component` — writes a context spec file into the
     in-memory environment, triggers sync via the /sync LiveView button,
     pattern-matches the resulting component. Produces `context.component`.
+  - `:context_review_satisfied` — writes a design review for the component
+    `:synced_context_component` produced and re-syncs, satisfying
+    `review_file` so a story linked to that component is not competing
+    with its own context's outstanding review for the top of the coding
+    queue. Requires `context.component` and `context.project` from prior
+    givens.
   - `:story_linked_to_component` — drives `CreateStory` + `SetStoryComponent`
     MCP tools to create a story and link it to `context.component`.
     Produces `context.story`. Requires `context.component` from a prior given.
@@ -269,6 +275,25 @@ defmodule CodeMySpecSpex.SharedGivens do
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
     {:ok, Map.merge(context, %{component: component, example_story: story})}
+  end
+
+  # Extends :synced_context_component with a design review, so a story later
+  # linked to that component finds `review_file` already satisfied instead of
+  # sitting ahead of its own `bdd_specs_exist` in the coding queue.
+  register_given :context_review_satisfied, context do
+    :ok =
+      Environments.write_file(
+        context.environment,
+        ".code_my_spec/spec/example_context/design_review.md",
+        context_review_content()
+      )
+
+    {:ok, sync_live, _html} =
+      live(context.conn, "/app/projects/#{context.project.id}/files")
+
+    sync_live |> element("button[phx-click='sync']") |> render_click()
+
+    {:ok, context}
   end
 
   # Creates a story and links it to the component via the same MCP tools the
@@ -1023,6 +1048,31 @@ defmodule CodeMySpecSpex.SharedGivens do
     defmodule ExampleContext do
       @moduledoc false
     end
+    """
+  end
+
+  defp context_review_content do
+    """
+    # ExampleContext Design Review
+
+    ## Overview
+
+    Reviewed the ExampleContext with no children. Sound architecture for a
+    placeholder bounded context.
+
+    ## Architecture
+
+    - Separation of concerns is appropriate for a single-component context.
+    - No child components present yet; the context exposes a public no-op
+      function as a placeholder.
+
+    ## Integration
+
+    - The context has no integration points with other contexts.
+
+    ## Conclusion
+
+    Ready for implementation. No outstanding action items.
     """
   end
 

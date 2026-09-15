@@ -535,7 +535,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       <span>
         {@provenance.node_count} requirements,
         <span data-test="graph-served-from">
-          {if @provenance.served_from == "cache", do: "from cache", else: "computed just now"}
+          {if @provenance.served_from == "cache", do: "from cache", else: "not computed yet"}
         </span>
       </span>
       <span data-test="graph-computed-at" title={@provenance.computed_at}>

@@ -27,7 +27,7 @@ defmodule CodeMySpec.Deploys.Deploy do
     belongs_to :project, CodeMySpec.Projects.Project, type: :binary_id
     belongs_to :story, CodeMySpec.Stories.Story
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

@@ -61,10 +61,27 @@ defmodule CodeMySpecSpex.Story1012.Criterion2347Spex do
         handler = {__MODULE__, make_ref()}
         counter = :counters.new(1, [:atomics])
 
+        # This process's queries only. A telemetry handler runs in whichever
+        # process emitted the event, so `self()` inside it is the one that ran
+        # the query — and counting every process means counting the machine,
+        # which is the hazard this scenario already names one comment down and
+        # was only half-guarded against. A graph watcher taking a pass for some
+        # other scenario lands inside the window and charges its queries to the
+        # check: measured at 2.3 per call against a bound of 2, passing alone
+        # and failing in a full run.
+        measuring = self()
+
+        # Multi-clause head rather than a branch: the rule against imperative
+        # `if` in a spex file covers stubs too, and the handler is a stub.
+        count_if_ours = fn
+          true -> :counters.add(counter, 1, 1)
+          false -> :ok
+        end
+
         :telemetry.attach(
           handler,
           [:code_my_spec, :repo, :query],
-          fn _event, _measure, _meta, _config -> :counters.add(counter, 1, 1) end,
+          fn _event, _measure, _meta, _config -> count_if_ours.(self() == measuring) end,
           nil
         )
 

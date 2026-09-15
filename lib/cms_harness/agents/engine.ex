@@ -874,6 +874,13 @@ defmodule CmsHarness.Agents.Engine do
       CmsHarness.Agents.Tools.Promote,
       CmsHarness.Agents.Tools.AskUserQuestion,
       CmsHarness.Agents.Tools.SendMessage,
+      # The collecting half of the two tools just above. `Validation.Menu`'s
+      # offer names both of these on every refusal ("`list_user_questions`
+      # shows them, `check_answer` collects a reply once one lands") and
+      # neither was carried until now — the same gap `AskUserQuestion` and
+      # `SendMessage` themselves closed.
+      CmsHarness.Agents.Tools.ListUserQuestions,
+      CmsHarness.Agents.Tools.CheckAnswer,
       # Offered on every refusal inside the loop by `Menu.tap_out_offer/1`, and
       # carried by nothing until now.
       CmsHarness.Agents.Tools.TapOut,
@@ -950,7 +957,8 @@ defmodule CmsHarness.Agents.Engine do
          SystemPrompt.compose(
            Keyword.get(opts, :role_brief),
            working_copy,
-           Keyword.get(opts, :app_url)
+           Keyword.get(opts, :app_url),
+           Keyword.get(opts, :tool_index)
          )
        )
        |> Keyword.put(:max_turns, @max_turns)

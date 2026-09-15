@@ -113,7 +113,11 @@ defmodule CodeMySpec.Files.File do
     # harnesses existed"; the first harness to join adopts them.
     belongs_to :working_copy, WorkingCopy, type: :binary_id
 
-    timestamps()
+    # Microseconds, because `Analysis.Coverage` orders a file against the run
+    # that read it and `analysis_runs.started_at` carries them. At second
+    # precision a file written in the same second as a run was unorderable
+    # against it, so coverage had to discard the whole second to stay honest.
+    timestamps(type: :naive_datetime_usec)
   end
 
   @cast_fields [

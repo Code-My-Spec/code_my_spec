@@ -146,6 +146,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions)
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
   component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)

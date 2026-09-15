@@ -41,12 +41,31 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:components, structs_digest(ctx.components, & &1.id)},
       {:stories, structs_digest(ctx.stories, & &1.id)},
       {:problems, problems_digest(ctx.problems_by_component)},
-      {:analysis, Enum.sort(Map.to_list(ctx.analysis_fresh))},
       {:config, struct_digest(config)},
       {:delegated, delegated_digest(ctx)}
     ]
     |> hash()
   end
+
+  # `analysis_fresh` is deliberately absent, and the rule it follows is:
+  # **changing files stales the graph; running analyzers freshens it.**
+  #
+  # As an input it did the opposite. The four booleans flip when an analyzer
+  # *finishes*, so the completion of a run — the event that makes the graph more
+  # trustworthy, not less — moved this fingerprint, missed the cache and
+  # recomputed the project. Criterion 3448 measured that at the per-entity
+  # grain (1116 of 1347 requirements, twice in an hour) and removed it there;
+  # this is the same value one level up, keying `GraphCache`.
+  #
+  # It is not an input to begin with. Freshness is a qualifier on *serving* an
+  # answer, which `RequirementGraph.serve/2` applies from the current context on
+  # every read — downgrade-only and idempotent, so a cached graph is re-qualified
+  # against today's freshness without being recomputed. What genuinely moves when
+  # an analyzer lands is `problems`, one line above, and that stays.
+  #
+  # The residue: a checker that reads `ctx.analysis_fresh` at *compute* time
+  # stores the qualifier instead of applying it, and nothing revisits that stored
+  # answer. `SpecsPassingChecker` is the one that does.
 
   # The code that turns inputs into a graph is an input.
   #

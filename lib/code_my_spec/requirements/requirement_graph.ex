@@ -23,6 +23,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -273,6 +274,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp analysis_source(_node), do: nil
 
   defp recompute_stale(scope, ctx, config) do
+    # What a pass costs, on the line that already says what it did.
+    #
+    # The sub-phase timings (`nodes`, `edges`, the component-tree breakdown)
+    # only fire on the paths that reach them, and `preload n/a` means the
+    # preload is not always attributed — so the total had to be reconstructed by
+    # summing lines that may not all be present. The number this replaces was
+    # exactly that: "median 2.6s, p90 5.9s, max 14.8s" over 348 computes, pieced
+    # together from a log rather than read off a field, which is why nobody
+    # could say afterwards whether the work had made it better.
+    started = System.monotonic_time(:millisecond)
     stamp_project(scope)
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
@@ -319,6 +330,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
+          "in #{elapsed_ms(started)}ms; " <>
           "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
@@ -363,7 +375,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         Logger.info("[Requirements] full recompute — topology_moved #{parts}")
 
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
 
       # The counts that decided it, for the same reason `topology_moved` prints
       # its parts one clause up: `everything_stale` on its own says a full
@@ -379,13 +391,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # nothing to reuse, and recomputing it whole is both correct and cheap.
       {:everything_stale, {:all, why}} ->
         Logger.info("[Requirements] full recompute — everything_stale #{why}")
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
 
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
     end
   end
+
+  # The full paths log their reason before doing the work, because the reason is
+  # what a reader is chasing and the work can take seconds. So the cost is said
+  # afterwards, on its own line, rather than predicted.
+  defp publish_timed(scope, ctx, config, started) do
+    result = compute_and_publish(scope, ctx, config)
+    Logger.info("[Requirements] full recompute finished in #{elapsed_ms(started)}ms")
+    result
+  end
+
+  defp elapsed_ms(started), do: System.monotonic_time(:millisecond) - started
 
   # The shared inputs, each digested on its own, so two consecutive recompute
   # lines name the mover by the digest that differs between them.
@@ -725,35 +748,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # finding, but until it is found a recompute is a correct answer and a subset
   # is not. The cost is a recompute on a project that reproduces it, which is
   # loud in the log and better than quiet wrong numbers.
-  defp served_graph(scope, ctx, published_nodes) do
-    case Projection.load(scope, ctx) do
-      {[], _} when published_nodes > 0 ->
-        Logger.warning(
-          "[Requirements] no requirement rows for a graph published with " <>
-            "#{published_nodes} nodes — recomputing. The row write for it did not land."
-        )
-
-        :no_rows
-
-      {nodes, _edges} when length(nodes) < published_nodes ->
-        Logger.warning(
-          "[Requirements] a graph published with #{published_nodes} nodes reads back as " <>
-            "#{length(nodes)} — recomputing. `Projection.load/2` rebuilds each row against " <>
-            "the preloaded context and drops what it cannot, so the shortfall is rows the " <>
-            "publish counted and this read could not reconstitute."
-        )
-
-        :no_rows
-
-      {nodes, edges} ->
-        # The cached path's overlay. `compute_and_publish/4` and
-        # `recompute_stale/3` each apply it to what they return; this is the
-        # third way nodes reach a reader, and criterion 3358 requires a cached
-        # answer and a fresh one to describe the same graph — which they would
-        # not if freshness were applied on one path and not the other.
-        {:ok, {serve(nodes, ctx), edges}}
-    end
-  end
 
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
@@ -881,14 +875,69 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   paying for the preload twice.
 
   Returns `{{nodes, edges}, actionable, computed_at}`.
+
+  ## Options
+
+    * `:settle` — reconcile the watcher's queue before answering. Defaults to
+      `true`, and every production reader wants the default.
+
+  Rule `ea5b6838`: a read with observations still pending recomputes before it
+  answers. *Pending* — this waits for work that has already been asked for,
+  which is not the same as re-deriving what nobody asked for. The second is
+  what this function used to do, and it is what made a silent writer invisible:
+  whoever read next repaired the graph, so a writer that announced nothing
+  produced the same answer as one that worked. All eighteen criteria on story
+  1063 passed against seven writers that announce nothing.
+
+  `settle: false` exists for the test that has to see that difference. A read
+  that skips the queue answers from the rows exactly as they stand, so a write
+  that announced nothing is visibly still missing rather than quietly repaired
+  on the way past.
   """
-  @spec cached_graph_with_actionable(Scope.t()) ::
+  @spec cached_graph_with_actionable(Scope.t(), keyword()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
-  def cached_graph_with_actionable(%Scope{} = scope) do
+  def cached_graph_with_actionable(%Scope{} = scope, opts \\ []) do
+    scope = normalize_vantage(scope)
+
+    if Keyword.get(opts, :settle, true) do
+      GraphWatcher.settle(scope)
+    end
+
+    with {:ok, ctx} <- Preloader.load(scope) do
+      serve_with_actionable(scope, ctx)
+    end
+  end
+
+  @doc """
+  Bring the rows up to date. The write path's entry point.
+
+  Reading and recomputing used to be the same call, and that is the whole
+  defect: a reader repaired the graph as a side effect of asking about it, so a
+  writer that announced nothing looked exactly like one that worked. Splitting
+  them is what lets a silent writer be *observed* — the rows simply stay as
+  they were, and the answer is wrong until somebody publishes an event.
+
+  Called by `GraphWatcher` when observations land. Everything below it is
+  unchanged: the topology guard, the per-entity staleness comparison, the
+  partial write. Only the trigger moved, from "somebody looked" to "something
+  happened".
+  """
+  @spec recompute(Scope.t()) ::
+          {{[Requirement.t()], [edge()]}, [Requirement.t()], NaiveDateTime.t() | nil}
+          | {:error, term()}
+  def recompute(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
     with {:ok, ctx} <- Preloader.load(scope) do
-      cached_graph_with_actionable(scope, ctx)
+      {nodes, edges} =
+        recompute_stale(scope, ctx, CodeMySpec.Configurations.get_or_create(scope))
+
+      # Answered from the work just done rather than by reading back. A second
+      # call would have to settle first, and the only process that could be
+      # waited on here is the one calling — `GraphWatcher` runs this inside its
+      # own `handle_info`, and a settle from there is a GenServer calling
+      # itself.
+      {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(nodes)}
     end
   end
 
@@ -905,19 +954,35 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   to be fresh or stale. QA on story 1063 went looking for `computed_at` on that
   page and found it discarded; there was nothing to discard.
 
-  `served_from` is `"cache"` when a published graph satisfied the fingerprint
-  and `"computed"` when this call produced it. On a miss `computed_at` is
-  stamped now rather than left nil — the answer *was* computed at that moment,
-  and nil reads as "no answer" while meaning the opposite.
+  `served_from` is `"cache"` when rows answered this read and `"empty"` when
+  there are none at this vantage.
+
+  It used to say `"computed"` for the second case, which was true when a read
+  computed its own answer on a miss. Reads compute nothing now, so that value
+  described a read that had produced a graph when what had actually happened
+  was the opposite — nothing has ever computed this vantage, and the caller was
+  handed an empty answer. On a diagnostic surface whose whole job is saying
+  whether the graph is current, that is the one word it must not get wrong.
   """
   @spec cached_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
   def cached_graph_with_actionable_metrics(%Scope{} = scope) do
     scope = normalize_vantage(scope)
+
+    # Settle, like every other read. This went straight to `serve_with_actionable/2`
+    # — the private path, below the settle — and so answered from rows that a
+    # pending observation had already moved past. The requirements graph page is
+    # the most-looked-at reader there is, so it showed a graph one write behind
+    # for a whole debounce window, which reads as the graph being wrong rather
+    # than as the page being early. Ten of story 562's spex caught it: a child
+    # implementation deleted, the sync announcing it, and the page still
+    # rendering the node satisfied.
+    GraphWatcher.settle(scope)
+
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
 
     {us_graph, {{nodes, edges}, actionable, computed_at}} =
-      :timer.tc(fn -> cached_graph_with_actionable(scope, ctx) end)
+      :timer.tc(fn -> serve_with_actionable(scope, ctx) end)
 
     metrics = %{
       preload_ms: div(us_preload, 1000),
@@ -925,7 +990,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       node_count: length(nodes),
       edge_count: length(edges),
       computed_at: computed_at || published_at(scope, ctx),
-      served_from: if(computed_at, do: "cache", else: "computed")
+      served_from: if(computed_at, do: "cache", else: "empty")
     }
 
     {{nodes, edges, actionable}, metrics}
@@ -956,26 +1021,172 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp config_for(scope), do: CodeMySpec.Configurations.get_or_create(scope)
 
-  defp cached_graph_with_actionable(scope, ctx) do
-    config = CodeMySpec.Configurations.get_or_create(scope)
+  # A read answers from the rows. It does not recompute.
+  #
+  # It used to do both jobs, and only one of them was ever legitimate. The
+  # honest one is "process what I have been told" — `actionable_count/2` does
+  # it, by calling `GraphWatcher.settle/1` before it reads, and rule
+  # `ea5b6838` is exactly that: a read with observations still pending
+  # recomputes before it answers. *Pending.*
+  #
+  # The other was "re-derive what nobody told me": fingerprint the whole
+  # project, diff every entity, recompute whatever moved. That is what this
+  # function used to do on every render, and it is the reason a writer that
+  # publishes nothing is indistinguishable from one that works. The reader
+  # repaired the graph, then the assertion credited the writer.
+  #
+  # It also made the specs lie. All eighteen of story 1021's scenarios pass
+  # today — "a story being released moves the graph", "a criterion being
+  # added moves the graph" — against writers that provably never announce,
+  # because each scenario writes, reads, and asserts the graph moved. The read
+  # was doing the moving.
+  #
+  # `c228dbdc` is the rule being broken: a domain event is trusted, and the
+  # graph does not re-verify that something really changed. Re-deriving is
+  # re-verification of everything, every time.
+  #
+  # So: load the rows, apply the serving overlay, answer. Freshness comes from
+  # the rows themselves — `checked_at` is per requirement and always has been,
+  # which is the direction story 1020's notes already name: "is this current"
+  # is a per-row question.
+  defp serve_with_actionable(scope, ctx) do
+    {stored, edges} = Projection.load(scope, ctx)
+    nodes = serve(stored, ctx)
 
-    {graph, computed_at} =
-      case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
-        {:ok, published_nodes, at} ->
-          case served_graph(scope, ctx, published_nodes) do
-            {:ok, graph} -> {graph, at}
-            :no_rows -> {compute_and_publish(scope, ctx, config), nil}
-          end
-
-        :miss ->
-          {recompute_stale(scope, ctx, config), nil}
-      end
-
-    {nodes, edges} = graph
+    log_stale_read(scope, ctx, stored)
 
     # The un-enriched ctx, as in `next_actionable/1`: `actionable_from/3` reads
     # `ctx.components` and `ctx.stories`, both of which the preloader supplies.
-    {graph, actionable_from(nodes, edges, ctx), computed_at}
+    {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(stored)}
+  end
+
+  @doc """
+  Which entities are stale right now, computed and reported rather than fixed.
+
+  The same comparison `graph_stale_read_log` makes, exposed so a reader can ask
+  for it deliberately instead of enabling it on every read and reading a log.
+  `/dev/graph` runs it on demand and again whenever a pass lands, which is the
+  useful shape: watch the set empty as the recompute consumes what was
+  announced, and watch it fail to empty when something wrote without saying so.
+
+  Expensive on purpose — it rebuilds every entity's fingerprint — and changes
+  nothing. Returns `{:all, why}` when everything reads stale, which is its own
+  answer and usually means a shared input moved rather than that every entity
+  did.
+  """
+  @spec stale_entities_report(Scope.t()) ::
+          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
+  def stale_entities_report(%Scope{} = scope) do
+    scope = normalize_vantage(scope)
+
+    with {:ok, ctx} <- Preloader.load(scope) do
+      {stored, _edges} = Projection.load(scope, ctx)
+
+      case stale_entities(stored, ctx) do
+        {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
+        {:all, why} -> {:all, why}
+      end
+    end
+  end
+
+  @doc """
+  Whether reads should report what they are serving stale.
+
+  Off by default, because it is the whole comparison a read used to do before
+  it stopped repairing the graph: every entity's fingerprint recomputed and
+  diffed against what its rows were stamped with. That is the expensive half of
+  a recompute, on every read.
+
+  Turned on, it answers the question the split created. Reads no longer repair
+  anything, so a writer that announces nothing now leaves the graph wrong —
+  and wrong *silently*, because a stale row looks exactly like a current one.
+  This is how that becomes visible: the read says which entities it just served
+  from rows their own inputs have moved past.
+
+      config :code_my_spec, graph_stale_read_log: true
+
+  Intended for the dev server after this ships. Every line it prints names a
+  write that reached the database without reaching `GraphInputs.changed/2`,
+  which is a defect with a known shape and a one-line fix at the writer.
+
+  Covers stories and components, not project-level requirements.
+  `stale_entities/2` drops `entity_type == "project"` because every pass
+  recomputes those unconditionally, so they have no per-entity fingerprint to
+  disagree with. A project whose only requirements are project-level therefore
+  reports nothing here even with every row deleted — which is worth knowing
+  before reading silence as health.
+  """
+  @spec stale_read_logging?() :: boolean()
+  def stale_read_logging?,
+    do: Application.get_env(:code_my_spec, :graph_stale_read_log, false) == true
+
+  # No guard for "nothing stored", though the first version had one on the
+  # grounds that a cold project is not a stale one. It is the same state as the
+  # failure this exists to catch: rows that were written and then lost read
+  # exactly like rows that were never written, and skipping the empty case made
+  # the worst one invisible.
+  #
+  # `stale_entities/2` already draws the line correctly. Zero rows on a project
+  # with entities counts every one of them as `appeared` and reports; zero rows
+  # on a project with no stories and no components reports nothing, because
+  # there is genuinely nothing to compute.
+  defp log_stale_read(scope, ctx, stored) do
+    if stale_read_logging?(), do: do_log_stale_read(scope, ctx, stored)
+    :ok
+  end
+
+  defp do_log_stale_read(scope, ctx, stored) do
+    case stale_entities(stored, ctx) do
+      {:partial, stale} ->
+        if MapSet.size(stale) > 0, do: warn_stale(scope, stale, ctx)
+
+      {:all, why} ->
+        Logger.warning(
+          "[Requirements] STALE READ — every entity reads stale (#{why}). " <>
+            "Served anyway; reads do not recompute. " <>
+            "vantage=#{inspect(scope.active_working_copy_id)}"
+        )
+    end
+  end
+
+  # Named, not counted. "12 entities stale" cannot be acted on; twelve story
+  # ids can be traced to the write that moved them, and the writer that did not
+  # say so is the defect.
+  #
+  # Capped, because a genuinely broken writer makes this every read of a big
+  # project and a log line per entity would be the outage.
+  defp warn_stale(scope, stale, ctx) do
+    {stories, components} = Enum.split_with(stale, fn {type, _id} -> type == "story" end)
+
+    named =
+      stale
+      |> Enum.take(20)
+      |> Enum.map_join(" ", fn {type, id} -> "#{type}:#{id}" end)
+
+    Logger.warning(
+      "[Requirements] STALE READ — served #{MapSet.size(stale)} entity(ies) whose inputs " <>
+        "have moved past their rows " <>
+        "(#{length(stories)}/#{length(ctx.stories)} stories, " <>
+        "#{length(components)}/#{length(ctx.components)} components); " <>
+        "vantage=#{inspect(scope.active_working_copy_id)}; " <>
+        "stale=#{named}#{if MapSet.size(stale) > 20, do: " …", else: ""}"
+    )
+  end
+
+  # When the rows were last computed, taken from the rows.
+  #
+  # Replaces a whole-graph `computed_at` read off the cache row behind a
+  # whole-project fingerprint. A single timestamp for 2000 requirements could
+  # only ever answer "did anything anywhere recompute", which is why
+  # `refute after == before` passed for every writer including the silent ones.
+  defp last_checked_at(nodes) do
+    nodes
+    |> Enum.map(& &1.checked_at)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      ats -> Enum.max(ats, NaiveDateTime)
+    end
   end
 
   @doc """
@@ -1975,15 +2186,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     files = Map.get(ctx.files_by_component, entity.id, [])
     result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
 
-    # Parent resolution: child nodes use the explicit parent.
-    # Parent/self-scope nodes self-parent when orchestrated (so they group
-    # with child nodes under the same context header).
-    {parent_id, parent_name} =
-      cond do
-        parent -> {parent.id, parent.module_name}
-        definition.orchestrated_by -> {entity.id, entity.module_name}
-        true -> {nil, nil}
-      end
+    {parent_id, parent_name} = orchestration_parent(definition, entity, parent)
 
     %Requirement{
       entity_type: "component",
@@ -2001,10 +2204,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       role: definition.role,
       parent_entity_id: parent_id,
       parent_entity_name: parent_name,
+      owner_component_type: owner_component_type(entity, parent),
+      node_scope: definition.node_scope,
       prerequisites: [],
       details: Requirement.normalize_details(result.details)
     }
   end
+
+  # Child nodes use the explicit parent. Parent- and self-scope nodes
+  # self-parent when orchestrated, so they group with the child nodes under the
+  # same context header instead of floating above the wave they belong to.
+  defp orchestration_parent(_definition, _entity, parent) when not is_nil(parent),
+    do: {parent.id, parent.module_name}
+
+  defp orchestration_parent(%{orchestrated_by: nil}, _entity, _parent), do: {nil, nil}
+
+  defp orchestration_parent(_definition, entity, _parent), do: {entity.id, entity.module_name}
+
+  # Which template produced this node: a `:child` def comes from the parent's,
+  # everything else from the entity's own. Stored on the row because the name
+  # alone matches two different definitions — see `Projection.definition_for/3`.
+  defp owner_component_type(entity, nil), do: entity.type
+  defp owner_component_type(_entity, parent), do: parent.type
 
   # Only stamp child_defs whose names exist in the child's own graph template.
   defp filter_defs_for_child_type(defs, child_type) do
@@ -2200,7 +2421,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp priority_sort_key(%{entity_type: "project", name: name}, _story_by_id, _comp, def_order) do
     tier = if MapSet.member?(@late_project_reqs, name), do: 2, else: 0
-    {tier, 0, Map.get(def_order, name, 999)}
+    {tier, {0, 0}, Map.get(def_order, name, 999)}
   end
 
   # The third term is how far down its own chain the node sits, so a story
@@ -2221,7 +2442,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
          _def_order
        ) do
     story = Map.get(story_by_id, id)
-    {1, (story && story.priority) || 999, story_req_depth(name)}
+    rank = if story, do: story_rank(story), else: {999, 0}
+    {1, rank, story_req_depth(name)}
   end
 
   defp priority_sort_key(
@@ -2231,8 +2453,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
          _order
        ) do
     case Map.fetch(comp_priority, id) do
-      {:ok, priority} -> {1, priority, 0}
-      :error -> {1, 999, 1}
+      {:ok, rank} -> {1, rank, 0}
+      :error -> {1, {999, 0}, 1}
     end
   end
 
@@ -2249,14 +2471,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #    rooted at a context with no priority (orphan contexts) yield
   #    no inheritance, and the untethered filter drops their
   #    descendants from the wave on that basis.
+  # A story's rank: its priority, then its age. Two stories at the same
+  # priority are not tied — the older one leads — and `min/2` over this pair
+  # gives exactly that, since a lower priority wins and an equal priority falls
+  # through to the smaller timestamp.
+  #
+  # The age used to be missing entirely, so two components inheriting the same
+  # priority produced identical sort keys. `Enum.sort_by/2` is stable, so the
+  # winner was whatever order the nodes arrived in — and that order is
+  # `kept ++ fresh` from `recompute_stale/3`, which depends on which entities
+  # happened to be stale on that pass. The answer to "which story leads" was
+  # therefore decided by recompute bookkeeping, and changed run to run.
+  #
+  # Criterion 5901 is named for the rule this implements: same priority, oldest
+  # created_at wins.
+  defp story_rank(story) do
+    {story.priority || 999, story_age(story)}
+  end
+
+  defp story_age(%{inserted_at: %DateTime{} = at}), do: DateTime.to_unix(at, :microsecond)
+
+  defp story_age(%{inserted_at: %NaiveDateTime{} = at}),
+    do: at |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
+
+  defp story_age(_story), do: 0
+
   defp build_component_priority_map(ctx) do
     # Direct: story.component_id → component
     direct =
       ctx.stories
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(%{}, fn story, acc ->
-        priority = story.priority || 999
-        Map.update(acc, story.component_id, priority, &min(&1, priority))
+        rank = story_rank(story)
+        Map.update(acc, story.component_id, rank, &min(&1, rank))
       end)
 
     # Spread priority to dependencies of surface components
@@ -2265,7 +2512,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(direct, fn story, acc ->
         surface = Map.get(ctx.components_by_id, story.component_id)
-        priority = story.priority || 999
+        rank = story_rank(story)
 
         deps =
           case surface && surface.dependencies do
@@ -2275,7 +2522,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           end
 
         Enum.reduce(deps, acc, fn dep, inner_acc ->
-          Map.update(inner_acc, dep.id, priority, &min(&1, priority))
+          Map.update(inner_acc, dep.id, rank, &min(&1, rank))
         end)
       end)
 

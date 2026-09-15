@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
       ]
     }
 
-    {:reply, reply, _frame} = AskUserQuestion.execute(params, frame(context))
+    {:reply, reply, _frame} = AskUserQuestion.execute(params, asking_frame(context))
 
     refute reply.isError,
            "the premise is a question that was raised, and this one was refused:\n" <>
@@ -60,10 +60,86 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
     Fixtures.question_id_from(response_text(reply))
   end
 
+  @doc """
+  The frame an *agent* asks from, as opposed to the main agent's own.
+
+  `AskUserQuestion` reads `frame.assigns[:agent_id]`, which `Plugs.AgentScope`
+  sets in production. Without it the request is written with a null `agent_id`,
+  and `QuestionsRepository.list_open_questions/1` inner-joins `agents` — so the
+  question is invisible to the main agent by construction and goes to the user
+  by default, which is the behaviour this story exists to replace.
+
+  A fresh agent per question, because these criteria are about routing between
+  parties, and reusing one asker would let a scenario pass that only works when
+  everything comes from the same place.
+  """
+  @spec asking_frame(map()) :: Frame.t()
+  def asking_frame(context) do
+    agent = Fixtures.running_agent(context.scope, role: "coding")
+
+    %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
+  end
+
   @doc "What the main agent sees waiting for it."
   @spec open_questions(map()) :: String.t()
   def open_questions(context),
     do: ListOpenQuestions |> call(%{}, context) |> response_text()
+
+  @doc """
+  Only the part of the listing that is the main agent's to act on.
+
+  `MainAgentMapper` renders two sections on purpose, and its own moduledoc says
+  why: an escalated question "is still open and still listed — it has not been
+  handled and it has not gone away — but it is not work the main agent can do
+  anything about". So the whole listing contains questions that have already
+  gone up, and asking whether an id appears in it cannot distinguish "the main
+  agent still holds this" from "the main agent handed it up and the listing
+  says so".
+
+  A criterion about where a question went has to read the section, not the page.
+  """
+  @spec mine_to_answer(map()) :: String.t()
+  def mine_to_answer(context) do
+    context
+    |> open_questions()
+    |> String.split("Waiting on the user")
+    |> hd()
+  end
+
+  @doc """
+  The checkout an agent asked from, read the way the main agent reads it.
+
+  `answer_question` verifies a `record` basis against the project, so an answer
+  naming a checkout that does not exist is refused as a guess — correctly. A
+  premise that wants "the main agent answered this" therefore has to name a
+  real one, and the place the main agent gets it is the open-questions listing,
+  which renders `checkout: <id> <root>` for exactly this purpose — and drops
+  the root when the copy has never reported one, so the id is the fallback and
+  is just as real.
+
+  So this is not a fixture reaching round the back. It is the lookup the main
+  agent performs before it answers, and the answer is grounded in it.
+  """
+  @spec checkout_of(map(), String.t()) :: String.t()
+  def checkout_of(context, question_id) do
+    listing = open_questions(context)
+
+    case Regex.run(~r/question: #{Regex.escape(question_id)}\n.*?\n\s*checkout: (\S+)(?: (\S+))?/s, listing) do
+      [_, _id, root] ->
+        root
+
+      [_, id] ->
+        id
+
+      nil ->
+        flunk("""
+        No checkout is listed for question #{question_id}, so there is nothing
+        real for the main agent to name in its answer.
+
+        #{listing}
+        """)
+    end
+  end
 
   @doc "The main agent answers from what the project records."
   @spec main_answers(map(), String.t(), String.t()) :: struct()

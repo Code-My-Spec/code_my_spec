@@ -91,22 +91,61 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       assert node_count > 0
     end
 
-    # Deleting every row leaves a cache row whose fingerprint still matches, so
-    # this is exactly the state the payload used to cover. The graph has to come
-    # back rather than read as empty.
-    test "a hit whose rows were never written recomputes instead of serving nothing" do
+    # This used to assert that the read rebuilt the graph. It no longer does,
+    # and that is the change: a reader repairing the rows is what made a writer
+    # that announces nothing indistinguishable from one that works.
+    #
+    # The worry the old test carried is still real — an empty projection behind
+    # a matching fingerprint is a failed write, not a project with no
+    # requirements — so it moves from being silently fixed to being reported.
+    test "a read serves the rows as they are, and the diagnostic names what is missing" do
       scope = setup_project()
 
-      {nodes, _edges} = RequirementGraph.compute_graph(scope)
+      # A story, because the diagnostic reports per-entity staleness and
+      # `stale_entities/2` drops project-level nodes — they are recomputed
+      # every pass and carry no fingerprint to disagree with. Without an entity
+      # this asserts against a blind spot rather than against the mechanism.
+      _story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
+
+      RequirementGraph.recompute(scope)
+      {nodes, _edges} = RequirementGraph.cached_graph(scope) |> elem(0)
       assert nodes != []
 
       Repo.delete_all(CodeMySpec.Requirements.Node)
 
-      {recomputed, _edges} = RequirementGraph.cached_graph(scope) |> elem(0)
+      {served, _edges} =
+        RequirementGraph.cached_graph_with_actionable(scope, settle: false)
+        |> elem(0)
 
-      assert length(recomputed) == length(nodes),
-             "an empty projection behind a matching fingerprint is a failed write, " <>
-               "not a project with no requirements"
+      assert served == [],
+             """
+             A read rebuilt the graph behind the caller's back.
+
+             That is the behaviour this whole split removed. A read that
+             repairs is a read that hides a writer which said nothing.
+             """
+
+      Application.put_env(:code_my_spec, :graph_stale_read_log, true)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :graph_stale_read_log) end)
+
+      RequirementGraph.recompute(scope)
+      Repo.delete_all(CodeMySpec.Requirements.Node)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          RequirementGraph.cached_graph_with_actionable(scope, settle: false)
+        end)
+
+      assert log =~ "STALE READ",
+             """
+             Every row was deleted and a read said nothing about it.
+
+             `stale_entities/2` counts an entity the context has and the rows
+             do not as stale — that is what makes a failed write visible now
+             that it is no longer invisibly repaired.
+
+             #{log}
+             """
     end
   end
 
@@ -463,13 +502,14 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     test "describe the same graph", %{scope: scope} do
       viewing = %{scope | active_working_copy_id: nil}
 
-      {{computed_nodes, _edges, _actionable}, computed} =
-        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+      # The computation is the write path now. This used to be the first read,
+      # back when a read computed its own answer on a miss — which is exactly
+      # the coupling that made a silent writer invisible.
+      {{computed_nodes, _edges}, _actionable, _at} = RequirementGraph.recompute(viewing)
 
       {{cached_nodes, _edges, _actionable}, cached} =
         RequirementGraph.cached_graph_with_actionable_metrics(viewing)
 
-      assert computed.served_from == "computed"
       assert cached.served_from == "cache"
 
       assert length(cached_nodes) == length(computed_nodes),
@@ -494,13 +534,11 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # That is the shape of the real failure without needing whatever made
     # rehydration fail on a 2009-node project — the read comes back short, and
     # the only question is whether a short read is served or refused.
-    test "a read that comes back short is refused, not served", %{scope: scope} do
+    test "a read that comes back short is served as it is, not repaired", %{scope: scope} do
       viewing = %{scope | active_working_copy_id: nil}
 
-      {{computed_nodes, _, _}, computed} =
-        RequirementGraph.cached_graph_with_actionable_metrics(viewing)
+      {{computed_nodes, _edges}, _actionable, _at} = RequirementGraph.recompute(viewing)
 
-      assert computed.served_from == "computed"
       assert length(computed_nodes) > 1, "need more than one node to remove one"
 
       victim =
@@ -516,29 +554,35 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       {{served_nodes, _, _}, served} =
         RequirementGraph.cached_graph_with_actionable_metrics(viewing)
 
-      assert served.served_from == "computed",
+      assert length(served_nodes) == length(computed_nodes) - 1,
              """
-             A cache read came back with fewer requirements than the publish
-             counted, and was served as a cache hit anyway.
+             A read repaired rows that had gone missing.
 
-             The publish records `node_count`, which is the one thing the rows
-             cannot say about themselves, so a read that cannot reconstitute
-             that many has lost something. Serving it reports a strict subset of
-             the graph under the timestamp of the computation that had all of
-             it — two graphs, one `computed_at`, which is exactly what QA
-             measured on story 1062 (2009 -> 1844 -> 2009).
+             It used to, and that is what changed: `served_graph/3` compared
+             the rows against the `node_count` the publish recorded and
+             recomputed on a shortfall. A read that repairs is a read that
+             hides a writer which announced nothing, so the guard went with the
+             rest of the read-side recompute.
 
-             Recomputing is the correct answer to a short read. Serving it is
-             not.
+             What QA measured on story 1062 (2009 -> 1844 -> 2009) is still a
+             real failure. It is now answered by the write path rather than by
+             whoever happens to look: the next pass rewrites every row it
+             visits, and `graph_stale_read_log` reports the shortfall in the
+             meantime for any entity that loses all of its rows.
+
+             served:   #{length(served_nodes)} nodes
+             computed: #{length(computed_nodes)} nodes
              """
 
-      assert length(served_nodes) == length(computed_nodes),
-             "the recompute should restore every node the short read had lost"
+      {{repaired_nodes, _edges}, _actionable, _at} = RequirementGraph.recompute(viewing)
+
+      assert length(repaired_nodes) == length(computed_nodes),
+             "the next pass should restore every node the short read was missing"
     end
   end
 
   defp setup_project do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("graph_cache")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

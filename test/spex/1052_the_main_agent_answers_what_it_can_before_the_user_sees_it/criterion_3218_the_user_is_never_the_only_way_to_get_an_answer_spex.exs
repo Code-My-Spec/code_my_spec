@@ -40,6 +40,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3218Spex do
       given_ "something the project already records", context do
         story = Fixtures.authored_story(context.scope, "Refunds reach the ledger")
 
+        # Released, or the project does not record it in the sense the main
+        # agent can check. `answer_question`'s `record` basis is verified
+        # against `Stories.ready_stories_without_epic/1`, which filters
+        # `ready_for_dev == true` — and `authored_story/3` leaves a story
+        # parked. Story 1060's criterion 3251 states the same premise and marks
+        # it ready for exactly this reason.
+        :ok = Fixtures.mark_story_ready(context.scope, story)
+
         {:ok, Map.put(context, :story, story)}
       end
 

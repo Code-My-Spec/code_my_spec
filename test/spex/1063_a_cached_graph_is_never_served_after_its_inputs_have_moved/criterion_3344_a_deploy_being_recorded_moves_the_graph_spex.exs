@@ -24,18 +24,32 @@ defmodule CodeMySpecSpex.Story1063.Criterion3344Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # `deploy` is filtered out of the story graph on the default `devops: :off`
+  # (see `RequirementDefinitionData`), so without this the requirement under
+  # test does not exist and the scenario asserts on a node that was never
+  # there.
+  setup :devops_uat_only
 
   spex "Recording a deploy moves the graph" do
     scenario "a deploy is recorded for a story" do
       given_ "a released story and a graph that has been served", context do
         story = create_story(context.scope, title: "Shipped", description: "a story to deploy")
 
-        _cold = read_graph(context)
+        before = read_settled_graph(context)
+
+        assert satisfaction_of(before, "deploy", :story, story.id) == false,
+               """
+               The premise did not hold: this story's `deploy` is not open
+               before the deploy is recorded, so recording one has nowhere to
+               show up.
+
+               deploy: #{inspect(satisfaction_of(before, "deploy", :story, story.id))}
+               """
 
         {:ok,
          context
          |> Map.put(:new_story, story)
-         |> Map.put(:before, read_graph(context))}
+         |> Map.put(:before, before)}
       end
 
       when_ "a deploy is recorded for that story", context do
@@ -47,21 +61,25 @@ defmodule CodeMySpecSpex.Story1063.Criterion3344Spex do
         {:ok, context}
       end
 
-      then_ "the graph no longer answers from the computation made before it", context do
+      then_ "the graph says that story has been deployed", context do
         after_deploy = read_graph(context)
 
-        refute after_deploy["computed_at"] == context.before["computed_at"],
+        assert satisfaction_of(after_deploy, "deploy", :story, context.new_story.id) == true,
                """
-               A deploy was recorded and the graph went on answering from the
-               computation it made before.
+               A deploy was recorded and the graph still says the story has not
+               been deployed.
 
                A deploy is recorded by devops machinery rather than by an agent
                working a story, which makes it the input most easily left off a
                list of "things an agent does" — and a story's chain still runs
                past it.
 
-               before: #{inspect(context.before["computed_at"])}
-               after:  #{inspect(after_deploy["computed_at"])}
+               The claim is the verdict, not a clock: a pass that ran and
+               applied nothing moves `computed_at` exactly as far as one that
+               worked, and `checked_at` is second-resolution besides.
+
+               deploy before: #{inspect(satisfaction_of(context.before, "deploy", :story, context.new_story.id))}
+               deploy after:  #{inspect(satisfaction_of(after_deploy, "deploy", :story, context.new_story.id))}
                """
 
         {:ok, context}

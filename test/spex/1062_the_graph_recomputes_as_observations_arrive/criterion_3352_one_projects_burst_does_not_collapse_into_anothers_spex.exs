@@ -51,6 +51,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3352Spex do
         other_scope = %{context.scope | active_project_id: other.id, active_project: other}
         other_context = %{context | project: other, scope: other_scope}
 
+        # A watcher for the second project too. `setup_active_project` starts
+        # one for the project it makes; a second one is on its own, and without
+        # it that project has no window at all — which would pass this
+        # criterion for the wrong reason, since a project with no watcher
+        # trivially does not share the first one's.
+        :ok = CodeMySpecSpex.Fixtures.watch_graph(other_scope)
+        ExUnit.Callbacks.on_exit(fn -> CodeMySpecSpex.Fixtures.stop_watching(other_scope) end)
+
         warm_graph(context)
         warm_graph(other_context)
 
@@ -80,11 +88,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3352Spex do
       end
 
       then_ "each project's graph moved on its own account", context do
-        refute read_graph(context)["computed_at"] == context.before["computed_at"],
+        refute last_recompute(read_graph(context)) == last_recompute(context.before),
                "the first project's graph did not move for its own write"
 
-        refute read_graph(context.other_context)["computed_at"] ==
-                 context.other_before["computed_at"],
+        refute last_recompute(read_graph(context.other_context)) ==
+                 last_recompute(context.other_before),
                """
                The second project's graph did not move for its own write.
 

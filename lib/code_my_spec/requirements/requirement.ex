@@ -27,6 +27,8 @@ defmodule CodeMySpec.Requirements.Requirement do
           role: atom() | nil,
           details: map(),
           checked_at: NaiveDateTime.t() | nil,
+          owner_component_type: String.t() | nil,
+          node_scope: atom() | nil,
           inputs_fingerprint: String.t() | nil
         }
 
@@ -43,6 +45,8 @@ defmodule CodeMySpec.Requirements.Requirement do
   @enforce_keys [:entity_type, :entity_id, :name, :satisfied]
   defstruct [
     :checked_at,
+    :owner_component_type,
+    :node_scope,
     :inputs_fingerprint,
     :entity_type,
     :entity_id,

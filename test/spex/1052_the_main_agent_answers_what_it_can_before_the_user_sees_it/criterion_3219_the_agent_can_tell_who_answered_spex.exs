@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
       end
 
       when_ "the answer arrives", context do
-        reply = main_answers(context, context.by_main, "/tmp/refunds-copy")
+        reply = main_answers(context, context.by_main, checkout_of(context, context.by_main))
         refute reply.isError, "the premise needs one answered by the main agent"
 
         :ok = user_answers(context, context.by_user, "Refuse")

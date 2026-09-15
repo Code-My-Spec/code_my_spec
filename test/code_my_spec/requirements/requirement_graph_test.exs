@@ -34,7 +34,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       write_file(tmp_dir, "mix.exs", "defmodule MyApp.MixProject do\n  use Mix.Project\nend")
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
 
       refute Enum.any?(actionable, &(&1.name == "project_setup")),
              "setup is reached explicitly now; offering it as work means offering " <>
@@ -88,7 +88,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
       sync!(scope, tmp_dir)
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
       names = Enum.map(actionable, & &1.name)
 
       # Component needs a spec (spec_file is first requirement for schema)
@@ -154,7 +154,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       surface = Components.get_component_by_module_name(scope, "MyAppWeb.QaLive")
       context = Components.get_component_by_module_name(scope, "MyApp.Qa")
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
       component_ids = for n <- actionable, n.entity_type == "component", do: n.entity_id
 
       assert context.id in component_ids,
@@ -210,7 +210,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
       sync!(scope, tmp_dir)
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
 
       assert "architecture_designed" in Enum.map(actionable, & &1.name),
              "expected architecture_designed to be actionable when its prerequisite is satisfied, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
@@ -264,7 +264,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
       sync!(scope, tmp_dir)
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
       names = Enum.map(actionable, & &1.name)
 
       # Anchor: there is non-project work in the list, so the ordering
@@ -322,7 +322,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       sync!(scope, tmp_dir)
 
-      actionable = RequirementGraph.next_actionable(scope)
+      actionable = actionable(scope)
       story_reqs = Enum.filter(actionable, &(&1.entity_type == "story"))
 
       # component_linked is blocked by issues_resolved which depends on the
@@ -563,7 +563,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   # -- Helpers --
 
   defp setup_project do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("requirement_graph")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
@@ -638,5 +638,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     full_path = Path.join(tmp_dir, relative_path)
     File.mkdir_p!(Path.dirname(full_path))
     File.write!(full_path, content)
+  end
+
+  # Reads serve rows and compute nothing. Something has to have computed them,
+  # and in production that is `GraphWatcher` reacting to a writer's
+  # announcement — here it is said out loud, because a test that reads a graph
+  # nobody built is asserting against an empty one.
+  defp actionable(scope) do
+    RequirementGraph.recompute(scope)
+    RequirementGraph.next_actionable(scope)
   end
 end

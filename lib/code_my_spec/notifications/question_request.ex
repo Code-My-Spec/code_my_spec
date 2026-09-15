@@ -38,12 +38,26 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   # main agent and moves here when it escalates.
   @holders ~w(main_agent user)
 
+  # Who actually gave the current answer, as opposed to `holder` (who it was
+  # waiting on). Story 1052's 3219: the collecting agent cannot weigh a main
+  # agent's reading of the records the same as the user's own intent unless
+  # the answer says which one it is.
+  @answerers ~w(main_agent user)
+
   schema "question_requests" do
     field :title, :string
     field :questions, {:array, :map}, default: []
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
     field :holder, :string, default: "user"
+    field :answered_by, :string, default: "user"
+
+    # Set only when a user's answer replaced a main agent's. `answered_by`
+    # alone cannot say this: after the override it correctly reads "user", the
+    # same as an ordinary first answer, and 3220 needs the collecting agent to
+    # hear that this one is not that — an earlier answer existed and was
+    # overruled.
+    field :overruled, :boolean, default: false
 
     # Why the main agent could not answer it. Carried so the person reads a
     # question that arrived with a reason rather than one that simply appeared,
@@ -83,6 +97,8 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :status,
       :answers,
       :holder,
+      :answered_by,
+      :overruled,
       :escalation_reason,
       :session_external_id
     ])
@@ -90,6 +106,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     |> validate_nonempty_questions()
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:holder, @holders)
+    |> validate_inclusion(:answered_by, @answerers)
   end
 
   @doc "Who a question can be waiting on."

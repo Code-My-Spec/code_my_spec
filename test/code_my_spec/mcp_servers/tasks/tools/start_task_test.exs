@@ -158,6 +158,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       component_a = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
       component_b = component_fixture(scope, %{name: "Item", module_name: "MyApp.Item"})
       session = session_fixture(scope)
+
+      # Both components have to be in the graph before a task can start on
+      # either. Reads serve rows and compute nothing.
+      CodeMySpec.Requirements.recompute(scope)
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params_a = %{
@@ -270,6 +275,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
     component = component_fixture(scope)
     session = session_fixture(scope)
+
+    # The graph has to exist before a task can be started against a node in it.
+    # Reads serve rows and compute nothing; in production `GraphWatcher` does
+    # this when the component sync announces.
+    CodeMySpec.Requirements.recompute(scope)
 
     req_params = %{
       requirement_name: "spec_file",

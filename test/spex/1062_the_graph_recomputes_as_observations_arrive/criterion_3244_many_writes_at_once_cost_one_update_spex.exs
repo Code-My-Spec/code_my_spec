@@ -59,10 +59,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3244Spex do
         first = read_graph(context)
         second = read_graph(context)
 
-        refute first["computed_at"] == context.before["computed_at"],
+        refute last_recompute(first) == last_recompute(context.before),
                "the burst must reach the graph at all for this criterion to mean anything"
 
-        assert first["computed_at"] == second["computed_at"],
+        assert last_recompute(first) == last_recompute(second),
                """
                Two reads after a settled burst disagreed about when the graph
                was computed, which means the burst is still producing passes.
@@ -70,8 +70,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3244Spex do
                Ten writes should fold into one update. Recomputing per event is
                a whole graph per row, and a single sync writes hundreds.
 
-               first:  #{inspect(first["computed_at"])}
-               second: #{inspect(second["computed_at"])}
+               first:  #{inspect(last_recompute(first))}
+               second: #{inspect(last_recompute(second))}
                """
 
         {:ok, context}
