@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   Whether the requirement graph is actually keeping up, watched live rather
   than argued from logs.
 
-  Three things have to be true for "incremental sync works", and each of them
+  Four things have to be true for "incremental sync works", and each of them
   used to be checked by grepping a file and believing the result.
 
   **Announcements arrive.** A writer that changes a graph input says so. The
@@ -25,6 +25,15 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   A set that does not empty is the finding. It means an input moved and nothing
   said so, and it names the entities rather than leaving it to be inferred.
+
+  **And somebody is told.** Fresh rows are where this machinery's job ends and
+  where the point of it does not: the observable feature is an idle agent
+  learning that work appeared. "What the last pass caused" is that link —
+  what became actionable that was not before, and when a wake last went out.
+  It is the only panel whose quiet answer is usually the right one, so it says
+  "nothing new" rather than going blank: a pass that woke nobody because
+  nothing appeared and a pass that woke nobody because the wake is broken look
+  identical everywhere else.
 
   ## Why the stale query is here and not only in the log
 
@@ -104,7 +113,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   # A pass landed. Re-read the rows and re-run the diff, because this is the
   # moment the answer is supposed to have become right.
   def handle_info({:graph_updated, _project_id}, socket) do
-    {:noreply, socket |> record({:recomputed, nil}) |> assign_report() |> assign_stale()}
+    {:noreply, socket |> close_pass() |> assign_report() |> assign_stale()}
   end
 
   def handle_info(:tick, socket) do
@@ -117,8 +126,36 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp schedule_tick, do: Process.send_after(self(), :tick, @refresh_ms)
 
   defp record(socket, {kind, obs}) do
-    entry = %{kind: kind, obs: obs, at: DateTime.utc_now()}
+    entry = %{kind: kind, obs: obs, at: DateTime.utc_now(), consumed: []}
     update(socket, :feed, &Enum.take([entry | &1], @feed_limit))
+  end
+
+  # Which announcements this pass answered.
+  #
+  # Not carried on the message, and deliberately: criterion 3355 pins
+  # `{:graph_updated, project_id}` to saying only that something moved, so a
+  # subscriber cannot be handed the observation ids. The attribution is instead
+  # made the same way the watcher makes it — a pass consumes everything
+  # announced before it and nothing after — which is the actual rule rather than
+  # a second copy of it shipped over PubSub.
+  #
+  # The consequence worth knowing when reading this feed: a pass that lands
+  # against an empty pending set is one whose observations were consumed by a
+  # `settle/1` from somewhere else, not a pass that ran for no reason.
+  defp close_pass(socket) do
+    {pending, settled} =
+      Enum.split_while(socket.assigns.feed, &(&1.kind == :announced and &1.consumed == []))
+
+    entry = %{
+      kind: :recomputed,
+      obs: nil,
+      at: DateTime.utc_now(),
+      consumed: Enum.map(pending, & &1.obs) |> Enum.reject(&is_nil/1) |> Enum.reverse()
+    }
+
+    marked = Enum.map(pending, &Map.put(&1, :consumed, [:done]))
+
+    assign(socket, feed: Enum.take([entry | marked] ++ settled, @feed_limit))
   end
 
   defp subscribe(%{id: id}), do: GraphInputs.subscribe(id)
@@ -257,8 +294,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
           </h2>
           <div :if={is_nil(@report.watcher)} class="text-sm text-error">
             Nothing is watching this project. Reads serve rows, so the graph will not move
-            until something starts a watcher — and <code>settle/1</code> answers
-            <code>:ok</code> either way, which is why this is worth saying out loud.
+            until something starts a watcher — and <code>settle/1</code>
+            answers <code>:ok</code>
+            either way, which is why this is worth saying out loud.
           </div>
           <dl :if={@report.watcher} class="grid grid-cols-3 gap-4 text-sm">
             <div>
@@ -276,6 +314,39 @@ defmodule CodeMySpecWeb.DevGraphLive do
               <dd class={if @report.watcher.last_error, do: "text-error", else: ""}>
                 {(@report.watcher.last_error && @report.watcher.last_error.message) || "none"}
               </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section :if={@report.watcher} class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            What the last pass caused
+          </h2>
+          <p class="text-xs opacity-60">
+            The end of the chain, and the half that a fresh row count cannot show. A pass
+            wakes the roles for work that <em>appeared</em> — the difference between its
+            actionable set and the previous pass's — so "recomputed, appeared nothing,
+            woke nobody" is the correct and common answer, and is not the same as a pass
+            that found work and told no one.
+          </p>
+          <dl class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt class="opacity-60">Actionable now</dt>
+              <dd class="tabular-nums">{@report.watcher.actionable || "no pass yet"}</dd>
+            </div>
+            <div>
+              <dt class="opacity-60">Appeared on that pass</dt>
+              <dd class="font-mono text-xs">
+                {case @report.watcher.appeared do
+                  nil -> "no pass yet"
+                  [] -> "nothing new"
+                  names -> Enum.join(names, ", ")
+                end}
+              </dd>
+            </div>
+            <div>
+              <dt class="opacity-60">Last wake sent</dt>
+              <dd class="tabular-nums">{@report.watcher.last_wake || "never"}</dd>
             </div>
           </dl>
         </section>
@@ -312,6 +383,12 @@ defmodule CodeMySpecWeb.DevGraphLive do
               <span class="opacity-60 tabular-nums">{Calendar.strftime(e.at, "%H:%M:%S")}</span>
               <span class={event_class(e.kind)}>{event_label(e.kind)}</span>
               <span :if={e.obs} class="opacity-70">obs={e.obs}</span>
+              <span :if={e.kind == :recomputed and e.consumed != []} class="opacity-70">
+                consumed {Enum.join(e.consumed, ",")}
+              </span>
+              <span :if={e.kind == :recomputed and e.consumed == []} class="opacity-40">
+                consumed nothing pending — settled elsewhere
+              </span>
             </li>
           </ul>
         </section>
@@ -356,7 +433,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
           <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">Vantages</h2>
           <table class="table table-sm">
             <thead>
-              <tr><th>Checkout</th><th class="text-right">Rows</th><th>Newest row</th></tr>
+              <tr>
+                <th>Checkout</th>
+                <th class="text-right">Rows</th>
+                <th>Newest row</th>
+              </tr>
             </thead>
             <tbody>
               <tr :for={v <- @report.vantages}>
