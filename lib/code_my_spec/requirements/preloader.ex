@@ -540,15 +540,39 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
+  # Only what decides a verdict, which is not what this used to select.
+  #
+  # `Freshness.story/2` hashes this into **every** story's fingerprint, so
+  # anything in here that moves takes the whole project's stories with it. It
+  # carried `commits_ahead_of_main`, `commits_behind_main` and `tree_dirty`,
+  # and all three move every time anybody edits a file in any checkout.
+  # Measured on dev over one hour: `working_copies` took 22 distinct values
+  # while every other shared input took between 2 and 6.
+  #
+  # None of the three gates anything. `Promotion.promoted/2` decides
+  # `code_on_running_copy` from the story's own `promoted_version` stamp, and
+  # `not_yet_promoted/1` puts these counts in the `details` of an
+  # already-false verdict — under a comment that says so outright:
+  # "Informational only now — none of this gates."
+  #
+  # So this was the exact shape story 1020's rule forbids: an observation
+  # costing work in proportion to the size of the project rather than to what
+  # it changed. One file edit, every story reconsidered, for a verdict that
+  # could not have moved.
+  #
+  # The cost of dropping them is that those counts can go stale in the
+  # diagnostic text of a requirement that is already unsatisfied — "behind: 3"
+  # read a few minutes late. Worth saying plainly rather than hiding; it is
+  # text on a refusal, against recomputing every story in the project on every
+  # keystroke. `is_nil(c.git_state_at)` stays: it flips once, when a checkout
+  # first reports, and it swaps the diagnostic for a different sentence.
   defp asking_copy_inputs(project_id, working_copy_id) do
     Repo.all(
       from(c in "working_copies",
         where:
           c.project_id == type(^project_id, :binary_id) and
             c.id == type(^working_copy_id, :binary_id),
-        select:
-          {"here", c.id, is_nil(c.git_state_at), c.commits_ahead_of_main, c.commits_behind_main,
-           c.tree_dirty}
+        select: {"here", c.id, is_nil(c.git_state_at)}
       )
     )
   end

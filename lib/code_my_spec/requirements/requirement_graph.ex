@@ -273,7 +273,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp analysis_source(_node), do: nil
 
-  defp recompute_stale(scope, ctx, config) do
+  defp recompute_stale(scope, ctx, config, preload_ms) do
     # What a pass costs, on the line that already says what it did.
     #
     # The sub-phase timings (`nodes`, `edges`, the component-tree breakdown)
@@ -283,9 +283,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # exactly that: "median 2.6s, p90 5.9s, max 14.8s" over 348 computes, pieced
     # together from a log rather than read off a field, which is why nobody
     # could say afterwards whether the work had made it better.
+    #
+    # Split three ways, because the total on its own sent the last measurement
+    # to the wrong conclusion. Once the barren entities stopped being stale, 981
+    # of 990 passes found nothing to do and the median held at ~700ms — which
+    # reads as "the fix bought nothing" until you notice the clock started
+    # *after* the preload and the work being timed is a pass that recomputed
+    # nothing. `preload` and `projection` are both paid whatever the answer
+    # turns out to be; only what is left is proportional to the observation.
+    # `log_timing/6` already splits the full path this way and this path had
+    # none of it, though it is now the path that serves every pass.
     started = System.monotonic_time(:millisecond)
     stamp_project(scope)
-    {stored_nodes, stored_edges} = Projection.load(scope, ctx)
+    {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
 
     topology = Freshness.topology(ctx, config)
 
@@ -330,7 +340,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
-          "in #{elapsed_ms(started)}ms; " <>
+          "in #{elapsed_ms(started)}ms " <>
+          "(preload #{ms_or_na(preload_ms)}, projection #{projection_ms}ms); " <>
           "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
@@ -941,9 +952,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def recompute(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
-    with {:ok, ctx} <- Preloader.load(scope) do
+    # Timed here because here is where it is paid. `recompute_stale/4` starts
+    # its own clock after this returns, so every duration this path has ever
+    # reported excluded the preload — and the preload is the half that runs
+    # whether or not the pass finds anything to do.
+    {preload_ms, loaded} = timed(fn -> Preloader.load(scope) end)
+
+    with {:ok, ctx} <- loaded do
       {nodes, edges} =
-        recompute_stale(scope, ctx, CodeMySpec.Configurations.get_or_create(scope))
+        recompute_stale(
+          scope,
+          ctx,
+          CodeMySpec.Configurations.get_or_create(scope),
+          preload_ms
+        )
 
       # Answered from the work just done rather than by reading back. A second
       # call would have to settle first, and the only process that could be
@@ -2068,6 +2090,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.union(barren_children)
     |> MapSet.new(&{"component", &1})
   end
+
+  defp timed(fun) do
+    {us, result} = :timer.tc(fun)
+    {div(us, 1000), result}
+  end
+
+  # `n/a` rather than 0, for the same reason `log_timing/6` does it: a zero here
+  # would read as "preloading is free", which is the opposite of what the last
+  # measurement found.
+  defp ms_or_na(nil), do: "n/a"
+  defp ms_or_na(ms), do: "#{ms}ms"
 
   defp filtered_template(component, config) do
     component.type

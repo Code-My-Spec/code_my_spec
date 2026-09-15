@@ -336,26 +336,72 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     #
     # The same shape as the deploy gap above, on a node shipped long after this
     # block was written, and it failed in the direction that keeps an agent
-    # stuck rather than the one that lets work through: the gate refused a story
-    # for being behind, the merge landed, the harness said so, and the cached
-    # graph went on serving the refusal the agent had already cleared.
+    # stuck rather than the one that lets work through: the cached graph went on
+    # serving a refusal the agent had already cleared.
     #
-    # The scope's own checkout, because that is the one the gate asks about —
-    # `running_copy_check/2` reads `main/1` and the asking copy, and nothing
-    # else. Written against a third, unrelated checkout this passed for a
-    # reason unconnected to the gate: the fingerprint read the whole table, so
-    # any row moving moved it.
-    test "a checkout reporting its work is now on main moves it", %{scope: scope} do
+    # What clears it has since moved, and this test moved with it. It used to
+    # drive `record_git_state` from `ahead: 3` to `ahead: 0` and assert the
+    # fingerprint noticed. It no longer can, because `ahead` no longer decides
+    # anything: `Promotion.promoted/2` answers from the story's own
+    # `promoted_version` stamp, and `not_yet_promoted/1` returns `false`
+    # whatever the counts say — `and_serving/2` short-circuits on it, so
+    # `serving/2` is not even consulted. The counts reach only the reason text,
+    # under a comment in `promotion.ex` saying so: "Informational only now —
+    # none of this gates."
+    #
+    # Asserting them kept `commits_ahead_of_main`, `commits_behind_main` and
+    # `tree_dirty` in `asking_copy_inputs/2`, which `Freshness.story/2` hashes
+    # into *every* story's fingerprint. All three move whenever anybody edits a
+    # file in any checkout, so one keystroke reconsidered every story in the
+    # project for a verdict that could not have changed. Measured on dev over an
+    # hour: `working_copies` took 22 distinct digests while every other shared
+    # input took 2 to 6.
+    #
+    # `Stories.mark_ready_stories_promoted/2` is explicit that this is the
+    # intent — the stamp exists to stop "a checkout dirtied afterward for
+    # unrelated work from un-answering a question that already had its answer".
+    # The fingerprint was doing precisely that un-answering.
+    #
+    # So the claim is the same and the transition is the real one: the thing
+    # that clears the refusal has to move the fingerprint.
+    test "a story being promoted moves it", %{scope: scope} do
+      # `specs_ready`, not `ready_for_dev` — the stamp is taken at promotion and
+      # only covers stories whose specs have landed.
+      {:ok, story} =
+        CodeMySpec.Stories.create_story(scope, %{
+          title: "ready to go",
+          description: "released for development",
+          ready_for_dev: true
+        })
+
+      {:ok, _} = CodeMySpec.Stories.update_story(scope, story, %{specs_ready: true})
+
+      unpromoted = current_fingerprint(scope)
+
+      {:ok, [_ | _]} = CodeMySpec.Stories.mark_ready_stories_promoted(scope, "v1.2.3")
+
+      refute current_fingerprint(scope) == unpromoted,
+             "the promotion landed and stamped the story; a fingerprint blind to " <>
+               "that keeps serving the refusal the agent has already cleared"
+    end
+
+    # The other direction, and the reason the change above is safe to make.
+    #
+    # A checkout going dirty is not an input to any story's verdict, so it must
+    # not cost the project a recompute. Without this, restoring those fields to
+    # `asking_copy_inputs/2` would look free.
+    test "a checkout going dirty does not move it", %{scope: scope} do
       {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
 
-      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 3, behind: 0, dirty: false})
-      behind = current_fingerprint(scope)
-
       {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 0, behind: 0, dirty: false})
+      clean = current_fingerprint(scope)
 
-      refute current_fingerprint(scope) == behind,
-             "the merge landed and the checkout said so; a fingerprint blind to " <>
-               "that keeps serving the refusal the agent has already cleared"
+      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 4, behind: 2, dirty: true})
+
+      assert current_fingerprint(scope) == clean,
+             "editing a file moved every story's fingerprint. `promoted_version` " <>
+               "decides this verdict and these counts are diagnostic text on an " <>
+               "already-false one, so this is a whole-project recompute per keystroke"
     end
 
     # The other half of the same node. That the code is on the running copy says
