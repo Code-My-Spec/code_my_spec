@@ -16,6 +16,34 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
+  @doc """
+  The dynamic panel beside a conversation, with nothing to switch between.
+
+  Same wrapper identity as `panels/1` — `data-test="conversation-panels"` —
+  so a caller with exactly one thing to show (a form, a payment element, a
+  boot-status card) doesn't get a tab strip with two dead tabs beside it:
+  `IntakeLive.Plan`/`Workspace` (pre-signup, pre-project) have no preview to
+  show and no team activity to report, so `panels/1`'s three-tab shape was
+  chrome around nothing, not a smaller version of the real thing.
+
+  Sized the same way `panels/1`'s body is — capped and independently
+  scrollable when stacked below the conversation on a phone, a fixed-width
+  column with no cap beside it on a desk — so a caller only supplies what
+  differs (the one card), not the shape it sits in.
+  """
+  slot :inner_block, required: true
+
+  def single_panel(assigns) do
+    ~H"""
+    <div
+      data-test="conversation-panels"
+      class="max-h-[45dvh] overflow-y-auto border-t border-base-300 p-4 lg:max-h-none lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l"
+    >
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
   attr :screen, :atom, required: true
   attr :open, :list, required: true
   attr :dynamic_view, :string, required: true
