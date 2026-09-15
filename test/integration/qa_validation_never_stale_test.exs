@@ -89,10 +89,10 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
     """)
 
     compile_jsonl = Path.expand(Path.join(@fixture_dir, "compile.jsonl"))
-    # `spex: :off` does not stop `spex_stale` from being requested — it is
-    # deliberately absent from `@config_gated_analyzers`, since the
-    # specs-passing gate needs a fresh run to exist regardless of whether a
-    # failure blocks. Nothing here is about spex, so it has nothing to say.
+    # `spex: :off` now stops `spex_stale` from being requested at all, so
+    # this fixture is never actually consumed — kept passed through
+    # harmlessly rather than stripped for a test that has nothing to say
+    # about spex either way.
     spex_jsonl = Path.expand("test/fixtures/validation/spex_green.jsonl")
 
     turn1 =

@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.ConversationPanels, only: [single_panel: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Accounts.Account
@@ -128,18 +129,19 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   # Exactly one card, chosen by where the visitor is — never a tab strip with
   # nothing behind it. `@workspace.status` is already the single source of
-  # truth every other conditional on this page reads from.
+  # truth every other conditional on this page reads from. `single_panel/1`
+  # is the same shared component `IntakeLive.Plan` moved to (story 1033/3425
+  # — same wrapper identity as the cockpit's own panel, given different
+  # backing data), which is also where the sizing lives now: capped and
+  # independently scrollable when stacked below chat on a phone, a
+  # fixed-width column with no cap beside it on a desk. That cap matters here
+  # specifically because a card whose own content is tall (Stripe's payment
+  # element, with Link's optional fields expanded) can otherwise claim its
+  # full natural height and push the chat column's flex-1 to zero — the chat
+  # did not shrink, it vanished.
   defp dynamic_panel(assigns) do
     ~H"""
-    <%!--
-      Capped, not shrink-0, on narrow screens. A card whose own content is
-      tall (Stripe's payment element, with Link's optional fields expanded)
-      claimed its full natural height and pushed the chat column's flex-1 to
-      zero — the chat did not shrink, it vanished. `max-h` plus its own
-      scroll keeps both sections visible; the fixed-width side column on
-      `lg:` has no such competition, so it can go back to not shrinking.
-    --%>
-    <div class="max-h-[45dvh] overflow-y-auto border-t border-base-300 p-4 lg:max-h-none lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l">
+    <.single_panel>
       <%!--
         What to run, for a visitor who chose their own machine. There is no
         container to watch, so the ambient strip is replaced by the one thing
@@ -215,7 +217,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         app_state={@app_state}
         project_id={@project_id}
       />
-    </div>
+    </.single_panel>
     """
   end
 

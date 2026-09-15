@@ -135,17 +135,21 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # Analyzer atom → ProjectConfiguration field that gates it.
   # Atoms not in this map are always eligible.
-  # `spex_stale` is deliberately absent: the `spex` config decides whether
-  # a spex failure BLOCKS the stop, not whether the suite runs. The
-  # specs-passing gate needs a fresh run to flip a story to specs-ready,
-  # so letting `spex: :off` suppress the analyzer would make
-  # `bdd_specs_passing` permanently unsatisfiable and clamp every story
-  # behind it — the failure mode that got the node deleted in bab2f792.
   #
-  # Same split credo already has: the mode decides blocking, not looking.
+  # `spex_stale` used to be deliberately absent here: `spex: :off` suppressing
+  # the analyzer would make `bdd_specs_passing` permanently unsatisfiable for
+  # any story that had not already latched, since nothing would ever run a
+  # fresh spex to flip it — the failure mode that got the node deleted in
+  # bab2f792. That reasoning held only while a *server-dispatched* sweep was
+  # the sole way a spex run ever happened. It is not the only way: an agent's
+  # own `mix spex`, or `start_analysis`, routes through the same run ledger
+  # (story 839) regardless of this config, so `spex: :off` now means "the
+  # automatic stop-hook sweep stays quiet", not "spex can never run again" —
+  # the escape hatch bab2f792 needed is a command away, not gone.
   @config_gated_analyzers %{
     credo: :credo,
     exunit_stale: :exunit,
+    spex_stale: :spex,
     validate_spec: :spec_validation,
     validate_bdd: :spec_validation,
     validate_qa: :qa_validation
@@ -156,15 +160,25 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   Three layers:
   - **Role-derived** — concerns that always apply to a file role (credo
-    on code files, validators on spec files).
+    on code files, validators on spec files). Subject to the config
+    filter: a project that turned a source off does not want it looked
+    at just because a file of the matching role changed.
   - **Task-declared** — concerns the active task adds via `analyzers/0`.
+    Never subject to the config filter (see below).
   - **Task-excluded** — concerns the active task removes via
     `excluded_analyzers/0`. ComponentTest uses this to opt out of
     `:exunit_stale` while the agent is writing tests, since exunit
     failures are expected until the implementation lands.
 
-  After merging the first two and subtracting the third, any analyzer
-  whose `ProjectConfiguration` field is `:off` gets dropped.
+  Config gates role-derived inclusion only, not task-declared. A task
+  that names an analyzer in its own `analyzers/0` is not asking for a
+  general sweep — it is asking the one question its own gate depends on
+  (`FixBddSpecs` names `spex_stale` because `bdd_specs_passing` cannot be
+  evaluated without a fresh spex run to read). Filtering that out because
+  the project turned automatic spex sweeps off would make the task that
+  exists to earn the latch unable to ever run the check that earns it —
+  the same shape of permanently-unsatisfiable gate that got a requirement
+  node deleted once already (`bab2f792`), just moved one layer down.
   """
   @spec resolve_analyzers(map() | nil, [map()], map()) :: [atom()]
   def resolve_analyzers(task, changed_files, config) do
@@ -172,15 +186,19 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     task_declared = task_analyzers(task)
     task_excluded = task_excluded_analyzers(task)
 
-    merged =
-      (role_derived ++ task_declared)
-      |> Enum.uniq()
+    role_kept =
+      role_derived
       |> Enum.reject(&(&1 in task_excluded))
+      |> apply_config_filter(config)
 
-    filtered = apply_config_filter(merged, config)
+    task_kept = Enum.reject(task_declared, &(&1 in task_excluded))
+
+    filtered = Enum.uniq(role_kept ++ task_kept)
+
+    dropped_by_config = (role_derived -- task_excluded) -- role_kept
 
     Logger.info(
-      "[Pipeline] Analyzers: #{inspect(filtered)} (#{resolve_source(role_derived, task_declared, task_excluded, task)}#{config_note(merged -- filtered)})"
+      "[Pipeline] Analyzers: #{inspect(filtered)} (#{resolve_source(role_derived, task_declared, task_excluded, task)}#{config_note(dropped_by_config)})"
     )
 
     filtered
@@ -212,9 +230,21 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end)
   end
 
-  defp task_analyzers(nil), do: []
+  @doc """
+  Analyzers the active task declares via `analyzers/0`.
 
-  defp task_analyzers(task) do
+  Public for the same reason `task_excluded_analyzers/1` is: `Validation`'s
+  no-changed-files self-heal path re-enqueues every config-enabled source
+  whose latest run failed, and a task-declared analyzer bypasses the config
+  gate there too — `FixBddSpecs` naming `spex_stale` has to survive
+  `spex: :off` in both places, not just the one with changed files, or a
+  quiet stop while that task is active can go back to never re-enqueuing
+  the run its own gate is waiting on.
+  """
+  @spec task_analyzers(map() | nil) :: [atom()]
+  def task_analyzers(nil), do: []
+
+  def task_analyzers(task) do
     module = task.session_type
 
     if module && function_exported?(module, :analyzers, 0) do
