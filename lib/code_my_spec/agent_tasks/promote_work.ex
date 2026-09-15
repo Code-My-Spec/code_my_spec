@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
   Issue cf06b908 fixed the actual defect one layer down instead:
   `Promotion.running_copy_check/2` no longer gates on `commits_behind_main` at
-  all, because ancestry (`commits_ahead_of_main == 0`) already proves this
+  all, because ancestry already proves this
   checkout's work is on main and only grows more true as main gains commits
   nobody here wrote. A behind-only checkout now reaches `verdict/2` and
   `prompt_for/2` as `{true, _}`, the same as any other satisfied checkout, so

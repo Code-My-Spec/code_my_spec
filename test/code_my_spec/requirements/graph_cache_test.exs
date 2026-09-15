@@ -385,24 +385,16 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
                "that keeps serving the refusal the agent has already cleared"
     end
 
-    # The other direction, and the reason the change above is safe to make.
+    # The test that used to sit here drove `record_git_state/2` from clean to
+    # dirty and asserted the fingerprint did not move — a guard against those
+    # fields being put back into `asking_copy_inputs/2`.
     #
-    # A checkout going dirty is not an input to any story's verdict, so it must
-    # not cost the project a recompute. Without this, restoring those fields to
-    # `asking_copy_inputs/2` would look free.
-    test "a checkout going dirty does not move it", %{scope: scope} do
-      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
-
-      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 0, behind: 0, dirty: false})
-      clean = current_fingerprint(scope)
-
-      {:ok, _} = WorkingCopies.record_git_state(copy, %{ahead: 4, behind: 2, dirty: true})
-
-      assert current_fingerprint(scope) == clean,
-             "editing a file moved every story's fingerprint. `promoted_version` " <>
-               "decides this verdict and these counts are diagnostic text on an " <>
-               "already-false one, so this is a whole-project recompute per keystroke"
-    end
+    # It is gone because the columns are. `commits_ahead_of_main`,
+    # `commits_behind_main` and `tree_dirty` have been dropped from
+    # `working_copies` entirely: a mirror of git that nothing decided on, which
+    # `promote` answers live by running git, and which cost a whole-project
+    # recompute per keystroke while it sat in the fingerprint. There is no
+    # longer a value to set, so there is no longer a way to write this.
 
     # The other half of the same node. That the code is on the running copy says
     # nothing about whether anything is serving it, and QA needs both — the two

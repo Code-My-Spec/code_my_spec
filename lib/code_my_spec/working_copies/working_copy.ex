@@ -67,17 +67,27 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # partial unique index rather than by whoever remembers to clear the others.
     field :main, :boolean, default: false
 
-    # Whether this checkout's work is on main, main's work is on it, and its
-    # tree is clean — measured by the machine that holds the disk and reported
-    # on every sync, because the server has no `git` to run and a graph computed
-    # inside the channel process cannot ask the channel.
+    # `commits_ahead_of_main`, `commits_behind_main`, `tree_dirty` and
+    # `git_state_at` were here, reported by the harness on every sync. They are
+    # gone, and what is worth keeping is why they were a mistake rather than
+    # merely unused.
     #
-    # `nil` means never reported, which is not the same as "in sync" and is
-    # deliberately distinguishable from it.
-    field :commits_ahead_of_main, :integer
-    field :commits_behind_main, :integer
-    field :tree_dirty, :boolean
-    field :git_state_at, :utc_datetime_usec
+    # They are a property of a git repository, not of this domain. Nothing here
+    # ever decided on them: `Promotion.promoted/2` answers `code_on_running_copy`
+    # from the story's own `promoted_version` stamp, and the promote gate
+    # measures git live by running it — `git merge --ff-only` is the
+    # precondition and the merge in one command. A cached second copy of git's
+    # answer could only ever be a staler version of something we can ask for.
+    #
+    # Being a mirror, it went stale the way mirrors do, and `Sync` recorded one:
+    # "at 06:01 git said `ahead=0 behind=0` and the row still said `ahead=3`".
+    #
+    # And it was expensive. `Freshness.story/2` hashed these into every story's
+    # fingerprint, so one keystroke in any checkout reconsidered every story in
+    # the project; `record_git_state/2` announced a graph change on every sync,
+    # charging a pass and a preload per copy to discover nothing had moved.
+    # Measured on dev: `working_copies` took 22 distinct digests in an hour
+    # while every other shared input took between 2 and 6.
 
     # Whether the application this checkout runs is answering, measured against
     # `preview_url` — the address QA browses, not a local port only this machine
@@ -173,10 +183,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :preview_url,
       :preview_tunnel_id,
       :preview_tunnel_secret,
-      :commits_ahead_of_main,
-      :commits_behind_main,
-      :tree_dirty,
-      :git_state_at,
       :preview_status,
       :preview_checked_at
     ])

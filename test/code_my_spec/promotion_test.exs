@@ -359,6 +359,16 @@ defmodule CodeMySpec.PromotionTest do
     end
   end
 
+  # The checkout's live git state can no longer be set here at all, and that is
+  # the point rather than a gap in these tests. `commits_ahead_of_main`,
+  # `commits_behind_main` and `tree_dirty` have been dropped: nothing decided on
+  # them, `promote` measures git by running it, and hashing them into every
+  # story's fingerprint made one keystroke reconsider every story in the project.
+  #
+  # So what these used to arrange — a checkout ahead and dirty, a checkout
+  # looking clean — is now unrepresentable, and the claim they make is
+  # structural. They are kept because the claim is still the one that matters:
+  # the stamp decides, and it is the only thing that can.
   describe "code_on_running_copy reads the story's stamp, not the checkout's live state" do
     setup do
       scope = full_scope_fixture()
@@ -386,52 +396,33 @@ defmodule CodeMySpec.PromotionTest do
       %{scope: scope, agent: agent, story: story}
     end
 
-    test "a story stamped with a version is satisfied even while its checkout is ahead and dirty",
-         %{scope: scope, agent: agent, story: story} do
-      {:ok, _} =
-        WorkingCopies.record_git_state(agent, %{
-          ahead: 3,
-          behind: 0,
-          dirty: true
-        })
-
+    test "a story stamped with a version is satisfied whatever its checkout is doing",
+         %{scope: scope, story: story} do
       story = %{story | promoted_version: "2.0.11"}
 
       assert {true, %{status: status}} = Promotion.running_copy_check(scope, story)
       assert status =~ "2.0.11"
     end
 
-    test "a story never promoted is refused even while its checkout looks in sync",
-         %{scope: scope, agent: agent, story: story} do
-      {:ok, _} =
-        WorkingCopies.record_git_state(agent, %{
-          ahead: 0,
-          behind: 0,
-          dirty: false
-        })
-
+    test "a story never promoted is refused however in sync its checkout is",
+         %{scope: scope, story: story} do
       assert {false, %{reason: reason, promoted: false}} =
                Promotion.running_copy_check(scope, story)
 
       assert reason =~ "has not been promoted yet",
              "an in-sync checkout is not the same claim as a promoted story — " <>
-               "the checkout can look clean for a reason that has nothing to do " <>
+               "the checkout can be clean for a reason that has nothing to do " <>
                "with this story ever having promoted. Got: #{reason}"
     end
 
+    # The exact failure this stamp exists to stop: new work for a different story
+    # lands on the same checkout after this story's own promotion, dirtying it
+    # and moving it ahead of main again. Nothing about the checkout is read any
+    # more, so the failure has no route in — which is the strongest form of this
+    # assertion and the reason the columns went.
     test "reusing the same checkout for a second story does not un-satisfy the first",
-         %{scope: scope, agent: agent, story: story} do
+         %{scope: scope, story: story} do
       story = %{story | promoted_version: "2.0.11"}
-
-      # The exact failure this stamp exists to stop: new work for a different
-      # story lands on the same checkout after story's own promotion, dirtying
-      # it and moving it ahead of main again.
-      {:ok, _} =
-        WorkingCopies.record_git_state(agent, %{
-          ahead: 1,
-          behind: 0,
-          dirty: true
-        })
 
       assert {true, _} = Promotion.running_copy_check(scope, story)
     end

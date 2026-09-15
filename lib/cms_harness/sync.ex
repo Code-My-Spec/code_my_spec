@@ -55,7 +55,6 @@ defmodule CmsHarness.Sync do
 
     report_app_name(env, project.root)
     report_head_commit(env, project.root)
-    report_git_state(env, project.root)
     report_preview_health(env, project.root)
 
     case Scanner.observe(env, read_model) do
@@ -185,7 +184,6 @@ defmodule CmsHarness.Sync do
   def measure_checkout(root) do
     env = Environment.new(:local, root)
 
-    report_git_state(env, root)
     report_preview_health(env, root)
   end
 
@@ -213,7 +211,7 @@ defmodule CmsHarness.Sync do
   edit that a live session would never pick up.
 
   Silent on whatever a field this platform cannot answer, the same as
-  `report_git_state/2` is on a checkout that is not a repository: a box this
+  `report_preview_health/2` is on a checkout it cannot reach: a box this
   has not been taught to read is the ordinary case for a platform nobody has
   run it on yet, not a reason to crash the sync loop that carries every other
   fact this checkout reports.
@@ -447,34 +445,6 @@ defmodule CmsHarness.Sync do
   # for a copy's entire QA session (c97bb142). The superproject's own merge
   # safety was never in question — a submodule's internal working tree is not
   # part of what `git merge` here would touch.
-  #
-  # Silent when git cannot answer — a checkout that is not a repository is an
-  # ordinary thing for this to meet, and reporting nothing leaves the column
-  # nil, which the gate reads as "not judged" rather than as "in sync".
-  defp report_git_state(env, root) do
-    with {ahead, 0} <- git(env, ["rev-list", "--count", "main..HEAD"]),
-         {behind, 0} <- git(env, ["rev-list", "--count", "HEAD..main"]),
-         {status, 0} <-
-           git(env, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"]) do
-      ChannelClient.deliver_git_state(root, %{
-        "ahead" => to_count(ahead),
-        "behind" => to_count(behind),
-        "dirty" => String.trim(status) != ""
-      })
-    else
-      _ -> :ok
-    end
-  end
-
-  defp git(env, args), do: Environments.cmd(env, "git", args, stderr_to_stdout: true)
-
-  defp to_count(out) do
-    case Integer.parse(String.trim(out)) do
-      {n, _} -> n
-      :error -> 0
-    end
-  end
-
   # `Steps.image_tag/2` needs the checkout's real `git rev-parse HEAD` to tag a
   # build with — the same reachability gap `app_path/1` has with `mix.exs`.
   # This machine can run `git` in the real checkout, so it does, on every

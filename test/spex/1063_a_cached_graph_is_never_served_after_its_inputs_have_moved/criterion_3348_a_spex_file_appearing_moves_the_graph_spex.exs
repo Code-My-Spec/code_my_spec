@@ -64,7 +64,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3348Spex do
       then_ "the graph says that story has BDD specs", context do
         after_sync = read_graph(context)
 
-        assert satisfaction_of(after_sync, "bdd_specs_exist", :story, context.new_story.id) == true,
+        assert satisfaction_of(after_sync, "bdd_specs_exist", :story, context.new_story.id) ==
+                 true,
                """
                A spex file appeared under the story's directory and the graph
                still says the story has no BDD specs.
@@ -93,5 +94,4 @@ defmodule CodeMySpecSpex.Story1063.Criterion3348Spex do
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
   end
-
 end
