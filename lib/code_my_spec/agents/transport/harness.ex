@@ -158,7 +158,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   defp call(pid, message, timeout, timeout_reason) do
-    GenServer.call(pid, message, timeout + 5_000)
+    GenServer.call(pid, message, timeout + call_grace_ms())
   catch
     :exit, {:timeout, _} ->
       # Distinct from "no harness". The machine is there and did not finish, so
@@ -188,4 +188,11 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
     {:error, :harness_not_connected}
   end
+
+  # Same floor as `CodeMySpec.Analysis.harness_fs_request/4` -- "the machine
+  # is there and did not finish" has to be distinguished from "no harness",
+  # so `call/4` always waits a bit past what the caller asked for. 5s in
+  # every real environment; configurable so a test proving the timeout path
+  # fires doesn't have to pay the real grace period to do it.
+  defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 end

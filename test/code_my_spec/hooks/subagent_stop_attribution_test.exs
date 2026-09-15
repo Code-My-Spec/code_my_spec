@@ -82,4 +82,43 @@ defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
       assert source =~ ~r/agent_id:\s*agent_id/
     end
   end
+
+  describe "SubagentStop task evaluation is scoped to the stopping agent" do
+    # Same shape as the attribution bug above, one call further down the same
+    # hook: `find_task_by_agent/2` correctly resolves a task scoped to this
+    # sub-agent's own `agent_id`, and then evaluation threw that away and
+    # asked `TaskEvaluator.evaluate_sessions/2` instead -- which reads
+    # `Session.active_task/1`, the first task on the *session* with
+    # `status: :active`, no agent scoping at all. A session accumulates tasks
+    # across every agent that has ever worked it, so one left `:active` and
+    # unfinished -- from a different agent, a different day -- was evaluated
+    # against every new sub-agent's stop regardless of what that sub-agent
+    # was actually doing. Observed live: an ad-hoc research fork with no task
+    # of its own, blocked on a three-day-old `FixIssues` task nothing had
+    # asked it to work (`8904f4ec`).
+    #
+    # No injection seam here either (same note as above), so this pins the
+    # call site rather than exercising the full DB-backed path.
+    test "evaluates the agent-scoped task, not the session's" do
+      source = File.read!("lib/code_my_spec/hooks/subagent_stop.ex")
+
+      refute source =~ ~r/TaskEvaluator\.evaluate_sessions\(/,
+             """
+             evaluate_sessions/2 re-derives the task via Session.active_task/1,
+             which has no agent scoping -- it finds the first :active task on the
+             whole session, from any agent, and evaluates every sub-agent's stop
+             against it regardless of what that sub-agent was asked to do.
+             """
+
+      assert source =~ ~r/TaskEvaluator\.evaluate_task\(/,
+             "the task find_task_by_agent/2 already resolved must be the one evaluated"
+    end
+
+    test "a sub-agent with no task of its own is allowed, not evaluated against the session's" do
+      source = File.read!("lib/code_my_spec/hooks/subagent_stop.ex")
+
+      assert source =~ ~r/defp maybe_evaluate\(_scope, _session, nil\), do: \{:ok, :valid\}/,
+             "nil task (no match for this agent_id) must allow, the same as evaluate_session/3 does"
+    end
+  end
 end

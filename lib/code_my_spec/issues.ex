@@ -18,7 +18,6 @@ defmodule CodeMySpec.Issues do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
-      CodeMySpec.Documents,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
@@ -31,7 +30,6 @@ defmodule CodeMySpec.Issues do
 
   require Logger
 
-  alias CodeMySpec.Documents.QaIssue
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
   alias CodeMySpec.Requirements.GraphInputs
@@ -223,7 +221,7 @@ defmodule CodeMySpec.Issues do
 
     created =
       issues
-      |> Enum.filter(&QaIssue.fileable?/1)
+      |> Enum.filter(&fileable?/1)
       |> Enum.map(fn qa_issue ->
         attrs = %{
           title: qa_issue.title,
@@ -243,6 +241,26 @@ defmodule CodeMySpec.Issues do
 
     {:ok, created}
   end
+
+  # Whether a parsed QA-result issue has a severity this domain recognizes at
+  # all, not whether its severity is any *particular* one -- that judgment
+  # belongs to `parse_severity/1`, which defaults an unrecognized string to
+  # `:medium` rather than reject. The two must not agree: `parse_severity/1`
+  # never fails, so nothing else stops an issue with a garbled severity field
+  # from being filed. This is the one check upstream of it.
+  #
+  # Moved here from `Documents.QaIssue.fileable?/1` (formerly a boundary
+  # cycle: Documents depended on Issues.Issue for its own `@scopes`, and
+  # Issues depended back on Documents.QaIssue just for this predicate).
+  # Written against a plain value's `.severity` field rather than pattern-
+  # matched against the `QaIssue` struct, so any caller can pass a QaIssue
+  # (or anything else shaped like one) without Issues needing to know the
+  # struct exists.
+  @fileable_severities ~w(critical high medium low info)
+
+  @spec fileable?(%{severity: String.t()}) :: boolean()
+  def fileable?(%{severity: s}) when s in @fileable_severities, do: true
+  def fileable?(_), do: false
 
   @doc """
   Creates an issue from a braindump markdown file.

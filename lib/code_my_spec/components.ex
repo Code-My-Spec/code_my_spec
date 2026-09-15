@@ -8,7 +8,6 @@ defmodule CodeMySpec.Components do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Paths,
-      CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,

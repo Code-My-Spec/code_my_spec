@@ -87,6 +87,14 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
       end
 
       then_ "the QA agent is told about it", context do
+        # Instrumented for the same reason 1048's 3192 was, and it is the same
+        # ambiguity: "the QA agent was told nothing" has two causes that read
+        # identically here. Either the wake was not routed to QA — which is what
+        # this criterion is about — or the graph holds no QA work at this moment,
+        # in which case telling nobody is correct and the premise never arrived.
+        actionable = Fixtures.actionable_names(context.scope, :qa)
+        unsatisfied = Fixtures.unsatisfied_reasons(context.scope, context.story.id)
+
         assert heard_count(context, context.qa) > context.qa_before,
                """
                The role that can act on this work was told nothing.
@@ -94,6 +102,9 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
                Stated as a pair on purpose: "the coding agent is not told" is
                satisfied by telling nobody, so without this half the criterion
                passes against a system that routes nothing anywhere.
+
+               QA-actionable requirements at this moment: #{inspect(actionable)}
+               This story's unsatisfied requirements at this moment: #{inspect(unsatisfied)}
                """
 
         {:ok, context}

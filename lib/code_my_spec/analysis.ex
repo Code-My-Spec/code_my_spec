@@ -699,7 +699,7 @@ defmodule CodeMySpec.Analysis do
     try do
       case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
         [{pid, _}] ->
-          GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
+          GenServer.call(pid, {:fs_request, op, payload}, timeout + call_grace_ms())
 
         [] ->
           # Cost, measured: a harness that had joined 57 seconds earlier — its
@@ -742,7 +742,7 @@ defmodule CodeMySpec.Analysis do
 
       :exit, {:timeout, _} = reason ->
         elapsed = System.monotonic_time(:millisecond) - started
-        limit = timeout + 5_000
+        limit = timeout + call_grace_ms()
 
         Logger.warning(
           "[Analysis] #{op} for harness #{working_copy_id} did not complete after " <>
@@ -1352,4 +1352,12 @@ defmodule CodeMySpec.Analysis do
         poll_until_idle(scope, deadline)
     end
   end
+
+  # Added on top of a caller's requested timeout before concluding the
+  # harness is gone rather than merely slow -- "the machine is there and
+  # did not finish" needs distinguishing from "no harness" (see the
+  # `:exit, {:timeout, _}` clause above). 5s in every real environment;
+  # configurable so a test proving the timeout path fires doesn't have to
+  # pay the real grace period to do it.
+  defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 end

@@ -34,7 +34,6 @@ defmodule CodeMySpec.AgentHarness do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
       CodeMySpec.McpServers,

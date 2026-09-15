@@ -46,11 +46,15 @@ defmodule CodeMySpec.Documents.FrameworkScopeTest do
   end
 
   test "and it is fileable, not merely valid" do
-    # `Issues.create_from_qa_result/3` filters on `fileable?/1` before it ever
-    # reaches `parse_scope/1`, so validity alone does not mean the issue lands.
+    # `Issues.create_from_qa_result/3` filters on `Issues.fileable?/1` before
+    # it ever reaches `parse_scope/1`, so validity alone does not mean the
+    # issue lands. `fileable?/1` moved to `Issues` (formerly a boundary
+    # cycle) but still takes anything shaped like a QaIssue, so this keeps
+    # testing the real cross-domain question: a QaIssue this module
+    # considers valid must also be one Issues will actually file.
     issue = %QaIssue{title: "t", severity: "high", scope: "framework"}
 
-    assert QaIssue.fileable?(issue),
+    assert CodeMySpec.Issues.fileable?(issue),
            "a valid framework issue that is not fileable is dropped silently, " <>
              "which is worse than the rejection it replaced"
   end

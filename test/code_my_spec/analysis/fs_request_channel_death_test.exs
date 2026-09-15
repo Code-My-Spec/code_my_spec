@@ -114,11 +114,14 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
   test "a channel that genuinely hangs is still a timeout" do
     id = a_channel_that_never_answers()
 
-    # The floor is `timeout + 5_000`, so this is as short as a real timeout gets.
+    # The floor is `timeout + call_grace_ms()` -- 5s in every real
+    # environment, `config/test.exs`'s `call_grace_ms: 1` here, so this test
+    # proves the same timeout path fires without paying the real grace
+    # period to do it.
     assert {:error, {:harness_timeout, details}} =
              Analysis.harness_fs_request(id, "read_file", %{}, 0)
 
-    assert details.limit_ms == 5_000,
+    assert details.limit_ms == Application.get_env(:code_my_spec, :call_grace_ms),
            "a timeout is the one failure where the limit belongs in the details"
   end
 

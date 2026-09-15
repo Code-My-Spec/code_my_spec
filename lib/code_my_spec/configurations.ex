@@ -11,7 +11,7 @@ defmodule CodeMySpec.Configurations do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Repo, CodeMySpec.Requirements, CodeMySpec.Users],
+    deps: [CodeMySpec.Repo, CodeMySpec.Requirements, CodeMySpec.Users],
     exports: :all
 
   alias CodeMySpec.Configurations.ProjectConfiguration

@@ -34,12 +34,19 @@ defmodule CodeMySpec.Agents.ToolSets do
   # agent's browser sandbox binds nothing, which is what it did until
   # 2026-09-07: an agent whose whole job is browser testing, with a machine
   # reporting `ready`, calling into an empty catalog.
+  # `call_mcp_server` is an instrument, not a capability, and that distinction is
+  # the whole reason it is here rather than the three fleet tools a QA session
+  # asked for in `50eac6ab`. Granting the tools under test would have grown this
+  # list once per story and tested each tool's own dispatch rather than the
+  # surface it is mounted on. Granting the client tests the surface as a caller.
+  # John's call, 2026-09-15.
   @qa ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
     list_qa_attempts submit_qa_result invalidate_qa_attempt
+    call_mcp_server
     list_knowledge read_knowledge semantic_search
     list_tasks list_session_subagents
     web_search web_fetch
