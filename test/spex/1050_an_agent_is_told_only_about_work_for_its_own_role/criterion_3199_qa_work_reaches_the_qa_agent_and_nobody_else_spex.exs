@@ -48,6 +48,20 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
 
   spex "Work is told to the role that can act on it, and to no other" do
     scenario "QA work reaches the QA agent and nobody else" do
+      given_ "a project whose only remaining work is QA on one story", context do
+        # Settled here rather than in the `when_`, and that is the whole point
+        # of the split. `apply_without_qa_story/1` builds an entire project,
+        # and building a project is coding-role work — so a coding agent that
+        # has been running throughout hears about its own genuine work, and a
+        # before/after comparison across the `when_` cannot tell that from a
+        # role leak. This criterion failed on a correctly routed wake for
+        # exactly that reason. `apply_up_to_analysis/1` is the same chain minus
+        # the green analysis run, which is the one step that makes
+        # `qa_complete` actionable, so the only transition left for the `when_`
+        # is the one this criterion is about.
+        {:ok, FullSatisfactionFixtures.apply_up_to_analysis(context)}
+      end
+
       given_ "a coding agent and a QA agent running on one working copy", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
         qa = Fixtures.running_agent(context.scope, role: "qa")
@@ -63,7 +77,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
       end
 
       when_ "a story becomes ready for QA", context do
-        context = FullSatisfactionFixtures.apply_without_qa_story(context)
+        # One step, not a whole project. A fresh green run satisfies
+        # `bdd_specs_passing`, which is `qa_complete`'s real gate — 1048's 3192
+        # established that, and it is the only thing that changes here.
+        Fixtures.fresh_analysis_runs(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, context}
