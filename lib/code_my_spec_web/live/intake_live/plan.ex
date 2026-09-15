@@ -24,7 +24,6 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   use CodeMySpecWeb, :live_view
 
-  import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Intake
@@ -35,73 +34,68 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
 
+  # Full height, chat and its dynamic companion side by side — the same shape
+  # `IntakeLive.Workspace` moved to for the identical reason. The cockpit's
+  # `Preview`/`Project`/`Activity` tab strip was reused here with `open={[]}`
+  # hardcoded and no `toggle_panel` handler on this LiveView: the tabs
+  # rendered but could never open, and there is no project yet for any of the
+  # three to show anyway. Replaced with `dynamic_panel/1`, beside the
+  # conversation rather than inline inside its scroll — the plan/signup card
+  # used to render as the last bubble in the transcript, which is what made
+  # it read as one more thing to scroll past rather than the one form that
+  # stays put while the conversation moves.
   def render(assigns) do
     ~H"""
-    <div class="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4 py-12">
-      <div class="text-xs uppercase tracking-[0.22em] text-primary mb-6">
-        // guided intake
-      </div>
+    <div class="flex h-dvh min-h-0 flex-col">
+      <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 lg:py-12">
+          <div class="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
+            <div class="mb-4 shrink-0 text-xs uppercase tracking-[0.22em] text-primary">
+              // guided intake
+            </div>
 
-      <%!--
-        One transcript, start to finish. It was three steps that replaced each
-        other — describe, then a page headed "Tell me a bit more", then a page
-        headed "Here's what I think you're building" — and a visitor who had
-        just typed a paragraph landed on a fresh heading that read as starting
-        over. The conversation is the product here; the steps were an
-        implementation detail leaking through the page.
-      --%>
-      <.conversation transcript={@transcript} thinking={@thinking} trouble={@trouble}>
+            <%!--
+              One transcript, start to finish. It was three steps that replaced
+              each other — describe, then a page headed "Tell me a bit more",
+              then a page headed "Here's what I think you're building" — and a
+              visitor who had just typed a paragraph landed on a fresh heading
+              that read as starting over. The conversation is the product here;
+              the steps were an implementation detail leaking through the page.
+            --%>
+            <.conversation transcript={@transcript} thinking={@thinking} trouble={@trouble} />
+
+            <.composer
+              :if={@plan.status in [:describing, :answering]}
+              event={if @plan.status == :describing, do: "describe", else: "answer"}
+              field={if @plan.status == :describing, do: "description", else: "answer"}
+              change="draft"
+              draft={@draft}
+              rows={if @plan.status == :describing, do: "3", else: "1"}
+              placeholder={
+                if @plan.status == :describing,
+                  do:
+                    "A booking tool for hair salons, so owners can see their week and clients can book themselves in.",
+                  else: "Type your answer"
+              }
+            />
+          </div>
+        </div>
+
         <%!--
           Always, rather than once the agent has concluded — until the visitor
-          has signed up. The card used to appear on `:planned`, which put the
-          paperwork downstream of the talking: somebody who would rather type
-          than discuss had no way in, and an unreachable model took the form
-          down with it. Beside the composer, not instead of it, so filling a
-          field in and saying something are two ways of answering the same
-          question. Once names are confirmed by a stranger, the sign-up card
-          replaces it — the panel holds one thing at a time.
+          has signed up. The panel used to appear only on `:planned`, which put
+          the paperwork downstream of the talking: somebody who would rather
+          type than discuss had no way in, and an unreachable model took the
+          form down with it. Beside the composer, not instead of it, so
+          filling a field in and saying something are two ways of answering
+          the same question. Once names are confirmed by a stranger, the
+          sign-up card replaces it — the panel holds one thing at a time.
         --%>
-        <.signup_card :if={@awaiting_signup?} plan={@plan} />
-        <.plan_card :if={not @awaiting_signup?} plan={@plan} form={@names_form} />
-      </.conversation>
-
-      <%!--
-        The cockpit's own panel component (story 1033/3425) — extracted from
-        `AgentConversationLive.Show` so pre-signup renders the same markup and
-        behavior post-signup does, given different (here: empty) backing data.
-        Nothing is open by default, so `panel_body/1` never runs — there is no
-        project yet to show a preview, stories or team activity for.
-      --%>
-      <.panels
-        screen={:narrow}
-        open={[]}
-        dynamic_view=""
-        dynamic_stories={[]}
-        dynamic_story={nil}
-        dynamic_epics={[]}
-        offer={nil}
-        activity={[]}
-        waiting={[]}
-        copies={[]}
-        project_id=""
-        conversation_id={nil}
-        preview_state={:absent}
-      />
-
-      <.composer
-        :if={@plan.status in [:describing, :answering]}
-        event={if @plan.status == :describing, do: "describe", else: "answer"}
-        field={if @plan.status == :describing, do: "description", else: "answer"}
-        change="draft"
-        draft={@draft}
-        rows={if @plan.status == :describing, do: "3", else: "1"}
-        placeholder={
-          if @plan.status == :describing,
-            do:
-              "A booking tool for hair salons, so owners can see their week and clients can book themselves in.",
-            else: "Type your answer"
-        }
-      />
+        <div class="max-h-[45dvh] overflow-y-auto border-t border-base-300 p-4 lg:max-h-none lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l">
+          <.signup_card :if={@awaiting_signup?} plan={@plan} />
+          <.plan_card :if={not @awaiting_signup?} plan={@plan} form={@names_form} />
+        </div>
+      </div>
     </div>
     """
   end
@@ -122,107 +116,95 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     assigns = assign(assigns, :concluded, assigns.plan.status in [:planned, :converted])
 
     ~H"""
-    <div data-test="intake-plan" class="chat chat-start">
-      <div class="chat-bubble chat-bubble-neutral max-w-full">
+    <div data-test="intake-plan" class="border border-base-300 rounded p-4">
+      <%!--
+        What the card says depends on whether the agent has got anywhere yet,
+        because before it has there are no guesses to offer and saying "here's
+        what I think you're building" over five empty fields is the agent
+        claiming work it has not done.
+      --%>
+      <p :if={@concluded} class="font-medium">Here's what I think you're building.</p>
+      <p :if={not @concluded} class="font-medium">You can fill this in yourself if you'd rather.</p>
+
+      <p :if={@plan.summary} class="mt-2 text-sm opacity-80">{@plan.summary}</p>
+      <p :if={@plan.first_build} class="mt-1 text-sm opacity-70">{@plan.first_build}</p>
+
+      <p :if={@concluded} class="mt-4 text-sm opacity-70">
+        These are my guesses — change anything that's wrong. What you confirm
+        here is what gets built.
+      </p>
+      <p :if={not @concluded} class="mt-4 text-sm opacity-70">
+        I'll fill it in as we talk. What you confirm here is what gets built,
+        whenever you're ready.
+      </p>
+
+      <%!--
+        `text-base-content` stated explicitly on every control, not relied on
+        as an inherited default — the card used to sit inside a
+        `.chat-bubble-neutral`, which set `--color-neutral-content`, and a
+        field that didn't say its own colour rendered near-white on white in
+        light mode (test/.../plan_card_contrast_test.exs guards this).
+      --%>
+      <.form
+        for={@form}
+        phx-submit="confirm_names"
+        phx-change="validate_names"
+        class="mt-4 space-y-3"
+      >
+        <.input
+          field={@form[:account_name]}
+          type="text"
+          label="Account name"
+          class="w-full input text-base-content"
+        />
+        <.input
+          field={@form[:project_name]}
+          type="text"
+          label="Project name"
+          class="w-full input text-base-content"
+        />
+
         <%!--
-          What the card says depends on whether the agent has got anywhere yet,
-          because before it has there are no guesses to offer and saying "here's
-          what I think you're building" over five empty fields is the agent
-          claiming work it has not done.
+          The two conclusions that pick the generators. They used to be prose,
+          which made the most consequential guesses the only ones the visitor
+          could not correct.
         --%>
-        <p :if={@concluded}>Here's what I think you're building.</p>
-        <p :if={not @concluded}>You can fill this in yourself if you'd rather.</p>
+        <.input
+          field={@form[:needs_sign_in]}
+          type="select"
+          label="People sign in to use it"
+          options={[{"Yes", "true"}, {"No", "false"}]}
+          class="w-full select text-base-content"
+        />
 
-        <p :if={@plan.summary} class="mt-2 opacity-80">{@plan.summary}</p>
-        <p :if={@plan.first_build} class="mt-1 opacity-70">{@plan.first_build}</p>
+        <.input
+          field={@form[:separate_copies]}
+          type="select"
+          label="Each business gets its own separate copy"
+          options={[{"Yes", "true"}, {"No", "false"}]}
+          class="w-full select text-base-content"
+        />
 
-        <p :if={@concluded} class="mt-4 text-sm opacity-70">
-          These are my guesses — change anything that's wrong. What you confirm
-          here is what gets built.
-        </p>
-        <p :if={not @concluded} class="mt-4 text-sm opacity-70">
-          I'll fill it in as we talk. What you confirm here is what gets built,
-          whenever you're ready.
-        </p>
+        <%!--
+          Where it runs, asked here because this is the moment before anything
+          is provisioned. A development instance is a real container on a real
+          box, and this funnel leaks by design — the interview runs during the
+          boot precisely because visitors wander off. Starting one for
+          everybody who describes an idea spends it on everybody who leaves.
+        --%>
+        <.input
+          field={@form[:location]}
+          type="select"
+          label="Where should it run"
+          options={[
+            {"In the cloud — nothing to install", "cloud"},
+            {"On my machine", "local"}
+          ]}
+          class="w-full select text-base-content"
+        />
 
-        <.form
-          for={@form}
-          phx-submit="confirm_names"
-          phx-change="validate_names"
-          class="mt-4 space-y-3"
-        >
-          <%!--
-            `text-base-content` on every control, and this is load-bearing rather
-            than tidying. daisyUI's `.input` and `.select` set their own
-            background — `--color-base-100` — and no colour, so they inherit it
-            from whatever encloses them. Here that is `.chat-bubble-neutral`,
-            which sets `--color-neutral-content`: the colour meant to sit on the
-            dark neutral bubble.
-
-            In dark mode those happen to agree and it reads fine. In light mode
-            base-100 is white and neutral-content is near-white, so the plan card
-            — the one screen where the visitor confirms what gets built — was
-            white on white. Reported from a phone; every screenshot I had taken
-            was dark.
-
-            The labels are deliberately left alone: they sit on the bubble, not
-            in a field, so the bubble's colour is the right one for them.
-          --%>
-          <.input
-            field={@form[:account_name]}
-            type="text"
-            label="Account name"
-            class="w-full input text-base-content"
-          />
-          <.input
-            field={@form[:project_name]}
-            type="text"
-            label="Project name"
-            class="w-full input text-base-content"
-          />
-
-          <%!--
-            The two conclusions that pick the generators. They used to be prose,
-            which made the most consequential guesses the only ones the visitor
-            could not correct.
-          --%>
-          <.input
-            field={@form[:needs_sign_in]}
-            type="select"
-            label="People sign in to use it"
-            options={[{"Yes", "true"}, {"No", "false"}]}
-            class="w-full select text-base-content"
-          />
-
-          <.input
-            field={@form[:separate_copies]}
-            type="select"
-            label="Each business gets its own separate copy"
-            options={[{"Yes", "true"}, {"No", "false"}]}
-            class="w-full select text-base-content"
-          />
-
-          <%!--
-            Where it runs, asked here because this is the moment before anything
-            is provisioned. A development instance is a real container on a real
-            box, and this funnel leaks by design — the interview runs during the
-            boot precisely because visitors wander off. Starting one for
-            everybody who describes an idea spends it on everybody who leaves.
-          --%>
-          <.input
-            field={@form[:location]}
-            type="select"
-            label="Where should it run"
-            options={[
-              {"In the cloud — nothing to install", "cloud"},
-              {"On my machine", "local"}
-            ]}
-            class="w-full select text-base-content"
-          />
-
-          <.button class="btn-primary">Looks right — build it</.button>
-        </.form>
-      </div>
+        <.button class="btn-primary">Looks right — build it</.button>
+      </.form>
     </div>
     """
   end
@@ -241,52 +223,47 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   defp signup_card(assigns) do
     ~H"""
-    <div data-test="signup-card" class="chat chat-start">
-      <div class="chat-bubble chat-bubble-neutral max-w-full">
-        <p>One more thing, and we can start building.</p>
+    <div data-test="signup-card" class="border border-base-300 rounded p-4">
+      <p class="font-medium">One more thing, and we can start building.</p>
 
-        <div class="mt-3 space-y-2">
-          <input
-            type="text"
-            value={@plan.account_name}
-            readonly
-            aria-label="Account name"
-            class="w-full input text-base-content"
-          />
-          <input
-            type="text"
-            value={@plan.project_name}
-            readonly
-            aria-label="Project name"
-            class="w-full input text-base-content"
-          />
-        </div>
-
-        <div class="mt-4 flex flex-col gap-2">
-          <a
-            href={~p"/auth/github/login?return_to=/build/workspace"}
-            class="btn btn-primary w-full"
-          >
-            Continue with GitHub
-          </a>
-          <a href={~p"/auth/google/login?return_to=/build/workspace"} class="btn btn-outline w-full">
-            Continue with Google
-          </a>
-        </div>
-
-        <div class="divider text-xs text-base-content/50">or email</div>
-
-        <.form for={nil} action={~p"/build/sign-up"} method="post" class="flex gap-2">
-          <input
-            type="email"
-            name="user[email]"
-            required
-            placeholder="you@domain.dev"
-            class="input input-bordered flex-1 text-base-content"
-          />
-          <.button class="btn-secondary">Continue</.button>
-        </.form>
+      <div class="mt-3 space-y-2">
+        <input
+          type="text"
+          value={@plan.account_name}
+          readonly
+          aria-label="Account name"
+          class="w-full input"
+        />
+        <input
+          type="text"
+          value={@plan.project_name}
+          readonly
+          aria-label="Project name"
+          class="w-full input"
+        />
       </div>
+
+      <div class="mt-4 flex flex-col gap-2">
+        <a href={~p"/auth/github/login?return_to=/build/workspace"} class="btn btn-primary w-full">
+          Continue with GitHub
+        </a>
+        <a href={~p"/auth/google/login?return_to=/build/workspace"} class="btn btn-outline w-full">
+          Continue with Google
+        </a>
+      </div>
+
+      <div class="divider text-xs text-base-content/50">or email</div>
+
+      <.form for={nil} action={~p"/build/sign-up"} method="post" class="flex gap-2">
+        <input
+          type="email"
+          name="user[email]"
+          required
+          placeholder="you@domain.dev"
+          class="input input-bordered flex-1"
+        />
+        <.button class="btn-secondary">Continue</.button>
+      </.form>
     </div>
     """
   end
