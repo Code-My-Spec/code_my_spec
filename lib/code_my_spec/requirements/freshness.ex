@@ -85,19 +85,22 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:qa, attempt_key(Map.get(ctx.qa_latest_by_story, story.id))},
       {:deploy, deploy_key(Map.get(ctx.uat_deploy_by_story, story.id))},
       {:running_copy, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("working_copies")},
-      # `story_issues_resolved` delegates to `IssuesChecker.story_resolved?/3`,
-      # and the preloader groups issues by nothing — they reach the context only
-      # as project-wide stamps. Project-wide is what gets hashed, so an issue
-      # accepted against one story reconsiders every story.
+      # This story's issues, which is what `story_issues_resolved` reads:
+      # `IssuesChecker.story_resolved?/2` counts only what QA attributed here,
+      # and says so — "an issue with no `story_id` is the project queue's
+      # problem, not this story's".
       #
-      # Coarse on purpose, and the trade is not close. Issues are filed and
-      # resolved by hand, a handful a day; files churn every time an agent
-      # writes one. The alternative is leaving the input out, which is what
-      # criterion 5887 already showed the cost of: the graph keeps offering work
-      # that is finished, and nothing ever changes its mind. Grouping issues by
-      # story in `Preloader` would narrow this, and until it does this is the
-      # side to be wrong on.
-      {:issues, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("issues")}
+      # It was the project's list until criterion 3476. That was deliberate and
+      # the note above it argued the trade was fine because issues are "filed
+      # and resolved by hand, a handful a day" — a premise this module's own
+      # later note already recorded as measurably false, and which cost one
+      # issue 973 of 2086 requirements and 137 of 137 stories on dev.
+      #
+      # There was never a correctness side to the trade. The project-wide
+      # readers, `issues_triaged` and `issues_resolved`, are project nodes, and
+      # `recompute_stale/3` rebuilds those unconditionally on every pass — so
+      # they do not consult a story's fingerprint and never did.
+      {:issues, Map.get(ctx, :issues_by_story, %{}) |> Map.get(story.id, [])}
     ])
   end
 
@@ -130,7 +133,14 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:component, component.id, row_key(component), component.type, component.module_name},
       {:files, file_keys(Map.get(ctx.files_by_component, component.id, []))},
       {:children, ids(Map.get(ctx.children_by_parent, component.id, []))},
-      {:problems, Map.get(ctx.problems_by_component, component.id, %{})}
+      # The findings, not the tally. `problems_by_component` is what the verdict
+      # reports and it is a count per source, so a finding corrected and a
+      # different one introduced in the same module leaves it at 1 both times —
+      # the fingerprint holds still and the component keeps serving the old
+      # finding. `problem_digests_by_component` is the same grouping keyed on
+      # `{file_path, line, rule, message}`, so a swap at equal count moves it and
+      # a re-run that found the same things does not.
+      {:problems, Map.get(ctx, :problem_digests_by_component, %{}) |> Map.get(component.id, %{})}
       # `analysis_fresh` is deliberately absent, and this is the whole of
       # criterion 3448. It is four project-wide booleans, so a flip made every
       # component's fingerprint move at once: measured on this project, 1116 of
