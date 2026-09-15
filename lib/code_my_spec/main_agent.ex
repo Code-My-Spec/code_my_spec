@@ -54,6 +54,7 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolSets
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Cadence
@@ -282,6 +283,19 @@ defmodule CodeMySpec.MainAgent do
   defp decide(_fault, scope, agent, reason) do
     attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
   end
+
+  # How much of an agent's conversation one read hands back.
+  #
+  # Two bounds rather than one: turns are not a uniform size, so a count alone
+  # does not bound the answer - a single tool result can outweigh fifty ordinary
+  # turns. The byte budget is what protects the caller's context; the turn count
+  # is what makes the common "what has it been doing" read small.
+  @conversation_turn_limit 50
+  @conversation_byte_budget 20_000
+
+  # How far back a narrowing read looks. Only paid when `since`, `until` or
+  # `last_call_of` is given, since a plain read wants the recent end anyway.
+  @conversation_search_depth 500
 
   @restart_limit 3
 
@@ -612,6 +626,229 @@ defmodule CodeMySpec.MainAgent do
   """
   @spec search_answers(Scope.t(), String.t()) :: [map()]
   defdelegate search_answers(scope, query), to: QuestionsRepository
+
+  @doc """
+  What this project's agents have said, oldest turn first.
+
+  Story 1013. The main agent supervises agents it cannot see inside, and the
+  only way to learn what one had done was to send it a message and wait — which
+  spends the agent's turn answering instead of working, and fails exactly when
+  it is needed, because an agent that is stuck or looping is the one least able
+  to give an account of itself.
+
+  Takes one agent id or several. Several are merged into one chronological
+  sequence rather than concatenated, because the question that needs two agents
+  is "what was the other one doing when this happened", and two transcripts end
+  to end do not answer it.
+
+  ## Bounded twice, and for different reasons
+
+  `:limit` bounds the number of turns, because a caller asking "what has it been
+  doing" wants the recent end and not a transcript to page through.
+
+  The byte budget bounds the answer regardless, because turns are not a uniform
+  size — one tool result can outweigh fifty ordinary turns, so a count alone
+  bounds nothing. Both cuts drop the oldest and keep the newest, which is the
+  end that says what the agent is doing now.
+
+  `truncated?` says whether anything was dropped. A read that silently returned
+  part of a conversation is worse than one that refused: the caller cannot tell
+  a quiet agent from a cut answer, and would read turns it never saw as silence.
+  """
+  @spec read_agent_conversation(Scope.t(), Ecto.UUID.t() | [Ecto.UUID.t()], keyword()) ::
+          {:ok, %{turns: [map()], truncated?: boolean()}} | {:error, term()}
+  def read_agent_conversation(scope, agent_id_or_ids, opts \\ [])
+
+  def read_agent_conversation(%Scope{} = scope, agent_id, opts) when is_binary(agent_id) do
+    read_agent_conversation(scope, [agent_id], opts)
+  end
+
+  def read_agent_conversation(%Scope{} = scope, agent_ids, opts) when is_list(agent_ids) do
+    limit = Keyword.get(opts, :limit, @conversation_turn_limit)
+
+    with {:ok, tagged} <- collect_turns(scope, agent_ids, fetch_depth(opts, limit)) do
+      # Merged before either cut, so the newest turns survive across agents
+      # rather than each agent keeping its own newest few.
+      ordered = Enum.sort_by(tagged, & &1.at, {:asc, DateTime})
+
+      case Keyword.get(opts, :last_call_of) do
+        nil -> windowed(ordered, opts, limit)
+        tool -> {:ok, last_call_of(ordered, tool)}
+      end
+    end
+  end
+
+  # A narrowing read has to look further back than a plain one, because the
+  # turns it wants may be nowhere near the recent end — a window covering an
+  # incident two days ago is not answered by the last fifty turns. Bounded
+  # rather than unbounded: this is still a read into a caller's context.
+  defp fetch_depth(opts, limit) do
+    if Keyword.get(opts, :since) || Keyword.get(opts, :until) ||
+         Keyword.get(opts, :last_call_of),
+       do: @conversation_search_depth,
+       else: limit
+  end
+
+  defp windowed(turns, opts, limit) do
+    turns = Enum.filter(turns, &within?(&1, opts))
+    {kept, over_count?} = drop_oldest_beyond(turns, limit)
+    {shown, over_budget?} = within_budget(kept)
+
+    {:ok, %{turns: shown, truncated?: over_count? or over_budget?}}
+  end
+
+  defp within?(turn, opts) do
+    after?(turn, Keyword.get(opts, :since)) and before?(turn, Keyword.get(opts, :until))
+  end
+
+  defp after?(_turn, nil), do: true
+  defp after?(turn, since), do: DateTime.compare(turn.at, since) != :lt
+
+  defp before?(_turn, nil), do: true
+  defp before?(turn, until), do: DateTime.compare(turn.at, until) != :gt
+
+  # "When did it last call this" answered as the call and what it returned,
+  # rather than by handing back the transcript to search. Criterion 3282: a
+  # targeted question deserves a targeted answer, and a conversation long enough
+  # to be worth asking about is one the caller cannot afford to read.
+  #
+  # Never truncated. Two turns are two turns, and reporting a cut here would be
+  # describing a limit that did not bite.
+  defp last_call_of(turns, tool) do
+    case Enum.filter(turns, &calls?(&1, tool)) do
+      [] ->
+        %{turns: [], truncated?: false}
+
+      calls ->
+        call = List.last(calls)
+        %{turns: [call | results_for(turns, call)], truncated?: false}
+    end
+  end
+
+  defp calls?(%{tool_calls: calls}, tool) when is_list(calls) do
+    Enum.any?(calls, &(MapAccess.get(&1, :name) == tool))
+  end
+
+  defp calls?(_turn, _tool), do: false
+
+  defp results_for(turns, call) do
+    ids = Enum.map(call.tool_calls, &MapAccess.get(&1, :id))
+    Enum.filter(turns, &(&1.tool_call_id in ids))
+  end
+
+  defp collect_turns(scope, agent_ids, limit) do
+    Enum.reduce_while(agent_ids, {:ok, []}, fn agent_id, {:ok, acc} ->
+      case turns_for(scope, agent_id, limit) do
+        {:ok, turns} -> {:cont, {:ok, acc ++ turns}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp turns_for(scope, agent_id, limit) do
+    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+         {:ok, conversation} <-
+           Conversations.find_or_create_agent_conversation(
+             scope.active_account_id,
+             agent.project_id || scope.active_project_id,
+             agent.id
+           ) do
+      # One more than asked for, so "there was more" is a fact about the
+      # conversation rather than an inference from having filled the page.
+      turns =
+        conversation
+        |> Conversations.list_messages(limit: limit + 1)
+        |> Enum.map(&tag(&1, agent.id))
+
+      {:ok, turns}
+    end
+  end
+
+  defp tag(message, agent_id) do
+    %{
+      agent_id: agent_id,
+      at: message.inserted_at,
+      role: message.role,
+      text: turn_text(message),
+      tool_calls: Map.get(message, :tool_calls) || [],
+      tool_call_id: Map.get(message, :tool_call_id),
+      tool_failed: Map.get(message, :tool_failed) == true
+    }
+  end
+
+  defp drop_oldest_beyond(turns, limit) when length(turns) > limit,
+    do: {Enum.take(turns, -limit), true}
+
+  defp drop_oldest_beyond(turns, _limit), do: {turns, false}
+
+  # Newest first while spending the budget, then put back in order. Measured
+  # from the end rather than the front, because the turn that has to survive a
+  # cut is the last one.
+  defp within_budget(turns) do
+    {kept, _spent} =
+      turns
+      |> Enum.reverse()
+      |> Enum.reduce_while({[], 0}, fn turn, {kept, spent} ->
+        cost = turn |> rendered_turn() |> byte_size()
+
+        if spent + cost > @conversation_byte_budget and kept != [] do
+          {:halt, {kept, spent}}
+        else
+          {:cont, {[turn | kept], spent + cost}}
+        end
+      end)
+
+    {kept, length(kept) < length(turns)}
+  end
+
+  defp turn_text(%{content: parts}) when is_list(parts) do
+    parts
+    |> Enum.map(&MapAccess.get(&1, :text))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
+  defp turn_text(_message), do: ""
+
+  @doc """
+  One turn, as the main agent reads it.
+
+  Public so the mapper renders without reaching into a `Message`, and so the
+  budget above measures the same string the caller will actually receive rather
+  than an approximation of it.
+
+  A tool call carries its name and arguments; a result carries the call id it
+  answers and its text unaltered. Criterion 3281 is why the text is never
+  summarised — a paraphrase of a stack trace is not a stack trace — and 3284 is
+  why the call id is always shown: two identical results are two events, and a
+  reader has to be able to see that rather than infer it.
+  """
+  @spec turn_line(map()) :: String.t()
+  def turn_line(turn), do: rendered_turn(turn)
+
+  defp rendered_turn(%{tool_calls: [_ | _] = calls} = turn) do
+    Enum.map_join(calls, "\n", fn call ->
+      "  [#{turn.agent_id}] called #{MapAccess.get(call, :name)}" <>
+        "(#{arguments(call)}) id=#{MapAccess.get(call, :id)}"
+    end)
+  end
+
+  defp rendered_turn(%{tool_call_id: call_id} = turn) when is_binary(call_id) do
+    "  [#{turn.agent_id}] #{outcome(turn)} id=#{call_id}\n#{turn.text}"
+  end
+
+  defp rendered_turn(turn), do: "  [#{turn.agent_id}] #{turn.role}: #{turn.text}"
+
+  defp outcome(%{tool_failed: true}), do: "tool failed"
+  defp outcome(_turn), do: "tool returned"
+
+  defp arguments(call) do
+    case MapAccess.get(call, :arguments) do
+      nil -> ""
+      args when is_map(args) -> Enum.map_join(args, ", ", fn {k, v} -> "#{k}: #{inspect(v)}" end)
+      other -> inspect(other)
+    end
+  end
 
   # What an answer rests on, checked rather than taken on trust.
   #
