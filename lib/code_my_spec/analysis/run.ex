@@ -34,6 +34,7 @@ defmodule CodeMySpec.Analysis.Run do
           completed_fingerprint: String.t() | nil,
           args: map() | nil,
           stats: map() | nil,
+          requested_by: map() | nil,
           output: String.t() | nil,
           exit_status: integer() | nil,
           started_at: DateTime.t(),
@@ -59,6 +60,15 @@ defmodule CodeMySpec.Analysis.Run do
     field :completed_fingerprint, :string
     field :args, :map
     field :stats, :map
+
+    # Who asked, and why — a hook run carries `session_id`/`agent_id`/`hook`,
+    # an MCP tool call carries `agent_id` alone, a manual trigger carries
+    # neither. Nil means nothing was taught to tag that path yet, same as an
+    # unset `args`/`stats`. See `CodeMySpec.Analysis.build_job/4`, which is
+    # where every caller's `opts[:requested_by]` lands on the job that
+    # eventually writes this row.
+    field :requested_by, :map
+
     field :output, :string
     field :exit_status, :integer
     field :started_at, :utc_datetime_usec
@@ -90,6 +100,7 @@ defmodule CodeMySpec.Analysis.Run do
       :completed_fingerprint,
       :args,
       :stats,
+      :requested_by,
       :output,
       :exit_status,
       :started_at,

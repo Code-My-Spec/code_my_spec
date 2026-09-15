@@ -46,11 +46,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
   @impl true
   def execute(%{source: source}, frame) when source in @sources do
     scope = frame.assigns[:current_scope]
+    agent_id = frame.assigns[:agent_id]
+
+    # Captured here, not read back inside the task: `Logger.metadata` and
+    # `frame.assigns` are both tied to this process, and the task below is
+    # unlinked and separate — by the time it calls `start_run`, neither would
+    # still say who asked.
+    requested_by = %{kind: "mcp_tool", tool: "start_analysis", agent_id: agent_id}
 
     # Unlinked on purpose. The caller is answered as soon as the run is opened,
     # and a tool call that ends must not take a sweep with it.
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Analysis.await_run(scope, source, [])
+      Analysis.await_run(scope, source, [], requested_by: requested_by)
     end)
 
     {:reply, Response.tool() |> Response.text(started(source, frame.assigns[:agent_id])), frame}

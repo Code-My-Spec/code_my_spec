@@ -39,7 +39,7 @@ defmodule CodeMySpec.Analysis.Execution do
     case Runners.run(run.source, scope, args, runner_opts(run, opts)) do
       {:ok, result} ->
         ms = System.monotonic_time(:millisecond) - start
-        Logger.info("[Analysis] #{run.source} #{inspect(args)} finished in #{ms}ms")
+        Logger.info("[Analysis] run #{run.id} (#{run.source} #{inspect(args)}) finished in #{ms}ms")
         Reconciler.reconcile(scope, run, result, opts)
 
       {:error, reason} ->

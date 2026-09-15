@@ -47,7 +47,13 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     # Omitted, `opts` defaulted to `[]` and every sub-agent stop answered "attribution
     # unavailable" and blocked on every finding in the project — never once demoting,
     # for any sub-agent. `Stop` forwards them (stop.ex:233); this did not.
-    case Validation.validate_stop(scope, task, session_id: session_id, agent_id: agent_id) do
+    requested_by = %{kind: "hook", hook: "subagent_stop", session_id: session_id, agent_id: agent_id}
+
+    case Validation.validate_stop(scope, task,
+           session_id: session_id,
+           agent_id: agent_id,
+           requested_by: requested_by
+         ) do
       {:error, reason, _blocking_key} ->
         Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
           cms_decision: "block",

@@ -60,22 +60,30 @@ defmodule CmsHarness.Analysis do
   Run `source` against `project`'s working copy.
 
   `args` are the analyzer's own arguments — empty for the stop hook's
-  whole-project sweep, paths for a targeted run.
+  whole-project sweep, paths for a targeted run. `run_id` is the server's
+  ledger row for this execution when the caller has one (every real dispatch
+  does — `AnalysisServer.run_with_slot/3` gets it off the queued `entry`);
+  optional so direct/manual calls (and the existing test suite) still work
+  without inventing one.
   """
-  @spec run(map(), String.t(), [String.t()]) :: {:ok, map()} | {:error, String.t()}
-  def run(project, source, args \\ []) when is_binary(source) and is_list(args) do
+  @spec run(map(), String.t(), [String.t()], integer() | nil) :: {:ok, map()} | {:error, String.t()}
+  def run(project, source, args \\ [], run_id \\ nil)
+      when is_binary(source) and is_list(args) do
     env = Environment.new(:local, project.root)
     started = System.monotonic_time(:millisecond)
 
     result = source |> execute(env, args) |> stamp_partition(env, source)
 
     Logger.info(
-      "[CmsHarness] #{source} #{inspect(args)} in #{project.root} took " <>
-        "#{System.monotonic_time(:millisecond) - started}ms — #{describe_outcome(result)}"
+      "[CmsHarness] #{source} #{inspect(args)} in #{project.root}#{run_id_suffix(run_id)} " <>
+        "took #{System.monotonic_time(:millisecond) - started}ms — #{describe_outcome(result)}"
     )
 
     result
   end
+
+  defp run_id_suffix(nil), do: ""
+  defp run_id_suffix(run_id), do: " (run #{run_id})"
 
   @doc """
   What a finished run found, for the line that says it finished.

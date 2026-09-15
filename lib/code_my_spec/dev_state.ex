@@ -271,7 +271,10 @@ defmodule CodeMySpec.DevState do
   def request_run(working_copy_id, source) do
     with {:ok, copy} <- fetch_copy(working_copy_id),
          {:ok, sources} <- fetch_sources(source) do
-      report = Analysis.ensure_stale_runs(scope_for(copy), sources)
+      report =
+        Analysis.ensure_stale_runs(scope_for(copy), sources,
+          requested_by: %{kind: "manual", via: "dev_state"}
+        )
 
       {:ok,
        %{

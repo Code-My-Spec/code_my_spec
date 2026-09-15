@@ -267,6 +267,30 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     end)
   end
 
+  # Two reconciles for the same working copy and source both clear then insert
+  # their own full set, and nothing before this made that pair mutually
+  # exclusive — reported 2026-09-14 as every problem for a source present
+  # exactly twice, 42 rows where 21 existed. Traced to its actual source
+  # rather than locked at the write: a remote harness ties a request for a
+  # busy source onto the one already running instead of starting a second
+  # execution (story 839, `CmsHarness.Project.AnalysisServer.tie_to_queued/4`)
+  # — one real execution, but `deliver/3` reported it once per tied run_id,
+  # and every one of those independently reconciled the identical Problems.
+  # `Analysis.reconcile_or_finish_tied/4` now reconciles only the primary;
+  # every tied run_id gets `Reconciler.finish_tied/3` instead, which closes
+  # its own row without touching Problems at all. With that in place, this
+  # function is never called twice for the same source and working copy at
+  # once — nothing here needs to take turns with anything else, so nothing
+  # here locks.
+  #
+  # A lock was tried twice and cost more than it fixed: a `pg_advisory_xact_lock`
+  # held a database connection for however long a waiter blocked, and on a
+  # box running six-plus harnesses that exhausted Ecto's whole pool; an
+  # in-process `:global.trans/2` replacement shipped with the wrong argument
+  # shape and crashed every call. Both were solving the symptom (two writes
+  # racing) rather than the cause (two writes existing at all for one
+  # execution) — removed once the cause was.
+
   @doc """
   Atomically replaces problems for specific file paths within a project.
 

@@ -84,6 +84,14 @@ defmodule CmsHarnessTest.AnalysisResults do
   real result rather than the old `{:superseded, "already queued"}` shape
   this guards against — so each payload's own `output` is checked for being
   real captured text instead of compared to the other's.
+
+  `run_id` and `tied_to` are also stripped before comparing: they're the one
+  part of a tied answer that's *supposed* to differ. `tied_to` names which
+  run_id actually owns this result — `nil` for the primary, the primary's
+  run_id for everyone tied onto it — so the server knows to reconcile
+  Problems exactly once per execution rather than once per run_id (`57333540`).
+  Two payloads differing only there are still the same real result; a real
+  regression would show up in `result` or `status` instead.
   """
   @spec assert_same_real_result(map(), map()) :: :ok
   def assert_same_real_result(a, b) do
@@ -96,6 +104,7 @@ defmodule CmsHarnessTest.AnalysisResults do
     strip = fn payload ->
       payload
       |> Map.delete("run_id")
+      |> Map.delete("tied_to")
       |> Map.update!("result", &Map.delete(&1, "output"))
     end
 

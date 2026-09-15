@@ -147,9 +147,6 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   defp serving_line(%{revision: nil}), do: "Serving: restarted (revision unavailable)"
   defp serving_line(%{revision: revision}), do: "Serving: #{revision}"
 
-  # Named because a promotion that swept is slower for a reason, and an agent
-  # watching it sit should know the gate was waiting on a fresh answer rather
-  # than hung.
   # Named, not refused. An untracked file may be a source file nobody added, and
   # a promotion that omitted it would put QA in front of an application missing
   # the work it came to verify. Blocking on it would contradict the gate, which
@@ -164,9 +161,29 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
 
   defp untracked_line(_), do: ""
 
+  # `swept` no longer means a job `gate/1` ran — it never has, since 54aa534c
+  # made the gate a read of the ledger rather than a sweep it starts and
+  # waits for (see `Promotion.gate/1`'s own moduledoc). It means the runs this
+  # promote actually read to call the copy clean, and when each one finished.
+  #
+  # That is what makes reuse visible. Nothing re-verifies between two
+  # promotes seconds apart with no edits in between — both read the same
+  # rows — so both responses naming the same `finished_at` for every source
+  # is the evidence that the second one reused the first's verdict rather
+  # than seeing anything new. Without a timestamp there was nothing here to
+  # tell the two apart.
   defp swept_line(%{swept: []}), do: ""
-  defp swept_line(%{swept: swept}), do: "\nSwept before gating: " <> Enum.join(swept, ", ")
+
+  defp swept_line(%{swept: certifications}) when is_list(certifications) do
+    "\nCertified by: " <> Enum.map_join(certifications, ", ", &certification_text/1)
+  end
+
   defp swept_line(_), do: ""
+
+  defp certification_text(%{source: source, finished_at: nil}), do: "#{source} (no run on file)"
+
+  defp certification_text(%{source: source, finished_at: finished_at}),
+    do: "#{source} @ #{DateTime.to_iso8601(finished_at)}"
 
   defp refused(%{reason: reason}), do: reason
   defp refused(other), do: inspect(other)
