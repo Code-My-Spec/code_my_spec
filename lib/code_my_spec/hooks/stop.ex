@@ -64,76 +64,32 @@ defmodule CodeMySpec.Hooks.Stop do
 
     active_task = session && Session.active_task(session)
 
-    scope
-    |> do_decide(session_id, session, active_task, validation_opts, req_id)
-    |> note_config_edits(session_id)
+    do_decide(scope, session_id, session, active_task, validation_opts, req_id)
   end
 
-  # There was a second half to this, and it is gone: a `note_stale_config/1`
-  # that compared the sha this server booted at against the sha on disk and
-  # warned when the range touched config/. It caught the case
-  # `note_config_edits/2` structurally cannot — a config change arriving by
-  # `git pull`, which nobody's session edited.
+  # The stop hook used to warn about config edits, in two halves, and both are
+  # gone. `note_config_edits/2` appended a footer on allow when the session had
+  # edited `config/*.exs`; `note_stale_config/1` compared the sha this server
+  # booted at against the one on disk, and caught the case the first structurally
+  # could not - a config change arriving by a pull, which nobody's session
+  # edited.
   #
-  # It paid for that by shelling out to `git rev-parse` inside every stop, which
-  # is a fork per hook for a question almost always answered "no". It also broke
-  # twenty-one spex across eight unrelated stories: the spex cassettes patch
-  # `System.cmd/3` process-globally, so a stray `git` call inside a request dies
-  # on `No recording found for: git rev-parse --short HEAD` and takes the
-  # criterion with it, naming a boot version in a story about something else.
+  # `note_stale_config/1` went first, for cost: it shelled out to a subprocess
+  # inside every stop - a fork per hook for a question almost always answered
+  # "no" - and it broke twenty-one spex across eight unrelated stories, because
+  # the spex cassettes patch `System.cmd/3` process-globally and a stray call
+  # inside a request dies on a missing recording, taking the criterion with it.
   #
-  # The warning was worth having and the price was not. If it comes back it
-  # comes back off the harness's file watcher, which already knows when the
-  # checkout moves and does not have to ask.
-
-  # Phoenix cannot hot-reload `config/*.exs`, by design. A commit that touches
-  # one leaves every running dev server answering
+  # `note_config_edits/2` went second, and for a different reason: it does not
+  # reach the audience it is written for. The footer rides on the stop hook, so
+  # it is read by a Claude Code session and by nothing else - an agent running
+  # inside our own BEAM fires no stop hook and never sees it. The wedge it warns
+  # about costs *other checkouts*, minutes later, which is precisely who cannot
+  # be told this way. John's call, 2026-09-15.
   #
-  #     ** (RuntimeError) could not compile application: code_my_spec.
-  #     You must restart your server after changing configuration files
-  #
-  # to every request — but not here, and not now. It surfaces in a different
-  # checkout, minutes later, to whoever touches it next, and nothing in that
-  # error names the commit. Two servers went down at once from two unrelated
-  # sessions, neither of whom did anything wrong (5fb011f4, 6ecb257a).
-  #
-  # On allow only. An allow is the agent walking away, which is exactly when the
-  # wedge starts costing somebody else; a block already tells it to come back,
-  # and repeating this on every one of those would train it to skip the footer.
-  defp note_config_edits(%{"decision" => "block"} = response, _session_id), do: response
-
-  defp note_config_edits(response, session_id) when is_binary(session_id) do
-    case session_id |> FileEdits.get_edited_files() |> Enum.filter(&config_file?/1) do
-      [] ->
-        response
-
-      paths ->
-        note =
-          "You edited #{Enum.join(Enum.sort(paths), ", ")}. Phoenix cannot " <>
-            "hot-reload config, so every running dev server — including ones in " <>
-            "other checkouts, once this reaches them — will answer every request " <>
-            "with a CompileError until it is restarted. Restarting alone does not " <>
-            "always clear it: kill the BEAM, `rm -rf _build/<env>/lib/<app>` to " <>
-            "drop the stale compile.lock, then relaunch."
-
-        Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
-    end
-  end
-
-  defp note_config_edits(response, _session_id), do: response
-
-  # `config/<name>.exs` at the project root, whether the recorded path is
-  # relative or absolute — PostToolUse stores whatever Claude passed, and both
-  # shapes occur.
-  defp config_file?(path) when is_binary(path) do
-    segments = Path.split(path)
-
-    String.ends_with?(path, ".exs") and
-      Path.basename(Path.dirname(path)) == "config" and
-      "deps" not in segments and "_build" not in segments
-  end
-
-  defp config_file?(_path), do: false
+  # If the warning comes back it comes back off the harness's file watcher, which
+  # already knows when a checkout moves, does not have to ask, and can reach
+  # every copy rather than the one whose session happened to make the edit.
 
   # Allow stays the default — a stop hook that fails closed on its own
   # plumbing would wedge every agent on this machine. But allowing silently
