@@ -11,8 +11,8 @@ defmodule CodeMySpec.QaFixtures do
   """
 
   alias CodeMySpec.Qa.QaAttempt
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc """
