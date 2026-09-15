@@ -146,6 +146,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
@@ -1414,6 +1415,20 @@ defmodule CodeMySpecSpex.Fixtures do
   def settle_graph(%Scope{} = scope) do
     :ok = GraphWatcher.settle(scope)
     drain_background_work()
+  end
+
+  @doc """
+  What the graph actually holds actionable for a role, right now.
+
+  `CodeMySpec.Requirements` is not a spex dependency, same as `watch_graph/1`
+  and `settle_graph/1` above — this is the same bridge, for a spex that needs
+  to tell a premise failure from a delivery failure. `Requirements.actionable_for_role/2`
+  settles the graph itself before reading, so this reflects whatever the graph
+  holds at the moment it is called, not a snapshot from before.
+  """
+  @spec actionable_names(Scope.t(), atom() | nil) :: [String.t()]
+  def actionable_names(%Scope{} = scope, role \\ nil) do
+    scope |> Requirements.actionable_for_role(role) |> Enum.map(& &1.name)
   end
 
   @doc """

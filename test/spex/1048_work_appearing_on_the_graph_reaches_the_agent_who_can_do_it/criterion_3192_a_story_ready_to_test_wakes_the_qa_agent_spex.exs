@@ -81,6 +81,12 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
       then_ "the QA agent receives a message naming that story", context do
         said = said_since(context, context.qa, context.before)
 
+        # Instrumentation for issue b789ed99: four delivery hypotheses have
+        # been measured and rejected without moving this criterion's failure
+        # rate. The open question is whether the premise is even reached —
+        # captured here, before the assertion, so a red run says which.
+        actionable = Fixtures.actionable_names(context.scope, :qa)
+
         refute said == [],
                """
                A story became testable and the agent that tests it was told
@@ -89,6 +95,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
                1047's 3179 says QA work must not wake the coding agent.
                Nothing else says it wakes QA — so an implementation that wakes
                nobody satisfies that criterion perfectly.
+
+               QA-actionable requirements at this moment: #{inspect(actionable)}
                """
 
         assert Enum.any?(
