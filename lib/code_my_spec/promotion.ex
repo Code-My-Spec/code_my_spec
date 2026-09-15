@@ -792,9 +792,15 @@ defmodule CodeMySpec.Promotion do
       reason:
         "this copy has not been swept clean at its current commit: #{named} " <>
           "need a fresh run before this can promote. Nothing was started for " <>
-          "you — run analysis on #{named} (a stop hook does this on its own; " <>
-          "`start_analysis` runs one directly) and promote again once it " <>
-          "lands.\n\n" <>
+          "you — three ways to get one, and promote again once #{named} lands:\n\n" <>
+          "  - do nothing: the next stop hook enqueues it automatically\n" <>
+          "  - `start_analysis` with the specific source (one call per name in " <>
+          "#{named}) runs it directly, without waiting for a stop\n" <>
+          "  - run `mix test` / `mix spex` / `mix credo` / `mix compile` yourself, " <>
+          "same as you would to check your own work — the PreToolUse hook routes " <>
+          "it through this project's own run ledger, so an ordinary invocation " <>
+          "satisfies this gate exactly like a server-dispatched sweep does; " <>
+          "nothing extra to call\n\n" <>
           "This refuses where the gate used to wait, sometimes indefinitely: " <>
           "promoting while still editing used to hold this project's lock, " <>
           "refusing every other promotion, for as long as each edit re-staled " <>
