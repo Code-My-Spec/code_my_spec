@@ -80,6 +80,36 @@ defmodule CodeMySpec.Analysis.Coverage do
   end
 
   @doc """
+  What a run that began at `started_at` can honestly be recorded as having read.
+
+  The files whose role feeds this source and whose content has not moved since
+  the run began. A file edited while the run was in flight is **left out**, not
+  recorded at its current content: the analyzer read the older bytes, and
+  stamping today's fingerprint onto it would be a false fact rather than a stale
+  one — the distinction `FileAnalysis`'s moduledoc is built around.
+
+  Leaving it out is the safe direction. An omitted file has no coverage row, so
+  `unanalyzed_files/2` reports it as unread, and unread never reads as clean.
+
+  Both sides carry microseconds, so the comparison is exact. `files.updated_at`
+  was second-resolution until `20260915003000`, which made every file written in
+  the same second as the run unorderable against it — the only honest reading
+  then was to discard the whole second, losing coverage for files the analyzer
+  really had read.
+  """
+  @spec seen_entries(Scope.t(), String.t(), DateTime.t()) :: [{Ecto.UUID.t(), String.t()}]
+  def seen_entries(%Scope{} = scope, source, %DateTime{} = started_at) do
+    cutoff = DateTime.to_naive(started_at)
+
+    scope
+    |> feeding_files(source)
+    |> where([f], f.updated_at < ^cutoff)
+    |> where([f], not is_nil(f.fingerprint))
+    |> select([f], {f.id, f.fingerprint})
+    |> Repo.all()
+  end
+
+  @doc """
   Files this source covered whose content has moved since.
 
   Empty means every file it read still has the bytes it read. Non-empty is the

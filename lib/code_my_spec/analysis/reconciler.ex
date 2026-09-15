@@ -14,7 +14,15 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{AgentReport, Fingerprint, Run, RunsRepository, Signatures}
+  alias CodeMySpec.Analysis.{
+    AgentReport,
+    Coverage,
+    Fingerprint,
+    Run,
+    RunsRepository,
+    Signatures
+  }
+
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -62,6 +70,19 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
     case Problems.reconcile_problems_for_source(scope, run.source, file_scope, problems) do
       {:ok, _inserted} ->
+        # What this run read, per file, at the content it read.
+        #
+        # `problems` already says "this file had this finding at this content".
+        # Nothing said "this file was clean at this content", so a file with no
+        # findings and a file nobody analysed were the same shape — no rows —
+        # and `count == 0` read *clean* out of an *absence*.
+        #
+        # Recorded here rather than at run start, because only this branch means
+        # the run produced results. A run that fails or is superseded records no
+        # coverage, so its files stay unread rather than claiming a verdict
+        # nothing produced.
+        record_coverage(scope, run)
+
         # Read before finishing: this run is still `:running`, so
         # `latest_completed_run/2` returns the sweep before it. After
         # `finish_run` it would return this one and the delta would be empty.
@@ -212,6 +233,27 @@ defmodule CodeMySpec.Analysis.Reconciler do
   end
 
   defp stamp_component_ids(problems, _scope, _source), do: problems
+
+  # No rescue. The first version had one — "best effort, a coverage failure must
+  # not fail a reconcile that already landed its Problems" — and it earned its
+  # keep immediately, in the worst way: a missing alias made this raise
+  # `module Coverage is not available`, and the rescue turned that into a
+  # warning in a log nobody reads while the tests failed for no stated reason.
+  #
+  # A coverage write that cannot happen is a defect. A reconcile that silently
+  # records nothing is the absence-reading-as-success this table exists to end,
+  # arriving through the door built to protect it.
+  #
+  # No working copy records nothing, and that is an answer rather than a
+  # swallowed failure: coverage is keyed per checkout, so there is no row to
+  # write and nothing being claimed.
+  defp record_coverage(%Scope{active_working_copy_id: nil}, _run), do: :ok
+
+  defp record_coverage(%Scope{} = scope, %Run{started_at: %DateTime{} = started_at} = run) do
+    entries = Coverage.seen_entries(scope, run.source, started_at)
+    Coverage.record(scope, run.source, entries, run_id: run.id, analyzed_at: started_at)
+    :ok
+  end
 
   # -- Clear scope --
 
