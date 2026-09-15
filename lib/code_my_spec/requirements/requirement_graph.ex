@@ -274,6 +274,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp analysis_source(_node), do: nil
 
   defp recompute_stale(scope, ctx, config) do
+    # What a pass costs, on the line that already says what it did.
+    #
+    # The sub-phase timings (`nodes`, `edges`, the component-tree breakdown)
+    # only fire on the paths that reach them, and `preload n/a` means the
+    # preload is not always attributed — so the total had to be reconstructed by
+    # summing lines that may not all be present. The number this replaces was
+    # exactly that: "median 2.6s, p90 5.9s, max 14.8s" over 348 computes, pieced
+    # together from a log rather than read off a field, which is why nobody
+    # could say afterwards whether the work had made it better.
+    started = System.monotonic_time(:millisecond)
     stamp_project(scope)
     {stored_nodes, stored_edges} = Projection.load(scope, ctx)
 
@@ -320,6 +330,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
+          "in #{elapsed_ms(started)}ms; " <>
           "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
@@ -364,7 +375,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         Logger.info("[Requirements] full recompute — topology_moved #{parts}")
 
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
 
       # The counts that decided it, for the same reason `topology_moved` prints
       # its parts one clause up: `everything_stale` on its own says a full
@@ -380,13 +391,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # nothing to reuse, and recomputing it whole is both correct and cheap.
       {:everything_stale, {:all, why}} ->
         Logger.info("[Requirements] full recompute — everything_stale #{why}")
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
 
       {why, _} ->
         Logger.info("[Requirements] full recompute — #{why}")
-        compute_and_publish(scope, ctx, config)
+        publish_timed(scope, ctx, config, started)
     end
   end
+
+  # The full paths log their reason before doing the work, because the reason is
+  # what a reader is chasing and the work can take seconds. So the cost is said
+  # afterwards, on its own line, rather than predicted.
+  defp publish_timed(scope, ctx, config, started) do
+    result = compute_and_publish(scope, ctx, config)
+    Logger.info("[Requirements] full recompute finished in #{elapsed_ms(started)}ms")
+    result
+  end
+
+  defp elapsed_ms(started), do: System.monotonic_time(:millisecond) - started
 
   # The shared inputs, each digested on its own, so two consecutive recompute
   # lines name the mover by the digest that differs between them.
