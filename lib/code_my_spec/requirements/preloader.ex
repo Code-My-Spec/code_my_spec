@@ -377,6 +377,115 @@ defmodule CodeMySpec.Requirements.Preloader do
     where(query, [s], is_nil(s.working_copy_id) or s.working_copy_id == ^working_copy_id)
   end
 
+  @doc """
+  One story's context, for a consumer that is only going to compute that story.
+
+  ## Why this is so much smaller than `load/1`
+
+  `load/1` exists to amortise an N+1 across the whole project: the story
+  delegates take a scope and a story and nothing else, so they queried per story
+  — "on a project with 76 ready stories that is 304 queries inside one graph
+  computation". Batching them into `@delegated_tables` is what made a
+  whole-project pass affordable.
+
+  For one story that trade inverts. The N+1 *is* the narrow load: four
+  per-story queries from the delegates, against fifteen project-wide ones to
+  avoid them. So this loads the story and its files and lets the delegates do
+  what they were written to do.
+
+  Nothing else in the story graph needs a context. Its eight requirements are
+  one `:file_exists` (served by the files below), one `:component_exists` and
+  one `:deployed` (both query directly), four delegates that ignore `ctx`, and
+  `bdd_specs_passing`, which reads `analysis_fresh` — the one project-wide value
+  here, passed in so a caller holding several marks computes it once.
+
+  There is no `:path_exists` in the story graph, which is why `files_by_path` is
+  not carried at all — see `narrow_context/2` on why an absent key is safer here
+  than an empty one.
+
+  ## No fingerprints
+
+  `skip_fingerprints` is set, and `delegated_inputs` is absent because nothing
+  but `Freshness` and `GraphFingerprint` read it. A projection that decides from
+  events has no use for a per-entity fingerprint, and computing one from a
+  narrow context would produce a *plausible* hash that is not the one a whole
+  pass would produce — worse than none, because it would look comparable.
+  `nil` is the honest stamp and already means "no basis to skip this row".
+
+  Answers with an empty context when the story is not in this vantage's scope —
+  parked, or assigned to another checkout — which is the same filter `load/1`
+  applies and makes the consumer write no rows for it.
+  """
+  @spec load_story(Scope.t(), integer(), %{String.t() => boolean()}) :: {:ok, context()}
+  def load_story(%Scope{active_project_id: project_id} = scope, story_id, analysis_fresh)
+      when is_binary(project_id) do
+    story =
+      Story
+      |> where([s], s.id == ^story_id and s.project_id == ^project_id and s.ready_for_dev == true)
+      |> assigned_here_or_unassigned(scope.active_working_copy_id)
+      |> Repo.one()
+
+    {:ok, story_context(scope, story, analysis_fresh)}
+  end
+
+  defp story_context(_scope, nil, analysis_fresh),
+    do: narrow_context(analysis_fresh, [])
+
+  defp story_context(scope, story, analysis_fresh) do
+    files =
+      File
+      |> where([f], f.story_id == ^story.id)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    analysis_fresh
+    |> narrow_context([story])
+    |> Map.put(:files_by_story, %{story.id => files})
+  end
+
+  # Only the keys this load actually fills, and that is a safety property rather
+  # than tidiness.
+  #
+  # Several checkers take a fast path when the context carries their collection
+  # and query per story when it does not — `Qa.complete_check/3` is the pattern:
+  # `case ctx[:qa_latest_by_story]`, use it when it is a map, otherwise fall
+  # through to `QaAttempts.complete?/2`. Handing them an *empty* map is not a
+  # missing key, it is an assertion that the story has no QA attempt, and they
+  # believe it.
+  #
+  # That is exactly what happened: filling every declared key with an empty
+  # collection made `qa_complete` read false for all 38 stories on the live
+  # project while the whole-context load read true. The unit fixtures did not
+  # catch it because a freshly created story genuinely has no attempt.
+  #
+  # So an absent key means "ask the database", which for one story is one
+  # indexed query and is what those clauses were written for. A key this load
+  # forgot that something genuinely needs raises `KeyError` — loud, caught by
+  # the drain, marks retained — rather than quietly answering `false`.
+  defp narrow_context(analysis_fresh, stories) do
+    %{
+      stories: stories,
+      components: [],
+      files_by_story: %{},
+      analysis_fresh: analysis_fresh,
+      skip_fingerprints: true
+    }
+  end
+
+  @doc """
+  The four analyzer-freshness booleans on their own.
+
+  Project-wide and read by `bdd_specs_passing` on every story, so a consumer
+  handling several marks computes it once rather than per entity. It is also the
+  one part of a narrow load that still reads the whole checkout's files — the
+  fingerprint it compares against is over all of them — which is why it is
+  separable and cacheable rather than inlined.
+  """
+  @spec analysis_freshness(Scope.t()) :: %{String.t() => boolean()}
+  def analysis_freshness(%Scope{} = scope) do
+    analysis_freshness(scope, CodeMySpec.Files.list_files(scope))
+  end
+
   defp rules_by_story(project_id) do
     Rule
     |> where([r], r.project_id == ^project_id and not is_nil(r.story_id))

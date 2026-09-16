@@ -21,17 +21,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   time when they do — `Invalidations.pending/1` returning several is a consumer
   catching up, not a window being drained.
 
-  ## The context read is scaffolding, and is the next thing to go
+  ## What a drain loads is decided before it loads anything
 
-  Each drain loads the whole project context once and computes each entity
-  against it. That shared read is the one thing here still shaped like the
-  batched system, and it is load-bearing for nothing: it is here because
-  `Preloader.load/1` only knows how to load a project, and a per-entity loader
-  is a change worth making with a working correctness oracle already in place
-  rather than before one.
+  `plan/2` reads the marks and picks one of three shapes, because what they
+  claim decides what has to be read:
 
-  Until then the shadow is honest about *what* it computes and not yet about
-  *what it costs*, and only the first of those is what the diff measures.
+    * `:everything` — a writer could not say what it moved, or this projector
+      has not seeded. Whole context, every entity. This is the pass the event
+      path exists to replace, and it is what an un-narrowed writer costs.
+    * `{:full_context, entities}` — the project requirements moved, or a
+      component did. Both need the project's components: project requirements
+      read counts across it, and a component's unit is its family, which
+      `component_families/1` can only work out from the whole set.
+    * `{:stories, ids}` — every mark named a story and none claimed project
+      scope. `Preloader.load_story/3` per story, and `Preloader.load/1` is never
+      called.
+
+  That last shape is the point of the whole exercise, and it inverts the
+  premise `load/1` was built on. The story delegates take a scope and a story
+  and query per story — "304 queries inside one graph computation" on a project
+  with 76 ready stories — so batching them into `@delegated_tables` is what made
+  a whole-project pass affordable. For one story the N+1 *is* the narrow load:
+  four per-story queries against fifteen project-wide ones to avoid them.
 
   ## Failure is loud and nothing is dropped
 
@@ -134,6 +145,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        project_id: project_id,
        scope: scope,
        seeded: false,
+       # The four analyzer-freshness booleans, kept between drains. Project-wide
+       # and computed from the whole checkout's files, so recomputing it per
+       # narrow drain would reintroduce the read the narrow path exists to
+       # avoid. Only a writer that touched files or an analyzer run can move it,
+       # and every one of those records `:unknown`.
+       analysis_fresh: nil,
        last_drain: nil,
        last_error: nil
      }}
@@ -173,12 +190,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   defp apply_marks(state, marks) do
-    {:ok, ctx} = Preloader.load(state.scope)
     config = Configurations.get_or_create(state.scope)
-
-    state
-    |> entities_to_compute(marks, ctx)
-    |> write_each(state.scope, ctx, config)
+    state = run(plan(state, marks), state, config)
 
     # Only once the writes are done. A mark consumed before the work it asks
     # for is a mark that a crash turns into a permanently stale entity, which
@@ -188,10 +201,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
   end
 
-  # An unseeded projector reads every mark the same way, whatever it names: it
-  # has no prior state for a delta to be relative to.
-  defp entities_to_compute(%{seeded: false}, _marks, ctx),
-    do: ctx |> all_entities() |> MapSet.put({"project", nil}) |> Enum.to_list()
+  # What this drain has to load, which is decided before anything is loaded.
+  #
+  # An unseeded projector reads every mark the same way: it has no prior state
+  # for a delta to be relative to.
+  defp plan(%{seeded: false}, _marks), do: :everything
 
   # Three claims, three costs.
   #
@@ -200,25 +214,66 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # whole-project pass this exists to replace, and it is what an un-narrowed
   # writer costs.
   #
-  # `project?` — a writer said the project requirements moved. One more
-  # computation, 60-95ms here, and a fixed one.
+  # `project?` — a writer said the project requirements moved. Project
+  # requirements read counts across the project, so this needs a whole context
+  # whatever else the marks named.
   #
-  # Neither — every mark named entities and none claimed project scope, so the
-  # project requirements are untouched and are not recomputed. This is the case
-  # that makes a mark cost what the entity it names costs. Before the third
-  # state existed, every drain took the `project?` branch: 7ms of story against
-  # 75ms of project nodes nothing had asked for.
-  defp entities_to_compute(%{seeded: true}, marks, ctx) do
+  # Stories alone — every mark named a story and none claimed project scope.
+  # This is the case a narrow load exists for, and the only one that never
+  # touches `Preloader.load/1`.
+  #
+  # A component falls to `:full_context` because its unit is its family, and
+  # `component_families/1` needs the project's components to work out which
+  # family that is.
+  defp plan(%{seeded: true}, marks) do
     {named, flags} = Invalidations.entities(marks)
 
-    named
-    |> then(fn named -> if flags[:unknown?], do: all_entities(ctx), else: named end)
-    |> then(fn named ->
-      if flags[:unknown?] or flags[:project?],
-        do: MapSet.put(named, {"project", nil}),
-        else: named
-    end)
+    cond do
+      flags[:unknown?] -> :everything
+      flags[:project?] -> {:full_context, MapSet.put(named, {"project", nil})}
+      Enum.all?(named, &match?({"story", _}, &1)) -> {:stories, named}
+      true -> {:full_context, named}
+    end
+  end
+
+  defp run(:everything, state, config) do
+    {:ok, ctx} = Preloader.load(state.scope)
+
+    ctx
+    |> all_entities()
+    |> MapSet.put({"project", nil})
     |> Enum.to_list()
+    |> write_each(state.scope, ctx, config)
+
+    # The whole context was just read, so the cached freshness is current by
+    # construction.
+    %{state | analysis_fresh: ctx.analysis_fresh}
+  end
+
+  defp run({:full_context, entities}, state, config) do
+    {:ok, ctx} = Preloader.load(state.scope)
+    write_each(Enum.to_list(entities), state.scope, ctx, config)
+    %{state | analysis_fresh: ctx.analysis_fresh}
+  end
+
+  # The narrow path: one story at a time, no project-wide read.
+  #
+  # `analysis_fresh` is the one project-wide value a story requirement needs —
+  # `bdd_specs_passing` reads it — and it is computed from the whole checkout's
+  # files, so it is cached rather than recomputed per drain. Sound because it
+  # can only move when files or an analyzer run move, and every writer that does
+  # either records `:unknown`, which takes the `:everything` branch above and
+  # refreshes it.
+  defp run({:stories, stories}, state, config) do
+    analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
+
+    Enum.each(stories, fn {"story", story_id} = entity ->
+      {:ok, ctx} = Preloader.load_story(state.scope, story_id, analysis_fresh)
+      {covered, nodes} = RequirementGraph.compute_entity(state.scope, ctx, config, entity)
+      Shadow.write(state.scope, covered, nodes)
+    end)
+
+    %{state | analysis_fresh: analysis_fresh}
   end
 
   defp all_entities(ctx) do
@@ -228,10 +283,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     )
   end
 
-  # A mark can name an entity the project no longer has — the delete that made
-  # it is exactly when a mark matters — so the write is skipped and the mark is
-  # still consumed. `Shadow.write/3` with no nodes would delete the rows anyway;
-  # this only avoids computing against a context that does not hold it.
   # Each entity in turn, skipping what an earlier one in this drain already
   # answered for.
   #

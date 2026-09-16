@@ -2478,7 +2478,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         # requirement of a story reads the same slice of the context, so they
         # go stale together and hashing it seven times would answer the same
         # question seven ways.
-        fingerprint = Freshness.story(ctx, story)
+        fingerprint = story_fingerprint(ctx, story)
 
         nodes =
           Enum.map(template, fn definition ->
@@ -2513,6 +2513,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # Stash edges — they'll be merged into template_edges
     {nodes, edges}
   end
+
+  # `nil` when the context says it was not loaded to answer this.
+  #
+  # `Preloader.load_story/3` omits `delegated_inputs` because nothing but
+  # `Freshness` and `GraphFingerprint` read it, and hashing a narrow context
+  # would produce a *plausible* fingerprint that is not the one a whole pass
+  # produces. That is worse than no fingerprint: it looks comparable and is not,
+  # so a later reader could skip a row on the strength of it.
+  #
+  # `nil` already carries the right meaning — `Node`'s `inputs_fingerprint` doc
+  # says it "reads as 'no basis to skip it' rather than as 'unchanged'" — which
+  # is exactly true of a row the event path wrote.
+  defp story_fingerprint(%{skip_fingerprints: true}, _story), do: nil
+  defp story_fingerprint(ctx, story), do: Freshness.story(ctx, story)
 
   defp compute_project_nodes(scope, ctx, config) do
     project = scope.active_project

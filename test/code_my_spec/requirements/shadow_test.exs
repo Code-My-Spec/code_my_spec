@@ -314,6 +314,61 @@ defmodule CodeMySpec.Requirements.ShadowTest do
                Enum.map(again, &{&1.name, &1.satisfied})
     end
 
+    test "a narrow story load answers the same as the whole context", ctx do
+      scope = ctx.scope
+      story = create_story(scope, title: "Narrowly loaded", description: "one story")
+
+      {:ok, full} = Preloader.load(scope)
+      config = CodeMySpec.Configurations.get_or_create(scope)
+
+      {:ok, narrow} = Preloader.load_story(scope, story.id, full.analysis_fresh)
+
+      {_, from_full} =
+        RequirementGraph.compute_entity(scope, full, config, {"story", story.id})
+
+      {_, from_narrow} =
+        RequirementGraph.compute_entity(scope, narrow, config, {"story", story.id})
+
+      # The whole claim of `load_story/3`: the story graph's delegates query per
+      # story anyway, so a context holding only that story answers every one of
+      # its eight requirements identically. If this ever stops holding, the
+      # narrow path is silently deciding from less than the checkers need.
+      assert Enum.map(from_full, &{&1.name, &1.satisfied}) ==
+               Enum.map(from_narrow, &{&1.name, &1.satisfied}),
+             "narrow and whole-context loads disagree about this story's requirements"
+
+      assert from_narrow != [], "the narrow load produced no requirements at all"
+
+      # And it stamps no fingerprint, deliberately. A hash over a narrow context
+      # is not the hash a whole pass produces, so a plausible-looking one would
+      # be worse than none — `nil` already means "no basis to skip this row".
+      assert Enum.all?(from_narrow, &is_nil(&1.inputs_fingerprint)),
+             "the narrow path must not stamp a fingerprint it cannot compute correctly"
+
+      assert Enum.all?(from_full, &is_binary(&1.inputs_fingerprint)),
+             "the whole-context path must still stamp one"
+    end
+
+    test "a story outside this vantage's scope loads as empty", ctx do
+      scope = ctx.scope
+      story = create_story(scope, title: "Parked", description: "not ready")
+
+      {:ok, _} =
+        CodeMySpec.Stories.update_story(
+          scope,
+          CodeMySpec.Stories.get_story!(scope, story.id),
+          %{ready_for_dev: false}
+        )
+
+      {:ok, narrow} = Preloader.load_story(scope, story.id, %{})
+
+      # `load/1` gates on `ready_for_dev` and on the assignment rule, and the
+      # narrow load has to apply the same filter or it would compute rows for a
+      # story the live projection deliberately holds none for.
+      assert narrow.stories == [],
+             "a parked story must not load, or the event path computes rows the pass would not"
+    end
+
     test "a nested component answers the same alone as inside its family", ctx do
       scope = ctx.scope
       parent = ComponentsFixtures.component_fixture(scope, %{type: "context"})
