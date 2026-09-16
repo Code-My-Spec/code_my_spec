@@ -395,13 +395,10 @@ defmodule CodeMySpec.Issues do
        when is_binary(account_id) do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
 
-    # And to the graph's own topic, additionally: `GraphWatcher` debounces these
-    # and asks the fingerprint whether anything really moved. An incoming issue
-    # makes `issues_triaged` actionable, which is work appearing that no reader
-    # would notice. See `Requirements.GraphInputs`.
     # The event, not an invalidation. `Requirements.Handlers` settles the three
-    # issue requirements from it directly; `graph_entities/1` rides along so a
-    # consumer with no handler still has something to invalidate.
+    # issue requirements from it directly — an issue at or above the threshold
+    # *is* `issues_triaged = false`. `graph_entities/1` rides along so a
+    # consumer with no handler for this kind still has something to invalidate.
     GraphInputs.event(
       scope,
       "Issues",
@@ -410,6 +407,8 @@ defmodule CodeMySpec.Issues do
       graph_entities(message)
     )
   end
+
+  defp broadcast(_scope, _message), do: :ok
 
   defp event_kind({:created, _}), do: "issue_created"
   defp event_kind({:accepted, _}), do: "issue_accepted"
@@ -427,8 +426,6 @@ defmodule CodeMySpec.Issues do
     }
 
   defp event_payload(_message), do: %{}
-
-  defp broadcast(_scope, _message), do: :ok
 
   # The story it was attributed to, if any, and always the project.
   #

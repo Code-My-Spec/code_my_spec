@@ -8,11 +8,11 @@ defmodule CodeMySpec.Requirements.Handlers do
 
     * `@dirties` — which profiles an event kind invalidates.
     * `@fed_by` — which requirements each profile settles.
-    * `settle/3` — one clause per requirement, reading its profile.
+    * `settle/2` — one clause per requirement, reading its profile.
 
   An event dirties one or more profiles, each profile is loaded once
   (`Profiles.load/2`), and every requirement fed by those profiles is settled
-  from it in memory. Adding a requirement is a `settle/3` clause and a name in
+  from it in memory. Adding a requirement is a `settle/2` clause and a name in
   `@fed_by`. Adding a source is a profile.
 
   What it is *not* is a query per handler. Five `file_exists` names all read the
@@ -108,7 +108,7 @@ defmodule CodeMySpec.Requirements.Handlers do
           profile_names
           |> Enum.flat_map(fn profile_name ->
             profile = Profiles.load(scope, profile_name)
-            Enum.map(@fed_by[profile_name], &settle(&1, profile, scope))
+            Enum.map(@fed_by[profile_name], &settle(&1, profile))
           end)
 
         {:ok, [], sweeps}
@@ -117,27 +117,25 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # -- One clause per requirement. Each reads its profile and nothing else. --
 
-  defp settle("issues_triaged", profile, scope),
+  defp settle("issues_triaged", profile),
     do:
       project_sweep(
-        scope,
         "issues_triaged",
         profile.incoming == [],
         %{status: "No untriaged issues at #{profile.threshold}+ severity"},
         %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
       )
 
-  defp settle("issues_resolved", profile, scope),
+  defp settle("issues_resolved", profile),
     do:
       project_sweep(
-        scope,
         "issues_resolved",
         profile.accepted == [],
         %{status: "No unresolved #{profile.threshold}+ issues"},
         %{reason: "#{length(profile.accepted)} unresolved #{profile.threshold}+ issues"}
       )
 
-  defp settle("story_issues_resolved", profile, _scope) do
+  defp settle("story_issues_resolved", profile) do
     %{
       entity_type: "story",
       name: "story_issues_resolved",
@@ -164,7 +162,10 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # A project requirement has one entity, so its sweep is one row — expressed as
   # a sweep anyway so every requirement settles through the same path.
-  defp project_sweep(scope, name, satisfied?, satisfied_details, unsatisfied_details) do
+  #
+  # No scope needed: `Shadow.sweep/2` matches on entity type, and there is only
+  # ever one project row per vantage.
+  defp project_sweep(name, satisfied?, satisfied_details, unsatisfied_details) do
     %{
       entity_type: "project",
       name: name,
