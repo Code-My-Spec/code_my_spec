@@ -20,11 +20,6 @@ defmodule CodeMySpecSpex.Story814.Criterion6567Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  # Shared mode so the LiveView process (separate from the test) sees the stub.
-  setup do
-    Req.Test.set_req_test_to_shared(%{})
-  end
-
   spex "Sam sees an auth error when the deploy key is rejected" do
     scenario "The target app rejects the deploy key" do
       given_ "the project's deploy key does not match the target app", context do

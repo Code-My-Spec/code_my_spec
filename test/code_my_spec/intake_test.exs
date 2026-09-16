@@ -50,6 +50,26 @@ defmodule CodeMySpec.IntakeTest do
     end
   end
 
+  describe "the transcript once a plan is generated (7df5485e)" do
+    test "the agent's side of landing on a plan is a turn, not silence" do
+      plan = planned_plan()
+
+      said = plan |> Intake.transcript() |> Enum.map_join("\n", & &1.text)
+
+      assert said =~ "Here's what I think you're building", """
+      `shaped/2` can decide no follow-up question is needed and go straight
+      from a description to a generated plan, leaving `pending_question` nil
+      the whole time. `shaping/2` only ever spoke by way of that field, so this
+      path landed on `:planned` with nothing in the transcript to say the
+      agent answered at all — the visitor's own message just sat there while
+      the plan card filled in on its own.
+
+      Transcript was:
+      #{said}
+      """
+    end
+  end
+
   describe "coming back" do
     test "the same token finds the plan waiting" do
       plan = planned_plan()

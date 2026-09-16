@@ -408,39 +408,24 @@ defmodule CodeMySpecSpex.Case do
   end
 
   # A spex choosing "cloud" now pays for it (990/3400) — `StripeClient`'s
-  # `plug:` already routes to `Req.Test` globally (config/test.exs), but a
-  # replay still needs a stub actually registered, and price ids configured
-  # or `Billing.price_id!/1` raises. Every spex gets an instant-success
+  # `plug:`, `secret_key` and `CodeMySpec.Billing`'s price ids are static
+  # fixture values in `config/test.exs` (every spex needs the same ones, so
+  # they are defined once rather than `Application.put_env` + `on_exit`
+  # restored in every spex's own setup — that was the exact global-state
+  # race already fixed for :deploy_key (07c2c511) and the storage client
+  # (d0842eac4), just not yet generalized here; 312 `Req.Test.OwnershipError
+  # (:not_shared_owner)` failures under a concurrent spex batch is what
+  # finally surfaced it for Stripe). What still needs doing per test is
+  # registering the actual response stub, which is inherently per-process —
+  # that's what `Req.Test.stub/2` is for. Every spex gets an instant-success
   # default, same shape `CodeMySpec.BillingTest` records by hand, so the
   # dozens of scenarios that only need a working copy to come up are not
   # each responsible for standing up a fake Stripe. A spex whose subject is
   # payment itself (990/3400, 1067/3420) overrides this stub for its own
   # scenario.
   defp stub_stripe_by_default do
-    previous_client = Application.get_env(:code_my_spec, CodeMySpec.Billing.StripeClient)
-    previous_billing = Application.get_env(:code_my_spec, CodeMySpec.Billing)
-
-    Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
-      secret_key: "sk_test_spex",
-      plug: {Req.Test, CodeMySpec.Billing.StripeClient}
-    )
-
-    Application.put_env(:code_my_spec, CodeMySpec.Billing,
-      webhook_secret: "whsec_spex",
-      light_price_id: "price_light_spex",
-      pro_price_id: "price_pro_spex"
-    )
-
     Req.Test.stub(CodeMySpec.Billing.StripeClient, &stripe_stub_response/1)
-
-    on_exit(fn ->
-      restore_app_env(CodeMySpec.Billing.StripeClient, previous_client)
-      restore_app_env(CodeMySpec.Billing, previous_billing)
-    end)
   end
-
-  defp restore_app_env(key, nil), do: Application.delete_env(:code_my_spec, key)
-  defp restore_app_env(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   defp stripe_stub_response(%{request_path: "/v1/customers"} = conn) do
     Conn.put_resp_content_type(conn, "application/json")
@@ -524,8 +509,19 @@ defmodule CodeMySpecSpex.Case do
         apex_mx_exists(context, "astralbi.com")
         ...
 
-  Shared `Req.Test` mode, because the LiveView runs in its own process and a
-  stub is otherwise scoped to the process that installed it.
+  Not shared `Req.Test` mode. The LiveView runs in its own process, but
+  `Req.Test` — like `Ecto.Sandbox` and `Mox` — already resolves ownership
+  through `$callers` (`deps/req/lib/req/test.ex`'s `callers/0`), and Phoenix
+  LiveView already propagates `$callers` to the view process it spawns
+  (`deps/phoenix_live_view/lib/phoenix_live_view/channel.ex`). A stub this
+  test's own process registers is already visible to its own LiveView for
+  free. `set_req_test_to_shared/1` was here for that reason and the reason
+  was wrong: shared mode is global to the *node*, not to this test, so any
+  spex using it made every concurrently-running spex's own `Req.Test.stub/2`
+  call fail with `Req.Test.OwnershipError{reason: {:not_shared_owner, _}}` —
+  312 such failures the first time this ran genuinely concurrent, the exact
+  shape of the `Ecto.Sandbox` bug this same file's moduledoc documents for
+  `GraphWatcher`, just for HTTP stubs instead of the database.
 
   ## Pair it with `fake_working_directory/1`
 
@@ -539,22 +535,12 @@ defmodule CodeMySpecSpex.Case do
   964/7987's scan of the working tree — use both.
   """
   def fake_providers(context) do
-    Test.set_req_test_to_shared(%{})
-
     # Which the cassette helpers read, so a `given_` that wraps itself in one
     # runs against these fakes instead of replaying a file recorded against
     # somebody's real account.
     previous_flag = Application.get_env(:code_my_spec, :spex_fakes, false)
     Application.put_env(:code_my_spec, :spex_fakes, true)
     on_exit(fn -> Application.put_env(:code_my_spec, :spex_fakes, previous_flag) end)
-
-    # And put it back. Shared mode is global to the VM, so a spex that leaves
-    # it on changes how *every later spex* resolves a stub — including ones
-    # driving cassettes, which then look up a shared stub nobody installed and
-    # report `cannot find mock/stub`. That is ordering-dependent by
-    # construction: it passes in isolation and fails somewhere in a full run,
-    # which is the most expensive kind of failure to attribute.
-    on_exit(fn -> Test.set_req_test_to_private(self()) end)
 
     # The credentials too. A step looks one up before it makes a request, so a
     # scope with no connection stops on its own precondition and the criterion
