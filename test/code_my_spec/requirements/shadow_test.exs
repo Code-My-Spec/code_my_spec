@@ -248,6 +248,66 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       :ok
     end
 
+    # Story 1020, "A writer says whether what it moved is about one checkout or
+    # about the whole project". The narrowing above is about *which entities*;
+    # this is about *whose answers*, and the two are independent — a writer can
+    # name one story precisely and still be wrong about which checkouts read it.
+    #
+    # Asserted on the mark rather than on the projection for the same reason the
+    # rest of this block is: a mark that fans out when it should not still
+    # agrees, because settling every vantage is never *wrong*, only wasteful.
+    # Only the shape says which happened.
+    test "a story change is about no checkout in particular", ctx do
+      create_story(ctx.scope, title: "Everyone's", description: "read from every checkout")
+
+      assert copies_named(ctx.scope, "Stories") == [nil],
+             """
+             A story is not a checkout's. Taking the copy from the writer's ambient
+             scope would settle the worktree the rename happened in and leave every
+             other checkout carrying the old title.
+             """
+    end
+
+    test "an analyzer result is about the checkout it ran on", ctx do
+      scope = ctx.scope
+
+      # Or the assertion below is `[nil] == [nil]` and says nothing. The whole
+      # point is that a `:this_checkout` writer records something a
+      # `:project_wide` writer does not.
+      refute is_nil(scope.active_working_copy_id),
+             "this test needs a scope with a checkout on it, or it passes vacuously"
+
+      CodeMySpec.Requirements.GraphInputs.event(
+        scope,
+        "Analysis",
+        "analysis_completed",
+        %{},
+        [:project],
+        :this_checkout
+      )
+
+      assert copies_named(scope, "Analysis") == [scope.active_working_copy_id]
+    end
+
+    test "a writer that cannot say is read as the whole project", ctx do
+      scope = ctx.scope
+
+      # `:this_checkout` from a scope with no checkout on it is not a narrowing
+      # that failed, it is a writer speaking from nowhere — and that has to read
+      # as every checkout, never as the `nil` *vantage*, which is one particular
+      # row-space a reader with no checkout is answered from.
+      CodeMySpec.Requirements.GraphInputs.event(
+        %{scope | active_working_copy_id: nil},
+        "Nowhere",
+        "analysis_completed",
+        %{},
+        [:project],
+        :this_checkout
+      )
+
+      assert copies_named(scope, "Nowhere") == [nil]
+    end
+
     test "Stories names the story it changed, and claims project scope", ctx do
       story = create_story(ctx.scope, title: "Named", description: "not project-wide")
 
@@ -373,6 +433,16 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     |> Invalidations.pending()
     |> Enum.filter(&(&1.source == source))
     |> Invalidations.entities()
+  end
+
+  # The checkouts a writer's marks name, `nil` included — `nil` is an answer
+  # ("not about a checkout"), not a missing one, so it is never filtered out.
+  defp copies_named(scope, source) do
+    scope.active_project_id
+    |> Invalidations.pending()
+    |> Enum.filter(&(&1.source == source))
+    |> Enum.map(& &1.working_copy_id)
+    |> Enum.uniq()
   end
 
   defp assert_shadow_agrees(scope, writer) do
