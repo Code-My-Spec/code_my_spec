@@ -4018,6 +4018,16 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Write a file into an environment (bridge to Environments)."
   def write_env_file(env, path, content), do: Environments.write_file(env, path, content)
 
+  @doc """
+  Remove a file through the scope's environment.
+
+  The counterpart to `write_env_file/3`, and the only way a spex can retire a
+  component: there is no `delete_component` an agent can call (issue
+  `c23f4427`), and components are projections of files, so a component stops
+  existing when nothing names its module any more.
+  """
+  def delete_env_file(env, path), do: Environments.delete_file(env, path)
+
   @doc "Run a command in an environment (bridge to Environments)."
   def env_cmd(env, command, args), do: Environments.cmd(env, command, args)
 
