@@ -400,6 +400,8 @@ defmodule CodeMySpec.Issues do
     GraphInputs.announce(scope, "Issues", graph_entities(message))
   end
 
+  defp broadcast(_scope, _message), do: :ok
+
   # The story it was attributed to, if any, and always the project.
   #
   # `:project` unconditionally, because `issues_triaged` and `issues_resolved`
@@ -415,6 +417,4 @@ defmodule CodeMySpec.Issues do
     do: [{"story", story_id}, :project]
 
   defp graph_entities(_message), do: [:project]
-
-  defp broadcast(_scope, _message), do: :ok
 end

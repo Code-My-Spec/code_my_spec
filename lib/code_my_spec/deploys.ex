@@ -108,12 +108,12 @@ defmodule CodeMySpec.Deploys do
     result
   end
 
+  defp announce(result, _scope), do: result
+
   defp deploy_entities(%{story_id: story_id}) when not is_nil(story_id),
     do: [{"story", story_id}]
 
   defp deploy_entities(_deploy), do: []
-
-  defp announce(result, _scope), do: result
 
   @doc """
   Record the stories a successful deploy carried.
