@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.PortableHost do
 
   use CodeMySpecWeb, :html
 
-  import Phoenix.LiveView, only: [attach_hook: 4]
+  import Phoenix.LiveView, only: [attach_hook: 4, push_navigate: 2, put_flash: 3]
 
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
@@ -49,19 +49,18 @@ defmodule CodeMySpecWeb.PortableHost do
         full_width: false,
         serves_attachments?: true
       )
-      # Resolved here as well as on :handle_params because a LiveView that
-      # loads in `mount/3` — mail, mailboxes, project users — runs before the
-      # first handle_params and would otherwise see no project at all. The
-      # hook still matters: it re-resolves on a live patch to another project.
-      |> then(fn socket ->
-        case params do
-          %{} = params -> elem(put_scope(params, nil, socket), 1)
-          _ -> socket
-        end
-      end)
+      # The hook re-resolves on a live patch to another project.
       |> attach_hook(:portable_scope, :handle_params, &put_scope/3)
 
-    {:cont, socket}
+    # Resolved here as well as on :handle_params because a LiveView that loads
+    # in `mount/3` — mail, mailboxes, project users — runs before the first
+    # handle_params and would otherwise see no project at all.
+    #
+    # Returned whole, rather than unwrapped with `elem(..., 1)` as it used to
+    # be: `put_scope/3` already answers in the on_mount contract, and
+    # discarding the tag meant a refusal during mount could not halt even when
+    # it wanted to. That is half of `d500df3b`.
+    put_scope(params, nil, socket)
   end
 
   defp put_scope(%{"project_id" => id}, _uri, socket) do
@@ -88,7 +87,7 @@ defmodule CodeMySpecWeb.PortableHost do
        )}
     else
       nil -> {:cont, fail(socket, "You need to be signed in.")}
-      _ -> {:cont, fail(socket, "Project not found.")}
+      _ -> {:halt, wrong_account(socket)}
     end
   end
 
@@ -128,4 +127,33 @@ defmodule CodeMySpecWeb.PortableHost do
 
   defp fail(socket, message),
     do: assign(socket, scope: nil, project: nil, scope_error: message)
+
+  # A project id the signed-in user cannot see is a wrong turn, and it has to be
+  # refused *here*, for every `/app/projects/:project_id/...` route at once.
+  #
+  # Assigning `scope_error` and continuing was the old behaviour and it was worse
+  # than a crash: only the StoryLive views render that assign, so Sessions, Files,
+  # Configuration and Qa fell through to a clause that kept reading
+  # `current_scope` — still carrying whichever project the session was last on —
+  # and rendered *that* project's data under the requested project's URL. QA saw
+  # "Sessions (0 active / 0 total) — No sessions found" for a project with a live
+  # fleet, with the switcher naming a different project and nothing saying so
+  # (`d500df3b`, found alongside `d5ed2469`, which is the same wrong turn taken
+  # by the one view that looked the id up itself and so 500'd instead).
+  #
+  # Halting is what makes it impossible for the next project-scoped view to
+  # forget: there is no assign left for a view to decline to render.
+  #
+  # Worded as *account* rather than "not found" for the same reason as
+  # `ProjectLive.Show` — the id is usually real and the account is the thing to
+  # change. "Does not exist" sends someone hunting for a deleted project.
+  defp wrong_account(socket) do
+    socket
+    |> fail("That project is not in the account you are in.")
+    |> put_flash(
+      :error,
+      "That project is not in the account you are in. Switch accounts to open it."
+    )
+    |> push_navigate(to: ~p"/app/projects")
+  end
 end
