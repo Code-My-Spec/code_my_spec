@@ -173,9 +173,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
   # `accept_issue` takes. Read off the response rather than queried back, so the
   # spex holds the issue by the same handle an agent does.
   defp issue_id(response) do
-    case Regex.run(~r/\(ID: ([^)]+)\)/, response_text(response)) do
-      [_, id] -> String.trim(id)
-      _ -> flunk("no issue id in the create_issue response: #{response_text(response)}")
-    end
+    text = response_text(response)
+    [_, id] = Regex.run(~r/\(ID: ([^)]+)\)/, text) || flunk("no issue id in: #{text}")
+    String.trim(id)
   end
 end
