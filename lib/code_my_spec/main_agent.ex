@@ -691,12 +691,28 @@ defmodule CodeMySpec.MainAgent do
   end
 
   defp windowed(turns, opts, limit) do
-    turns = Enum.filter(turns, &within?(&1, opts))
-    {kept, over_count?} = drop_oldest_beyond(turns, limit)
+    within = Enum.filter(turns, &within?(&1, opts))
+    {kept, over_count?} = drop_oldest_beyond(within, limit)
     {shown, over_budget?} = within_budget(kept)
 
-    {:ok, %{turns: shown, truncated?: over_count? or over_budget?}}
+    {:ok, no_match(%{turns: shown, truncated?: over_count? or over_budget?}, turns, :window)}
   end
+
+  # Why the answer is empty, when it is empty for a reason other than the agent
+  # having said nothing.
+  #
+  # A narrowing read that matches nothing returns the same `turns: []` as an
+  # agent that has never taken a turn, and the caller cannot tell them apart —
+  # so it was told "this agent has said nothing yet" about agents with long
+  # histories that simply had not called the tool asked about (issue
+  # `2a809b93`). The distinction is only available here, where both the filter
+  # and the unfiltered turns are in hand.
+  #
+  # Added as a key rather than a different shape, so every existing caller that
+  # matches `%{turns: _, truncated?: _}` is unaffected.
+  defp no_match(result, [], _reason), do: result
+  defp no_match(%{turns: []} = result, _unfiltered, reason), do: Map.put(result, :no_match, reason)
+  defp no_match(result, _unfiltered, _reason), do: result
 
   defp within?(turn, opts) do
     after?(turn, Keyword.get(opts, :since)) and before?(turn, Keyword.get(opts, :until))
@@ -718,7 +734,7 @@ defmodule CodeMySpec.MainAgent do
   defp last_call_of(turns, tool) do
     case Enum.filter(turns, &calls?(&1, tool)) do
       [] ->
-        %{turns: [], truncated?: false}
+        no_match(%{turns: [], truncated?: false}, turns, {:last_call_of, tool})
 
       calls ->
         call = List.last(calls)

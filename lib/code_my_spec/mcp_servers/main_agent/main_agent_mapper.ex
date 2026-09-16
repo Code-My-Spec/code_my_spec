@@ -60,6 +60,34 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
   did; the one fact that changes how to read the rest belongs before it.
   """
   @spec conversation(%{turns: [map()], truncated?: boolean()}) :: Response.t()
+  # An empty answer to a *narrowed* read, before the empty-conversation clause.
+  #
+  # Both arrive as `turns: []` and they mean opposite things: one says there is
+  # nothing to read, the other says there is plenty and none of it matched. The
+  # agent reading this decides whether to look elsewhere on that basis, and it
+  # was told the wrong one — agents with long histories were reported as having
+  # said nothing because they had never called the tool asked about (`2a809b93`).
+  def conversation(%{turns: [], no_match: {:last_call_of, tool}}) do
+    Response.tool()
+    |> Response.text("""
+    This agent has never called `#{tool}`.
+
+    Its conversation is not empty — it has taken turns, and none of them called \
+    that tool. Read it without `last_call_of` to see what it did instead.\
+    """)
+  end
+
+  def conversation(%{turns: [], no_match: :window}) do
+    Response.tool()
+    |> Response.text("""
+    No turns fall inside that window.
+
+    Its conversation is not empty — it has taken turns, and none of them are \
+    within the `since`/`until` range asked for. Widen the range, or drop it to \
+    read from the recent end.\
+    """)
+  end
+
   def conversation(%{turns: [], truncated?: _}) do
     Response.tool()
     |> Response.text("""
