@@ -87,6 +87,40 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
     end
 
+    test "a handled event still settles every requirement it can move", ctx do
+      scope = ctx.scope
+      story = create_story(scope, title: "To be sealed", description: "three amigos")
+
+      project_live(scope)
+      project_shadow(scope)
+
+      # Sealing moves `three_amigos_complete`. It goes through
+      # `Stories.update_story/3`, so if that emits an event the projector
+      # handles, the fallback marks are dropped by observation id — and any
+      # requirement the handler does *not* settle is left at its old verdict
+      # with nothing to correct it.
+      #
+      # This is the general rule the creation case was one instance of: an
+      # event kind may only be handled when its handlers settle everything that
+      # event can move.
+      {:ok, _} =
+        CodeMySpec.Stories.update_story(
+          scope,
+          CodeMySpec.Stories.get_story!(scope, story.id),
+          %{three_amigos_sealed: true}
+        )
+
+      project_live(scope)
+      :ok = ShadowProjector.settle(scope.active_project_id)
+
+      report = Shadow.diff(scope)
+
+      assert report.disagree == 0,
+             "a handled story event left a requirement stale: #{inspect(report.sample)}"
+
+      assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
+    end
+
     test "consumes the marks it acted on", ctx do
       scope = ctx.scope
       create_story(scope, title: "A story", description: "one")

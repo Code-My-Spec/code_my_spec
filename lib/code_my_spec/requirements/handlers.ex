@@ -85,17 +85,31 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_updated" => [:issues],
     # A run landing moves spex freshness, and writes problems.
     "analysis_completed" => [:specs, :problems],
-    # A sync moves the files themselves, and with them spex freshness and every
-    # story's own spec files.
-    "files_synced" => [:files, :specs],
-    "problems_changed" => [:problems],
-    # A story's own row moves `specs_ready` and the component it names.
-    "story_changed" => [:specs, :links],
-    # A component appearing or going decides whether a story naming it has
-    # something real to point at.
-    "component_changed" => [:links],
+    # Problems feed `tests_passing` *and* `bdd_specs_passing` — a story's own
+    # failing spex specs are problem rows — so both profiles, or the story
+    # verdict is left behind by a run that changed it.
+    "problems_changed" => [:problems, :specs],
     "deploy_changed" => [:links]
   }
+
+  # ## What is deliberately not here
+  #
+  # An event kind may only appear in `@dirties` once its handlers settle
+  # **everything that event can move**. Handling it discards the fallback marks
+  # by observation id, so any requirement left unsettled keeps whatever verdict
+  # it already had, with nothing to correct it.
+  #
+  # The shadow diff caught this on `story_changed`: sealing a story moves
+  # `three_amigos_complete`, no handler settles it, and the diff came back
+  # `disagree story:9058/three_amigos_complete`. `component_changed` has the
+  # same gap through a component's type deciding which template applies, and
+  # `files_synced` through the four project delegates that read files —
+  # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
+  # `architecture_designed`.
+  #
+  # All three fall back to invalidation until those requirements have handlers,
+  # which costs a narrow recompute and is correct. The unit of conversion is an
+  # event and its whole requirement set, never a requirement on its own.
 
   # What each requirement reads. Declared per requirement rather than per
   # profile, because `tests_passing` reads two — whether the component has a
