@@ -113,16 +113,35 @@ defmodule CodeMySpec.Agents.StopDecision do
   Not a decision about whether to keep going — that is `deliver/2`, at the end
   of a turn. This is the nudge that gets an idle agent to take one.
 
-  ## The same "asked and is allowed to stop" rule `deliver/2` has
+  ## A wake breaks through a pending question; a stop decision does not
 
-  `wake_project_roles/2` calls this for every continuous, running agent on
-  any graph change project-wide — not this agent's own turn ending, somebody
-  else's, anywhere in the project. An agent with a question or a tap-out
-  request open has nothing to do about that until it hears back, the same as
-  `decide_with_key/3`'s reasoning, and had no such check here at all: it was
-  told "work of your kind is available" on every unrelated change while
-  waiting, sometimes under a minute apart on a project several worktrees
-  edit at once, and had to spend a turn saying so each time.
+  These looked like the same rule and are not, and conflating them cost a day.
+
+  `decide_with_key/3` is right to go quiet for an agent awaiting an answer.
+  That agent has just ended a turn and is asking "what now"; handing it a menu
+  it cannot act on is a loop that looks like diligence and is waste. John:
+  "it shouldn't hit the agent with the stop hook."
+
+  A wake is the opposite case. It fires because something *new* appeared, and
+  it is the only thing that starts an idle agent — a stop hook fires at the end
+  of a turn, and an idle agent is not ending turns. So gating the wake on
+  `awaiting_answer?` did not make an agent quieter, it removed it from the
+  fleet: one unanswered question, or a `tap_out` nobody decided, and the graph
+  could never reach it again. Agent `880c7713` sat idle for seven hours that
+  way, holding 17 actionable requirements, while every surface reported it
+  running and available (`8cb3f626`). Agent `0067d652` did it twice in half an
+  hour simply by reporting a defect it had found.
+
+  John's call: the wake breaks through questions, tap-out requests and
+  anything else of that kind. A question is about one thing; the work that just
+  appeared is usually another, and an agent waiting on an answer can still do
+  it.
+
+  What stops this becoming the spam the old check was added for is that a wake
+  is already narrow: it fires only when an observation actually landed, only
+  when the role's own menu is non-empty, and `stuck?/3` suppresses an identical
+  message after `@stuck_threshold`. Those bound the noise on the axis that
+  matters — repetition — rather than by silencing the agent entirely.
 
   ## A working agent is never woken
 
@@ -151,13 +170,15 @@ defmodule CodeMySpec.Agents.StopDecision do
   of an idle agent all day. Story 1054's criterion 3297 put the column there
   for this shape of question.
   """
+  # Only `working?` gates a wake now. A pending question or permission does not:
+  # see the moduledoc above. The pair composes into the behaviour John described
+  # — wake it, it does something, it goes back to sleep — because the wake
+  # breaks through while `decide_with_key/3` stays quiet at the end of that
+  # turn, so the agent takes the work and stops again without being handed a
+  # menu it cannot act on.
   @spec wake(Scope.t(), Agent.t()) :: :ok
   def wake(%Scope{} = scope, %Agent{} = agent) do
-    cond do
-      Notifications.awaiting_answer?(agent.id) -> :ok
-      working?(agent) -> :ok
-      true -> do_wake(scope, agent)
-    end
+    if working?(agent), do: :ok, else: do_wake(scope, agent)
   end
 
   defp working?(%Agent{turn_started_at: %DateTime{}}), do: true
