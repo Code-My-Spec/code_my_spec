@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListOpenQuestions.execute(%{}, frame)
+        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
         refute response.isError, inspect(response)
 

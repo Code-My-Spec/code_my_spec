@@ -154,6 +154,34 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
+  @doc """
+  Every story carrying an unresolved issue at or above the threshold, grouped.
+
+  The set-based form of `list_by_story_status_and_min_severity/4`: the same
+  three filters — project, `:accepted`, severity — with the story narrowing
+  removed, so one query answers `story_issues_resolved` for every story at once
+  instead of one query per story.
+
+  Deliberately the same filters and no others. The project-level readers add
+  `exclude_framework_unless_vendor/2` and `exclude_other_copies_stories/2`; the
+  story-level one does not, and a grouped query that quietly added them would
+  disagree with the checker for vendored framework issues.
+
+  A story absent from the result has none, which is what makes this settle the
+  satisfied direction too.
+  """
+  @spec unresolved_by_story(Scope.t(), atom()) :: %{integer() => [Issue.t()]}
+  def unresolved_by_story(%Scope{} = scope, min_severity) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_status(:accepted)
+    |> by_min_severity(min_severity)
+    |> where([i], not is_nil(i.story_id))
+    |> ordered_by_severity()
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
   def list_by_story(%Scope{} = scope, story_id) do
     Issue
     |> by_project(scope.active_project.id)

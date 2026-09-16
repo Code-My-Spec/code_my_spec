@@ -38,8 +38,33 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     # One query; every gap below is a question about which files exist, and
     # each used to be its own stat or directory listing against a disk this
     # server may not have.
-    paths = scope |> Files.list_files() |> MapSet.new(& &1.path)
+    #
+    # Narrowed to the four locations those questions are about. It was the whole
+    # checkout — every path in the tree — to answer five questions, and
+    # `spex_boundary_ready` is a project requirement, so every pass paid it
+    # whatever had moved: 385ms of a 907ms project-node computation.
+    #
+    # Prefixes rather than exact paths because two of the gaps are "is there any
+    # `.ex` under here" and one needs the app name, which `add_fixtures_bridge_gap/3`
+    # resolves from a synced `mix.exs` further down. Over-matching is harmless —
+    # every check below re-tests with `starts_with?` or `MapSet.member?`.
+    verdict_from_paths(scope, Files.list_paths_under(scope, search_prefixes()))
+  end
 
+  def complete?(_scope, _entity) do
+    {false, %{reason: "No active project in scope — cannot verify spex boundary files."}}
+  end
+
+  @doc """
+  The verdict for a given set of paths.
+
+  Split out from the fetch so the narrowing above can be checked against the
+  whole-checkout read it replaced — same function, two path sets, compare. A
+  checker with no test and a query that now returns four orders of magnitude
+  fewer rows needs that to be possible.
+  """
+  @spec verdict_from_paths(Scope.t(), MapSet.t(String.t())) :: {boolean(), map()}
+  def verdict_from_paths(%Scope{} = scope, paths) do
     gaps =
       []
       |> add_credo_check_gaps(paths)
@@ -53,8 +78,22 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     end
   end
 
-  def complete?(_scope, _entity) do
-    {false, %{reason: "No active project in scope — cannot verify spex boundary files."}}
+  @doc """
+  Every location the gap checks below look at.
+
+  Kept beside them rather than inlined at the query, because a gap check that
+  starts looking somewhere new has to add its prefix here or it will silently
+  see nothing — and the failure would be this requirement reporting artifacts
+  missing that are present.
+  """
+  @spec search_prefixes() :: [String.t()]
+  def search_prefixes do
+    [
+      Paths.credo_checks_framework_dir() <> "/",
+      Paths.credo_checks_local_dir() <> "/",
+      Path.join(["test", "support", "fixtures"]) <> "/",
+      Path.join([Paths.knowledge_dir(), "bdd", "spex"]) <> "/"
+    ]
   end
 
   defp add_credo_check_gaps(gaps, paths) do

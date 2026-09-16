@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
       then_ "the question is still waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListOpenQuestions.execute(%{}, frame)
+        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
         refute response.isError, inspect(response)
 

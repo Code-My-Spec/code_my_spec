@@ -11,7 +11,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Fingerprint, Freshness, Run, RunsRepository}
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
@@ -338,20 +338,30 @@ defmodule CodeMySpec.Requirements.Preloader do
   # checkout's identity is worse than reading widely" — and the browser has no
   # working copy to name. Refusing there took the requirement graph out of the
   # UI entirely and failed 86 spex.
-  # Which checkout's files a reader that named none is shown.
-  #
-  # Two fields mean "main" and the application writes only one.
-  # `WorkingCopies.designate_main/2` — the button on the working-copies page —
-  # sets `working_copy.main`. `Projection.vantage/1` reads
-  # `project.default_working_copy_id`, which nothing in `lib/` writes at all.
-  # Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
-  # the other field set.
-  #
-  # So the explicit setting wins where somebody made one, and designating a
-  # main copy means something here where nobody did. `nil` — a project with no
-  # checkout at all — still blends, because there is nothing to blend down to
-  # and "this project has no requirements" would be a worse answer.
-  defp files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+  @doc """
+  Which checkout's files a reader that named none is shown.
+
+  Public for `Requirements.Profiles`, whose `:files` profile answers the same
+  eight requirements from the same rows and so has to pick the same checkout.
+  It blended instead, and the diff caught it on the unscoped vantage: twenty
+  components read as having an implementation that exists only in another
+  worktree. That is the over-satisfaction direction this function was written
+  to close.
+
+  Two fields mean "main" and the application writes only one.
+  `WorkingCopies.designate_main/2` — the button on the working-copies page —
+  sets `working_copy.main`. `Projection.vantage/1` reads
+  `project.default_working_copy_id`, which nothing in `lib/` writes at all.
+  Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
+  the other field set.
+
+  So the explicit setting wins where somebody made one, and designating a
+  main copy means something here where nobody did. `nil` — a project with no
+  checkout at all — still blends, because there is nothing to blend down to
+  and "this project has no requirements" would be a worse answer.
+  """
+  @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
+  def files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.one(
       from p in CodeMySpec.Projects.Project,
         where: p.id == ^project_id,
@@ -364,7 +374,7 @@ defmodule CodeMySpec.Requirements.Preloader do
       )
   end
 
-  defp files_vantage(%Scope{}), do: nil
+  def files_vantage(%Scope{}), do: nil
 
   defp scope_to_harness(query, nil), do: query
 
@@ -375,6 +385,246 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   defp assigned_here_or_unassigned(query, working_copy_id) do
     where(query, [s], is_nil(s.working_copy_id) or s.working_copy_id == ^working_copy_id)
+  end
+
+  @doc """
+  One story's context, for a consumer that is only going to compute that story.
+
+  ## Why this is so much smaller than `load/1`
+
+  `load/1` exists to amortise an N+1 across the whole project: the story
+  delegates take a scope and a story and nothing else, so they queried per story
+  — "on a project with 76 ready stories that is 304 queries inside one graph
+  computation". Batching them into `@delegated_tables` is what made a
+  whole-project pass affordable.
+
+  For one story that trade inverts. The N+1 *is* the narrow load: four
+  per-story queries from the delegates, against fifteen project-wide ones to
+  avoid them. So this loads the story and its files and lets the delegates do
+  what they were written to do.
+
+  Nothing else in the story graph needs a context. Its eight requirements are
+  one `:file_exists` (served by the files below), one `:component_exists` and
+  one `:deployed` (both query directly), four delegates that ignore `ctx`, and
+  `bdd_specs_passing`, which reads `analysis_fresh` — the one project-wide value
+  here, passed in so a caller holding several marks computes it once.
+
+  There is no `:path_exists` in the story graph, which is why `files_by_path` is
+  not carried at all — see `narrow_context/2` on why an absent key is safer here
+  than an empty one.
+
+  ## No fingerprints
+
+  `skip_fingerprints` is set, and `delegated_inputs` is absent because nothing
+  but `Freshness` and `GraphFingerprint` read it. A projection that decides from
+  events has no use for a per-entity fingerprint, and computing one from a
+  narrow context would produce a *plausible* hash that is not the one a whole
+  pass would produce — worse than none, because it would look comparable.
+  `nil` is the honest stamp and already means "no basis to skip this row".
+
+  Answers with an empty context when the story is not in this vantage's scope —
+  parked, or assigned to another checkout — which is the same filter `load/1`
+  applies and makes the consumer write no rows for it.
+  """
+  @spec load_story(Scope.t(), integer(), %{String.t() => boolean()}) :: {:ok, context()}
+  def load_story(%Scope{active_project_id: project_id} = scope, story_id, analysis_fresh)
+      when is_binary(project_id) do
+    story =
+      Story
+      |> where([s], s.id == ^story_id and s.project_id == ^project_id and s.ready_for_dev == true)
+      |> assigned_here_or_unassigned(scope.active_working_copy_id)
+      |> Repo.one()
+
+    {:ok, story_context(scope, story, analysis_fresh)}
+  end
+
+  defp story_context(_scope, nil, analysis_fresh),
+    do: narrow_context(analysis_fresh, [])
+
+  defp story_context(scope, story, analysis_fresh) do
+    files =
+      File
+      |> where([f], f.story_id == ^story.id)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    analysis_fresh
+    |> narrow_context([story])
+    |> Map.put(:files_by_story, %{story.id => files})
+  end
+
+  # Only the keys this load actually fills, and that is a safety property rather
+  # than tidiness.
+  #
+  # Several checkers take a fast path when the context carries their collection
+  # and query per story when it does not — `Qa.complete_check/3` is the pattern:
+  # `case ctx[:qa_latest_by_story]`, use it when it is a map, otherwise fall
+  # through to `QaAttempts.complete?/2`. Handing them an *empty* map is not a
+  # missing key, it is an assertion that the story has no QA attempt, and they
+  # believe it.
+  #
+  # That is exactly what happened: filling every declared key with an empty
+  # collection made `qa_complete` read false for all 38 stories on the live
+  # project while the whole-context load read true. The unit fixtures did not
+  # catch it because a freshly created story genuinely has no attempt.
+  #
+  # So an absent key means "ask the database", which for one story is one
+  # indexed query and is what those clauses were written for. A key this load
+  # forgot that something genuinely needs raises `KeyError` — loud, caught by
+  # the drain, marks retained — rather than quietly answering `false`.
+  defp narrow_context(analysis_fresh, stories) do
+    %{
+      stories: stories,
+      components: [],
+      files_by_story: %{},
+      analysis_fresh: analysis_fresh,
+      skip_fingerprints: true
+    }
+  end
+
+  @doc """
+  The project's own requirements need the checkout's files and nothing else.
+
+  Worth stating plainly, because the opposite was assumed: `compute_project_nodes/3`
+  looks project-wide, so a mark naming `:project` was given `load/1` — fifteen
+  queries, 91ms — and that is not what the fourteen project requirements read.
+
+  Six are `:path_exists` and resolve through `ctx[:files_by_path]`.
+  `qa_integration_plan` reads `ctx.files_by_project`. The other seven —
+  `personas_complete`, `stories_exist`, `architecture_designed`,
+  `spex_boundary_ready`, `work_dispatched`, `issues_triaged`, `issues_resolved`
+  — take no context at all and query for themselves.
+
+  So this is one file query. Components, stories, problems and
+  `delegated_inputs` are all absent, and `tracked_files/3` and `prefix_count/3`
+  reach for their keys through `ctx[:key]`, which falls through to the database
+  rather than reading an empty collection as an answer.
+  """
+  @spec load_project(Scope.t(), %{String.t() => boolean()}) :: {:ok, context()}
+  def load_project(%Scope{active_project_id: project_id} = scope, analysis_fresh)
+      when is_binary(project_id) do
+    files =
+      File
+      |> where([f], f.project_id == ^project_id)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    ctx =
+      analysis_fresh
+      |> narrow_context([])
+      |> Map.merge(%{
+        files_by_project: files,
+        files_by_path: Map.new(files, &{&1.path, &1})
+      })
+
+    {:ok, ctx}
+  end
+
+  @doc """
+  One component's family, for a consumer computing only that family.
+
+  The family is the unit, because `component_families/1` decides top-level from
+  nested by asking whether each component's parent is in the set it was given,
+  and `expand_component_families/2` groups by `parent_component_id || id`. So
+  the family of a component is its root — itself, or its parent — plus every
+  component sharing that root. Two queries rather than the project's 1138 rows.
+
+  That grouping is also what makes the narrow set safe to hand to
+  `component_families/1`: the root is present, so its children classify as
+  nested, and the root itself classifies as top-level exactly as it would in a
+  whole-project context — its own parent, if it has one, is outside the set and
+  therefore not a container here, which is the same answer `load/1` gives on
+  this project's shape (measured: 0 components nested below the second level).
+
+  `problems_by_component` is carried and `problem_digests_by_component` is not,
+  and the split is the point. The digests exist only for `Freshness.component/2`,
+  which this path skips; the counts are read by
+  `RequirementCalculator.get_problem_count/4`, whose preloaded clause matches on
+  the key being present. Omitting the counts raises `FunctionClauseError` rather
+  than reporting zero problems — see `narrow_context/2`.
+  """
+  @spec load_component_family(Scope.t(), Ecto.UUID.t(), %{String.t() => boolean()}) ::
+          {:ok, context()}
+  def load_component_family(%Scope{active_project_id: project_id} = scope, id, analysis_fresh)
+      when is_binary(project_id) do
+    root =
+      Repo.one(
+        from(c in Component,
+          where: c.id == ^id and c.project_id == ^project_id,
+          select: coalesce(c.parent_component_id, c.id)
+        )
+      )
+
+    {:ok, family_context(scope, root, analysis_fresh)}
+  end
+
+  defp family_context(_scope, nil, analysis_fresh),
+    do: narrow_context(analysis_fresh, [])
+
+  defp family_context(%Scope{active_project_id: project_id} = scope, root, analysis_fresh) do
+    family =
+      Component
+      |> where([c], c.project_id == ^project_id)
+      |> where([c], c.id == ^root or c.parent_component_id == ^root)
+      |> preload([:dependencies, :child_components])
+      |> Repo.all()
+
+    ids = Enum.map(family, & &1.id)
+
+    files =
+      File
+      |> where([f], f.component_id in ^ids)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    analysis_fresh
+    |> narrow_context([])
+    |> Map.merge(%{
+      components: family,
+      components_by_id: Map.new(family, &{&1.id, &1}),
+      children_by_parent: Enum.group_by(family, & &1.parent_component_id),
+      files_by_component: Enum.group_by(files, & &1.component_id),
+      problems_by_component: problem_counts(project_id, ids)
+    })
+  end
+
+  defp problem_counts(project_id, component_ids) do
+    Problem
+    |> where([p], p.project_id == ^project_id and p.component_id in ^component_ids)
+    |> group_by([p], [p.component_id, p.source])
+    |> select([p], {p.component_id, p.source, count(p.id)})
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn {component_id, source, count}, acc ->
+      Map.update(acc, component_id, %{source => count}, &Map.put(&1, source, count))
+    end)
+  end
+
+  @doc """
+  The four analyzer-freshness booleans on their own.
+
+  Project-wide and read by `bdd_specs_passing` on every story, so a consumer
+  handling several marks asks once rather than per entity.
+
+  Answers from `Analysis.Freshness` when the projection knows every source, and
+  reads files otherwise. This is the one path where that trade is worth making:
+  a narrow per-entity load has no files in hand, so the alternative is reading
+  the checkout's entire file table to answer four booleans — the last thing
+  forcing it to do so.
+
+  `analysis_freshness/2`, which already holds the files, does **not** consult
+  the projection. The comparison costs ~4ms there and is derived from the files
+  themselves, so it cannot be wrong about them; a row can be, for any reason its
+  own events do not describe. That direction is a false pass, so the path that
+  can afford to check, checks.
+  """
+  @spec analysis_freshness(Scope.t()) :: %{String.t() => boolean()}
+  def analysis_freshness(%Scope{} = scope) do
+    known = Freshness.known(scope.active_working_copy_id)
+
+    case Run.sources() -- Map.keys(known) do
+      [] -> known
+      _unknown -> analysis_freshness(scope, CodeMySpec.Files.list_files(scope))
+    end
   end
 
   defp rules_by_story(project_id) do
@@ -647,6 +897,20 @@ defmodule CodeMySpec.Requirements.Preloader do
   # this is one ledger query plus in-memory hashing. `tests_passing` gates
   # on it — zero persisted problems only means "passing" when the results
   # are actually current for today's code.
+  # Computed, and deliberately *not* merged with the projection.
+  #
+  # The files are already in hand here, so the comparison costs ~4ms — there is
+  # nothing for the projection to save on this path, and letting it win would
+  # trade a free correct answer for a cheaper one that can be wrong.
+  # `StaleAnalysisTest` constructs exactly how: a run stamped before a file
+  # changed, the file moved without the sync that would have staled the row, and
+  # the row then claims fresh over code its run never saw. It caught this when
+  # the merge was here.
+  #
+  # A stale *clean* result is a false pass, which is the direction that costs
+  # correctness rather than time. So the authoritative path computes, and the
+  # projection is read only where the alternative is reading the whole file
+  # table for nothing — see `analysis_freshness/1`.
   defp analysis_freshness(scope, all_files) do
     latest = RunsRepository.latest_full_runs(scope)
 

@@ -160,6 +160,94 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  The project's files in these roles, across every checkout.
+
+  `list_project_files/1` narrowed to the roles the caller actually reads.
+  `PersonasChecker` was loading every file on the project — ~18,650 rows across
+  five checkouts — to keep the two persona roles, and it runs on every graph
+  pass because `personas_complete` is a project node and those are rebuilt
+  unconditionally. Measured at 407ms of a 907ms project-node computation.
+
+  Same answer, same scoping, four orders of magnitude fewer rows.
+  """
+  @spec list_project_files_with_roles(Scope.t(), [atom()]) :: [File.t()]
+  def list_project_files_with_roles(%Scope{active_project_id: project_id}, roles) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role in ^roles)
+    |> Repo.all()
+  end
+
+  @doc """
+  Which graph entities own these paths, in this checkout.
+
+  `{"component", id}` and `{"story", id}` for owned files, and `:project` for a
+  file with neither — the proposal, a credo check, a knowledge doc — which is
+  the same three-way split `Preloader` makes into `files_by_component`,
+  `files_by_story` and `files_by_project`, and the same one the project
+  requirements read.
+
+  For a writer that knows which paths it touched and needs to say which entities
+  moved. Resolvable only for paths that still have rows, which is why a sync
+  that *removed* files cannot use this — see `FileSync.announce_graph_change/4`.
+  """
+  @spec owners_of_paths(Scope.t(), [String.t()] | :all) :: [
+          {String.t(), term()} | :project
+        ]
+  # `:all` is `clear_problems_for_source/3` saying "everywhere this source
+  # reported", which it does not enumerate — a `block_all` analyzer clears by
+  # source, not by path. There is nothing to resolve owners from, and answering
+  # `[]` is the honest reading rather than a gap: `GraphInputs.announce/3` takes
+  # an empty entity list as "something moved and this writer cannot say what"
+  # and records it project-wide, which is exactly true here.
+  #
+  # Without this clause the call raised `FunctionClauseError` *inside* the stop
+  # hook's validation pipeline, so a `block_all` source took the whole stop
+  # decision down with it.
+  def owners_of_paths(%Scope{}, :all), do: []
+
+  def owners_of_paths(%Scope{active_project_id: project_id} = scope, paths)
+      when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> scope_to_harness(scope)
+    |> select([f], {f.component_id, f.story_id})
+    |> Repo.all()
+    |> Enum.map(fn
+      {component_id, _} when not is_nil(component_id) -> {"component", component_id}
+      {_, story_id} when not is_nil(story_id) -> {"story", story_id}
+      _ -> :project
+    end)
+    |> Enum.uniq()
+  end
+
+  @doc """
+  This checkout's file paths under any of these prefixes.
+
+  For a checker that asks about a fixed handful of locations rather than about
+  the tree. `SpexBoundaryChecker` wanted five paths and was reading every file
+  in the checkout to build a `MapSet` of all of them — 385ms of the same
+  project-node computation.
+
+  Paths only, because that is all such a checker looks at, and over-matching is
+  safe by construction: `LIKE` treats `_` as a wildcard and these prefixes
+  contain them, so this can return more than asked for and never less. Every
+  caller re-checks with `starts_with?` or `MapSet.member?`, which is what makes
+  the loose match correct rather than merely tolerable.
+  """
+  @spec list_paths_under(Scope.t(), [String.t()]) :: MapSet.t(String.t())
+  def list_paths_under(%Scope{active_project_id: project_id} = scope, prefixes) do
+    patterns = Enum.map(prefixes, &(&1 <> "%"))
+
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> where([f], fragment("? LIKE ANY(?)", f.path, ^patterns))
+    |> scope_to_harness(scope)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
   List files for the project with the owning component preloaded, ordered by
   path, with optional pagination and validity filtering.
 
@@ -462,7 +550,7 @@ defmodule CodeMySpec.Files do
       |> Enum.reduce({0, []}, fn chunk, {acc_count, acc_files} ->
         {count, batch} =
           Repo.insert_all(File, chunk,
-            on_conflict: {:replace, @replaceable_fields ++ [:updated_at]},
+            on_conflict: on_conflict_changed_only(),
             conflict_target: [:project_id, :working_copy_id, :path],
             returning: true
           )
@@ -471,6 +559,66 @@ defmodule CodeMySpec.Files do
       end)
 
     {total_count, files}
+  end
+
+  # The whole of "what changed", decided by Postgres.
+  #
+  # A conflicting row is updated only when one of the replaceable columns
+  # actually differs, and `RETURNING` then hands back exactly the rows the
+  # statement touched — inserts and real updates, nothing else. So one statement
+  # is both the write and the answer to "what moved", and hydrating a cold
+  # table and reconciling a warm one are the same operation: on a cold table
+  # every row is new, so every row comes back.
+  #
+  # This replaces a hand-written diff — load the whole file table, compare eight
+  # fields per observation in Elixir, upsert the survivors. That read was ~5,100
+  # rows on every manifest, and the comparison has been wrong twice: once
+  # judging on fingerprint alone, which hid a spex file that had gained a
+  # `story_id` with its bytes untouched (`bdd_specs_exist` stayed dark on nine
+  # stories through Drill 12), and once producing a false positive that took two
+  # rounds of guessing to attribute. A `WHERE` cannot drift from the `SET` above
+  # it the way a separate comparison drifts from the columns it is meant to
+  # mirror.
+  #
+  # `component_id` coalesces and `story_id` does not, and the asymmetry is
+  # deliberate. A manifest that cannot resolve a component must not drop one the
+  # server already worked out — that was `keep_backfilled_owners/2`. A story the
+  # resolver drops *is* a clearing: `spex_ownership` moves, and a stale
+  # `story_id` would keep a spec file bound to a story it no longer describes.
+  defp on_conflict_changed_only do
+    from(f in File,
+      update: [
+        set: [
+          role: fragment("EXCLUDED.role"),
+          mtime: fragment("EXCLUDED.mtime"),
+          size: fragment("EXCLUDED.size"),
+          fingerprint: fragment("EXCLUDED.fingerprint"),
+          valid: fragment("EXCLUDED.valid"),
+          validation_errors: fragment("EXCLUDED.validation_errors"),
+          component_id: fragment("COALESCE(EXCLUDED.component_id, ?)", f.component_id),
+          story_id: fragment("EXCLUDED.story_id"),
+          updated_at: fragment("EXCLUDED.updated_at")
+        ]
+      ],
+      where:
+        fragment(
+          """
+          (?, ?, ?, ?, ?, ?, ?, ?) IS DISTINCT FROM
+          (EXCLUDED.role, EXCLUDED.mtime, EXCLUDED.size, EXCLUDED.fingerprint,
+           EXCLUDED.valid, EXCLUDED.validation_errors,
+           COALESCE(EXCLUDED.component_id, ?), EXCLUDED.story_id)
+          """,
+          f.role,
+          f.mtime,
+          f.size,
+          f.fingerprint,
+          f.valid,
+          f.validation_errors,
+          f.component_id,
+          f.story_id,
+          f.component_id
+        )
+    )
   end
 
   @doc """
@@ -549,9 +697,14 @@ defmodule CodeMySpec.Files do
   @spec delete_removed(Scope.t(), [String.t()]) :: {integer(), nil}
   def delete_removed(%Scope{active_project_id: project_id} = scope, current_paths)
       when is_list(current_paths) do
+    # `returning: true`, because what was deleted is the other half of a sync's
+    # event list — embedding cleanup needs each removed row's role and path, and
+    # reading them beforehand means loading the whole file table to find the few
+    # that are gone.
     File
     |> where([f], f.project_id == ^project_id and f.path not in ^current_paths)
     |> scope_to_harness(scope)
+    |> select([f], f)
     |> Repo.delete_all()
   end
 
@@ -562,6 +715,25 @@ defmodule CodeMySpec.Files do
 
   defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
     do: where(query, [f], f.working_copy_id == ^working_copy_id)
+
+  @doc """
+  Every tracked path and when it was last modified, for this checkout.
+
+  Two columns rather than the whole table. `FileSync.sync_changed/2` uses this
+  to decide which files to *open* — a file whose mtime has not moved does not
+  need reading or fingerprinting — and that is the only thing a sync still needs
+  to know up front. Whether the content actually changed is decided by the
+  upsert, which returns exactly the rows it wrote.
+  """
+  @spec mtimes_by_path(Scope.t()) :: %{String.t() => DateTime.t()}
+  def mtimes_by_path(%Scope{active_project_id: project_id} = scope) do
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> scope_to_harness(scope)
+    |> select([f], {f.path, f.mtime})
+    |> Repo.all()
+    |> Map.new()
+  end
 
   @doc """
   Delete specific files by their paths.

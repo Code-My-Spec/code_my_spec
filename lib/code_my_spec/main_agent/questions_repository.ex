@@ -28,6 +28,7 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -42,6 +43,11 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   """
   @spec list_open_questions(Scope.t()) :: [OpenQuestion.t()]
   def list_open_questions(%Scope{active_project_id: project_id}) when not is_nil(project_id) do
+    (pending_questions(project_id) ++ pending_permissions(project_id))
+    |> Enum.sort_by(& &1.asked_at, DateTime)
+  end
+
+  defp pending_questions(project_id) do
     from(q in QuestionRequest,
       join: a in Agent,
       on: a.id == q.agent_id,
@@ -56,6 +62,69 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
       OpenQuestion.new(request, agent, working_copy)
     end)
   end
+
+  # The other half of what stops an agent, and it was missing.
+  #
+  # `Notifications.awaiting_answer?/1` — the predicate `StopDecision.wake/2`
+  # consults before it will wake anything — is `pending_question? or
+  # pending_permission?`. A listing that unions only the first half cannot
+  # explain the gate, so an agent held off the graph by a `tap_out` shows up
+  # here as nothing at all.
+  #
+  # That is not hypothetical. Agent `880c7713` asked to leave the loop at 12:38,
+  # nobody recorded a decision, and it spent seven hours unreachable while
+  # `list_agent_work` reported it running, continuous and idle with 17
+  # actionable requirements. This listing — which calls itself "everything the
+  # agents on this project are waiting on, in one place" — showed nothing.
+  # Issue `8cb3f626`.
+  #
+  # Merged rather than returned separately, and sorted with the questions, for
+  # the reason the queue exists: the reader is asking "which of my agents are
+  # stopped, and why", and that question has one answer. `kind` on the struct
+  # is how a caller tells an answer from a decision.
+  defp pending_permissions(project_id) do
+    from(p in PermissionRequest,
+      join: a in Agent,
+      on: a.id == p.agent_id,
+      left_join: w in WorkingCopy,
+      on: w.id == a.working_copy_id,
+      where: a.project_id == ^project_id and p.status == "pending",
+      order_by: [asc: p.inserted_at],
+      select: {p, a, w}
+    )
+    |> Repo.all()
+    |> Enum.map(fn {request, agent, working_copy} ->
+      OpenQuestion.from_permission(request, agent, working_copy)
+    end)
+  end
+
+  @doc """
+  One of this project's pending permission requests, by id.
+
+  Scoped through the agent exactly as the question lookup is, so a `tap_out`
+  raised by another project's agent is `:not_found` here rather than something
+  this project can decide.
+  """
+  @spec fetch_open_permission(Scope.t(), String.t()) ::
+          {:ok, OpenQuestion.t()} | {:error, :not_found}
+  def fetch_open_permission(%Scope{active_project_id: project_id}, permission_id)
+      when not is_nil(project_id) do
+    from(p in PermissionRequest,
+      join: a in Agent,
+      on: a.id == p.agent_id,
+      left_join: w in WorkingCopy,
+      on: w.id == a.working_copy_id,
+      where: a.project_id == ^project_id and p.status == "pending" and p.id == ^permission_id,
+      select: {p, a, w}
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      {request, agent, copy} -> {:ok, OpenQuestion.from_permission(request, agent, copy)}
+    end
+  end
+
+  def fetch_open_permission(%Scope{}, _permission_id), do: {:error, :not_found}
 
   @doc """
   One of this project's open questions, by id.

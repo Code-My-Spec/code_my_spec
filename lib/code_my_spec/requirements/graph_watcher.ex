@@ -61,9 +61,12 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -113,6 +116,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def ensure_watching(%Scope{active_project_id: nil}), do: {:error, :no_project}
 
   def ensure_watching(%Scope{active_project_id: project_id} = scope) do
+    # The event-based projection is maintained beside this one whenever the
+    # experiment is on, so both are fed by the same traffic on the same
+    # projects. Started here rather than anywhere else because this is what
+    # decides a project is being worked on; `ensure_projecting/1` refuses when
+    # the flag is off, so this costs a function call in the normal case.
+    ShadowProjector.ensure_projecting(watcher_scope(scope))
+
     case DynamicSupervisor.start_child(
            CodeMySpec.Requirements.WatcherSupervisor,
            {__MODULE__, {project_id, watcher_scope(scope)}}
@@ -454,6 +464,31 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     Logger.info("[GraphWatcher] accounted for #{length(consumed)} observation(s)")
   end
 
+  # How the event-based projection is doing, measured against the one this pass
+  # just wrote.
+  #
+  # Here rather than inside the computation because this is the moment both
+  # systems have answered the same traffic: the fingerprints have decided and
+  # written, and the projector is asked to finish anything still in flight
+  # before the comparison — otherwise a mark mid-drain reports as a difference
+  # and the number would be about timing rather than coverage.
+  #
+  # Once per vantage, because a projection is per row-space and comparing
+  # across them would mix two populations.
+  defp report_shadow(%{scope: %Scope{} = scope} = state, computed) do
+    if Shadow.enabled?() do
+      ShadowProjector.settle(state.project_id)
+
+      Enum.each(computed, fn vantage ->
+        %Scope{scope | active_working_copy_id: vantage}
+        |> Shadow.diff()
+        |> Shadow.log()
+      end)
+    end
+
+    :ok
+  end
+
   defp add_observation(obs, %{pending_observations: pending}) do
     [obs || "unnamed" | pending]
   end
@@ -591,9 +626,25 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # to do is not charged a turn — over-waking costs a rendered menu and
     # under-waking is the ninety minutes of silence this exists to end.
     computed = vantages(state)
-    actionable = Enum.flat_map(computed, &recompute_vantage(state, &1))
+
+    # Measured here rather than around the whole clause, because the clause also
+    # broadcasts, wakes agents and reports the shadow — work this pass does
+    # *because* the graph moved, not work the graph cost. A number that included
+    # waking would grow with the number of agents connected and say nothing
+    # about the project's size.
+    actionable =
+      DrainCost.measure(
+        %{
+          kind: :pass,
+          project_id: state.project_id,
+          observations: length(consumed),
+          vantages: length(computed)
+        },
+        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+      )
 
     account_for(consumed)
+    report_shadow(state, computed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a
     # vantage a reader named for the first time (`consumed == []`, including

@@ -39,8 +39,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
@@ -103,9 +103,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          AnswerQuestion.execute(
+          AnswerNotification.execute(
             %{
-              question_id: context.question_id,
+              id: context.question_id,
               answer: "Dunning emails go out",
               basis: "record"
             },
@@ -138,7 +138,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3251Spex do
 
       then_ "and the user was not asked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
+        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
 
         refute response_text(listing) =~ ~r/waiting on the user/i,
                """

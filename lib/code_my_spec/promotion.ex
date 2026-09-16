@@ -135,13 +135,45 @@ defmodule CodeMySpec.Promotion do
   def running_copy_check(%Scope{} = scope, entity) do
     scope
     |> WorkingCopies.main()
-    |> verdict(scope, entity)
+    |> verdict(scope, entity, :unread)
+  end
+
+  @doc """
+  The same verdict for every story at once.
+
+  Two reads answer this check — which copy is running, and which copy is asking
+  — and neither depends on the story. The only per-story input is
+  `promoted_version`, so asking per story is the same pair of reads repeated
+  once per story to answer a question that already had its answer.
+
+  Returns `{unpromoted_verdict, %{story_id => verdict}}`: the verdict every
+  story that has never been promoted gets, and the handful that carry a stamp.
+  That is a sweep's default and its exceptions, which is the shape
+  `Requirements.Handlers` settles this requirement with and the only reason
+  this exists beside `running_copy_check/2`. Both go through `verdict/4`, so
+  the per-story path and the set path cannot disagree.
+  """
+  @spec running_copy_verdicts(Scope.t(), [term()]) ::
+          {{boolean(), map()}, %{optional(term()) => {boolean(), map()}}}
+  def running_copy_verdicts(%Scope{} = scope, stories) do
+    running = WorkingCopies.main(scope)
+    local = local_copy(running, scope)
+
+    unpromoted = verdict(running, scope, %{promoted_version: nil}, local)
+
+    promoted =
+      for %{promoted_version: version} = story <- stories,
+          is_binary(version),
+          into: %{},
+          do: {story.id, verdict(running, scope, story, local)}
+
+    {unpromoted, promoted}
   end
 
   # No copy is designated, so nothing is running and nothing can be behind it.
   # Holding every story until somebody designates one would be a wall with no
   # agent able to clear it.
-  defp verdict(nil, _scope, _entity), do: {true, %{status: "No running copy designated"}}
+  defp verdict(nil, _scope, _entity, _local), do: {true, %{status: "No running copy designated"}}
 
   # Working directly on the running copy. There is no branch to merge and
   # nothing an agent could do to a gate that asked for one — John: "it is
@@ -149,18 +181,30 @@ defmodule CodeMySpec.Promotion do
   #
   # Still has to be serving. The code is here by definition; whether anything
   # is answering is a separate question and QA needs both.
-  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}, _entity),
+  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}, _entity, _local),
     do: serving(running, %{status: "Working on the running copy"})
 
-  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity),
+  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity, _local),
     do: {true, %{status: "No checkout on this scope"}}
 
-  defp verdict(%WorkingCopy{} = running, %Scope{active_working_copy_id: here}, entity) do
-    case WorkingCopies.fetch(here) do
-      {:ok, copy} -> entity |> promoted(copy) |> and_serving(running)
-      _ -> {true, %{status: "This checkout is not on file"}}
-    end
-  end
+  # `:unread` rather than reading the local copy up front, because the two
+  # clauses above answer without it — `running_copy_check/2` is called once per
+  # story on the path this is the fallback for, and a read those clauses throw
+  # away is one per story.
+  defp verdict(%WorkingCopy{} = running, %Scope{} = scope, entity, :unread),
+    do: verdict(running, scope, entity, local_copy(running, scope))
+
+  defp verdict(%WorkingCopy{} = running, %Scope{}, entity, {:ok, copy}),
+    do: entity |> promoted(copy) |> and_serving(running)
+
+  defp verdict(%WorkingCopy{}, %Scope{}, _entity, _local),
+    do: {true, %{status: "This checkout is not on file"}}
+
+  defp local_copy(%WorkingCopy{id: id}, %Scope{active_working_copy_id: here})
+       when is_binary(here) and here != id,
+       do: WorkingCopies.fetch(here)
+
+  defp local_copy(_running, %Scope{}), do: :none
 
   # The story's own stamp, not a read of the checkout it happened to be
   # promoted from. Once a promotion sets this, nothing the checkout does

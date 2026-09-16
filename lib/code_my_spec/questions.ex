@@ -54,7 +54,7 @@ defmodule CodeMySpec.Questions do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:questions", message)
 
-    GraphInputs.announce(scope, "Questions")
+    GraphInputs.announce(scope, "Questions", GraphInputs.story_entities(message))
   end
 
   def create_question(scope, story_id, attrs) do

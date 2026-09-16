@@ -51,8 +51,37 @@ defmodule CodeMySpec.Personas do
     key = scope.active_project_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
 
-    GraphInputs.announce(scope, "Personas")
+    GraphInputs.announce(scope, "Personas", graph_entities(message))
   end
+
+  # `:project` on everything, because `personas_complete` is a project
+  # requirement and reads every persona and its artifacts.
+  #
+  # The story as well when a link moved, because `Freshness.story/2` hashes
+  # `personas_by_story` and `three_amigos_complete` gates on a story having one.
+  # `Preloader.persona_story_links/1` calls that join table "the worst thing to
+  # leave out" — creating a persona used to invalidate the graph while *linking*
+  # one did not, so a story became eligible for its Three Amigos and the cached
+  # graph went on saying it was not.
+  #
+  # A new persona has no links yet, so it moves the project requirement and no
+  # story.
+  #
+  # An updated or deleted persona names nothing and so records `:unknown`,
+  # recomputing everything. Deliberate: by the time the delete broadcasts, its
+  # `persona_stories` rows have already cascaded away, so the stories it
+  # affected are exactly what can no longer be asked for. Narrowing that means
+  # capturing the links before the write, which is a change to the delete path
+  # rather than to this function.
+  defp graph_entities({:persona_linked, %{story_id: story_id}}) when not is_nil(story_id),
+    do: [{"story", story_id}, :project]
+
+  defp graph_entities({:persona_unlinked, %{story_id: story_id}}) when not is_nil(story_id),
+    do: [{"story", story_id}, :project]
+
+  defp graph_entities({:persona_created, _persona}), do: [:project]
+
+  defp graph_entities(_message), do: []
 
   def create_persona(scope, attrs) do
     case impl().create_persona(scope, attrs) do

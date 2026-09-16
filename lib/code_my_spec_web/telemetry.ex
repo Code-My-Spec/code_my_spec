@@ -75,6 +75,27 @@ defmodule CodeMySpecWeb.Telemetry do
           "The time the connection spent waiting before being checked out for the query"
       ),
 
+      # Requirement graph metrics
+      #
+      # What one drain of the requirement graph cost, tagged by whether it
+      # applied events or recomputed. Here because the claim under test is a
+      # comparison — an observation costs work in proportion to what it changed,
+      # not to the size of the project — and a claim about a trend needs a
+      # reading over time rather than a number somebody went looking for once.
+      summary("code_my_spec.requirements.drain.duration",
+        unit: {:native, :millisecond},
+        tags: [:kind],
+        description: "Wall time of one requirement graph drain"
+      ),
+      summary("code_my_spec.requirements.drain.queries",
+        tags: [:kind],
+        description: "Database round trips one drain cost"
+      ),
+      summary("code_my_spec.requirements.drain.rows_written",
+        tags: [:kind],
+        description: "Requirement rows one drain wrote"
+      ),
+
       # VM Metrics
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),

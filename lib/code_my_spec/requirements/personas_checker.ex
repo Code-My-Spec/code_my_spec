@@ -91,10 +91,22 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   # When several copies hold the same path, the valid one wins. Any checkout
   # having a good version means the artifact exists; letting map ordering decide
   # would make the verdict depend on which row came back first.
+  # The two roles, asked for in SQL rather than filtered in memory.
+  #
+  # This read every file on the project — every checkout's copy of every path —
+  # and kept the handful with a persona role. `personas_complete` is a project
+  # requirement, and project requirements are rebuilt on every pass whatever
+  # moved, so that was paid by every graph computation: 407ms of a 907ms
+  # project-node pass on this project, to answer a question about a few dozen
+  # rows.
+  #
+  # Still every checkout, which is the point of `list_project_files/1` and is
+  # unchanged — a persona is project-scoped and the comment above says why.
+  @persona_roles [:persona_summary, :persona_sources]
+
   defp synced_persona_files(scope) do
     scope
-    |> Files.list_project_files()
-    |> Enum.filter(&(&1.role in [:persona_summary, :persona_sources]))
+    |> Files.list_project_files_with_roles(@persona_roles)
     |> Enum.reduce(%{}, fn file, acc -> Map.update(acc, file.path, file, &better_of(&1, file)) end)
   end
 

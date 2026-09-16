@@ -116,22 +116,38 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   def sealed?(_scope, _entity),
     do: {false, %{reason: "No active scope or invalid story entity — cannot check Three Amigos."}}
 
-  defp unsealed_reason(scope, story) do
-    # The bar it has not cleared, because "not sealed" on its own tells nobody
-    # what to do about it.
-    case complete?(scope, story) do
-      {true, _meta} ->
-        {false,
-         %{
-           reason:
-             "Three Amigos is ready to seal but has not been sealed. Evaluate the " <>
-               "three_amigos_complete task to seal it."
-         }}
+  @doc """
+  Why a story that is not sealed is not sealed.
 
-      {false, meta} ->
-        {false, meta}
-    end
-  end
+  Public for `Requirements.Handlers`, which settles `three_amigos_complete`
+  across every story from one read and so already knows which stories are
+  unsealed — the question `sealed?/2` answers on its way here. What it does not
+  have is this wording, and a second copy of it in the handler is the copy that
+  drifts from the one an agent has been reading.
+
+  The context is `complete?/3`'s: a story's personas, rules, criteria and
+  questions, grouped by story id. Required rather than defaulted — `complete?/3`
+  reads an empty context as four empty collections rather than as "ask", so a
+  caller with nothing preloaded wants the querying path, not this one.
+  """
+  @spec unsealed_reason(Scope.t(), Story.t(), map()) :: {false, map()}
+  def unsealed_reason(scope, story, ctx) when is_map(ctx),
+    do: scope |> complete?(story, ctx) |> seal_gap()
+
+  defp unsealed_reason(scope, story), do: scope |> complete?(story) |> seal_gap()
+
+  # The bar it has not cleared, because "not sealed" on its own tells nobody
+  # what to do about it.
+  defp seal_gap({true, _meta}),
+    do:
+      {false,
+       %{
+         reason:
+           "Three Amigos is ready to seal but has not been sealed. Evaluate the " <>
+             "three_amigos_complete task to seal it."
+       }}
+
+  defp seal_gap({false, meta}), do: {false, meta}
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{active_account_id: account_id} = scope, %Story{id: story_id} = story)

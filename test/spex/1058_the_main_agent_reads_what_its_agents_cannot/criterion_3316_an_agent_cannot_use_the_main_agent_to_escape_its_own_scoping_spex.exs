@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.Qa.Tools.ListQaAttempts
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
@@ -93,9 +93,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          AnswerQuestion.execute(
+          AnswerNotification.execute(
             %{
-              question_id: context.question_id,
+              id: context.question_id,
               answer: "submitting the QA result you asked for",
               on_behalf_of: "coding",
               tool: "submit_qa_result"

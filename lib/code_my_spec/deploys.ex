@@ -87,20 +87,30 @@ defmodule CodeMySpec.Deploys do
   end
 
   # `16a24105`: "a cached graph can tell an agent work is finished that a deploy
-  # has just reopened". `deploy` asks `uat_check/3`, so a deploy landing moves
-  # the graph, and until the fingerprint covered deploys it moved nothing the
-  # cache could see. Announcing closes the other half — the fingerprint notices
-  # once somebody reads, and this is what makes somebody read.
+  # has just reopened". A deploy landing moves the `deploy` requirement, and
+  # until the fingerprint covered deploys it moved nothing the cache could see.
   #
-  # Per row rather than once per `record_environment_deploy/3`: the debounce
-  # collapses a deploy's whole batch into one pass anyway, and `record/4` has
-  # callers of its own that would otherwise be silent.
-  defp announce({:ok, _deploy} = result, scope) do
-    GraphInputs.announce(scope, "Deploys")
+  # The event settles that requirement directly — `Requirements.Handlers` reads
+  # the deploy rows and `Deploys.healthy?/1` decides — and the story rides along
+  # as the fallback for a consumer with no handler for this kind.
+  #
+  # Per row rather than once per `record_environment_deploy/3`, because
+  # `record/4` has callers of its own that would otherwise be silent.
+  #
+  # A deploy with no story names nothing, which records `:unknown` and
+  # recomputes everything. Conservative and correct: this cannot say what such a
+  # row moved.
+  defp announce({:ok, deploy} = result, scope) do
+    GraphInputs.event(scope, "Deploys", "deploy_changed", %{}, deploy_entities(deploy))
     result
   end
 
   defp announce(result, _scope), do: result
+
+  defp deploy_entities(%{story_id: story_id}) when not is_nil(story_id),
+    do: [{"story", story_id}]
+
+  defp deploy_entities(_deploy), do: []
 
   @doc """
   Record the stories a successful deploy carried.

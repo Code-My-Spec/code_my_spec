@@ -30,12 +30,27 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   fingerprint hashes. Readers keep their own topics; this one exists for the
   watcher and says only "something the graph is computed from moved", never what.
 
-  ## Why it carries nothing
+  ## Why the broadcast carries nothing, and the mark does
 
-  Deliberately no payload. The fingerprint already answers "did anything
-  actually change", and it answers it over every input at once — a payload
-  saying *which* would be a second, worse copy of that, and the first thing to
-  drift. `GraphWatcher` debounces these and asks the fingerprint.
+  The broadcast is still payload-free, for the reason it always was: the
+  fingerprint answers "did anything actually change" over every input at once,
+  and a payload saying *which* would be a second, worse copy of that.
+  `GraphWatcher` debounces these and asks the fingerprint.
+
+  What changed is that the fingerprint is being replaced on the domain half, and
+  its replacement needs the answer the broadcast refuses to give. So a writer
+  now also names the entities it moved, and those names are written to
+  `graph_invalidations` — durable, because an accumulated dirty set cannot be
+  rebuilt after a restart the way a derived one can.
+
+  The two coexist on purpose and they are not redundant. The fingerprint is the
+  incumbent and still decides; the marks are a second opinion being measured
+  against it. When the diff says the marks are at least as good, the
+  fingerprints come out of the domain half and the marks decide alone.
+
+  A writer that cannot yet say what it moved passes nothing, and that records a
+  project-wide mark. Un-narrowed is a state to be counted, not hidden — a writer
+  that named nothing must not look like a writer that stayed silent.
 
   So a writer that publishes when nothing really changed costs one hash, and a
   writer that is unsure should publish.
@@ -43,6 +58,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
 
   require Logger
 
+  alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Users.Scope
 
   @pubsub CodeMySpec.PubSub
@@ -85,11 +101,76 @@ defmodule CodeMySpec.Requirements.GraphInputs do
 
   `source` names the context in the log line — the same `[Issues]` prefix that
   block already wrote — so a burst in the log still says who moved.
+
+  `entities` is what this writer moved, as `{"component", id}` and
+  `{"story", id}` — the same shape `RequirementGraph` keys stale entities by, so
+  a mark and a fingerprint verdict are directly comparable. Omitted or empty
+  means "something moved and this writer cannot say what", which is recorded as
+  project-wide rather than dropped.
   """
-  @spec announce(Scope.t() | Ecto.UUID.t() | nil, String.t()) :: :ok
-  def announce(scope_or_project_id, source) when is_binary(source) do
+  @spec announce(Scope.t() | Ecto.UUID.t() | nil, String.t(), [Invalidations.entity()]) :: :ok
+  def announce(scope_or_project_id, source, entities \\ []) when is_binary(source) do
     obs = observation_id()
     Logger.info("[#{source}] announcing a graph change", obs: obs)
+    Invalidations.record(project_id(scope_or_project_id), source, entities, obs)
+    changed(scope_or_project_id, obs)
+  end
+
+  defp project_id(%Scope{active_project_id: project_id}), do: project_id
+  defp project_id(project_id) when is_binary(project_id), do: project_id
+  defp project_id(_no_project), do: nil
+
+  @doc """
+  The entities for a writer whose rows hang off one story.
+
+  Criteria, rules, questions and QA attempts are all the same shape:
+  `Freshness.story/2` hashes them grouped by `story_id`, the broadcast message
+  is `{verb, row}`, and the row carries the id. Four copies of that would be
+  four places for the argument order to drift, which is the reason `announce/2`
+  exists at all.
+
+  A row with no `story_id` yields nothing to name, which records project-wide —
+  correct rather than conservative: such a row is not in any story's fingerprint
+  and the writer genuinely cannot say what moved.
+  """
+  @spec story_entities(term()) :: [Invalidations.entity()]
+  def story_entities({_verb, %{story_id: story_id}}) when not is_nil(story_id),
+    do: [{"story", story_id}]
+
+  def story_entities(_message), do: []
+
+  @doc """
+  Say what happened, rather than that something did.
+
+  The difference between this and `announce/3` is the difference between an
+  event and an invalidation. `announce/3` names entities that moved, and a
+  consumer can only answer it by recomputing them. This names the domain event
+  and carries what a handler needs to write the verdict directly — an issue
+  arriving at medium severity *is* `issues_triaged = false`, and there is
+  nothing to ask.
+
+  `entities` is still recorded, because a consumer with no handler for this kind
+  falls back to invalidating them. So an event is strictly more information than
+  a mark, never less, and adding one cannot make a projection wronger than it
+  was.
+  """
+  @spec event(Scope.t() | Ecto.UUID.t() | nil, String.t(), String.t(), map(), [
+          Invalidations.entity()
+        ]) :: :ok
+  def event(scope_or_project_id, source, kind, payload, entities \\ [])
+      when is_binary(source) and is_binary(kind) do
+    obs = observation_id()
+    Logger.info("[#{source}] #{kind}", obs: obs)
+
+    Invalidations.record_event(
+      project_id(scope_or_project_id),
+      source,
+      kind,
+      payload,
+      entities,
+      obs
+    )
+
     changed(scope_or_project_id, obs)
   end
 

@@ -26,6 +26,11 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Personas,
       CodeMySpec.Problems,
       CodeMySpec.Projects,
+      # Mutual with `Promotion`, which gates on the graph before it merges, the
+      # same shape `Deploys` already has here. `code_on_running_copy` is
+      # Promotion's verdict, and a graph that decided it for itself would be a
+      # second answer to the question promotion exists to answer.
+      CodeMySpec.Promotion,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
