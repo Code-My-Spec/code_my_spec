@@ -173,6 +173,28 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
       assert_shadow_agrees(ctx.scope, "Stories")
     end
+
+    test "accepting an issue on a story moves that story's verdict", ctx do
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(ctx.scope, %{
+          title: "breaks the story",
+          description: "attributed, and about to be accepted",
+          severity: :high,
+          story_id: ctx.story.id
+        })
+
+      # The case the other coverage tests cannot make. Creating an issue does
+      # not move any story verdict — `IssuesChecker.story_resolved?/2` counts
+      # only issues that are *accepted* at or above the severity threshold — so
+      # a writer naming nothing but `:project` would still agree.
+      #
+      # Accepting one flips `story_issues_resolved` from true to false for that
+      # story alone. If `Issues` named only the project, the shadow would keep
+      # the old verdict and this reads as `disagree`.
+      {:ok, _} = CodeMySpec.Issues.accept_issue(ctx.scope, issue)
+
+      assert_shadow_agrees(ctx.scope, "Issues (accepted)")
+    end
   end
 
   describe "writer narrowing" do
