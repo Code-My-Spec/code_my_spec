@@ -1393,10 +1393,33 @@ defmodule CodeMySpecSpex.Fixtures do
     # The watcher computes on arrival and announces it, so subscribing leaves a
     # `{:graph_updated, _}` in the caller's mailbox for a scenario that has not
     # touched anything. Settle the bootstrap pass and drain what it said.
+    #
+    # Looped rather than a single receive. Setup can fold several writes into
+    # more than one recompute before a scenario ever subscribes, so "at most one
+    # stray message is pending" is not an invariant a `when_` can rely on — and a
+    # criterion that counts announcements then counts setup's as its own.
+    #
+    # Measured on 3189: a `given_` chain doing real writes across ~1.5s against a
+    # 25ms test debounce and a 20-60ms recompute produced six logged recomputes
+    # plus at least one silent zero-observation pass. One `receive` cleared one of
+    # them; the criterion saw seven announcements for one change.
+    #
+    # What a `when_` needs is "the mailbox is clean before I start counting", and
+    # only a loop down to a `receive`-after-0 that finds nothing gives that.
+    # Draining at subscribe time cannot hide a real signal: everything removed
+    # here was broadcast by setup that already completed, and anything the `when_`
+    # causes is published after this returns.
+    #
+    # No cap, deliberately. A setup chain leaving more stray messages than
+    # expected should show up as a slower test, not vanish behind a bounded drain.
     GraphWatcher.settle(project_id)
 
+    drain_bootstrap_announcements(project_id)
+  end
+
+  defp drain_bootstrap_announcements(project_id) do
     receive do
-      {:graph_updated, ^project_id} -> :ok
+      {:graph_updated, ^project_id} -> drain_bootstrap_announcements(project_id)
     after
       0 -> :ok
     end
