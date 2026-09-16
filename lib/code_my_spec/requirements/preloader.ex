@@ -338,20 +338,30 @@ defmodule CodeMySpec.Requirements.Preloader do
   # checkout's identity is worse than reading widely" — and the browser has no
   # working copy to name. Refusing there took the requirement graph out of the
   # UI entirely and failed 86 spex.
-  # Which checkout's files a reader that named none is shown.
-  #
-  # Two fields mean "main" and the application writes only one.
-  # `WorkingCopies.designate_main/2` — the button on the working-copies page —
-  # sets `working_copy.main`. `Projection.vantage/1` reads
-  # `project.default_working_copy_id`, which nothing in `lib/` writes at all.
-  # Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
-  # the other field set.
-  #
-  # So the explicit setting wins where somebody made one, and designating a
-  # main copy means something here where nobody did. `nil` — a project with no
-  # checkout at all — still blends, because there is nothing to blend down to
-  # and "this project has no requirements" would be a worse answer.
-  defp files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+  @doc """
+  Which checkout's files a reader that named none is shown.
+
+  Public for `Requirements.Profiles`, whose `:files` profile answers the same
+  eight requirements from the same rows and so has to pick the same checkout.
+  It blended instead, and the diff caught it on the unscoped vantage: twenty
+  components read as having an implementation that exists only in another
+  worktree. That is the over-satisfaction direction this function was written
+  to close.
+
+  Two fields mean "main" and the application writes only one.
+  `WorkingCopies.designate_main/2` — the button on the working-copies page —
+  sets `working_copy.main`. `Projection.vantage/1` reads
+  `project.default_working_copy_id`, which nothing in `lib/` writes at all.
+  Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
+  the other field set.
+
+  So the explicit setting wins where somebody made one, and designating a
+  main copy means something here where nobody did. `nil` — a project with no
+  checkout at all — still blends, because there is nothing to blend down to
+  and "this project has no requirements" would be a worse answer.
+  """
+  @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
+  def files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.one(
       from p in CodeMySpec.Projects.Project,
         where: p.id == ^project_id,
@@ -364,7 +374,7 @@ defmodule CodeMySpec.Requirements.Preloader do
       )
   end
 
-  defp files_vantage(%Scope{}), do: nil
+  def files_vantage(%Scope{}), do: nil
 
   defp scope_to_harness(query, nil), do: query
 

@@ -113,13 +113,7 @@ defmodule CodeMySpec.Qa do
   """
   @spec complete_check(Scope.t(), map()) :: {boolean(), map()}
   def complete_check(%Scope{} = scope, story) do
-    story_id = story.id
-
-    if QaAttempts.complete?(scope, story_id) do
-      {true, %{status: "QA passed — valid DB attempt exists"}}
-    else
-      {false, %{reason: "No valid QA pass attempt in DB for story #{story_id}"}}
-    end
+    scope |> QaAttempts.complete?(story.id) |> verdict()
   end
 
   @doc """
@@ -135,17 +129,25 @@ defmodule CodeMySpec.Qa do
   """
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
-      latest when is_map(latest) ->
-        if QaAttempts.passed?(Map.get(latest, story.id)) do
-          {true, %{status: "QA passed — valid DB attempt exists"}}
-        else
-          {false, %{reason: "No valid QA pass attempt in DB for story #{story.id}"}}
-        end
-
-      _ ->
-        complete_check(scope, story)
+      latest when is_map(latest) -> latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
+      _ -> complete_check(scope, story)
     end
   end
 
   def complete_check(scope, story, _ctx), do: complete_check(scope, story)
+
+  @doc """
+  The wording `qa_complete` carries, from the boolean the attempt decided.
+
+  Public because `Requirements.Handlers` settles this requirement across every
+  story from one read rather than through `complete_check/3`, and a row it
+  writes has to read like one a recompute wrote.
+
+  The reason used to name the story — "…in DB for story 9058" — which the row
+  already says, and which stopped a whole population from being settled with one
+  write, since a detail that differs per story cannot ride on a sweep's default.
+  """
+  @spec verdict(boolean()) :: {boolean(), map()}
+  def verdict(true), do: {true, %{status: "QA passed — valid DB attempt exists"}}
+  def verdict(false), do: {false, %{reason: "No valid QA pass attempt in DB for this story"}}
 end

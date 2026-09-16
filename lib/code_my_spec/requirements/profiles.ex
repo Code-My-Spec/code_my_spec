@@ -36,19 +36,25 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Analysis
+  alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
+  alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type name :: :issues | :specs | :files | :problems | :links
+  @type name :: :issues | :specs | :files | :problems | :links | :stories | :qa
   @type t :: map()
 
   @doc """
@@ -150,13 +156,23 @@ defmodule CodeMySpec.Requirements.Profiles do
   # re-check against; one that is, with a fresh run, passes only if none of its
   # own spec files are failing.
   #
-  # `spex_fresh?` comes from `Analysis.Freshness` when the projection knows and
-  # the comparison when it does not — the one place this profile is cheap by
-  # design rather than by accident, since the alternative is hashing the
-  # checkout's whole file table to answer one boolean.
+  # `spex_fresh?` is `Analysis.fresh?/2`, the same function
+  # `SpecsPassingChecker.passing?/2` calls — the comparison, not the projection.
+  #
+  # It read `Analysis.Freshness` first, falling back to the comparison, and that
+  # was wrong in the one direction that costs correctness. `Preloader` states the
+  # rule it broke: the path that already holds the files does not consult the
+  # projection, because a comparison derived from the files cannot be wrong about
+  # them and a row can be, for any reason its own events do not describe.
+  #
+  # Caught by the diff, on this project: the row said `fresh: true` from a
+  # `rebuild/1` at 12:41 with no run behind it, the comparison said false, and
+  # `story:822/bdd_specs_passing` came back unsatisfied against a calculator that
+  # passed it. A stale *clean* row is a false pass. One file read is the price of
+  # not writing one.
   def load(%Scope{active_project_id: project_id} = scope, :specs) do
     %{
-      spex_fresh?: spex_fresh?(scope),
+      spex_fresh?: Analysis.fresh?(scope, "spex"),
       specs_ready: specs_ready_by_story(project_id),
       failing_by_story: failing_specs_by_story(scope, project_id)
     }
@@ -195,6 +211,61 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
+  # The story rows, and the four collections a story's Three Amigos verdict is
+  # read from.
+  #
+  # One slice, four requirements: `three_amigos_complete` reads the seal and —
+  # for the unsealed few — the gap, `code_on_running_copy` reads
+  # `promoted_version`, and `stories_exist` and `work_dispatched` are about the
+  # set rather than about any row.
+  #
+  # Every story, not only the released ones. `Shadow.sweep/2` matches on name
+  # and entity type and can only touch rows that exist, so the parked stories
+  # this carries are swept over harmlessly — and filtering here would mean
+  # keeping `Preloader`'s `ready_for_dev` gate in a second place, where it would
+  # drift.
+  #
+  # The four collections are the shape `BddRulesChecker.complete?/3` reads, which
+  # is `Preloader`'s: grouped by story id, and empty for a story with none.
+  def load(%Scope{active_project_id: project_id}, :stories) do
+    stories = Repo.all(from(s in Story, where: s.project_id == ^project_id))
+    story_ids = Enum.map(stories, & &1.id)
+
+    %{
+      stories: stories,
+      amigos: %{
+        personas_by_story: personas_by_story(story_ids),
+        rules_by_story: rules_by_story(project_id),
+        criteria_by_story: criteria_by_story(story_ids),
+        questions_by_story: questions_by_story(project_id)
+      }
+    }
+  end
+
+  # The newest QA attempt per story, invalidations preloaded — what
+  # `QaAttempts.complete?/2` fetches one story at a time.
+  #
+  # The attempt rather than a boolean, for `Preloader.qa_latest_by_story/1`'s
+  # reason: deciding what counts as a pass is the Qa context's judgement, and
+  # `status == :pass and invalidations == []` written here would be a second
+  # copy of it.
+  def load(%Scope{active_project_id: project_id}, :qa) do
+    story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+
+    %{
+      latest_by_story:
+        Repo.all(
+          from(a in QaAttempt,
+            where: a.story_id in ^story_ids,
+            order_by: [desc: a.inserted_at, desc: a.id],
+            preload: :invalidations
+          )
+        )
+        |> Enum.group_by(& &1.story_id)
+        |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+    }
+  end
+
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same
   # `Enum.find/2` semantics `has_role?/3` and `has_valid_role?/2` use when a
   # checkout somehow holds two rows for one role.
@@ -206,15 +277,18 @@ defmodule CodeMySpec.Requirements.Profiles do
     end)
   end
 
-  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy}) when is_binary(copy),
-    do: from(f in query, where: f.working_copy_id == type(^copy, Ecto.UUID))
-
-  defp scope_files_to_copy(query, %Scope{}), do: query
-
-  defp spex_fresh?(%Scope{active_working_copy_id: copy} = scope) do
-    case Analysis.Freshness.known(copy, "spex") do
-      nil -> Analysis.fresh?(scope, "spex")
-      known -> known
+  # `Preloader.files_vantage/1` decides, including for a reader that named no
+  # checkout — which resolves to the project's main copy rather than blending.
+  #
+  # This blended, and the diff caught it: on the unscoped vantage twenty
+  # components read as having an implementation that exists only in another
+  # worktree, `handlers.ex` and `profiles.ex` among them. Over-satisfaction is
+  # the expensive direction — an agent is told the work is done and skips it —
+  # and it is the whole reason that function exists.
+  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy} = scope) do
+    case copy || Preloader.files_vantage(scope) do
+      nil -> query
+      vantage -> from(f in query, where: f.working_copy_id == type(^vantage, Ecto.UUID))
     end
   end
 
@@ -249,5 +323,34 @@ defmodule CodeMySpec.Requirements.Profiles do
     Map.new(paths_by_story, fn {story_id, paths} ->
       {story_id, paths |> Enum.flat_map(&Map.get(failing, &1, [])) |> Enum.uniq()}
     end)
+  end
+
+  # `Preloader`'s four, in its shapes — rules and questions carry a project id,
+  # criteria and personas are reachable only through their story.
+  defp rules_by_story(project_id) do
+    Repo.all(from(r in Rule, where: r.project_id == ^project_id and not is_nil(r.story_id)))
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp questions_by_story(project_id) do
+    Repo.all(from(q in Question, where: q.project_id == ^project_id and not is_nil(q.story_id)))
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp criteria_by_story(story_ids) do
+    Repo.all(from(c in Criterion, where: c.story_id in ^story_ids))
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp personas_by_story(story_ids) do
+    Repo.all(
+      from(ps in PersonaStory,
+        join: p in Persona,
+        on: p.id == ps.persona_id,
+        where: ps.story_id in ^story_ids,
+        select: {ps.story_id, p}
+      )
+    )
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 end

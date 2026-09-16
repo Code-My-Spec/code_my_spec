@@ -416,18 +416,30 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # `validation_errors` is keyed by concern, and the keys vary by role — the
-  # scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
-  # read failures, and a key per missing section for setup files. Join the
-  # values rather than guessing at a shape.
-  defp describe_validation_errors(%{validation_errors: errors})
+  @doc """
+  How an invalid file explains itself in a `path_exists` verdict.
+
+  `validation_errors` is keyed by concern, and the keys vary by role — the
+  scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
+  read failures, and a key per missing section for setup files. Join the values
+  rather than guessing at a shape.
+
+  Public for `Requirements.Handlers`, which settles the six project
+  `path_exists` requirements from a profile and has to produce the same
+  sentence. It had its own rendering and the diff caught the drift: the keys
+  were interpolated too, so `qa_journey_plan` explained itself as
+  `data: %{}; errors: %{"plan" => …}` where a recompute wrote the messages
+  alone.
+  """
+  @spec describe_validation_errors(map()) :: String.t()
+  def describe_validation_errors(%{validation_errors: errors})
        when is_map(errors) and errors != %{} do
     errors
     |> Enum.sort_by(fn {key, _} -> to_string(key) end)
     |> Enum.map_join("; ", fn {_key, value} -> format_validation_error(value) end)
   end
 
-  defp describe_validation_errors(_file), do: "no detail recorded"
+  def describe_validation_errors(_file), do: "no detail recorded"
 
   # Values are usually the validator's message, but not always — some roles
   # write a nested map, and `to_string/1` raises on those rather than saying

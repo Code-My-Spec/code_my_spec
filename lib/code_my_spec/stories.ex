@@ -59,16 +59,24 @@ defmodule CodeMySpec.Stories do
   # clause: the row changed, the graph was never told, and nothing said so.
   # Invisible until reads stopped recomputing, because until then the next read
   # rebuilt the graph anyway and covered for it.
-  defp broadcast(%Scope{active_account_id: nil} = _scope, _message), do: :ok
+  defp broadcast(scope, message, kind \\ nil)
 
-  defp broadcast(%Scope{} = scope, message) do
+  defp broadcast(%Scope{active_account_id: nil} = _scope, _message, _kind), do: :ok
+
+  defp broadcast(%Scope{} = scope, message, kind) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "user:#{scope.active_account_id}:stories",
       message
     )
 
-    GraphInputs.event(scope, "Stories", story_event_kind(message), %{}, graph_entities(message))
+    GraphInputs.event(
+      scope,
+      "Stories",
+      kind || story_event_kind(message),
+      %{},
+      graph_entities(message)
+    )
   end
 
   # An entity appearing or going falls back to a recompute, deliberately.
@@ -87,6 +95,18 @@ defmodule CodeMySpec.Stories do
   defp story_event_kind({:created, _}), do: "story_created"
   defp story_event_kind({:deleted, _}), do: "story_deleted"
   defp story_event_kind(_message), do: "story_changed"
+
+  # `ready_for_dev` is creation and deletion by another name, as far as the
+  # projection is concerned: `Preloader` filters the story population on it, so
+  # a story that is released gains every requirement row it has and a story that
+  # is parked loses them. Handlers cannot write either — both sweeps are
+  # `UPDATE`s — so a readiness flip has to reach `compute_entity/4`, and it does
+  # that by being a kind nothing handles.
+  #
+  # `update_story/3` is the only caller that can move it: every other writer
+  # here sets a component, a promotion stamp or the specs-ready latch.
+  defp readiness_kind(%Story{ready_for_dev: same}, %Story{ready_for_dev: same}), do: nil
+  defp readiness_kind(_before, _after), do: "story_readiness_changed"
 
   # The story, and the project.
   #
@@ -250,9 +270,9 @@ defmodule CodeMySpec.Stories do
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
     true = story.account_id == scope.active_account_id
 
-    with {:ok, story = %Story{}} <- impl().update_story(scope, story, attrs) do
-      broadcast(scope, {:updated, story})
-      {:ok, story}
+    with {:ok, updated = %Story{}} <- impl().update_story(scope, story, attrs) do
+      broadcast(scope, {:updated, updated}, readiness_kind(story, updated))
+      {:ok, updated}
     end
   end
 
