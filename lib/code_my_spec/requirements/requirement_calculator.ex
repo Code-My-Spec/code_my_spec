@@ -293,13 +293,24 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       else: [scope, entity]
   end
 
-  defp normalize_delegate_result({true, details}), do: {true, details}
-  defp normalize_delegate_result({false, details}), do: {false, details}
-  defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
-  defp normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
-  defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
+  @doc """
+  A delegate's answer in the `{satisfied?, details}` shape the graph stores.
 
-  defp normalize_delegate_result(_),
+  Public because `Requirements.Handlers` settles some delegate-backed
+  requirements from events and has to land on the same shape a recompute would.
+  Reimplementing this mapping there would be a second copy of the contract, and
+  the copy that drifts is the one that decides what an agent is asked to do.
+  """
+  @spec normalize_delegate_result(term()) :: {boolean(), map()}
+  def normalize_delegate_result(result)
+
+  def normalize_delegate_result({true, details}), do: {true, details}
+  def normalize_delegate_result({false, details}), do: {false, details}
+  def normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
+  def normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
+  def normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
+
+  def normalize_delegate_result(_),
     do: {false, %{reason: "delegate check returned unexpected result"}}
 
   # -- Config helpers --
@@ -418,18 +429,30 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # `validation_errors` is keyed by concern, and the keys vary by role — the
-  # scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
-  # read failures, and a key per missing section for setup files. Join the
-  # values rather than guessing at a shape.
-  defp describe_validation_errors(%{validation_errors: errors})
+  @doc """
+  How an invalid file explains itself in a `path_exists` verdict.
+
+  `validation_errors` is keyed by concern, and the keys vary by role — the
+  scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
+  read failures, and a key per missing section for setup files. Join the values
+  rather than guessing at a shape.
+
+  Public for `Requirements.Handlers`, which settles the six project
+  `path_exists` requirements from a profile and has to produce the same
+  sentence. It had its own rendering and the diff caught the drift: the keys
+  were interpolated too, so `qa_journey_plan` explained itself as
+  `data: %{}; errors: %{"plan" => …}` where a recompute wrote the messages
+  alone.
+  """
+  @spec describe_validation_errors(map()) :: String.t()
+  def describe_validation_errors(%{validation_errors: errors})
        when is_map(errors) and errors != %{} do
     errors
     |> Enum.sort_by(fn {key, _} -> to_string(key) end)
     |> Enum.map_join("; ", fn {_key, value} -> format_validation_error(value) end)
   end
 
-  defp describe_validation_errors(_file), do: "no detail recorded"
+  def describe_validation_errors(_file), do: "no detail recorded"
 
   # Values are usually the validator's message, but not always — some roles
   # write a nested map, and `to_string/1` raises on those rather than saying
@@ -530,33 +553,58 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
-    case AcceptanceCriteria.list_story_criteria(scope, story_id) do
-      [] ->
-        {false, %{reason: "no acceptance criteria on this story"}}
+    scope
+    |> AcceptanceCriteria.list_story_criteria(story_id)
+    |> bdd_specs_covered(files, role)
+  end
 
-      criteria ->
-        covered_paths =
-          files
-          |> Enum.filter(&(&1.role == role))
-          |> MapSet.new(& &1.path)
+  @doc """
+  Whether every criterion on a story has a file of `role` behind it.
 
-        missing =
-          criteria
-          |> Enum.filter(fn c ->
-            is_nil(c.spec_path) or c.spec_path == "" or
-              not MapSet.member?(covered_paths, c.spec_path)
-          end)
-          |> Enum.map(& &1.id)
+  The verdict on its own, separated from the query that feeds it, so
+  `Requirements.Handlers` can settle this requirement across every story from
+  one read instead of one query per story — and, more to the point, so it
+  cannot answer a different question.
 
-        if missing == [] do
-          {true, %{status: "#{role} file exists for every criterion"}}
-        else
-          {false,
-           %{
-             reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
-             missing_criteria_ids: missing
-           }}
-        end
+  It did exactly that. `bdd_specs_exist` was a row in the handler's file table
+  meaning "this story has any file in this role", which was the rule until
+  `f97e1216d` made it per criterion. The table did not follow, the handler went
+  on passing stories with a spec file and uncovered criteria, and nothing said
+  so until a diff against this module on a merged tree.
+
+  `[]` is unsatisfied rather than a pass. `168335ecf` briefly made a story with
+  no criteria fall back to any-file semantics and `89bf9bf0b` took it back out:
+  a story nobody has run Three Amigos on has not covered its criteria, it has
+  no criteria to cover.
+  """
+  @spec bdd_specs_covered([map()], [map()], atom()) :: {boolean(), map()}
+  def bdd_specs_covered(criteria, files, role)
+
+  def bdd_specs_covered([], _files, _role),
+    do: {false, %{reason: "no acceptance criteria on this story"}}
+
+  def bdd_specs_covered(criteria, files, role) do
+    covered_paths =
+      files
+      |> Enum.filter(&(&1.role == role))
+      |> MapSet.new(& &1.path)
+
+    missing =
+      criteria
+      |> Enum.filter(fn c ->
+        is_nil(c.spec_path) or c.spec_path == "" or
+          not MapSet.member?(covered_paths, c.spec_path)
+      end)
+      |> Enum.map(& &1.id)
+
+    if missing == [] do
+      {true, %{status: "#{role} file exists for every criterion"}}
+    else
+      {false,
+       %{
+         reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
+         missing_criteria_ids: missing
+       }}
     end
   end
 

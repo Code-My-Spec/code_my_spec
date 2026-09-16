@@ -169,12 +169,7 @@ config :code_my_spec, CodeMySpec.Repo,
       do: DBConnection.ConnectionPool,
       else: Ecto.Adapters.SQL.Sandbox
     ),
-  # Each async spex now needs its own sandboxed connection *plus* a transient
-  # one for its GraphWatcher (`ensure_watching/1`'s `Sandbox.allow` grant, not
-  # a separate checkout, but the watcher's own queries still occupy a slot
-  # while they run) -- roughly double the old serial-suite demand. Postgres
-  # itself has 400 max_connections (`51fb4adb`); this just uses more of it.
-  pool_size: System.schedulers_online() * 6
+  pool_size: System.schedulers_online() * 2
 
 # server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,
 # so nothing here needs a listener. It was true only for Wallaby, which is no
@@ -561,7 +556,19 @@ config :code_my_spec, CodeMySpec.AgentHarness.ConversationRecorder,
   plug: {Req.Test, CodeMySpec.AgentHarness.ConversationRecorder}
 
 config :code_my_spec, CodeMySpec.Billing.StripeClient,
+  secret_key: "sk_test_spex",
   plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+
+# Static, not per-test: every spex reads the same fixture values, so setting
+# them once here (rather than Application.put_env + on_exit-restore in every
+# spex's own setup) removes a global-state race identical in shape to the
+# one already fixed for :deploy_key (07c2c511) and the storage client
+# (d0842eac4) -- the exact anti-pattern `choosing_a_test_seam.md` warns about
+# under "Global state in tests": defined once, not read-and-restored.
+config :code_my_spec, CodeMySpec.Billing,
+  webhook_secret: "whsec_spex",
+  light_price_id: "price_light_spex",
+  pro_price_id: "price_pro_spex"
 
 config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter,
   plug: {Req.Test, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter}

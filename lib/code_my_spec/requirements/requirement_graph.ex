@@ -297,7 +297,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     stamp_project(scope)
     {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
 
-    topology = Freshness.topology(ctx, config)
+    {topology_ms, topology} = timed(fn -> Freshness.topology(ctx, config) end)
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
@@ -307,7 +307,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
       {story_nodes, _} = compute_story_nodes(scope, reduced, config)
-      {project_nodes, _} = compute_project_nodes(scope, ctx, config)
+      # `ctx`, not `reduced`, and that is the measurement this exists to take.
+      # Project nodes are rebuilt on every pass whatever the stale set says —
+      # ten delegate checkers, several of which query the whole project — while
+      # the component and story computations above are narrowed to what actually
+      # moved. On a pass that found nothing stale those two do nothing and this
+      # does everything.
+      {project_ms, {project_nodes, _}} =
+        timed(fn -> compute_project_nodes(scope, ctx, config) end)
 
       fresh = project_nodes ++ story_nodes ++ component_nodes
 
@@ -361,7 +368,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
 
-      log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms)
+      log_pass_cost(started, %{
+        preload: preload_ms,
+        projection: projection_ms,
+        topology: topology_ms,
+        project: project_ms,
+        fingerprint: fingerprint_ms,
+        serve: serve_ms
+      })
 
       {served, stored_edges}
     else
@@ -658,6 +672,96 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       | components: Enum.filter(ctx.components, &MapSet.member?(stale, {"component", &1.id})),
         stories: Enum.filter(ctx.stories, &MapSet.member?(stale, {"story", &1.id}))
     }
+  end
+
+  @doc """
+  One entity's requirements, computed on their own.
+
+  The event path's unit of work, and the reason it can exist without a
+  debounce: a pass narrowed to a single entity does the work that entity earned
+  and no more, where the fingerprint pass is whole-project by construction and
+  has to coalesce a burst to stay affordable.
+
+  `reduce_to/2` is what makes this the same computation the partial recompute
+  already does — it narrows the two lists and leaves the by-id maps whole, so an
+  entity computed alone is hashed and answered identically to the same entity
+  computed inside a larger stale set. That has to hold or the shadow diff would
+  be reporting on this function rather than on the decision it exists to test.
+
+  Project nodes take the whole context deliberately: their checkers read counts
+  across the project, so there is nothing to narrow, and `recompute_stale/4`
+  rebuilds them unconditionally for the same reason.
+
+  ## A component's unit is its family, not itself
+
+  Returns `{covered, nodes}` rather than just nodes, because for a component the
+  two differ. `component_families/1` decides top-level from nested by asking
+  whether each component's parent is *in the set it was given* — so a child
+  narrowed to itself has no parent there, is classified top-level, and runs its
+  own template. Measured on this project: 549 of 1138 components are nested, and
+  every one of them computed alone invents an `implementation_file` node that
+  the whole-project pass never produces.
+
+  `expand_component_families/2` is what keeps the stale path safe from exactly
+  this, and it is why the stale set is always family-closed. The narrow path
+  needs the same closure for the same reason, so it calls the same function.
+
+  This is not the debounce coming back. A family is the domain's own atomic
+  unit — a context's template owns its children's rows, so those rows cannot be
+  produced apart from it — where a debounce window is an arbitrary interval
+  chosen to make a whole-project pass affordable. Two unrelated marks still
+  compute separately.
+  """
+  @spec compute_entity(Scope.t(), map(), map(), {String.t(), term()}) ::
+          {MapSet.t({String.t(), term()}), [Requirement.t()]}
+  def compute_entity(scope, ctx, config, {"component", _id} = entity) do
+    covered = expand_component_families(MapSet.new([entity]), ctx)
+    {nodes, _} = instantiate_component_graphs(scope, reduce_to(ctx, covered), config)
+    {covered, nodes}
+  end
+
+  def compute_entity(scope, ctx, config, {"story", _id} = entity) do
+    covered = MapSet.new([entity])
+    {nodes, _} = compute_story_nodes(scope, reduce_to(ctx, covered), config)
+    {covered, nodes}
+  end
+
+  # Answers with the project's real id whatever the caller asked with. A mark
+  # naming the project carries no id — there is only one — so callers pass
+  # `{"project", nil}`, and handing that back would reach `Shadow.write/3` as
+  # `n.project_id == nil`, which Ecto refuses. The nodes below already carry
+  # `project.id`; the covered set has to agree with them.
+  def compute_entity(scope, ctx, config, {"project", _id}) do
+    {nodes, _} = compute_project_nodes(scope, ctx, config)
+    {MapSet.new([{"project", scope.active_project.id}]), nodes}
+  end
+
+  @doc """
+  The project's whole node set and the edges between them, computed and not
+  written.
+
+  Edges cannot be projected one entity at a time, which is why the event path
+  had none. `compute_edges/3` ends in `Topology.transitive_reduction/1`, and a
+  transitive reduction is global by definition: dropping `A → C` requires
+  knowing that `A → B → C` exists, so a node instantiated for an unrelated
+  entity can *remove* an edge here. There is no narrow version of that
+  question.
+
+  What saves it is that edges are a function of the **node set**, not of any
+  verdict. A sweep settles answers with `UPDATE`s and cannot add or remove a
+  node, so a drain that only swept cannot have moved topology. Only a drain
+  that wrote or reaped nodes needs to ask this — which is the same rare set of
+  events that already falls back to a recompute: a component created, retyped
+  or deleted, a story released or parked.
+
+  Separate from `compute_and_publish/4` because that one also publishes, caches
+  and persists. This answers the question and stops.
+  """
+  @spec compute_topology(Scope.t(), map(), map()) ::
+          {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
+  def compute_topology(scope, ctx, config) do
+    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, compute_edges(nodes, enriched_ctx, config)}
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
@@ -2161,18 +2265,40 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp barren_components(ctx, config) do
     {top_level, children_by_parent} = component_families(ctx)
 
+    # One answer per *type*, not per component, and the difference is not
+    # academic. `graph_for_type/1` builds its list of definition structs on
+    # every call — `context_graph/0` and friends construct them rather than
+    # returning a constant — so asking it per component asked it twice for each
+    # of 1134 components on this project. Measured at dev scale: 136ms per pass,
+    # against roughly 1ms for the eighteen distinct types.
+    #
+    # That is ~17% of what a pass spends discovering it has nothing to do, and
+    # it was introduced by this function. Worth the map.
+    scopes_by_type =
+      top_level
+      |> Enum.map(& &1.type)
+      |> Enum.uniq()
+      |> Map.new(fn type ->
+        {type,
+         type
+         |> RequirementDefinitionData.graph_for_type()
+         |> filter_definitions_by_config(config)
+         |> MapSet.new(& &1.node_scope)}
+      end)
+
+    scopes = fn component -> Map.get(scopes_by_type, component.type, MapSet.new()) end
+
     barren_top =
       top_level
       |> Enum.reject(fn component ->
-        Enum.any?(filtered_template(component, config), &(&1.node_scope in [:parent, :self]))
+        scope_set = scopes.(component)
+        MapSet.member?(scope_set, :parent) or MapSet.member?(scope_set, :self)
       end)
       |> MapSet.new(& &1.id)
 
     barren_children =
       top_level
-      |> Enum.reject(fn parent ->
-        Enum.any?(filtered_template(parent, config), &(&1.node_scope == :child))
-      end)
+      |> Enum.reject(&MapSet.member?(scopes.(&1), :child))
       |> Enum.flat_map(&Map.get(children_by_parent, &1.id, []))
       |> MapSet.new(& &1.id)
 
@@ -2193,14 +2319,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # per-entity hash of every component and story — and naming the others is how
   # that gets isolated without restructuring the `with` guards, which would
   # change which work the short-circuits skip.
-  defp log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms) do
+  defp log_pass_cost(started, parts) do
     total = elapsed_ms(started)
-    accounted = (preload_ms || 0) + projection_ms + fingerprint_ms + serve_ms
+    accounted = parts |> Map.values() |> Enum.map(&(&1 || 0)) |> Enum.sum()
+
+    named =
+      ~w(preload projection topology project fingerprint serve)a
+      |> Enum.map_join(", ", fn key -> "#{key} #{ms_or_na(parts[key])}" end)
 
     Logger.info(
-      "[Requirements] pass cost #{total}ms — preload #{ms_or_na(preload_ms)}, " <>
-        "projection #{projection_ms}ms, fingerprint #{fingerprint_ms}ms, " <>
-        "serve #{serve_ms}ms, elsewhere #{max(total - accounted, 0)}ms"
+      "[Requirements] pass cost #{total}ms — #{named}, " <>
+        "elsewhere #{max(total - accounted, 0)}ms"
     )
   end
 
@@ -2214,12 +2343,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # measurement found.
   defp ms_or_na(nil), do: "n/a"
   defp ms_or_na(ms), do: "#{ms}ms"
-
-  defp filtered_template(component, config) do
-    component.type
-    |> RequirementDefinitionData.graph_for_type()
-    |> filter_definitions_by_config(config)
-  end
 
   # Stamped after the fact rather than inside the template, because a
   # container's pass emits its children's nodes as well as its own and each of
@@ -2476,7 +2599,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         # requirement of a story reads the same slice of the context, so they
         # go stale together and hashing it seven times would answer the same
         # question seven ways.
-        fingerprint = Freshness.story(ctx, story)
+        fingerprint = story_fingerprint(ctx, story)
 
         nodes =
           Enum.map(template, fn definition ->
@@ -2511,6 +2634,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # Stash edges — they'll be merged into template_edges
     {nodes, edges}
   end
+
+  # `nil` when the context says it was not loaded to answer this.
+  #
+  # `Preloader.load_story/3` omits `delegated_inputs` because nothing but
+  # `Freshness` and `GraphFingerprint` read it, and hashing a narrow context
+  # would produce a *plausible* fingerprint that is not the one a whole pass
+  # produces. That is worse than no fingerprint: it looks comparable and is not,
+  # so a later reader could skip a row on the strength of it.
+  #
+  # `nil` already carries the right meaning — `Node`'s `inputs_fingerprint` doc
+  # says it "reads as 'no basis to skip it' rather than as 'unchanged'" — which
+  # is exactly true of a row the event path wrote.
+  defp story_fingerprint(%{skip_fingerprints: true}, _story), do: nil
+  defp story_fingerprint(ctx, story), do: Freshness.story(ctx, story)
 
   defp compute_project_nodes(scope, ctx, config) do
     project = scope.active_project

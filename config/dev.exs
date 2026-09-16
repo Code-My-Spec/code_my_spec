@@ -274,3 +274,16 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://de
 # and components but not project-level requirements, and a writer that skips
 # changesets leaves `updated_at` untouched and so moves no fingerprint.
 config :code_my_spec, graph_stale_read_log: true
+
+# The event-derived projection, maintained beside the fingerprint pass.
+#
+# Off until now, which meant `ShadowProjector` had never started: every number
+# the conversion was verified against came from scripts driving the code
+# synchronously, and no drain had ever handled a real event. `Shadow.diff/1`
+# compares the two projections on every pass and logs the distance — nodes and,
+# since `20260916150000`, edges.
+#
+# It writes `shadow_requirements` and `shadow_requirement_edges` and decides
+# nothing; the pass still serves. Turning it off stops the second projection
+# without losing the marks that would let it restart.
+config :code_my_spec, graph_shadow_projection: true

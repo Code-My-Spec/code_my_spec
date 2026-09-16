@@ -68,8 +68,19 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # After the transaction commits, not inside it: `GraphWatcher` recomputes on
   # this, and a recompute that read the attempt before it committed would decide
   # from a row that might roll back. Only on success for the same reason.
-  defp announce_graph_change(scope, {:ok, _attempt}) do
-    GraphInputs.announce(scope, "Qa")
+  # An event rather than a mark, because there is nothing to ask: a submitted
+  # attempt *is* what `qa_complete` reads, and `Requirements.Handlers` settles
+  # that requirement across every story from the newest attempt each one has.
+  # The entities ride along so a consumer with no handler for this kind still
+  # falls back to recomputing the story.
+  defp announce_graph_change(scope, {:ok, _attempt} = result) do
+    GraphInputs.event(
+      scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      GraphInputs.story_entities(result)
+    )
   end
 
   defp announce_graph_change(_scope, _other), do: :ok

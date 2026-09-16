@@ -2709,8 +2709,6 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stub_s3_puts(pid()) :: :ok
   def stub_s3_puts(test_pid) do
-    Req.Test.set_req_test_to_shared(%{})
-
     stub_client(S3Client, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:s3_put, conn.host <> conn.request_path, body})
@@ -2727,8 +2725,6 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stub_trigger_posts(pid()) :: :ok
   def stub_trigger_posts(test_pid) do
-    Req.Test.set_req_test_to_shared(%{})
-
     stub_client(TriggerClient, fn conn ->
       {:ok, raw, conn} = Plug.Conn.read_body(conn)
 
@@ -2840,7 +2836,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defp install_pull_stub(answer, opts) do
     test_pid = Keyword.get(opts, :record_to, self())
 
-    Req.Test.set_req_test_to_shared(%{})
     previous = Application.get_env(:code_my_spec, PullClient, [])
     Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
 
@@ -2900,11 +2895,11 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defp stub_resend(answer) do
-    # Shared, because the call is made by the LiveView process rather than the
-    # test — a per-process stub leaves it unstubbed and the sync silently finds
-    # nothing.
-    Req.Test.set_req_test_to_shared(%{})
-
+    # The call is made by the LiveView process rather than the test, but
+    # `Req.Test` resolves ownership through `$callers` and LiveView
+    # propagates it to the process it spawns — a per-process stub set by
+    # this (the test's own) process is already visible there. No shared
+    # mode needed; see `fake_providers/1`'s moduledoc for the full story.
     previous = Application.get_env(:code_my_spec, ResendClient, [])
 
     Application.put_env(:code_my_spec, ResendClient,

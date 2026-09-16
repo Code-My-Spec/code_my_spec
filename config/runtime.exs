@@ -428,14 +428,24 @@ end
 # Stripe. Blank when unset rather than absent, so an unconfigured environment
 # degrades to a normal error the billing page can show instead of crashing
 # inside Req's bearer-auth step.
-config :code_my_spec, CodeMySpec.Billing.StripeClient,
-  secret_key: env!("STRIPE_SECRET_KEY", :string, "")
+#
+# Guarded the same way Research is above: unconditional here clobbered
+# config/test.exs's fixture values with these empty-string fallbacks at
+# boot, so every spex fell back to the dynamic per-test `Application.put_env`
+# in `stub_stripe_by_default/0` to win the race back -- which only worked
+# because it ran later (per-test setup, after boot), and which is exactly
+# the global-mutable-state pattern that isn't safe under concurrent spex
+# (`reference_runtime_exs_overrides_test_config`).
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Billing.StripeClient,
+    secret_key: env!("STRIPE_SECRET_KEY", :string, "")
 
-config :code_my_spec, CodeMySpec.Billing,
-  publishable_key: env!("STRIPE_PUBLISHABLE_KEY", :string, ""),
-  webhook_secret: env!("STRIPE_WEBHOOK_SECRET", :string, ""),
-  light_price_id: env!("STRIPE_LIGHT_PRICE_ID", :string, ""),
-  pro_price_id: env!("STRIPE_PRO_PRICE_ID", :string, "")
+  config :code_my_spec, CodeMySpec.Billing,
+    publishable_key: env!("STRIPE_PUBLISHABLE_KEY", :string, ""),
+    webhook_secret: env!("STRIPE_WEBHOOK_SECRET", :string, ""),
+    light_price_id: env!("STRIPE_LIGHT_PRICE_ID", :string, ""),
+    pro_price_id: env!("STRIPE_PRO_PRICE_ID", :string, "")
+end
 
 # Our own credential for a visitor's first turns before they connect a
 # provider (story 875) — `Credential.platform_credential/1` reads this and is

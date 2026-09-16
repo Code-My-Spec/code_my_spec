@@ -120,6 +120,8 @@ defmodule CodeMySpec.Issues do
     IssuesRepository.get_issue!(scope, id)
   end
 
+  defdelegate unresolved_by_story(scope, min_severity), to: IssuesRepository
+
   def list_filtered(%Scope{} = scope, filters) do
     IssuesRepository.list_filtered(scope, filters)
   end
@@ -393,12 +395,51 @@ defmodule CodeMySpec.Issues do
        when is_binary(account_id) do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
 
-    # And to the graph's own topic, additionally: `GraphWatcher` debounces these
-    # and asks the fingerprint whether anything really moved. An incoming issue
-    # makes `issues_triaged` actionable, which is work appearing that no reader
-    # would notice. See `Requirements.GraphInputs`.
-    GraphInputs.announce(scope, "Issues")
+    # The event, not an invalidation. `Requirements.Handlers` settles the three
+    # issue requirements from it directly — an issue at or above the threshold
+    # *is* `issues_triaged = false`. `graph_entities/1` rides along so a
+    # consumer with no handler for this kind still has something to invalidate.
+    GraphInputs.event(
+      scope,
+      "Issues",
+      event_kind(message),
+      event_payload(message),
+      graph_entities(message)
+    )
   end
 
   defp broadcast(_scope, _message), do: :ok
+
+  defp event_kind({:created, _}), do: "issue_created"
+  defp event_kind({:accepted, _}), do: "issue_accepted"
+  defp event_kind({:dismissed, _}), do: "issue_dismissed"
+  defp event_kind({:resolved, _}), do: "issue_resolved"
+  defp event_kind({:updated, _}), do: "issue_updated"
+  defp event_kind(_), do: "issue_changed"
+
+  defp event_payload({_verb, %{} = issue}),
+    do: %{
+      "id" => issue.id,
+      "severity" => issue.severity && to_string(issue.severity),
+      "status" => issue.status && to_string(issue.status),
+      "story_id" => Map.get(issue, :story_id)
+    }
+
+  defp event_payload(_message), do: %{}
+
+  # The story it was attributed to, if any, and always the project.
+  #
+  # `:project` unconditionally, because `issues_triaged` and `issues_resolved`
+  # are project requirements and read the whole queue — an issue arriving or
+  # being resolved moves them whether or not it names a story.
+  #
+  # The story only when QA attributed one. `IssuesChecker.story_resolved?/2`
+  # draws that line itself — "an issue with no `story_id` is the project queue's
+  # problem, not this story's" — and `Freshness.story/2` hashes
+  # `issues_by_story` on the same basis, so an unattributed issue belongs to no
+  # story's requirements and naming one would recompute it for nothing.
+  defp graph_entities({_verb, %{story_id: story_id}}) when not is_nil(story_id),
+    do: [{"story", story_id}, :project]
+
+  defp graph_entities(_message), do: [:project]
 end

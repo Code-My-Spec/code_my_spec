@@ -348,6 +348,18 @@ defmodule CodeMySpec.WorkingCopies do
         # nobody: the page names one place and the work happens in the other.
         _ = CodeMySpec.Agents.move_main_agent(scope, copy)
         broadcast_designated(scope, copy)
+
+        # Designation moves two of the three fields the graph reads: which copy
+        # is `main`, and therefore whose `preview_status` and `preview_url` are
+        # the *running* copy's. It announced nothing — the broadcast above is on
+        # this context's own topic and never reached `GraphInputs` — so moving
+        # the designation left `code_on_running_copy` answering from the old
+        # copy until something unrelated moved the graph.
+        #
+        # Not caught by `announce_graph_change/2` either: the clearing half is
+        # an `update_all` and never passes through `save/2`.
+        GraphInputs.announce(project_id, "WorkingCopies")
+
         {:ok, copy}
 
       {:error, reason} ->
@@ -768,20 +780,39 @@ defmodule CodeMySpec.WorkingCopies do
 
   defp auto_label?(_label), do: true
 
-  # The working-copy fields the requirement graph reads — `preview_status`,
-  # `preview_url`, and which copy is `main`. `Preloader.working_copy_gate_inputs/2`
-  # is the list, and `code_on_running_copy` is the gate that turns on them.
+  # The working-copy fields the requirement graph reads, and nothing else.
   #
-  # Not from `save/2`, which every `last_seen_at` heartbeat also goes through.
-  # A heartbeat is not a graph input, and announcing one would charge a preload
-  # per heartbeat per copy to discover that nothing moved — which is exactly
-  # what the removed `record_git_state/2` was doing on every sync.
-  defp announce_graph_change({:ok, _copy} = result, %WorkingCopy{project_id: project_id}) do
-    GraphInputs.announce(project_id, "WorkingCopies")
+  # `Preloader.working_copy_gate_inputs/2` selects `main` for the designated
+  # copy and `preview_status`/`preview_url` for the running one;
+  # `Promotion.running_copy_check/2` reads the same three. `preview_checked_at`,
+  # `root`, `last_seen_at` and the tunnel fields are read by nobody in the
+  # graph.
+  @graph_fields [:main, :preview_status, :preview_url]
+
+  # Only when one of them actually moved.
+  #
+  # Being on `save/2`'s callers rather than `save/2` itself was not enough. A
+  # preview health poll writes `preview_status` *and* `preview_checked_at` on
+  # every check and announced unconditionally, so a status that had been
+  # `serving` for hours announced every time it was confirmed still serving:
+  # measured at ~6 announcements a minute on dev, 11,958 in the retained logs
+  # against 144 from `Issues` and 36 from `Stories` — 78% of every graph input
+  # event on this machine, for a value that was not changing.
+  #
+  # That is the same shape as the removed `record_git_state/2`, and the comment
+  # this replaces even named it while leaving the hole open. A check is not a
+  # change.
+  defp announce_graph_change({:ok, updated} = result, %WorkingCopy{} = before) do
+    if graph_inputs_moved?(before, updated),
+      do: GraphInputs.announce(updated.project_id, "WorkingCopies")
+
     result
   end
 
   defp announce_graph_change(other, _harness), do: other
+
+  defp graph_inputs_moved?(%WorkingCopy{} = before, %WorkingCopy{} = updated),
+    do: Enum.any?(@graph_fields, &(Map.get(before, &1) != Map.get(updated, &1)))
 
   defp save(harness, attrs) do
     harness

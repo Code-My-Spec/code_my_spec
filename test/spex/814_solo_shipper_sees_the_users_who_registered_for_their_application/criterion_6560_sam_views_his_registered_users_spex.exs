@@ -20,11 +20,6 @@ defmodule CodeMySpecSpex.Story814.Criterion6560Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  # Shared mode so the LiveView process (separate from the test) sees the stub.
-  setup do
-    Req.Test.set_req_test_to_shared(%{})
-  end
-
   spex "Sam sees the users who registered for his application" do
     scenario "Sam views his registered users" do
       given_ "the project points at a reachable target app with a deploy key", context do
