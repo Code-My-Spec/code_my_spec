@@ -176,21 +176,30 @@ defmodule CodeMySpec.Requirements.Shadow do
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    {count, _} =
-      @source
-      |> where(^entity_type_filter(entity_type))
-      |> where(^copy_filter(Projection.vantage(scope)))
-      |> where([n], n.name == ^name)
-      |> Repo.update_all(
-        set: [
-          satisfied: spec.default,
-          details: spec.default_details,
-          checked_at: now,
-          updated_at: now
-        ]
-      )
+    # In one transaction, because the two halves contradict each other by
+    # design: the default asserts the requirement for every entity, and the
+    # exceptions take it back from the ones it is not true of. A read landing
+    # between them sees a projection claiming every component has a spec.
+    {:ok, count} =
+      Repo.transaction(fn ->
+        {count, _} =
+          @source
+          |> where(^entity_type_filter(entity_type))
+          |> where(^copy_filter(Projection.vantage(scope)))
+          |> where([n], n.name == ^name)
+          |> Repo.update_all(
+            set: [
+              satisfied: spec.default,
+              details: spec.default_details,
+              checked_at: now,
+              updated_at: now
+            ]
+          )
 
-    Enum.each(spec.except, &put_verdict(scope, &1))
+        Enum.each(spec.except, &put_verdict(scope, &1))
+
+        count
+      end)
 
     {:ok, count}
   end

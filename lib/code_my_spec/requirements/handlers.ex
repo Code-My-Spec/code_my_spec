@@ -82,14 +82,50 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    "analysis_completed" => [:specs]
+    "analysis_completed" => [:specs],
+    "files_synced" => [:files]
   }
 
   # Which requirements each profile settles. Adding a requirement to a profile
   # already loaded costs nothing at read time.
   @fed_by %{
     issues: ["issues_triaged", "issues_resolved", "story_issues_resolved"],
-    specs: ["bdd_specs_passing"]
+    specs: ["bdd_specs_passing"],
+    files: [
+      "spec_file",
+      "spec_valid",
+      "test_file",
+      "test_spec_alignment",
+      "review_file",
+      "review_valid",
+      "implementation_file",
+      "bdd_specs_exist"
+    ]
+  }
+
+  # Every `file_exists` and `file_valid` requirement, as a table. Each of the
+  # eight maps to exactly one role and one kind across all fifteen graphs —
+  # checked, not assumed — so these are two shapes parameterised rather than
+  # eight handlers. 76 of the graph's 110 definitions.
+  @file_requirements %{
+    "spec_file" => {:exists, :spec, "component"},
+    "spec_valid" => {:valid, :spec, "component"},
+    "test_file" => {:exists, :test, "component"},
+    "test_spec_alignment" => {:valid, :test, "component"},
+    "review_file" => {:exists, :review, "component"},
+    "review_valid" => {:valid, :review, "component"},
+    "implementation_file" => {:exists, :implementation, "component"},
+    "bdd_specs_exist" => {:exists, :bdd_spec, "story"}
+  }
+
+  # Which file key `Utils.component_files/2` holds the expected path under.
+  # `has_role?/3`'s own mapping, and `nil` for a role with no canonical place —
+  # a `:bdd_spec` path is assigned per criterion, not derived from the module.
+  @expected_file_key %{
+    spec: :spec_file,
+    implementation: :code_file,
+    test: :test_file,
+    review: :review_file
   }
 
   @doc """
@@ -160,6 +196,90 @@ defmodule CodeMySpec.Requirements.Handlers do
           }
         end)
     }
+  end
+
+  # The eight file requirements, settled from one profile.
+  #
+  # Default satisfied, exceptions unsatisfied, and that direction is forced
+  # rather than chosen: the satisfied details carry no per-entity data
+  # ("spec file exists"), while every failure does — `expected_path` for a
+  # missing file, which `RequirementsFormatter` renders and is the only thing
+  # telling an agent where to write it, and `validation_errors` for an invalid
+  # one. Per-entity data cannot ride on a sweep's default.
+  #
+  # The population selects itself. `Shadow.sweep/2` matches `name` and entity
+  # type, and only entities whose template produces that requirement have a row
+  # — so a `:schema` component with no review requirement is never touched by
+  # `review_file`, without this needing to know the templates or the config
+  # filter at all.
+  defp settle(name, profile) when is_map_key(@file_requirements, name) do
+    {kind, role, entity_type} = Map.fetch!(@file_requirements, name)
+
+    %{
+      entity_type: entity_type,
+      name: name,
+      default: true,
+      default_details: details(satisfied_detail(kind, role)),
+      except: file_failures(name, kind, role, entity_type, profile)
+    }
+  end
+
+  defp satisfied_detail(:exists, role), do: %{status: "#{role} file exists"}
+  defp satisfied_detail(:valid, role), do: %{status: "#{role} file valid"}
+
+  defp file_failures(name, kind, role, "component", profile) do
+    for component <- profile.components,
+        verdict =
+          file_verdict(kind, role, Map.get(profile.by_component_role, {component.id, role})),
+        verdict != :ok,
+        do:
+          change(
+            "component",
+            component.id,
+            name,
+            false,
+            failure_detail(verdict, role, expected_path(profile, component, role))
+          )
+  end
+
+  defp file_failures(name, kind, role, "story", profile) do
+    for story_id <- profile.story_ids,
+        verdict = file_verdict(kind, role, Map.get(profile.by_story_role, {story_id, role})),
+        verdict != :ok,
+        do: change("story", story_id, name, false, failure_detail(verdict, role, nil))
+  end
+
+  # `has_role?/3` and `has_valid_role?/2`, as data. Existence asks only whether
+  # a row is there; validity distinguishes three failures, and `valid: nil` —
+  # scanned but not yet parsed — is deliberately not the same as invalid.
+  defp file_verdict(:exists, _role, nil), do: :missing
+  defp file_verdict(:exists, _role, _file), do: :ok
+  defp file_verdict(:valid, _role, nil), do: :missing
+  defp file_verdict(:valid, _role, %{valid: true}), do: :ok
+  defp file_verdict(:valid, _role, %{valid: false} = file), do: {:invalid, file.validation_errors}
+  defp file_verdict(:valid, _role, _file), do: :unvalidated
+
+  defp failure_detail(:missing, role, nil), do: %{reason: "#{role} file missing"}
+
+  defp failure_detail(:missing, role, path),
+    do: %{reason: "#{role} file missing", expected_path: path}
+
+  defp failure_detail({:invalid, errors}, role, _path),
+    do: %{reason: "#{role} file invalid", errors: errors}
+
+  defp failure_detail(:unvalidated, role, _path),
+    do: %{reason: "#{role} file not yet validated"}
+
+  defp expected_path(profile, component, role) do
+    case Map.get(@expected_file_key, role) do
+      nil ->
+        nil
+
+      key ->
+        component
+        |> CodeMySpec.Utils.component_files(profile.project)
+        |> Map.get(key)
+    end
   end
 
   # Three outcomes, and the default is the one most stories are in.

@@ -37,6 +37,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
@@ -45,7 +46,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type name :: :issues | :specs
+  @type name :: :issues | :specs | :files
   @type t :: map()
 
   @doc """
@@ -63,6 +64,67 @@ defmodule CodeMySpec.Requirements.Profiles do
       unresolved_by_story: Issues.unresolved_by_story(scope, threshold)
     }
   end
+
+  # Every `file_exists` and `file_valid` requirement in the graph — 76 of the
+  # 110 definitions — from one file read plus the two entity lists.
+  #
+  # Eight names, and each maps to exactly one role and one kind across all
+  # fifteen graphs: `spec_file`/`spec_valid` to `:spec`, `test_file`/
+  # `test_spec_alignment` to `:test`, `review_file`/`review_valid` to `:review`,
+  # `implementation_file` to `:implementation`, `bdd_specs_exist` to
+  # `:bdd_spec`. So they are a table and two shapes rather than eight handlers.
+  #
+  # The entity lists are here for the *unsatisfied* side. A component missing a
+  # spec needs `expected_path` in its details — `RequirementsFormatter` renders
+  # it, and it is the one thing telling an agent where to write the file — and
+  # that is per component, so those entities have to be enumerated rather than
+  # swept.
+  #
+  # Files are scoped to the checkout for the reason `Preloader.load/1` gives at
+  # length: blended, a file present in another worktree reads as present here,
+  # which it measured at 303 components whose specs an agent was told existed
+  # and skipped.
+  def load(%Scope{active_project_id: project_id} = scope, :files) do
+    files =
+      Repo.all(
+        from(f in FileRecord,
+          where: f.project_id == ^project_id,
+          select: %{
+            component_id: f.component_id,
+            story_id: f.story_id,
+            role: f.role,
+            path: f.path,
+            valid: f.valid,
+            validation_errors: f.validation_errors
+          }
+        )
+        |> scope_files_to_copy(scope)
+      )
+
+    %{
+      project: scope.active_project,
+      components: Repo.all(from(c in Component, where: c.project_id == ^project_id)),
+      story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
+      by_component_role: index_by(files, :component_id),
+      by_story_role: index_by(files, :story_id)
+    }
+  end
+
+  # `{owner_id, role} => file`, keeping the first of any duplicates — the same
+  # `Enum.find/2` semantics `has_role?/3` and `has_valid_role?/2` use when a
+  # checkout somehow holds two rows for one role.
+  defp index_by(files, owner_key) do
+    files
+    |> Enum.filter(&Map.get(&1, owner_key))
+    |> Enum.reduce(%{}, fn file, acc ->
+      Map.put_new(acc, {Map.get(file, owner_key), file.role}, file)
+    end)
+  end
+
+  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy}) when is_binary(copy),
+    do: from(f in query, where: f.working_copy_id == type(^copy, Ecto.UUID))
+
+  defp scope_files_to_copy(query, %Scope{}), do: query
 
   # Everything `bdd_specs_passing` reads, for every story, in three reads.
   #

@@ -499,7 +499,19 @@ defmodule CodeMySpec.Files.FileSync do
     # site mints its own observation id so the counts above and the mark share
     # one — `announce/3` would mint a second and the log line would name a
     # different burst than the mark it produced.
-    Invalidations.record(scope.active_project_id, "FileSync", entities, obs)
+    # The event as well as the marks, sharing the observation id. Every
+    # `file_exists` and `file_valid` requirement — 76 of the graph's 110
+    # definitions — is settled from one read by the `:files` profile, and the
+    # marks beside it are the fallback for anything without a handler.
+    Invalidations.record_event(
+      scope.active_project_id,
+      "FileSync",
+      "files_synced",
+      %{},
+      entities,
+      obs
+    )
+
     GraphInputs.changed(scope, obs)
   end
 
