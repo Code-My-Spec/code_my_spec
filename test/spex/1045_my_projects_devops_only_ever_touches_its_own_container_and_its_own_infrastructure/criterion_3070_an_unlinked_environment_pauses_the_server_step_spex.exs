@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story1045.Criterion3070Spex do
   Criterion 3070 — An unlinked environment pauses the server step.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
   alias CodeMySpec.Provisioning.Hetzner

@@ -45,47 +45,109 @@ defmodule CodeMySpecSpex.Case do
   #
   # A 4-file pilot the same night found two failure shapes that only
   # showed up under the FULL suite's concurrency, not in an isolated
-  # few-file run (3 clean runs there, then 3 of 4 broke once run
-  # alongside ~1390 other spex): `DBConnection.ConnectionError ...
-  # client exited`, and cross-test state pollution ("Requirement
-  # architecture_designed not found for project ..."). Both looked at
-  # first like separate, file-local bugs. They are not -- they are the
-  # SAME root cause, confirmed the next day by two independent traces
-  # that converged on the same line:
+  # few-file run: `DBConnection.ConnectionError ... client exited`, and
+  # cross-test state pollution ("Requirement architecture_designed not
+  # found for project ..."). Both traced back to the same thing:
+  # `CodeMySpec.Requirements.GraphWatcher` is a per-project background
+  # process with no Sandbox ownership of its own. An async file's own
+  # test process is fine -- `Sandbox.start_owner!(shared: not
+  # tags[:async])` a few dozen lines below gives it a real, isolated,
+  # manual-mode connection that nothing else can steal. GraphWatcher is
+  # a *different* process, spawned on demand, and Ecto's Sandbox falls
+  # back to whatever the ambient global mode says for any process with
+  # no ownership and no `$callers` chain of its own -- and the ambient
+  # mode is `{:shared, <whichever non-async spex last set up>}` almost
+  # always, since non-async spex still outnumber async ones by ~1390 to
+  # 4 and each one's own setup resets that global flag. So the watcher
+  # silently read and wrote through a stranger's transaction: someone
+  # else's connection getting reclaimed mid-query (`ConnectionError`),
+  # or this project's own just-written row invisible because the
+  # watcher was, transiently, looking at a different transaction
+  # entirely ("not found").
   #
-  # `Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async],
-  # ...)` two dozen lines below puts every currently non-async spex
-  # (still ~all of them) into Ecto's `{:shared, self()}` mode at setup.
-  # That mode is REPO-GLOBAL, not scoped to the caller -- Ecto's own
-  # docs on `Sandbox` say it plainly: "tests can no longer run
-  # concurrently in shared mode." Whichever non-async spex last called
-  # it becomes, for that stretch, the one shared connection for the
-  # entire BEAM VM. Nothing ever resets it back to `:manual` (the
-  # `on_exit` at `Sandbox.stop_owner/1` releases that test's own
-  # connection, not the global mode it set). 272 spex files add a
-  # second, redundant copy of the same call inline (some through the
-  # `visitor_message_from/2` macro below, most pasted directly) for a
-  # spawned channel/GenServer to see the connection -- harmless under
-  # today's fully serial suite, where "global mode" and "my own pid"
-  # are always the same thing, but the identical mechanism regardless.
+  # This was not a new bug. `GraphWatcher`'s own moduledoc already
+  # documented half of this exact race (a watcher outliving the spex
+  # that started it, `SexySpex.ErrorCapture` failing an unrelated spex
+  # over it) and the project's own issue tracker had it filed twice
+  # before under the same shape -- "Something in the suite writes
+  # outside the sandbox, and the rows it leaves break later runs"
+  # named `GraphWatcher` by name as a demonstrated culprit and listed
+  # `Sandbox.mode(:shared)` plus a long-lived process as the top
+  # suspect, unresolved. Async spex is what finally made it reproduce
+  # on demand instead of once every few weeks on a loaded box.
   #
-  # ExUnit does not run the non-async group in exclusion from the
-  # async one -- confirmed empirically by the pilot itself, not just
-  # by reading Ecto's docs. So any `async: true` file is at the mercy
-  # of whichever non-async file most recently reset global mode:
-  # DBConnection.ConnectionError when that owner's connection gets
-  # reclaimed mid-use by someone else, cross-test pollution when two
-  # unrelated tests turn out to be looking at the same transaction.
+  # Fixed at the source: `GraphWatcher.ensure_watching/1` now calls
+  # `Sandbox.allow(Repo, self(), watcher_pid)` right after starting or
+  # finding the watcher, since every path into it runs inline in the
+  # process that is asking (the session-start hook, a continuous-mode
+  # toggle) -- so the watcher gets an explicit, scoped grant from
+  # whoever is actually talking to it, not the ambient global guess.
+  # No-op outside a sandboxed pool. All 4 pilot files are `async: true`
+  # for real now, verified clean under the full suite.
   #
-  # The real fix is a suite-wide migration away from `{:shared, pid}`
-  # toward scoped `Sandbox.allow(Repo, self(), target_pid)` everywhere
-  # a background process currently gets DB access for free through
-  # global mode -- not a per-file toggle. That is large and it touches
-  # code proven to be green today, so it is not something to do blind
-  # in one pass; it is its own tracked initiative. A file is safe to
-  # flip today only if verifying it clean under the full suite (not
-  # alone) tells you so, same as before -- that bar has not gotten any
-  # lower, it is just no longer a mystery why it exists.
+  # This does not mean every spex is safe to flip. It means the one
+  # concretely-identified unscoped background process is fixed. The
+  # 272 spex files with their own inline `Sandbox.mode(Repo, {:shared,
+  # self()})` -- some through the `visitor_message_from/2` macro below,
+  # most pasted directly, there for a spawned channel/GenServer to see
+  # the connection -- are the same shape: harmless under today's mostly
+  # -serial suite, and the same kind of landmine for the next process
+  # this migration touches. A file is safe to flip only if verifying it
+  # clean under the full suite (not alone) tells you so.
+  #
+  # Same night: tried flipping the default itself to `true` (opt-OUT
+  # instead of opt-in), matching the discipline that already worked for
+  # this suite's ExUnit half -- see `.code_my_spec/knowledge/test/
+  # choosing_a_test_seam.md` and its lineage (`f5ae945a`, `07c2c511`,
+  # `30e22f47c`, `d0842eac4`, `19638e450`), which took eighteen of
+  # nineteen tests async by finding and fixing one piece of node-global
+  # state at a time. Excluded the ~369 files with a known landmine
+  # already in hand (raw `Sandbox.mode` calls, `use_cmd_cassette`,
+  # `watchable_run`'s global `Application.put_env`) and ran the rest —
+  # ~1025 files — against the full suite at once.
+  #
+  # 811 failures. `use_cmd_cassette` turned out to be a false alarm —
+  # its dispatch is already per-calling-process (`ExCliVcr.Recorder`,
+  # `Registry`-keyed by pid, same shape as `Sandbox.allow` itself) —
+  # this doc's old warning about it was stale, not current. But a
+  # second real, distinct landmine surfaced immediately and at scale:
+  # any spex that joins a Phoenix channel via a raw `subscribe_and_join`
+  # (`CodeMySpecSpex.WorkingCopyHelpers.join_working_copy_socket/4` and
+  # ~200 files using it or a bare `subscribe_and_join`) fails the same
+  # way GraphWatcher did -- `{:error, %{reason: "unauthorized"}}` from
+  # `HarnessProjectChannel.authorize/2`'s own `Projects.get_project_by_id`
+  # call, or a `DBConnection.ConnectionError` -- because the channel
+  # process Phoenix spawns has no Sandbox ownership either, and unlike
+  # GraphWatcher, `Sandbox.allow(Repo, self(), socket.channel_pid)`
+  # doesn't fix it: the join's own authorization query runs *inside*
+  # `subscribe_and_join`, before the caller ever gets the pid back to
+  # allow it. Phoenix's own channel-spawning code sets no `$callers`
+  # either (checked: zero references in `deps/phoenix/lib/phoenix/
+  # channel*.ex` and `socket*.ex`), so there is no free ride here. A
+  # real fix needs either the channel's own `join/3` deferring its DB
+  # work to `handle_info(:after_join, ...)` (a production code change,
+  # not a test one) or accepting a `visitor_message_from`-shaped
+  # temporary `{:shared, self()}` window around just the join call --
+  # which reintroduces a smaller version of the exact bug this whole
+  # investigation started from. Neither attempted here.
+  #
+  # Excluding the channel-join files (found: ~41 not already on the
+  # first list) only brought 811 down to 763 -- nowhere near it, and
+  # across dozens of unrelated stories (560, 597-608, 668-704, ...),
+  # not a handful. Bumping the test DB pool (`config/test.exs`, `System.
+  # schedulers_online() * 6` now instead of `* 2` -- kept, since Postgres
+  # itself was restarted the same night to actually serve the
+  # `max_connections = 400` its own conf file had said for weeks
+  # pending a restart nobody had done; see issue `51fb4adb`) barely
+  # moved the count either, so pool pressure was not the dominant cause.
+  # Whatever the rest are -- and a first pass with `--jsonl` output
+  # captured locally turned up a `FakeUpstream`-shaped port-collision
+  # smell and a `963`-`966` story family that talks to real Hetzner/
+  # Cloudflare accounts rather than fakes, neither chased further --
+  # this is not a today-sized problem. The default flip is reverted;
+  # this doc keeps the diagnosis so the next pass starts from a list of
+  # named suspects instead of rediscovering GraphWatcher and the
+  # channel-join class from zero.
   using(case_opts) do
     async = Keyword.get(case_opts, :async, false)
 

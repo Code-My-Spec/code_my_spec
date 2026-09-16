@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   Surface: session-start hook + start_task + tool calls + evaluate_task.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent

@@ -65,6 +65,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL.Sandbox
 
   # Two seconds, and the number is picked from what the writers actually do.
   #
@@ -116,10 +117,30 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
            CodeMySpec.Requirements.WatcherSupervisor,
            {__MODULE__, {project_id, watcher_scope(scope)}}
          ) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:ok, pid} -> {:ok, allow_sandbox(pid)}
+      {:error, {:already_started, pid}} -> {:ok, allow_sandbox(pid)}
       other -> other
     end
+  end
+
+  # The watcher outlives whatever called this and has no sandbox ownership of
+  # its own, so under test its queries are at the mercy of whatever the
+  # process-global sandbox mode happens to be at the moment it runs one —
+  # someone else's connection if any non-async test has set `{:shared, _}`
+  # since, or the real (non-transactional) pool if `:manual` mode has never
+  # been granted to it at all. `allow/3` gives this specific pid this
+  # specific caller's connection, explicitly, instead of leaving it to
+  # whatever the ambient mode says: the caller is `self()` here because
+  # every path into this function — the session-start hook, a continuous-mode
+  # toggle — runs inline in the process that is asking, sandboxed or not.
+  # No-op outside a sandboxed pool (dev, prod, drill/e2e), same guard this
+  # codebase already uses for `real_pool?/0`.
+  defp allow_sandbox(pid) do
+    if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Sandbox do
+      Sandbox.allow(Repo, self(), pid)
+    end
+
+    pid
   end
 
   # The scope outlives the request that started the watcher, so it keeps only

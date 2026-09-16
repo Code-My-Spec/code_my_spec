@@ -169,7 +169,12 @@ config :code_my_spec, CodeMySpec.Repo,
       do: DBConnection.ConnectionPool,
       else: Ecto.Adapters.SQL.Sandbox
     ),
-  pool_size: System.schedulers_online() * 2
+  # Each async spex now needs its own sandboxed connection *plus* a transient
+  # one for its GraphWatcher (`ensure_watching/1`'s `Sandbox.allow` grant, not
+  # a separate checkout, but the watcher's own queries still occupy a slot
+  # while they run) -- roughly double the old serial-suite demand. Postgres
+  # itself has 400 max_connections (`51fb4adb`); this just uses more of it.
+  pool_size: System.schedulers_online() * 6
 
 # server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,
 # so nothing here needs a listener. It was true only for Wallaby, which is no
