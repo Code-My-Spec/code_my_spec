@@ -1367,13 +1367,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Record what a checkout's git state is, the way its harness would.
-
-  `CmsHarness.Sync` measures this on the machine that holds the disk and
-  delivers it over the channel; a spec has no harness, so it measures its own
-  real checkout and records through the same surface
-  (`WorkingCopies.record_git_state/2`). The numbers are real — taken from git in
-  a real repository — and only the delivery is short-circuited.
+  Designate a checkout as the one the application runs from.
 
   Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
   spex dependency.
@@ -1381,7 +1375,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   Start watching this project's graph, and subscribe to its announcements.
 
-  Here rather than in a criterion for the same reason as `record_git_state/2`:
+  Here rather than in a criterion for the same reason as `record_preview_status/2`:
   `CodeMySpec.Requirements` is not a spex dependency, so a criterion naming
   `GraphWatcher` or `GraphInputs` is a boundary violation. Reaching the domain
   is the bridge's job.
@@ -1610,10 +1604,24 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def stop_watching(%Scope{}), do: :ok
 
-  @spec record_git_state(Ecto.UUID.t(), map()) :: :ok
-  def record_git_state(working_copy_id, %{} = state) do
+  @doc """
+  Record what a checkout's application is doing, the way its harness would.
+
+  Replaces `record_git_state/2`, which recorded the checkout's `ahead`/`behind`/
+  `dirty` counts. Those columns are gone — they were a mirror of git that
+  nothing decided on, and hashing them into every story's fingerprint made one
+  keystroke reconsider every story in the project.
+
+  `preview_status` is the surviving input of that shape and the one the graph
+  genuinely reads: `Promotion.serving/2` turns on it, and `preview_checked_at`
+  beside it is a heartbeat the fingerprint must ignore. So the criteria on story
+  1063 that used git state to tell "a value that matters" from "a timestamp that
+  does not" ask the same question here, of an input that still exists.
+  """
+  @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
+  def record_preview_status(working_copy_id, status) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
-    {:ok, _} = CodeMySpec.WorkingCopies.record_git_state(copy, state)
+    {:ok, _} = CodeMySpec.WorkingCopies.record_preview_status(copy, status)
     :ok
   end
 
@@ -2211,6 +2219,43 @@ defmodule CodeMySpecSpex.Fixtures do
         to_string(r.entity_id) == to_string(entity_id) and
         r.satisfied
     end)
+  end
+
+  @doc """
+  Replace a component's problems for one source, the way a reconciler does.
+
+  Added deliberately rather than reached for: `record_problem/3` appends, so the
+  only swap it can express changes the count — and a count changing is exactly
+  what criteria 3472 and 3473 must NOT rely on. They are about a finding being
+  swapped for a different one *at equal count*, which is the case a fingerprint
+  keyed on `%{source => count}` cannot see, so arranging it needs the
+  delete-then-insert path the analyzer itself uses.
+
+  `Problems.replace_problems_for_components/4` is that path, and it announces,
+  so a spex driving it exercises the same sequence a finished analyzer run does.
+  """
+  @spec replace_problems(Scope.t(), Ecto.UUID.t(), String.t(), [map()]) :: :ok
+  def replace_problems(%Scope{} = scope, component_id, source, problems) do
+    {:ok, _} =
+      CodeMySpec.Problems.replace_problems_for_components(
+        scope,
+        [component_id],
+        source,
+        Enum.map(problems, fn attrs ->
+          Map.merge(
+            %{
+              source: source,
+              severity: :error,
+              category: "readability",
+              component_id: component_id,
+              project_id: scope.active_project_id
+            },
+            attrs
+          )
+        end)
+      )
+
+    :ok
   end
 
   @doc "Record a problem against a project, as an analyzer's reconciler would."
@@ -3972,6 +4017,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Write a file into an environment (bridge to Environments)."
   def write_env_file(env, path, content), do: Environments.write_file(env, path, content)
+
+  @doc """
+  Remove a file through the scope's environment.
+
+  The counterpart to `write_env_file/3`, and the only way a spex can retire a
+  component: there is no `delete_component` an agent can call (issue
+  `c23f4427`), and components are projections of files, so a component stops
+  existing when nothing names its module any more.
+  """
+  def delete_env_file(env, path), do: Environments.delete_file(env, path)
 
   @doc "Run a command in an environment (bridge to Environments)."
   def env_cmd(env, command, args), do: Environments.cmd(env, command, args)

@@ -111,5 +111,4 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
 
     :ok
   end
-
 end

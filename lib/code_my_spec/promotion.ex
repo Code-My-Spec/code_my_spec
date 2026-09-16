@@ -125,10 +125,11 @@ defmodule CodeMySpec.Promotion do
   lands that story's code on main. Ancestry only ever grows — once a
   promotion happens it stays true forever, and now nothing but a deliberate
   invalidation (clearing the field to send the story back through this gate)
-  can make it stop being true. The checkout's live `commits_ahead_of_main`
-  and `tree_dirty` still answer a real question — is *this checkout*, right
-  now, in sync with main — just not this one; `not_yet_promoted/1` reports
-  them as diagnostic detail on a refusal, never as the reason for it.
+  can make it stop being true. Whether *this checkout* is right now in sync
+  with main is a real question and a different one, and it is answered where
+  it can be answered honestly: `promote` runs git in the checkout and reports
+  what is holding a merge up. It is not mirrored into `working_copies` any
+  more — a cached copy of git's answer could only ever be a staler one.
   """
   @spec running_copy_check(Scope.t(), term()) :: {boolean(), map()}
   def running_copy_check(%Scope{} = scope, entity) do
@@ -175,33 +176,29 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  defp not_yet_promoted(%WorkingCopy{} = copy) do
+  # No git diagnostic any more, and `promote` is a better one than this was.
+  #
+  # This used to append "this checkout currently has 3 commit(s) not on main;
+  # uncommitted changes", read from columns the harness mirrored into
+  # `working_copies` on every sync. Those are gone: nothing decided on them, and
+  # `Freshness.story/2` hashed them into every story's fingerprint, so a
+  # keystroke anywhere reconsidered every story in the project.
+  #
+  # The advice was also the staler half of a pair. `promote` runs git in the
+  # checkout — `git merge --ff-only` is its precondition and its merge in one
+  # command — so it answers the same question live, at the moment it matters,
+  # and names what to do. A mirrored copy could only ever disagree with it, and
+  # `Sync` recorded it doing so: "at 06:01 git said `ahead=0 behind=0` and the
+  # row still said `ahead=3`".
+  defp not_yet_promoted(%WorkingCopy{}) do
     {false,
      %{
        reason:
-         "this story has not been promoted yet" <>
-           live_diagnostic(copy) <>
-           ". `promote` " <>
-           "merges this checkout's branch into main and stamps every story still on " <>
-           "it with the version that lands.",
-       promoted: false,
-       behind: copy.commits_behind_main || 0,
-       ahead: copy.commits_ahead_of_main || 0,
-       dirty: copy.tree_dirty == true
+         "this story has not been promoted yet. `promote` merges this checkout's " <>
+           "branch into main and stamps every story still on it with the version " <>
+           "that lands; it reports anything holding that merge up.",
+       promoted: false
      }}
-  end
-
-  # Informational only now — none of this gates. Kept because "not promoted
-  # yet, and here is why a promotion would fail right now" is a more useful
-  # refusal than "not promoted yet" alone.
-  defp live_diagnostic(%WorkingCopy{git_state_at: nil}),
-    do: " (this checkout has not reported its git state yet)"
-
-  defp live_diagnostic(%WorkingCopy{} = copy) do
-    case out_of_sync_reasons(copy) do
-      [] -> " (this checkout looks in sync with main — promoting now should land it)"
-      reasons -> " — this checkout currently has " <> Enum.join(Enum.reverse(reasons), "; ")
-    end
   end
 
   # Both halves, and the order matters: naming the sync problem first gives an
@@ -244,27 +241,6 @@ defmodule CodeMySpec.Promotion do
        preview_status: "down"
      }}
   end
-
-  # `commits_behind_main` is deliberately not one of these — see the moduledoc
-  # on `running_copy_check/2`. Being behind main says somebody else's work has
-  # landed since; it says nothing about whether *this checkout's* work is
-  # still there, and it always still is once `ahead` has ever read 0.
-  #
-  # Diagnostic only now, folded into `not_yet_promoted/1`'s reason — neither
-  # this nor `tree_dirty` gates `code_on_running_copy` any more.
-  defp out_of_sync_reasons(%WorkingCopy{} = copy) do
-    []
-    |> ahead_reason(copy.commits_ahead_of_main)
-    |> dirty_reason(copy.tree_dirty)
-  end
-
-  defp ahead_reason(reasons, n) when is_integer(n) and n > 0,
-    do: ["#{n} commit(s) here are not on main — promote them" | reasons]
-
-  defp ahead_reason(reasons, _), do: reasons
-
-  defp dirty_reason(reasons, true), do: ["uncommitted changes — commit them" | reasons]
-  defp dirty_reason(reasons, _), do: reasons
 
   # -------------------------------------------------------------- the promotion
 
@@ -728,7 +704,9 @@ defmodule CodeMySpec.Promotion do
   # costing a psql join of `problems` to `working_copies` after the fact. A
   # nil id never reaches here at all (`promoting_copy/2` refuses first); this
   # is for the harder case, where a present id turns out to be the wrong one.
-  defp gate(%Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope) do
+  defp gate(
+         %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope
+       ) do
     Logger.info(
       "[Promotion] gate for project #{project_id}: active_working_copy_id=#{working_copy_id}"
     )
@@ -776,8 +754,11 @@ defmodule CodeMySpec.Promotion do
   defp describe_certifications(certifications) do
     certifications
     |> Enum.map_join(", ", fn
-      %{source: source, finished_at: nil} -> "#{source} (no run on file)"
-      %{source: source, finished_at: finished_at} -> "#{source} @ #{DateTime.to_iso8601(finished_at)}"
+      %{source: source, finished_at: nil} ->
+        "#{source} (no run on file)"
+
+      %{source: source, finished_at: finished_at} ->
+        "#{source} @ #{DateTime.to_iso8601(finished_at)}"
     end)
   end
 

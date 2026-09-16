@@ -81,9 +81,15 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
         # `bdd_specs_passing`, which is `qa_complete`'s real gate — 1048's 3192
         # established that, and it is the only thing that changes here.
         Fixtures.fresh_analysis_runs(context.scope)
-        :ok = Fixtures.settle_graph(context.scope)
+        after_runs = Fixtures.actionable_names(context.scope, :qa)
 
-        {:ok, context}
+        :ok = Fixtures.settle_graph(context.scope)
+        after_settle = Fixtures.actionable_names(context.scope, :qa)
+
+        {:ok,
+         context
+         |> Map.put(:after_runs, after_runs)
+         |> Map.put(:after_settle, after_settle)}
       end
 
       then_ "the QA agent is told about it", context do
@@ -105,6 +111,20 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
 
                QA-actionable requirements at this moment: #{inspect(actionable)}
                This story's unsatisfied requirements at this moment: #{inspect(unsatisfied)}
+
+               QA heard #{heard_count(context, context.qa)} (was #{context.qa_before}).
+               Coding heard #{heard_count(context, context.coding)} (was #{context.coding_before}).
+
+               Agents the wake would consider: #{inspect(Enum.map(Fixtures.running_agents(context.scope), &{&1.role, &1.continuous, &1.status, &1.working_copy_id}))}
+               This scope's working copy: #{inspect(context.scope.active_working_copy_id)}
+
+               QA-actionable straight after fresh_analysis_runs: #{inspect(context.after_runs)}
+               QA-actionable after settle_graph:                 #{inspect(context.after_settle)}
+
+               Those two counts are the fork. Both unchanged means nobody was
+               woken and the routing never ran. Coding up while QA is flat means
+               it ran and chose wrong, which is this criterion's actual subject
+               and the more serious of the two.
                """
 
         {:ok, context}

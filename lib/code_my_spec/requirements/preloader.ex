@@ -502,17 +502,21 @@ defmodule CodeMySpec.Requirements.Preloader do
   # So: exactly the two copies `running_copy_check/2` names, and from each only
   # what it reads. It asks `WorkingCopies.main/1` for the running copy and
   # passes it to `serving/2`, which reads `preview_status` and, in the refusal
-  # it writes, `preview_url`. It fetches the asking checkout and passes it to
-  # `in_sync/1`, which reads `git_state_at`, the two commit counts and
-  # `tree_dirty`. The running copy's commit counts are read by nobody; neither
-  # is any column of any third checkout.
+  # it writes, `preview_url`. It fetches the asking checkout only to learn
+  # whether it is on file at all — no column of it decides anything, and none of
+  # any third checkout does either.
   #
-  # `git_state_at` is hashed as nil-or-not and `preview_checked_at` not at all,
-  # because both are stamped with the current time on every sync whether or not
-  # anything they describe moved. Hashing either value would invalidate the
-  # graph on every heartbeat — the coarseness this exists to avoid, arriving
-  # through the back door. `in_sync/1` and `serving/2` read them the same way:
-  # they ask whether a report has ever arrived, never when.
+  # `preview_checked_at` is not hashed, because it is stamped with the current
+  # time on every sync whether or not anything it describes moved. Hashing it
+  # would invalidate the graph on every heartbeat — the coarseness this exists
+  # to avoid, arriving through the back door. `serving/2` reads its companion
+  # the same way: it asks what the status *is*, never when it was taken.
+  #
+  # The asking copy's git state used to be here — `git_state_at`, the two commit
+  # counts and `tree_dirty`. It is gone with the columns. Nothing decided on it,
+  # and `Freshness.story/2` hashes this whole map into every story's
+  # fingerprint, so a keystroke in any checkout reconsidered every story in the
+  # project.
   #
   # With no checkout on the scope, `running_copy_check/2` answers "No checkout
   # on this scope" without reading past whether a copy is designated, so that is
@@ -540,15 +544,39 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
+  # Only what decides a verdict, which is not what this used to select.
+  #
+  # `Freshness.story/2` hashes this into **every** story's fingerprint, so
+  # anything in here that moves takes the whole project's stories with it. It
+  # carried `commits_ahead_of_main`, `commits_behind_main` and `tree_dirty`,
+  # and all three move every time anybody edits a file in any checkout.
+  # Measured on dev over one hour: `working_copies` took 22 distinct values
+  # while every other shared input took between 2 and 6.
+  #
+  # None of the three gates anything. `Promotion.promoted/2` decides
+  # `code_on_running_copy` from the story's own `promoted_version` stamp, and
+  # `not_yet_promoted/1` puts these counts in the `details` of an
+  # already-false verdict — under a comment that says so outright:
+  # "Informational only now — none of this gates."
+  #
+  # So this was the exact shape story 1020's rule forbids: an observation
+  # costing work in proportion to the size of the project rather than to what
+  # it changed. One file edit, every story reconsidered, for a verdict that
+  # could not have moved.
+  #
+  # The cost of dropping them is that those counts can go stale in the
+  # diagnostic text of a requirement that is already unsatisfied — "behind: 3"
+  # read a few minutes late. Worth saying plainly rather than hiding; it is
+  # text on a refusal, against recomputing every story in the project on every
+  # keystroke. `is_nil(c.git_state_at)` stays: it flips once, when a checkout
+  # first reports, and it swaps the diagnostic for a different sentence.
   defp asking_copy_inputs(project_id, working_copy_id) do
     Repo.all(
       from(c in "working_copies",
         where:
           c.project_id == type(^project_id, :binary_id) and
             c.id == type(^working_copy_id, :binary_id),
-        select:
-          {"here", c.id, is_nil(c.git_state_at), c.commits_ahead_of_main, c.commits_behind_main,
-           c.tree_dirty}
+        select: {"here", c.id}
       )
     )
   end

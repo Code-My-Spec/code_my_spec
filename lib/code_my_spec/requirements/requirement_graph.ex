@@ -273,7 +273,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp analysis_source(_node), do: nil
 
-  defp recompute_stale(scope, ctx, config) do
+  defp recompute_stale(scope, ctx, config, preload_ms) do
     # What a pass costs, on the line that already says what it did.
     #
     # The sub-phase timings (`nodes`, `edges`, the component-tree breakdown)
@@ -283,9 +283,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # exactly that: "median 2.6s, p90 5.9s, max 14.8s" over 348 computes, pieced
     # together from a log rather than read off a field, which is why nobody
     # could say afterwards whether the work had made it better.
+    #
+    # Split three ways, because the total on its own sent the last measurement
+    # to the wrong conclusion. Once the barren entities stopped being stale, 981
+    # of 990 passes found nothing to do and the median held at ~700ms — which
+    # reads as "the fix bought nothing" until you notice the clock started
+    # *after* the preload and the work being timed is a pass that recomputed
+    # nothing. `preload` and `projection` are both paid whatever the answer
+    # turns out to be; only what is left is proportional to the observation.
+    # `log_timing/6` already splits the full path this way and this path had
+    # none of it, though it is now the path that serves every pass.
     started = System.monotonic_time(:millisecond)
     stamp_project(scope)
-    {stored_nodes, stored_edges} = Projection.load(scope, ctx)
+    {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
 
     topology = Freshness.topology(ctx, config)
 
@@ -330,7 +340,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
-          "in #{elapsed_ms(started)}ms; " <>
+          "in #{elapsed_ms(started)}ms " <>
+          "(preload #{ms_or_na(preload_ms)}, projection #{projection_ms}ms); " <>
           "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
@@ -342,15 +353,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # writing only the stale rows deletes precisely the rows being kept. The
       # next read then finds a shortfall and recomputes everything, which is the
       # behaviour this function exists to remove, arriving as a reap.
+      {fingerprint_ms, fingerprint} = timed(fn -> GraphFingerprint.compute(ctx, config) end)
+
       scope
-      |> GraphCache.publish(
-        GraphFingerprint.compute(ctx, config),
-        {nodes, stored_edges},
-        topology
-      )
+      |> GraphCache.publish(fingerprint, {nodes, stored_edges}, topology)
       |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
-      {serve(nodes, ctx), stored_edges}
+      {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
+
+      log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms)
+
+      {served, stored_edges}
     else
       # Which guard sent it to the whole computation, because without this the
       # only observable difference between "reuse is working" and "reuse never
@@ -941,9 +954,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def recompute(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
-    with {:ok, ctx} <- Preloader.load(scope) do
+    # Timed here because here is where it is paid. `recompute_stale/4` starts
+    # its own clock after this returns, so every duration this path has ever
+    # reported excluded the preload — and the preload is the half that runs
+    # whether or not the pass finds anything to do.
+    {preload_ms, loaded} = timed(fn -> Preloader.load(scope) end)
+
+    with {:ok, ctx} <- loaded do
       {nodes, edges} =
-        recompute_stale(scope, ctx, CodeMySpec.Configurations.get_or_create(scope))
+        recompute_stale(
+          scope,
+          ctx,
+          CodeMySpec.Configurations.get_or_create(scope),
+          preload_ms
+        )
 
       # Answered from the work just done rather than by reading back. A second
       # call would have to settle first, and the only process that could be
@@ -1260,6 +1284,94 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     }
 
     {{nodes, edges, actionable}, metrics}
+  end
+
+  @doc """
+  The same actionable set, computed as one role sees it.
+
+  `actionable_from/3` blocks a node when *any* transitive prerequisite is
+  unsatisfied, whoever it belongs to. That is right inside one entity's chain and
+  wrong across the project: an untriaged issue queue is product's, and it was
+  making every story's coding work unactionable for roles that could not clear
+  it. Measured 2026-09-15: `get_next_requirement` offered TriageIssues and
+  nothing else while five spex criteria sat red on a coding agent's own
+  checkout, and the agent reported "the graph holds no work for its role"
+  throughout.
+
+  So a block still travels, but only where it means something to the role asking:
+
+    * **Same entity** — a story's own chain clamps regardless of role.
+      `three_amigos_complete` is product's and `bdd_specs_exist` is coding's, and
+      specs for a story genuinely wait on that story's Three Amigos.
+    * **Same role** — a role's own unfinished work still orders itself, across
+      entities as before.
+
+  A prerequisite that is neither orders the work and does not clamp it. Story
+  1005's rule, criterion 3491.
+
+  This does not make anything actionable that was unsatisfied on its own merits:
+  `actionable_from/3`'s other conditions are unchanged, so a node still has to be
+  unsatisfied, have a task that can satisfy it, and be tethered.
+  """
+  @spec actionable_for_role_from([Requirement.t()], [edge()], map(), atom()) :: [Requirement.t()]
+  def actionable_for_role_from(nodes, edges, ctx, role) do
+    role_names = MapSet.new(RequirementsRegistry.requirement_names_for_role(role))
+
+    blocked = blocked_for_role(nodes, edges, role_names)
+    component_priority = build_component_priority_map(ctx)
+
+    nodes
+    |> Enum.filter(fn n ->
+      not n.satisfied and
+        not is_nil(n.satisfied_by) and
+        MapSet.member?(role_names, n.name) and
+        not untethered_component?(n, component_priority) and
+        not MapSet.member?(blocked, node_key(n))
+    end)
+    |> sort_by_story_priority(ctx)
+  end
+
+  # Forward from each unsatisfied node, carrying who it belongs to, so the
+  # decision to clamp is made per reachable node rather than once per seed. A
+  # seed blocks a descendant when they share an entity, or when the seed is this
+  # role's own work.
+  defp blocked_for_role(nodes, edges, role_names) do
+    outgoing =
+      Enum.reduce(edges, %{}, fn edge, acc ->
+        Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
+      end)
+
+    entity_of = Map.new(nodes, fn n -> {node_key(n), {n.entity_type, n.entity_id}} end)
+
+    nodes
+    |> Enum.reject(& &1.satisfied)
+    |> Enum.reduce(MapSet.new(), &block_from_seed(&1, &2, outgoing, entity_of, role_names))
+  end
+
+  defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
+    seed_entity = {seed.entity_type, seed.entity_id}
+    seeds_own_role = MapSet.member?(role_names, seed.name)
+
+    outgoing
+    |> Map.get(node_key(seed), [])
+    |> reachable(outgoing, MapSet.new())
+    |> Enum.filter(&clamps?(seeds_own_role, Map.get(entity_of, &1), seed_entity))
+    |> Enum.into(acc)
+  end
+
+  # Same role, or same entity. Anything else orders the work without clamping it.
+  defp clamps?(true, _descendant_entity, _seed_entity), do: true
+  defp clamps?(false, entity, entity), do: true
+  defp clamps?(false, _descendant_entity, _seed_entity), do: false
+
+  defp reachable([], _outgoing, seen), do: seen
+
+  defp reachable([key | rest], outgoing, seen) do
+    if MapSet.member?(seen, key) do
+      reachable(rest, outgoing, seen)
+    else
+      reachable(Map.get(outgoing, key, []) ++ rest, outgoing, MapSet.put(seen, key))
+    end
   end
 
   defp actionable_from(nodes, edges, ctx) do
@@ -2068,6 +2180,40 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.union(barren_children)
     |> MapSet.new(&{"component", &1})
   end
+
+  # What the rest of the pass went on, named rather than left as a remainder.
+  #
+  # The three-way split said preload 14%, projection 22%, and 62% somewhere
+  # else — measured on dev across 40 passes that recomputed nothing at all. A
+  # majority of every pass, unaccounted for, on passes doing no work: that is
+  # the number worth chasing, and it cannot be chased from a total.
+  #
+  # `fingerprint` and `serve` are the two named steps left on the zero-stale
+  # path. Whatever the four still do not cover is `stale_entities/3` — the
+  # per-entity hash of every component and story — and naming the others is how
+  # that gets isolated without restructuring the `with` guards, which would
+  # change which work the short-circuits skip.
+  defp log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms) do
+    total = elapsed_ms(started)
+    accounted = (preload_ms || 0) + projection_ms + fingerprint_ms + serve_ms
+
+    Logger.info(
+      "[Requirements] pass cost #{total}ms — preload #{ms_or_na(preload_ms)}, " <>
+        "projection #{projection_ms}ms, fingerprint #{fingerprint_ms}ms, " <>
+        "serve #{serve_ms}ms, elsewhere #{max(total - accounted, 0)}ms"
+    )
+  end
+
+  defp timed(fun) do
+    {us, result} = :timer.tc(fun)
+    {div(us, 1000), result}
+  end
+
+  # `n/a` rather than 0, for the same reason `log_timing/6` does it: a zero here
+  # would read as "preloading is free", which is the opposite of what the last
+  # measurement found.
+  defp ms_or_na(nil), do: "n/a"
+  defp ms_or_na(ms), do: "#{ms}ms"
 
   defp filtered_template(component, config) do
     component.type

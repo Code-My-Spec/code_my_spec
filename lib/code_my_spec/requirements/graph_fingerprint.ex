@@ -40,7 +40,7 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:files, files_digest(ctx.files_by_project)},
       {:components, structs_digest(ctx.components, & &1.id)},
       {:stories, structs_digest(ctx.stories, & &1.id)},
-      {:problems, problems_digest(ctx.problems_by_component)},
+      {:problems, problems_digest(ctx)},
       {:config, struct_digest(config)},
       {:delegated, delegated_digest(ctx)}
     ]
@@ -122,10 +122,28 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
     |> Enum.sort()
   end
 
-  defp problems_digest(problems_by_component) do
-    problems_by_component
+  # The findings, not the tally — the same correction `Freshness.component/2`
+  # already carries, which this had not been given.
+  #
+  # It hashed `problems_by_component`, which is `%{source => count}`. Correct one
+  # test failure and introduce a different one in the same module and the count
+  # is 1 both times, so this fingerprint held still — and holding still here is
+  # worse than at the per-entity grain, because `GraphCache.publish/4` answers
+  # `:unchanged` on an unmoved fingerprint and `persist_projection/5` keys the
+  # node and edge writes off that answer. The pass ran, `stale_entities/3`
+  # correctly reported the component mismatched, the rows were recomputed — and
+  # then nothing was written. Measured by criterion 3472: the per-entity digest
+  # moved from `51ba66f3` to `bf6a75ac` while the stored `inputs_fingerprint`
+  # stayed at `9ce0db5f` and `checked_at` never advanced.
+  #
+  # `problem_digests_by_component` is the same grouping keyed on
+  # `{file_path, line, rule, message}`, so a swap at equal count moves it and a
+  # re-run that found the same things does not.
+  defp problems_digest(ctx) do
+    ctx
+    |> Map.get(:problem_digests_by_component, %{})
     |> Enum.flat_map(fn {component_id, by_source} ->
-      Enum.map(by_source, fn {source, count} -> {component_id, source, count} end)
+      Enum.map(by_source, fn {source, digest} -> {component_id, source, digest} end)
     end)
     |> Enum.sort()
   end

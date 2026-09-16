@@ -89,5 +89,4 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
   end
-
 end

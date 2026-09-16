@@ -64,8 +64,9 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
 
     main = WorkingCopies.main(scope)
 
-    assert main, "a project with a checkout and no main copy has no agent, for no reason " <>
-                   "anybody can act on"
+    assert main,
+           "a project with a checkout and no main copy has no agent, for no reason " <>
+             "anybody can act on"
 
     assert main.id == copy.id
     assert main.root == "/workspace/app"
@@ -122,6 +123,44 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
              "is how a project loses its main checkout on a laptop waking up."
 
     assert WorkingCopies.main(scope).id == copy.id
+  end
+
+  # The case with no coverage, and the one the product hits most: designating
+  # the copy that already holds it.
+  #
+  # `report_root/2` designates the first checkout to report a root, so by the
+  # time anybody opens the designation page the copy shown is usually already
+  # main — and pressing the button on it cleared the designation while
+  # answering `{:ok, copy}`.
+  #
+  # The clear ran first, by design, because the index permits one `main` row per
+  # project. It cleared the target too. The changeset was then built from the
+  # struct fetched *before* that clear, which still said `main: true`, so
+  # setting `main: true` was no change, `Repo.update/1` issued no statement, and
+  # the row was left `false` with a returned struct saying otherwise.
+  #
+  # The existing test below cannot see it: it designates a *different* copy,
+  # where the struct says `false` and the change is real.
+  test "designating the copy that already holds it leaves it holding it" do
+    scope = full_scope_fixture()
+    only = checkout(scope, "/workspace/app", "a-laptop")
+
+    assert WorkingCopies.main(scope).id == only.id,
+           "the premise failed: this copy does not already hold the designation, " <>
+             "so re-designating it is not what this test exercises"
+
+    {:ok, _} = WorkingCopies.designate_main(scope, only.id)
+
+    assert WorkingCopies.main(scope),
+           """
+           Designating the copy that already held the designation cleared it.
+
+           The project now has no main working copy, so `running_copy_check/2`
+           answers "No running copy designated" for every story and the agent
+           that follows the designation goes with it — and the call said `:ok`.
+           """
+
+    assert WorkingCopies.main(scope).id == only.id
   end
 
   test "an explicit designation still moves it" do

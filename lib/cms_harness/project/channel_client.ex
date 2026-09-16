@@ -424,15 +424,6 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  @doc "This checkout's sync state with main, measured on every scan."
-  @spec deliver_git_state(String.t(), map()) :: :ok
-  def deliver_git_state(root, state) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
-      [{pid, _}] -> GenServer.cast(pid, {:git_state, state})
-      [] -> :ok
-    end
-  end
-
   @doc "What the machine this checkout runs on is carrying, measured on its own clock."
   @spec deliver_machine_load(String.t(), map()) :: :ok
   def deliver_machine_load(root, load) do
@@ -2292,25 +2283,6 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:head_commit, _sha}, socket), do: {:noreply, socket}
-
-  def handle_cast({:git_state, state}, %{assigns: %{joined: true}} = socket) do
-    case transport().push(
-           socket,
-           socket.assigns.topic,
-           "git_state",
-           state,
-           decision_timeout()
-         ) do
-      {:ok, _ref} ->
-        {:noreply, socket}
-
-      {:error, reason} ->
-        Logger.error("[CmsHarness] could not send git_state: #{inspect(reason)}")
-        {:noreply, socket}
-    end
-  end
-
-  def handle_cast({:git_state, _state}, socket), do: {:noreply, socket}
 
   def handle_cast({:machine_load, load}, %{assigns: %{joined: true}} = socket) do
     case transport().push(
