@@ -178,6 +178,37 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Which graph entities own these paths, in this checkout.
+
+  `{"component", id}` and `{"story", id}` for owned files, and `:project` for a
+  file with neither — the proposal, a credo check, a knowledge doc — which is
+  the same three-way split `Preloader` makes into `files_by_component`,
+  `files_by_story` and `files_by_project`, and the same one the project
+  requirements read.
+
+  For a writer that knows which paths it touched and needs to say which entities
+  moved. Resolvable only for paths that still have rows, which is why a sync
+  that *removed* files cannot use this — see `FileSync.announce_graph_change/4`.
+  """
+  @spec owners_of_paths(Scope.t(), [String.t()]) :: [
+          {String.t(), term()} | :project
+        ]
+  def owners_of_paths(%Scope{active_project_id: project_id} = scope, paths)
+      when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> scope_to_harness(scope)
+    |> select([f], {f.component_id, f.story_id})
+    |> Repo.all()
+    |> Enum.map(fn
+      {component_id, _} when not is_nil(component_id) -> {"component", component_id}
+      {_, story_id} when not is_nil(story_id) -> {"story", story_id}
+      _ -> :project
+    end)
+    |> Enum.uniq()
+  end
+
+  @doc """
   This checkout's file paths under any of these prefixes.
 
   For a checker that asks about a fixed handful of locations rather than about

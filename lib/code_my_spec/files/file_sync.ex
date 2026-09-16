@@ -27,6 +27,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Problems
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -176,7 +177,7 @@ defmodule CodeMySpec.Files.FileSync do
     # `GraphWatcher` asks the fingerprint anyway, so this is an optimisation
     # rather than a correctness rule. See `Requirements.GraphInputs`.
     if changed_paths != [] or upserted > 0 or removed > 0 do
-      announce_graph_change(scope, length(changed_paths), upserted, removed)
+      announce_graph_change(scope, changed_paths, upserted, removed)
     end
 
     {:ok,
@@ -295,7 +296,7 @@ defmodule CodeMySpec.Files.FileSync do
     # nothing and changed nothing is the steady state of a quiet tree, and the
     # harness sends one every few minutes.
     if changed != [] or upserted > 0 or removed > 0 do
-      announce_graph_change(scope, length(changed), upserted, removed)
+      announce_graph_change(scope, changed, upserted, removed)
     end
 
     %{
@@ -482,17 +483,51 @@ defmodule CodeMySpec.Files.FileSync do
   # files were *looked at*: 4969 observations with three changed rows and 4969
   # with eight hundred read identically, and they predict completely different
   # graph work.
-  defp announce_graph_change(scope, changed, upserted, removed) do
+  defp announce_graph_change(scope, changed_paths, upserted, removed) do
     obs = GraphInputs.observation_id()
+    entities = sync_entities(scope, changed_paths, removed)
 
     Logger.info(
       "[FileSync] announcing a graph change for #{working_copy(scope)} — " <>
-        "#{changed} changed, #{upserted} upserted, #{removed} removed",
+        "#{length(changed_paths)} changed, #{upserted} upserted, #{removed} removed",
       obs: obs
     )
 
+    # Recorded here rather than through `GraphInputs.announce/3`, because this
+    # site mints its own observation id so the counts above and the mark share
+    # one — `announce/3` would mint a second and the log line would name a
+    # different burst than the mark it produced.
+    Invalidations.record(scope.active_project_id, "FileSync", entities, obs)
     GraphInputs.changed(scope, obs)
   end
+
+  # Which entities these paths belong to, or nothing when we cannot say.
+  #
+  # `Files.owners_of_paths/2` resolves a path through its row, so it can only
+  # answer for files that still have one. A sync that *removed* files has
+  # deleted exactly the rows that would name the components those files belonged
+  # to — and a removal is the invalidation that matters most, since it is what
+  # turns `spec_file` from true to false. So a sync with any removal names
+  # nothing, which records `:unknown` and recomputes everything.
+  #
+  # Conservative rather than clever: narrowing it means capturing owners before
+  # the delete, which is a change to the reconcile path. Until then a removal
+  # costs a whole pass and a change costs the entities it touched.
+  defp sync_entities(_scope, _changed, removed) when removed > 0, do: []
+
+  defp sync_entities(scope, changed, _removed) do
+    Files.owners_of_paths(scope, Enum.map(changed, &path_of/1))
+  end
+
+  # The two callers hand this different shapes — `finish_sync/5` has already
+  # mapped its entries to paths, `reconcile/2` still holds the entry maps — and
+  # ownership is resolved from the row either way rather than from whichever
+  # fields an entry happens to carry. The rows were just written, so the
+  # database is both available and authoritative; reading `component_id` off an
+  # entry would be trusting a shape that differs between the two call sites,
+  # and getting it wrong under-invalidates silently.
+  defp path_of(path) when is_binary(path), do: path
+  defp path_of(%{path: path}), do: path
 
   defp log_duration(scope, observations, ms, result) do
     count = length(observations)

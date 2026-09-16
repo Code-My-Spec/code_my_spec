@@ -250,8 +250,21 @@ defmodule CodeMySpec.Files.ComponentSync do
   # cost a preload per scan to discover that.
   defp announce_graph_change(_scope, []), do: :ok
 
-  defp announce_graph_change(scope, _changed_component_ids),
-    do: GraphInputs.announce(scope, "Files.ComponentSync")
+  # The components that actually changed, which this already worked out and was
+  # throwing away — `compute_changed_ids/2` exists to decide whether to announce
+  # at all, and the same list answers *what* moved.
+  #
+  # `:project` alongside them, because `architecture_designed` reads the
+  # component set: this path re-types components from their specs, and a
+  # component becoming or ceasing to be `infrastructure` moves the orphan rule's
+  # verdict.
+  defp announce_graph_change(scope, changed_component_ids),
+    do:
+      GraphInputs.announce(
+        scope,
+        "Files.ComponentSync",
+        [:project | Enum.map(changed_component_ids, &{"component", &1})]
+      )
 
   defp compute_changed_ids(synced_components, existing_map) do
     synced_components
