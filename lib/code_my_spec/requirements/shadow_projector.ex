@@ -55,6 +55,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Invalidation
@@ -150,6 +151,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # avoid. Only a writer that touched files or an analyzer run can move it,
        # and every one of those records `:unknown`.
        analysis_fresh: nil,
+       # The topology this projector last wrote edges for. Edges are a global
+       # computation, so the cheap question is whether they can have moved at
+       # all — `Freshness.topology/2` is the same hash the pass records, over
+       # component ids, types, parents, dependencies and the story population.
+       last_topology: nil,
        last_drain: nil,
        last_error: nil
      }}
@@ -346,7 +352,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     |> Enum.to_list()
     |> write_each(state.scope, ctx, config)
 
-    reproject_topology(state.scope, ctx, config)
+    state = reproject_topology(state, ctx, config)
 
     # The whole context was just read, so the cached freshness is current by
     # construction.
@@ -369,7 +375,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp run({:narrow, entities}, state, config) do
     analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
     narrow_each(entities, state.scope, config, analysis_fresh)
-    reproject_topology(state.scope, nil, config)
+    state = reproject_topology(state, nil, config)
     %{state | analysis_fresh: analysis_fresh}
   end
 
@@ -404,11 +410,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # one, which is the honest price of a global question. It is paid on entity
   # arrival and departure — a component created, retyped or deleted, a story
   # released or parked — and on nothing else.
-  defp reproject_topology(scope, ctx, config) do
-    ctx = ctx || elem(Preloader.load(scope), 1)
-    {_nodes, edges} = RequirementGraph.compute_topology(scope, ctx, config)
-    {:ok, _count} = Shadow.write_edges(scope, edges)
-    :ok
+  defp reproject_topology(state, ctx, config) do
+    ctx = ctx || elem(Preloader.load(state.scope), 1)
+
+    # Writing edges costs a whole-topology computation and a full replace —
+    # measured at 8s and 57,000 rows on this project — so the first thing to ask
+    # is whether topology can have moved at all. This hash is over component
+    # ids, types, parents and dependencies plus the story population: exactly
+    # the inputs edges are built from, and nothing a verdict touches.
+    #
+    # A fallback drain is usually one entity being recomputed for a reason that
+    # has nothing to do with shape, so the common answer is no.
+    last = state.last_topology
+
+    case Freshness.topology(ctx, config) do
+      ^last ->
+        state
+
+      topology ->
+        {_nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
+        {:ok, _count} = Shadow.write_edges(state.scope, edges)
+        %{state | last_topology: topology}
+    end
   end
 
   defp narrow_load(scope, {"story", story_id}, analysis_fresh),
