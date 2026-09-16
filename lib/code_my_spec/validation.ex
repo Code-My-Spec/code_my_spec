@@ -112,6 +112,15 @@ defmodule CodeMySpec.Validation do
   cassette-backed specs can drive the pipeline with known outputs without
   relying on `System.cmd` side effects.
   """
+  # The pre-recorded output options, named once so the refusal below and the
+  # doc above cannot drift apart.
+  @test_output_file_opts [
+    :compile_output_file,
+    :credo_output_file,
+    :exunit_output_file,
+    :spex_output_file
+  ]
+
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
           | {:error, String.t(), String.t() | nil}
@@ -224,7 +233,50 @@ defmodule CodeMySpec.Validation do
   # `Analysis.ensure_stale_runs/3` (dispatched to the harness rather than to a
   # local queue), and the same blocking check. The point is that the *decision*
   # is identical; only where the tools ran differs.
+  # Pre-recorded outputs cannot cross the channel, and saying so is the fix.
+  #
+  # `:compile_output_file` and friends name a file on *this* machine, and on
+  # this path the analyzers run on the harness's. Ignoring them and carrying on
+  # is what QA hit: a `test_output_files` post came back with the ordinary
+  # "analysis running: compiler, credo, exunit, spex -- results apply next
+  # stop", dispatched a real run against the sandbox checkout, and still showed
+  # no spex problems ninety seconds and several re-posts later. The parameter
+  # was read, accepted, and dropped, and every symptom pointed at a slow
+  # analyzer instead.
+  #
+  # Refused rather than made to work. These fixtures exist so cassette-backed
+  # specs can drive the pipeline without depending on `System.cmd` side effects;
+  # shipping host-local paths to another machine is not a smaller version of
+  # that, it is a different feature. Issue `5151df37`, story 895 -- where the
+  # report's own guess was a `Mix.env()` gate, which is not what this is: the
+  # param is extracted in every environment and honoured on the local path.
   defp remote_validate_stop(scope, task, opts) do
+    case Keyword.take(opts, @test_output_file_opts) do
+      [] -> do_remote_validate_stop(scope, task, opts)
+      supplied -> {:error, fixtures_not_honored(supplied), nil}
+    end
+  end
+
+  defp fixtures_not_honored(supplied) do
+    names = supplied |> Keyword.keys() |> Enum.map_join(", ", &inspect/1)
+
+    """
+    `test_output_files` was supplied (#{names}) but this project's analyzers run \
+    on a harness, not here -- so those paths name files on the wrong machine \
+    and nothing would have read them.
+
+    Nothing was run and nothing was recorded. Had this been ignored, the stop \
+    would have dispatched a real analyzer run and answered "results apply next \
+    stop", which is indistinguishable from a slow analyzer.
+
+    Pre-recorded outputs are for specs driving the pipeline in-process, where \
+    the fixture and the analyzer are on the same disk. To exercise the blocking \
+    side against a harness-held copy, let the real analyzers run and assert on \
+    what they find.\
+    """
+  end
+
+  defp do_remote_validate_stop(scope, task, opts) do
     changed_files = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
