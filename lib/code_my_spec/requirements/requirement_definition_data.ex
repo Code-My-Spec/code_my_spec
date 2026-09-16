@@ -798,7 +798,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "bdd_specs_exist",
         role: :coding,
         node_scope: :self,
-        check_type: :file_exists,
+        # Per-criterion (issue 644279a9): a story with one spex file used to
+        # read satisfied regardless of criterion count, so a criterion added
+        # or reworded after the first pass got no spec and no work item.
+        check_type: :bdd_specs_covered,
         config: %{role: :bdd_spec},
         satisfied_by: AgentTasks.WriteBddSpecs,
         artifact_type: :tests,

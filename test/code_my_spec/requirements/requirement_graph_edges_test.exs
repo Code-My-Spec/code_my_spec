@@ -876,9 +876,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
     # Re-fetch the story so criteria (created during three amigos) are available.
     story = StoryHelpers.fetch(scope, story.id)
-    [criterion | _] = story.criteria
-    bdd_path = CodeMySpecSpex.Fixtures.spec_file_path(story, criterion)
-    write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
+
+    # Three amigos adds a happy_path AND a failure_path criterion.
+    # bdd_specs_covered checks every criterion, not just the first, so both
+    # need a file (issue 644279a9).
+    Enum.each(story.criteria, fn criterion ->
+      bdd_path = CodeMySpecSpex.Fixtures.spec_file_path(story, criterion)
+      write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
+    end)
 
     # Insert a DB-backed QA pass attempt. The requirement graph now checks
     # Qa.complete?/2 (DB-driven), not result_complete.md on disk.

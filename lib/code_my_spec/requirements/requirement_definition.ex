@@ -28,6 +28,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @type check_type ::
           :file_exists
           | :file_valid
+          | :bdd_specs_covered
           | :path_exists
           | :field_present
           | :field_true
@@ -73,6 +74,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @check_types [
     :file_exists,
     :file_valid,
+    # Per-criterion `:file_exists`: satisfied only when every acceptance
+    # criterion on the story resolves to its own file (issue 644279a9).
+    :bdd_specs_covered,
     :path_exists,
     :field_present,
     :field_true,
