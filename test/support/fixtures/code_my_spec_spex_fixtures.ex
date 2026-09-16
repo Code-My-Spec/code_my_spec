@@ -2221,6 +2221,43 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
   end
 
+  @doc """
+  Replace a component's problems for one source, the way a reconciler does.
+
+  Added deliberately rather than reached for: `record_problem/3` appends, so the
+  only swap it can express changes the count — and a count changing is exactly
+  what criteria 3472 and 3473 must NOT rely on. They are about a finding being
+  swapped for a different one *at equal count*, which is the case a fingerprint
+  keyed on `%{source => count}` cannot see, so arranging it needs the
+  delete-then-insert path the analyzer itself uses.
+
+  `Problems.replace_problems_for_components/4` is that path, and it announces,
+  so a spex driving it exercises the same sequence a finished analyzer run does.
+  """
+  @spec replace_problems(Scope.t(), Ecto.UUID.t(), String.t(), [map()]) :: :ok
+  def replace_problems(%Scope{} = scope, component_id, source, problems) do
+    {:ok, _} =
+      CodeMySpec.Problems.replace_problems_for_components(
+        scope,
+        [component_id],
+        source,
+        Enum.map(problems, fn attrs ->
+          Map.merge(
+            %{
+              source: source,
+              severity: :error,
+              category: "readability",
+              component_id: component_id,
+              project_id: scope.active_project_id
+            },
+            attrs
+          )
+        end)
+      )
+
+    :ok
+  end
+
   @doc "Record a problem against a project, as an analyzer's reconciler would."
   def record_problem(%Scope{} = scope, source, attrs \\ %{}) do
     CodeMySpec.Problems.create_problems(scope, [
