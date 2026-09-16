@@ -471,10 +471,6 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   # Every row owned by an entity of this type, whichever entity. The sweep's
   # first half — "this requirement is satisfied unless something said otherwise".
-  defp entity_type_filter("component"), do: dynamic([n], not is_nil(n.component_id))
-  defp entity_type_filter("story"), do: dynamic([n], not is_nil(n.story_id))
-  defp entity_type_filter("project"), do: dynamic([n], not is_nil(n.project_id))
-
   defp owner_filter("component", id), do: dynamic([n], n.component_id == ^id)
   defp owner_filter("story", id), do: dynamic([n], n.story_id == ^id)
   defp owner_filter("project", id), do: dynamic([n], n.project_id == ^id)
