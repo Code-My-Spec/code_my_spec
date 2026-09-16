@@ -37,7 +37,10 @@ defmodule CodeMySpecSpex.Story1063.Criterion3241Spex do
     :ok
   end
 
-  @state %{ahead: 0, behind: 0, dirty: false}
+  # `preview_status`, because the checkout's git state is no longer stored. The
+  # claim is unchanged: recording the same value again stamps
+  # `preview_checked_at` and moves nothing the graph reads.
+  @state "serving"
   @wake_text "Work of your kind is available"
 
   spex "A liveness report does not charge an agent a turn" do
@@ -65,7 +68,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3241Spex do
 
         refute loop_response.isError, inspect(loop_response)
 
-        :ok = CodeMySpecSpex.Fixtures.record_git_state(reply.working_copy_id, @state)
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(reply.working_copy_id, @state)
 
         {:ok,
          context
@@ -75,7 +78,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3241Spex do
       end
 
       when_ "the checkout reports in again with nothing about it changed", context do
-        :ok = CodeMySpecSpex.Fixtures.record_git_state(context.working_copy_id, @state)
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(context.working_copy_id, @state)
         {:ok, context}
       end
 

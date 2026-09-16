@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
   every liveness report for as long as a harness is running.
 
   Measured while the fingerprint was being extended to cover working copies:
-  hashing `git_state_at` by value would have invalidated the project's graph on
+  hashing `preview_checked_at` by value would invalidate the project's graph on
   every sync, because that column is stamped with the current time whether or
   not anything it describes moved. It is hashed as nil-or-not for exactly this
   reason — the checker asks whether a report has ever arrived, never when.
@@ -47,14 +47,17 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
     :ok
   end
 
-  @state %{ahead: 0, behind: 0, dirty: false}
+  # `preview_status`, because the checkout's git state is no longer stored. The
+  # claim is unchanged: recording the same value again stamps
+  # `preview_checked_at` and moves nothing the graph reads.
+  @state "serving"
 
   spex "A working copy reporting in does not move the graph" do
     scenario "the copy reports the same state twice" do
       given_ "a checkout that has reported its state, and a graph that has been served",
              context do
         reply = join_working_copy(context, "/tmp/spex-3231", "the checkout")
-        :ok = CodeMySpecSpex.Fixtures.record_git_state(reply.working_copy_id, @state)
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(reply.working_copy_id, @state)
 
         # Read once to put a graph in the cache, then take the reading that
         # matters. The first read of a cold cache computes and stores, and
@@ -70,7 +73,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3231Spex do
       end
 
       when_ "the checkout reports in again with nothing about it changed", context do
-        :ok = CodeMySpecSpex.Fixtures.record_git_state(context.working_copy_id, @state)
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(context.working_copy_id, @state)
         {:ok, context}
       end
 

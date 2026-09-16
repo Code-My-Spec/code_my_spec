@@ -273,7 +273,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp analysis_source(_node), do: nil
 
-  defp recompute_stale(scope, ctx, config) do
+  defp recompute_stale(scope, ctx, config, preload_ms) do
     # What a pass costs, on the line that already says what it did.
     #
     # The sub-phase timings (`nodes`, `edges`, the component-tree breakdown)
@@ -283,16 +283,26 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # exactly that: "median 2.6s, p90 5.9s, max 14.8s" over 348 computes, pieced
     # together from a log rather than read off a field, which is why nobody
     # could say afterwards whether the work had made it better.
+    #
+    # Split three ways, because the total on its own sent the last measurement
+    # to the wrong conclusion. Once the barren entities stopped being stale, 981
+    # of 990 passes found nothing to do and the median held at ~700ms — which
+    # reads as "the fix bought nothing" until you notice the clock started
+    # *after* the preload and the work being timed is a pass that recomputed
+    # nothing. `preload` and `projection` are both paid whatever the answer
+    # turns out to be; only what is left is proportional to the observation.
+    # `log_timing/6` already splits the full path this way and this path had
+    # none of it, though it is now the path that serves every pass.
     started = System.monotonic_time(:millisecond)
     stamp_project(scope)
-    {stored_nodes, stored_edges} = Projection.load(scope, ctx)
+    {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
 
     topology = Freshness.topology(ctx, config)
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
          {_, {:partial, stale}} <-
-           {:everything_stale, stale_entities(stored_nodes, ctx)} do
+           {:everything_stale, stale_entities(stored_nodes, ctx, config)} do
       reduced = reduce_to(ctx, stale)
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
@@ -330,7 +340,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{MapSet.size(stale)} entity(ies) stale " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
-          "in #{elapsed_ms(started)}ms; " <>
+          "in #{elapsed_ms(started)}ms " <>
+          "(preload #{ms_or_na(preload_ms)}, projection #{projection_ms}ms); " <>
           "shared=#{shared_parts(ctx)}; " <>
           "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
       )
@@ -342,15 +353,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # writing only the stale rows deletes precisely the rows being kept. The
       # next read then finds a shortfall and recomputes everything, which is the
       # behaviour this function exists to remove, arriving as a reap.
+      {fingerprint_ms, fingerprint} = timed(fn -> GraphFingerprint.compute(ctx, config) end)
+
       scope
-      |> GraphCache.publish(
-        GraphFingerprint.compute(ctx, config),
-        {nodes, stored_edges},
-        topology
-      )
+      |> GraphCache.publish(fingerprint, {nodes, stored_edges}, topology)
       |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
-      {serve(nodes, ctx), stored_edges}
+      {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
+
+      log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms)
+
+      {served, stored_edges}
     else
       # Which guard sent it to the whole computation, because without this the
       # only observable difference between "reuse is working" and "reuse never
@@ -478,7 +491,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #
   # `:all` when every entity is stale — reusing nothing is the whole
   # computation, and the simpler path is the honest way to spend it.
-  defp stale_entities(stored_nodes, ctx) do
+  defp stale_entities(stored_nodes, ctx, config) do
     current = current_fingerprints(ctx)
 
     recorded =
@@ -502,15 +515,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     stale = expand_component_families(mismatched, ctx)
 
     # An entity the context has and the rows do not is stale by definition:
-    # nothing has ever computed it. Most of them will produce no nodes — a
-    # child component whose parent template has no `:child` definitions never
-    # does — and computing them costs nothing and settles it either way.
+    # nothing has ever computed it.
+    #
+    # Except when it cannot have rows. This originally said that an entity
+    # producing no nodes "costs nothing and settles it either way", and the
+    # second half is false: `recorded` is derived from the rows, so an entity
+    # that can never write one is never recorded, is `appeared` again on the
+    # next pass, and on every pass after that. Eighteen of them on this project
+    # — eleven infrastructure, seven live contexts emptied by config — sitting
+    # in the stale set for good, which is the `appeared=19` in `why_all/5`
+    # whose own comment calls a population that never shrinks "a guard that can
+    # never pass".
+    #
+    # Nothing reported it, either, and the one page that shows the stale set
+    # tells you to go and find the writer that skipped its announcement. There
+    # is no writer. Nothing wrote because there was nothing to write.
     appeared =
       MapSet.union(
         MapSet.new(ctx.components, &{"component", &1.id}),
         MapSet.new(ctx.stories, &{"story", &1.id})
       )
       |> MapSet.reject(&Map.has_key?(recorded, &1))
+      |> MapSet.difference(barren_components(ctx, config))
 
     moved = stale
     stale = MapSet.union(stale, appeared)
@@ -928,9 +954,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def recompute(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
-    with {:ok, ctx} <- Preloader.load(scope) do
+    # Timed here because here is where it is paid. `recompute_stale/4` starts
+    # its own clock after this returns, so every duration this path has ever
+    # reported excluded the preload — and the preload is the half that runs
+    # whether or not the pass finds anything to do.
+    {preload_ms, loaded} = timed(fn -> Preloader.load(scope) end)
+
+    with {:ok, ctx} <- loaded do
       {nodes, edges} =
-        recompute_stale(scope, ctx, CodeMySpec.Configurations.get_or_create(scope))
+        recompute_stale(
+          scope,
+          ctx,
+          CodeMySpec.Configurations.get_or_create(scope),
+          preload_ms
+        )
 
       # Answered from the work just done rather than by reading back. A second
       # call would have to settle first, and the only process that could be
@@ -1081,8 +1118,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     with {:ok, ctx} <- Preloader.load(scope) do
       {stored, _edges} = Projection.load(scope, ctx)
+      config = CodeMySpec.Configurations.get_or_create(scope)
 
-      case stale_entities(stored, ctx) do
+      case stale_entities(stored, ctx, config) do
         {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
         {:all, why} -> {:all, why}
       end
@@ -1126,7 +1164,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # exactly like rows that were never written, and skipping the empty case made
   # the worst one invisible.
   #
-  # `stale_entities/2` already draws the line correctly. Zero rows on a project
+  # `stale_entities/3` already draws the line correctly. Zero rows on a project
   # with entities counts every one of them as `appeared` and reports; zero rows
   # on a project with no stories and no components reports nothing, because
   # there is genuinely nothing to compute.
@@ -1136,7 +1174,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp do_log_stale_read(scope, ctx, stored) do
-    case stale_entities(stored, ctx) do
+    case stale_entities(stored, ctx, CodeMySpec.Configurations.get_or_create(scope)) do
       {:partial, stale} ->
         if MapSet.size(stale) > 0, do: warn_stale(scope, stale, ctx)
 
@@ -2034,34 +2072,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The template is filtered by the project configuration up front so disabled
   # artifact types (specs, reviews, tests) are stripped from both nodes and edges.
   defp instantiate_component_graphs(scope, ctx, config) do
-    # Only context-shaped types (templates with :child scope defs) own
-    # their nested components for template purposes. A component nested
-    # under a non-context parent (e.g. a context whose namespace happens
-    # to live under an `infrastructure` umbrella like `MarketMySpec`) is
-    # still top-level and must run its own template — otherwise every
-    # component below the umbrella gets dropped from the requirement
-    # graph and the project shows 0/0 everywhere.
-    container_ids =
-      ctx.components
-      |> Enum.filter(&RequirementsRegistry.has_children?(&1.type))
-      |> MapSet.new(& &1.id)
+    {top_level, children_by_parent} = component_families(ctx)
 
-    children_by_parent =
-      ctx.components
-      |> Enum.filter(fn c ->
-        c.parent_component_id && MapSet.member?(container_ids, c.parent_component_id)
-      end)
-      |> Enum.group_by(& &1.parent_component_id)
-
-    child_ids =
-      ctx.components
-      |> Enum.filter(fn c ->
-        c.parent_component_id && MapSet.member?(container_ids, c.parent_component_id)
-      end)
-      |> MapSet.new(& &1.id)
-
-    ctx.components
-    |> Enum.reject(fn c -> MapSet.member?(child_ids, c.id) end)
+    top_level
     |> Enum.flat_map_reduce([], fn component, all_edges ->
       children = Map.get(children_by_parent, component.id, [])
 
@@ -2085,6 +2098,127 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       {nodes, all_edges ++ edges}
     end)
     |> stamp_component_freshness(ctx)
+  end
+
+  # Who runs a template, and for whom.
+  #
+  # Only context-shaped types (templates with :child scope defs) own their
+  # nested components for template purposes. A component nested under a
+  # non-context parent (e.g. a context whose namespace happens to live under an
+  # `infrastructure` umbrella like `MarketMySpec`) is still top-level and must
+  # run its own template — otherwise every component below the umbrella gets
+  # dropped from the requirement graph and the project shows 0/0 everywhere.
+  #
+  # Shared with `barren_components/2` rather than restated there. The question
+  # "which components can produce a row" is answered by exactly this split plus
+  # the config filter, and a second copy of the split would be a second copy
+  # that could drift — with the drift showing up as entities recomputed forever,
+  # which is the failure this whole neighbourhood exists to remove.
+  defp component_families(ctx) do
+    container_ids =
+      ctx.components
+      |> Enum.filter(&RequirementsRegistry.has_children?(&1.type))
+      |> MapSet.new(& &1.id)
+
+    {children, top_level} =
+      Enum.split_with(ctx.components, fn c ->
+        c.parent_component_id && MapSet.member?(container_ids, c.parent_component_id)
+      end)
+
+    {top_level, Enum.group_by(children, & &1.parent_component_id)}
+  end
+
+  # Components that cannot produce a requirement row *of their own*, whatever
+  # their inputs say.
+  #
+  # Of their own is the whole of it, and the first version of this asked the
+  # wrong question — whether the filtered template was empty. It is empty for
+  # exactly one type. Measured across all eighteen with `require_specs`,
+  # `require_reviews` and `require_unit_tests` all off, every other type keeps
+  # `implementation_file`; what differs is the scope it keeps it at.
+  #
+  # So there are two ways to hold no rows, and neither is a fault:
+  #
+  #   * `infrastructure`, whose template is `[]`. The graph is deliberately
+  #     silent about the project's plumbing and story 562 says so as a rule.
+  #   * a container left with only `:child` definitions. `live_context_graph/0`
+  #     is spec and review nodes plus a `:child`-scoped implementation, so with
+  #     specs and reviews off the live context itself has nothing while every
+  #     LiveView under it still has its implementation. The namespace holds no
+  #     work; the LiveViews hold it. Seven of these on this project.
+  #
+  # Both matter here for the same reason. `appeared` is derived from the rows,
+  # so a component that cannot write one is never recorded and is counted as
+  # never-computed on every pass, for good. Eighteen of them here — and on a
+  # small enough project the count tips `verdict/5` to `:all` and every pass
+  # becomes a full recompute.
+  #
+  # The subtraction has to stay exactly as wide as this, which is why it is
+  # derived from the same `component_families/1` split and the same config
+  # filter the instantiation runs. Too wide and a component quietly stops being
+  # recomputed while its rows go on being served. Criterion 3490 is the control
+  # on that: the children of an emptied container still carry their own work.
+  defp barren_components(ctx, config) do
+    {top_level, children_by_parent} = component_families(ctx)
+
+    barren_top =
+      top_level
+      |> Enum.reject(fn component ->
+        Enum.any?(filtered_template(component, config), &(&1.node_scope in [:parent, :self]))
+      end)
+      |> MapSet.new(& &1.id)
+
+    barren_children =
+      top_level
+      |> Enum.reject(fn parent ->
+        Enum.any?(filtered_template(parent, config), &(&1.node_scope == :child))
+      end)
+      |> Enum.flat_map(&Map.get(children_by_parent, &1.id, []))
+      |> MapSet.new(& &1.id)
+
+    barren_top
+    |> MapSet.union(barren_children)
+    |> MapSet.new(&{"component", &1})
+  end
+
+  # What the rest of the pass went on, named rather than left as a remainder.
+  #
+  # The three-way split said preload 14%, projection 22%, and 62% somewhere
+  # else — measured on dev across 40 passes that recomputed nothing at all. A
+  # majority of every pass, unaccounted for, on passes doing no work: that is
+  # the number worth chasing, and it cannot be chased from a total.
+  #
+  # `fingerprint` and `serve` are the two named steps left on the zero-stale
+  # path. Whatever the four still do not cover is `stale_entities/3` — the
+  # per-entity hash of every component and story — and naming the others is how
+  # that gets isolated without restructuring the `with` guards, which would
+  # change which work the short-circuits skip.
+  defp log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms) do
+    total = elapsed_ms(started)
+    accounted = (preload_ms || 0) + projection_ms + fingerprint_ms + serve_ms
+
+    Logger.info(
+      "[Requirements] pass cost #{total}ms — preload #{ms_or_na(preload_ms)}, " <>
+        "projection #{projection_ms}ms, fingerprint #{fingerprint_ms}ms, " <>
+        "serve #{serve_ms}ms, elsewhere #{max(total - accounted, 0)}ms"
+    )
+  end
+
+  defp timed(fun) do
+    {us, result} = :timer.tc(fun)
+    {div(us, 1000), result}
+  end
+
+  # `n/a` rather than 0, for the same reason `log_timing/6` does it: a zero here
+  # would read as "preloading is free", which is the opposite of what the last
+  # measurement found.
+  defp ms_or_na(nil), do: "n/a"
+  defp ms_or_na(ms), do: "#{ms}ms"
+
+  defp filtered_template(component, config) do
+    component.type
+    |> RequirementDefinitionData.graph_for_type()
+    |> filter_definitions_by_config(config)
   end
 
   # Stamped after the fact rather than inside the template, because a

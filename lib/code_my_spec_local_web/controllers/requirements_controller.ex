@@ -127,7 +127,20 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       # requirement needs one more thing" — `three_amigos_complete` stays false
       # whether a story has no scenarios at all or is one seal away.
       details: node.details,
-      checked_at: Map.get(node, :checked_at)
+      checked_at: Map.get(node, :checked_at),
+      # When it was computed, and from what. `checked_at` alone cannot say
+      # whether a row is current — only that somebody looked at some point — and
+      # this is the stamp the answer actually turns on: `stale_entities/3`
+      # compares it against what the entity's sources hash to right now, and
+      # recomputes on a mismatch.
+      #
+      # Without it the rule "a requirement's freshness is decided by the sources
+      # it was computed from" is unobservable from outside: two rows with the
+      # same `checked_at` may have been computed from different inputs, and a row
+      # that should have moved and did not is indistinguishable from one that had
+      # no reason to. Criterion 3427 is that claim, and this is what makes it
+      # checkable by a reader rather than only by a query.
+      inputs_fingerprint: Map.get(node, :inputs_fingerprint)
     }
   end
 

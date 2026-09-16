@@ -361,10 +361,27 @@ defmodule CodeMySpec.WorkingCopies do
         Repo.rollback(:not_found)
 
       copy ->
-        # Cleared first. The index permits one row per project with `main`
-        # true, so writing the new one while the old still holds it is a
-        # constraint violation rather than a replacement.
-        from(w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+        # Cleared first, and never the copy being designated.
+        #
+        # The index permits one row per project with `main` true, so writing the
+        # new one while the old still holds it is a constraint violation rather
+        # than a replacement. That is why the clear is here. Excluding the target
+        # is why re-designating the copy that already holds it works.
+        #
+        # Without the exclusion this cleared the designation it was asked to
+        # make, and answered `{:ok, copy}` while doing it. The clear set the
+        # target's row to `false`; the changeset below was then built from the
+        # struct fetched *before* it, which still said `true`, so setting
+        # `main: true` was no change at all and `Repo.update/1` issued no
+        # statement. The row ended `false`, the returned struct said `true`, and
+        # the caller was told it had succeeded.
+        #
+        # Reached through the join path, which designates the first checkout to
+        # report a root — so designating that same copy again, the ordinary
+        # thing to do from the designation page, silently un-designated it.
+        from(w in WorkingCopy,
+          where: w.project_id == ^project_id and w.main and w.id != ^working_copy_id
+        )
         |> Repo.update_all(set: [main: false])
 
         case copy |> WorkingCopy.changeset(%{main: true}) |> Repo.update() do
@@ -453,33 +470,14 @@ defmodule CodeMySpec.WorkingCopies do
     |> announce_graph_change(harness)
   end
 
-  @doc """
-  Record whether this checkout is in sync with main and whether its tree is
-  clean.
-
-  Reported by the machine that holds the disk, on every sync, because the server
-  has no `git` to run against a harness-served checkout and a requirement graph
-  computed inside the channel process cannot ask the channel. Same shape as
-  `Sync.report_head_commit/2`, which already runs git in the real checkout for
-  the same reason.
-
-  Nothing is derived here. Three numbers arrive and three numbers are stored, so
-  a gate reading them is reading what the checkout actually said rather than an
-  interpretation made on the way in.
-  """
-  @spec record_git_state(WorkingCopy.t(), map()) :: {:ok, WorkingCopy.t()} | {:error, term()}
-  def record_git_state(%WorkingCopy{} = harness, %{} = state) do
-    state = Map.new(state, fn {k, v} -> {to_string(k), v} end)
-
-    harness
-    |> save(%{
-      commits_ahead_of_main: state["ahead"],
-      commits_behind_main: state["behind"],
-      tree_dirty: state["dirty"],
-      git_state_at: DateTime.utc_now()
-    })
-    |> announce_graph_change(harness)
-  end
+  # `record_git_state/2` was here, storing the harness's `ahead`/`behind`/`dirty`
+  # report and announcing a graph change for it. Both halves are gone.
+  #
+  # Nothing decided on the stored numbers, and the one caller that needs them —
+  # the promote gate — runs git itself rather than reading a mirror of it. What
+  # the announcement bought was a pass and a preload per checkout per sync, to
+  # discover that nothing a requirement reads had moved. See `WorkingCopy`'s
+  # schema for the measurement.
 
   @doc """
   Record where a harness says its working copy is.
@@ -771,15 +769,13 @@ defmodule CodeMySpec.WorkingCopies do
   defp auto_label?(_label), do: true
 
   # The working-copy fields the requirement graph reads — `preview_status`,
-  # `preview_url`, the commit counts, `tree_dirty`, whether `git_state_at` is
-  # set, and which copy is `main`. `Preloader.working_copy_gate_inputs/2` is
-  # the list, and `code_on_running_copy` is the gate that turns on them.
+  # `preview_url`, and which copy is `main`. `Preloader.working_copy_gate_inputs/2`
+  # is the list, and `code_on_running_copy` is the gate that turns on them.
   #
   # Not from `save/2`, which every `last_seen_at` heartbeat also goes through.
-  # A heartbeat is not a graph input — `git_state_at` enters the fingerprint
-  # only as `is_nil/1`, which is criterion 3339's whole point — and announcing
-  # one would charge a preload per heartbeat per copy to discover that nothing
-  # moved.
+  # A heartbeat is not a graph input, and announcing one would charge a preload
+  # per heartbeat per copy to discover that nothing moved — which is exactly
+  # what the removed `record_git_state/2` was doing on every sync.
   defp announce_graph_change({:ok, _copy} = result, %WorkingCopy{project_id: project_id}) do
     GraphInputs.announce(project_id, "WorkingCopies")
     result

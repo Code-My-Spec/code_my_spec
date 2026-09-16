@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.GraphReadHelpers
+  import CodeMySpecSpex.MainAgentHelpers, only: [designate_main_copy: 2]
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
@@ -42,26 +43,23 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
             description: "carried by a checkout that is not the running one"
           )
 
-        # Two checkouts, and the first one matters only because it becomes the
-        # running copy. `running_copy_check/2` short-circuits when the asking
-        # copy *is* main — "Working on the running copy", satisfied whatever
-        # the commit counts say — so a single-checkout scenario cannot observe
-        # the field it is named after.
-        _running = join_working_copy(context, "/tmp/spex-3232-main", "the running copy")
-        reply = join_working_copy(context, "/tmp/spex-3232", "the checkout")
+        # `preview_status` is the field, and "only sometimes matters" is literal:
+        # `and_serving/2` short-circuits on an unpromoted story at a checkout
+        # that is not the running one, so `serving/2` never reads it there. It
+        # matters here because this checkout *is* the running copy, which is one
+        # of the two routes that reach it.
+        #
+        # It replaces `commits_ahead_of_main`, which was the field this was
+        # written about. That column is gone — a mirror of git nothing decided
+        # on, hashed into every story's fingerprint so a keystroke anywhere
+        # reconsidered every story in the project.
+        reply = join_working_copy(context, "/tmp/spex-3232", "the running copy")
+        :ok = designate_main_copy(context, reply.working_copy_id)
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(reply.working_copy_id, "down")
 
-        :ok =
-          CodeMySpecSpex.Fixtures.record_git_state(reply.working_copy_id, %{
-            ahead: 1,
-            behind: 0,
-            dirty: false
-          })
-
-        # Read as this checkout, because the claim is about this checkout.
-        # `running_copy_check/2` asks whether the asking copy's work is on
-        # main, and a read that names no copy is not asking that question of
-        # anyone — it gets the UI's blended vantage, where the answer does not
-        # depend on any one checkout's commit count.
+        # Read as this checkout, because the claim is about this checkout. A
+        # read that names no copy gets the UI's blended vantage, where the
+        # answer does not depend on any one checkout.
         _cold = read_graph(context, reply.working_copy_id)
 
         {:ok,
@@ -71,18 +69,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
          |> Map.put(:before, read_graph(context, reply.working_copy_id))}
       end
 
-      when_ "the work lands on main and the checkout reports it", context do
-        :ok =
-          CodeMySpecSpex.Fixtures.record_git_state(context.working_copy_id, %{
-            ahead: 0,
-            behind: 0,
-            dirty: false
-          })
-
+      when_ "the application comes back up and the checkout reports it", context do
+        :ok = CodeMySpecSpex.Fixtures.record_preview_status(context.working_copy_id, "serving")
         {:ok, context}
       end
 
-      then_ "the graph does not answer from the computation made before the merge",
+      then_ "the graph does not answer from the computation made while it was down",
             context do
         after_merge = read_graph(context, context.working_copy_id)
 
@@ -91,28 +83,26 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
 
         reason = reason_for(after_merge, "code_on_running_copy", :story, context.new_story.id)
 
-        assert before_reason =~ "not on main",
+        assert before_reason =~ "not answering",
                """
-               The premise did not hold: a checkout one commit ahead of main
-               must say so, or the merge has nowhere to show up.
+               The premise did not hold: a running copy whose application is
+               down must say so, or coming back up has nowhere to show up.
 
                before: #{inspect(before_reason)}
                """
 
-        # The reason, not the verdict. `code_on_running_copy` also requires the
-        # story to have been promoted, so landing the work on main cannot flip
-        # it to satisfied on its own — what the merge changes is the obstacle
-        # the checker names, and that is the effect this criterion is about.
-        refute reason =~ "not on main",
+        # The reason, not the verdict, because the obstacle the checker names is
+        # what this criterion is about.
+        refute reason =~ "not answering",
                """
-               The work landed on main and the graph still says this checkout
-               has commits that are not on it.
+               The application came back up and the graph still says it is not
+               answering.
 
-               No file changed here — only the commit count ahead of main — so a
-               files digest cannot see this. If the fingerprint does not cover
-               it, the cached graph keeps refusing the story with the reason it
-               computed before the merge, which is the phantom PromoteWork an
-               agent was handed repeatedly on 2026-09-11.
+               No file changed here — only `preview_status` — so a files digest
+               cannot see this. If the fingerprint does not cover it, the cached
+               graph keeps refusing the story with the reason it computed while
+               the application was down, and QA is held away from an application
+               that is serving.
 
                The claim is the verdict, not a clock: `checked_at` is
                second-resolution, so a write and the recompute answering it

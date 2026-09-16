@@ -470,24 +470,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, socket}
   end
 
-  # The three facts `code_on_running_copy` gates on, from the machine that can
-  # measure them. Recorded on the working copy rather than the project: a
-  # project has many checkouts and each is in sync or not on its own.
-  def handle_in(
-        "git_state",
-        %{"ahead" => ahead, "behind" => behind, "dirty" => dirty},
-        socket
-      )
-      when is_integer(ahead) and is_integer(behind) and is_boolean(dirty) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} ->
-        WorkingCopies.record_git_state(copy, %{ahead: ahead, behind: behind, dirty: dirty})
-        {:reply, :ok, socket}
-
-      _ ->
-        {:reply, :ok, socket}
-    end
-  end
+  # Accepted and dropped, for one release.
+  #
+  # `git_state` used to store `ahead`/`behind`/`dirty` on the working copy and
+  # announce a graph change for them. Nothing decided on the stored values and
+  # the announcement cost a pass per checkout per sync, so both are gone — a
+  # harness has stopped sending this.
+  #
+  # Older harnesses have not. Falling through to the catch-all below would
+  # answer `unknown_event`, which is the version-skew signal and would be a lie
+  # here: the server understands the event perfectly well and has decided it has
+  # nothing to do. Delete this clause once no harness sends it.
+  def handle_in("git_state", _payload, socket), do: {:reply, :ok, socket}
 
   def handle_in("head_commit", %{"sha" => sha}, socket)
       when is_binary(sha) and byte_size(sha) == 40 do

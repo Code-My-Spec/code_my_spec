@@ -70,7 +70,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3237Spex do
       then_ "the first story's requirements moved and the second story's did not", context do
         after_attempt = read_graph(context)
 
-        assert nodes_for(after_attempt, context.story.id) != nodes_for(context.before, context.story.id),
+        assert nodes_for(after_attempt, context.story.id) !=
+                 nodes_for(context.before, context.story.id),
                """
                The story the attempt was recorded against did not change.
 
@@ -99,5 +100,4 @@ defmodule CodeMySpecSpex.Story1063.Criterion3237Spex do
     |> Enum.filter(&(&1["entity_type"] == "story" and &1["entity_id"] == story_id))
     |> Enum.sort_by(& &1["name"])
   end
-
 end

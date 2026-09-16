@@ -56,7 +56,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3344Spex do
         # Through the bridge: the boundary refuses CodeMySpecSpex reaching into
         # CodeMySpec directly, and the environment is a string rather than an
         # atom — an atom fails the cast inside the query rather than at the call.
-        _deploy = CodeMySpecSpex.Fixtures.record_deploy(context.scope, context.new_story.id, "uat")
+        _deploy =
+          CodeMySpecSpex.Fixtures.record_deploy(context.scope, context.new_story.id, "uat")
 
         {:ok, context}
       end
@@ -86,5 +87,4 @@ defmodule CodeMySpecSpex.Story1063.Criterion3344Spex do
       end
     end
   end
-
 end
