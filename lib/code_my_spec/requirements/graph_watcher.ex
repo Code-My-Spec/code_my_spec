@@ -562,11 +562,23 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
     account_for(consumed)
 
-    Phoenix.PubSub.broadcast(
-      CodeMySpec.PubSub,
-      GraphInputs.topic(state.project_id),
-      {:graph_updated, state.project_id}
-    )
+    # Only when an input actually moved. A pass that ran purely to onboard a
+    # vantage a reader named for the first time (`consumed == []`, including
+    # the very first pass this watcher ever runs) computed rows nobody had
+    # yet -- not a change to anything already on the board. That is the same
+    # distinction `newly_actionable/2` below already draws for waking: the
+    # first pass wakes nobody because everything it finds was already
+    # actionable before this watcher existed. Announcing unconditionally
+    # meant a reader visiting a fresh checkout looked exactly like a graph
+    # change to anyone counting announcements, and nothing downstream could
+    # tell the two apart.
+    if consumed != [] do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        GraphInputs.topic(state.project_id),
+        {:graph_updated, state.project_id}
+      )
+    end
 
     # Nothing actionable is a real answer and not a reason to wake anybody:
     # `wake/2` would render an empty menu and stay silent for every role, so
