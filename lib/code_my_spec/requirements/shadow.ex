@@ -168,9 +168,25 @@ defmodule CodeMySpec.Requirements.Shadow do
   resolved *by absence*, and there is no list of them to iterate. So the default
   goes on with one `UPDATE`, and the named few are corrected after.
 
-  Two writes for a population of any size, which is the whole reason a handler
-  owns a requirement rather than an entity. Ordered, and it has to be: the
-  default would otherwise overwrite the exceptions it was meant to leave alone.
+  Two statements for a population of any size, which is the whole reason a
+  handler owns a requirement rather than an entity. Ordered, and it has to be:
+  the default would otherwise overwrite the exceptions it was meant to leave
+  alone.
+
+  ## Two, and it used to be one per exception
+
+  `Enum.each(spec.except, &put_verdict/2)` was a round trip per entity inside the
+  transaction, which made the claim above true for the issue requirements and
+  false for every one whose exceptions are per entity. `DrainCost` read it on
+  the first try: one `files_synced` cost **6,614 queries** where a full
+  recompute of the same vantage cost 57 — 1,140 `UPDATE`s for `review_file`,
+  another 1,140 for `review_valid`, 6,536 in total. The event projection was
+  correct and more expensive than the pass it replaces.
+
+  So the exceptions go in one statement, joined against an `unnest` of their own
+  values. The verdicts genuinely differ per entity — a missing spec carries its
+  own `expected_path` — so there is no grouping that collapses them, and the
+  array is the shape that does.
   """
   @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
@@ -196,13 +212,78 @@ defmodule CodeMySpec.Requirements.Shadow do
             ]
           )
 
-        Enum.each(spec.except, &put_verdict(scope, &1))
+        put_verdicts(scope, entity_type, name, spec.except, now)
 
         count
       end)
 
     {:ok, count}
   end
+
+  @doc """
+  Correct many entities' verdicts for one requirement, in one statement.
+
+  The batch form of `put_verdict/2`. Same rows, same values; what changes is
+  that the entity ids, verdicts and details travel as three arrays and Postgres
+  joins them against the table itself, instead of the client issuing one
+  `UPDATE` per entity.
+
+  Answers how many rows matched, which is not the same as how many were asked
+  for: settling writes rows and never creates them, so an entity this vantage
+  has never projected is a miss, and a miss is information the caller counts.
+  """
+  @spec put_verdicts(Scope.t(), String.t(), String.t(), [map()], NaiveDateTime.t()) ::
+          {:ok, non_neg_integer()}
+  def put_verdicts(scope, entity_type, name, changes, now \\ nil)
+
+  def put_verdicts(%Scope{}, _entity_type, _name, [], _now), do: {:ok, 0}
+
+  def put_verdicts(%Scope{} = scope, entity_type, name, changes, now) do
+    now = now || NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    {table, _schema} = @source
+
+    # `IS NOT DISTINCT FROM` rather than `=`, because the vantage is nullable and
+    # the null means something: the unscoped row is the project-wide answer, and
+    # the unique indexes use `NULLS NOT DISTINCT` to keep exactly one of it.
+    # `=` against null matches nothing, which would silently settle none of them.
+    sql = """
+    UPDATE #{table} AS n
+       SET satisfied = v.satisfied,
+           details = v.details::jsonb,
+           checked_at = $1,
+           updated_at = $1
+      FROM unnest($2::#{id_type(entity_type)}[], $3::boolean[], $4::text[])
+        AS v(entity_id, satisfied, details)
+     WHERE n.#{owner_column(entity_type)} = v.entity_id
+       AND n.name = $5
+       AND n.working_copy_id IS NOT DISTINCT FROM $6
+    """
+
+    %{num_rows: rows} =
+      Repo.query!(sql, [
+        now,
+        Enum.map(changes, &cast_id(entity_type, &1.entity_id)),
+        Enum.map(changes, & &1.satisfied),
+        Enum.map(changes, &Jason.encode!(&1.details)),
+        name,
+        cast_vantage(Projection.vantage(scope))
+      ])
+
+    {:ok, rows}
+  end
+
+  defp owner_column("component"), do: "component_id"
+  defp owner_column("story"), do: "story_id"
+  defp owner_column("project"), do: "project_id"
+
+  defp id_type("story"), do: "bigint"
+  defp id_type(_uuid_owner), do: "uuid"
+
+  defp cast_id("story", id), do: id
+  defp cast_id(_uuid_owner, id), do: Ecto.UUID.dump!(id)
+
+  defp cast_vantage(nil), do: nil
+  defp cast_vantage(vantage), do: Ecto.UUID.dump!(vantage)
 
   @doc """
   How far the shadow is from the live projection, for this reader's vantage.
