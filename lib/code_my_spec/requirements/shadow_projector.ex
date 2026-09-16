@@ -178,7 +178,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     state
     |> entities_to_compute(marks, ctx)
-    |> Enum.each(&compute_and_write(state.scope, ctx, config, &1))
+    |> Enum.reduce(MapSet.new(), fn entity, done ->
+      # Skipping what a previous computation in this drain already answered for.
+      #
+      # A component's unit is its family, so asking about a nested component
+      # answers for its parent and siblings too. Without this, seeding a project
+      # recomputes each family once per member — on this project, 549 of 1138
+      # components are nested, and the seed spent most of its time recomputing
+      # families it had already written.
+      #
+      # Not batching: nothing is deferred and no window is waited on. This only
+      # declines to redo work whose answer is already on disk.
+      if MapSet.member?(done, entity) do
+        done
+      else
+        MapSet.union(done, compute_and_write(state.scope, ctx, config, entity))
+      end
+    end)
 
     # Only once the writes are done. A mark consumed before the work it asks
     # for is a mark that a crash turns into a permanently stale entity, which
@@ -218,18 +234,22 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # it is exactly when a mark matters — so the write is skipped and the mark is
   # still consumed. `Shadow.write/3` with no nodes would delete the rows anyway;
   # this only avoids computing against a context that does not hold it.
-  defp compute_and_write(scope, ctx, config, {"project", _}) do
+  # Answers with everything it covered, so the drain can skip those.
+  defp compute_and_write(scope, ctx, config, {"project", _} = requested) do
     entity = {"project", scope.active_project_id}
     {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
     Shadow.write(scope, covered, nodes)
+    MapSet.put(covered, requested)
   end
 
   defp compute_and_write(scope, ctx, config, entity) do
     if present?(ctx, entity) do
       {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
       Shadow.write(scope, covered, nodes)
+      covered
     else
       Shadow.write(scope, [entity], [])
+      MapSet.new([entity])
     end
   end
 
