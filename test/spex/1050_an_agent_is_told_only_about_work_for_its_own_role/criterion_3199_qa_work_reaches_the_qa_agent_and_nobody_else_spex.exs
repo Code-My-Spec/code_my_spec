@@ -56,10 +56,28 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
         # before/after comparison across the `when_` cannot tell that from a
         # role leak. This criterion failed on a correctly routed wake for
         # exactly that reason. `apply_up_to_analysis/1` is the same chain minus
-        # the green analysis run, which is the one step that makes
-        # `qa_complete` actionable, so the only transition left for the `when_`
-        # is the one this criterion is about.
-        {:ok, FullSatisfactionFixtures.apply_up_to_analysis(context)}
+        # the QA-readiness transition (specs enforcement + a green analysis
+        # run) — see its doc for why the two can't be split further — so the
+        # only transition left for the `when_` is the one this criterion is
+        # about.
+        context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+
+        # Asserted, not assumed — a red premise here is honest where a red
+        # assertion three steps later is not. This is the check that caught
+        # the leak in the first place: before `apply_up_to_analysis/1` was
+        # fixed to stop short of `apply_specs_enforced/1`, `qa_complete` was
+        # already actionable at this point.
+        refute "qa_complete" in Fixtures.actionable_names(context.scope, :qa),
+               """
+               `qa_complete` was already actionable before the QA-readiness
+               transition ran, so there is nothing left for the `when_` to
+               unblock and the assertions below would be measuring a stale
+               premise rather than a routed wake.
+
+               QA-actionable now: #{inspect(Fixtures.actionable_names(context.scope, :qa))}
+               """
+
+        {:ok, context}
       end
 
       given_ "a coding agent and a QA agent running on one working copy", context do
@@ -77,10 +95,12 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
       end
 
       when_ "a story becomes ready for QA", context do
-        # One step, not a whole project. A fresh green run satisfies
-        # `bdd_specs_passing`, which is `qa_complete`'s real gate — 1048's 3192
-        # established that, and it is the only thing that changes here.
-        Fixtures.fresh_analysis_runs(context.scope)
+        # One step, not a whole project. `apply_qa_readiness_transition/1` is
+        # the QA-readiness transition itself — specs enforcement plus a fresh
+        # green run, together, since neither half alone leaves `qa_complete`
+        # inactionable in between (see its doc) — and it is the only thing
+        # that changes here.
+        context = FullSatisfactionFixtures.apply_qa_readiness_transition(context)
         after_runs = Fixtures.actionable_names(context.scope, :qa)
 
         :ok = Fixtures.settle_graph(context.scope)
@@ -93,11 +113,12 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
       end
 
       then_ "the QA agent is told about it", context do
-        # Instrumented for the same reason 1048's 3192 was, and it is the same
-        # ambiguity: "the QA agent was told nothing" has two causes that read
-        # identically here. Either the wake was not routed to QA — which is what
-        # this criterion is about — or the graph holds no QA work at this moment,
-        # in which case telling nobody is correct and the premise never arrived.
+        # "The QA agent was told nothing" has two causes that read identically
+        # here: either the wake was not routed to QA — what this criterion is
+        # about — or the graph held no QA work at this moment, in which case
+        # telling nobody was correct and the premise never arrived. The
+        # `given_`'s asserted premise and `after_runs`/`after_settle` below
+        # rule the second one out; a failure past those two is routing.
         actionable = Fixtures.actionable_names(context.scope, :qa)
         unsatisfied = Fixtures.unsatisfied_reasons(context.scope, context.story.id)
 
@@ -118,8 +139,8 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
                Agents the wake would consider: #{inspect(Enum.map(Fixtures.running_agents(context.scope), &{&1.role, &1.continuous, &1.status, &1.working_copy_id}))}
                This scope's working copy: #{inspect(context.scope.active_working_copy_id)}
 
-               QA-actionable straight after fresh_analysis_runs: #{inspect(context.after_runs)}
-               QA-actionable after settle_graph:                 #{inspect(context.after_settle)}
+               QA-actionable straight after the readiness transition: #{inspect(context.after_runs)}
+               QA-actionable after settle_graph:                      #{inspect(context.after_settle)}
 
                Those two counts are the fork. Both unchanged means nobody was
                woken and the routing never ran. Coding up while QA is flat means
