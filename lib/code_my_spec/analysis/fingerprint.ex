@@ -92,6 +92,31 @@ defmodule CodeMySpec.Analysis.Fingerprint do
     "spex" => @code_roles -- [:credo_check, :credo_exs]
   }
 
+  # The inverse of `@source_roles`, built once at compile time.
+  #
+  # Every reader so far has asked "which files does this source read"; an event
+  # asks the other way — a file with this role changed, whose results does that
+  # invalidate. Deriving it rather than writing a second table is the point:
+  # two hand-maintained directions of one mapping is the shape that drifts, and
+  # the drift here is a source that stays "fresh" over code it never saw.
+  @sources_by_role @source_roles
+                   |> Enum.flat_map(fn {source, roles} -> Enum.map(roles, &{&1, source}) end)
+                   |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+  @doc """
+  Which analyzer sources a file in this role invalidates.
+
+  `[]` for a role no analyzer reads — a persona summary, a knowledge doc — which
+  is why a document changing has never made anything stale and should not start.
+  """
+  @spec sources_for_role(atom()) :: [String.t()]
+  def sources_for_role(role), do: Map.get(@sources_by_role, role, [])
+
+  @doc "Which sources any of these roles invalidate."
+  @spec sources_for_roles(Enumerable.t()) :: [String.t()]
+  def sources_for_roles(roles),
+    do: roles |> Enum.flat_map(&sources_for_role/1) |> Enum.uniq()
+
   @doc "Roles that feed the given source."
   @spec roles(String.t()) :: [atom()]
   def roles(source), do: Map.fetch!(@source_roles, source)

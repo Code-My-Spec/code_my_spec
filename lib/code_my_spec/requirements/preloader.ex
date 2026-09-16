@@ -11,7 +11,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Fingerprint, Freshness, Run, RunsRepository}
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
@@ -593,14 +593,28 @@ defmodule CodeMySpec.Requirements.Preloader do
   The four analyzer-freshness booleans on their own.
 
   Project-wide and read by `bdd_specs_passing` on every story, so a consumer
-  handling several marks computes it once rather than per entity. It is also the
-  one part of a narrow load that still reads the whole checkout's files — the
-  fingerprint it compares against is over all of them — which is why it is
-  separable and cacheable rather than inlined.
+  handling several marks asks once rather than per entity.
+
+  Answers from `Analysis.Freshness` when the projection knows every source, and
+  reads files otherwise. This is the one path where that trade is worth making:
+  a narrow per-entity load has no files in hand, so the alternative is reading
+  the checkout's entire file table to answer four booleans — the last thing
+  forcing it to do so.
+
+  `analysis_freshness/2`, which already holds the files, does **not** consult
+  the projection. The comparison costs ~4ms there and cannot be wrong, where a
+  row can be: files move without emitting anything on a git checkout, so a
+  projection can claim fresh over code its run never saw. That direction is a
+  false pass, so the path that can afford to check, checks.
   """
   @spec analysis_freshness(Scope.t()) :: %{String.t() => boolean()}
   def analysis_freshness(%Scope{} = scope) do
-    analysis_freshness(scope, CodeMySpec.Files.list_files(scope))
+    known = Freshness.known(scope.active_working_copy_id)
+
+    case Run.sources() -- Map.keys(known) do
+      [] -> known
+      _unknown -> analysis_freshness(scope, CodeMySpec.Files.list_files(scope))
+    end
   end
 
   defp rules_by_story(project_id) do
@@ -873,6 +887,20 @@ defmodule CodeMySpec.Requirements.Preloader do
   # this is one ledger query plus in-memory hashing. `tests_passing` gates
   # on it — zero persisted problems only means "passing" when the results
   # are actually current for today's code.
+  # Computed, and deliberately *not* merged with the projection.
+  #
+  # The files are already in hand here, so the comparison costs ~4ms — there is
+  # nothing for the projection to save on this path, and letting it win would
+  # trade a free correct answer for a cheaper one that can be wrong. It can be
+  # wrong in one specific way: files move without emitting anything on a git
+  # checkout or a branch switch, so a row can say fresh over code its run never
+  # saw. `StaleAnalysisTest` constructs exactly that — a run stamped before a
+  # file changed — and it caught this when the merge was here.
+  #
+  # A stale *clean* result is a false pass, which is the direction that costs
+  # correctness rather than time. So the authoritative path computes, and the
+  # projection is read only where the alternative is reading the whole file
+  # table for nothing — see `analysis_freshness/1`.
   defp analysis_freshness(scope, all_files) do
     latest = RunsRepository.latest_full_runs(scope)
 

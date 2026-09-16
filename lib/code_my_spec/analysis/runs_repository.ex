@@ -11,6 +11,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   require Logger
 
+  alias CodeMySpec.Analysis.Freshness
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -44,7 +45,21 @@ defmodule CodeMySpec.Analysis.RunsRepository do
       |> Map.put_new(:finished_at, DateTime.utc_now())
     )
     |> Repo.update()
+    |> project_freshness()
   end
+
+  # Here rather than at the three call sites in `Reconciler`, because a run
+  # completing is what makes its source fresh and a fourth call site added later
+  # would otherwise leave the projection behind without anything saying so.
+  #
+  # Only `:completed` and only `:full`: a failed run answers nothing, and a
+  # partial run is not the baseline `latest_completed_run/2` reads.
+  defp project_freshness({:ok, %Run{status: :completed, kind: :full} = run} = result) do
+    Freshness.mark_fresh(run.working_copy_id, run.source, run)
+    result
+  end
+
+  defp project_freshness(result), do: result
 
   @doc """
   Latest finished `:full` run per source for the project.

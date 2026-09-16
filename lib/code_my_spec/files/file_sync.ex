@@ -16,6 +16,7 @@ defmodule CodeMySpec.Files.FileSync do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Analysis.Freshness
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
@@ -486,6 +487,7 @@ defmodule CodeMySpec.Files.FileSync do
   defp announce_graph_change(scope, changed_paths, upserted, removed) do
     obs = GraphInputs.observation_id()
     entities = sync_entities(scope, changed_paths, removed)
+    stale_analyzers(scope, changed_paths)
 
     Logger.info(
       "[FileSync] announcing a graph change for #{working_copy(scope)} — " <>
@@ -528,6 +530,32 @@ defmodule CodeMySpec.Files.FileSync do
   # and getting it wrong under-invalidates silently.
   defp path_of(path) when is_binary(path), do: path
   defp path_of(%{path: path}), do: path
+
+  # An analyzer's results stop answering for a tree the moment a file it reads
+  # changes, and this is where that is known: the roles are on the rows that
+  # just moved.
+  #
+  # `Fingerprint.sources_for_role/1` decides which — an implementation or test
+  # file stales all four, a `_spex.exs` stales credo and spex but not compiler
+  # or exunit, a markdown spec or knowledge doc stales nothing. That is the
+  # inverse of the same table the fingerprints are computed from, so the two
+  # cannot disagree about which files feed which source.
+  defp stale_analyzers(%Scope{active_working_copy_id: copy} = _scope, changed)
+       when is_binary(copy) do
+    roles = changed |> Enum.map(&role_of/1) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    Freshness.stale_for_roles(copy, roles, changed |> List.first() |> path_or_nil())
+  end
+
+  defp stale_analyzers(_scope, _changed), do: :ok
+
+  # Resolved from the row where the caller handed entries, and from the database
+  # where it handed paths — the same two shapes `sync_entities/3` reconciles.
+  defp role_of(%{role: role}), do: role
+  defp role_of(_other), do: nil
+
+  defp path_or_nil(nil), do: nil
+  defp path_or_nil(entry), do: path_of(entry)
 
   defp log_duration(scope, observations, ms, result) do
     count = length(observations)
