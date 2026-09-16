@@ -169,11 +169,38 @@ defmodule CodeMySpec.Requirements.Shadow do
   goes on with one `UPDATE`, and the named few are corrected after.
 
   Two statements for a population of any size, which is the whole reason a
-  handler owns a requirement rather than an entity. Ordered, and it has to be:
-  the default would otherwise overwrite the exceptions it was meant to leave
-  alone.
+  handler owns a requirement rather than an entity.
 
-  ## Two, and it used to be one per exception
+  ## Neither statement writes a row whose answer did not move
+
+  Both halves carry `IS DISTINCT FROM`, and it is not only an optimisation.
+
+  A sweep used to rewrite every row of a requirement on every drain, which
+  `DrainCost` measured at 1,264 rows for one `files_synced` where a full
+  recompute of the same vantage wrote 15 — the same values written over
+  themselves, plus the index maintenance behind them.
+
+  It is also what `checked_at` has to mean. `computed_at` on every graph read is
+  `max(checked_at)`, and story 1063 asserts it *holds still* when nothing
+  changed — `criterion_3231` compares it across a heartbeat that carried no
+  change. A sweep that stamps every row moves that timestamp on every drain, so
+  without this the event projection fails three criteria the batched pass
+  passes, for work it did not do.
+
+  ## The two halves are disjoint, which is why order no longer matters
+
+  The default used to run across the whole population and the exceptions
+  corrected it afterwards, so ordering was load-bearing. With `IS DISTINCT FROM`
+  that breaks: an exception row already holding its exception value would be
+  written to the default and then written back, netting no change and two
+  writes. So the default excludes the exception entities outright and each half
+  owns its own rows.
+
+  The transaction stays. A reader landing between them still sees the new
+  default beside the exceptions' previous values, which is a projection claiming
+  every component has a spec.
+
+  ## One statement for the exceptions, and it used to be one per entity
 
   `Enum.each(spec.except, &put_verdict/2)` was a round trip per entity inside the
   transaction, which made the claim above true for the issue requirements and
@@ -187,37 +214,68 @@ defmodule CodeMySpec.Requirements.Shadow do
   values. The verdicts genuinely differ per entity — a missing spec carries its
   own `expected_path` — so there is no grouping that collapses them, and the
   array is the shape that does.
+
+  Answers how many rows it actually wrote — not how many it matched, which is
+  the whole population and says nothing.
   """
   @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    ids = Enum.map(spec.except, &cast_id(entity_type, &1.entity_id))
 
-    # In one transaction, because the two halves contradict each other by
-    # design: the default asserts the requirement for every entity, and the
-    # exceptions take it back from the ones it is not true of. A read landing
-    # between them sees a projection claiming every component has a spec.
-    {:ok, count} =
+    {:ok, written} =
       Repo.transaction(fn ->
-        {count, _} =
-          @source
-          |> where(^entity_type_filter(entity_type))
-          |> where(^copy_filter(Projection.vantage(scope)))
-          |> where([n], n.name == ^name)
-          |> Repo.update_all(
-            set: [
-              satisfied: spec.default,
-              details: spec.default_details,
-              checked_at: now,
-              updated_at: now
-            ]
-          )
+        {:ok, defaulted} = settle_default(scope, entity_type, name, spec, ids, now)
+        {:ok, excepted} = put_verdicts(scope, entity_type, name, spec.except, now)
 
-        put_verdicts(scope, entity_type, name, spec.except, now)
-
-        count
+        defaulted + excepted
       end)
 
-    {:ok, count}
+    {:ok, written}
+  end
+
+  # Every row of this requirement the exceptions did not name, where the answer
+  # differs from the default.
+  #
+  # `NOT (owner = ANY($ids))` rather than `NOT IN`, so the exception ids travel
+  # as one array parameter instead of one bind per entity — the same reason
+  # `put_verdicts/5` uses `unnest`. An empty array excludes nothing, because
+  # `x = ANY('{}')` is false.
+  defp settle_default(scope, entity_type, name, spec, ids, now) do
+    {table, _schema} = @source
+    owner = owner_column(entity_type)
+
+    # `$2::text::jsonb`, never `$2::jsonb`. Postgres infers a parameter's type
+    # from its cast and tells Postgrex, so `::jsonb` makes Postgrex encode the
+    # already-encoded binary *again* — the column ends up holding the jsonb
+    # string `"{\"status\":…}"` rather than an object, and the next read fails
+    # with `cannot load ... as type :map`. Declaring it text hands the bytes over
+    # untouched and lets Postgres parse them, which is what `put_verdicts/5`
+    # does with its `text[]`.
+    sql = """
+    UPDATE #{table} AS n
+       SET satisfied = $1,
+           details = $2::text::jsonb,
+           checked_at = $3,
+           updated_at = $3
+     WHERE n.name = $4
+       AND n.working_copy_id IS NOT DISTINCT FROM $5
+       AND n.#{owner} IS NOT NULL
+       AND NOT (n.#{owner} = ANY($6::#{id_type(entity_type)}[]))
+       AND (n.satisfied IS DISTINCT FROM $1 OR n.details IS DISTINCT FROM $2::text::jsonb)
+    """
+
+    %{num_rows: rows} =
+      Repo.query!(sql, [
+        spec.default,
+        Jason.encode!(spec.default_details),
+        now,
+        name,
+        cast_vantage(Projection.vantage(scope)),
+        ids
+      ])
+
+    {:ok, rows}
   end
 
   @doc """
@@ -257,6 +315,8 @@ defmodule CodeMySpec.Requirements.Shadow do
      WHERE n.#{owner_column(entity_type)} = v.entity_id
        AND n.name = $5
        AND n.working_copy_id IS NOT DISTINCT FROM $6
+       AND (n.satisfied IS DISTINCT FROM v.satisfied
+         OR n.details IS DISTINCT FROM v.details::jsonb)
     """
 
     %{num_rows: rows} =

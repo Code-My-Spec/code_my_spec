@@ -53,6 +53,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   require Logger
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
@@ -242,18 +243,40 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
      end)}
   end
 
+  # One transaction for every sweep this event settles, rather than one each.
+  #
+  # Correctness first: an event moves a *set* of requirements, and a reader
+  # landing between two of its sweeps sees `spec_file` settled against
+  # `spec_valid`'s previous answer — a projection that is internally
+  # inconsistent in a way neither sweep is. `Shadow.sweep/2` keeps its own
+  # transaction for its two halves; Ecto joins a nested one to the outer, so
+  # this replaces twenty `BEGIN`/`COMMIT` pairs with one and changes nothing
+  # else.
+  #
+  # The lock hold that would normally argue against this is not there: sweeps
+  # skip rows whose answer did not move, so the steady state locks nothing and
+  # a real change locks only what it changed.
   defp split_handled(state, marks) do
     Enum.reduce(marks, {[], []}, fn mark, {handled, unhandled} ->
       case handler_result(state.scope, mark) do
         {:ok, changes, sweeps} ->
-          written = Enum.map(changes, &write_change(state.scope, &1))
-          Enum.each(sweeps, &Shadow.sweep(state.scope, &1))
-          {[{mark, changes, written} | handled], unhandled}
+          {[{mark, changes, settle(state.scope, changes, sweeps)} | handled], unhandled}
 
         :no_handler ->
           {handled, [mark | unhandled]}
       end
     end)
+  end
+
+  defp settle(scope, changes, sweeps) do
+    {:ok, written} =
+      Repo.transaction(fn ->
+        written = Enum.map(changes, &write_change(scope, &1))
+        Enum.each(sweeps, &Shadow.sweep(scope, &1))
+        written
+      end)
+
+    written
   end
 
   defp handler_result(_scope, %Invalidation{kind: kind}) when kind in [nil, "invalidate"],
