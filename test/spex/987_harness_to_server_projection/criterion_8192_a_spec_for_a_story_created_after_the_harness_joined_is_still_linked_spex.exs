@@ -35,17 +35,23 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
       end
 
       when_ "a story is created and the agent writes a spec for it", context do
+        # One real criterion: bdd_specs_covered (issue 644279a9) checks
+        # coverage per criterion, so the file below has to claim a criterion
+        # that actually exists.
         story =
           StoryHelpers.create_story(context.scope,
             title: "Capture a task",
-            description: "A story for spex testing"
+            description: "A story for spex testing",
+            acceptance_criteria: ["A task is captured"]
           )
+
+        [criterion] = story.criteria
 
         :ok =
           Environments.write_file(
             context.environment,
             # `number`, not `id` — see the note in criterion_8186.
-            "test/spex/#{story.number}_capture_a_task/criterion_1_a_task_is_captured_spex.exs",
+            "test/spex/#{story.number}_capture_a_task/criterion_#{criterion.id}_a_task_is_captured_spex.exs",
             "defmodule Sample do\nend\n"
           )
 

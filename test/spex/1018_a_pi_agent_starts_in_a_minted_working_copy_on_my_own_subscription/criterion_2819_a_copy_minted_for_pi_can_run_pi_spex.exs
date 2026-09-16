@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2819Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent

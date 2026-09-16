@@ -161,6 +161,25 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Rebind `~p` to CodeMySpecWeb's router, atomically with the `@endpoint` override.
+
+  `~p` is a compile-time macro bound by whichever `verified_routes` import is
+  lexically in scope, NOT by the `@endpoint` module attribute. A spex that
+  overrides `@endpoint` alone keeps resolving every `~p` against the base
+  `using` block's CodeMySpecLocalWeb router — silently, because `~p` still
+  evaluates to a plain path string at runtime even when bound to the wrong
+  router's validation. 58 files did exactly this (issue 2389874b) before this
+  existed. Call this instead of writing `@endpoint CodeMySpecWeb.Endpoint` by
+  hand, so the pairing can't be forgotten again.
+  """
+  defmacro cloud_endpoint do
+    quote do
+      @endpoint CodeMySpecWeb.Endpoint
+      use CodeMySpecWeb, :verified_routes
+    end
+  end
+
+  @doc """
   How long one criterion may take, given what it is actually waiting on.
 
   Recording waits on real DNS propagating and a provider re-checking it, which

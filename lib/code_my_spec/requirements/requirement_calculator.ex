@@ -14,10 +14,13 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:field_true`    — Boolean field on entity struct is exactly `true`
   - `:no_problems`   — Zero Problem records from configured source
   - `:tests_passing` — Zero exunit Problems
+  - `:bdd_specs_covered` — File of configured role exists for every acceptance
+    criterion on the story, not merely for the story as a whole
   """
 
   import Ecto.Query
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys
   alias CodeMySpec.Files.File
@@ -69,6 +72,16 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp check(%{check_type: :file_valid, config: config}, _scope, _entity, files, _ctx) do
     role = config_role(config)
     has_valid_role?(files, role)
+  end
+
+  # Per-criterion, not per-story: a story with any one file of `role` used to
+  # read satisfied regardless of how many criteria it had. A criterion added
+  # or reworded after the first spex pass then has no spec and nothing asks
+  # for one, because the other criteria's files keep the story looking done
+  # (issue 644279a9).
+  defp check(%{check_type: :bdd_specs_covered, config: config}, scope, entity, files, _ctx) do
+    role = config_role(config)
+    check_bdd_specs_covered(scope, entity, files, role)
   end
 
   defp check(%{check_type: :path_exists, config: config}, scope, _entity, _files, ctx) do
@@ -513,6 +526,37 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
         if expected_path, do: Map.put(details, :expected_path, expected_path), else: details
 
       {false, details}
+    end
+  end
+
+  defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
+    case AcceptanceCriteria.list_story_criteria(scope, story_id) do
+      [] ->
+        {false, %{reason: "no acceptance criteria on this story"}}
+
+      criteria ->
+        covered_paths =
+          files
+          |> Enum.filter(&(&1.role == role))
+          |> MapSet.new(& &1.path)
+
+        missing =
+          criteria
+          |> Enum.filter(fn c ->
+            is_nil(c.spec_path) or c.spec_path == "" or
+              not MapSet.member?(covered_paths, c.spec_path)
+          end)
+          |> Enum.map(& &1.id)
+
+        if missing == [] do
+          {true, %{status: "#{role} file exists for every criterion"}}
+        else
+          {false,
+           %{
+             reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
+             missing_criteria_ids: missing
+           }}
+        end
     end
   end
 

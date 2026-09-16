@@ -488,16 +488,20 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   @spec apply_bdd_spec_for_story(map(), term()) :: :ok
   def apply_bdd_spec_for_story(context, story) do
     story = StoryHelpers.fetch(context.scope, story.id)
-    [criterion | _] = story.criteria
 
-    bdd_path = Fixtures.spec_file_path(story, criterion)
+    # bdd_specs_covered checks every criterion, not just the first
+    # (issue 644279a9) -- three_amigos leaves happy + failure path
+    # criteria, and both need a file or the story's chain never clears.
+    Enum.each(story.criteria, fn criterion ->
+      bdd_path = Fixtures.spec_file_path(story, criterion)
 
-    :ok =
-      Environments.write_file(
-        context.environment,
-        bdd_path,
-        passing_bdd_spec_content(story, criterion)
-      )
+      :ok =
+        Environments.write_file(
+          context.environment,
+          bdd_path,
+          passing_bdd_spec_content(story, criterion)
+        )
+    end)
 
     {:ok, sync_live, _html} =
       live(context.conn, "/app/projects/#{context.project.id}/files")

@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3027Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   alias CodeMySpecSpex.Fixtures
 
