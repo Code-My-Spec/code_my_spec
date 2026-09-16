@@ -22,6 +22,7 @@ defmodule CodeMySpec.Problems do
     ],
     exports: :all
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Problems.{ProblemConverter, ProblemRenderer, ProblemRepository}
   alias CodeMySpec.Requirements.GraphInputs
 
@@ -55,11 +56,13 @@ defmodule CodeMySpec.Problems do
       |> ProblemRepository.delete_problems_for_components(component_ids)
       |> announce_if_moved(scope)
 
+  # The files are still on disk — this clears one analyzer's findings at paths
+  # that remain — so their owners resolve and the mark can name them.
   def clear_problems_for_source(scope, source_filter, file_paths),
     do:
       scope
       |> ProblemRepository.clear_problems_for_source(source_filter, file_paths)
-      |> announce_if_moved(scope)
+      |> announce_if_moved(scope, Files.owners_of_paths(scope, file_paths))
 
   def clear_problems_for_missing_files(scope, current_paths),
     do:
@@ -81,7 +84,7 @@ defmodule CodeMySpec.Problems do
     do:
       scope
       |> ProblemRepository.replace_problems_for_files(file_paths, problems)
-      |> announce(scope)
+      |> announce(scope, Files.owners_of_paths(scope, file_paths))
 
   # The one problem writer that already knows which components it touched, and
   # the one most worth telling. `Freshness.component/2` hashes
@@ -100,15 +103,25 @@ defmodule CodeMySpec.Problems do
       |> ProblemRepository.reconcile_problems_for_source(source, file_scope, problems)
       |> announce(scope)
 
-  defp announce_if_moved({:ok, 0} = result, _scope), do: result
-  defp announce_if_moved({:ok, []} = result, _scope), do: result
-  defp announce_if_moved(result, scope), do: announce(result, scope)
+  defp announce_if_moved(result, scope), do: announce_if_moved(result, scope, [])
 
-  # The other writers take problems by file path or by source and never learn
-  # which components those files belong to — that mapping lives in `Files`. They
-  # announce project-wide, which records a mark that names nothing and is
-  # counted as such, so the diff can say what leaving them un-narrowed costs
-  # before anybody pays to narrow them.
+  defp announce_if_moved({:ok, 0} = result, _scope, _entities), do: result
+  defp announce_if_moved({:ok, []} = result, _scope, _entities), do: result
+  defp announce_if_moved(result, scope, entities), do: announce(result, scope, entities)
+
+  # What is left un-narrowed, and why.
+  #
+  # `clear_problems_for_missing_files/2` is handed the paths that *remain*, so
+  # the components it actually affects are the ones whose files are gone — the
+  # same shape that stops `FileSync` naming anything on a removal.
+  # `reconcile_problems_for_source/4` takes a file scope rather than a path
+  # list. `replace_project_problems/2` writes rows with no component, and
+  # whether any requirement reads those is not something this narrowing
+  # established — naming `:project` would be a guess in the under-invalidating
+  # direction.
+  #
+  # All three record `:unknown` and recompute everything, which is correct and
+  # expensive, and is the honest state to leave them in.
   defp announce(result, scope), do: announce(result, scope, [])
 
   defp announce({:ok, _moved} = result, scope, entities) do
