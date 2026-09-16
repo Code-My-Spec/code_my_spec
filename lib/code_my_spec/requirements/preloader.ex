@@ -473,6 +473,44 @@ defmodule CodeMySpec.Requirements.Preloader do
   end
 
   @doc """
+  The project's own requirements need the checkout's files and nothing else.
+
+  Worth stating plainly, because the opposite was assumed: `compute_project_nodes/3`
+  looks project-wide, so a mark naming `:project` was given `load/1` — fifteen
+  queries, 91ms — and that is not what the fourteen project requirements read.
+
+  Six are `:path_exists` and resolve through `ctx[:files_by_path]`.
+  `qa_integration_plan` reads `ctx.files_by_project`. The other seven —
+  `personas_complete`, `stories_exist`, `architecture_designed`,
+  `spex_boundary_ready`, `work_dispatched`, `issues_triaged`, `issues_resolved`
+  — take no context at all and query for themselves.
+
+  So this is one file query. Components, stories, problems and
+  `delegated_inputs` are all absent, and `tracked_files/3` and `prefix_count/3`
+  reach for their keys through `ctx[:key]`, which falls through to the database
+  rather than reading an empty collection as an answer.
+  """
+  @spec load_project(Scope.t(), %{String.t() => boolean()}) :: {:ok, context()}
+  def load_project(%Scope{active_project_id: project_id} = scope, analysis_fresh)
+      when is_binary(project_id) do
+    files =
+      File
+      |> where([f], f.project_id == ^project_id)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    ctx =
+      analysis_fresh
+      |> narrow_context([])
+      |> Map.merge(%{
+        files_by_project: files,
+        files_by_path: Map.new(files, &{&1.path, &1})
+      })
+
+    {:ok, ctx}
+  end
+
+  @doc """
   One component's family, for a consumer computing only that family.
 
   The family is the unit, because `component_families/1` decides top-level from

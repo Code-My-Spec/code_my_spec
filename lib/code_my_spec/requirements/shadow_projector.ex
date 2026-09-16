@@ -23,18 +23,15 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   ## What a drain loads is decided before it loads anything
 
-  `plan/2` reads the marks and picks one of three shapes, because what they
-  claim decides what has to be read:
+  `plan/2` reads the marks and picks one of two shapes, because what they claim
+  decides what has to be read:
 
     * `:everything` — a writer could not say what it moved, or this projector
       has not seeded. Whole context, every entity. This is the pass the event
       path exists to replace, and it is what an un-narrowed writer costs.
-    * `{:full_context, entities}` — the project requirements moved. They read
-      counts across the project, so there is nothing to narrow.
-    * `{:narrow, entities}` — every mark named an entity and none claimed
-      project scope. `Preloader.load_story/3` or
-      `Preloader.load_component_family/3` per entity, and `Preloader.load/1` is
-      never called.
+    * `{:narrow, entities}` — every mark named something. One narrow load per
+      entity — `load_story/3`, `load_component_family/3` or `load_project/2` —
+      and `Preloader.load/1` is never called.
 
   That last shape is the point of the whole exercise, and it inverts the
   premise `load/1` was built on. The story delegates take a scope and a story
@@ -213,19 +210,18 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # whole-project pass this exists to replace, and it is what an un-narrowed
   # writer costs.
   #
-  # `project?` — a writer said the project requirements moved. Project
-  # requirements read counts across the project, so this needs a whole context
-  # whatever else the marks named.
+  # `project?` — a writer said the project requirements moved. That adds one
+  # entity to the set; it does not change the shape of the plan, because
+  # `Preloader.load_project/2` is a narrow load like the other two.
   #
-  # Entities alone — every mark named one and none claimed project scope. This
-  # is the case the narrow loads exist for, and the only plan that never touches
-  # `Preloader.load/1`.
+  # Anything else narrow. `Preloader.load/1` is reached only when a writer
+  # could not say what it moved.
   defp plan(%{seeded: true}, marks) do
     {named, flags} = Invalidations.entities(marks)
 
     cond do
       flags[:unknown?] -> :everything
-      flags[:project?] -> {:full_context, MapSet.put(named, {"project", nil})}
+      flags[:project?] -> {:narrow, MapSet.put(named, {"project", nil})}
       true -> {:narrow, named}
     end
   end
@@ -241,12 +237,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     # The whole context was just read, so the cached freshness is current by
     # construction.
-    %{state | analysis_fresh: ctx.analysis_fresh}
-  end
-
-  defp run({:full_context, entities}, state, config) do
-    {:ok, ctx} = Preloader.load(state.scope)
-    write_each(Enum.to_list(entities), state.scope, ctx, config)
     %{state | analysis_fresh: ctx.analysis_fresh}
   end
 
@@ -288,6 +278,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   defp narrow_load(scope, {"component", component_id}, analysis_fresh),
     do: Preloader.load_component_family(scope, component_id, analysis_fresh)
+
+  defp narrow_load(scope, {"project", _}, analysis_fresh),
+    do: Preloader.load_project(scope, analysis_fresh)
 
   defp all_entities(ctx) do
     MapSet.union(

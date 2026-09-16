@@ -726,9 +726,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {covered, nodes}
   end
 
-  def compute_entity(scope, ctx, config, {"project", _id} = entity) do
+  # Answers with the project's real id whatever the caller asked with. A mark
+  # naming the project carries no id — there is only one — so callers pass
+  # `{"project", nil}`, and handing that back would reach `Shadow.write/3` as
+  # `n.project_id == nil`, which Ecto refuses. The nodes below already carry
+  # `project.id`; the covered set has to agree with them.
+  def compute_entity(scope, ctx, config, {"project", _id}) do
     {nodes, _} = compute_project_nodes(scope, ctx, config)
-    {MapSet.new([entity]), nodes}
+    {MapSet.new([{"project", scope.active_project.id}]), nodes}
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
