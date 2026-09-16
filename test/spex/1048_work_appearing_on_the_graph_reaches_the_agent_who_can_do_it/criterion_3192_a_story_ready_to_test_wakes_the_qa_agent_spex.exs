@@ -26,7 +26,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3192Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
-  alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account

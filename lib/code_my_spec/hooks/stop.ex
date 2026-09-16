@@ -25,7 +25,6 @@ defmodule CodeMySpec.Hooks.Stop do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
-  alias CodeMySpec.FileEdits
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
