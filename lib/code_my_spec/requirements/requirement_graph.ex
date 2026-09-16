@@ -2073,18 +2073,40 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp barren_components(ctx, config) do
     {top_level, children_by_parent} = component_families(ctx)
 
+    # One answer per *type*, not per component, and the difference is not
+    # academic. `graph_for_type/1` builds its list of definition structs on
+    # every call — `context_graph/0` and friends construct them rather than
+    # returning a constant — so asking it per component asked it twice for each
+    # of 1134 components on this project. Measured at dev scale: 136ms per pass,
+    # against roughly 1ms for the eighteen distinct types.
+    #
+    # That is ~17% of what a pass spends discovering it has nothing to do, and
+    # it was introduced by this function. Worth the map.
+    scopes_by_type =
+      top_level
+      |> Enum.map(& &1.type)
+      |> Enum.uniq()
+      |> Map.new(fn type ->
+        {type,
+         type
+         |> RequirementDefinitionData.graph_for_type()
+         |> filter_definitions_by_config(config)
+         |> MapSet.new(& &1.node_scope)}
+      end)
+
+    scopes = fn component -> Map.get(scopes_by_type, component.type, MapSet.new()) end
+
     barren_top =
       top_level
       |> Enum.reject(fn component ->
-        Enum.any?(filtered_template(component, config), &(&1.node_scope in [:parent, :self]))
+        scope_set = scopes.(component)
+        MapSet.member?(scope_set, :parent) or MapSet.member?(scope_set, :self)
       end)
       |> MapSet.new(& &1.id)
 
     barren_children =
       top_level
-      |> Enum.reject(fn parent ->
-        Enum.any?(filtered_template(parent, config), &(&1.node_scope == :child))
-      end)
+      |> Enum.reject(&MapSet.member?(scopes.(&1), :child))
       |> Enum.flat_map(&Map.get(children_by_parent, &1.id, []))
       |> MapSet.new(& &1.id)
 
@@ -2126,12 +2148,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # measurement found.
   defp ms_or_na(nil), do: "n/a"
   defp ms_or_na(ms), do: "#{ms}ms"
-
-  defp filtered_template(component, config) do
-    component.type
-    |> RequirementDefinitionData.graph_for_type()
-    |> filter_definitions_by_config(config)
-  end
 
   # Stamped after the fact rather than inside the template, because a
   # container's pass emits its children's nodes as well as its own and each of
