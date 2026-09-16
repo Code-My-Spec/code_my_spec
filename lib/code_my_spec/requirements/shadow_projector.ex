@@ -178,23 +178,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     state
     |> entities_to_compute(marks, ctx)
-    |> Enum.reduce(MapSet.new(), fn entity, done ->
-      # Skipping what a previous computation in this drain already answered for.
-      #
-      # A component's unit is its family, so asking about a nested component
-      # answers for its parent and siblings too. Without this, seeding a project
-      # recomputes each family once per member — on this project, 549 of 1138
-      # components are nested, and the seed spent most of its time recomputing
-      # families it had already written.
-      #
-      # Not batching: nothing is deferred and no window is waited on. This only
-      # declines to redo work whose answer is already on disk.
-      if MapSet.member?(done, entity) do
-        done
-      else
-        MapSet.union(done, compute_and_write(state.scope, ctx, config, entity))
-      end
-    end)
+    |> write_each(state.scope, ctx, config)
 
     # Only once the writes are done. A mark consumed before the work it asks
     # for is a mark that a crash turns into a permanently stale entity, which
@@ -234,6 +218,25 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # it is exactly when a mark matters — so the write is skipped and the mark is
   # still consumed. `Shadow.write/3` with no nodes would delete the rows anyway;
   # this only avoids computing against a context that does not hold it.
+  # Each entity in turn, skipping what an earlier one in this drain already
+  # answered for.
+  #
+  # A component's unit is its family, so asking about a nested component answers
+  # for its parent and siblings too. Without this, seeding recomputes each
+  # family once per member — 549 of this project's 1138 components are nested —
+  # and spends most of its time rewriting rows it just wrote.
+  #
+  # Not batching: nothing is deferred and no window is waited on. This declines
+  # to redo work whose answer is already on disk.
+  @spec write_each([Shadow.entity()], Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
+  defp write_each(entities, scope, ctx, config) do
+    Enum.reduce(entities, MapSet.new(), fn entity, done ->
+      if MapSet.member?(done, entity),
+        do: done,
+        else: MapSet.union(done, compute_and_write(scope, ctx, config, entity))
+    end)
+  end
+
   # Answers with everything it covered, so the drain can skip those.
   defp compute_and_write(scope, ctx, config, {"project", _} = requested) do
     entity = {"project", scope.active_project_id}
