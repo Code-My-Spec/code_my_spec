@@ -52,6 +52,24 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       assert content =~ "personas_complete"
     end
 
+    test "entity_id narrows to one entity instead of being silently ignored (69b418e0)" do
+      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      one = component_fixture(scope)
+      other = component_fixture(scope)
+      CodeMySpec.Requirements.recompute(scope)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               ListRequirements.execute(%{entity_type: "component", entity_id: one.id}, frame)
+
+      refute response.isError
+      content = response_text(response)
+
+      assert content =~ one.module_name
+      refute content =~ other.module_name
+    end
+
     test "returns error without valid scope" do
       frame = %Frame{assigns: %{}}
 
