@@ -47,8 +47,25 @@ defmodule CodeMySpec.Components do
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    GraphInputs.announce(scope, "Components")
+    GraphInputs.announce(scope, "Components", graph_entities(message))
   end
+
+  # The component, and its parent.
+  #
+  # The parent is not incidental: `Freshness.component/2` hashes
+  # `children_by_parent`, so a child appearing or disappearing moves the
+  # *context's* requirements — a context's answer depends on which children it
+  # has, though not on what changed inside them. A writer that named only the
+  # component would leave the parent stale with nothing to say so, which is the
+  # silent direction.
+  defp graph_entities({_verb, %{id: id} = component}) do
+    case Map.get(component, :parent_component_id) do
+      nil -> [{"component", id}]
+      parent_id -> [{"component", id}, {"component", parent_id}]
+    end
+  end
+
+  defp graph_entities(_message), do: []
 
   defdelegate list_components(scope), to: ComponentRepository
   defdelegate count_components(scope), to: ComponentRepository

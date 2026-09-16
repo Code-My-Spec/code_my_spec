@@ -83,11 +83,16 @@ defmodule CodeMySpec.Problems do
       |> ProblemRepository.replace_problems_for_files(file_paths, problems)
       |> announce(scope)
 
+  # The one problem writer that already knows which components it touched, and
+  # the one most worth telling. `Freshness.component/2` hashes
+  # `problem_digests_by_component`, and an analyzer writes here on every agent
+  # turn — so this is the input that most often takes the whole project stale
+  # for a change that belonged to a handful of modules.
   def replace_problems_for_components(scope, component_ids, source, problems),
     do:
       scope
       |> ProblemRepository.replace_problems_for_components(component_ids, source, problems)
-      |> announce(scope)
+      |> announce(scope, Enum.map(component_ids, &{"component", &1}))
 
   def reconcile_problems_for_source(scope, source, file_scope, problems),
     do:
@@ -99,12 +104,19 @@ defmodule CodeMySpec.Problems do
   defp announce_if_moved({:ok, []} = result, _scope), do: result
   defp announce_if_moved(result, scope), do: announce(result, scope)
 
-  defp announce({:ok, _moved} = result, scope) do
-    GraphInputs.announce(scope, "Problems")
+  # The other writers take problems by file path or by source and never learn
+  # which components those files belong to — that mapping lives in `Files`. They
+  # announce project-wide, which records a mark that names nothing and is
+  # counted as such, so the diff can say what leaving them un-narrowed costs
+  # before anybody pays to narrow them.
+  defp announce(result, scope), do: announce(result, scope, [])
+
+  defp announce({:ok, _moved} = result, scope, entities) do
+    GraphInputs.announce(scope, "Problems", entities)
     result
   end
 
-  defp announce(result, _scope), do: result
+  defp announce(result, _scope, _entities), do: result
 
   # Converter functions
   defdelegate from_credo(credo_data), to: ProblemConverter

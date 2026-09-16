@@ -60,7 +60,7 @@ defmodule CodeMySpec.BddRules do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:bdd_rules", message)
 
-    GraphInputs.announce(scope, "BddRules")
+    GraphInputs.announce(scope, "BddRules", GraphInputs.story_entities(message))
   end
 
   @doc """

@@ -68,8 +68,16 @@ defmodule CodeMySpec.Stories do
       message
     )
 
-    GraphInputs.announce(scope, "Stories")
+    GraphInputs.announce(scope, "Stories", graph_entities(message))
   end
+
+  # Only the story. A story's `component_id` is an edge input — it is in
+  # `Freshness.topology_parts/2` and not in `Freshness.component/2` — so
+  # attaching a story to a component moves the graph's shape and not that
+  # component's own requirements. Topology is fingerprinted separately and is
+  # not what these marks replace.
+  defp graph_entities({_verb, %{id: id}}) when not is_nil(id), do: [{"story", id}]
+  defp graph_entities(_message), do: []
 
   @doc """
   Returns the list of stories.

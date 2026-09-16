@@ -68,8 +68,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # After the transaction commits, not inside it: `GraphWatcher` recomputes on
   # this, and a recompute that read the attempt before it committed would decide
   # from a row that might roll back. Only on success for the same reason.
-  defp announce_graph_change(scope, {:ok, _attempt}) do
-    GraphInputs.announce(scope, "Qa")
+  defp announce_graph_change(scope, {:ok, _attempt} = result) do
+    GraphInputs.announce(scope, "Qa", GraphInputs.story_entities(result))
   end
 
   defp announce_graph_change(_scope, _other), do: :ok
