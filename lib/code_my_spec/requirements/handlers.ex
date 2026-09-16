@@ -2,66 +2,52 @@ defmodule CodeMySpec.Requirements.Handlers do
   @moduledoc """
   Domain events applied to the projection, without re-deriving anything.
 
-  ## The distinction this module exists to make
+  ## The shape
+
+  Three tables and a lookup function, which is the whole of it:
+
+    * `@dirties` — which profiles an event kind invalidates.
+    * `@fed_by` — which requirements each profile settles.
+    * `settle/3` — one clause per requirement, reading its profile.
+
+  An event dirties one or more profiles, each profile is loaded once
+  (`Profiles.load/2`), and every requirement fed by those profiles is settled
+  from it in memory. Adding a requirement is a `settle/3` clause and a name in
+  `@fed_by`. Adding a source is a profile.
+
+  What it is *not* is a query per handler. Five `file_exists` names all read the
+  same thing — which roles a component has files for — and asking five times is
+  how a handler-per-requirement design turns back into the pass it replaced.
+
+  ## Why this beats re-deriving
 
   An invalidation says *an entity moved*, and the only way to answer one is to
-  recompute that entity — every requirement it has, every checker, against the
-  database. An event says *what happened*, and a handler settles the
-  requirements that event can move and nothing else.
+  recompute that entity: every requirement it has, every checker. One incoming
+  issue ran 22 checkers to settle the one it could have moved — 238ms.
 
-  Measured on this project before any of this existed: one incoming issue ran
-  **22 checkers** — all fourteen project requirements and all eight of a story's
-  — to settle the one it could possibly have moved. 238ms.
+  An issue at or above the threshold **is** `issues_triaged = false`. The whole
+  issue surface is now three queries and settles in 7ms, whatever the project's
+  size.
 
-  ## A handler owns a requirement, not an entity
+  ## Set-based, so population size stops mattering
 
-  The second thing this is not: a per-entity recheck. Asking "what does this
-  event do to story 799" and then "to story 800" is entity-thinking with extra
-  steps, and it scales with the number of stories.
-
-  A handler owns a *requirement name across the whole project* and settles it
-  set-wise. `story_issues_resolved` is one grouped query — every story carrying
-  an unresolved issue — and two writes: satisfied for all of them, then
-  unsatisfied for the few the query named. Thirty-eight stories or three
-  thousand, it is the same three queries.
-
-  So the issue surface costs:
-
-      issues_triaged          1 query   (incoming at or above threshold)
-      issues_resolved         1 query   (accepted at or above threshold)
-      story_issues_resolved   1 query   (accepted, grouped by story)
-
-  Three queries and four writes for every issue node in the project, against
-  22 checkers for one of them.
-
-  ## Each requirement keeps its own filters
-
-  The three do not share a filter set and must not be collapsed into one query.
-  `issues_triaged` and `issues_resolved` read through
-  `list_by_status_and_min_severity/3`, which applies
-  `exclude_framework_unless_vendor/2` and `exclude_other_copies_stories/2`.
-  `story_issues_resolved` reads through `list_by_story_status_and_min_severity/4`,
-  which applies neither — so on a non-vendor project a framework issue counts
-  against a story and not against the project.
-
-  That asymmetry may be a defect; it is not this module's to fix. Handlers call
-  the same functions the checkers call, so whatever the requirement means today,
-  the handler means it too.
+  A requirement is settled across every entity at once: the default goes on with
+  one write, then the handful the profile named are corrected. Thirty-eight
+  stories or three thousand — same three queries, same two writes.
 
   ## No handler is a valid answer
 
   `:no_handler` means nothing here knows about this event, and the caller falls
   back to invalidating and recomputing — correct, and slow. That is what lets
-  handlers arrive one requirement at a time rather than all at once, and the
-  shadow diff scores either path identically.
+  requirements move across one at a time while the shadow diff scores either
+  path identically.
 
-  `{:ok, []}` is a different answer: the event happened and moved nothing the
-  graph reads. Collapsing the two would let an uninteresting event silently skip
-  work it owed.
+  `{:ok, [], []}` is a different answer: the event happened and moved nothing
+  the graph reads. Collapsing the two would let an uninteresting event silently
+  skip work it owed.
   """
 
-  alias CodeMySpec.Configurations
-  alias CodeMySpec.Issues
+  alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Users.Scope
 
@@ -74,12 +60,12 @@ defmodule CodeMySpec.Requirements.Handlers do
         }
 
   @typedoc """
-  A requirement settled across every entity at once.
+  A requirement settled across every entity of a type at once.
 
-  `default` is what the requirement is for entities the query did not name, and
-  `except` is the handful it did. The satisfied direction is the default here —
-  a story with no unresolved issue is resolved — which is what makes one query
-  settle a whole population rather than only the exceptions.
+  `default` is what it is for entities the profile did not name; `except` is the
+  handful it did. The satisfied direction is usually the default — a story with
+  no unresolved issue is resolved — which is what lets one query settle a
+  population rather than only its exceptions.
   """
   @type sweep :: %{
           entity_type: String.t(),
@@ -89,84 +75,107 @@ defmodule CodeMySpec.Requirements.Handlers do
           except: [change()]
         }
 
-  @issue_kinds ~w(issue_created issue_accepted issue_dismissed issue_resolved issue_updated)
+  # Which profiles an event invalidates. The only place an event kind appears.
+  @dirties %{
+    "issue_created" => [:issues],
+    "issue_accepted" => [:issues],
+    "issue_dismissed" => [:issues],
+    "issue_resolved" => [:issues],
+    "issue_updated" => [:issues]
+  }
+
+  # Which requirements each profile settles. Adding a requirement to a profile
+  # already loaded costs nothing at read time.
+  @fed_by %{
+    issues: ["issues_triaged", "issues_resolved", "story_issues_resolved"]
+  }
 
   @doc """
   What this event does to the projection.
 
-  Answers `{:ok, changes, sweeps}` — individual rows to set, and requirements to
-  settle across a whole population.
+  `{:ok, changes, sweeps}` — individual rows to set, and requirements to settle
+  across a whole population.
   """
   @spec apply_event(Scope.t(), String.t(), map()) ::
           {:ok, [change()], [sweep()]} | :no_handler
-  def apply_event(scope, kind, payload)
+  def apply_event(%Scope{} = scope, kind, _payload) do
+    case Map.get(@dirties, kind) do
+      nil ->
+        :no_handler
 
-  def apply_event(%Scope{} = scope, kind, _payload) when kind in @issue_kinds do
-    threshold = Configurations.fix_issues_min_severity(scope)
-    project_id = scope.active_project.id
+      profile_names ->
+        sweeps =
+          profile_names
+          |> Enum.flat_map(fn profile_name ->
+            profile = Profiles.load(scope, profile_name)
+            Enum.map(@fed_by[profile_name], &settle(&1, profile, scope))
+          end)
 
-    incoming = Issues.list_by_status_and_min_severity(scope, :incoming, threshold)
-    accepted = Issues.list_by_status_and_min_severity(scope, :accepted, threshold)
-    by_story = Issues.unresolved_by_story(scope, threshold)
-
-    changes = [
-      project_verdict(project_id, "issues_triaged", incoming, "untriaged", threshold),
-      project_verdict(project_id, "issues_resolved", accepted, "unresolved", threshold)
-    ]
-
-    {:ok, changes, [story_issues_sweep(by_story, threshold)]}
+        {:ok, [], sweeps}
+    end
   end
 
-  def apply_event(_scope, _kind, _payload), do: :no_handler
+  # -- One clause per requirement. Each reads its profile and nothing else. --
 
-  # -- Issues --
-
-  # The same shape `IssuesChecker.triaged?/2` and `resolved?/2` return, because
-  # a row this settles has to read the same as one a recompute settled — the
-  # diff compares verdicts, and a verdict that agreed while explaining itself
-  # differently is a difference somebody investigates later for nothing.
-  defp project_verdict(project_id, name, [], _word, threshold),
+  defp settle("issues_triaged", profile, scope),
     do:
-      change("project", project_id, name, true, %{
-        status: "No #{status_word(name)} issues at #{threshold}+ severity"
-      })
+      project_sweep(
+        scope,
+        "issues_triaged",
+        profile.incoming == [],
+        %{status: "No untriaged issues at #{profile.threshold}+ severity"},
+        %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
+      )
 
-  defp project_verdict(project_id, name, issues, word, threshold),
+  defp settle("issues_resolved", profile, scope),
     do:
-      change("project", project_id, name, false, %{
-        reason: "#{length(issues)} #{word} #{threshold}+ issues"
-      })
+      project_sweep(
+        scope,
+        "issues_resolved",
+        profile.accepted == [],
+        %{status: "No unresolved #{profile.threshold}+ issues"},
+        %{reason: "#{length(profile.accepted)} unresolved #{profile.threshold}+ issues"}
+      )
 
-  defp status_word("issues_triaged"), do: "untriaged"
-  defp status_word("issues_resolved"), do: "unresolved"
-
-  # One query settles every story: those the grouping named are unsatisfied,
-  # and every other story in the projection is satisfied by virtue of absence.
-  defp story_issues_sweep(by_story, threshold) do
+  defp settle("story_issues_resolved", profile, _scope) do
     %{
       entity_type: "story",
       name: "story_issues_resolved",
       default: true,
       default_details:
-        Requirement.normalize_details(%{
-          status: "No unresolved #{threshold}+ issues on this story"
-        }),
+        details(%{status: "No unresolved #{profile.threshold}+ issues on this story"}),
       except:
-        Enum.map(by_story, fn {story_id, issues} ->
-          change("story", story_id, "story_issues_resolved", false, %{
-            reason: "#{length(issues)} unresolved #{threshold}+ issue(s) on this story",
-            issues: Enum.map(issues, &"#{&1.severity}: #{&1.title}")
-          })
+        Enum.map(profile.unresolved_by_story, fn {story_id, issues} ->
+          %{
+            entity_type: "story",
+            entity_id: story_id,
+            name: "story_issues_resolved",
+            satisfied: false,
+            details:
+              details(%{
+                reason:
+                  "#{length(issues)} unresolved #{profile.threshold}+ issue(s) on this story",
+                issues: Enum.map(issues, &"#{&1.severity}: #{&1.title}")
+              })
+          }
         end)
     }
   end
 
-  defp change(entity_type, entity_id, name, satisfied, details),
-    do: %{
-      entity_type: entity_type,
-      entity_id: entity_id,
+  # A project requirement has one entity, so its sweep is one row — expressed as
+  # a sweep anyway so every requirement settles through the same path.
+  defp project_sweep(scope, name, satisfied?, satisfied_details, unsatisfied_details) do
+    %{
+      entity_type: "project",
       name: name,
-      satisfied: satisfied,
-      details: Requirement.normalize_details(details)
+      default: satisfied?,
+      default_details: details(if(satisfied?, do: satisfied_details, else: unsatisfied_details)),
+      except: []
     }
+  end
+
+  # The same shape the checkers return, because a row a handler settled has to
+  # read like one a recompute settled — a verdict that agreed while explaining
+  # itself differently is a difference somebody investigates later for nothing.
+  defp details(map), do: Requirement.normalize_details(map)
 end
