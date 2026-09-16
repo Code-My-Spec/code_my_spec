@@ -50,6 +50,23 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   alias CodeMySpec.Personas
   alias CodeMySpec.Users.Scope
 
+  @doc """
+  The same verdict from rows already read.
+
+  `complete?/2` queries twice on every call — every persona, and every
+  persona-role file across every checkout — and it is a project requirement, so
+  an event-settled projection paid both on every drain that touched a file.
+  """
+  @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
+  def complete?(_scope, _entity, %{personas: personas, files: files}),
+    do: verdict_from(personas, index_persona_files(files))
+
+  def complete?(scope, entity, _ctx), do: complete?(scope, entity)
+
+  @doc "Which file roles a persona is described by."
+  @spec persona_roles() :: [atom()]
+  def persona_roles, do: [:persona_summary, :persona_sources]
+
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{active_project_id: project_id} = scope, _entity)
       when not is_nil(project_id) do
@@ -61,19 +78,33 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
          }}
 
       personas ->
-        by_path = synced_persona_files(scope)
-
-        gaps =
-          personas
-          |> Enum.map(&check_persona(by_path, &1))
-          |> Enum.reject(&(&1 == :ok))
-
-        verdict(gaps)
+        verdict_from(personas, synced_persona_files(scope))
     end
   end
 
   def complete?(%Scope{}, _entity) do
     {false, %{reason: "No active project in scope — cannot check personas."}}
+  end
+
+  # The whole rule, over personas and their files however they were fetched, so
+  # the querying path and the profile path cannot answer differently.
+  defp verdict_from([], _by_path),
+    do:
+      {false,
+       %{reason: "No personas on this project. Start a persona research session to add one."}}
+
+  defp verdict_from(personas, by_path) do
+    personas
+    |> Enum.map(&check_persona(by_path, &1))
+    |> Enum.reject(&(&1 == :ok))
+    |> verdict()
+  end
+
+  # `synced_persona_files/1`'s indexing, over rows a profile already read.
+  defp index_persona_files(files) do
+    Enum.reduce(files, %{}, fn file, acc ->
+      Map.update(acc, file.path, file, &better_of(&1, file))
+    end)
   end
 
   defp verdict([]), do: {true, %{status: "all personas complete"}}

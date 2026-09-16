@@ -189,11 +189,14 @@ defmodule CodeMySpec.Requirements.Handlers do
     # otherwise re-read; the rest query for themselves — see
     # `@delegate_requirements`.
     "qa_integration_plan" => [:files],
-    "spex_boundary_ready" => {[:files], []},
-    "personas_complete" => {[:files], []},
-    "architecture_designed" => {[:files, :stories], []},
-    "stories_exist" => {[:stories], []},
-    "work_dispatched" => {[:stories], []}
+    "spex_boundary_ready" => [:files],
+    "personas_complete" => [:personas],
+    # Reads all three now. It used to read nothing and query for itself —
+    # four fresh reads per drain, one of them every component with two
+    # preloads.
+    "architecture_designed" => [:files, :stories, :architecture],
+    "stories_exist" => [:stories],
+    "work_dispatched" => [:stories]
   }
 
   # Requirements whose verdict is a rollup no event determines.
@@ -758,9 +761,57 @@ defmodule CodeMySpec.Requirements.Handlers do
         |> QaIntegrationPlan.evaluate(nil, %{files_by_project: profiles.files.all})
         |> RequirementCalculator.normalize_delegate_result()
 
+      {PersonasChecker, :complete?} ->
+        PersonasChecker.complete?(scope, scope.active_project, profiles.personas)
+
+      {DispatchChecker, :dispatched?} ->
+        DispatchChecker.verdict(dispatch_state(profiles.stories))
+
+      {SpexBoundaryChecker, :complete?} ->
+        # `verdict_from_paths/2` is the same function `complete?/2` calls once it
+        # has queried. The profile already holds every file this checkout has, so
+        # the query was the only part worth skipping.
+        SpexBoundaryChecker.verdict_from_paths(scope, boundary_paths(profiles.files))
+
+      {StoriesChecker, :exist?} ->
+        StoriesChecker.verdict(profiles.stories.stories != [])
+
+      {ArchitectureChecker, :complete?} ->
+        ArchitectureChecker.complete?(scope, scope.active_project, %{
+          files: profiles.files,
+          stories: profiles.stories.stories,
+          components: profiles.architecture.components
+        })
+
       {module, function} ->
         apply(module, function, [scope, scope.active_project])
     end
+  end
+
+  # `EpicDispatch.dispatch_state/1`'s three answers, from the profile.
+  #
+  # Unsatisfied only when nothing is in progress and unassigned work exists —
+  # the one state that wants the main agent to act. Ready matters: an unshaped
+  # story is work waiting to be shaped, not work waiting to be assigned.
+  defp dispatch_state(%{epic_in_progress?: true}), do: {:nothing_to_assign, :in_progress}
+
+  defp dispatch_state(%{stories: stories}) do
+    case Enum.filter(stories, &(&1.ready_for_dev == true and is_nil(&1.epic_id))) do
+      [] -> {:nothing_to_assign, :all_assigned}
+      unassigned -> {:work_to_assign, unassigned}
+    end
+  end
+
+  # The four locations `SpexBoundaryChecker` asks about, out of the files the
+  # profile already read. Over-matching is harmless — every gap re-tests with
+  # `starts_with?` or `MapSet.member?`.
+  defp boundary_paths(files) do
+    prefixes = SpexBoundaryChecker.search_prefixes()
+
+    for file <- files.all,
+        Enum.any?(prefixes, &String.starts_with?(file.path, &1)),
+        into: MapSet.new(),
+        do: file.path
   end
 
   # The unsealed stories, each with the gap it has not closed.

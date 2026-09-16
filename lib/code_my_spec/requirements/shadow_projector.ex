@@ -262,17 +262,43 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # The lock hold that would normally argue against this is not there: sweeps
   # skip rows whose answer did not move, so the steady state locks nothing and
   # a real change locks only what it changed.
+  # One settle per distinct kind, not one per mark.
+  #
+  # A handler is a function of current state: `Handlers.apply_event/3` takes the
+  # kind and ignores the payload, reloads the profiles that kind dirties, and
+  # settles every requirement they move across the whole population. Running it
+  # twice in one drain reaches the same answer and pays for it twice.
+  #
+  # Marks arrive in bulk more often than the design assumed.
+  # `Stories.mark_ready_stories_promoted/2` broadcasts per story, so one
+  # promotion stamping 130 stories emitted 130 `story_changed` marks — and this
+  # settled each of them: four profile loads and eleven sweeps apiece, with
+  # `ArchitectureChecker.orphans/1` preloading every component's stories on
+  # every pass through. That is the whole-project recompute the event path
+  # exists to avoid, 130 times over, for one act.
+  #
+  # Every mark of a handled kind is still returned, because `apply_handlers/2`
+  # drops fallback marks by observation id and needs all of them. Only the first
+  # carries the changes, so `log_handled/2` counts the work once rather than
+  # once per mark.
   defp split_handled(state, marks) do
-    Enum.reduce(marks, {[], []}, fn mark, {handled, unhandled} ->
-      case handler_result(state.scope, mark) do
+    marks
+    |> Enum.group_by(& &1.kind)
+    |> Enum.reduce({[], []}, fn {_kind, kind_marks}, {handled, unhandled} ->
+      case handler_result(state.scope, hd(kind_marks)) do
         {:ok, changes, sweeps} ->
-          {[{mark, changes, settle(state.scope, changes, sweeps)} | handled], unhandled}
+          written = settle(state.scope, changes, sweeps)
+          {attribute(kind_marks, changes, written) ++ handled, unhandled}
 
         :no_handler ->
-          {handled, [mark | unhandled]}
+          {handled, kind_marks ++ unhandled}
       end
     end)
   end
+
+  # The work belongs to the drain, not to each mark that asked for it.
+  defp attribute([first | rest], changes, written),
+    do: [{first, changes, written} | Enum.map(rest, &{&1, [], []})]
 
   defp settle(scope, changes, sweeps) do
     {:ok, written} =

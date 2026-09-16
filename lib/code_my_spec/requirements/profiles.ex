@@ -39,12 +39,16 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Analysis
   alias CodeMySpec.BddRules.Rule
+  alias CodeMySpec.Components
+  alias CodeMySpec.Files
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
+  alias CodeMySpec.Personas
   alias CodeMySpec.Personas.{Persona, PersonaStory}
+  alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Qa.QaAttempt
@@ -54,7 +58,16 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type name :: :issues | :specs | :files | :problems | :links | :stories | :qa
+  @type name ::
+          :issues
+          | :specs
+          | :files
+          | :problems
+          | :links
+          | :stories
+          | :qa
+          | :architecture
+          | :personas
   @type t :: map()
 
   @doc """
@@ -233,6 +246,15 @@ defmodule CodeMySpec.Requirements.Profiles do
 
     %{
       stories: stories,
+      # `work_dispatched` asks whether anything is being built. One `exists?`,
+      # and the stories above answer the other half — which ready ones belong to
+      # no epic — so the checker stops querying for either.
+      epic_in_progress?:
+        Repo.exists?(
+          from(e in CodeMySpec.Epics.Epic,
+            where: e.project_id == ^project_id and e.status == :dispatched
+          )
+        ),
       amigos: %{
         personas_by_story: personas_by_story(story_ids),
         rules_by_story: rules_by_story(project_id),
@@ -264,6 +286,31 @@ defmodule CodeMySpec.Requirements.Profiles do
         |> Enum.group_by(& &1.story_id)
         |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
     }
+  end
+
+  # Personas and the files that describe them.
+  #
+  # Project-wide, not checkout-scoped, and deliberately: a persona describes the
+  # project whichever tree its summary was written in — the reason
+  # `Files.list_project_files_with_roles/2` exists. `personas_complete` used to
+  # issue both of these itself on every drain that touched a file.
+  def load(%Scope{} = scope, :personas) do
+    %{
+      personas: Personas.list_personas(scope),
+      files: Files.list_project_files_with_roles(scope, PersonasChecker.persona_roles())
+    }
+  end
+
+  # Components in the shape the coverage rule reads them.
+  #
+  # `architecture_designed` used to issue this itself, on every drain that
+  # touched files or stories — every component plus two preloads, which is the
+  # query that made a bulk story update look like a whole-project recompute.
+  # A checker that queries for itself is the thing profiles exist to replace;
+  # this one was left behind because it is a rollup and the table said it read
+  # nothing.
+  def load(%Scope{} = scope, :architecture) do
+    %{components: Components.list_components_for_coverage(scope)}
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same
