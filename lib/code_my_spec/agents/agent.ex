@@ -259,14 +259,27 @@ defmodule CodeMySpec.Agents.Agent do
       :provider,
       :working_copy,
       :role,
-      :working_copy_id,
       :project_id,
       :account_id
     ])
+    |> maybe_require_working_copy_id(agent)
     |> foreign_key_constraint(:working_copy_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end
+
+  # Required on creation — every agent starts against a real checkout, and
+  # every caller already supplies one. Not required past that: the column has
+  # to be nullable for `agents_working_copy_id_fkey`'s own `on_delete:
+  # :nilify_all` to null it when that checkout is deleted, and an update with
+  # nothing to do with the working copy — stopping the row, say — must still
+  # be able to land against the row that clause leaves behind. Requiring it
+  # unconditionally made a nulled row not just unreachable but unwritable:
+  # nothing could ever change it again, stop included. Issue `8b591eba`.
+  defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}),
+    do: validate_required(changeset, [:working_copy_id])
+
+  defp maybe_require_working_copy_id(changeset, %__MODULE__{}), do: changeset
 
   # Rule 4, enforced where it cannot be forgotten. A working copy is a git
   # repository whose purpose is to be committed and pushed — `agent.sh` runs
