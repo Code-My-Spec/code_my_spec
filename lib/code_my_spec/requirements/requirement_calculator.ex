@@ -529,10 +529,15 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # No criteria yet (three_amigos hasn't run) falls back to the old
+  # per-story existence check -- a story cannot demand per-criterion
+  # coverage of criteria that do not exist. Drill 12's regression test
+  # (criterion 8186) writes a spex under a criteria-less story and expects
+  # that alone to satisfy the gate.
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
     case AcceptanceCriteria.list_story_criteria(scope, story_id) do
       [] ->
-        {false, %{reason: "no acceptance criteria on this story"}}
+        has_role?(files, role, nil)
 
       criteria ->
         covered_paths =
