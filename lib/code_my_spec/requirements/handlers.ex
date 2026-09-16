@@ -81,13 +81,15 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_accepted" => [:issues],
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
-    "issue_updated" => [:issues]
+    "issue_updated" => [:issues],
+    "analysis_completed" => [:specs]
   }
 
   # Which requirements each profile settles. Adding a requirement to a profile
   # already loaded costs nothing at read time.
   @fed_by %{
-    issues: ["issues_triaged", "issues_resolved", "story_issues_resolved"]
+    issues: ["issues_triaged", "issues_resolved", "story_issues_resolved"],
+    specs: ["bdd_specs_passing"]
   }
 
   @doc """
@@ -159,6 +161,64 @@ defmodule CodeMySpec.Requirements.Handlers do
         end)
     }
   end
+
+  # Three outcomes, and the default is the one most stories are in.
+  #
+  # `SpecsPassingChecker.passing?/3` takes them in order: not `specs_ready` is
+  # an outright failure; `specs_ready` with no fresh spex run passes, because
+  # there is nothing to re-check against; `specs_ready` with a fresh run passes
+  # only if none of this story's own spec files are failing.
+  #
+  # So the sweep defaults to the first — a story nobody has marked ready — and
+  # names the ready ones, which are the few. The alternative, emitting every
+  # story as an exception, is one write per story for a population that is
+  # mostly in one state.
+  defp settle("bdd_specs_passing", profile) do
+    ready = for {story_id, true} <- profile.specs_ready, do: story_id
+
+    %{
+      entity_type: "story",
+      name: "bdd_specs_passing",
+      default: false,
+      default_details: details(%{reason: "Specs have not gone green on a fresh spex run yet"}),
+      except: Enum.map(ready, &ready_story_verdict(&1, profile))
+    }
+  end
+
+  defp ready_story_verdict(story_id, %{spex_fresh?: false}),
+    do:
+      change(
+        "story",
+        story_id,
+        "bdd_specs_passing",
+        true,
+        %{status: "Specs ready (no fresh spex run to re-check against)"}
+      )
+
+  defp ready_story_verdict(story_id, profile) do
+    case Map.get(profile.failing_by_story, story_id, []) do
+      [] ->
+        change("story", story_id, "bdd_specs_passing", true, %{
+          status: "Specs ready and green on the current spex run"
+        })
+
+      failing ->
+        change("story", story_id, "bdd_specs_passing", false, %{
+          reason:
+            "Marked specs-ready, but #{length(failing)} of this story's own specs " <>
+              "are failing on the current spex run"
+        })
+    end
+  end
+
+  defp change(entity_type, entity_id, name, satisfied, detail_map),
+    do: %{
+      entity_type: entity_type,
+      entity_id: entity_id,
+      name: name,
+      satisfied: satisfied,
+      details: details(detail_map)
+    }
 
   # A project requirement has one entity, so its sweep is one row — expressed as
   # a sweep anyway so every requirement settles through the same path.
