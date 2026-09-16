@@ -63,6 +63,45 @@ defmodule CodeMySpec.Requirements.GraphInputs do
 
   @pubsub CodeMySpec.PubSub
 
+  @typedoc "One of the declared kinds. See `kinds/0`."
+  @type kind :: String.t()
+
+  # Every kind of thing that can move the graph, written down once.
+  #
+  # The vocabulary is the forcing function. A writer cannot invent a kind at its
+  # call site and have it quietly become a mark nothing handles — `event/6`
+  # refuses a kind that is not here, so adding a way to move the graph means
+  # adding a line to this list, and `every_declared_event_is_applied_or_counted`
+  # then asks whether it has a handler. A new kind is therefore either applied
+  # or explicitly recorded as falling back; it cannot be neither.
+  #
+  # Ordered by the writer that emits it, because that is how it is read when
+  # something is missing.
+  @kinds ~w(
+    story_created
+    story_changed
+    story_deleted
+    story_readiness_changed
+    issue_created
+    issue_accepted
+    issue_dismissed
+    issue_resolved
+    issue_updated
+    issue_changed
+    component_created
+    component_changed
+    component_deleted
+    files_synced
+    analysis_completed
+    problems_changed
+    deploy_changed
+    qa_attempt_submitted
+  )
+
+  @doc "Every declared event kind."
+  @spec kinds() :: [kind()]
+  def kinds, do: @kinds
+
   @doc "Topic for one project's graph-input changes."
   @spec topic(Ecto.UUID.t()) :: String.t()
   def topic(project_id) when is_binary(project_id), do: "project:#{project_id}:graph_inputs"
@@ -108,13 +147,50 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   means "something moved and this writer cannot say what", which is recorded as
   project-wide rather than dropped.
   """
-  @spec announce(Scope.t() | Ecto.UUID.t() | nil, String.t(), [Invalidations.entity()]) :: :ok
-  def announce(scope_or_project_id, source, entities \\ []) when is_binary(source) do
+  @spec announce(Scope.t() | Ecto.UUID.t() | nil, String.t(), [Invalidations.entity()], vantage()) ::
+          :ok
+  def announce(scope_or_project_id, source, entities, vantage)
+      when is_binary(source) and vantage in [:project_wide, :this_checkout] do
     obs = observation_id()
     Logger.info("[#{source}] announcing a graph change", obs: obs)
-    Invalidations.record(project_id(scope_or_project_id), source, entities, obs)
+
+    Invalidations.record(
+      project_id(scope_or_project_id),
+      source,
+      entities,
+      obs,
+      working_copy_id(scope_or_project_id, vantage)
+    )
+
     changed(scope_or_project_id, obs)
   end
+
+  @typedoc """
+  Whose answers this write moves.
+
+  A verdict is a statement about one checkout — `Preloader` scopes its files to
+  one, so "this component has a spec" is only true *from somewhere*. So an
+  observation has to say which checkout's answers it moves, or the projector
+  cannot route it and has to settle all of them.
+
+  `:this_checkout` is the writer saying its change is about the checkout it is
+  speaking from: files synced, an analyzer run, a component re-derived from a
+  tree. `:project_wide` is the writer saying it is not — a story renamed, an
+  issue filed, a criterion added — which every checkout reads and which
+  therefore settles all of them.
+
+  Declared by the writer rather than taken from the ambient scope, because the
+  scope cannot tell the two apart. An agent renaming a story has an active
+  checkout on its scope and the rename is still not about that checkout;
+  inheriting it would settle the agent's own worktree and leave the other eight
+  carrying the old title. `:project_wide` is the default for the same reason
+  naming no entities is: a writer that has not thought about it must fan out,
+  never narrow.
+  """
+  @type vantage :: :project_wide | :this_checkout
+
+  defp working_copy_id(%Scope{active_working_copy_id: copy}, :this_checkout), do: copy
+  defp working_copy_id(_scope, _vantage), do: nil
 
   defp project_id(%Scope{active_project_id: project_id}), do: project_id
   defp project_id(project_id) when is_binary(project_id), do: project_id
@@ -154,11 +230,27 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   a mark, never less, and adding one cannot make a projection wronger than it
   was.
   """
-  @spec event(Scope.t() | Ecto.UUID.t() | nil, String.t(), String.t(), map(), [
-          Invalidations.entity()
-        ]) :: :ok
-  def event(scope_or_project_id, source, kind, payload, entities \\ [])
-      when is_binary(source) and is_binary(kind) do
+  @spec event(
+          Scope.t() | Ecto.UUID.t() | nil,
+          String.t(),
+          String.t(),
+          map(),
+          [Invalidations.entity()],
+          vantage()
+        ) :: :ok
+  def event(scope_or_project_id, source, kind, payload, entities, vantage)
+      when is_binary(source) and is_binary(kind) and vantage in [:project_wide, :this_checkout] do
+    kind in @kinds ||
+      raise ArgumentError, """
+      #{kind} is not a declared graph event.
+
+      Add it to `GraphInputs.kinds/0`, then either give it a handler in
+      `Handlers` or add it to the falls-back list in
+      `every_declared_event_is_applied_or_counted_test`. An undeclared kind
+      would be recorded as a mark nothing knows how to apply and silently cost
+      a recompute on every occurrence.
+      """
+
     obs = observation_id()
     Logger.info("[#{source}] #{kind}", obs: obs)
 
@@ -168,7 +260,8 @@ defmodule CodeMySpec.Requirements.GraphInputs do
       kind,
       payload,
       entities,
-      obs
+      obs,
+      working_copy_id(scope_or_project_id, vantage)
     )
 
     changed(scope_or_project_id, obs)

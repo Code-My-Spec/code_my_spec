@@ -67,7 +67,7 @@ defmodule CodeMySpec.Configurations do
     # in the project. Turning it on is work appearing for a role that has
     # nothing to read that would tell it so.
     case result do
-      {:ok, _config} -> GraphInputs.announce(scope, "Configurations")
+      {:ok, _config} -> GraphInputs.announce(scope, "Configurations", [], :project_wide)
       {:error, _changeset} -> :ok
     end
 

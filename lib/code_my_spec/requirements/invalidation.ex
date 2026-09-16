@@ -44,6 +44,12 @@ defmodule CodeMySpec.Requirements.Invalidation do
     field :kind, :string
     field :payload, :map
 
+    # Which checkout this mark was recorded from, and `nil` for a writer whose
+    # change is not about one. A verdict is per vantage, so a file sync in one
+    # worktree must not drag the other eight through a settle — and a story
+    # renamed, which every vantage reads, must.
+    field :working_copy_id, :binary_id
+
     belongs_to :project, Project, type: :binary_id
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story

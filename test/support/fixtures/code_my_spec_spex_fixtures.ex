@@ -4567,7 +4567,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # frontier left the graph believing the specs had never passed, so every
     # scenario built on that frontier was handed `FixBddSpecs` for the story the
     # fixture had just prepared — criteria 6529 and 6533, deterministically.
-    :ok = GraphInputs.announce(scope, "Analysis")
+    :ok = GraphInputs.announce(scope, "Analysis", [], :project_wide)
 
     # And settled before returning, so the graph agrees with the world this
     # fixture has just finished building.

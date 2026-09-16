@@ -79,7 +79,10 @@ defmodule CodeMySpec.Qa.QaAttempts do
       "Qa",
       "qa_attempt_submitted",
       %{},
-      GraphInputs.story_entities(result)
+      GraphInputs.story_entities(result),
+      # An attempt is a statement about the story, not about the tree it was
+      # run against.
+      :project_wide
     )
   end
 

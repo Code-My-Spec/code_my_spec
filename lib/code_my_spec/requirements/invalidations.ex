@@ -56,15 +56,15 @@ defmodule CodeMySpec.Requirements.Invalidations do
   `:unknown` rather than `:project` is what an unnarrowed writer gets.
   """
   @spec record(Ecto.UUID.t() | nil, String.t(), [entity()], String.t() | nil) :: :ok
-  def record(project_id, source, entities, observation_id \\ nil)
+  def record(project_id, source, entities, observation_id \\ nil, copy \\ nil)
 
-  def record(project_id, source, entities, observation_id) when is_binary(project_id) do
-    if enabled?(), do: do_record(project_id, source, entities, observation_id)
+  def record(project_id, source, entities, observation_id, copy) when is_binary(project_id) do
+    if enabled?(), do: do_record(project_id, source, entities, observation_id, copy)
 
     :ok
   end
 
-  def record(_no_project, _source, _entities, _observation_id), do: :ok
+  def record(_no_project, _source, _entities, _observation_id, _copy), do: :ok
 
   @doc """
   Whether marks are being recorded at all.
@@ -77,7 +77,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
   @spec enabled?() :: boolean()
   def enabled?, do: Application.get_env(:code_my_spec, :graph_invalidations, true)
 
-  defp do_record(project_id, source, entities, observation_id) do
+  defp do_record(project_id, source, entities, observation_id, copy) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     rows =
@@ -88,6 +88,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
         |> columns()
         |> Map.merge(%{
           project_id: project_id,
+          working_copy_id: copy,
           source: source,
           observation_id: observation_id,
           inserted_at: now
@@ -115,7 +116,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
           [entity()],
           String.t() | nil
         ) :: :ok
-  def record_event(project_id, source, kind, payload, entities, observation_id)
+  def record_event(project_id, source, kind, payload, entities, observation_id, copy \\ nil)
       when is_binary(project_id) do
     if enabled?() do
       now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
@@ -125,6 +126,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
         |> columns()
         |> Map.merge(%{
           project_id: project_id,
+          working_copy_id: copy,
           source: source,
           kind: kind,
           payload: payload,
@@ -148,6 +150,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
           |> columns()
           |> Map.merge(%{
             project_id: project_id,
+            working_copy_id: copy,
             source: source,
             kind: "invalidate",
             observation_id: observation_id,
@@ -161,7 +164,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
     :ok
   end
 
-  def record_event(_no_project, _source, _kind, _payload, _entities, _obs), do: :ok
+  def record_event(_no_project, _source, _kind, _payload, _entities, _obs, _copy), do: :ok
 
   @doc "Marks this project has accumulated, oldest first, left in place."
   @spec pending(Ecto.UUID.t()) :: [Invalidation.t()]

@@ -51,7 +51,12 @@ defmodule CodeMySpec.AcceptanceCriteria do
     key = scope.active_account_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:acceptance_criteria", message)
 
-    GraphInputs.announce(scope, "AcceptanceCriteria", GraphInputs.story_entities(message))
+    GraphInputs.announce(
+      scope,
+      "AcceptanceCriteria",
+      GraphInputs.story_entities(message),
+      :project_wide
+    )
   end
 
   @doc "Returns the list of acceptance criteria for a story."

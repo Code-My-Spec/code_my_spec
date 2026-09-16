@@ -119,7 +119,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
         # `QaAttempts.announce_graph_change/2` — after the row commits, only
         # on this success path, so a recompute never reads a run that might
         # still roll back.
-        GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [])
+        GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [], :this_checkout)
 
         # The internal half of story 1042. `maybe_notify/4` above is the push to
         # the *person*; this is the push to the agents running in our own BEAM,

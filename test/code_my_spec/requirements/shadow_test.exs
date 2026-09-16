@@ -128,7 +128,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       project_live(scope)
       project_shadow(scope)
 
-      GraphInputs.announce(scope, "Test", [])
+      GraphInputs.announce(scope, "Test", [], :project_wide)
       assert Invalidations.pending(scope.active_project_id) != []
 
       :ok = ShadowProjector.settle(scope.active_project_id)

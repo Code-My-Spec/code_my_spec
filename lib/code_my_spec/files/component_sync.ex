@@ -263,7 +263,8 @@ defmodule CodeMySpec.Files.ComponentSync do
       GraphInputs.announce(
         scope,
         "Files.ComponentSync",
-        [:project | Enum.map(changed_component_ids, &{"component", &1})]
+        [:project | Enum.map(changed_component_ids, &{"component", &1})],
+        :this_checkout
       )
 
   defp compute_changed_ids(synced_components, existing_map) do

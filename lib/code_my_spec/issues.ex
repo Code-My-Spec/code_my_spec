@@ -404,7 +404,8 @@ defmodule CodeMySpec.Issues do
       "Issues",
       event_kind(message),
       event_payload(message),
-      graph_entities(message)
+      graph_entities(message),
+      :project_wide
     )
   end
 

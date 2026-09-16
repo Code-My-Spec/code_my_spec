@@ -126,6 +126,16 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_attempt_submitted" => [:qa]
   }
 
+  @doc """
+  The event kinds this module can apply.
+
+  Read by `every_declared_event_is_applied_or_counted_test` against
+  `GraphInputs.kinds/0`, so a kind that is declared and unhandled has to be
+  written down as falling back rather than discovered as a cost.
+  """
+  @spec handled_kinds() :: [String.t()]
+  def handled_kinds, do: Map.keys(@dirties)
+
   # ## What is deliberately not here
   #
   # An event kind may only appear in `@dirties` once its handlers settle

@@ -75,7 +75,10 @@ defmodule CodeMySpec.Stories do
       "Stories",
       kind || story_event_kind(message),
       %{},
-      graph_entities(message)
+      graph_entities(message),
+      # A story is not a checkout's, so a rename made from inside a worktree
+      # still moves what every checkout answers about it.
+      :project_wide
     )
   end
 

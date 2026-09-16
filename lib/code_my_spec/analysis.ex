@@ -409,7 +409,7 @@ defmodule CodeMySpec.Analysis do
     # now wakes only for work that *appeared* — so this recomputes every turn,
     # which is cheap and per-entity, and wakes nobody unless the run genuinely
     # unblocked something.
-    GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [])
+    GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [], :this_checkout)
   end
 
   @doc """
