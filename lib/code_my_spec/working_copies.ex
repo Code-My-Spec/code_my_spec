@@ -361,10 +361,27 @@ defmodule CodeMySpec.WorkingCopies do
         Repo.rollback(:not_found)
 
       copy ->
-        # Cleared first. The index permits one row per project with `main`
-        # true, so writing the new one while the old still holds it is a
-        # constraint violation rather than a replacement.
-        from(w in WorkingCopy, where: w.project_id == ^project_id and w.main)
+        # Cleared first, and never the copy being designated.
+        #
+        # The index permits one row per project with `main` true, so writing the
+        # new one while the old still holds it is a constraint violation rather
+        # than a replacement. That is why the clear is here. Excluding the target
+        # is why re-designating the copy that already holds it works.
+        #
+        # Without the exclusion this cleared the designation it was asked to
+        # make, and answered `{:ok, copy}` while doing it. The clear set the
+        # target's row to `false`; the changeset below was then built from the
+        # struct fetched *before* it, which still said `true`, so setting
+        # `main: true` was no change at all and `Repo.update/1` issued no
+        # statement. The row ended `false`, the returned struct said `true`, and
+        # the caller was told it had succeeded.
+        #
+        # Reached through the join path, which designates the first checkout to
+        # report a root — so designating that same copy again, the ordinary
+        # thing to do from the designation page, silently un-designated it.
+        from(w in WorkingCopy,
+          where: w.project_id == ^project_id and w.main and w.id != ^working_copy_id
+        )
         |> Repo.update_all(set: [main: false])
 
         case copy |> WorkingCopy.changeset(%{main: true}) |> Repo.update() do
