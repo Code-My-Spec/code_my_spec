@@ -209,12 +209,6 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec reconcile(Scope.t(), [map()]) :: map()
   def reconcile(%Scope{} = scope, observations) when is_list(observations) do
-    # Snapshot existing rows up front so we can compute fingerprint diffs
-    # (real "changed paths") and capture the role of files that are about
-    # to be removed (so embedding cleanup knows the source/path tuple).
-    existing_records = Files.list_files(scope)
-    existing_by_path = Map.new(existing_records, &{&1.path, &1})
-
     # Ownership is decided here, against this server's live domain, and whatever
     # the harness worked out is discarded.
     #
@@ -236,7 +230,6 @@ defmodule CodeMySpec.Files.FileSync do
     observations =
       observations
       |> Scanner.resolve_owners(Files.read_model(scope))
-      |> keep_backfilled_owners(existing_by_path)
 
     # And record where each spex file is, for criteria that do not already say.
     # The same reasoning as re-resolving ownership above: the association should
@@ -245,42 +238,30 @@ defmodule CodeMySpec.Files.FileSync do
     # directions can silently stop agreeing.
     claim_spec_paths(scope, observations)
 
+    # One statement, and it is both the write and the answer to what moved.
+    #
+    # `upsert_files/2` updates a conflicting row only where a replaceable column
+    # differs and returns exactly what it touched, so `changed` is Postgres's
+    # account rather than a comparison this module keeps in step by hand. It
+    # used to be the latter: load the whole file table, diff eight fields per
+    # observation, upsert the survivors — a ~5,100-row read on every manifest to
+    # avoid writing rows that had not moved (4,157 of them on a rejoin where
+    # nothing on disk had, which is what exhausted the connection pool —
+    # `query_canceled ... while inserting index tuple in relation "files"`,
+    # 1aed7edf, 600fbb3a).
+    #
+    # It also makes hydrating and reconciling one operation. A cold table
+    # conflicts with nothing, so every row inserts and every row comes back.
     {upserted, changed} =
       case observations do
-        [] ->
-          {0, []}
-
-        _ ->
-          # Only the rows that would actually change. This used to upsert every
-          # observation on every manifest — 4,157 rows re-written on a rejoin
-          # where nothing on disk had moved, eight chunked `insert_all`s and the
-          # index maintenance behind them. Under a rejoin loop that is what
-          # exhausted the connection pool: `query_canceled ... while inserting
-          # index tuple in relation "files"`, then the upgrade of the next
-          # socket dying in the queue behind it (1aed7edf, 600fbb3a).
-          #
-          # The diff was already being computed here and used only to decide
-          # what to re-embed.
-          changed = changed_entries(observations, existing_by_path)
-
-          {count, _} =
-            case changed do
-              [] -> {0, []}
-              _ -> Files.upsert_files(scope, changed)
-            end
-
-          {count, changed}
+        [] -> {0, []}
+        _ -> Files.upsert_files(scope, observations)
       end
 
     # Remove files no longer on disk + their orphaned problems (otherwise
     # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(observations, & &1.path)
-    current_path_set = MapSet.new(current_paths)
-
-    removed_records =
-      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
-
-    {removed, _} = Files.delete_removed(scope, current_paths)
+    {removed, removed_records} = Files.delete_removed(scope, current_paths)
     {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
 
     if orphaned > 0 do
@@ -650,134 +631,6 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  # A `nil` from `resolve_owners/2` means "I have no rule for this file", not
-  # "this file has no owner", and the two must not be written the same way.
-  #
-  # `component_id` has a second writer. `ComponentSync.backfill_file_owners/2`
-  # claims `test/<path>_test.exs` for the component it tests, and by declared
-  # module for the Phoenix files whose location does not match their name — and
-  # it is careful never to steal, matching only `is_nil(f.component_id)`.
-  # `resolve_owners/2` cannot make that link at all: it matches a file's
-  # declared module against `component_by_module`, and a test file declares
-  # `CodeMySpec.Git.CLITest` while the component is `CodeMySpec.Git.CLI`. So it
-  # answered `nil` for every test file, wrote that over the backfill, and the
-  # backfill put it back inside the same transaction. Next scan, again — an
-  # oscillation that ran on every sync of every working copy (`d698ab0e`).
-  #
-  # Preserving costs nothing in correctness: the end state is what it already
-  # was, because the backfill won every round anyway. What goes is the write
-  # that was always immediately undone, and with it the two rows that made
-  # `changed_entries` permanently non-empty and kept the component projection
-  # from ever skipping.
-  #
-  # `story_id` is deliberately not preserved. Nothing else writes it, so a `nil`
-  # there really is this function's answer — a spex file whose criterion was
-  # deleted should lose its story, and holding the old one would be the mirror
-  # bug.
-  defp keep_backfilled_owners(observations, existing_by_path) do
-    Enum.map(observations, fn entry ->
-      with nil <- Map.get(entry, :component_id),
-           %{component_id: stored} when not is_nil(stored) <-
-             Map.get(existing_by_path, entry.path) do
-        Map.put(entry, :component_id, stored)
-      else
-        _ -> entry
-      end
-    end)
-  end
-
-  # Entries the stored row does not already say.
-  #
-  # This used to compare the fingerprint alone, which was right for its original
-  # job — deciding what to re-embed — and wrong for the one it has now, deciding
-  # what to write. Ownership is re-resolved here on every manifest against the
-  # server's live read model, so a spex file whose story was created *after* the
-  # harness joined gets a `story_id` with its content untouched and its
-  # fingerprint identical. Judged on fingerprint, that entry is unchanged and
-  # would never be written, and `bdd_specs_exist` would stay dark on a story
-  # whose spec file is right there on disk — the Drill 12 failure, which this
-  # codebase has read as a dead file watcher four times.
-  #
-  # So the comparison is every column an upsert would overwrite, taken from
-  # `Files.replaceable_fields/0` rather than restated here. A field added to the
-  # upsert is compared from the moment it is added.
-  #
-  # A missing key is not "equal to nil": an entry that omits a field it does not
-  # know about must not silently claim the stored value. `Map.fetch/2` says
-  # which, and an absent key counts as a difference — the safe direction, since
-  # the cost is writing a row that did not need it.
-  defp changed_entries(entries, existing_by_path) do
-    fields = Files.replaceable_fields()
-
-    changed =
-      Enum.filter(entries, fn entry ->
-        case Map.get(existing_by_path, entry.path) do
-          nil -> true
-          record -> Enum.any?(fields, &differs?(entry, record, &1))
-        end
-      end)
-
-    explain_changes(changed, existing_by_path, fields)
-    changed
-  end
-
-  # Below this many, say which files changed and on which field. Above it, the
-  # count is the story and per-file lines would be thousands of them.
-  @explain_changes_below 10
-
-  # Why these rows are being written.
-  #
-  # A row that reports itself changed on every scan while the file never moves
-  # is a false positive, and it is invisible by construction: the write happens,
-  # the answer stays correct, and the only symptom is work that did not need
-  # doing plus a component projection that never gets to skip. Two files did
-  # exactly that on the day the diff shipped, matching on every column an
-  # inspection could see — and finding the field by guessing failed twice.
-  #
-  # At :info rather than :debug because the `web.log` handler is pinned at
-  # :info, so a debug line here reaches nobody. The threshold is what makes that
-  # affordable: a steady state changes a handful of files, and a bulk sync says
-  # nothing per-file at all.
-  defp explain_changes([], _existing_by_path, _fields), do: :ok
-
-  defp explain_changes(changed, _existing_by_path, _fields)
-       when length(changed) >= @explain_changes_below,
-       do: :ok
-
-  defp explain_changes(changed, existing_by_path, fields) do
-    detail =
-      Enum.map_join(
-        changed,
-        "; ",
-        &explain_change(&1, Map.get(existing_by_path, &1.path), fields)
-      )
-
-    Logger.info("[FileSync] writing #{length(changed)} row(s) — #{detail}")
-  end
-
-  defp explain_change(entry, nil, _fields), do: "#{entry.path}: new"
-
-  defp explain_change(entry, record, fields) do
-    reasons =
-      fields
-      |> Enum.filter(&differs?(entry, record, &1))
-      |> Enum.map_join(", ", &describe_difference(entry, record, &1))
-
-    "#{entry.path}: #{reasons}"
-  end
-
-  defp describe_difference(entry, record, field) do
-    "#{field} #{inspect(Map.get(entry, field), limit: 2)} != " <>
-      "#{inspect(Map.get(record, field), limit: 2)}"
-  end
-
-  defp differs?(entry, record, field) do
-    case Map.fetch(entry, field) do
-      {:ok, value} -> value != Map.get(record, field)
-      :error -> true
-    end
-  end
-
   @doc """
   Run the embedding side of sync against the currently-tracked corpus,
   without re-walking the filesystem or upserting File records.
@@ -958,15 +811,15 @@ defmodule CodeMySpec.Files.FileSync do
   defp finish_sync_changed(%Scope{} = scope, env, file_entries, start) do
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Snapshot existing rows up front so the embedding hook can compute
-    # fingerprint diffs and capture roles for files about to be removed.
-    existing_records = Files.list_files(scope)
-    existing_by_path = Map.new(existing_records, &{&1.path, &1})
-    existing_mtime_map = Map.new(existing_records, &{&1.path, &1.mtime})
+    # Two columns, not the whole table. This read exists for the mtime
+    # pre-filter below and nothing else now — what changed comes back from the
+    # upsert, and what was removed comes back from the delete.
+    existing_mtime_map = Files.mtimes_by_path(scope)
 
-    # mtime is the cheap pre-filter: only process files that are new or
-    # have a newer mtime. Fingerprint diff still gates embedding work,
-    # so an mtime bump without a content change is a no-op downstream.
+    # mtime is the cheap pre-filter, and it is about disk rather than the
+    # database: only files that are new or newer get opened and fingerprinted.
+    # Whether their content actually moved is Postgres's to decide, so an mtime
+    # bump without a content change is a no-op downstream.
     mtime_changed_entries =
       Enum.filter(file_entries, fn entry ->
         case Map.get(existing_mtime_map, entry.path) do
@@ -995,10 +848,10 @@ defmodule CodeMySpec.Files.FileSync do
               &Scanner.validate_entry(&1, env, component_by_id, strict?)
             )
 
-          embedding_changed = changed_entries(validated_entries, existing_by_path)
-
-          {count, _} = Files.upsert_files(scope, validated_entries)
-          {count, embedding_changed}
+          # The upsert says what moved. `validated_entries` is everything whose
+          # mtime bumped; the rows that come back are the ones whose content,
+          # role, ownership or validity actually differs.
+          Files.upsert_files(scope, validated_entries)
       end
 
     # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
@@ -1014,12 +867,7 @@ defmodule CodeMySpec.Files.FileSync do
     # Remove files no longer on disk + their orphaned problems (otherwise
     # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(file_entries, & &1.path)
-    current_path_set = MapSet.new(current_paths)
-
-    removed_records =
-      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
-
-    {removed, _} = Files.delete_removed(scope, current_paths)
+    {removed, removed_records} = Files.delete_removed(scope, current_paths)
     {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
 
     if orphaned > 0 do
