@@ -61,6 +61,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
@@ -592,7 +593,22 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # to do is not charged a turn — over-waking costs a rendered menu and
     # under-waking is the ninety minutes of silence this exists to end.
     computed = vantages(state)
-    actionable = Enum.flat_map(computed, &recompute_vantage(state, &1))
+
+    # Measured here rather than around the whole clause, because the clause also
+    # broadcasts, wakes agents and reports the shadow — work this pass does
+    # *because* the graph moved, not work the graph cost. A number that included
+    # waking would grow with the number of agents connected and say nothing
+    # about the project's size.
+    actionable =
+      DrainCost.measure(
+        %{
+          kind: :pass,
+          project_id: state.project_id,
+          observations: length(consumed),
+          vantages: length(computed)
+        },
+        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+      )
 
     account_for(consumed)
     report_shadow(state, computed)

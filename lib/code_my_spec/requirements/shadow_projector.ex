@@ -53,6 +53,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   require Logger
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Invalidation
@@ -196,9 +197,21 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # through to `plan/2` exactly as before. That is what lets handlers arrive
     # one requirement at a time instead of all at once: the projection is never
     # wrong in the meantime, only slower where a handler is missing.
-    {handled, unhandled} = apply_handlers(state, marks)
-    state = if unhandled == [], do: state, else: run(plan(state, unhandled), state, config)
-    log_handled(state, handled)
+    # `handled` and `recomputed` are the applied-versus-re-derived split, which
+    # is what a cost reading has to say for either number to mean anything: a
+    # drain that fell back is a pass wearing this label, and comparing it
+    # against one that applied its events would be comparing two systems.
+    state =
+      DrainCost.measure(
+        %{kind: :event, project_id: state.project_id, observations: length(marks)},
+        fn ->
+          {handled, unhandled} = apply_handlers(state, marks)
+          state = if unhandled == [], do: state, else: run(plan(state, unhandled), state, config)
+          log_handled(state, handled)
+
+          {state, %{handled: length(handled), recomputed: length(unhandled)}}
+        end
+      )
 
     # Only once the writes are done. A mark consumed before the work it asks
     # for is a mark that a crash turns into a permanently stale entity, which
