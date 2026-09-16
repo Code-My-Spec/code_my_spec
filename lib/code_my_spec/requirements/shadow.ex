@@ -58,6 +58,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -129,19 +130,30 @@ defmodule CodeMySpec.Requirements.Shadow do
   @doc """
   How far the shadow is from the live projection, for this reader's vantage.
 
-  Scoped through the project's entity ids the same way `Projection.load/2`
-  scopes its own read, so the two sides are asked about the same population.
+  Scoped through the *context*, not through the project's tables, and the
+  distinction is the whole difference between a meaningful number and a
+  meaningless one. `Preloader.load/1` narrows stories per working copy —
+  assigned here or unassigned — so a vantage's context holds fewer stories than
+  the project has, and `Projection.load/2` reads rows for exactly that set.
 
-  Reads those ids itself rather than taking a context, which is what lets this
-  be called from the write path after a pass rather than from inside one. Two
-  id queries against a context that is already loaded would be waste; against a
-  caller that has none, they are the difference between this being callable and
-  not.
+  The live table holds more than that. `delete_departed/4` reaps only among the
+  entities a pass visited, so a partial recompute leaves rows standing for
+  entities that vantage's context no longer includes; `departed/2` filters them
+  out of the served graph rather than deleting them. Measured on dev: one
+  vantage's context had 38 stories where the table held rows for 121, and
+  comparing against the table reported 522 rows `missing` that the live
+  projection would never have served.
+
+  So this loads a context and asks both sides the same question. That costs a
+  preload, which is the right price for a diagnostic that is otherwise reporting
+  on the wrong population.
   """
   @spec diff(Scope.t()) :: report()
   def diff(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     working_copy_id = Projection.vantage(scope)
-    {component_ids, story_ids} = entity_ids(project_id)
+    {:ok, ctx} = Preloader.load(scope)
+    component_ids = Enum.map(ctx.components, & &1.id)
+    story_ids = Enum.map(ctx.stories, & &1.id)
 
     live = verdicts(Node, project_id, component_ids, story_ids, working_copy_id)
     shadow = verdicts(@source, project_id, component_ids, story_ids, working_copy_id)
