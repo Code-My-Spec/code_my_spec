@@ -42,11 +42,12 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
   alias CodeMySpec.Problems
+  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type name :: :issues | :specs | :files
+  @type name :: :issues | :specs | :files | :problems
   @type t :: map()
 
   @doc """
@@ -106,7 +107,34 @@ defmodule CodeMySpec.Requirements.Profiles do
       components: Repo.all(from(c in Component, where: c.project_id == ^project_id)),
       story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
       by_component_role: index_by(files, :component_id),
-      by_story_role: index_by(files, :story_id)
+      by_story_role: index_by(files, :story_id),
+      # For the six project `path_exists` requirements, which ask about named
+      # paths and one prefix rather than about an owner's roles. Same read.
+      by_path: Map.new(files, &{&1.path, &1}),
+      all: files
+    }
+  end
+
+  # Problem counts per component and source, which is what `problem_verdict/5`
+  # reads and all `tests_passing` asks for.
+  #
+  # Aggregated in the database for the reason `Preloader.do_load/3` gives: the
+  # alternative is loading every problem row, messages included, to count them.
+  def load(%Scope{active_project_id: project_id}, :problems) do
+    counts =
+      Repo.all(
+        from(p in Problem,
+          where: p.project_id == ^project_id and not is_nil(p.component_id),
+          group_by: [p.component_id, p.source],
+          select: {p.component_id, p.source, count(p.id)}
+        )
+      )
+
+    %{
+      by_component_source:
+        Enum.reduce(counts, %{}, fn {component_id, source, n}, acc ->
+          Map.update(acc, component_id, %{source => n}, &Map.put(&1, source, n))
+        end)
     }
   end
 

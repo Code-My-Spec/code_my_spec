@@ -125,7 +125,10 @@ defmodule CodeMySpec.Problems do
   defp announce(result, scope), do: announce(result, scope, [])
 
   defp announce({:ok, _moved} = result, scope, entities) do
-    GraphInputs.announce(scope, "Problems", entities)
+    # The event as well as the marks. `tests_passing` is settled from the
+    # problem counts directly — 13 definitions — and the entities beside it are
+    # the fallback for anything without a handler.
+    GraphInputs.event(scope, "Problems", "problems_changed", %{}, entities)
     result
   end
 

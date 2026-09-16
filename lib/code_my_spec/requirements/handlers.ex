@@ -82,25 +82,38 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    "analysis_completed" => [:specs],
-    "files_synced" => [:files]
+    # A run landing moves spex freshness, and writes problems.
+    "analysis_completed" => [:specs, :problems],
+    # A sync moves the files themselves, and with them spex freshness and every
+    # story's own spec files.
+    "files_synced" => [:files, :specs],
+    "problems_changed" => [:problems]
   }
 
-  # Which requirements each profile settles. Adding a requirement to a profile
-  # already loaded costs nothing at read time.
-  @fed_by %{
-    issues: ["issues_triaged", "issues_resolved", "story_issues_resolved"],
-    specs: ["bdd_specs_passing"],
-    files: [
-      "spec_file",
-      "spec_valid",
-      "test_file",
-      "test_spec_alignment",
-      "review_file",
-      "review_valid",
-      "implementation_file",
-      "bdd_specs_exist"
-    ]
+  # What each requirement reads. Declared per requirement rather than per
+  # profile, because `tests_passing` reads two — whether the component has a
+  # test file at all, and how many exunit problems it has — and a table keyed
+  # the other way cannot say that.
+  @requirement_profiles %{
+    "issues_triaged" => [:issues],
+    "issues_resolved" => [:issues],
+    "story_issues_resolved" => [:issues],
+    "bdd_specs_passing" => [:specs],
+    "spec_file" => [:files],
+    "spec_valid" => [:files],
+    "test_file" => [:files],
+    "test_spec_alignment" => [:files],
+    "review_file" => [:files],
+    "review_valid" => [:files],
+    "implementation_file" => [:files],
+    "bdd_specs_exist" => [:files],
+    "technical_strategy" => [:files],
+    "code_generation" => [:files],
+    "qa_setup" => [:files],
+    "qa_journey_plan" => [:files],
+    "qa_journey_execute" => [:files],
+    "qa_journey_wallaby" => [:files],
+    "tests_passing" => [:files, :problems]
   }
 
   # Every `file_exists` and `file_valid` requirement, as a table. Each of the
@@ -116,6 +129,16 @@ defmodule CodeMySpec.Requirements.Handlers do
     "review_valid" => {:valid, :review, "component"},
     "implementation_file" => {:exists, :implementation, "component"},
     "bdd_specs_exist" => {:exists, :bdd_spec, "story"}
+  }
+
+  # The six project `path_exists` requirements, by what they look for.
+  @path_requirements %{
+    "technical_strategy" => {:path, ".code_my_spec/architecture/decisions.md"},
+    "code_generation" => {:path, ".code_my_spec/tasks/code_generation.sh"},
+    "qa_setup" => {:path, ".code_my_spec/qa/plan.md"},
+    "qa_journey_plan" => {:path, ".code_my_spec/qa/journey_plan.md"},
+    "qa_journey_execute" => {:path, ".code_my_spec/qa/journey_result.md"},
+    "qa_journey_wallaby" => {:prefix, "test/journeys/"}
   }
 
   # Which file key `Utils.component_files/2` holds the expected path under.
@@ -141,21 +164,34 @@ defmodule CodeMySpec.Requirements.Handlers do
       nil ->
         :no_handler
 
-      profile_names ->
-        sweeps =
-          profile_names
-          |> Enum.flat_map(fn profile_name ->
-            profile = Profiles.load(scope, profile_name)
-            Enum.map(@fed_by[profile_name], &settle(&1, profile))
-          end)
+      dirty ->
+        names = requirements_reading(dirty)
+        profiles = load_profiles(scope, names)
 
-        {:ok, [], sweeps}
+        {:ok, [], Enum.map(names, &settle(&1, profiles))}
     end
+  end
+
+  # Every requirement that reads at least one of the dirtied profiles. A
+  # requirement reading two is settled once, not once per profile.
+  defp requirements_reading(dirty) do
+    for {name, profiles} <- @requirement_profiles,
+        Enum.any?(profiles, &(&1 in dirty)),
+        do: name
+  end
+
+  # The union of what those requirements need, each loaded once however many
+  # read it. This is the whole reason profiles are separate from handlers.
+  defp load_profiles(scope, names) do
+    names
+    |> Enum.flat_map(&Map.fetch!(@requirement_profiles, &1))
+    |> Enum.uniq()
+    |> Map.new(&{&1, Profiles.load(scope, &1)})
   end
 
   # -- One clause per requirement. Each reads its profile and nothing else. --
 
-  defp settle("issues_triaged", profile),
+  defp settle("issues_triaged", %{issues: profile}),
     do:
       project_sweep(
         "issues_triaged",
@@ -164,7 +200,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
       )
 
-  defp settle("issues_resolved", profile),
+  defp settle("issues_resolved", %{issues: profile}),
     do:
       project_sweep(
         "issues_resolved",
@@ -173,7 +209,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         %{reason: "#{length(profile.accepted)} unresolved #{profile.threshold}+ issues"}
       )
 
-  defp settle("story_issues_resolved", profile) do
+  defp settle("story_issues_resolved", %{issues: profile}) do
     %{
       entity_type: "story",
       name: "story_issues_resolved",
@@ -212,7 +248,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # — so a `:schema` component with no review requirement is never touched by
   # `review_file`, without this needing to know the templates or the config
   # filter at all.
-  defp settle(name, profile) when is_map_key(@file_requirements, name) do
+  defp settle(name, %{files: profile}) when is_map_key(@file_requirements, name) do
     {kind, role, entity_type} = Map.fetch!(@file_requirements, name)
 
     %{
@@ -293,7 +329,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # names the ready ones, which are the few. The alternative, emitting every
   # story as an exception, is one write per story for a population that is
   # mostly in one state.
-  defp settle("bdd_specs_passing", profile) do
+  defp settle("bdd_specs_passing", %{specs: profile}) do
     ready = for {story_id, true} <- profile.specs_ready, do: story_id
 
     %{
@@ -339,6 +375,92 @@ defmodule CodeMySpec.Requirements.Handlers do
       satisfied: satisfied,
       details: details(detail_map)
     }
+
+  # The six project `path_exists` requirements.
+  #
+  # One entity each, so the sweep is one row and `except` is always empty — the
+  # shape is kept anyway so every requirement settles through one path.
+  defp settle(name, %{files: profile}) when is_map_key(@path_requirements, name) do
+    {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
+    project_sweep(name, satisfied?, detail, detail)
+  end
+
+  # `check_path_exists/3`: a tracked row, and a row whose `valid` is explicitly
+  # false is a failure while `nil` — scanned, not yet parsed — is not.
+  defp path_verdict({:path, path}, profile) do
+    case Map.get(profile.by_path, path) do
+      nil ->
+        {false, %{reason: "File missing: #{path}"}}
+
+      %{valid: false} = file ->
+        {false, %{reason: "File invalid: #{path} — #{describe_errors(file.validation_errors)}"}}
+
+      _file ->
+        {true, %{path: path}}
+    end
+  end
+
+  # `check_path_prefix/3`. Matched in Elixir rather than with a `LIKE` for the
+  # reason `prefix_count/3` gives: `_` is a single-character wildcard in both
+  # Postgres and SQLite, and a prefix containing one would quietly over-match.
+  defp path_verdict({:prefix, prefix}, profile) do
+    case Enum.count(profile.all, &String.starts_with?(&1.path, prefix)) do
+      0 -> {false, %{reason: "No files at #{prefix}"}}
+      n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
+    end
+  end
+
+  # `tests_passing`, the one requirement reading two profiles: whether the
+  # component has a test file at all, and how many exunit problems it carries.
+  #
+  # `analysis_source` rides in the details deliberately — `RequirementGraph.serve/2`
+  # reads it to mark the node stale when the exunit run predates the code, which
+  # is applied at read time and is why this verdict does not need to know about
+  # freshness itself.
+  defp settle("tests_passing", %{files: files, problems: problems}) do
+    %{
+      entity_type: "component",
+      name: "tests_passing",
+      default: true,
+      default_details: details(%{status: "No test failures", analysis_source: "exunit"}),
+      except: tests_failures(files, problems)
+    }
+  end
+
+  defp tests_failures(files, problems) do
+    for component <- files.components,
+        verdict = tests_verdict(component, files, problems),
+        verdict != :ok,
+        do: change("component", component.id, "tests_passing", false, tests_detail(verdict))
+  end
+
+  # A component with no test file fails before the count is consulted, which is
+  # the order `check/5` takes them in — "No test file exists yet" rather than a
+  # vacuous zero.
+  defp tests_verdict(component, files, problems) do
+    if Map.has_key?(files.by_component_role, {component.id, :test}) do
+      case problems.by_component_source |> Map.get(component.id, %{}) |> Map.get("exunit", 0) do
+        0 -> :ok
+        n -> {:failures, n}
+      end
+    else
+      :no_test_file
+    end
+  end
+
+  defp tests_detail(:no_test_file), do: %{reason: "No test file exists yet"}
+
+  defp tests_detail({:failures, n}),
+    do: %{reason: "#{n} test failure(s)", count: n, analysis_source: "exunit"}
+
+  # The same rendering `format_validation_errors/1` produces, so a row this
+  # settles reads like one a recompute settled.
+  defp describe_errors(%{} = errors) when map_size(errors) > 0 do
+    errors
+    |> Enum.map_join("; ", fn {k, v} -> "#{k}: #{inspect(v)}" end)
+  end
+
+  defp describe_errors(_errors), do: "no details"
 
   # A project requirement has one entity, so its sweep is one row — expressed as
   # a sweep anyway so every requirement settles through the same path.
