@@ -3,11 +3,20 @@ defmodule CodeMySpecWeb.ConversationChannel do
   The end-user's side of a chat, over topic `"conversation:<end_user_id>"`.
 
   A socket may only join its own end-user's topic — joining another user's
-  conversation is rejected (end-user isolation). On join the server resolves
+  conversation is rejected (end-user isolation), decided entirely from
+  `socket.assigns` before any database call. On join the server resolves
   (or creates) the conversation by the end-user's email, replays history as
   `"new_message"` pushes, tracks presence so the operator inbox sees the user
   online, and forwards subsequent messages live. `"send_message"` persists a
   user-authored message and fans it out to the operator inbox.
+
+  The resolve-or-create and the history replay both happen in `after_join`,
+  not `join/3` -- deferred because they never decided accept/reject, and
+  `join/3` doing DB work is what gave this channel's process Ecto Sandbox/
+  `Req.Test` ownership problems under async spex. Safe to defer: `after_join`
+  is queued in this process's own mailbox before `join/3` even returns, so
+  it always runs before any client message the join reply could have
+  prompted.
   """
 
   use CodeMySpecWeb, :channel
@@ -45,19 +54,7 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
       true ->
         account_id = resolve_account_id(socket)
-
-        {:ok, conversation} =
-          Conversations.find_or_create_conversation(
-            account_id,
-            socket.assigns.project_id,
-            email,
-            end_user_id: socket.assigns.end_user_id
-          )
-
-        socket =
-          socket
-          |> assign(:account_id, account_id)
-          |> assign(:conversation, conversation)
+        socket = assign(socket, :account_id, account_id)
 
         send(self(), :after_join)
         {:ok, socket}
@@ -66,7 +63,24 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    conversation = socket.assigns.conversation
+    # Resolved here rather than in `join/3`: the accept/reject decision
+    # above is made entirely from `socket.assigns`, so this insert-or-fetch
+    # was never gating whether the join succeeds -- and `join/3` doing DB
+    # work gave the channel process Ecto Sandbox/`Req.Test` ownership
+    # problems under async spex for no accept/reject benefit. Safe to defer:
+    # `send(self(), :after_join)` lands in this process's mailbox before
+    # `join/3` even returns, so it is always handled before any client
+    # message the join reply could have prompted (`handle_in("send_message",
+    # ...)` included) -- the standard reason this idiom is safe at all.
+    {:ok, conversation} =
+      Conversations.find_or_create_conversation(
+        socket.assigns.account_id,
+        socket.assigns.project_id,
+        socket.assigns[:end_user_email],
+        end_user_id: socket.assigns.end_user_id
+      )
+
+    socket = assign(socket, :conversation, conversation)
 
     # Replay history so a returning / newly-connected user receives every
     # message that landed while they were away.

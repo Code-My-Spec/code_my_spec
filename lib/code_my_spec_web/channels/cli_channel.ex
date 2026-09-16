@@ -9,7 +9,13 @@ defmodule CodeMySpecWeb.CliChannel do
   On the first successful join for a user, stamps
   `users.cli_first_connected_at` and dispatches a `:first_cli_connect`
   domain event so downstream observers (gating logic, GA forwarding,
-  test subscribers) can react.
+  test subscribers) can react. Deferred to `after_join`, alongside
+  Presence, rather than done in `join/3` -- the accept/reject decision
+  is made entirely from `socket.assigns` before this ever runs, so it
+  was never load-bearing there. `join/3` doing DB work also gave the
+  channel process Ecto Sandbox/`Req.Test` ownership problems under
+  async spex with no accept/reject benefit to show for it; channels
+  aren't the place for that kind of work.
   """
 
   use CodeMySpecWeb, :channel
@@ -30,7 +36,6 @@ defmodule CodeMySpecWeb.CliChannel do
           Logger.info("[CliChannel] join accepted user_id=#{user_id}")
           socket = assign(socket, :cli_user_id, user_id)
           send(self(), :after_join)
-          maybe_record_first_connect(user_id)
           {:ok, socket}
         else
           Logger.warning(
@@ -128,6 +133,8 @@ defmodule CodeMySpecWeb.CliChannel do
       status_topic(user_id),
       :cli_presence_changed
     )
+
+    maybe_record_first_connect(user_id)
 
     {:noreply, assign(socket, :presence_key, presence_key)}
   end
