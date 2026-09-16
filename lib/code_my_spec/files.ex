@@ -190,9 +190,21 @@ defmodule CodeMySpec.Files do
   moved. Resolvable only for paths that still have rows, which is why a sync
   that *removed* files cannot use this — see `FileSync.announce_graph_change/4`.
   """
-  @spec owners_of_paths(Scope.t(), [String.t()]) :: [
+  @spec owners_of_paths(Scope.t(), [String.t()] | :all) :: [
           {String.t(), term()} | :project
         ]
+  # `:all` is `clear_problems_for_source/3` saying "everywhere this source
+  # reported", which it does not enumerate — a `block_all` analyzer clears by
+  # source, not by path. There is nothing to resolve owners from, and answering
+  # `[]` is the honest reading rather than a gap: `GraphInputs.announce/3` takes
+  # an empty entity list as "something moved and this writer cannot say what"
+  # and records it project-wide, which is exactly true here.
+  #
+  # Without this clause the call raised `FunctionClauseError` *inside* the stop
+  # hook's validation pipeline, so a `block_all` source took the whole stop
+  # decision down with it.
+  def owners_of_paths(%Scope{}, :all), do: []
+
   def owners_of_paths(%Scope{active_project_id: project_id} = scope, paths)
       when is_list(paths) do
     File
