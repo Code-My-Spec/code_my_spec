@@ -35,6 +35,18 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ResolveQuestionTest do
       assert reloaded.resolution == "A copy whose agents died reads busy forever."
     end
 
+    test "an unknown id names the other tool a list_open_questions id needs" do
+      scope = full_scope_fixture()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               ResolveQuestion.execute(%{question_id: Ecto.UUID.generate()}, frame)
+
+      content = response_text(response)
+      assert content =~ "not found in the active account"
+      assert content =~ "answer_question"
+    end
+
     test "resolving without a resolution leaves the record answerless, same as before" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
