@@ -334,7 +334,21 @@ defmodule CodeMySpec.Intake do
       end)
     end)
     |> said(plan.pending_question, :agent)
+    |> planned(plan)
   end
+
+  # `shaped/2` can decide no question is needed at all and land straight on a
+  # generated plan with nothing in `pending_question` to carry a reply — or a
+  # visitor can answer the last question and land there the same way. Either
+  # way `pending_question` is nil by definition once the plan is `:planned`,
+  # so without this the chat goes silent at exactly the moment the agent
+  # answered, and the only sign anything happened is the card on the side
+  # updating on its own.
+  defp planned(transcript, %Plan{status: status}) when status in [:planned, :converted] do
+    said(transcript, "Here's what I think you're building — take a look on the right.", :agent)
+  end
+
+  defp planned(transcript, %Plan{}), do: transcript
 
   defp interview(transcript, turns, question) do
     transcript
