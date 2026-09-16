@@ -288,10 +288,13 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       target = Path.join([".code_my_spec/hex_docs/phoenix/Phoenix.md"])
       {:ok, %{mtime: first_mtime}} = Environments.stat(env, target)
 
-      # Guarantee at least 1s of clock movement so a fresh write would
-      # visibly bump the mtime.
-      Process.sleep(1_100)
-
+      # No sleep needed: InMemoryEnvironment.write_file/3 stamps mtime with
+      # DateTime.utc_now() (microsecond resolution), not the second-resolution
+      # clock a real filesystem or a DB-recorded timestamp would have. A
+      # buggy re-write would already produce a different DateTime with no
+      # wait at all -- the skip this asserts is content-based, not
+      # time-based, so a correct skip never touches mtime regardless of how
+      # long we wait.
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       {:ok, %{mtime: second_mtime}} = Environments.stat(env, target)

@@ -31,7 +31,42 @@ defmodule CodeMySpecSpex.Case do
   require Phoenix.ChannelTest
   require Phoenix.ConnTest
 
-  using do
+  # `async: true` is opt-in, per spex file, and off by default. `SexySpex`
+  # itself defaults to `false` too (`deps/sexy_spex/lib/sexy_spex.ex`) --
+  # this just forwards whatever a spex file asked for instead of the two
+  # of them disagreeing. Every spex ran serially, unconditionally, until
+  # tonight: `SexySpex.__using__/1` hardcoded `use ExUnit.Case, async:
+  # false` and never consulted its own `opts`, and this `using` block
+  # took none to forward in the first place. On a suite this size that
+  # means wall-clock time scales with test count alone, with none of the
+  # box's cores helping — see the spex-performance investigation, story
+  # 839-adjacent. Fixing both layers doesn't make anything async by
+  # itself; it makes async *possible*, one file at a time.
+  #
+  # A 4-file pilot the same night found two real, reproducible failure
+  # shapes that only showed up under the FULL suite's concurrency, not
+  # in an isolated few-file run (3 clean runs there, then 3 of 4 broke
+  # once run alongside ~1390 other spex):
+  #
+  #   - `DBConnection.ConnectionError ... client exited` -- something
+  #     the spex spawned (a Task, an MCP tool's own dispatch) was still
+  #     using the test's private sandbox connection when the test
+  #     process finished and the connection got reclaimed out from
+  #     under it. `Sandbox.allow/3` is the usual fix, but it means
+  #     finding every such spawn first, not assuming there are none.
+  #   - Cross-test state pollution ("Requirement architecture_designed
+  #     not found for project ...") -- some concurrently-running test
+  #     mutated shared/global state (a cache, an ETS table, a
+  #     process-global registry) the flipped spex also depended on.
+  #
+  # Neither showed up checking a file in isolation for the obvious
+  # culprits (`Application.put_env`, a named singleton GenServer,
+  # `Sandbox.mode({:shared, self()})`). Before flipping a file's own
+  # `use CodeMySpecSpex.Case, async: true`, verify it clean by running
+  # it alongside the full suite (or a large slice of it), not alone.
+  using(case_opts) do
+    async = Keyword.get(case_opts, :async, false)
+
     quote do
       @endpoint CodeMySpecLocalWeb.Endpoint
 
@@ -50,7 +85,7 @@ defmodule CodeMySpecSpex.Case do
       @moduletag timeout: CodeMySpecSpex.Case.spex_timeout()
 
       use CodeMySpecLocalWeb, :verified_routes
-      use SexySpex
+      use SexySpex, async: unquote(async)
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs
       # this import — is reachable from every spex rather than from the ones
