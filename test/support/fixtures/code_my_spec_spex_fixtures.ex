@@ -1388,7 +1388,23 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec watch_graph(Scope.t()) :: :ok
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
-    :ok = GraphInputs.subscribe(project_id)
+
+    # `GraphInputs.subscribe/1` is a plain `Phoenix.PubSub.subscribe/2`, which is
+    # not idempotent per process: a second subscription from the same pid to the
+    # same topic is a second registry entry, and `Phoenix.PubSub.broadcast/3`
+    # dispatches once per entry — so calling this twice from one test process
+    # delivers every later `{:graph_updated, project_id}` twice, silently, to a
+    # mailbox that already looks correct to every scenario that doesn't count
+    # broadcasts directly. `setup_active_project` already calls this once for
+    # every spex; a `given_` that calls it again (3189, 3194) was doubling every
+    # announcement from that point on. Measured: both criteria failed at exactly
+    # 2 announcements for one change, every run — not a race, a fixed doubling.
+    key = {__MODULE__, :graph_inputs_subscribed, project_id}
+
+    unless Process.get(key) do
+      :ok = GraphInputs.subscribe(project_id)
+      Process.put(key, true)
+    end
 
     # The watcher computes on arrival and announces it, so subscribing leaves a
     # `{:graph_updated, _}` in the caller's mailbox for a scenario that has not
