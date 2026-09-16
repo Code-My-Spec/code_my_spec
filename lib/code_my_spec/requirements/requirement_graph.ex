@@ -736,6 +736,34 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {MapSet.new([{"project", scope.active_project.id}]), nodes}
   end
 
+  @doc """
+  The project's whole node set and the edges between them, computed and not
+  written.
+
+  Edges cannot be projected one entity at a time, which is why the event path
+  had none. `compute_edges/3` ends in `Topology.transitive_reduction/1`, and a
+  transitive reduction is global by definition: dropping `A → C` requires
+  knowing that `A → B → C` exists, so a node instantiated for an unrelated
+  entity can *remove* an edge here. There is no narrow version of that
+  question.
+
+  What saves it is that edges are a function of the **node set**, not of any
+  verdict. A sweep settles answers with `UPDATE`s and cannot add or remove a
+  node, so a drain that only swept cannot have moved topology. Only a drain
+  that wrote or reaped nodes needs to ask this — which is the same rare set of
+  events that already falls back to a recompute: a component created, retyped
+  or deleted, a story released or parked.
+
+  Separate from `compute_and_publish/4` because that one also publishes, caches
+  and persists. This answers the question and stops.
+  """
+  @spec compute_topology(Scope.t(), map(), map()) ::
+          {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
+  def compute_topology(scope, ctx, config) do
+    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, compute_edges(nodes, enriched_ctx, config)}
+  end
+
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     stamp_project(scope)
 

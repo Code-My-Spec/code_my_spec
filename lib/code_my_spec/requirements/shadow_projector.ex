@@ -346,6 +346,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     |> Enum.to_list()
     |> write_each(state.scope, ctx, config)
 
+    reproject_topology(state.scope, ctx, config)
+
     # The whole context was just read, so the cached freshness is current by
     # construction.
     %{state | analysis_fresh: ctx.analysis_fresh}
@@ -367,6 +369,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp run({:narrow, entities}, state, config) do
     analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
     narrow_each(entities, state.scope, config, analysis_fresh)
+    reproject_topology(state.scope, nil, config)
     %{state | analysis_fresh: analysis_fresh}
   end
 
@@ -382,6 +385,30 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         MapSet.union(done, covered)
       end
     end)
+  end
+
+  # Topology, whenever this drain wrote nodes — and only then.
+  #
+  # Edges are a function of the node set: a sweep settles verdicts with
+  # `UPDATE`s and cannot add or remove a node, so a drain that only swept cannot
+  # have moved topology. Sweeps never reach `run/3` at all — `apply_marks/2`
+  # calls it only for the marks no handler answered — so putting this here is
+  # what confines a full topology computation to the fallback path.
+  #
+  # And it has to be the whole topology. `Topology.transitive_reduction/1` is
+  # global: an edge here disappears because of a path through a node somewhere
+  # else, so there is no subset of edges one entity's change is confined to.
+  # `RequirementGraph.compute_topology/3` carries the long version.
+  #
+  # The `:everything` branch already holds a context; the narrow one has to read
+  # one, which is the honest price of a global question. It is paid on entity
+  # arrival and departure — a component created, retyped or deleted, a story
+  # released or parked — and on nothing else.
+  defp reproject_topology(scope, ctx, config) do
+    ctx = ctx || elem(Preloader.load(scope), 1)
+    {_nodes, edges} = RequirementGraph.compute_topology(scope, ctx, config)
+    {:ok, _count} = Shadow.write_edges(scope, edges)
+    :ok
   end
 
   defp narrow_load(scope, {"story", story_id}, analysis_fresh),

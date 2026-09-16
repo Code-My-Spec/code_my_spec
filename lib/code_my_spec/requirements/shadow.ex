@@ -51,12 +51,13 @@ defmodule CodeMySpec.Requirements.Shadow do
   the same question.
   """
 
-  import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2]
+  import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
 
   require Logger
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -64,6 +65,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Users.Scope
 
   @source {"shadow_requirements", Node}
+  @edge_source "shadow_requirement_edges"
 
   @type entity :: {String.t(), term()}
 
@@ -73,6 +75,10 @@ defmodule CodeMySpec.Requirements.Shadow do
           disagree: non_neg_integer(),
           live: non_neg_integer(),
           shadow: non_neg_integer(),
+          edges_missing: non_neg_integer(),
+          edges_extra: non_neg_integer(),
+          live_edges: non_neg_integer(),
+          shadow_edges: non_neg_integer(),
           sample: [String.t()]
         }
 
@@ -346,6 +352,59 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp cast_vantage(vantage), do: Ecto.UUID.dump!(vantage)
 
   @doc """
+  Replace this vantage's whole topology.
+
+  A full replace rather than a delta, because a transitive reduction is global:
+  adding one node can remove an edge between two others, so there is no subset
+  of edges a change is confined to. `RequirementGraph.compute_topology/3` says
+  the same thing from the other side.
+
+  That is affordable because it is rare. Edges are a function of the node set
+  and a sweep cannot change the node set — only a drain that wrote or reaped
+  nodes has to call this, which is the same small set of events that already
+  falls back to a recompute.
+
+  Stored as the pair of node keys the edge actually is, not as row ids. The
+  shadow's ids come from their own sequence, so an id-keyed edge would point at
+  a different requirement in each table — not missing, *wrong*, and a diff
+  comparing ids would be comparing noise.
+  """
+  @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}]) :: {:ok, non_neg_integer()}
+  def write_edges(%Scope{active_project_id: project_id} = scope, edges) do
+    working_copy_id = Projection.vantage(scope)
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    rows =
+      edges
+      |> Enum.uniq()
+      |> Enum.map(fn %{from: {ft, fi, fname}, to: {tt, ti, tname}} ->
+        %{
+          project_id: Ecto.UUID.dump!(project_id),
+          working_copy_id: working_copy_id && Ecto.UUID.dump!(working_copy_id),
+          from_entity_type: ft,
+          from_entity_id: to_string(fi),
+          from_name: fname,
+          to_entity_type: tt,
+          to_entity_id: to_string(ti),
+          to_name: tname,
+          inserted_at: now
+        }
+      end)
+
+    {:ok, count} =
+      Repo.transaction(fn ->
+        @edge_source
+        |> where([e], e.project_id == type(^project_id, Ecto.UUID))
+        |> where(^edge_copy_filter(working_copy_id))
+        |> Repo.delete_all()
+
+        insert_edges(rows)
+      end)
+
+    {:ok, count}
+  end
+
+  @doc """
   How far the shadow is from the live projection, for this reader's vantage.
 
   Scoped through the *context*, not through the project's tables, and the
@@ -387,12 +446,19 @@ defmodule CodeMySpec.Requirements.Shadow do
       |> MapSet.intersection(shadow_keys)
       |> Enum.filter(&(Map.fetch!(live, &1) != Map.fetch!(shadow, &1)))
 
+    live_edges = live_edge_keys(project_id, component_ids, story_ids, working_copy_id)
+    shadow_edges = shadow_edge_keys(project_id, working_copy_id)
+
     %{
       missing: MapSet.size(missing),
       extra: MapSet.size(extra),
       disagree: length(disagree),
       live: map_size(live),
       shadow: map_size(shadow),
+      edges_missing: MapSet.size(MapSet.difference(live_edges, shadow_edges)),
+      edges_extra: MapSet.size(MapSet.difference(shadow_edges, live_edges)),
+      live_edges: MapSet.size(live_edges),
+      shadow_edges: MapSet.size(shadow_edges),
       sample: sample(missing, extra, disagree)
     }
   end
@@ -481,6 +547,13 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
+  # The same rule for the edge table, which has no `Node` schema behind it — a
+  # bare source, so the id has to be dumped rather than cast by Ecto.
+  defp edge_copy_filter(nil), do: dynamic([e], is_nil(e.working_copy_id))
+
+  defp edge_copy_filter(id),
+    do: dynamic([e], e.working_copy_id == type(^id, Ecto.UUID))
+
   defp row(node, entity_type, entity_id, working_copy_id, now) do
     %{
       name: node.name,
@@ -533,5 +606,97 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp sample_suffix(sample), do: "; " <> Enum.join(sample, ", ")
 
   defp empty_report,
-    do: %{missing: 0, extra: 0, disagree: 0, live: 0, shadow: 0, sample: []}
+    do: %{
+      missing: 0,
+      extra: 0,
+      disagree: 0,
+      live: 0,
+      shadow: 0,
+      edges_missing: 0,
+      edges_extra: 0,
+      live_edges: 0,
+      shadow_edges: 0,
+      sample: []
+    }
+
+  # The live topology, as node-key pairs.
+  #
+  # Resolved through the rows rather than compared as ids, because the two
+  # tables' ids are independent sequences — see `write_edges/2`. Only edges with
+  # both endpoints inside this vantage's population count, which is the same
+  # filter `compute_edges/3` applies when it builds them.
+  defp live_edge_keys(project_id, component_ids, story_ids, working_copy_id) do
+    rows =
+      Node
+      |> scoped(project_id, component_ids, story_ids)
+      |> where(^copy_filter(working_copy_id))
+      |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.name})
+      |> Repo.all()
+
+    key_by_id =
+      Map.new(rows, fn {id, component_id, story_id, proj_id, name} ->
+        {id, owner_key(component_id, story_id, proj_id, name)}
+      end)
+
+    ids = Map.keys(key_by_id)
+
+    Edge
+    |> where([e], e.from_requirement_id in ^ids and e.to_requirement_id in ^ids)
+    |> select([e], {e.from_requirement_id, e.to_requirement_id})
+    |> Repo.all()
+    |> Enum.flat_map(fn {from_id, to_id} ->
+      case {Map.get(key_by_id, from_id), Map.get(key_by_id, to_id)} do
+        {nil, _} -> []
+        {_, nil} -> []
+        {from, to} -> [{from, to}]
+      end
+    end)
+    |> MapSet.new()
+  end
+
+  # Postgres binds one parameter per column per row and counts them in a 16-bit
+  # field — 65,535 for the whole statement, whatever its size. Nine columns
+  # times this project's topology is 106,569, so the write has to be chunked
+  # exactly as `NodeRepository.insert_every/3` chunks the node insert.
+  @edge_chunk div(60_000, 9)
+
+  defp insert_edges([]), do: 0
+
+  defp insert_edges(rows) do
+    rows
+    |> Enum.chunk_every(@edge_chunk)
+    |> Enum.reduce(0, fn chunk, total ->
+      total + elem(Repo.insert_all(@edge_source, chunk), 0)
+    end)
+  end
+
+  defp shadow_edge_keys(project_id, working_copy_id) do
+    from(e in @edge_source,
+      where: e.project_id == type(^project_id, Ecto.UUID),
+      select: {
+        e.from_entity_type,
+        e.from_entity_id,
+        e.from_name,
+        e.to_entity_type,
+        e.to_entity_id,
+        e.to_name
+      }
+    )
+    |> where(^edge_copy_filter(working_copy_id))
+    |> Repo.all()
+    |> MapSet.new(fn {ft, fi, fname, tt, ti, tname} ->
+      {{ft, fi, fname}, {tt, ti, tname}}
+    end)
+  end
+
+  # `entity_id` as text on both sides: a component's is a uuid and a story's is
+  # a bigint, and the shadow stores the pair rather than pointing at a row.
+  defp owner_key(component_id, _story, _project, name) when not is_nil(component_id),
+    do: {"component", component_id, name}
+
+  defp owner_key(_component, story_id, _project, name) when not is_nil(story_id),
+    do: {"story", to_string(story_id), name}
+
+  defp owner_key(_component, _story, project_id, name),
+    do: {"project", project_id, name}
 end
