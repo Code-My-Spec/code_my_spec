@@ -674,6 +674,40 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     }
   end
 
+  @doc """
+  One entity's requirements, computed on their own.
+
+  The event path's unit of work, and the reason it can exist without a
+  debounce: a pass narrowed to a single entity does the work that entity earned
+  and no more, where the fingerprint pass is whole-project by construction and
+  has to coalesce a burst to stay affordable.
+
+  `reduce_to/2` is what makes this the same computation the partial recompute
+  already does — it narrows the two lists and leaves the by-id maps whole, so an
+  entity computed alone is hashed and answered identically to the same entity
+  computed inside a larger stale set. That has to hold or the shadow diff would
+  be reporting on this function rather than on the decision it exists to test.
+
+  Project nodes take the whole context deliberately: their checkers read counts
+  across the project, so there is nothing to narrow, and `recompute_stale/4`
+  rebuilds them unconditionally for the same reason.
+  """
+  @spec compute_entity(Scope.t(), map(), map(), {String.t(), term()}) :: [Requirement.t()]
+  def compute_entity(scope, ctx, config, {"component", _id} = entity) do
+    {nodes, _} = instantiate_component_graphs(scope, reduce_to(ctx, MapSet.new([entity])), config)
+    nodes
+  end
+
+  def compute_entity(scope, ctx, config, {"story", _id} = entity) do
+    {nodes, _} = compute_story_nodes(scope, reduce_to(ctx, MapSet.new([entity])), config)
+    nodes
+  end
+
+  def compute_entity(scope, ctx, config, {"project", _id}) do
+    {nodes, _} = compute_project_nodes(scope, ctx, config)
+    nodes
+  end
+
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     stamp_project(scope)
 
