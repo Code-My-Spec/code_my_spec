@@ -40,20 +40,20 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Analysis
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components
-  alias CodeMySpec.Files
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.{Persona, PersonaStory}
-  alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
