@@ -235,8 +235,9 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
                )
     end
 
-    # A story with no criteria and no file has nothing satisfying it yet.
-    test "a story with no criteria and no file is unsatisfied", %{scope: scope} do
+    # Nothing to cover is not coverage — same reasoning `:all_deployed` uses for
+    # a project with no stories.
+    test "a story with no criteria is unsatisfied, not vacuously true", %{scope: scope} do
       story = story_fixture(scope, %{criteria: []})
 
       RequirementGraph.compute_graph(scope)
@@ -247,31 +248,6 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
              )
 
       assert %{satisfied: false} =
-               RequirementCalculator.compute_one(
-                 scope,
-                 story,
-                 bdd_specs_exist_definition(),
-                 Files.list_story_files(scope, story.id)
-               )
-    end
-
-    # Drill 12's regression (criterion 8186): a story that hasn't been through
-    # three_amigos has no criteria to enumerate, so per-criterion coverage
-    # falls back to the old any-one-file semantics rather than being
-    # permanently unsatisfiable.
-    test "a story with no criteria but a file present falls back to satisfied",
-         %{scope: scope} do
-      story = story_fixture(scope, %{criteria: []})
-      bdd_file!(scope, story, "test/spex/bare/one_test.exs")
-
-      RequirementGraph.compute_graph(scope)
-
-      assert MapSet.member?(
-               by_query_story(scope, :bdd_specs_covered, %{role: :bdd_spec}),
-               story.id
-             )
-
-      assert %{satisfied: true} =
                RequirementCalculator.compute_one(
                  scope,
                  story,

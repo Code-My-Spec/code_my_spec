@@ -102,10 +102,8 @@ defmodule CodeMySpec.Requirements.Predicates do
   Story-scoped, like `:file_exists`, but satisfied per criterion rather than
   per story: every acceptance criterion on the story has a non-empty
   `spec_path` that resolves to an existing file of `config.role`. A story
-  with no criteria at all (three_amigos hasn't run) falls back to
-  `:file_exists`'s any-one-file semantics — there is nothing to enumerate,
-  and drill 12's regression test (criterion 8186) depends on a bare spec
-  file satisfying the gate for exactly that story shape.
+  with no criteria is unsatisfied rather than vacuously true, matching
+  `:all_deployed`'s reasoning — nothing to cover is not coverage.
 
   ## `:path_exists`
 
@@ -204,38 +202,27 @@ defmodule CodeMySpec.Requirements.Predicates do
     where(
       query,
       [node: n],
-      (not exists(
-         from(c in Criterion, where: c.story_id == parent_as(:node).story_id, select: 1)
-       ) and
-         exists(
-           from(f in File,
-             where: f.story_id == parent_as(:node).story_id and not is_nil(f.story_id),
-             where: f.role == ^role,
-             where: ^harness_filter(working_copy_id),
-             select: 1
-           )
-         )) or
-        (exists(
-           from(c in Criterion, where: c.story_id == parent_as(:node).story_id, select: 1)
-         ) and
-           not exists(
-             from(c in Criterion,
-               as: :criterion,
-               where: c.story_id == parent_as(:node).story_id,
-               where:
-                 is_nil(c.spec_path) or c.spec_path == "" or
-                   not exists(
-                     from(f in File,
-                       where: f.role == ^role,
-                       where: f.path == parent_as(:criterion).spec_path,
-                       where: f.story_id == parent_as(:criterion).story_id,
-                       where: ^harness_filter(working_copy_id),
-                       select: 1
-                     )
-                   ),
-               select: 1
-             )
-           ))
+      exists(
+        from(c in Criterion, where: c.story_id == parent_as(:node).story_id, select: 1)
+      ) and
+        not exists(
+          from(c in Criterion,
+            as: :criterion,
+            where: c.story_id == parent_as(:node).story_id,
+            where:
+              is_nil(c.spec_path) or c.spec_path == "" or
+                not exists(
+                  from(f in File,
+                    where: f.role == ^role,
+                    where: f.path == parent_as(:criterion).spec_path,
+                    where: f.story_id == parent_as(:criterion).story_id,
+                    where: ^harness_filter(working_copy_id),
+                    select: 1
+                  )
+                ),
+            select: 1
+          )
+        )
     )
   end
 

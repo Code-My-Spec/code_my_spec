@@ -33,10 +33,15 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
         # Released, because an unreleased story produces no requirements at all
         # — `bdd_specs_exist` would not merely be unsatisfied, it would not
         # exist, and the scenario would pass or fail for the wrong reason.
+        #
+        # One real criterion, because `bdd_specs_covered` (issue 644279a9)
+        # checks coverage per criterion and a story with none is a different,
+        # degenerate case — not the one this scenario is about.
         story =
           StoryHelpers.create_story(context.scope,
             title: "Capture a task",
-            description: "A story for spex testing"
+            description: "A story for spex testing",
+            acceptance_criteria: ["A task is captured"]
           )
 
         refute Fixtures.requirement_satisfied?(
@@ -57,8 +62,16 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
         # `story_ids_by_number`, so a path built from `id` links to nothing
         # and the requirement stays unsatisfied — which is the very symptom
         # this scenario exists to catch, arriving for the wrong reason.
+        #
+        # The criterion id in the filename is the real one, not a made-up
+        # number — `claim_spec_paths` only links a path to a criterion row
+        # that actually exists, and a story with per-criterion coverage
+        # cannot be satisfied by a file claiming to be a criterion it doesn't
+        # have.
+        [criterion] = context.story.criteria
+
         path =
-          "test/spex/#{context.story.number}_capture_a_task/criterion_1_a_task_is_captured_spex.exs"
+          "test/spex/#{context.story.number}_capture_a_task/criterion_#{criterion.id}_a_task_is_captured_spex.exs"
 
         :ok =
           Environments.write_file(
