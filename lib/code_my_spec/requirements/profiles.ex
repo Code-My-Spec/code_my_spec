@@ -337,8 +337,18 @@ defmodule CodeMySpec.Requirements.Profiles do
     |> Enum.group_by(& &1.story_id)
   end
 
+  # Ordered as `AcceptanceCriteria.list_story_criteria/2` orders them, because
+  # `bdd_specs_exist` reports `missing_criteria_ids` and a list in a different
+  # order is a different answer — the diff compares details, and two rows that
+  # agree on the verdict while disagreeing on the list are a difference somebody
+  # investigates later for nothing.
   defp criteria_by_story(story_ids) do
-    Repo.all(from(c in Criterion, where: c.story_id in ^story_ids))
+    Repo.all(
+      from(c in Criterion,
+        where: c.story_id in ^story_ids,
+        order_by: [asc: c.inserted_at, asc: c.id]
+      )
+    )
     |> Enum.group_by(& &1.story_id)
   end
 

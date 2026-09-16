@@ -553,33 +553,58 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
-    case AcceptanceCriteria.list_story_criteria(scope, story_id) do
-      [] ->
-        {false, %{reason: "no acceptance criteria on this story"}}
+    scope
+    |> AcceptanceCriteria.list_story_criteria(story_id)
+    |> bdd_specs_covered(files, role)
+  end
 
-      criteria ->
-        covered_paths =
-          files
-          |> Enum.filter(&(&1.role == role))
-          |> MapSet.new(& &1.path)
+  @doc """
+  Whether every criterion on a story has a file of `role` behind it.
 
-        missing =
-          criteria
-          |> Enum.filter(fn c ->
-            is_nil(c.spec_path) or c.spec_path == "" or
-              not MapSet.member?(covered_paths, c.spec_path)
-          end)
-          |> Enum.map(& &1.id)
+  The verdict on its own, separated from the query that feeds it, so
+  `Requirements.Handlers` can settle this requirement across every story from
+  one read instead of one query per story — and, more to the point, so it
+  cannot answer a different question.
 
-        if missing == [] do
-          {true, %{status: "#{role} file exists for every criterion"}}
-        else
-          {false,
-           %{
-             reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
-             missing_criteria_ids: missing
-           }}
-        end
+  It did exactly that. `bdd_specs_exist` was a row in the handler's file table
+  meaning "this story has any file in this role", which was the rule until
+  `f97e1216d` made it per criterion. The table did not follow, the handler went
+  on passing stories with a spec file and uncovered criteria, and nothing said
+  so until a diff against this module on a merged tree.
+
+  `[]` is unsatisfied rather than a pass. `168335ecf` briefly made a story with
+  no criteria fall back to any-file semantics and `89bf9bf0b` took it back out:
+  a story nobody has run Three Amigos on has not covered its criteria, it has
+  no criteria to cover.
+  """
+  @spec bdd_specs_covered([map()], [map()], atom()) :: {boolean(), map()}
+  def bdd_specs_covered(criteria, files, role)
+
+  def bdd_specs_covered([], _files, _role),
+    do: {false, %{reason: "no acceptance criteria on this story"}}
+
+  def bdd_specs_covered(criteria, files, role) do
+    covered_paths =
+      files
+      |> Enum.filter(&(&1.role == role))
+      |> MapSet.new(& &1.path)
+
+    missing =
+      criteria
+      |> Enum.filter(fn c ->
+        is_nil(c.spec_path) or c.spec_path == "" or
+          not MapSet.member?(covered_paths, c.spec_path)
+      end)
+      |> Enum.map(& &1.id)
+
+    if missing == [] do
+      {true, %{status: "#{role} file exists for every criterion"}}
+    else
+      {false,
+       %{
+         reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
+         missing_criteria_ids: missing
+       }}
     end
   end
 

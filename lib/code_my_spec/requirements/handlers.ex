@@ -170,7 +170,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     "review_file" => [:files],
     "review_valid" => [:files],
     "implementation_file" => [:files],
-    "bdd_specs_exist" => [:files],
+    # Files for the spec paths, stories for the criteria those paths have to
+    # cover. Not a `@file_requirements` row any more — see its `settle/3`.
+    "bdd_specs_exist" => [:files, :stories],
     "technical_strategy" => [:files],
     "code_generation" => [:files],
     "qa_setup" => [:files],
@@ -237,8 +239,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "test_spec_alignment" => {:valid, :test, "component"},
     "review_file" => {:exists, :review, "component"},
     "review_valid" => {:valid, :review, "component"},
-    "implementation_file" => {:exists, :implementation, "component"},
-    "bdd_specs_exist" => {:exists, :bdd_spec, "story"}
+    "implementation_file" => {:exists, :implementation, "component"}
   }
 
   # The six project `path_exists` requirements, by what they look for.
@@ -396,6 +397,34 @@ defmodule CodeMySpec.Requirements.Handlers do
       default: false,
       default_details: details(%{reason: "Specs have not gone green on a fresh spex run yet"}),
       except: Enum.map(ready, &ready_story_verdict(&1, profile))
+    }
+  end
+
+  # Per criterion, not per story, and that distinction cost a silent regression.
+  #
+  # This was a `@file_requirements` row — "does this story have any file in the
+  # `:bdd_spec` role" — which is what the requirement meant until `f97e1216d`
+  # made it "does every criterion have one". The table did not follow. The
+  # handler went on passing stories that had a spec file and uncovered
+  # criteria, and no test caught it because the table was still internally
+  # consistent; a diff against `RequirementCalculator` on a merged tree is what
+  # found it, on every vantage at once.
+  #
+  # So the verdict comes from `RequirementCalculator.bdd_specs_covered/3` now,
+  # which is the function the recompute calls. A requirement whose meaning can
+  # change out from under a lookup table does not belong in one.
+  #
+  # Default unsatisfied, because a story with no criteria is unsatisfied and
+  # its reason is the only one that carries nothing per story. Every story that
+  # *has* criteria is an exception — up to the whole population — which costs
+  # one statement now that `Shadow.put_verdicts/5` sends them as arrays.
+  defp settle("bdd_specs_exist", %{files: files, stories: stories}, _scope) do
+    %{
+      entity_type: "story",
+      name: "bdd_specs_exist",
+      default: false,
+      default_details: details(%{reason: "no acceptance criteria on this story"}),
+      except: bdd_spec_verdicts(stories, files)
     }
   end
 
@@ -754,6 +783,26 @@ defmodule CodeMySpec.Requirements.Handlers do
   defp promoted_verdicts(promoted) do
     for {story_id, {satisfied?, detail}} <- promoted,
         do: change("story", story_id, "code_on_running_copy", satisfied?, detail)
+  end
+
+  # One verdict per story that has criteria, from the files that vantage can see.
+  #
+  # Grouped by story rather than filtered to `:bdd_spec` here, because
+  # `bdd_specs_covered/3` takes the entity's files and applies the role itself —
+  # the same shape `RequirementCalculator` hands it.
+  defp bdd_spec_verdicts(stories, files) do
+    by_story = Enum.group_by(Enum.filter(files.all, & &1.story_id), & &1.story_id)
+
+    for {story_id, criteria} <- stories.amigos.criteria_by_story, criteria != [] do
+      {satisfied?, detail} =
+        RequirementCalculator.bdd_specs_covered(
+          criteria,
+          Map.get(by_story, story_id, []),
+          :bdd_spec
+        )
+
+      change("story", story_id, "bdd_specs_exist", satisfied?, detail)
+    end
   end
 
   # Only the passes. The default already says what every other story's latest
