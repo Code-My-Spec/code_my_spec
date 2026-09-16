@@ -277,19 +277,28 @@ defmodule CodeMySpec.Agents do
     did not finish and was not recorded. The last step written to this thread
     is the last thing that is known to have happened.
 
+    This is a statement about the turn, not about the working copy: uncommitted
+    edits on disk are not part of a turn and are not restored with one. If you
+    had uncommitted changes, check `git status` before assuming they survived.
+
     Carry on from the turns already here. Do not assume work you cannot see
     recorded above was completed — if you are unsure whether something landed,
     check rather than redo it.
     """
   end
 
-  # Nothing of the agent's own was lost, so the notice says only that
-  # machinery it does not own cycled. `Menu.render/4` answers "" when nothing
-  # is live for this agent, which is the right shape here too — a restart with
-  # no work behind it should read as one short line, not one short line plus
-  # an empty section.
+  # Nothing of the agent's own turn was interrupted, so the notice says only
+  # that machinery it does not own cycled — but that is a narrower claim than
+  # "nothing was lost" once said outright: a restart has been observed to
+  # discard uncommitted edits left on disk from an earlier, already-finished
+  # turn, and this notice fires whether or not any exist (`d2908c58`).
+  # `Menu.render/4` answers "" when nothing is live for this agent, which is
+  # the right shape here too — a restart with no work behind it should read as
+  # a couple of short lines, not that plus an empty section.
   defp idle_restart_notice(scope, agent) do
-    "The harness restarted. Nothing of your own was in flight, so nothing was lost.\n" <>
+    "The harness restarted. No turn of yours was interrupted — but if you had " <>
+      "uncommitted changes on disk, check `git status`: a restart is not known " <>
+      "to preserve them.\n" <>
       Validation.Menu.render(scope, agent.continuous == true, agent.role, agent)
   end
 
