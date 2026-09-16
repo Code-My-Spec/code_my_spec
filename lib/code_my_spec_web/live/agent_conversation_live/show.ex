@@ -1310,6 +1310,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:waiting, waiting)
     |> assign(:copies, team_status(scope, socket.assigns.project, waiting))
+    |> refresh_main(scope)
+  end
+
+  # `@main` is `assign_new`'d once on mount and never invalidated otherwise
+  # (`9bef58fb`'s bonus finding) — a visitor already on the page when their main
+  # agent finishes starting saw the stale "Getting ready" header until a full
+  # reload, even after the agent genuinely came up. These are exactly the events
+  # that mean it might have changed, and `MainAgentConversation.ensure/1` is the
+  # same idempotent, already-cheap call `assign_main/3` makes on mount.
+  defp refresh_main(socket, scope) do
+    case MainAgentConversation.ensure(scope) do
+      {:ok, _agent, _conversation} = main -> assign(socket, :main, main)
+      {:error, _reason} -> socket
+    end
   end
 
   # -- Render -----------------------------------------------------------------

@@ -48,7 +48,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_qa_attempts submit_qa_result invalidate_qa_attempt
     call_mcp_server
     list_knowledge read_knowledge semantic_search
-    list_tasks list_session_subagents
+    list_tasks list_session_subagents list_notifications
     web_search web_fetch
     browser
   )

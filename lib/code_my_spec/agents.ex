@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Analysis,
+      CodeMySpec.CodeMode,
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
