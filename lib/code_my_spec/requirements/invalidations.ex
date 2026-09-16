@@ -97,6 +97,72 @@ defmodule CodeMySpec.Requirements.Invalidations do
     Repo.insert_all(Invalidation, rows)
   end
 
+  @doc """
+  Record a domain event: what happened, and what a handler needs to settle it.
+
+  Writes the event *and* the invalidations it falls back to, sharing one
+  observation id. Which gets used is the consumer's decision rather than the
+  writer's: one with a handler for this `kind` applies the event and drops the
+  marks beside it, one without has the marks and recomputes. A consumer that
+  handles the event must discard them by observation id, or the handler is pure
+  overhead on top of the recompute it was meant to replace.
+  """
+  @spec record_event(
+          Ecto.UUID.t() | nil,
+          String.t(),
+          String.t(),
+          map(),
+          [entity()],
+          String.t() | nil
+        ) :: :ok
+  def record_event(project_id, source, kind, payload, entities, observation_id)
+      when is_binary(project_id) do
+    if enabled?() do
+      now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+      event =
+        :project
+        |> columns()
+        |> Map.merge(%{
+          project_id: project_id,
+          source: source,
+          kind: kind,
+          payload: payload,
+          observation_id: observation_id,
+          inserted_at: now
+        })
+
+      # The event, and the invalidation it falls back to.
+      #
+      # Both, sharing an observation id, because which one gets used is the
+      # consumer's decision and not the writer's: a consumer with a handler for
+      # this `kind` applies the event and discards the marks beside it; one
+      # without has the marks and recomputes. Encoding the entity list into the
+      # payload instead would have meant the fallback reading its entities back
+      # out of JSON, and a second shape for `entity/1` to understand.
+      marks =
+        entities
+        |> normalize()
+        |> Enum.map(fn entity ->
+          entity
+          |> columns()
+          |> Map.merge(%{
+            project_id: project_id,
+            source: source,
+            kind: "invalidate",
+            observation_id: observation_id,
+            inserted_at: now
+          })
+        end)
+
+      Repo.insert_all(Invalidation, [event | marks])
+    end
+
+    :ok
+  end
+
+  def record_event(_no_project, _source, _kind, _payload, _entities, _obs), do: :ok
+
   @doc "Marks this project has accumulated, oldest first, left in place."
   @spec pending(Ecto.UUID.t()) :: [Invalidation.t()]
   def pending(project_id) when is_binary(project_id) do

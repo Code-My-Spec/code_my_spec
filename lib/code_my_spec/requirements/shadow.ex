@@ -51,7 +51,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   the same question.
   """
 
-  import Ecto.Query, only: [from: 2, where: 2, dynamic: 2]
+  import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2]
 
   require Logger
 
@@ -125,6 +125,74 @@ defmodule CodeMySpec.Requirements.Shadow do
     end)
 
     :ok
+  end
+
+  @doc """
+  Set one requirement's verdict, without recomputing anything around it.
+
+  What an event handler writes. `Shadow.write/3` replaces everything an entity
+  owns and is what a recompute needs; this touches the single row the event
+  settled and leaves its siblings alone — which is the whole difference between
+  applying an event and re-deriving from one.
+
+  Answers `{:ok, 0}` when no row matched, and that is information rather than a
+  failure: the projection only holds rows the seed created, so a miss means the
+  event named an entity this vantage has never projected. The caller counts
+  those — a handler quietly writing nothing is exactly the silent failure the
+  shadow exists to catch.
+  """
+  @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
+  def put_verdict(%Scope{} = scope, change) do
+    {count, _} =
+      @source
+      |> where(^owner_filter(change.entity_type, change.entity_id))
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> where([n], n.name == ^change.name)
+      |> Repo.update_all(
+        set: [
+          satisfied: change.satisfied,
+          details: change.details,
+          checked_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
+          updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+        ]
+      )
+
+    {:ok, count}
+  end
+
+  @doc """
+  Settle one requirement across every entity of a type, then the exceptions.
+
+  What a set-based handler writes. `story_issues_resolved` is one grouped query
+  naming the few stories that carry an unresolved issue; every other story is
+  resolved *by absence*, and there is no list of them to iterate. So the default
+  goes on with one `UPDATE`, and the named few are corrected after.
+
+  Two writes for a population of any size, which is the whole reason a handler
+  owns a requirement rather than an entity. Ordered, and it has to be: the
+  default would otherwise overwrite the exceptions it was meant to leave alone.
+  """
+  @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
+  def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    {count, _} =
+      @source
+      |> where(^entity_type_filter(entity_type))
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> where([n], n.name == ^name)
+      |> Repo.update_all(
+        set: [
+          satisfied: spec.default,
+          details: spec.default_details,
+          checked_at: now,
+          updated_at: now
+        ]
+      )
+
+    Enum.each(spec.except, &put_verdict(scope, &1))
+
+    {:ok, count}
   end
 
   @doc """
@@ -250,6 +318,12 @@ defmodule CodeMySpec.Requirements.Shadow do
           n.project_id == ^project_id
     )
   end
+
+  # Every row owned by an entity of this type, whichever entity. The sweep's
+  # first half — "this requirement is satisfied unless something said otherwise".
+  defp entity_type_filter("component"), do: dynamic([n], not is_nil(n.component_id))
+  defp entity_type_filter("story"), do: dynamic([n], not is_nil(n.story_id))
+  defp entity_type_filter("project"), do: dynamic([n], not is_nil(n.project_id))
 
   defp owner_filter("component", id), do: dynamic([n], n.component_id == ^id)
   defp owner_filter("story", id), do: dynamic([n], n.story_id == ^id)

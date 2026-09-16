@@ -37,6 +37,13 @@ defmodule CodeMySpec.Requirements.Invalidation do
     field :observation_id, :string
     field :entity_scope, :string
 
+    # What happened in the domain, and the fields a handler needs to settle a
+    # verdict from it. `nil` (or "invalidate") is the older shape: this row says
+    # an entity moved and nothing about what to do, so it can only be answered
+    # by recomputing.
+    field :kind, :string
+    field :payload, :map
+
     belongs_to :project, Project, type: :binary_id
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story

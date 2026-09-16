@@ -140,6 +140,41 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   def story_entities(_message), do: []
 
   @doc """
+  Say what happened, rather than that something did.
+
+  The difference between this and `announce/3` is the difference between an
+  event and an invalidation. `announce/3` names entities that moved, and a
+  consumer can only answer it by recomputing them. This names the domain event
+  and carries what a handler needs to write the verdict directly — an issue
+  arriving at medium severity *is* `issues_triaged = false`, and there is
+  nothing to ask.
+
+  `entities` is still recorded, because a consumer with no handler for this kind
+  falls back to invalidating them. So an event is strictly more information than
+  a mark, never less, and adding one cannot make a projection wronger than it
+  was.
+  """
+  @spec event(Scope.t() | Ecto.UUID.t() | nil, String.t(), String.t(), map(), [
+          Invalidations.entity()
+        ]) :: :ok
+  def event(scope_or_project_id, source, kind, payload, entities \\ [])
+      when is_binary(source) and is_binary(kind) do
+    obs = observation_id()
+    Logger.info("[#{source}] #{kind}", obs: obs)
+
+    Invalidations.record_event(
+      project_id(scope_or_project_id),
+      source,
+      kind,
+      payload,
+      entities,
+      obs
+    )
+
+    changed(scope_or_project_id, obs)
+  end
+
+  @doc """
   An id for one observation, so the recompute that consumes it can name it.
 
   Not a payload, and the distinction is the whole reason this does not

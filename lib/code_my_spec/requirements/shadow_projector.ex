@@ -54,6 +54,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Invalidation
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Requirements.Preloader
@@ -187,7 +188,17 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   defp apply_marks(state, marks) do
     config = Configurations.get_or_create(state.scope)
-    state = run(plan(state, marks), state, config)
+
+    # Events first, and only what is left over goes to a plan.
+    #
+    # A handled event writes the verdict it already knew — one row, no
+    # recompute. A mark with no handler still names entities, so it falls
+    # through to `plan/2` exactly as before. That is what lets handlers arrive
+    # one requirement at a time instead of all at once: the projection is never
+    # wrong in the meantime, only slower where a handler is missing.
+    {handled, unhandled} = apply_handlers(state, marks)
+    state = if unhandled == [], do: state, else: run(plan(state, unhandled), state, config)
+    log_handled(state, handled)
 
     # Only once the writes are done. A mark consumed before the work it asks
     # for is a mark that a crash turns into a permanently stale entity, which
@@ -195,6 +206,70 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     Invalidations.consume(marks)
 
     %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
+  end
+
+  # Each event offered to its handler; anything without one handed back.
+  #
+  # `{:ok, changes}` with an empty list is a real answer — the event moved
+  # nothing the graph reads — and is *not* the same as `:no_handler`, which says
+  # we do not know and must re-derive. Collapsing the two would make an
+  # uninteresting event silently skip work it owed.
+  defp apply_handlers(state, marks) do
+    {handled, rest} = split_handled(state, marks)
+
+    # An invalidation beside an event this drain handled is that event's
+    # fallback, and it has been superseded. Dropping it by observation id is
+    # what stops a handled event *also* recomputing the entities it named —
+    # which would have made the handler pure overhead rather than a saving.
+    answered = MapSet.new(handled, fn {mark, _c, _w} -> mark.observation_id end)
+
+    {handled,
+     Enum.reject(rest, fn mark ->
+       mark.observation_id != nil and MapSet.member?(answered, mark.observation_id)
+     end)}
+  end
+
+  defp split_handled(state, marks) do
+    Enum.reduce(marks, {[], []}, fn mark, {handled, unhandled} ->
+      case handler_result(state.scope, mark) do
+        {:ok, changes, sweeps} ->
+          written = Enum.map(changes, &write_change(state.scope, &1))
+          Enum.each(sweeps, &Shadow.sweep(state.scope, &1))
+          {[{mark, changes, written} | handled], unhandled}
+
+        :no_handler ->
+          {handled, [mark | unhandled]}
+      end
+    end)
+  end
+
+  defp handler_result(_scope, %Invalidation{kind: kind}) when kind in [nil, "invalidate"],
+    do: :no_handler
+
+  defp handler_result(scope, %Invalidation{kind: kind, payload: payload}),
+    do: Handlers.apply_event(scope, kind, payload || %{})
+
+  defp write_change(scope, change) do
+    {:ok, count} = Shadow.put_verdict(scope, change)
+    count
+  end
+
+  # A handler that wrote nothing matched no row, which means the event named an
+  # entity this vantage has never projected. Worth a line, because a handler
+  # silently writing nothing is precisely the failure that looks like success.
+  defp log_handled(state, []), do: state
+
+  defp log_handled(state, handled) do
+    changes = handled |> Enum.flat_map(fn {_m, c, _w} -> c end) |> length()
+    rows = handled |> Enum.flat_map(fn {_m, _c, w} -> w end) |> Enum.sum()
+
+    if rows < changes do
+      Logger.warning(
+        "[ShadowProjector] #{state.project_id}: #{changes - rows} handler change(s) matched no row"
+      )
+    end
+
+    state
   end
 
   # What this drain has to load, which is decided before anything is loaded.
