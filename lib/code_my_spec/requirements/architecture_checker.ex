@@ -92,7 +92,11 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   """
   @spec orphans(Scope.t()) :: [Components.Component.t()]
   def orphans(%Scope{} = scope) do
-    components = Components.list_components_with_dependencies(scope)
+    # Only the two associations the coverage rule reads. See
+    # `ComponentRepository.list_components_for_coverage/1` — the wider query this
+    # replaces loaded four more, on every graph pass, and nothing here or in
+    # `AgentTasks.ArchitectureDesign` ever looked at them.
+    components = Components.list_components_for_coverage(scope)
     covered = covered_set(components)
 
     # Only components this working copy actually has files for.

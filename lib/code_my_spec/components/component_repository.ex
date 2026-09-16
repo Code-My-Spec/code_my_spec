@@ -167,6 +167,29 @@ defmodule CodeMySpec.Components.ComponentRepository do
     |> Repo.all()
   end
 
+  @doc """
+  The project's components with only what the orphan rule reads.
+
+  `list_components_with_dependencies/1` preloads six associations, and
+  `ArchitectureChecker.orphans/1` touches two of them: `stories`, to ask whether
+  a component is directly story-linked, and `dependencies`, to expand coverage
+  across dependency edges. `parent_component_id` is a column, so the tree costs
+  nothing. `project`, `dependents` and the two join-preloads with their own
+  nested components are loaded and never read.
+
+  That is paid on every graph pass — `architecture_designed` is a project
+  requirement and project requirements are rebuilt whatever moved — and on this
+  project it was 145ms across 1138 components, which is the whole of what a
+  project-node computation now costs.
+  """
+  @spec list_components_for_coverage(Scope.t()) :: [Component.t()]
+  def list_components_for_coverage(%Scope{active_project_id: project_id}) do
+    Component
+    |> where([c], c.project_id == ^project_id)
+    |> preload([:dependencies, :stories])
+    |> Repo.all()
+  end
+
   @spec get_component_with_dependencies(Scope.t(), integer()) :: Component.t() | nil
   def get_component_with_dependencies(%Scope{active_project_id: project_id}, id) do
     Component
@@ -383,5 +406,4 @@ defmodule CodeMySpec.Components.ComponentRepository do
         end
     end
   end
-
 end

@@ -71,6 +71,7 @@ defmodule CodeMySpec.Components do
   defdelegate count_components(scope), to: ComponentRepository
   defdelegate list_child_components(scope, parent_component_id), to: ComponentRepository
   defdelegate list_components_with_dependencies(scope), to: ComponentRepository
+  defdelegate list_components_for_coverage(scope), to: ComponentRepository
   defdelegate list_contexts(scope), to: ComponentRepository
   defdelegate list_contexts_with_dependencies(scope), to: ComponentRepository
   defdelegate list_orphaned_contexts(scope), to: ComponentRepository
