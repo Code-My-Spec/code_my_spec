@@ -35,7 +35,16 @@ defmodule CodeMySpecSpex.Story1063.Criterion3348Spex do
         # number belongs to no story here, so the file would be owned by
         # nothing and `bdd_specs_exist` could never move — which is what this
         # criterion is about.
-        story = create_story(context.scope, title: "Has a spex", description: "eventually")
+        #
+        # One real criterion, because `bdd_specs_covered` (issue 644279a9)
+        # checks coverage per criterion — the file below has to claim a
+        # criterion that actually exists, not an arbitrary number.
+        story =
+          create_story(context.scope,
+            title: "Has a spex",
+            description: "eventually",
+            acceptance_criteria: ["It happens"]
+          )
 
         before = read_settled_graph(context)
 
@@ -52,8 +61,10 @@ defmodule CodeMySpecSpex.Story1063.Criterion3348Spex do
 
       when_ "a spex file appears under a story's directory and the engineer syncs",
             context do
+        [criterion] = context.new_story.criteria
+
         ProjectBuilder.new(context.environment, app: "my_app")
-        |> ProjectBuilder.spex(context.new_story.number, 3348)
+        |> ProjectBuilder.spex(context.new_story.number, criterion.id)
         |> ProjectBuilder.write!()
 
         sync(context)

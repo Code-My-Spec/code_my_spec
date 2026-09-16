@@ -47,6 +47,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -106,12 +107,37 @@ defmodule CodeMySpec.Requirements do
     # answer. `:ok` when nothing is pending and when nobody is watching.
     GraphWatcher.settle(scope)
 
-    {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
+    {{nodes, edges}, actionable, _computed_at} =
+      RequirementGraph.cached_graph_with_actionable(scope)
 
-    case role && RequirementsRegistry.requirement_names_for_role(role) do
+    # A role's answer is computed for that role rather than filtered out of the
+    # project's. Those are different questions and the filtered version answered
+    # the wrong one: the project's actionable set has already had every node
+    # removed that sits downstream of *anyone's* unfinished work, so filtering it
+    # by name could only ever narrow a list product had already emptied.
+    #
+    # `actionable_for_role_from/4` blocks on the same-entity chain and on this
+    # role's own work, and lets another role's unfinished work order rather than
+    # clamp. Story 1005's rule, criterion 3491.
+    #
+    # `nil` still answers the project's, unfiltered, which is what every caller
+    # outside the loop wants — a page showing the whole graph is not a role.
+    case role do
       nil -> actionable
-      [] -> []
-      names -> Enum.filter(actionable, &(&1.name in names))
+      role -> role_actionable(scope, nodes, edges, role)
+    end
+  end
+
+  defp role_actionable(scope, nodes, edges, role) do
+    case RequirementsRegistry.requirement_names_for_role(role) do
+      [] ->
+        []
+
+      _names ->
+        case Preloader.load(scope) do
+          {:ok, ctx} -> RequirementGraph.actionable_for_role_from(nodes, edges, ctx, role)
+          _ -> []
+        end
     end
   end
 

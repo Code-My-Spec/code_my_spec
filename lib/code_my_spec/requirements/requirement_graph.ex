@@ -1362,6 +1362,94 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {{nodes, edges, actionable}, metrics}
   end
 
+  @doc """
+  The same actionable set, computed as one role sees it.
+
+  `actionable_from/3` blocks a node when *any* transitive prerequisite is
+  unsatisfied, whoever it belongs to. That is right inside one entity's chain and
+  wrong across the project: an untriaged issue queue is product's, and it was
+  making every story's coding work unactionable for roles that could not clear
+  it. Measured 2026-09-15: `get_next_requirement` offered TriageIssues and
+  nothing else while five spex criteria sat red on a coding agent's own
+  checkout, and the agent reported "the graph holds no work for its role"
+  throughout.
+
+  So a block still travels, but only where it means something to the role asking:
+
+    * **Same entity** — a story's own chain clamps regardless of role.
+      `three_amigos_complete` is product's and `bdd_specs_exist` is coding's, and
+      specs for a story genuinely wait on that story's Three Amigos.
+    * **Same role** — a role's own unfinished work still orders itself, across
+      entities as before.
+
+  A prerequisite that is neither orders the work and does not clamp it. Story
+  1005's rule, criterion 3491.
+
+  This does not make anything actionable that was unsatisfied on its own merits:
+  `actionable_from/3`'s other conditions are unchanged, so a node still has to be
+  unsatisfied, have a task that can satisfy it, and be tethered.
+  """
+  @spec actionable_for_role_from([Requirement.t()], [edge()], map(), atom()) :: [Requirement.t()]
+  def actionable_for_role_from(nodes, edges, ctx, role) do
+    role_names = MapSet.new(RequirementsRegistry.requirement_names_for_role(role))
+
+    blocked = blocked_for_role(nodes, edges, role_names)
+    component_priority = build_component_priority_map(ctx)
+
+    nodes
+    |> Enum.filter(fn n ->
+      not n.satisfied and
+        not is_nil(n.satisfied_by) and
+        MapSet.member?(role_names, n.name) and
+        not untethered_component?(n, component_priority) and
+        not MapSet.member?(blocked, node_key(n))
+    end)
+    |> sort_by_story_priority(ctx)
+  end
+
+  # Forward from each unsatisfied node, carrying who it belongs to, so the
+  # decision to clamp is made per reachable node rather than once per seed. A
+  # seed blocks a descendant when they share an entity, or when the seed is this
+  # role's own work.
+  defp blocked_for_role(nodes, edges, role_names) do
+    outgoing =
+      Enum.reduce(edges, %{}, fn edge, acc ->
+        Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
+      end)
+
+    entity_of = Map.new(nodes, fn n -> {node_key(n), {n.entity_type, n.entity_id}} end)
+
+    nodes
+    |> Enum.reject(& &1.satisfied)
+    |> Enum.reduce(MapSet.new(), &block_from_seed(&1, &2, outgoing, entity_of, role_names))
+  end
+
+  defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
+    seed_entity = {seed.entity_type, seed.entity_id}
+    seeds_own_role = MapSet.member?(role_names, seed.name)
+
+    outgoing
+    |> Map.get(node_key(seed), [])
+    |> reachable(outgoing, MapSet.new())
+    |> Enum.filter(&clamps?(seeds_own_role, Map.get(entity_of, &1), seed_entity))
+    |> Enum.into(acc)
+  end
+
+  # Same role, or same entity. Anything else orders the work without clamping it.
+  defp clamps?(true, _descendant_entity, _seed_entity), do: true
+  defp clamps?(false, entity, entity), do: true
+  defp clamps?(false, _descendant_entity, _seed_entity), do: false
+
+  defp reachable([], _outgoing, seen), do: seen
+
+  defp reachable([key | rest], outgoing, seen) do
+    if MapSet.member?(seen, key) do
+      reachable(rest, outgoing, seen)
+    else
+      reachable(Map.get(outgoing, key, []) ++ rest, outgoing, MapSet.put(seen, key))
+    end
+  end
+
   defp actionable_from(nodes, edges, ctx) do
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)

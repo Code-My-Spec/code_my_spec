@@ -81,8 +81,14 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     # add a failing test. mtime advances because we re-write; fingerprint
     # is unchanged. Without the fix, sync_changed would drop impl from
     # changed_paths and exunit_stale would never resolve.
-    Process.sleep(1100)
-    File.write!(Path.join(tmp_dir, "lib/example_context.ex"), impl)
+    #
+    # Stamped forward rather than slept past -- sync_changed's mtime
+    # comparison is second-resolution (reference_sync_changed_mtime_second_resolution),
+    # so the write needs to land at a provably later second, not merely
+    # later in wall-clock time.
+    impl_path = Path.join(tmp_dir, "lib/example_context.ex")
+    File.write!(impl_path, impl)
+    File.touch!(impl_path, System.os_time(:second) + 5)
 
     File.write!(Path.join(tmp_dir, "test/example_context_test.exs"), """
     defmodule ExampleContextTest do

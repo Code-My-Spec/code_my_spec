@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3030Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent

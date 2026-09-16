@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3023Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   setup :register_log_in_setup_account
 

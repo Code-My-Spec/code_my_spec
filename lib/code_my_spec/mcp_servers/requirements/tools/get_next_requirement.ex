@@ -106,10 +106,29 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # Same source as `NodeRepository.actionable_count/2` deliberately: two
   # definitions of "my kind of work" would drift, and the drift shows up as a
   # count that disagrees with the list it is counting.
+  # Computed for the role rather than filtered out of the project's answer.
+  #
+  # Filtering was the defect criterion 3491 names. The project's actionable set
+  # has already had every node removed that sits downstream of *anyone's*
+  # unfinished work, so narrowing it by name could only ever shorten a list
+  # another role had already emptied. One untriaged issue left
+  # `issues_triaged` — product's, and unclearable by coding — as the only
+  # actionable node on the project, and a coding agent with red specs on its own
+  # checkout was told "nothing for coding right now".
+  #
+  # `Requirements.actionable_for_role/2` asks the other question: what is
+  # actionable *for this role*, treating another role's queue as somebody else's
+  # problem rather than as a prerequisite. `44e450760` fixed that function; this
+  # is the surface an agent actually calls, and it was still filtering.
+  #
+  # The two fall-throughs are kept exactly as they were: no agent means no role
+  # (a Claude Code session driving by hand gets the whole graph), and a role
+  # with no requirement kinds of its own gets the whole graph rather than
+  # nothing.
   defp of_my_kind(nodes, frame, scope) do
     with role when not is_nil(role) <- my_role(frame, scope),
          names when names != [] <- Registry.requirement_names_for_role(role) do
-      Enum.filter(nodes, &(&1.name in names))
+      Requirements.actionable_for_role(scope, role)
     else
       _ -> nodes
     end

@@ -136,7 +136,12 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def error(:question_not_found) do
     Response.tool()
-    |> Response.error("Question not found in the active account.")
+    |> Response.error(
+      "Question not found in the active account. This resolves a Three Amigos " <>
+        "question raised on a story — ids come from list_questions on that story, " <>
+        "not from list_open_questions. An id from list_open_questions is a different " <>
+        "record; use answer_question or escalate_question for those instead."
+    )
   end
 
   def error(:rule_not_found) do

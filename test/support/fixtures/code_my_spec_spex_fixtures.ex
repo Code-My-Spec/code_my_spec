@@ -1409,10 +1409,50 @@ defmodule CodeMySpecSpex.Fixtures do
     # The watcher computes on arrival and announces it, so subscribing leaves a
     # `{:graph_updated, _}` in the caller's mailbox for a scenario that has not
     # touched anything. Settle the bootstrap pass and drain what it said.
-    GraphWatcher.settle(project_id)
+    #
+    # Looped rather than a single settle-and-drain. A `given_` chain doing real
+    # writes across real wall-clock time can leave the watcher mid-backlog: a
+    # `graph_inputs_changed` message that arrives *while* a settle-triggered
+    # recompute is running queues behind it rather than folding into it, and
+    # schedules its own debounce timer for after this call has already
+    # returned. One settle-and-drain only clears whatever was pending at the
+    # instant it ran — not a backlog still working through several such
+    # cycles on the watcher's own clock.
+    #
+    # Measured on 3189: a `given_` chain doing real writes across ~1.5s against a
+    # 25ms test debounce and a 20-60ms recompute produced four to six separate
+    # recompute cycles, each with its own real observations, arriving in bursts
+    # over several hundred milliseconds. A single settle-and-drain — even one
+    # that loops its own `receive` down to empty — only ever caught whichever
+    # cycles had already finished by the time it ran, and left the rest to leak
+    # into whatever the `when_` counted next.
+    #
+    # So this settles, drains, and checks the watcher's own word for whether
+    # anything is still pending (`status/1`'s `pending: timer != nil`) — which
+    # is true exactly when a burst arrived behind the settle call and is
+    # already scheduled to recompute again. Repeating until the watcher itself
+    # says there is nothing left to catch up on is what makes "the mailbox is
+    # clean before a `when_` starts counting" true regardless of how many
+    # cycles setup took to produce it.
+    #
+    # No cap, deliberately. A setup chain leaving more stray messages than
+    # expected should show up as a slower test, not vanish behind a bounded drain.
+    drain_until_settled(project_id)
+  end
 
+  defp drain_until_settled(project_id) do
+    GraphWatcher.settle(project_id)
+    drain_bootstrap_announcements(project_id)
+
+    case GraphWatcher.status(project_id) do
+      %{pending: true} -> drain_until_settled(project_id)
+      _ -> :ok
+    end
+  end
+
+  defp drain_bootstrap_announcements(project_id) do
     receive do
-      {:graph_updated, ^project_id} -> :ok
+      {:graph_updated, ^project_id} -> drain_bootstrap_announcements(project_id)
     after
       0 -> :ok
     end

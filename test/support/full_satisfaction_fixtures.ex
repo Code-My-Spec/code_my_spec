@@ -121,15 +121,17 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   def apply_without_qa_story(context) do
     context
     |> apply_up_to_analysis()
-    |> apply_fresh_analysis_runs()
+    |> apply_qa_readiness_transition()
   end
 
   @doc """
-  The same chain, stopping one step short of the green analysis run.
+  The same chain, stopping short of everything that makes `qa_complete`
+  actionable.
 
-  Everything `apply_without_qa_story/1` does except the last thing that makes
-  `qa_complete` actionable, so a scenario can settle the whole project first
-  and then make only the QA-readiness transition happen inside its `when_`.
+  Everything `apply_without_qa_story/1` does except the QA-readiness
+  transition (`apply_qa_readiness_transition/1`), so a scenario can settle the
+  whole project first and then make only that transition happen inside its
+  `when_`.
 
   Criterion 3199 is why this is split out. It asserts that QA work reaches the
   QA agent and reaches no other, by comparing what each agent heard across the
@@ -139,6 +141,16 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   before/after comparison across the entire block cannot tell that from a role
   leak. The criterion failed on a correctly routed wake exactly as it would on
   a misrouted one.
+
+  `apply_specs_enforced/1` used to be the last step here, on the theory that
+  `apply_fresh_analysis_runs/1` alone was the transition that made
+  `qa_complete` actionable. It is not: `SpecsPassingChecker.passing?/2` reads
+  the `specs_ready` latch alone as satisfying `bdd_specs_passing` whenever no
+  fresh spex run exists yet to contradict it, so enforcing specs before any
+  spex run has happened satisfied the gate by itself, one step early. 3199
+  found this by asserting the premise at the end of its first `given_` and
+  watching it fail: `qa_complete` was already actionable here, before the
+  `when_` it was meant to be exclusive to.
   """
   @spec apply_up_to_analysis(map()) :: map()
   def apply_up_to_analysis(context) do
@@ -156,8 +168,23 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_story()
     |> apply_three_amigos_artifacts()
     |> apply_bdd_spec_file()
-    |> apply_specs_enforced()
     |> ProjectStateFixtures.apply_journey_artifacts()
+  end
+
+  @doc """
+  The QA-readiness transition: enforce the story's specs and stamp a fresh
+  green analysis run, together.
+
+  Split out of `apply_up_to_analysis/1` because the two steps cannot be
+  separated and still leave `qa_complete` inactionable in between — see that
+  function's doc for why. Public so a scenario's `when_` can trigger exactly
+  this transition after settling everything else in its `given_`.
+  """
+  @spec apply_qa_readiness_transition(map()) :: map()
+  def apply_qa_readiness_transition(context) do
+    context
+    |> apply_specs_enforced()
+    |> apply_fresh_analysis_runs()
   end
 
   # `bdd_specs_passing` checks the story's `specs_ready` latch, and writing the

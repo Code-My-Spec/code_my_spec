@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
   way round but for the wrong reason: it should never have been converting.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}

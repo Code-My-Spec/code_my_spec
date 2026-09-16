@@ -598,31 +598,35 @@ defmodule CodeMySpecSpex.GraphGivens do
     :ok = CodeMySpecSpex.Fixtures.seal_three_amigos(scope, story)
 
     story = StoryHelpers.fetch(scope, story.id)
-    [criterion | _] = story.criteria
 
-    bdd_path = Fixtures.spec_file_path(story, criterion)
+    # Happy + failure path above are two criteria, and bdd_specs_covered
+    # checks every one, not just the first (issue 644279a9) -- so both need
+    # a file or the story's chain never clears.
+    Enum.each(story.criteria, fn criterion ->
+      bdd_path = Fixtures.spec_file_path(story, criterion)
 
-    bdd_content = """
-    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-      @moduledoc \"\"\"
-      Story #{story.id} — #{story.title}
-      Criterion #{criterion.id} — #{criterion.description}
-      \"\"\"
+      bdd_content = """
+      defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
+        @moduledoc \"\"\"
+        Story #{story.id} — #{story.title}
+        Criterion #{criterion.id} — #{criterion.description}
+        \"\"\"
 
-      use CodeMySpecSpex.Case
+        use CodeMySpecSpex.Case
 
-      spex "#{story.title}" do
-        scenario "the criterion holds" do
-          then_ "the placeholder assertion passes" do
-            assert true
-            :ok
+        spex "#{story.title}" do
+          scenario "the criterion holds" do
+            then_ "the placeholder assertion passes" do
+              assert true
+              :ok
+            end
           end
         end
       end
-    end
-    """
+      """
 
-    :ok = Environments.write_file(env, bdd_path, bdd_content)
+      :ok = Environments.write_file(env, bdd_path, bdd_content)
+    end)
 
     sync_project(context)
     :ok

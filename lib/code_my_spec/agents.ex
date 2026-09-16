@@ -419,7 +419,7 @@ defmodule CodeMySpec.Agents do
   defp halt_for_restart(%Agent{} = agent) do
     agent.working_copy_id
     |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
-    |> stopped?()
+    |> stopped?(agent)
   end
 
   @doc """
@@ -2209,16 +2209,33 @@ defmodule CodeMySpec.Agents do
   defp end_process(_scope, %Agent{} = agent) do
     agent.working_copy_id
     |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
-    |> stopped?()
+    |> stopped?(agent)
   end
 
   # An agent the machine is not running is stopped — asking again is how a
   # stop becomes idempotent. A machine that could not be *reached* is not, and
   # collapsing the two is what makes a row say stopped over something still
   # running.
-  defp stopped?(:ok), do: :ok
-  defp stopped?({:error, :not_running}), do: :ok
-  defp stopped?({:error, _reason} = error), do: error
+  defp stopped?(:ok, _agent), do: :ok
+  defp stopped?({:error, :not_running}, _agent), do: :ok
+
+  # Unreachable is not always temporary. `Transport.Harness.unreachable/3`
+  # assumes the process "may well still be running" on a machine we cannot
+  # currently talk to — right when the working copy is still a real row, wrong
+  # when it is not. A copy that no longer resolves at all (offboarded, or never
+  # persisted past a scratch path) has nowhere left to hold a process, so there
+  # is nothing left for this refusal to protect. Issue `8b591eba`: four agents
+  # on a deleted `/tmp` checkout, unstoppable and still claiming their role
+  # forever because every stop read the same as "machine is briefly down".
+  defp stopped?({:error, :harness_not_connected} = error, agent) do
+    case WorkingCopies.fetch(agent.working_copy_id) do
+      {:error, :not_found} -> :ok
+      {:error, :invalid_id} -> :ok
+      {:ok, _} -> error
+    end
+  end
+
+  defp stopped?({:error, _reason} = error, _agent), do: error
 
   # Only after something confirmed the process is gone. `os_pid` and
   # `os_boot_id` are cleared here rather than before, because until the process

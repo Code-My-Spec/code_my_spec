@@ -69,6 +69,7 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   import Ecto.Query
 
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
@@ -95,6 +96,14 @@ defmodule CodeMySpec.Requirements.Predicates do
   whichever of `component_id`/`story_id` is set and the file table records the
   same pair. A project-scoped node has neither and matches no file, which is
   correct — no file check is project-scoped.
+
+  ## `:bdd_specs_covered`
+
+  Story-scoped, like `:file_exists`, but satisfied per criterion rather than
+  per story: every acceptance criterion on the story has a non-empty
+  `spec_path` that resolves to an existing file of `config.role`. A story
+  with no criteria is unsatisfied rather than vacuously true, matching
+  `:all_deployed`'s reasoning — nothing to cover is not coverage.
 
   ## `:path_exists`
 
@@ -137,6 +146,7 @@ defmodule CodeMySpec.Requirements.Predicates do
           Ecto.Query.t(),
           :file_exists
           | :file_valid
+          | :bdd_specs_covered
           | :path_exists
           | :component_exists
           | :field_present
@@ -185,6 +195,34 @@ defmodule CodeMySpec.Requirements.Predicates do
           select: 1
         )
       )
+    )
+  end
+
+  def satisfied(query, :bdd_specs_covered, %{role: role}, working_copy_id) do
+    where(
+      query,
+      [node: n],
+      exists(
+        from(c in Criterion, where: c.story_id == parent_as(:node).story_id, select: 1)
+      ) and
+        not exists(
+          from(c in Criterion,
+            as: :criterion,
+            where: c.story_id == parent_as(:node).story_id,
+            where:
+              is_nil(c.spec_path) or c.spec_path == "" or
+                not exists(
+                  from(f in File,
+                    where: f.role == ^role,
+                    where: f.path == parent_as(:criterion).spec_path,
+                    where: f.story_id == parent_as(:criterion).story_id,
+                    where: ^harness_filter(working_copy_id),
+                    select: 1
+                  )
+                ),
+            select: 1
+          )
+        )
     )
   end
 

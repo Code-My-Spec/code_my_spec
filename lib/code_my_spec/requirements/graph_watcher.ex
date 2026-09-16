@@ -68,6 +68,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL.Sandbox
 
   # Two seconds, and the number is picked from what the writers actually do.
   #
@@ -126,10 +127,30 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
            CodeMySpec.Requirements.WatcherSupervisor,
            {__MODULE__, {project_id, watcher_scope(scope)}}
          ) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:ok, pid} -> {:ok, allow_sandbox(pid)}
+      {:error, {:already_started, pid}} -> {:ok, allow_sandbox(pid)}
       other -> other
     end
+  end
+
+  # The watcher outlives whatever called this and has no sandbox ownership of
+  # its own, so under test its queries are at the mercy of whatever the
+  # process-global sandbox mode happens to be at the moment it runs one —
+  # someone else's connection if any non-async test has set `{:shared, _}`
+  # since, or the real (non-transactional) pool if `:manual` mode has never
+  # been granted to it at all. `allow/3` gives this specific pid this
+  # specific caller's connection, explicitly, instead of leaving it to
+  # whatever the ambient mode says: the caller is `self()` here because
+  # every path into this function — the session-start hook, a continuous-mode
+  # toggle — runs inline in the process that is asking, sandboxed or not.
+  # No-op outside a sandboxed pool (dev, prod, drill/e2e), same guard this
+  # codebase already uses for `real_pool?/0`.
+  defp allow_sandbox(pid) do
+    if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Sandbox do
+      Sandbox.allow(Repo, self(), pid)
+    end
+
+    pid
   end
 
   # The scope outlives the request that started the watcher, so it keeps only
@@ -529,20 +550,32 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # moved"; every announcement should recompute, because recomputing is cheap
   # and per-entity and the answer is wrong until it happens. Waking is a far
   # more expensive act — it renders every role's menu and dispatches to agents
-  # — and it is only warranted when the recompute *produced* something an agent
-  # can act on that it could not before.
+  # — and it is only warranted when a real input moved.
   #
   # Coupling them meant the cost of waking vetoed recomputing. A stop hook
   # records an analyzer run on every agent turn, so `Analysis` announcing woke
   # every role every turn — a real storm, and the reason announcing was dropped.
   # With the two separated it recomputes every turn, which is correct and
-  # bounded, and wakes nobody unless the run actually unblocked work.
+  # bounded, and wakes nobody unless something actually moved.
   #
-  # Two special cases disappear into this rather than being stated. A first
-  # pass wakes nobody because everything it finds was already actionable before
-  # this watcher existed — criterion 3186, previously a clause of its own. And
-  # a pass that changes nothing wakes nobody however many observations it
-  # consumed, which is the common case on a busy project.
+  # Gated on `consumed != []` (see `recompute/1`), not on the requirement
+  # actionable-set changing. That set is only one of the things a role's menu
+  # can show — problems are coding work the graph never carries as a
+  # requirement (3193), and a wake gated on the actionable diff never ran for
+  # one. Widening the trigger to "a real observation landed" rather than
+  # adding a second, parallel diff for problems (a proxy per writer, the shape
+  # this module's own moduledoc says it moved away from) means one signal
+  # decides whether to ask, and `Menu.render/4` — already correct, already
+  # silent when a role has nothing — decides whether to say anything. The
+  # extra cost is a rendered menu per continuous agent on a pass that changed
+  # requirements not at all; the message count for that case is unchanged,
+  # because `Menu.render/4` was always going to answer `""` for it.
+  #
+  # `appeared` below still exists for `last_appeared`'s diagnostic value, not
+  # for the wake decision. A first pass still shows an empty `appeared` — the
+  # requirements it finds were already actionable before this watcher existed,
+  # criterion 3186 — even though the same pass's `consumed` is what actually
+  # gates the wake.
   defp newly_actionable(actionable, nil), do: {keys(actionable), []}
 
   defp newly_actionable(actionable, previous) do
@@ -613,11 +646,23 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     account_for(consumed)
     report_shadow(state, computed)
 
-    Phoenix.PubSub.broadcast(
-      CodeMySpec.PubSub,
-      GraphInputs.topic(state.project_id),
-      {:graph_updated, state.project_id}
-    )
+    # Only when an input actually moved. A pass that ran purely to onboard a
+    # vantage a reader named for the first time (`consumed == []`, including
+    # the very first pass this watcher ever runs) computed rows nobody had
+    # yet -- not a change to anything already on the board. That is the same
+    # distinction `newly_actionable/2` below already draws for waking: the
+    # first pass wakes nobody because everything it finds was already
+    # actionable before this watcher existed. Announcing unconditionally
+    # meant a reader visiting a fresh checkout looked exactly like a graph
+    # change to anyone counting announcements, and nothing downstream could
+    # tell the two apart.
+    if consumed != [] do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        GraphInputs.topic(state.project_id),
+        {:graph_updated, state.project_id}
+      )
+    end
 
     # Nothing actionable is a real answer and not a reason to wake anybody:
     # `wake/2` would render an empty menu and stay silent for every role, so
@@ -629,7 +674,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # own recompute would be calling itself, and the agent that had been waiting
     # would be waiting on a deadlock.
     {now_actionable, appeared} = newly_actionable(actionable, state.last_actionable)
-    waking = maybe_wake(state, appeared)
+    waking = maybe_wake(state, consumed)
 
     {:ok,
      %{

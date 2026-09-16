@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2962Spex do
   # points at by default. Without this the route 404s and `live/2` fails
   # inside LiveViewTest rather than saying which router it looked in.
   # Story 1025's criteria drive the same page and override it the same way.
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   import CodeMySpecSpex.WorkingCopyHelpers
 

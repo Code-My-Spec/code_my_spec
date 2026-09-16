@@ -16,9 +16,12 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
   import Ecto.Query
 
+  import CodeMySpec.AcceptanceCriteriaFixtures
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
 
   alias CodeMySpec.Requirements.{
@@ -43,6 +46,35 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       role: role,
       valid: valid
     })
+  end
+
+  defp bdd_file!(scope, story, path) do
+    Repo.insert!(%FileRecord{
+      project_id: scope.active_project_id,
+      working_copy_id: scope.active_working_copy_id,
+      story_id: story.id,
+      path: path,
+      role: :bdd_spec,
+      valid: true
+    })
+  end
+
+  defp claim!(criterion, path) do
+    criterion |> Ecto.Changeset.change(spec_path: path) |> Repo.update!()
+  end
+
+  # What the query says, as a set of story ids.
+  defp by_query_story(scope, check, config) do
+    Predicates.nodes()
+    |> where([node: n], not is_nil(n.story_id))
+    |> Predicates.satisfied(check, config, scope.active_working_copy_id)
+    |> select([node: n], n.story_id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp bdd_specs_exist_definition do
+    Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == "bdd_specs_exist"))
   end
 
   # A real second working copy of the same project. `working_copy_id` is a foreign
@@ -132,6 +164,96 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       RequirementGraph.compute_graph(scope)
 
       refute MapSet.member?(by_query(scope, :file_valid, %{role: :spec}), component.id)
+    end
+  end
+
+  describe "bdd_specs_covered agrees with the interpreter, per criterion" do
+    # Issue 644279a9: a story with one spex file used to read satisfied no
+    # matter how many criteria it had. Here one story has every criterion
+    # claimed and filed, the other has one of two — the case that used to be
+    # indistinguishable from fully covered.
+    test "a story with every criterion covered is satisfied; a partly covered one is not",
+         %{scope: scope} do
+      covered = story_fixture(scope, %{criteria: []})
+      c1 = criterion_fixture(scope, covered)
+      c2 = criterion_fixture(scope, covered)
+      claim!(c1, "test/spex/covered/one_test.exs")
+      claim!(c2, "test/spex/covered/two_test.exs")
+      bdd_file!(scope, covered, "test/spex/covered/one_test.exs")
+      bdd_file!(scope, covered, "test/spex/covered/two_test.exs")
+
+      partial = story_fixture(scope, %{criteria: []})
+      p1 = criterion_fixture(scope, partial)
+      _p2 = criterion_fixture(scope, partial)
+      claim!(p1, "test/spex/partial/one_test.exs")
+      bdd_file!(scope, partial, "test/spex/partial/one_test.exs")
+
+      RequirementGraph.compute_graph(scope)
+
+      satisfied = by_query_story(scope, :bdd_specs_covered, %{role: :bdd_spec})
+
+      assert MapSet.member?(satisfied, covered.id)
+      refute MapSet.member?(satisfied, partial.id)
+
+      definition = bdd_specs_exist_definition()
+
+      assert %{satisfied: true} =
+               RequirementCalculator.compute_one(
+                 scope,
+                 covered,
+                 definition,
+                 Files.list_story_files(scope, covered.id)
+               )
+
+      assert %{satisfied: false} =
+               RequirementCalculator.compute_one(
+                 scope,
+                 partial,
+                 definition,
+                 Files.list_story_files(scope, partial.id)
+               )
+    end
+
+    test "a criterion's file existing is not enough without being claimed", %{scope: scope} do
+      story = story_fixture(scope, %{criteria: []})
+      criterion_fixture(scope, story)
+      bdd_file!(scope, story, "test/spex/unclaimed/one_test.exs")
+
+      RequirementGraph.compute_graph(scope)
+
+      refute MapSet.member?(
+               by_query_story(scope, :bdd_specs_covered, %{role: :bdd_spec}),
+               story.id
+             )
+
+      assert %{satisfied: false} =
+               RequirementCalculator.compute_one(
+                 scope,
+                 story,
+                 bdd_specs_exist_definition(),
+                 Files.list_story_files(scope, story.id)
+               )
+    end
+
+    # Nothing to cover is not coverage — same reasoning `:all_deployed` uses for
+    # a project with no stories.
+    test "a story with no criteria is unsatisfied, not vacuously true", %{scope: scope} do
+      story = story_fixture(scope, %{criteria: []})
+
+      RequirementGraph.compute_graph(scope)
+
+      refute MapSet.member?(
+               by_query_story(scope, :bdd_specs_covered, %{role: :bdd_spec}),
+               story.id
+             )
+
+      assert %{satisfied: false} =
+               RequirementCalculator.compute_one(
+                 scope,
+                 story,
+                 bdd_specs_exist_definition(),
+                 Files.list_story_files(scope, story.id)
+               )
     end
   end
 

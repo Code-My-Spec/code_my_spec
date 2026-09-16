@@ -60,8 +60,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
         {:ok,
          context
          |> Map.put(:coding, coding.id)
-         |> Map.put(:main, main.id)
-         |> Map.put(:before, heard_count(context, coding.id))}
+         |> Map.put(:main, main.id)}
       end
 
       given_ "work waiting on that working copy", context do
@@ -80,7 +79,17 @@ defmodule CodeMySpecSpex.Story1048.Criterion3198Spex do
 
         :ok = Fixtures.mark_story_ready(context.scope, story)
 
-        {:ok, Map.put(context, :story, story)}
+        # Settled and captured here, not in the previous `given_`. Marking
+        # the story ready is real work appearing, and it legitimately wakes
+        # the coding agent -- correctly, before the `when_` ever injects a
+        # fault. A `:before` taken ahead of this block would count that
+        # legitimate wake as if the failed recompute below had caused it.
+        :ok = Fixtures.settle_graph(context.scope)
+
+        {:ok,
+         context
+         |> Map.put(:story, story)
+         |> Map.put(:before, heard_count(context, context.coding))}
       end
 
       when_ "the graph fails to recompute and makes no announcement", context do
