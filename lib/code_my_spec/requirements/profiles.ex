@@ -43,6 +43,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
+  alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
@@ -240,7 +241,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   #
   # The four collections are the shape `BddRulesChecker.complete?/3` reads, which
   # is `Preloader`'s: grouped by story id, and empty for a story with none.
-  def load(%Scope{active_project_id: project_id}, :stories) do
+  def load(%Scope{active_project_id: project_id} = scope, :stories) do
     stories = Repo.all(from(s in Story, where: s.project_id == ^project_id))
     story_ids = Enum.map(stories, & &1.id)
 
@@ -249,12 +250,7 @@ defmodule CodeMySpec.Requirements.Profiles do
       # `work_dispatched` asks whether anything is being built. One `exists?`,
       # and the stories above answer the other half — which ready ones belong to
       # no epic — so the checker stops querying for either.
-      epic_in_progress?:
-        Repo.exists?(
-          from(e in CodeMySpec.Epics.Epic,
-            where: e.project_id == ^project_id and e.status == :dispatched
-          )
-        ),
+      epic_in_progress?: EpicDispatch.in_progress?(scope),
       amigos: %{
         personas_by_story: personas_by_story(story_ids),
         rules_by_story: rules_by_story(project_id),
