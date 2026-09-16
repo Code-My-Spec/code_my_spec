@@ -353,15 +353,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # writing only the stale rows deletes precisely the rows being kept. The
       # next read then finds a shortfall and recomputes everything, which is the
       # behaviour this function exists to remove, arriving as a reap.
+      {fingerprint_ms, fingerprint} = timed(fn -> GraphFingerprint.compute(ctx, config) end)
+
       scope
-      |> GraphCache.publish(
-        GraphFingerprint.compute(ctx, config),
-        {nodes, stored_edges},
-        topology
-      )
+      |> GraphCache.publish(fingerprint, {nodes, stored_edges}, topology)
       |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
 
-      {serve(nodes, ctx), stored_edges}
+      {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
+
+      log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms)
+
+      {served, stored_edges}
     else
       # Which guard sent it to the whole computation, because without this the
       # only observable difference between "reuse is working" and "reuse never
@@ -2089,6 +2091,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     barren_top
     |> MapSet.union(barren_children)
     |> MapSet.new(&{"component", &1})
+  end
+
+  # What the rest of the pass went on, named rather than left as a remainder.
+  #
+  # The three-way split said preload 14%, projection 22%, and 62% somewhere
+  # else — measured on dev across 40 passes that recomputed nothing at all. A
+  # majority of every pass, unaccounted for, on passes doing no work: that is
+  # the number worth chasing, and it cannot be chased from a total.
+  #
+  # `fingerprint` and `serve` are the two named steps left on the zero-stale
+  # path. Whatever the four still do not cover is `stale_entities/3` — the
+  # per-entity hash of every component and story — and naming the others is how
+  # that gets isolated without restructuring the `with` guards, which would
+  # change which work the short-circuits skip.
+  defp log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms) do
+    total = elapsed_ms(started)
+    accounted = (preload_ms || 0) + projection_ms + fingerprint_ms + serve_ms
+
+    Logger.info(
+      "[Requirements] pass cost #{total}ms — preload #{ms_or_na(preload_ms)}, " <>
+        "projection #{projection_ms}ms, fingerprint #{fingerprint_ms}ms, " <>
+        "serve #{serve_ms}ms, elsewhere #{max(total - accounted, 0)}ms"
+    )
   end
 
   defp timed(fun) do
