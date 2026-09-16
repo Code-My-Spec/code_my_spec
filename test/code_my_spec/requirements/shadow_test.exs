@@ -277,7 +277,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       refute is_nil(scope.active_working_copy_id),
              "this test needs a scope with a checkout on it, or it passes vacuously"
 
-      CodeMySpec.Requirements.GraphInputs.event(
+      GraphInputs.event(
         scope,
         "Analysis",
         "analysis_completed",
@@ -296,7 +296,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       # that failed, it is a writer speaking from nowhere — and that has to read
       # as every checkout, never as the `nil` *vantage*, which is one particular
       # row-space a reader with no checkout is answered from.
-      CodeMySpec.Requirements.GraphInputs.event(
+      GraphInputs.event(
         %{scope | active_working_copy_id: nil},
         "Nowhere",
         "analysis_completed",
