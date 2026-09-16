@@ -266,6 +266,48 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     end
   end
 
+  test "Issues names the story it was attributed to, and the project", ctx do
+    story = create_story(ctx.scope, title: "Blamed", description: "for an issue")
+    Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
+
+    {:ok, issue} =
+      CodeMySpec.Issues.create_issue(ctx.scope, %{
+        title: "attributed",
+        description: "to a story",
+        severity: :medium,
+        story_id: story.id
+      })
+
+    {named, flags} = marks_from(ctx.scope, "Issues")
+
+    refute flags[:unknown?], "Issues could not say what it moved"
+    assert MapSet.member?(named, {"story", issue.story_id})
+
+    # `issues_triaged` and `issues_resolved` are project requirements reading
+    # the whole queue, so every issue moves them.
+    assert flags[:project?], "an issue must invalidate the project issue queue"
+  end
+
+  test "Issues with no story names only the project", ctx do
+    Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
+
+    {:ok, _} =
+      CodeMySpec.Issues.create_issue(ctx.scope, %{
+        title: "unattributed",
+        description: "belongs to the queue, not a story",
+        severity: :low
+      })
+
+    {named, flags} = marks_from(ctx.scope, "Issues")
+
+    # `IssuesChecker.story_resolved?/2` draws this line itself: an issue with
+    # no `story_id` is the project queue's problem, not any story's. Naming a
+    # story here would recompute it for nothing.
+    assert MapSet.size(named) == 0, "an unattributed issue must name no story"
+    assert flags[:project?]
+    refute flags[:unknown?]
+  end
+
   defp marks(scope) do
     scope.active_project_id |> Invalidations.pending() |> Invalidations.entities()
   end

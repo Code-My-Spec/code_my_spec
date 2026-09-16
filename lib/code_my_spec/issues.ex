@@ -397,8 +397,24 @@ defmodule CodeMySpec.Issues do
     # and asks the fingerprint whether anything really moved. An incoming issue
     # makes `issues_triaged` actionable, which is work appearing that no reader
     # would notice. See `Requirements.GraphInputs`.
-    GraphInputs.announce(scope, "Issues")
+    GraphInputs.announce(scope, "Issues", graph_entities(message))
   end
+
+  # The story it was attributed to, if any, and always the project.
+  #
+  # `:project` unconditionally, because `issues_triaged` and `issues_resolved`
+  # are project requirements and read the whole queue — an issue arriving or
+  # being resolved moves them whether or not it names a story.
+  #
+  # The story only when QA attributed one. `IssuesChecker.story_resolved?/2`
+  # draws that line itself — "an issue with no `story_id` is the project queue's
+  # problem, not this story's" — and `Freshness.story/2` hashes
+  # `issues_by_story` on the same basis, so an unattributed issue belongs to no
+  # story's requirements and naming one would recompute it for nothing.
+  defp graph_entities({_verb, %{story_id: story_id}}) when not is_nil(story_id),
+    do: [{"story", story_id}, :project]
+
+  defp graph_entities(_message), do: [:project]
 
   defp broadcast(_scope, _message), do: :ok
 end

@@ -95,10 +95,23 @@ defmodule CodeMySpec.Deploys do
   # Per row rather than once per `record_environment_deploy/3`: the debounce
   # collapses a deploy's whole batch into one pass anyway, and `record/4` has
   # callers of its own that would otherwise be silent.
-  defp announce({:ok, _deploy} = result, scope) do
-    GraphInputs.announce(scope, "Deploys")
+  # The story this deploy is for. `deploy` is a story requirement — `:deployed`,
+  # asking `uat_check/3` — and `Freshness.story/2` hashes `uat_deploy_by_story`,
+  # so a deploy moves exactly one story's answer and no project requirement
+  # reads deploys at all.
+  #
+  # A deploy with no story is not a story's business and names nothing, which
+  # records `:unknown` and recomputes everything. Conservative and correct:
+  # `record/4` has callers of its own and this cannot say what they moved.
+  defp announce({:ok, deploy} = result, scope) do
+    GraphInputs.announce(scope, "Deploys", deploy_entities(deploy))
     result
   end
+
+  defp deploy_entities(%{story_id: story_id}) when not is_nil(story_id),
+    do: [{"story", story_id}]
+
+  defp deploy_entities(_deploy), do: []
 
   defp announce(result, _scope), do: result
 
