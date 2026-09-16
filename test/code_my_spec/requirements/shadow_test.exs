@@ -104,6 +104,163 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     end
   end
 
+  describe "writer coverage" do
+    # One case per writer that announces, each going through the real surface
+    # rather than poking the projector, because what is being tested is whether
+    # that writer's announcement reaches the event path at all.
+    #
+    # This is the matrix that decides the remaining work. A writer that fails
+    # here is silent — no mark, so no recompute, so a row nothing revisits —
+    # and that is the only failure the diff can actually see. A writer that
+    # passes may still be recording project-wide and dragging the whole project
+    # through a recompute; that costs, it does not lie, and it is priced
+    # separately.
+    setup ctx do
+      story = create_story(ctx.scope, title: "Subject", description: "under test")
+      component = ComponentsFixtures.component_fixture(ctx.scope)
+
+      project_live(ctx.scope)
+      project_shadow(ctx.scope)
+
+      {:ok, story: story, component: component}
+    end
+
+    test "Issues reaches the event path", ctx do
+      {:ok, _} =
+        CodeMySpec.Issues.create_issue(ctx.scope, %{
+          title: "something is wrong",
+          description: "filed during the shadow diff",
+          severity: :medium
+        })
+
+      assert_shadow_agrees(ctx.scope, "Issues")
+    end
+
+    test "AcceptanceCriteria reaches the event path", ctx do
+      {:ok, _} =
+        CodeMySpec.AcceptanceCriteria.create_criterion(
+          ctx.scope,
+          CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id),
+          %{description: "a criterion that moves the graph"}
+        )
+
+      assert_shadow_agrees(ctx.scope, "AcceptanceCriteria")
+    end
+
+    test "Questions reaches the event path", ctx do
+      {:ok, _} =
+        CodeMySpec.Questions.create_question(ctx.scope, ctx.story.id, %{
+          text: "does this reach the event path?"
+        })
+
+      assert_shadow_agrees(ctx.scope, "Questions")
+    end
+
+    test "Components reaches the event path", ctx do
+      {:ok, _} =
+        CodeMySpec.Components.create_component(ctx.scope, %{
+          name: "Appeared",
+          type: "context",
+          module_name: "Appeared",
+          description: "a component created after the shadow was seeded"
+        })
+
+      assert_shadow_agrees(ctx.scope, "Components")
+    end
+
+    test "Stories reaches the event path", ctx do
+      create_story(ctx.scope, title: "Appeared", description: "after seeding")
+
+      assert_shadow_agrees(ctx.scope, "Stories")
+    end
+  end
+
+  describe "writer narrowing" do
+    # The coverage matrix above cannot tell a narrowed writer from an
+    # un-narrowed one: both agree, because a project-wide mark recomputes every
+    # entity and therefore never disagrees. Narrowing is the *cost* half, and
+    # this is where it is actually asserted — on the shape of the mark rather
+    # than on the projection that follows from it.
+    #
+    # Only the writers that have been narrowed are here. The rest record
+    # project-wide today and are expected to; when one is narrowed it earns a
+    # case, and that is the checklist for the work remaining.
+    setup ctx do
+      create_story(ctx.scope, title: "Subject", description: "under test")
+      project_live(ctx.scope)
+      Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
+      :ok
+    end
+
+    test "Stories names the story it changed", ctx do
+      story = create_story(ctx.scope, title: "Named", description: "not project-wide")
+
+      {named, project_wide?} = marks(ctx.scope)
+
+      refute project_wide?, "Stories recorded a project-wide mark instead of naming the story"
+      assert MapSet.member?(named, {"story", story.id})
+    end
+
+    test "Components names the component and its parent", ctx do
+      parent = ComponentsFixtures.component_fixture(ctx.scope)
+      Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
+
+      {:ok, child} =
+        CodeMySpec.Components.create_component(ctx.scope, %{
+          name: "Child",
+          type: "context",
+          module_name: "Child",
+          description: "a child of the fixture",
+          parent_component_id: parent.id
+        })
+
+      {named, project_wide?} = marks(ctx.scope)
+
+      refute project_wide?, "Components recorded a project-wide mark"
+      assert MapSet.member?(named, {"component", child.id})
+
+      # `Freshness.component/2` hashes `children_by_parent`, so a child
+      # appearing moves the parent's requirements too. A writer that named only
+      # the child would leave the parent stale with nothing to say so.
+      assert MapSet.member?(named, {"component", parent.id}),
+             "a child appearing must invalidate its parent"
+    end
+
+    test "AcceptanceCriteria names the story its criterion hangs off", ctx do
+      story = create_story(ctx.scope, title: "Owner", description: "of a criterion")
+      Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
+
+      {:ok, _} =
+        CodeMySpec.AcceptanceCriteria.create_criterion(
+          ctx.scope,
+          CodeMySpec.Stories.get_story!(ctx.scope, story.id),
+          %{description: "a criterion that moves one story"}
+        )
+
+      {named, project_wide?} = marks(ctx.scope)
+
+      refute project_wide?, "AcceptanceCriteria recorded a project-wide mark"
+      assert MapSet.member?(named, {"story", story.id})
+    end
+  end
+
+  defp marks(scope) do
+    scope.active_project_id |> Invalidations.pending() |> Invalidations.entities()
+  end
+
+  defp assert_shadow_agrees(scope, writer) do
+    project_live(scope)
+    :ok = ShadowProjector.settle(scope.active_project_id)
+
+    report = Shadow.diff(scope)
+
+    assert report.missing == 0,
+           "#{writer} left the shadow missing rows: #{inspect(report.sample)}"
+
+    assert report.disagree == 0,
+           "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+  end
+
   describe "computing one entity" do
     test "answers the same as computing it inside a whole pass", ctx do
       scope = ctx.scope
