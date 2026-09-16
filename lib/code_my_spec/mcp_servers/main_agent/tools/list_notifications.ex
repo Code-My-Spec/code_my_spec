@@ -1,11 +1,28 @@
-defmodule CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions do
+defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
   @moduledoc """
   Everything the agents on this project are waiting on, in one place.
 
-  Grouped by who holds each question — yours to answer, or already sent up and
-  waiting on the user. An answered question is gone from here.
+  Questions and permissions together — a `tap_out` stops an agent exactly as an
+  unanswered question does. Grouped by who holds each one: yours to answer, or
+  already sent up and waiting on the user. `kind` says whether it takes an
+  answer or a decision. Settle any of them with `answer_notification`.
   """
 
+  # Why both kinds, and why one listing
+  #
+  # `Notifications.awaiting_answer?/1` — the predicate `StopDecision.wake/2`
+  # consults before it will wake anything — is `pending_question? or
+  # pending_permission?`. A listing that unions only the first half cannot
+  # explain the gate: an agent held off the graph by a pending `tap_out` appears
+  # in it as nothing at all. `880c7713` spent seven hours unreachable that way
+  # while every other surface reported it running, continuous and idle with 17
+  # actionable requirements (`8cb3f626`).
+  #
+  # So the rule is that this listing mirrors that predicate. If the two ever
+  # disagree again, the listing is the one that is wrong.
+  #
+  # Replaces `list_open_questions`, which named only half of what it returned.
+  #
   # Why this is not one of the two listings that already exist
   #
   # `list_user_questions` answers "what have *I* asked", scoped to the calling

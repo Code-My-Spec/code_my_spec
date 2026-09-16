@@ -99,6 +99,34 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   end
 
   @doc """
+  One of this project's pending permission requests, by id.
+
+  Scoped through the agent exactly as the question lookup is, so a `tap_out`
+  raised by another project's agent is `:not_found` here rather than something
+  this project can decide.
+  """
+  @spec fetch_open_permission(Scope.t(), String.t()) ::
+          {:ok, OpenQuestion.t()} | {:error, :not_found}
+  def fetch_open_permission(%Scope{active_project_id: project_id}, permission_id)
+      when not is_nil(project_id) do
+    from(p in PermissionRequest,
+      join: a in Agent,
+      on: a.id == p.agent_id,
+      left_join: w in WorkingCopy,
+      on: w.id == a.working_copy_id,
+      where: a.project_id == ^project_id and p.status == "pending" and p.id == ^permission_id,
+      select: {p, a, w}
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      {request, agent, copy} -> {:ok, OpenQuestion.from_permission(request, agent, copy)}
+    end
+  end
+
+  def fetch_open_permission(%Scope{}, _permission_id), do: {:error, :not_found}
+
+  @doc """
   One of this project's open questions, by id.
 
   Scoped the same way the listing is, so a question belonging to another

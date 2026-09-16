@@ -143,14 +143,14 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # take on what it finds there. Scripted rather than on the spine because the
   # spine is paid by every agent at connect and exactly one role calls these —
   # a coding agent has no use for its colleagues' open questions.
-  component(CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ListNotifications)
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
   component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)
-  component(CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion)
+  component(CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification)
   component(CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckIn)

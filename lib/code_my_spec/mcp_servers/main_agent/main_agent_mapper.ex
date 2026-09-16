@@ -122,7 +122,7 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     No open question on this project has that id.
 
     Either it has already been answered, or it belongs to another project's \
-    agents — you can only act on your own. Call `list_open_questions` for what \
+    agents — you can only act on your own. Call `list_notifications` for what \
     is actually waiting.\
     """)
   end
