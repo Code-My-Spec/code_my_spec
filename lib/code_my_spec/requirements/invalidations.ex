@@ -114,9 +114,10 @@ defmodule CodeMySpec.Requirements.Invalidations do
           String.t(),
           map(),
           [entity()],
-          String.t() | nil
+          String.t() | nil,
+          Ecto.UUID.t() | nil
         ) :: :ok
-  def record_event(project_id, source, kind, payload, entities, observation_id, copy \\ nil)
+  def record_event(project_id, source, kind, payload, entities, observation_id, copy)
       when is_binary(project_id) do
     if enabled?() do
       now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
