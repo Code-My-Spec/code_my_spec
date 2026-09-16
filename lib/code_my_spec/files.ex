@@ -160,6 +160,51 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  The project's files in these roles, across every checkout.
+
+  `list_project_files/1` narrowed to the roles the caller actually reads.
+  `PersonasChecker` was loading every file on the project — ~18,650 rows across
+  five checkouts — to keep the two persona roles, and it runs on every graph
+  pass because `personas_complete` is a project node and those are rebuilt
+  unconditionally. Measured at 407ms of a 907ms project-node computation.
+
+  Same answer, same scoping, four orders of magnitude fewer rows.
+  """
+  @spec list_project_files_with_roles(Scope.t(), [atom()]) :: [File.t()]
+  def list_project_files_with_roles(%Scope{active_project_id: project_id}, roles) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role in ^roles)
+    |> Repo.all()
+  end
+
+  @doc """
+  This checkout's file paths under any of these prefixes.
+
+  For a checker that asks about a fixed handful of locations rather than about
+  the tree. `SpexBoundaryChecker` wanted five paths and was reading every file
+  in the checkout to build a `MapSet` of all of them — 385ms of the same
+  project-node computation.
+
+  Paths only, because that is all such a checker looks at, and over-matching is
+  safe by construction: `LIKE` treats `_` as a wildcard and these prefixes
+  contain them, so this can return more than asked for and never less. Every
+  caller re-checks with `starts_with?` or `MapSet.member?`, which is what makes
+  the loose match correct rather than merely tolerable.
+  """
+  @spec list_paths_under(Scope.t(), [String.t()]) :: MapSet.t(String.t())
+  def list_paths_under(%Scope{active_project_id: project_id} = scope, prefixes) do
+    patterns = Enum.map(prefixes, &(&1 <> "%"))
+
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> where([f], fragment("? LIKE ANY(?)", f.path, ^patterns))
+    |> scope_to_harness(scope)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
   List files for the project with the owning component preloaded, ordered by
   path, with optional pagination and validity filtering.
 
