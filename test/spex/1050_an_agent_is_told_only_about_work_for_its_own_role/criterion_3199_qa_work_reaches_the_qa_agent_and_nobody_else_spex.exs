@@ -32,7 +32,6 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -75,6 +74,36 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
                premise rather than a routed wake.
 
                QA-actionable now: #{inspect(Fixtures.actionable_names(context.scope, :qa))}
+               """
+
+        # Everything coding owns except the one thing the `when_` is about.
+        #
+        # `apply_up_to_analysis/1` withholds the analysis run entirely, so
+        # coding is left holding both `tests_passing` and `bdd_specs_passing`.
+        # The transition in the `when_` satisfies the second and not the first,
+        # so coding would still have real work afterwards — and a role that has
+        # work is woken correctly, which is indistinguishable here from the leak
+        # this criterion exists to catch. It is the same hazard the comment
+        # above describes, one step further in.
+        #
+        # Every source but `spex`, so `tests_passing` is satisfied now and
+        # `bdd_specs_passing` is left for the transition. Coding then holds
+        # exactly one requirement, the `when_` clears it, and afterwards coding's
+        # queue is empty — so any message it receives is a leak rather than its
+        # own work arriving.
+        Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
+
+        assert Fixtures.actionable_names(context.scope, :coding) == ["bdd_specs_passing"],
+               """
+               Coding should hold exactly the one requirement the `when_` is
+               about to satisfy, and nothing else.
+
+               More than that and coding still has work after the transition, so
+               it is woken correctly and this criterion cannot tell that from a
+               role leak. Less than that and the transition clears nothing for
+               coding, which means the premise never set the scenario up.
+
+               Coding-actionable now: #{inspect(Fixtures.actionable_names(context.scope, :coding))}
                """
 
         {:ok, context}
